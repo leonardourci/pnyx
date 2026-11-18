@@ -3323,6 +3323,312 @@ test(
 )
 
 test(
+  'Shift-dragging a child into its project space lifts it into root order where it lands',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'other-project' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+
+    for (const [
+      key,
+      parent,
+    ] of [
+        [
+          'Alpha root',
+          undefined,
+        ],
+        [
+          'Family root',
+          undefined,
+        ],
+        [
+          'Omega root',
+          undefined,
+        ],
+        [
+          'Kid one',
+          'Family root',
+        ],
+        [
+          'Kid two',
+          'Family root',
+        ],
+      ]) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key!,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          title: key,
+          parent,
+        }),
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'Elsewhere root',
+        '--title',
+        'Elsewhere root',
+        '--project',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        'Kid two',
+        '--before',
+        'Kid one',
+      ],
+    })
+    const family = (await hydra.task({ key: 'Family root' })).id
+    const keys = [
+      'Alpha root',
+      'Family root',
+      'Omega root',
+      'Kid one',
+      'Kid two',
+    ]
+    const order = ({ parent }: { parent?: string } = {}) => rows<{ key: string }>({
+      text: 'select key from cards where hydra_id = $1 and parent_id is not distinct from $2::text and key = any($3::text[]) order by coalesce(rank, created_seq)',
+      values: [
+        hydra.id,
+        parent ?? null,
+        keys,
+      ],
+    }).map(card => card.key)
+    const outdents: string[] = []
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (frame.name === 'task' && frame.args?.[0] === 'parent') {
+              outdents.push(frame.args[frame.args.indexOf('--event-id') + 1])
+            }
+
+            server.send(message)
+          })
+        },
+      ),
+    })
+
+    try {
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      const card = ({ title }: { title: string }) => workspace.getByRole(
+        'button',
+        {
+          name: title,
+          exact: true,
+        },
+      ).locator('xpath=ancestor::article[1]')
+      const column = ({ id }: { id: string }) => workspace.locator(`section[data-column="${id}"]`)
+      const ideas = column({ id: 'ideas' })
+      const otherId = await workspace.getByRole(
+        'button',
+        {
+          name: 'Fold other-project',
+          exact: true,
+        },
+      ).locator('xpath=ancestor::section[@data-column][1]')
+        .getAttribute('data-column')
+      const other = column({ id: otherId! })
+
+      const openFamily = async () => {
+        const toggle = workspace.getByRole(
+          'button',
+          {
+            name: 'Sub-tasks of Family root',
+            exact: true,
+          },
+        )
+
+        if (await toggle.getAttribute('aria-expanded') === 'false') {
+          await toggle.click()
+        }
+
+        await card({ title: 'Kid one' }).waitFor()
+      }
+
+      const shiftDrag = async ({
+        source,
+        point,
+        armed,
+        reason,
+      }: {
+        source: string
+        point(): Promise<{
+          x: number
+          y: number
+        }>
+        armed?: ReturnType<typeof column>
+        reason?: string
+      }) => {
+        await card({ title: source }).hover()
+        const handle = page.getByRole(
+          'button',
+          {
+            name: `Move ${source}`,
+            exact: true,
+          },
+        )
+        await handle.hover()
+        const start = (await handle.boundingBox())!
+        await page.mouse.move(
+          start.x + start.width / 2,
+          start.y + start.height / 2,
+        )
+        await page.mouse.down()
+        await page.mouse.move(
+          start.x + start.width / 2 + 12,
+          start.y + start.height / 2,
+          { steps: 3 },
+        )
+        const ghost = page.locator('.physical-ghost')
+        await ghost.waitFor()
+        await page.keyboard.down('Shift')
+        const end = await point()
+        await page.mouse.move(
+          end.x,
+          end.y,
+          { steps: 12 },
+        )
+
+        if (armed) {
+          await until({
+            what: 'the project space is armed for the child',
+            check: async () => await armed.getAttribute('data-outdent-armed') === 'true',
+          })
+        }
+
+        if (reason) {
+          await ghost.getByText(
+            reason,
+            { exact: true },
+          ).waitFor()
+        }
+
+        await page.mouse.up()
+        await page.keyboard.up('Shift')
+        await ghost.waitFor({ state: 'detached' })
+      }
+
+      const between = async ({
+        first,
+        second,
+      }: {
+        first: string
+        second: string
+      }) => {
+        const a = (await card({ title: first }).boundingBox())!
+        const b = (await card({ title: second }).boundingBox())!
+        const sameRow = Math.abs(a.y - b.y) < 1
+
+        return sameRow ? {
+          x: (a.x + a.width + b.x) / 2,
+          y: a.y + a.height / 2,
+        } : {
+          x: a.x + a.width / 2,
+          y: (a.y + a.height + b.y) / 2,
+        }
+      }
+
+      const below = async ({ area }: { area: ReturnType<typeof column> }) => {
+        if (!await area.count()) {
+          throw new Error(JSON.stringify(await page.evaluate(() => ({
+            axis: document.querySelector('.workspace-axis')?.scrollLeft,
+            columns: [...document.querySelectorAll('section[data-column]')].map(node => `${node.closest('[data-hydra-workspace]')?.getAttribute('data-hydra-workspace')}:${node.getAttribute('aria-label')}:${Math.round(node.getBoundingClientRect().x)}`),
+          }))))
+        }
+
+        const box = (await area.locator('.project-cards').boundingBox())!
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluate callback.
+        const cards = await area.locator('.card[data-task]').evaluateAll(nodes =>
+          Math.max(...nodes.map(node => node.getBoundingClientRect().bottom)))
+
+        return {
+          x: box.x + box.width / 2,
+          y: (cards + box.y + box.height) / 2,
+        }
+      }
+
+      await openFamily()
+      await shiftDrag({
+        source: 'Kid two',
+        point: () => between({
+          first: 'Alpha root',
+          second: 'Family root',
+        }),
+        armed: ideas,
+      })
+      await until({
+        what: 'the child lands between the roots it was dropped between',
+        check: () => order().join() === 'Alpha root,Kid two,Family root,Omega root',
+      })
+      expect(await card({ title: 'Kid two' }).locator('xpath=ancestor::*[@data-child]')
+        .count()).toBe(0)
+      expect(outdents).toHaveLength(1)
+      await hydra.owner({
+        args: [
+          'undo',
+          outdents[0]!,
+        ],
+      })
+      await until({
+        what: 'Undo returns the child to its parent at its old sibling position',
+        check: () => order({ parent: family }).join() === 'Kid two,Kid one',
+      })
+      expect(order().join()).toBe('Alpha root,Family root,Omega root')
+
+      await openFamily()
+      await shiftDrag({
+        source: 'Kid one',
+        point: () => below({ area: other }),
+        reason: "Can't move to another project",
+      })
+      expect(await other.getAttribute('data-outdent-armed')).toBe('false')
+      expect(order({ parent: family }).join()).toBe('Kid two,Kid one')
+      expect(outdents).toHaveLength(1)
+
+      await shiftDrag({
+        source: 'Kid one',
+        point: () => below({ area: ideas }),
+        armed: ideas,
+      })
+      await until({
+        what: 'a child dropped below the last root lands at the end',
+        check: () => order().join() === 'Alpha root,Family root,Omega root,Kid one',
+      })
+      expect(order({ parent: family }).join()).toBe('Kid two')
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
   'a wide closed task lifts at standard card size and grows back into its row',
   async () => {
     const hydra = await pnyx.hydra()

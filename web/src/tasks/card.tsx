@@ -107,6 +107,8 @@ export const HydraCard = memo(function HydraCard({
   card,
   statusOverride,
   sortScope,
+  rootColumn,
+  rootScope,
   hydraId,
   chat,
   progress,
@@ -134,6 +136,8 @@ export const HydraCard = memo(function HydraCard({
 }: {
   statusOverride?: ObservedStatus
   sortScope?: string
+  rootColumn?: string
+  rootScope?: string
   hydraId: string
   chat?: ReactNode
   progress?: string
@@ -679,6 +683,10 @@ export const HydraCard = memo(function HydraCard({
         scope: sortScope ?? '',
         hydra: hydraId,
         parent: card.parentId,
+        root: rootColumn && rootScope ? {
+          column: rootColumn,
+          scope: rootScope,
+        } : undefined,
         hasChildren,
         open: selected,
         overlay: (

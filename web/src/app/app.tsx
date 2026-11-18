@@ -156,6 +156,51 @@ export function App() {
 
       const card = workspace.state.cards[preview.id], target = workspace.state.cards[preview.over]
 
+      if (card && preview.outdent) {
+        const roots = projectColumns({
+          state: workspace.state,
+          cards: Object.values(workspace.state.cards),
+          actions: workspace.actions,
+          order: [],
+        }).find(column => column.id === preview.targetScope)?.cards ?? []
+        const anchor = roots.findIndex(item => item.id === preview.over)
+        const placed = anchor < 0 ? [
+          ...roots,
+          card,
+        ] : roots.toSpliced(
+          anchor + (preview.before ? 0 : 1),
+          0,
+          card,
+        )
+        const next = nextSibling({
+          state: workspace.state,
+          actions: workspace.actions,
+          card,
+          cards: placed,
+        })
+        const args = [
+          'parent',
+          card.id,
+          'none',
+          '--event-id',
+          event,
+        ]
+
+        if (next) {
+          args.push(
+            '--before',
+            next.id,
+          )
+        }
+
+        await command({
+          name: 'task',
+          args,
+        })
+
+        return
+      }
+
       if (!card || !target) {
         return
       }

@@ -953,13 +953,23 @@ export function HydraView({
     const legacyProject = !!item.project && !state.projects?.some(project =>
       project.path === item.project || project.name === item.project)
     const showProject = column.repositories.length > 1 || crossProject || legacyProject
+    const priority = statusPriority({ status: family.status })
+    const rootColumn = item.parentId ? taskProjectGroup({
+      state,
+      card: {
+        ...item,
+        parentId: undefined,
+      },
+    }) : undefined
 
     return (
       <HydraCard
         key={item.key}
         card={item}
         hydraId={navigation.hydraId}
-        sortScope={`${navigation.hydraId}:${column.id}:${statusPriority({ status: family.status })}:${item.parentId ?? 'root'}`}
+        sortScope={`${navigation.hydraId}:${column.id}:${priority}:${item.parentId ?? 'root'}`}
+        rootColumn={rootColumn}
+        rootScope={rootColumn && `${navigation.hydraId}:${rootColumn}:${priority}:root`}
         statusOverride={family.status}
         progress={family.progress}
         hasChildren={family.hasChildren}

@@ -52,6 +52,7 @@ export interface SortMove {
   hydra: string
   before: boolean
   nest: boolean
+  outdent?: boolean
 }
 
 export interface SortItem {
@@ -62,7 +63,11 @@ export interface SortItem {
   parent?: string
   hasChildren?: boolean
   column?: string
-  zone?: 'nest'
+  zone?: 'nest' | 'outdent'
+  root?: {
+    column: string
+    scope: string
+  }
   overlay?: ReactNode
   open?: boolean
   overlayStyle?: CSSProperties
@@ -279,10 +284,12 @@ function dropTargets({
   active,
   containers,
   nesting,
+  outdent = false,
 }: {
   active: Active
   containers: Parameters<CollisionDetection>[0]['droppableContainers']
   nesting: boolean
+  outdent?: boolean
 }) {
   const source = itemOf({ data: active.data })
 
@@ -299,7 +306,9 @@ function dropTargets({
     }
 
     if (nesting) {
-      return target.zone === 'nest' && source.id !== target.id
+      const lifting = outdent && target.zone === 'outdent' && !!source.parent
+
+      return lifting || target.zone === 'nest' && source.id !== target.id
     }
 
     const group = active.data.current?.sortable?.containerId
@@ -352,6 +361,7 @@ function collisions({
     active: args.active,
     containers: args.droppableContainers,
     nesting,
+    outdent: true,
   })
 
   if (args.pointerCoordinates) {
@@ -366,7 +376,10 @@ function collisions({
 
     if (nesting) {
       const card = pointed?.closest('.card[data-task]')
-      const target = containers.find(container => container.node.current === card)
+      const sourceNode = document.querySelector(`[data-sort-key="${CSS.escape(String(args.active.id))}"]`)
+      const inOwnFamily = !!sourceNode?.closest('[data-family]')?.contains(pointed)
+      const target = containers.find(container => card ? container.node.current === card
+        : !inOwnFamily && container.data.current?.item?.zone === 'outdent' && !!container.node.current?.contains(pointed))
 
       return target ? [{ id: target.id }] : []
     }
@@ -424,6 +437,10 @@ export function nestingRefusal({
   source: SortItem
   target: SortItem
 }) {
+  if (target.zone === 'outdent') {
+    return source.root?.column === target.id ? null : "Can't move to another project"
+  }
+
   if (source.parent === target.id) {
     return null
   }
@@ -445,7 +462,7 @@ export function DragNestHint() {
     over,
     shift,
   } = useSortState()
-  const refusal = shift && active && over?.zone === 'nest' ? nestingRefusal({
+  const refusal = shift && active && over?.zone ? nestingRefusal({
     source: active,
     target: over,
   }) : null
@@ -544,6 +561,55 @@ function DragGhost({
   )
 }
 
+function landingAnchor({
+  column,
+  scope,
+  id,
+  pointer,
+}: {
+  column: Element
+  scope: string
+  id: string
+  pointer: {
+    x: number
+    y: number
+  }
+}) {
+  const cards = [...column.querySelectorAll<HTMLElement>(`.card[data-task][data-sort-scope="${CSS.escape(scope)}"]`)]
+    .filter(card => card.dataset.task !== id)
+    .map(card => ({
+      id: card.dataset.task!,
+      box: card.getBoundingClientRect(),
+    }))
+    .sort((
+      a,
+      b,
+    ) => a.box.top - b.box.top || a.box.left - b.box.left)
+
+  const isBefore = ({ box }: { box: DOMRect }) => {
+    const aboveRow = pointer.y < box.top
+    const leftInRow = pointer.y <= box.bottom && pointer.x < box.left + box.width / 2
+
+    return aboveRow || leftInRow
+  }
+
+  const next = cards.find(isBefore)
+
+  if (next) {
+    return {
+      id: next.id,
+      before: true,
+    }
+  }
+
+  const last = cards.at(-1)
+
+  return last ? {
+    id: last.id,
+    before: false,
+  } : null
+}
+
 const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: ACTIVATION_DISTANCE } }
 const KEYBOARD_SENSOR_OPTIONS = {
   coordinateGetter: keyboardCoordinates,
@@ -629,9 +695,10 @@ export function SortableWorkspace({
     scroll: number
     hits: ReturnType<CollisionDetection>
   } | null>(null)
-  const nestingDrop = useRef<{
-    parent: string
+  const landingDrop = useRef<{
+    task: string
     hydra: string
+    nest: boolean
   } | null>(null)
   const reducedMotion = useReducedMotion()
   const sensors = useSensors(
@@ -788,7 +855,7 @@ export function SortableWorkspace({
     const shifted = 'shiftKey' in activatorEvent && activatorEvent.shiftKey === true
     setModifier({ pressed: item.kind === 'task' && shifted })
     plain.current = null
-    nestingDrop.current = null
+    landingDrop.current = null
     document.dispatchEvent(new CustomEvent(
       HOVER_CLAIM,
       {
@@ -848,6 +915,44 @@ export function SortableWorkspace({
     })
   }
 
+  const outdentPlacement = ({
+    source,
+    target,
+  }: {
+    source: SortItem
+    target: SortItem
+  }): SortMove | null => {
+    const pointer = latestDetection.current?.pointerCoordinates
+    const workspace = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(source.hydra)}"]`)
+    const column = workspace?.querySelector(`[data-column="${CSS.escape(target.id)}"]`)
+
+    if (!pointer || !column || !source.root || nestingRefusal({
+      source,
+      target,
+    })) {
+      return null
+    }
+
+    const anchor = landingAnchor({
+      column,
+      scope: source.root.scope,
+      id: source.id,
+      pointer,
+    })
+
+    return {
+      id: source.id,
+      over: anchor?.id ?? '',
+      kind: source.kind,
+      scope: source.scope,
+      targetScope: target.id,
+      hydra: source.hydra,
+      before: anchor?.before ?? false,
+      nest: false,
+      outdent: true,
+    }
+  }
+
   const placement = ({
     active,
     target,
@@ -866,6 +971,13 @@ export function SortableWorkspace({
     }
 
     const nesting = source.kind === 'task' && modifier.current
+
+    if (nesting && target.zone === 'outdent') {
+      return outdentPlacement({
+        source,
+        target,
+      })
+    }
 
     if (nesting && (target.zone !== 'nest' || nestingRefusal({
       source,
@@ -942,10 +1054,13 @@ export function SortableWorkspace({
     }
 
     if (next) {
-      if (next.nest && !reducedMotion) {
-        nestingDrop.current = {
-          parent: next.over,
+      const lands = next.nest || next.outdent
+
+      if (lands && !reducedMotion) {
+        landingDrop.current = {
+          task: next.nest ? next.over : next.id,
           hydra: next.hydra,
+          nest: next.nest,
         }
       }
 
@@ -971,7 +1086,7 @@ export function SortableWorkspace({
     const anotherColumn = !!pointedColumn && pointedColumn.dataset.column !== active.column
     const target = over ? itemOf({ data: over.data }) : undefined
     const anotherSlot = !!target && target.id !== active.id
-    const validNest = target?.zone === 'nest' && !nestingRefusal({
+    const validNest = !!target?.zone && !nestingRefusal({
       source: active,
       target,
     }) && active.parent !== target.id
@@ -1000,7 +1115,8 @@ export function SortableWorkspace({
     dragOverlay,
     ...rest
   }) => {
-    const destination = nestingDrop.current
+    const landing = landingDrop.current
+    const nest = !!landing?.nest
 
     const ghost = dragOverlay.node.querySelector<HTMLElement>('.physical-ghost')
 
@@ -1008,27 +1124,25 @@ export function SortableWorkspace({
       return
     }
 
-    const landingCard = active.node.matches('.card') ? active.node : active.node.querySelector<HTMLElement>('.card[data-task]')
-    let to = landingCard ? layoutBox({ element: landingCard }) : active.rect
+    let landingCard = active.node.matches('.card') ? active.node : active.node.querySelector<HTMLElement>('.card[data-task]')
 
-    if (destination) {
-      const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(destination.hydra)}"]`)
-      const parent = scope?.querySelector<HTMLElement>(`[data-task="${CSS.escape(destination.parent)}"]`)
+    if (landing) {
+      const scope = root.current?.querySelector(`[data-hydra-workspace="${CSS.escape(landing.hydra)}"]`)
+      landingCard = scope?.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(landing.task)}"]`) ?? null
 
-      if (!parent) {
+      if (!landingCard) {
         return
       }
-
-      to = layoutBox({ element: parent })
     }
 
+    const to = landingCard ? layoutBox({ element: landingCard }) : active.rect
     const from = ghost.getBoundingClientRect()
     const grab = {
       x: Number(ghost.dataset.grabX),
       y: Number(ghost.dataset.grabY),
     }
-    const x = to.left - from.left + (destination ? 0 : (to.width - from.width) * grab.x)
-    const y = to.top - from.top + (destination ? 0 : (to.height - from.height) * grab.y)
+    const x = to.left - from.left + (nest ? 0 : (to.width - from.width) * grab.x)
+    const y = to.top - from.top + (nest ? 0 : (to.height - from.height) * grab.y)
     const centerX = x + (to.width - from.width * CARD_SIZING.nest.dropScale) / 2
     const centerY = y + (to.height - from.height * CARD_SIZING.nest.dropScale) / 2
     const restore = defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } })({
@@ -1036,31 +1150,36 @@ export function SortableWorkspace({
       dragOverlay,
       ...rest,
     })
+    const hidden = landing && !nest ? landingCard : null
 
-    const duration = motionDuration({ speed: destination ? 'slow' : 'base' }) / 1000
+    if (hidden) {
+      hidden.style.opacity = '0'
+    }
+
+    const duration = motionDuration({ speed: nest ? 'slow' : 'base' }) / 1000
 
     try {
       await animate(
         ghost,
         {
           transformOrigin: 'top left',
-          x: destination ? centerX : x,
-          y: destination ? centerY : y,
+          x: nest ? centerX : x,
+          y: nest ? centerY : y,
           width: [
             from.width,
-            destination ? from.width : to.width,
+            nest ? from.width : to.width,
           ],
           height: [
             from.height,
-            destination ? from.height : to.height,
+            nest ? from.height : to.height,
           ],
           scale: [
             1,
-            destination ? CARD_SIZING.nest.dropScale : 1,
+            nest ? CARD_SIZING.nest.dropScale : 1,
           ],
           opacity: [
             1,
-            destination ? 0 : 1,
+            nest ? 0 : 1,
           ],
         },
         {
@@ -1074,9 +1193,10 @@ export function SortableWorkspace({
       }
     } finally {
       restore?.()
+      hidden?.style.removeProperty('opacity')
 
-      if (nestingDrop.current === destination) {
-        nestingDrop.current = null
+      if (landingDrop.current === landing) {
+        landingDrop.current = null
       }
     }
   }

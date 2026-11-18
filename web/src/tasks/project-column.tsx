@@ -8,7 +8,7 @@ import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { useReducedMotion } from 'motion/react'
-import { useSortItem, useSortState } from '#web-shared/ui/sortable.tsx'
+import { useDropZone, useSortItem, useSortState, nestingRefusal } from '#web-shared/ui/sortable.tsx'
 import { ProjectColumnHeader } from './project-column-header.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import type { ProjectColumnData } from './project-view.ts'
@@ -60,14 +60,28 @@ export function ProjectColumn({
     scrollElement,
     setScrollElement,
   ] = useState<HTMLDivElement | null>(null)
+  const outdentZone = useDropZone({
+    item: {
+      id: column.id,
+      kind: 'task',
+      scope: column.id,
+      hydra: hydraId,
+      zone: 'outdent',
+    },
+  })
+  const outdentNode = outdentZone.setNodeRef
   const scrollRef = useCallback(
     // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
     (node: HTMLDivElement | null) => {
       scroll.current = node
       setScrollElement(node)
       remembered.ref(node)
+      outdentNode(node)
     },
-    [remembered.ref],
+    [
+      remembered.ref,
+      outdentNode,
+    ],
   )
   const viewport = useWorkspaceViewport()
   const {
@@ -115,6 +129,13 @@ export function ProjectColumn({
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
     && dragging.active.hydra === hydraId
 
+  const outdentSource = dragging.shift && dragging.active?.parent ? dragging.active : null
+  const outdentOver = dragging.over?.zone === 'outdent' && dragging.over.id === column.id
+    && dragging.over.hydra === hydraId ? dragging.over : null
+  const outdentArmed = !!outdentSource && !!outdentOver && !nestingRefusal({
+    source: outdentSource,
+    target: outdentOver,
+  })
   const showHint = dragging.active?.kind === 'task'
     && dragging.active.hydra === hydraId && dragging.active.column === column.id
     && !dragging.active.hasChildren
@@ -128,9 +149,10 @@ export function ProjectColumn({
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
       lifted={lifted}
-      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-[760px]:snap-start ${folded ? 'folded min-w-12' : ''}`}
+      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-[760px]:snap-start data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-inset data-[outdent-armed=true]:ring-gold ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}
+      data-outdent-armed={outdentArmed}
       data-sort-id={column.id}
       data-sort-kind="project"
       data-sort-scope="projects"
