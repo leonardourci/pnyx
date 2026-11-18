@@ -254,7 +254,7 @@ Pointer title activation uses the same opening route as the card surface; only k
 
 ## Current owner round
 
-Implemented and checked: pointer opening retains the visible scroll anchor and clips expanding contents. The modal defaults to 70% × 80%, keeps saved dimensions and fixes action anchoring during real resizing. Shared entry/exit animation, focus, URLs and the motion off switch remain covered.
+Settled and built: opening the modal never changes the board behind it. A closed card stays closed in its slot, so its column neither widens nor reflows, and closing folds the modal back into that closed card. A card that was already open inline returns open. Before this, the modal action also opened the card inline, so a card low in a scrolled column moved to a new row, often below the screen, and the modal folded toward it. The motion journey checks a low card after scrolling, in both themes, closed and inline-open: the slot under the modal matches the card's box before opening, each closing frame gets closer to it and the last frame lands on it. It fails without the fix. Implemented and checked: pointer opening retains the visible scroll anchor and clips expanding contents. The modal defaults to 70% × 80%, keeps saved dimensions and fixes action anchoring during real resizing. Shared entry/exit animation, focus, URLs and the motion off switch remain covered.
 
 The independent drag render-fan-out patch is committed separately. Lint/build and three focused reorder, wide-card grab/landing and keyboard journeys pass. The investigator measured a median peak of 60ms at 3× CPU slowdown, down from 153ms; this does not establish 50ms compliance.
 
