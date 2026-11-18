@@ -85,7 +85,7 @@ export function HydraHead({
               label="Change icon"
               value={icon}
               choices={HYDRA_ICONS}
-              size={24}
+              size={ICON_SIZE.brand}
               pick={({ icon }) => editHydra({
                 name,
                 icon,
