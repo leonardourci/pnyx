@@ -1,3 +1,4 @@
+import { readMemoryContext } from '#memory/context.ts'
 import { memoryCaller } from '#memory/poleis.ts'
 import { migrateOwnerMemory } from '#memory/owner-memory.ts'
 import { Worker } from 'node:worker_threads'
@@ -53,10 +54,12 @@ export async function searchInBackground({
       migrateOwnerMemory()
     }
 
-    return runSearch({
-      hydraId,
-      query,
-      signal,
+    return readMemoryContext({
+      read: () => runSearch({
+        hydraId,
+        query,
+        signal,
+      }),
     })
   }
 
