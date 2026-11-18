@@ -41,7 +41,7 @@ export function QuestionGroupAnswers({
           crypto.randomUUID(),
         ],
       })
-      notify({ text: `Answered ${group.decisions.length} questions: ${choice}` })
+      notify({ text: 'Group answer submitted' })
     } catch (error) {
       notify({ text: (error as Error).message })
     } finally {
