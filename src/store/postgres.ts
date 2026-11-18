@@ -212,6 +212,14 @@ export function configuredUrl(): string | undefined {
   return url
 }
 
+// Points the rest of this process at another database for this home, as the upgrade's data check does with its copy.
+export function useDatabase({ url }: { url: string }): void {
+  configuredUrls.set(
+    homeDatabase(),
+    url,
+  )
+}
+
 // Replaces U+0000 and lone surrogates with U+FFFD in every string and key of a record headed for Postgres, in place, so
 // memory and rows keep the same text.
 export function storable<Value>({ value }: { value: Value }): Value {

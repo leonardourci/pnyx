@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
 import { SCHEMA_VERSION, binaries, sql } from './setup/postgres.ts'
-import { rows, startPnyx, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, rows, startPnyx, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -387,5 +388,154 @@ test(
       ],
     })
     expect(refused.code).toBe('VALIDATION_ERROR')
+  },
+)
+
+// The upgrade's data check, run by the new build while the old server holds the database. The owner's PATH carries
+// Postgres's pg_dump and pg_restore; the test PATH does not.
+const dataCheck = ({ path = `${binaries()}:${process.env.PATH}` }: { path?: string } = {}) => pnyxAxi({
+  args: [
+    'setup',
+    'postgres',
+    '--check',
+  ],
+  env: {
+    ...process.env,
+    PATH: path,
+  },
+})
+
+const copyLeft = async () => (await sql({
+  database: 'postgres',
+  text: 'select 1 from pg_database where datname = $1',
+  values: [`${homeDatabase()}_upgrade_check`],
+})).length > 0
+
+const version = async ({ client }: { client: pg.Client }) => (await client.query<{ version: number }>('select max(version) as version from schema_version')).rows[0]!.version
+
+// Every task with all its listed fields, and the one that waits on another with its prerequisites.
+const tasks = async ({ hydra }: { hydra: Hydra }) => ({
+  list: (await hydra.owner({
+    args: [
+      'task',
+      'list',
+      '--fields',
+      'attention,parent,status,worker,hold,queue',
+    ],
+  })).tasks,
+  waiting: await hydra.task({ key: 'second' }),
+})
+
+test(
+  'the upgrade check migrates a copy of a schema 5 database the old server still holds, and the server migrates the database itself when it starts, keeping every Hydra\'s tasks',
+  async () => {
+    const hydras = [
+      await pnyx.hydra(),
+      await pnyx.hydra(),
+    ]
+
+    for (const hydra of hydras) {
+      for (const key of [
+        'first',
+        'second',
+      ]) {
+        await hydra.owner({
+          args: [
+            'task',
+            'create',
+            '--title',
+            `${hydra.id} ${key}`,
+            '--key',
+            key,
+          ],
+        })
+      }
+
+      await hydra.owner({
+        args: [
+          'task',
+          'depend',
+          'second',
+          '--on',
+          'first',
+        ],
+      })
+    }
+
+    const before = await Promise.all(hydras.map(hydra => tasks({ hydra })))
+
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        // What schema 5's build left: a page publication without the Hydra's seq.
+        await sql({
+          database: homeDatabase(),
+          text: `alter publication pnyx_page drop table hydras;
+            alter publication pnyx_page add table hydras (id, config, summary);
+            delete from schema_version;
+            insert into schema_version (version) values (5)`,
+        })
+        const oldServer = new pg.Client({ database: homeDatabase() })
+        await oldServer.connect()
+
+        try {
+          const check = await dataCheck()
+          expect(
+            check.status,
+            check.stdout,
+          ).toBe(0)
+          expect(parsed(check)).toMatchObject({
+            database: homeDatabase(),
+            schema: 5,
+            imported: 'none: no Hydra waiting',
+          })
+          expect(await version({ client: oldServer })).toBe(5)
+          expect(await copyLeft()).toBe(false)
+        } finally {
+          await oldServer.end()
+        }
+      },
+    })
+
+    expect(rows<{ version: number }>({ text: 'select max(version) as version from schema_version' })[0]!.version).toBe(SCHEMA_VERSION)
+    expect(rows<{ columns: string[] }>({ text: 'select attnames as columns from pg_publication_tables where pubname = \'pnyx_page\' and tablename = \'hydras\'' })[0]!.columns).toContain('seq')
+    expect(await Promise.all(hydras.map(hydra => tasks({ hydra })))).toEqual(before)
+  },
+  60_000,
+)
+
+test(
+  'the upgrade check refuses a schema this build cannot migrate, or cannot copy without pg_dump, and leaves the database as it was',
+  async () => {
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        const database = homeDatabase()
+        const setVersion = ({ to }: { to: number }) => sql({
+          database,
+          text: `delete from schema_version; insert into schema_version (version) values (${to})`,
+        })
+        await setVersion({ to: 3 })
+
+        const untouched = async () => {
+          expect(await copyLeft()).toBe(false)
+          expect((await sql({
+            database,
+            text: 'select max(version) as version from schema_version',
+          }))[0]!.version).toBe(3)
+        }
+
+        const withoutTools = await dataCheck({ path: dirname(process.execPath) })
+        expect(withoutTools.status).toBe(1)
+        expect(withoutTools.stdout).toContain('pg_dump could not copy the database for the data check')
+        await untouched()
+
+        const unmigratable = await dataCheck()
+        expect(unmigratable.status).toBe(1)
+        expect(unmigratable.stdout).toContain(`a copy of database ${database} at schema 3 did not migrate to schema ${SCHEMA_VERSION}`)
+        await untouched()
+        await setVersion({ to: SCHEMA_VERSION })
+      },
+    })
   },
 )

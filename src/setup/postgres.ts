@@ -1,8 +1,12 @@
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import pg from 'pg'
 import { HydraError } from '#store/errors.ts'
-import { closePostgres, configuredUrl, homeDatabase, query } from '#store/postgres.ts'
+import { closePostgres, configuredUrl, homeDatabase, migrateSchema, query, useDatabase } from '#store/postgres.ts'
+import { SCHEMA_VERSION } from '#store/schema.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { hydraExists, importLegacy, loadHydra } from '#app/store.ts'
 import { recordExitCode } from '#app/request-context.ts'
@@ -22,6 +26,9 @@ const READY_MS = 30_000
 // syncs again on its next start.
 const MAX_SLOT_WAL = '4GB'
 const POLL_MS = 500
+// The data check's disposable copy of the database, beside it on the same server.
+const COPY_SUFFIX = '_upgrade_check'
+const COPY_MS = 10 * 60_000
 // How a connection fails when no Postgres listens, over TCP or a socket file; any other failure has a running server.
 const NOT_RUNNING = /ECONNREFUSED|ENOENT|connection refused/i
 // A server that is starting, or restarting and dropped the connection, answers once it is up.
@@ -252,49 +259,10 @@ const ready = ({ found }: { found: Server }) => ({
   help: ['Run `pnyx-axi setup check` to see what else is missing'],
 })
 
-// Imports every Hydra still kept in an events.jsonl in a transaction it rolls back, the same way the server would,
-// without moving any folder, and reads every imported one, which refuses a log an older Pnyx appended to since. An
-// upgrade stops before its restart when any Hydra fails; each failure names its Hydra.
-function checkImports(): Output {
-  requireReady({ found: server() })
-  const [tables] = query({
-    schema: 'inspect',
-    statements: [{ text: 'select to_regclass(\'public.schema_version\') as name' }],
-  })
-
-  if (!tables?.[0]?.name) {
-    return {
-      postgres: 'ready',
-      database: targetDatabase(),
-      migration: 'pending: serve creates the database',
-    }
-  }
-
-  const [versions] = query({
-    schema: 'inspect',
-    statements: [{ text: 'select max(version)::integer as version from schema_version' }],
-  })
-
-  if (versions?.[0]?.version === 1) {
-    const [counts] = query({
-      schema: 'inspect',
-      statements: [
-        {
-          text: `select type, count(*)::integer as count from events
-        where type in ('card.observed', 'chat.message') group by type`,
-        },
-      ],
-    })
-
-    return {
-      postgres: 'ready',
-      database: targetDatabase(),
-      schema: 1,
-      migration: 'pending: serve migrates after the old server stops',
-      prune: counts,
-    }
-  }
-
+// Loads every Hydra in Postgres and imports every Hydra still kept in an events.jsonl in a transaction it rolls back,
+// the same way the server would, without moving any folder; a load refuses a log an older Pnyx appended to since its
+// import. Each failure names its Hydra.
+function checkHydras(): Output {
   const imported: string[] = []
   const failed: {
     hydra: string
@@ -330,11 +298,7 @@ function checkImports(): Output {
     }
   }
 
-  const checked = {
-    postgres: 'ready',
-    database: targetDatabase(),
-    imported: imported.length ? imported : 'none: no Hydra waiting',
-  }
+  const checked = { imported: imported.length ? imported : 'none: no Hydra waiting' }
 
   if (!failed.length) {
     return checked
@@ -345,6 +309,153 @@ function checkImports(): Output {
   return {
     ...checked,
     failed,
+  }
+}
+
+function copyTool({
+  command,
+  args,
+}: {
+  command: string
+  args: string[]
+}): void {
+  const ran = spawnSync(
+    command,
+    args,
+    {
+      encoding: 'utf8',
+      timeout: COPY_MS,
+    },
+  )
+
+  if (ran.status === 0) {
+    return
+  }
+
+  throw new HydraError({
+    message: `${command} could not copy the database for the data check: ${ran.error ? ran.error.message : ran.stderr}`,
+    code: 'POSTGRES_UNAVAILABLE',
+    help: [`Fix: put the pg_dump and pg_restore of PostgreSQL 15 or newer on PATH (\`brew install ${FORMULA}\` on macOS), then run \`pnyx-axi setup postgres --check\``],
+  })
+}
+
+// An older schema is migrated and every Hydra loaded on a copy of the database, which the check drops after; the
+// running server keeps the database itself at its own schema. pg_dump copies it while that server writes to it, which
+// CREATE DATABASE ... TEMPLATE refuses.
+async function checkOnCopy({
+  database,
+  version,
+}: {
+  database: string
+  version: number
+}): Promise<Output> {
+  const name = `${database}${COPY_SUFFIX}`
+  const live = new URL(configuredUrl() ?? `postgresql:///${database}`)
+  const copy = new URL(live)
+  copy.pathname = `/${name}`
+  const drop = { text: `drop database if exists ${pg.escapeIdentifier(name)} with (force)` }
+  const dumpDir = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-check-',
+  ))
+  const dump = join(
+    dumpDir,
+    'pnyx.dump',
+  )
+
+  try {
+    query({
+      schema: 'inspect',
+      statements: [
+        drop,
+        { text: `create database ${pg.escapeIdentifier(name)}` },
+      ],
+    })
+    copyTool({
+      command: 'pg_dump',
+      args: [
+        '--format=custom',
+        `--file=${dump}`,
+        `--dbname=${live.href}`,
+      ],
+    })
+    copyTool({
+      command: 'pg_restore',
+      args: [
+        '--exit-on-error',
+        '--no-owner',
+        `--dbname=${copy.href}`,
+        dump,
+      ],
+    })
+    useDatabase({ url: copy.href })
+
+    try {
+      migrateSchema()
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+
+      throw new HydraError({
+        message: `a copy of database ${database} at schema ${version} did not migrate to schema ${SCHEMA_VERSION}: ${error.message}`,
+        code: error.code,
+        cause: error,
+      })
+    }
+
+    return {
+      schema: version,
+      migration: `checked on a copy: serve migrates schema ${version} to ${SCHEMA_VERSION} when it starts`,
+      ...checkHydras(),
+    }
+  } finally {
+    rmSync(
+      dumpDir,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+    await closePostgres()
+    query({
+      url: live.href,
+      schema: 'inspect',
+      statements: [drop],
+    })
+  }
+}
+
+// Checks this build can use the home's data; an upgrade stops before its restart when this fails.
+async function checkData(): Promise<Output> {
+  requireReady({ found: server() })
+  const database = targetDatabase()
+  const [tables] = query({
+    schema: 'inspect',
+    statements: [{ text: 'select to_regclass(\'public.schema_version\') as name' }],
+  })
+
+  if (!tables?.[0]?.name) {
+    return {
+      postgres: 'ready',
+      database,
+      migration: 'pending: serve creates the database',
+    }
+  }
+
+  const [versions] = query({
+    schema: 'inspect',
+    statements: [{ text: 'select max(version)::integer as version from schema_version' }],
+  })
+  const version = Number(versions?.[0]?.version)
+
+  return {
+    postgres: 'ready',
+    database,
+    ...version === SCHEMA_VERSION ? checkHydras() : await checkOnCopy({
+      database,
+      version,
+    }),
   }
 }
 
@@ -389,7 +500,7 @@ export async function setupPostgres({
   }
 
   if (check) {
-    return checkImports()
+    return checkData()
   }
 
   if (configuredUrl() !== undefined) {
