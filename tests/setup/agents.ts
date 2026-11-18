@@ -69,7 +69,7 @@ export interface TurnPlan {
   hold?: boolean
   // Claude reports a compaction while the turn waits, as it does for /compact.
   compacting?: boolean
-  // With compactTo, Claude holds after the boundary and before the result; Codex compacts mid-turn.
+  // Compacts to this many tokens. Claude (with compacting) finishes the compaction at once, then waits to end the turn as /compact does; Codex compacts mid-turn.
   compactTo?: number
   // Claude Code measures the session against this window from this turn on, as after a model switch.
   window?: number

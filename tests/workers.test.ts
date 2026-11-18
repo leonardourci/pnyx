@@ -1415,18 +1415,15 @@ test(
       text: '/compact',
     })
 
-    try {
-      await contextReported({
-        hydra,
-        key,
-        what: 'the compacted size before the turn ends',
-        check: ({ context }) => context.used === 3_000,
-      })
-      expect(worker.answered).toBe(1)
-    } finally {
-      compactionTurn.release()
-    }
+    await contextReported({
+      hydra,
+      key,
+      what: 'the compacted size before the turn ends',
+      check: ({ context }) => context.used === 3_000,
+    })
+    expect(worker.answered).toBe(1)
 
+    compactionTurn.release()
     await until({
       what: 'the compaction turn to end',
       check: () => worker.answered === 2,
