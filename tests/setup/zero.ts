@@ -110,8 +110,20 @@ export const zeroReady = ({
 }) => until({
   what: 'zero-cache to answer behind /zero',
   timeoutMs: READY_MS,
-  check: async () => (await fetch(
-    url,
-    { headers: { cookie } },
-  )).status === 200,
+  check: async () => {
+    try {
+      return (await fetch(
+        url,
+        { headers: { cookie } },
+      )).status === 200
+    } catch (error) {
+      const code = (error as { cause?: NodeJS.ErrnoException }).cause?.code
+
+      if (code === 'ECONNRESET' || code === 'ECONNREFUSED' || code === 'UND_ERR_SOCKET') {
+        return false
+      }
+
+      throw error
+    }
+  },
 })

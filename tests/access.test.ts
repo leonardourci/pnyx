@@ -1,5 +1,5 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
-import { request } from 'node:http'
+import { createServer, request } from 'node:http'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { localToken } from '#app/server-state.ts'
@@ -21,6 +21,49 @@ beforeAll(async () => {
   // The page reads Pnyx's data through zero-cache, which only this file needs.
   pnyx = await startPnyx({ zeroCache: true })
 })
+
+test(
+  'Zero readiness waits through a dropped connection before accepting a ready response',
+  async () => {
+    let requests = 0
+    const probe = createServer((
+      req,
+      res,
+    ) => {
+      requests++
+
+      if (requests === 1) {
+        req.socket.destroy()
+
+        return
+      }
+
+      res.end('ready')
+    })
+    await new Promise<void>(resolve => probe.listen(
+      0,
+      '127.0.0.1',
+      resolve,
+    ))
+
+    try {
+      const address = probe.address()
+
+      if (!address || typeof address === 'string') {
+        throw new Error('The readiness probe has no address')
+      }
+
+      await zeroReady({
+        url: `http://127.0.0.1:${address.port}/zero/`,
+        cookie: 'readiness=owner',
+      })
+      expect(requests).toBe(2)
+    } finally {
+      probe.closeAllConnections()
+      await new Promise(resolve => probe.close(resolve))
+    }
+  },
+)
 
 // The upgrades the page's chat shows for a Hydra.
 const upgrades = ({ hydraId }: { hydraId: string }) => rows({
