@@ -449,6 +449,10 @@ test(
     })).toBe('Settings · Poseidon · Pnyx')
     expect(pageTitle({
       hydra: 'Poseidon',
+      taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 123456 extra',
+    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789… · Poseidon · Pnyx')
+    expect(pageTitle({
+      hydra: 'Poseidon',
       taskTitle: '01234567890123456789012345678901234567890123456789012345678🚀extra',
     })).toBe('01234567890123456789012345678901234567890123456789012345678🚀… · Poseidon · Pnyx')
   },
