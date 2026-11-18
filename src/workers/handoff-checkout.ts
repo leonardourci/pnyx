@@ -79,7 +79,6 @@ export async function checkoutState({ cwd }: { cwd: string }) {
   }
 }
 
-// The folder is still a clean checkout of this branch and commit, in the same worktree.
 export async function matchesCheckout({
   cwd,
   root,
