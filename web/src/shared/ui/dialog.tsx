@@ -46,6 +46,7 @@ export function Dialog({
 
   return (
     <AnimatedOverlaySurface
+      layoutScroll
       open={!!layoutId}
       layoutId={layoutId}
       initial={false}

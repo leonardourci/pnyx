@@ -5,7 +5,7 @@ import { StatusNotice } from '#web-shared/ui/status-message.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
-import { MotionConfig } from 'motion/react'
+import { motion, MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { projectColumns, taskProjectColumn, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
@@ -479,7 +479,8 @@ export function App() {
       <ProfileSurface name="sortable">
         <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
           <WorkspaceViewport axis={axis}>
-            <div
+            <motion.div
+              layoutScroll
               ref={axis}
               className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
               data-page={hydra.navigation.page}
@@ -511,7 +512,7 @@ export function App() {
                   ))}
                 </SortGroup>
               </div>
-            </div>
+            </motion.div>
           </WorkspaceViewport>
         </SortableWorkspace>
       </ProfileSurface>

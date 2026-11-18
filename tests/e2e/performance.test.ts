@@ -174,6 +174,7 @@ test(
     expect(await other.locator('.card-open').count()).toBe(0)
     expect(await other.locator('.hydra-page').count()).toBe(0)
     expect(await page.locator('*').count()).toBeLessThan(6000)
+    await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const visibleCard = await workspace.getByRole(
       'button',
       {
@@ -181,6 +182,7 @@ test(
         exact: true,
       },
     ).elementHandle()
+    const originalBox = await visibleCard!.boundingBox()
     const earlierProject = second.folder({ name: 'later-project' })
     mkdirSync(
       join(
@@ -211,6 +213,15 @@ test(
     expect(page.url()).toContain(`/hydra/${first.id}/`)
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
     expect(await visibleCard!.evaluate(element => element.isConnected)).toBe(true)
+    const anchoredBox = await visibleCard!.boundingBox()
+    expect(anchoredBox!.x).toBeCloseTo(
+      originalBox!.x,
+      0,
+    )
+    expect(anchoredBox!.y).toBeCloseTo(
+      originalBox!.y,
+      0,
+    )
 
     expect(reads.some(read => read.name === 'catalog')).toBe(true)
 
