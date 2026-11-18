@@ -1,5 +1,6 @@
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
+import { findProject } from '#projects/read.ts'
 import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
@@ -509,6 +510,11 @@ export async function moveOwnerLearning({
   return withRegistryLock({
     fn: () => {
       const polis = polisAccess({ hydraId }).write()
+      findProject({
+        state: loadHydra({ hydraId }).state,
+        ref: path,
+        attached: true,
+      })
       const owner = readLog({ polis })
 
       checkOwnerRevision({

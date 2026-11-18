@@ -8,7 +8,7 @@ metadata:
 
 # inscribe
 
-Owner-memory writes use this Hydra's home polis. Hydra can read a polis when the polis lists the Hydra as a reader and the Hydra includes the polis in its read list. Both settings default to allowing `shared`. Use `owner memory move --key <key> --to <polis> --hydra <hydra>` to move a whole document or `project move <project> --polis <polis> --hydra <hydra>` to reassign project memory. If a move adds readers, repeat the command with `--propose` and wait for the owner's Confirm, even in bypass modes. A local shell with raw disk access can still read the logs.
+Owner-memory writes use this Hydra's home polis, which must also be readable. Hydra can read a polis when its reader list allows Hydra and Hydra includes the polis in its read list. By default, the home and read list both use `shared`. Use `owner memory move --key <key> --to <polis> --hydra <hydra>` to move a whole document or `project move <project> --polis <polis> --hydra <hydra>` to reassign project memory. If a move adds readers, repeat the command with `--propose` and wait for the owner's Confirm, even in bypass modes.
 
 Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 

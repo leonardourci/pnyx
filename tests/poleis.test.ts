@@ -1133,6 +1133,38 @@ test(
         'polis-project',
       ],
     })
+    await allowed.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Learning stays after project detach',
+      ],
+    })
+    expect((await allowed.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--project',
+        path,
+        '--text',
+        'Learning stays after project detach',
+        '--reason',
+        'Test detached project memory',
+      ],
+    })).code).toBe('NOT_FOUND')
+    const ownerMemory = await allowed.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(ownerMemory.writable.learnings.text).toBe('Learning stays after project detach')
   },
 )
 

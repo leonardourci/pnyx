@@ -2,13 +2,15 @@
 
 ## Names
 
-Pnyx is named after the hill in Athens where the citizens' assembly met to decide. Three names follow that theme, and they are the same in the app, the docs, the CLI and the code:
+Pnyx is named after the hill in Athens where the citizens' assembly met to decide.
 
 - **Pnyx**: this app, where every agent and its work is shown.
 - **Hydra**: an orchestrator, many heads and one body. Each Hydra has its own columns and tasks, and creating a Hydra creates them.
 - **Oracle**: the search field. Search it by keyword; it returns matching tasks, messages, settings and actions, never made-up answers.
 
-A polis groups owner and project memory by access. Column names are the user's own. Use plain names for the other features.
+- **Polis**: a group of owner and project memory with its own reader list.
+
+Column names are the user's own. Use plain names for the other features.
 
 Run `pnyx-axi` for the Hydra summary and `pnyx-axi --help` for commands. Pnyx is pre-v1: cards come from `pnyx-axi push`, from `pnyx-axi firstmate sync --home <path>` and, after `pnyx-axi setup hooks`, from Claude Code and Codex sessions. Hook events wait in the spool until the next write ingests them. `pnyx-axi oracle "<words>"` finds past work across card titles, links, events and notes by keyword, matching word forms, synonyms and near spellings. Results rank by the query words in a card's title, project and link titles, then by its best-matching entry with notes counting double. Saved task briefs, intents, owner asks and investigation reports remain searchable after edits. Read the latest stored report with `task report <task>`. Helper results match their tasks; unchanged helper waits are omitted. `pnyx-axi card <id>` shows a card's summary, decisions and context, harvested from what sessions, Firstmate and linked pull requests already recorded.
 
@@ -48,7 +50,7 @@ Hide Hydras from the page list and switcher with `settings set --json '{"hiddenH
 
 Hydra config uses `polis` for its home and `readPoleis` for its read list. The defaults are `shared` and `["shared"]`. Change the read list separately with `--read-poleis`.
 
-`shared` holds existing owner memory without rewriting its log. New and existing Hydras read and write `shared` by default. `work` and `personal` start empty with no readers. Owner-memory reads merge only poleis allowed by both the Hydra reads list and the polis readers list. Writes resolve the Hydra's one write polis on the server; ordinary memory commands accept no polis argument. The 24000-character budget applies to each polis.
+`shared` keeps the existing owner memory log. `work` and `personal` start empty with no readers. Reading a polis requires both the Hydra's read list and the polis's reader list to allow it. The server sends owner-memory writes to the Hydra's home polis, which must also be readable. Each polis holds up to 24000 characters of owner memory.
 
 Manage polis names and readers with `settings set --json '{"poleis":{"shared":{"readers":["*"]},"work":{"readers":["hydra-work"]},"personal":{"readers":[]}}}'`. Each named polis updates independently; use `null` to remove a polis. Omitted poleis stay unchanged, so a Hydra can edit its visible poleis without deleting hidden ones. `shared` is reserved and cannot be removed. `*` allows every Hydra through the polis lock; the Hydra's reads list must still allow it. Read the current settings revision before editing and pass `--if-revision`.
 
