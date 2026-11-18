@@ -186,5 +186,13 @@ export function readOwnerEntries({ polis = 'shared' }: { polis?: string } = {}) 
     right,
   ) => left.seq - right.seq)
 
+  for (const [index, entry] of result.entries.entries()) {
+    if (entry.seq !== index + 1 || result.entries[index + 1]?.seq === entry.seq) {
+      result.corrupt = true
+      result.entries.length = index
+      break
+    }
+  }
+
   return result
 }

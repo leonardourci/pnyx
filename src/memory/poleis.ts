@@ -142,24 +142,20 @@ export function memoryHydras() {
 export function memoryAccessRevision(): string {
   const settings = readSettings().settings
   const hydras = memoryHydras()
-  const readers = Object.keys(settings.poleis).sort()
-    .map(polis => ({
-      polis,
-      hydras: hydras.filter(({
-        id,
-        state,
-      }) => canRead({
-        hydraId: id,
-        state,
-        poleis: settings.poleis,
-        polis,
-      })).map(hydra => hydra.id)
-        .sort(),
-    }))
+  const readLists = hydras.map(({
+    id,
+    state,
+  }) => ({
+    id,
+    reads: hydraPolisConfig({ state }).readPoleis,
+  })).sort((
+    left,
+    right,
+  ) => left.id.localeCompare(right.id))
 
   return createHash('sha256').update(JSON.stringify({
     settings,
-    readers,
+    readLists,
   }))
     .digest('hex')
 }

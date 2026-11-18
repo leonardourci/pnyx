@@ -1746,6 +1746,22 @@ test(
               after: 'Invalid destination rewrite',
             },
           },
+        }) + '\n' + JSON.stringify({
+          v: 1,
+          seq: 3,
+          at: '2026-01-01T00:00:00Z',
+          actor: 'web',
+          key: 'preferences',
+          before: 'fresh replacement',
+          after: 'First conflicting replacement',
+        }) + '\n' + JSON.stringify({
+          v: 1,
+          seq: 3,
+          at: '2026-01-01T00:00:00Z',
+          actor: 'web',
+          key: 'preferences',
+          before: 'fresh replacement',
+          after: 'Second conflicting replacement',
         }) + '\n',
       )
       expect((await hydra.owner({
@@ -1889,5 +1905,55 @@ test(
         'list',
       ],
     }))).not.toContain('Audience-bound cobalt preference')
+
+    const grant = await pnyxAxi({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            'audience-private': { readers: [author.id, newcomer.id] },
+          },
+        }),
+        '--propose',
+        '--hydra',
+        author.id,
+      ],
+      env: {
+        ...process.env,
+        PNYX_ACTOR: 'hydra',
+        PNYX_HYDRA: author.id,
+        PNYX_TASK: undefined,
+      },
+    })
+    expect(grant.status).toBe(0)
+    const readerGrant = parsed(grant)
+    expect(readerGrant.confirmation).toBe('needed')
+    await newcomer.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'audience-destination,audience-private',
+      ],
+    })
+    expect((await author.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        readerGrant.token,
+        '--confirm',
+        readerGrant.token,
+      ],
+    })).code).toBe('CONFLICT')
+    const newcomerMemory = await newcomer.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(JSON.stringify(newcomerMemory.memory)).not.toContain('Audience-bound cobalt preference')
   },
 )
