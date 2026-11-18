@@ -2449,6 +2449,19 @@ if (branch === 'iris/target') {
         ],
       })).toBe('iris/target')
       rmSync(kept)
+      expect(await hydra.ownerRefused({
+        args: [
+          'task',
+          'copy',
+          'source',
+          'remove',
+          '--safe',
+        ],
+      })).toMatchObject({
+        code: 'CONFLICT',
+        error: expect.stringContaining('unresolved handoff'),
+      })
+      expect(existsSync(cwd)).toBe(true)
       await pnyx.restart()
       const source = (await hydra.owner({
         args: [

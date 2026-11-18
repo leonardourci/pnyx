@@ -1,3 +1,4 @@
+import { requireHandoffAvailable } from '#workers/handoff-checkout.ts'
 import { randomUUID } from 'node:crypto'
 import { taskLease } from '#routine-helper/leases.ts'
 import { COPY_LEASE_PREFIX, requireCopyAvailable } from './copy-lease.ts'
@@ -68,6 +69,11 @@ export async function settleCopy({
   if (!copy || copy.state === 'removed') {
     return { copy: copy ?? null }
   }
+
+  requireHandoffAvailable({
+    hydraId,
+    task: card.id,
+  })
 
   requireCopyAvailable({
     hydraId,
