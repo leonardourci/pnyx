@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { compareTasks, nextSibling, IDEAS_COLUMN } from '#web-tasks/project-view.ts'
@@ -71,10 +71,7 @@ export function useHydraKeyboard({
   togglePanel(): void
   openSettings(): void
 }) {
-  const [
-    remembered,
-    setRemembered,
-  ] = useState<Record<string, string>>({})
+  const remembered = useRef<Record<string, string>>({})
   const focus = useRef<HydraAnchor | undefined>(undefined)
   useEffect(
     () => {
@@ -91,11 +88,7 @@ export function useHydraKeyboard({
           focus.current = anchor
 
           if (anchor.card) {
-            setRemembered(r => r[anchor.column] === anchor.card
-              ? r : {
-                ...r,
-                [anchor.column]: anchor.card!,
-              })
+            remembered.current[anchor.column] = anchor.card
           }
         }
       }
@@ -310,7 +303,7 @@ export function useHydraKeyboard({
         columns: groups,
         current: anchor,
         action: id,
-        remembered,
+        remembered: remembered.current,
       })
       focusElement({
         selector: anchorElement({
@@ -347,7 +340,6 @@ export function useHydraKeyboard({
   }
 
   return {
-    remembered,
     onAction,
     leaveField,
     hints: [],

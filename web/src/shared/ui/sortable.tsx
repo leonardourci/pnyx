@@ -9,6 +9,7 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
+  MeasuringStrategy,
   PointerSensor,
   closestCenter,
   pointerWithin,
@@ -36,6 +37,7 @@ const DRAG_EDGE_THRESHOLD = {
   x: 0.02,
   y: 0.08,
 }
+const MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 
 // eslint-disable-next-line pnyx/object-params -- dnd-kit supplies the activator event.
 const dragTransition = (event: Event | null) => event instanceof KeyboardEvent
@@ -104,6 +106,31 @@ const itemKey = ({
   group: string
   id: string
 }) => `${group}:${id}`
+
+function grabPoint({
+  event,
+  box,
+}: {
+  event: Pick<PointerEvent, 'clientX' | 'clientY'>
+  box: DOMRect
+}) {
+  return {
+    x: Math.max(
+      0,
+      Math.min(
+        1,
+        (event.clientX - box.left) / box.width,
+      ),
+    ),
+    y: Math.max(
+      0,
+      Math.min(
+        1,
+        (event.clientY - box.top) / box.height,
+      ),
+    ),
+  }
+}
 
 export function movedOrder<T>({
   items,
@@ -192,6 +219,7 @@ export function useSortItem({
   disabled?: Parameters<typeof useSortable>[0]['disabled']
 }) {
   const group = useContext(Group)
+  const pickup = useRef<ReturnType<typeof grabPoint> | null>(null)
 
   const key = itemKey({
     group: group.namespace,
@@ -199,16 +227,32 @@ export function useSortItem({
   })
   const sortable = useSortable({
     id: key,
-    data: { item },
+    data: {
+      item,
+      pickup,
+    },
     disabled,
     transition: null,
     animateLayoutChanges: () => false,
   })
 
+  const activate = sortable.listeners?.onPointerDown as PointerEventHandler<HTMLElement> | undefined
+  const capturePointerDown = useCallback<PointerEventHandler<HTMLElement>>(
+    // eslint-disable-next-line pnyx/object-params -- React supplies the pointer event.
+    event => {
+      pickup.current = grabPoint({
+        event,
+        box: event.currentTarget.getBoundingClientRect(),
+      })
+      activate?.(event)
+    },
+    [activate],
+  )
+
   return {
     ...sortable,
     key,
-    pointerDown: sortable.listeners?.onPointerDown as PointerEventHandler<HTMLElement> | undefined,
+    pointerDown: activate ? capturePointerDown : undefined,
   }
 }
 
@@ -766,24 +810,21 @@ export function SortableWorkspace({
       indent,
       open: item.open,
     }) : size
-    const grab = box && activatorEvent instanceof PointerEvent ? {
-      x: Math.max(
-        0,
-        Math.min(
-          1,
-          (activatorEvent.clientX - box.left) / box.width,
-        ),
-      ),
-      y: Math.max(
-        0,
-        Math.min(
-          1,
-          (activatorEvent.clientY - box.top) / box.height,
-        ),
-      ),
-      offsetX: activatorEvent.clientX - box.left,
-      offsetY: activatorEvent.clientY - box.top,
-    } : undefined
+    let grab: SortItem['grab']
+
+    if (box && activatorEvent instanceof PointerEvent) {
+      const point: ReturnType<typeof grabPoint> = active.data.current?.pickup?.current
+        ?? grabPoint({
+          event: activatorEvent,
+          box,
+        })
+      grab = {
+        ...point,
+        offsetX: activatorEvent.clientX - box.left,
+        offsetY: activatorEvent.clientY - box.top,
+      }
+    }
+
     setActive({
       ...item,
       grab,
@@ -1051,6 +1092,7 @@ export function SortableWorkspace({
   return (
     <DndContext
       sensors={sensors}
+      measuring={MEASURING}
       autoScroll={{ threshold: DRAG_EDGE_THRESHOLD }}
       collisionDetection={detect}
       onDragStart={start}

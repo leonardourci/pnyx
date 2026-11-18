@@ -1,9 +1,9 @@
 import { motion } from 'motion/react'
-import type { ComponentProps } from 'react'
+import { memo, type ComponentProps } from 'react'
 import { Chip } from './chip.tsx'
 import { useSortItem, type SortItem } from './sortable.tsx'
 
-const AnimatedChip = motion.create(Chip)
+const AnimatedChip = memo(motion.create(Chip))
 
 export function SortableChip({
   item,

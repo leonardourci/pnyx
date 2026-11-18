@@ -1,19 +1,9 @@
 import { useId, useEffect, useLayoutEffect, useRef, useState, useCallback, type ReactNode, type RefObject } from 'react'
-import { useAnimationFrame, frame, cancelFrame } from 'motion/react'
+import { frame, cancelFrame } from 'motion/react'
 import { HOVER_CLAIM } from './tooltip.tsx'
 
 const VIEWPORT_GAP = 8
 const CARD_INSET = 10
-
-function TrackActions({ position }: { position(): void }) {
-  useAnimationFrame(() => frame.postRender(position))
-  useEffect(
-    () => () => cancelFrame(position),
-    [position],
-  )
-
-  return null
-}
 
 export function HoverActions({
   anchor,
@@ -29,10 +19,6 @@ export function HoverActions({
   const [
     mounted,
     setMounted,
-  ] = useState(false)
-  const [
-    visible,
-    setVisible,
   ] = useState(false)
   const position = useCallback(
     () => {
@@ -204,11 +190,32 @@ export function HoverActions({
         'resize',
         position,
       )
+
+      const track = () => {
+        if (element.matches(':popover-open')) {
+          frame.postRender(
+            position,
+            true,
+          )
+        } else {
+          cancelFrame(position)
+        }
+      }
+
+      element.addEventListener(
+        'toggle',
+        track,
+      )
       const observer = new ResizeObserver(position)
       observer.observe(card)
 
       return () => {
         observer.disconnect()
+        cancelFrame(position)
+        element.removeEventListener(
+          'toggle',
+          track,
+        )
         card.removeEventListener(
           'pointerover',
           show,
@@ -255,9 +262,8 @@ export function HoverActions({
     <div
       ref={panel}
       popover="manual"
-      onToggle={() => setVisible(panel.current?.matches(':popover-open') ?? false)}
       className="card-menu fixed inset-auto m-0 hidden w-max max-w-[calc(100vw-1rem)] items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-fast open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex"
-    >{visible && <TrackActions position={position} />}{mounted && children}
+    >{mounted && children}
     </div>
   )
 }

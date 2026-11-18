@@ -2,7 +2,7 @@ import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { sessionViewKey } from '#web-app/session-view.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { motionDuration } from '#web-shared/motion.ts'
-import { useCallback, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
@@ -89,6 +89,18 @@ export function ProjectColumn({
     },
   })
 
+  const content = useMemo(
+    () => children({
+      scroll: scrollElement,
+      width: width - PROJECT_CONTENT_INSET,
+    }),
+    [
+      children,
+      scrollElement,
+      width,
+    ],
+  )
+
   const sort = useSortItem({
     item: {
       id: column.id,
@@ -145,10 +157,7 @@ export function ProjectColumn({
         className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [&[hidden]]:hidden"
       >
         <div ref={grid} className="project-card-grid relative w-(--project-card-width)">
-          {children({
-            scroll: scrollElement,
-            width: width - PROJECT_CONTENT_INSET,
-          })}
+          {content}
         </div>
       </FoldContent>
       {!folded && !phone && (

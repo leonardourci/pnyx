@@ -4,7 +4,7 @@ import { useKept } from '#web-shared/stable.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
-import { useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
+import { memo, useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -51,6 +51,23 @@ function FamilyTask({
     ...family,
     status,
   })
+}
+
+const FamilyPanel = memo(SortablePanel)
+
+function DraggableFamily({
+  id,
+  hydra,
+  ...props
+}: ComponentProps<typeof SortablePanel> & {
+  id: string
+  hydra: string
+}) {
+  const drag = useSortState()
+  const lifted = drag.active?.kind === 'task' && drag.active.id === id
+    && drag.active.hydra === hydra
+
+  return <FamilyPanel {...props} lifted={lifted} />
 }
 
 export function TaskFamily({
@@ -147,18 +164,16 @@ export function TaskFamily({
     '--closed-card-min': `${CARD_SIZING.closed.minWidth}px`,
     '--subtask-indent': `${SUBTASK_INDENT}px`,
   } as CSSProperties
-  const drag = useSortState()
-  const dragged = drag.active?.kind === 'task' && drag.active.id === card.id
-    && drag.active.hydra === hydraId
   const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length || childrenOpen && children.length ? 'family-open basis-full' : ''}`
 
   return (
-    <SortablePanel
+    <DraggableFamily
+      id={card.id}
+      hydra={hydraId}
       layout="position"
       className={className}
       style={style}
       data-family={card.id}
-      lifted={dragged}
     >
       <FamilyTask
         renderCard={renderCard}
@@ -187,12 +202,12 @@ export function TaskFamily({
                 reveal={reveal}
                 singleColumn
                 render={({ card: child }) => (
-                  <SortablePanel
+                  <DraggableFamily
+                    id={child.id}
+                    hydra={hydraId}
                     layout="position"
                     key={child.key}
                     data-child={child.id}
-                    lifted={drag.active?.kind === 'task' && drag.active.id === child.id
-                  && drag.active.hydra === hydraId}
                   >
                     <FamilyTask
                       renderCard={renderCard}
@@ -206,13 +221,13 @@ export function TaskFamily({
                         }).status,
                       }}
                     />
-                  </SortablePanel>
+                  </DraggableFamily>
                 )}
               />
             </SortGroup>
           </Subtasks>
         </FoldContent>
       )}
-    </SortablePanel>
+    </DraggableFamily>
   )
 }

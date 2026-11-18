@@ -3,7 +3,7 @@ import { WorkspaceViewport } from './workspace-viewport.tsx'
 import { useMotionDuration, MOTION_EASING } from '#web-shared/motion.ts'
 import { StatusNotice } from '#web-shared/ui/status-message.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { motion, MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior, SCROLL_IDLE_MS } from '#web-shared/ui/smooth-scroll.ts'
@@ -547,7 +547,11 @@ export function App() {
       }}
     >
       <ProfileSurface name="sortable">
-        <SortableWorkspace root={axis} move={({ preview }) => setPreview(preview)} drop={drop}>
+        <SortableWorkspace
+          root={axis}
+          move={({ preview }) => startTransition(() => setPreview(preview))}
+          drop={drop}
+        >
           <WorkspaceViewport axis={axis}>
             <motion.div
               onBeforeLayoutMeasure={() => anchor.current?.()}

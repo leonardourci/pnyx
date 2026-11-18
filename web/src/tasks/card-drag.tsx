@@ -1,10 +1,11 @@
-import { createContext, useContext, useCallback, useMemo, type ComponentProps, type RefCallback } from 'react'
+import { createContext, useContext, useCallback, useMemo, memo, type ComponentProps, type RefCallback, type PointerEvent } from 'react'
 import { useSortItem, useDropZone, useSortState, nestingRefusal, type SortItem } from '#web-shared/ui/sortable.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { AnimatedCardShell } from './card-shell.tsx'
 
 type DragHandle = Pick<ReturnType<typeof useSortItem>, 'attributes' | 'listeners' | 'setActivatorNodeRef'>
 const Context = createContext<DragHandle | null>(null)
+const MemoCardShell = memo(AnimatedCardShell)
 
 export function TaskDragHandle({...props}: ComponentProps<typeof IconButton>) {
   const drag = useContext(Context)
@@ -102,23 +103,32 @@ function SortableTaskCard({
       sort.setActivatorNodeRef,
     ],
   )
+  const pointerDown = sort.pointerDown
+  const selected = props.selected
+  const onPointerDown = useCallback(
+    // eslint-disable-next-line pnyx/object-params -- React supplies the pointer event.
+    (event: PointerEvent<HTMLElement>) => {
+      const target = event.target
+      const header = target instanceof Element && target.closest('[data-card-header], [data-drag-handle]')
+
+      if (!selected || header) {
+        pointerDown?.(event)
+      }
+    },
+    [
+      selected,
+      pointerDown,
+    ],
+  )
 
   return (
     <Context value={handle}>
-      <AnimatedCardShell
+      <MemoCardShell
         {...props}
         ref={attach}
         data-sort-key={sort.key}
         nesting={nesting}
-        // eslint-disable-next-line pnyx/object-params -- React supplies the pointer event.
-        onPointerDown={event => {
-          const target = event.target
-          const header = target instanceof Element && target.closest('[data-card-header], [data-drag-handle]')
-
-          if (!props.selected || header) {
-            sort.pointerDown?.(event)
-          }
-        }}
+        onPointerDown={onPointerDown}
       />
     </Context>
   )
