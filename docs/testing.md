@@ -112,7 +112,7 @@ Rules:
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
-- `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
+- `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
 - `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, keyboard shortcuts and the phone layout.

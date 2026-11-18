@@ -1156,7 +1156,7 @@ export function SortableWorkspace({
       hidden.style.opacity = '0'
     }
 
-    const duration = motionDuration({ speed: nest ? 'slow' : 'base' }) / 1000
+    const duration = motionDuration({ speed: nest ? 'slow' : 'base' })
 
     try {
       const end = nest ? {
@@ -1193,7 +1193,7 @@ export function SortableWorkspace({
           },
         ],
         {
-          duration: duration * 1000,
+          duration,
           easing: MOTION_CSS_EASING,
           fill: 'forwards',
         },

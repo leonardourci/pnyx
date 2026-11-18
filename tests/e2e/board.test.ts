@@ -4105,16 +4105,7 @@ test(
       })
       // The landing's own animation is recorded as it starts, so a slow runner cannot skip past it.
       await page.evaluate(() => {
-        const recorded: {
-          widths: string[]
-          duration: number
-          animation: Animation
-        }[] = []
         const start = Element.prototype.animate
-        Object.assign(
-          window,
-          { landings: recorded },
-        )
 
         // eslint-disable-next-line pnyx/object-params -- Element.animate owns this signature.
         Element.prototype.animate = function (...args: Parameters<Element['animate']>) {
@@ -4128,11 +4119,17 @@ test(
           ] = args
 
           if (this.classList.contains('physical-ghost') && Array.isArray(keyframes) && typeof options === 'object') {
-            recorded.push({
-              widths: keyframes.map(keyframe => String(keyframe.width)),
-              duration: Number(options.duration),
-              animation,
-            })
+            Element.prototype.animate = start
+            Object.assign(
+              window,
+              {
+                landing: {
+                  widths: keyframes.map(keyframe => String(keyframe.width)),
+                  duration: Number(options.duration),
+                  animation,
+                },
+              },
+            )
           }
 
           return animation
@@ -4146,13 +4143,13 @@ test(
       expect(Math.max(...dropTitleWidths) - Math.min(...dropTitleWidths)).toBeLessThan(1)
       await ghost.waitFor({ state: 'detached' })
       const drop = await page.evaluate(async () => {
-        const [landing] = (window as unknown as {
-          landings: {
+        const { landing } = window as unknown as {
+          landing?: {
             widths: string[]
             duration: number
             animation: Animation
-          }[]
-        }).landings
+          }
+        }
         await landing?.animation.finished
 
         return landing && {
