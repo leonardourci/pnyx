@@ -1,4 +1,5 @@
-import { pageTitle } from '#web-app/view.ts'
+// TypeScript cannot rewrite the web alias's .ts extension when checking this test.
+import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
