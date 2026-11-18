@@ -27,7 +27,7 @@ The project, task, recovery and UI layers are implemented. dnd-kit owns sorting,
 
 The workspace pieces and shared composer use Tailwind utilities on theme tokens: header, Hydra strip, project grids, cards, open-card layout, composer placement, Settings shell and drag layer. Button, Label and HoverActions convert once for every caller. Their old rules are removed. CardShell and its content, heading, panel and section components share card variants. StatePill, Label, Chip, SortableChip, ProjectColumnHeader, IconButton, SortablePanel, WaitingCount and SettingsFrame own the repeated styles. The parallel Tailwind task converts Chat, Oracle, Settings sections and the remaining shared controls on this branch. It leaves the composer and workspace pieces here. Only the visible hover menu follows its card through Motion’s frame callback. Its shared geometry stays clamped inside the viewport, including during layout motion.
 
-Instructions always show in full. Worker chat uses the same Composer as Hydra chat, including task/file mentions, skills, commands, images and file attachments. Pending replies retain one event ID through uncertain delivery and reconnect. A resize starts only on its visible captured grip; a release or a gesture begun elsewhere cannot resize a project.
+Instructions always show in full. Worker chat uses the same Composer as Hydra chat, including task/file mentions, skills, commands, images and file attachments. Pending replies retain one event ID through uncertain delivery and reconnect. Hydra sends use the connection’s existing saved-command outbox, so delivery resumes after reload while the owning Hydra is off-screen. A visible composer joins that request; a definite refusal is stored and shown when its chat mounts. A resize starts only on its visible captured grip; a release or a gesture begun elsewhere cannot resize a project.
 
 Direct worker starts and switches (task `task-9115947a`, included here by owner direction):
 
@@ -204,7 +204,7 @@ The stress worker retracted the idle Lenis CPU allegation after a matched idle m
 
 The large-board journey runs twice (r217782): the normal renderer enforces the unchanged 50ms drag/scroll budget, while the profiling renderer enforces redraw counts and mounting bounds. This separates React timing overhead from production latency; no retries hide a miss.
 
-After deferring hidden navigation and composer discovery, and observing project intents without reading their lists, the six-Hydra journey passes in both builds: normal drag/scroll stay within 50ms, and profiling commits and DOM stay within their bounds. Initial discovery is bounded to two model requests, one project-list request, one catalog request and two rule requests. The browser waits for fonts before measuring motion. These are local journey results; the fresh stress rerun and long-stream DOM attribution remain open.
+After deferring hidden navigation and composer discovery, and observing project intents without reading their lists, the six-Hydra journey passes in both builds: normal drag/scroll stay within 50ms, and profiling commits and DOM stay within their bounds. Initial discovery is bounded to two model requests, one project-list request, one catalog request and two rule requests. The browser waits for fonts before measuring motion. A wider run exposed a 64ms production drag task. Drag subscriptions now sit in the shell and grip, and duplicate focus/press/drag protection shares one viewport update. The normal stationary-pointer and 628-task journeys meet the unchanged 50ms gate. The fresh stress rerun remains open.
 
 
 Streaming DOM growth is attributed to reused provider message ids retaining the same live render-key alias on several completed replies. TanStack requested seven rows, but duplicate React keys left old rows attached. The shared alias mapping now releases the previous owner before transferring a live key. A real streamed-turn journey checks unique message ids, a bounded history window, and the same reply element through confirmation. In the 40-turn diagnostic, turns 8–40 keep seven mounted messages and 483–484 elements; before the fix, mounted messages rose from 46 to 266 and elements from 2,597 to 14,305. Forced-GC JavaScript heap after the fix grows from 12.2 to 13.9 MB as conversation data grows; no flat-heap claim is made. Workspace visibility also excludes zero-area intersections, so a Hydra touching the viewport edge does not mount its body.
@@ -214,7 +214,7 @@ Failure flips now prove that the journeys reject mounting off-screen Hydra bodie
 
 | Stress finding | Current result |
 | --- | --- |
-| 1, 3: mounted work and drag cost | Card/column windows and visible Hydra bodies; normal drag/scroll budget and profiling redraw bounds pass locally |
+| 1, 3: mounted work and drag cost | Card/column windows and visible Hydra bodies; normal 50ms drag/scroll budget and profiling redraw/DOM bounds pass locally |
 | 2: streaming redraw and sync | Local streamed-turn and windowing checks pass; complete stress load/recovery rerun remains open |
 | 4, 9: creation and drafts | Title-only save omits empty ask; new-task title and agent choice survive reload |
 | 5, 6: Hydra address and phone layout | Late-Hydra anchoring and 390px project snaps pass |
@@ -226,3 +226,6 @@ Failure flips now prove that the journeys reject mounting off-screen Hydra bodie
 | 15: repeated discovery | Hidden navigation/catalogs do not mount/read; pending project observers issue no list read. Initial command budgets pass |
 
 Open: the fresh stress rerun, final trace comparison and final visible media. Hydra's stress-complete signal still gates the single deslop and CI approval.
+
+
+On-screen windows reconcile cached scroll margins in the same observer pass. Whole-Hydra layout animation runs for explicit folding and Hydra dragging; background width changes keep the viewport anchor without a second translation. Opening a card focuses its panel before scrolling, so its row stays protected. A modal card has no sortable registration while its inline card returns, preserving the reverse animation and focus.
