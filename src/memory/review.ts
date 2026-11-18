@@ -1,5 +1,5 @@
 import { readMemoryContext } from './context.ts'
-import { readableProjects } from '#memory/poleis.ts'
+import { polisAccess, readableProjects } from '#memory/poleis.ts'
 import { learningDigest, staleLearnings } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { ownerMemory } from './owner-memory.ts'
@@ -12,7 +12,7 @@ export async function memoryReview({
 }: {
   hydraId: string
   now: string
-}): Promise<string[]> {
+}) {
   return readMemoryContext({
     read: async () => {
       const state = loadHydra({ hydraId }).state
@@ -36,7 +36,7 @@ export async function memoryReview({
         ...projectLayers,
       ]
 
-      return layers.flatMap(layer => {
+      const lines = layers.flatMap(layer => {
         const lines = staleLearnings({
           lines: layer.lines,
           now,
@@ -52,6 +52,14 @@ export async function memoryReview({
           }),
         ] : []
       })
+
+      return {
+        lines,
+        access: {
+          poleis: polisAccess({ hydraId }).reads,
+          projects: attached.map(project => project.path),
+        },
+      }
     },
   })
 }
