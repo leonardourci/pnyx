@@ -506,7 +506,7 @@ export function useTaskNavigation({
 
         expand({
           id,
-          focus: false,
+          focus: focusPanel && !modal,
         })
       }
 
