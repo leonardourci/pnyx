@@ -47,7 +47,8 @@ import { TaskFamily, type FamilyCard } from '#web-tasks/task-family.tsx'
 import { motion } from 'motion/react'
 import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
 import { expandedTaskWidth, projectWidth } from '#web-tasks/project-layout.ts'
-import { projectColumns, taskProjectColumn, statusPriority, IDEAS_COLUMN, type ProjectColumnData } from '#web-tasks/project-view.ts'
+import { projectColumns, statusPriority, IDEAS_COLUMN, type ProjectColumnData } from '#web-tasks/project-view.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
 import { Detail } from '#web-tasks/detail.tsx'
 import { argument } from '#web-tasks/optimistic.ts'
 import { TaskCreate,type TaskDraft } from '#web-tasks/task-create.tsx'
@@ -553,7 +554,7 @@ export function HydraView({
     }
 
     const opened = expandedIds.map(id => state.cards[id]).filter((card): card is Card =>
-      !!card && taskProjectColumn({
+      !!card && taskProjectGroup({
         state,
         card,
       }) === item.id)
@@ -608,13 +609,13 @@ export function HydraView({
     || [...(viewport.tasks.get(navigation.hydraId) ?? [])].some(id => {
       const card = state.cards[id]
 
-      return card && taskProjectColumn({
+      return card && taskProjectGroup({
         state,
         card,
       }) === column.id
     })).map(column => column.id))
   const revealingColumn = revealing && state.cards[revealing]
-    ? taskProjectColumn({
+    ? taskProjectGroup({
       state,
       card: state.cards[revealing]!,
     }) : columnRequest?.id
@@ -1292,7 +1293,7 @@ export function HydraView({
                                 const openIds = expandedIds.filter(id => {
                                   const card = state.cards[id]
 
-                                  return card && taskProjectColumn({
+                                  return card && taskProjectGroup({
                                     state,
                                     card,
                                   }) === c.id

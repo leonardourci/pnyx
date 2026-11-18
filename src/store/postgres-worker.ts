@@ -73,10 +73,12 @@ if (!PAGE_PUBLICATION) {
 // schema.sql names its own version, so the number has one source.
 const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
+// Saved view rows drop the retired per-card widths; the events keep them, and replay ignores them.
 const REMOVE_CARD_WIDTHS = `update hydra_values
   set value = (value::jsonb #- '{workspace,cardWidths}')::json
   where key = 'view' and (value::jsonb->'workspace') ? 'cardWidths'`
 
+// A database another build's schema made would fail writes this build's statements make, so it is refused by name.
 async function requireSchema({
   client,
   migrate = false,

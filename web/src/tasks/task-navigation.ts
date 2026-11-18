@@ -1,4 +1,4 @@
-import { taskProjectColumn } from './project-view.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { showingPage, type PageView } from '#web-app/restore.ts'
@@ -480,7 +480,7 @@ export function useTaskNavigation({
 
       if (!pointer) {
         const card = currentCards.current[id]
-        const column = card && taskProjectColumn({
+        const column = card && taskProjectGroup({
           state: currentState.current,
           card,
         })

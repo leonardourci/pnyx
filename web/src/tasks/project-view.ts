@@ -17,19 +17,6 @@ export interface ProjectColumnData {
   running?: number
 }
 
-export function taskProjectColumn({
-  state,
-  card,
-}: {
-  state: HydraState
-  card: Card
-}) {
-  return taskProjectGroup({
-    state,
-    card,
-  })
-}
-
 interface Rollup {
   status: ObservedStatus
   children: Card[]
@@ -299,7 +286,7 @@ export function projectColumns({
       continue
     }
 
-    const id = taskProjectColumn({
+    const id = taskProjectGroup({
       state,
       card,
     })

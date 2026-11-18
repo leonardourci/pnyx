@@ -1,7 +1,7 @@
 import { ProjectForm, ProjectList, ProjectActions, FolderChoice, FolderDescription } from './folder-ui.tsx'
 import { useProjectsResource } from './project-resource.ts'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
-import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { Icon } from '#web-shared/icons.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useFolders } from './folders.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
@@ -9,19 +9,7 @@ import { FolderSearch } from './folder-search.tsx'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { argument } from '#web-tasks/optimistic.ts'
 import type { Command } from '#web-app/connection.ts'
-import { hydraTitle } from '#web-app/view.ts'
 import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from '#web-tasks/delivery/delivery-fields.tsx'
-
-type Confirmation = {
-  token: string
-  path: string
-  name: string
-  hydras: {
-    id: string
-    name: string
-    url: string
-  }[]
-}
 
 export function AddProject({
   command,
@@ -80,10 +68,6 @@ export function AddProject({
     setBusy,
   ] = useState(false)
   const [
-    confirmation,
-    setConfirmation,
-  ] = useState<Confirmation | null>(null)
-  const [
     landing,
     setLanding,
   ] = useState<LandingChoice>(recovered ? {
@@ -110,30 +94,16 @@ export function AddProject({
     setBusy(true); setMode(null)
 
     try {
-      const receipt = await mutate({
+      await mutate({
         args: [
           ...args,
           ...landingArgs({ choice: landing }),
         ],
       })
-
-      if (receipt.confirmation === 'needed') {
-        const preview = receipt.preview as {
-          project: {
-            path: string
-            name: string
-          }
-          hydras: Confirmation['hydras']
-        }
-        setConfirmation({
-          token: receipt.token as string,
-          ...preview.project,
-          hydras: preview.hydras,
-        })
-      } else {
-        setConfirmation(null); setMode(null); setPath(''); setRepository('')
-        notify({ text: 'Project attached.' }); attached?.()
-      }
+      setPath('')
+      setRepository('')
+      notify({ text: 'Project attached.' })
+      attached?.()
     } catch (error) {
       if (!(error instanceof CommandFailure) || error.outcome === 'refused') {
         setMode(previousMode ?? (args.includes('--clone') ? 'clone' : 'folder'))
@@ -154,18 +124,14 @@ export function AddProject({
           variant={mode === 'folder' ? 'surface' : 'quiet'}
           disabled={disabled}
           aria-pressed={mode === 'folder'}
-          onClick={() => {
-            setMode('folder'); setConfirmation(null)
-          }}
+          onClick={() => setMode('folder')}
         ><Icon name="plus" />Add a folder
         </Button>
         <Button
           variant={mode === 'clone' ? 'surface' : 'quiet'}
           disabled={disabled}
           aria-pressed={mode === 'clone'}
-          onClick={() => {
-            setMode('clone'); setConfirmation(null)
-          }}
+          onClick={() => setMode('clone')}
         ><Icon name="clone" />Clone a repo
         </Button>
         {cancel && <Button disabled={busy} onClick={cancel} aria-label="Close add project"><Icon name="close" /></Button>}
@@ -177,7 +143,7 @@ export function AddProject({
         </ProjectList>
       )}
       <PendingStatus intents={intents} />
-      {mode && !confirmation && (
+      {mode && (
         <ProjectForm
           submit={({ event: e }) => {
             e.preventDefault()
@@ -256,54 +222,10 @@ export function AddProject({
           )}
         </ProjectForm>
       )}
-      {confirmation && (
-        <ProjectSharing
-          confirmation={confirmation}
-          disabled={disabled}
-          cancel={() => setConfirmation(null)}
-          confirm={() => void run({
-            args: [
-              'add',
-              confirmation.path,
-              '--confirm',
-              confirmation.token,
-            ],
-          })}
-        />
-      )}
-      {!confirmation && (
-        <p className="small muted project-sharing-note mt-4">
-          Each worker normally gets its own copy. Only one Hydra at a time may have a worker
-          editing the folder itself.
-        </p>
-      )}
+      <p className="small muted project-sharing-note mt-4">
+        Each worker normally gets its own copy. A project belongs to one Hydra; a folder another
+        Hydra already uses is refused.
+      </p>
     </section>
-  )
-}
-
-export function ProjectSharing({
-  confirmation,
-  disabled,
-  cancel,
-  confirm,
-}: {
-  confirmation: Confirmation
-  disabled: boolean
-  cancel(): void
-  confirm(): void
-}) {
-  return (
-    <div className="project-sharing mt-4 p-3 border border-dashed border-line rounded-lg text-meta wrap-anywhere [&_a]:text-blue" role="status">
-      <span><strong>{confirmation.name}</strong> · also in {confirmation.hydras.map((
-        hydra,
-        n,
-      ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydraTitle(hydra)} <Icon name="external" size={ICON_SIZE.badge} /></a></span>)}
-      </span>
-      <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
-      <ProjectActions>
-        <Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button>
-        <Button disabled={disabled} onClick={cancel}>Cancel</Button>
-      </ProjectActions>
-    </div>
   )
 }

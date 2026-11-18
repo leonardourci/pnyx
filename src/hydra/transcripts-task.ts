@@ -1,5 +1,6 @@
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { steeringHeld } from '#workers/steering.ts'
+import { queuedAgentLabel } from '#workers/providers.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
 
@@ -106,8 +107,7 @@ export function taskReceipt({
   let waiting = state === 'queued' ? waitingReason({ card }) : receipt.detail
 
   if (state === 'queued' && receipt.worker) {
-    const { agent } = receipt.worker
-    waiting = `Queued · ${agent.harness}${agent.model ? ` / ${agent.model}` : ''}${agent.effort ? ` · ${agent.effort}` : ''}`
+    waiting = queuedAgentLabel({ agent: receipt.worker.agent })
   }
 
   const entry: Pick<ThreadEntry, 'receipt' | 'received' | 'waiting' | 'delivery' | 'targetAgent'> = { receipt: state }

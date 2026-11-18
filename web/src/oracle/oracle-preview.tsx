@@ -32,7 +32,8 @@ import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
 import { CardSummary } from '#web-tasks/card-summary.tsx'
 import { CardContent } from '#web-tasks/card-shell.tsx'
-import { taskRollup, taskProjectColumn } from '#web-tasks/project-view.ts'
+import { taskRollup } from '#web-tasks/project-view.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
 import { cardState } from '#web-tasks/view.ts'
 import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
@@ -140,7 +141,7 @@ function TaskPreview({
             status={status}
             now={now}
             colors={state.labelColors}
-            legacyProject={taskProjectColumn({
+            legacyProject={taskProjectGroup({
               state,
               card,
             }) === 'ideas'}

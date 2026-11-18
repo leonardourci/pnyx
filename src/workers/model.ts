@@ -98,7 +98,8 @@ export interface CardWorkerInput {
   session?: string
 }
 
-// Receipts retain the text needed to retry owner sends.
+// A reply's latest receipt. The text stays in the log, on its queued event; a card send keeps it on the receipt
+// too, so a refused or restarted send can go again under the same id.
 export interface Reply {
   worker?: CardWorkerInput
   accepted?: boolean

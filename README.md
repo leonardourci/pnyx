@@ -74,7 +74,7 @@ pnyx-axi hydra create work
 pnyx-axi project add /absolute/path/to/project --hydra work
 ```
 
-Select **work** in the left panel, then choose a model for your signed-in harness in Hydra's composer (a Codex model if you use only Codex).
+Select **work** in the header's Hydra chips, then choose a model for your signed-in harness in Hydra's composer (a Codex model if you use only Codex).
 
 You can also type `/add-project` in Hydra's composer, or right-click the Hydra and choose **Add project**, to ask Hydra to attach a folder or clone a repository.
 

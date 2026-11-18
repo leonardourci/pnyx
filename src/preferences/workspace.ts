@@ -124,11 +124,9 @@ export function patchWorkspace({
           continue
         }
 
-        const minimum = PROJECT_MIN_WIDTH
-
-        if (typeof width !== 'number' || !Number.isSafeInteger(width) || width < minimum) {
+        if (typeof width !== 'number' || !Number.isSafeInteger(width) || width < PROJECT_MIN_WIDTH) {
           throw new HydraError({
-            message: `${key} widths must be integers of at least ${minimum}`,
+            message: `${key} widths must be integers of at least ${PROJECT_MIN_WIDTH}`,
             code: 'VALIDATION_ERROR',
           })
         }

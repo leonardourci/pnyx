@@ -241,6 +241,7 @@ export function trackUIDrag({
 
   endDrag?.()
   let frame = 0, previous = 0, budget = FRAME_MS, frames = 0, dropped = 0, worst = 0
+  let finished = false
   const started = performance.now()
 
   // eslint-disable-next-line pnyx/object-params -- requestAnimationFrame owns the callback signature.
@@ -284,7 +285,6 @@ export function trackUIDrag({
     'visibilitychange',
     visibility,
   )
-  let finished = false
 
   const finish = () => {
     if (finished) {
@@ -363,9 +363,11 @@ function context({ target }: { target?: Node }): {
   }
 
   const namedAction = action ?? fallback
+  const workspace = element?.closest('[data-hydra-workspace]')?.getAttribute('data-hydra-workspace')
+  const settings = element?.closest('[data-settings-hydra]')?.getAttribute('data-settings-hydra')
 
   return {
-    hydraId: element?.closest('[data-hydra-workspace],[data-settings-hydra]')?.getAttribute('data-hydra-workspace') ?? element?.closest('[data-settings-hydra]')?.getAttribute('data-settings-hydra') ?? undefined,
+    hydraId: workspace ?? settings ?? undefined,
     surface,
     action: TOKEN.test(namedAction) ? namedAction : 'page',
   }
@@ -563,13 +565,12 @@ export function startUIMetrics({ log }: { log: typeof pageLog }): () => void {
 
   return () => {
     endDrag?.()
-
     flush()
     write = undefined
     generation++
-
     stop?.()
-    stop = undefined; start = undefined; write = undefined
+    stop = undefined
+    start = undefined
     groups.clear()
     interactions.clear()
   }

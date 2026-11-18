@@ -620,6 +620,7 @@ test(
   async () => {
     type CardRow = QueryResultType<typeof queries.board.cards>[number]
     type HydraRow = NonNullable<QueryResultType<typeof queries.hydra.one>>
+    // Web modules are source-only; a runtime import keeps them out of the CLI's TypeScript emit graph.
     const pageRowsModule: string = '#web-app/hydra-rows.ts'
     const { hydraFromRows } = await import(pageRowsModule)
     const hydra = await pnyx.hydra()

@@ -1,6 +1,7 @@
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { taskViewKey } from './task-view.ts'
 import type { AgentConfig } from '#workers/model.ts'
+import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { HydraState } from '#app/model.ts'
@@ -243,7 +244,8 @@ export function WorkerChat({
 
       return {
         ...entry,
-        waiting: intent?.patch.targetAgent ? `Queued · ${intent.patch.targetAgent.harness}` : entry.waiting,
+        waiting: intent?.patch.targetAgent
+          ? queuedAgentLabel({ agent: intent.patch.targetAgent }) : entry.waiting,
         checking: intent?.stage === 'unknown',
         sending: !!intent && intent.stage !== 'confirmed',
       }

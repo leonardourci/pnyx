@@ -23,6 +23,10 @@ import { decideReply } from './reply-rules.ts'
 import { sessionId } from './session-attachments.ts'
 import { startTask } from './start.ts'
 
+// A card send waits here until a session takes it at its turn boundary.
+export const waitingCardInput = ({ reply }: { reply: Reply }) =>
+  !!reply.worker && !reply.worker.session && reply.state === 'queued'
+
 export function validateCardInput({
   text,
   agent,
@@ -32,7 +36,7 @@ export function validateCardInput({
   agent: AgentConfig
   actor: string
 }) {
-  if (!ownerActor({ actor: actor })) {
+  if (!ownerActor({ actor })) {
     throw new HydraError({
       message: 'Only the owner sends directly from a card',
       code: 'OWNER_ONLY',
@@ -145,8 +149,10 @@ function requireCardInputTarget({
     })
   }
 
-  if (card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')
-    || card.sessionIds?.length && card.agent?.host !== 'pnyx') {
+  const firstmate = !!card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')
+  const outside = !!card.sessionIds?.length && card.agent?.host !== 'pnyx'
+
+  if (firstmate || outside) {
     throw new HydraError({
       message: 'Continue this worker in Pnyx before changing its agent',
       code: 'NO_ROUTE',
@@ -155,7 +161,7 @@ function requireCardInputTarget({
 
   requireUnheld({ card })
   requireReady({
-    state: state,
+    state,
     card,
   })
 }
@@ -352,7 +358,7 @@ export function createCardInputs({
 
   const reconcile = ({ state }: { state: HydraState }) => {
     for (const card of Object.values(state.cards)) {
-      const reply = card.replies?.find(reply => reply.worker && !reply.worker.session && reply.state === 'queued')
+      const reply = card.replies?.find(saved => waitingCardInput({ reply: saved }))
 
       if (!reply || sending.has(card.id)) {
         continue

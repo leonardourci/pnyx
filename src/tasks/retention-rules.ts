@@ -38,7 +38,8 @@ export function refreshDone({
     }
 
     const parts = children.get(card.parentId) ?? []
-    parts.push(card); children.set(
+    parts.push(card)
+    children.set(
       card.parentId,
       parts,
     )
@@ -95,7 +96,8 @@ export function refreshDone({
       delete parent.keepDone
 
       if (parent.expired) {
-        delete parent.hidden; delete parent.expired
+        delete parent.hidden
+        delete parent.expired
       }
     }
   }

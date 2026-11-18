@@ -478,7 +478,7 @@ export function stageTaskMove({
   move: string
   meta: Meta
 }): HydraMoveEvent & { type: 'task.moved-in' } {
-  // Carry transcript cursors only after both Hydras commit.
+  // The source records the transcript's notes up to now, so the target reads on from the same place.
   harvestTranscripts({
     writer: source,
     cardIds: [cardId],

@@ -16,6 +16,7 @@ import type { createRoutineHelper } from '#routine-helper/runner.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { upgradeQueue } from '#upgrade/queue.ts'
 import type { trackChildren } from '#workers/children.ts'
+import { waitingCardInput } from '#workers/card-input.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { WORKER_RESUME, findWorkerTurnToResume, closedTask, toolApplicationReady } from '#workers/host.ts'
@@ -326,9 +327,8 @@ export function createHostRecovery({
 
           for (const reply of card.replies ?? []) {
             // The card's agent is Pnyx-hosted, so a reply still queued for it went the Pnyx route.
-            const scheduled = reply.worker && !reply.worker.session
-
-            if (reply.state !== 'queued' || held.has(reply.id) || scheduled) {
+            // A card send not yet handed to a session stays queued for its own reconcile.
+            if (reply.state !== 'queued' || held.has(reply.id) || waitingCardInput({ reply })) {
               continue
             }
 

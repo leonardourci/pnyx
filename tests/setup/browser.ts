@@ -55,6 +55,8 @@ async function retainContext({
       folder,
       String(evidenceIndex++),
     )
+    // Evidence is best effort: a page that crashed or closed still keeps whatever else can be read, and the
+    // test's own failure is what gets reported.
     await page.screenshot({path: `${path}.png`}).catch(() => {})
     writeFileSync(
       `${path}.html`,

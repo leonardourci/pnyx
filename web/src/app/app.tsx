@@ -8,7 +8,8 @@ import { SortableWorkspace, SortGroup, movedOrder, type SortMove } from '#web-sh
 import { motion, MotionConfig } from 'motion/react'
 import { useSmoothScroll, scrollBehavior, SCROLL_IDLE_MS } from '#web-shared/ui/smooth-scroll.ts'
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
-import { projectColumns, taskProjectColumn, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
+import { projectColumns, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
@@ -195,7 +196,7 @@ export function App() {
           actions: workspace.actions,
         }))
       const siblings = card.parentId ? childCards
-        : columns.find(column => column.id === taskProjectColumn({
+        : columns.find(column => column.id === taskProjectGroup({
           state: workspace.state,
           card,
         }))?.cards ?? []

@@ -1,4 +1,4 @@
-import { taskProjectColumn } from './project-view.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
 import { tokens } from '#oracle/query.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraState } from '#app/model.ts'
@@ -126,7 +126,7 @@ export function expandedByColumn({
 }): string[] {
   const columnOf = ({ id }: { id: string }) => {
     if (state && cards[id]) {
-      return taskProjectColumn({
+      return taskProjectGroup({
         state,
         card: cards[id]!,
       })

@@ -54,6 +54,7 @@ export function createServerCommands({
   catalogCommand,
   showPage,
   subscriptionMap,
+  retainThreads,
   bindThread,
   threadPage,
   startWorker,
@@ -76,6 +77,7 @@ export function createServerCommands({
   }: CommandRequest): void
   showPage: ReturnType<typeof createServerClients>['show']
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
+  retainThreads: ThreadSubscriptions['retainThreads']
   bindThread: ThreadSubscriptions['bindThread']
   threadPage: ThreadSubscriptions['threadPage']
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
@@ -338,6 +340,7 @@ export function createServerCommands({
             send,
             state,
             subscriptionMap,
+            retainThreads,
             bindThread,
             threadPage,
           })

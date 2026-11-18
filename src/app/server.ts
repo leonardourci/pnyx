@@ -543,6 +543,7 @@ export async function mountOwnedHydra({
       })
     },
     subscriptionMap,
+    retainThreads,
     bindThread,
     threadPage,
     startWorker,

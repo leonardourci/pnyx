@@ -1,6 +1,5 @@
-import type { CardWorkerInput } from '#workers/model.ts'
 import type { LandingRule, Link, Outcome } from '#tasks/delivery/model.ts'
-import type { Question, AgentRef, AgentLaunch, TaskQueue, AgentSettings, TerminalFacts, Attention, PermissionRequest, Reply, SteeringMessage, ReplyState } from '#workers/model.ts'
+import type { Question, AgentRef, AgentLaunch, TaskQueue, AgentSettings, TerminalFacts, Attention, PermissionRequest, Reply, SteeringMessage, ReplyState, CardWorkerInput } from '#workers/model.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { TaskReport } from '#investigations/model.ts'

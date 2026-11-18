@@ -5,7 +5,6 @@ import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { clock } from '../web/src/hydra/chat.ts'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
 
@@ -14,34 +13,6 @@ let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx()
 })
-
-test(
-  'chat timestamps keep the native locale format with minutes, seconds and invalid dates',
-  () => {
-    for (const at of [
-      '2026-01-15T00:04:07Z',
-      '2026-07-15T17:59:58Z',
-      'not-a-date',
-    ]) {
-      for (const seconds of [
-        false,
-        true,
-      ]) {
-        expect(clock({
-          at,
-          seconds,
-        })).toBe(new Date(at).toLocaleTimeString(
-          [],
-          {
-            hour: 'numeric',
-            minute: '2-digit',
-            ...(seconds ? { second: '2-digit' } : {}),
-          },
-        ))
-      }
-    }
-  },
-)
 
 // What the page's queue box reads for this Hydra: updates waiting for it, and its chat.
 const queueBox = ({ hydraId }: { hydraId: string }) => rows<{

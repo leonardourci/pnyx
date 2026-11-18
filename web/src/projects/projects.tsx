@@ -2,23 +2,12 @@ import { ProjectForm, ProjectList } from './folder-ui.tsx'
 import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useEffect, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
-import { AddProject, ProjectSharing } from './add-project.tsx'
+import { AddProject } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { useProjectsResource, type ProjectRow } from './project-resource.ts'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { LandingFields, landingArgs, type LandingChoice } from '#web-tasks/delivery/delivery-fields.tsx'
-
-type Confirmation = {
-  token: string
-  path: string
-  name: string
-  hydras: {
-    id: string
-    name: string
-    url: string
-  }[]
-}
 
 function ProjectCommand({
   project,
@@ -169,10 +158,6 @@ export function Projects({
     connected,
     revision: `${state.projectsRevision ?? 0}:${state.config?.hydra.kind}:${state.config?.hydra.home ?? ''}`,
   })
-  const [
-    confirmation,
-    setConfirmation,
-  ] = useState<Confirmation | null>(null)
   useEffect(
     () => {
       if (error) {
@@ -187,28 +172,10 @@ export function Projects({
 
   const run = async ({ args }: { args: string[] }) => {
     try {
-      const r = await mutate({ args })
-
-      if (r.confirmation === 'needed') {
-        const preview = r.preview as {
-          project: {
-            path: string
-            name: string
-          }
-          hydras: Confirmation['hydras']
-        }
-        setConfirmation({
-          token: r.token as string,
-          path: preview.project.path,
-          name: preview.project.name,
-          hydras: preview.hydras,
-        })
-      } else {
-        setConfirmation(null)
-        const text = args[0] === 'remove'
-          ? 'Project detached. Tasks and history stay.' : 'Project attached.'
-        notify({ text })
-      }
+      await mutate({ args })
+      const text = args[0] === 'remove'
+        ? 'Project detached. Tasks and history stay.' : 'Project attached.'
+      notify({ text })
     } catch (error) {
       notify({ text: (error as Error).message })
     }
@@ -290,21 +257,6 @@ export function Projects({
         </>
       )}
       <PendingStatus intents={intents} />
-      {confirmation && (
-        <ProjectSharing
-          confirmation={confirmation}
-          disabled={!connected}
-          cancel={() => setConfirmation(null)}
-          confirm={() => run({
-            args: [
-              'add',
-              confirmation.path,
-              '--confirm',
-              confirmation.token,
-            ],
-          })}
-        />
-      )}
     </SettingsBox>
   )
 }

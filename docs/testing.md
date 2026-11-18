@@ -113,6 +113,12 @@ Rules:
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions and resumed turns, on Claude and Codex.
-- `e2e/board.test.ts`: the live board and a card's Activity in Chrome.
+- `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
+- `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
+- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, keyboard shortcuts and the phone layout.
+- `e2e/card-input.test.ts`: creating and starting tasks from card composers, outside-session controls and the task modal.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
-
+- `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
+- `e2e/motion.test.ts`: the motion off switch and reduced motion.
+- `e2e/performance.test.ts`: the large-workspace journey (see Performance journey).
+- `e2e/ui-metrics.test.ts`: page metrics written to the log files, never to Hydra events.
