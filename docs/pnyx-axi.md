@@ -259,6 +259,8 @@ Each polis can hold 24000 characters of owner memory. It stores `preferences`, `
 
 Asynchronous memory contexts retry up to three times when access, home or project attachments change during a read. Continued changes return `CONFLICT` without the assembled memory.
 
+Native cross-Hydra mutations and worker control require access to the target Hydra's home polis and every polis it may read, through the same two locks. Missing access returns `NOT_FOUND`, without identifying the target's memory. Task reads, owner actions and actions on the caller's own Hydra keep their existing rules. Admitted worker starts receive the target Hydra's memory under the worker's identity; direct CLI memory calls remain bound to the caller's native Hydra.
+
 ### Worker instructions and memory curation
 
 Hydra reports results in plain words with full links and what happens next, in one message per result. Routine progress, checks still running and re-runs stay on the cards, questions stay on their question cards, and the Waiting on you bar shows what waits on you. Owner messages always call for an answer; if a hosted Hydra ends one with `NO_REPLY`, Pnyx asks once for a standalone reply.
