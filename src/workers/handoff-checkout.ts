@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { realpathSync, readdirSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { git as projectGit } from '#projects/git.ts'
+import { sameProjectPath } from '#projects/identity.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { log } from '#app/diagnostics.ts'
 import { loadHydra, reloadHydra } from '#app/store.ts'
@@ -301,7 +302,10 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
 
     const expectedTask = committed ? intent.target : intent.source
     const copy = state.cards[expectedTask]?.copy
-    const copyChanged = copy && (copy.path !== intent.cwd
+    const copyChanged = copy && (!sameProjectPath({
+      left: copy.path,
+      right: intent.root,
+    })
       || (committed && copy.branch !== intent.branch))
 
     if (!state.cards[expectedTask] || assigned?.taskId !== expectedTask || copyChanged

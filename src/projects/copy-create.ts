@@ -83,13 +83,13 @@ function refuseShared({
   }
 }
 
-async function releasedCopyLanded({
+async function landedSlotBranch({
   hydraId,
   path,
 }: {
   hydraId: string
   path: string
-}): Promise<boolean> {
+}): Promise<string | undefined> {
   const state = loadHydra({ hydraId }).state
   const branch = (await git({
     cwd: path,
@@ -102,7 +102,7 @@ async function releasedCopyLanded({
     && card.copy.state === 'removed' && card.copy.branch === branch)
 
   if (!previous?.copy) {
-    return false
+    return undefined
   }
 
   const check = await checkCopy({
@@ -111,7 +111,7 @@ async function releasedCopyLanded({
   })
 
   if (!('reason' in check)) {
-    return true
+    return branch
   }
 
   withWriter({
@@ -148,7 +148,7 @@ async function releasedCopyLanded({
     },
   })
 
-  return false
+  return undefined
 }
 
 // The slot it returns stays claimed until the caller records it.
@@ -266,28 +266,32 @@ async function worktreeCopy({
     let allocated = false
 
     try {
-      if (!await releasedCopyLanded({
+      const slotBranch = await landedSlotBranch({
         hydraId,
         path,
-      }) || !await reusable({
+      })
+
+      if (!slotBranch || !await reusable({
         path,
         common,
       })) {
         continue
       }
 
-      const checkedOut = await checkout({
-        cwd: path,
-        branch,
-        start,
-        exists,
-      })
-
-      if (!checkedOut.ok) {
-        throw new HydraError({
-          code: 'COPY_FAILED',
-          message: `git could not switch the task's copy: ${checkedOut.err}`,
+      if (slotBranch !== branch) {
+        const checkedOut = await checkout({
+          cwd: path,
+          branch,
+          start,
+          exists,
         })
+
+        if (!checkedOut.ok) {
+          throw new HydraError({
+            code: 'COPY_FAILED',
+            message: `git could not switch the task's copy: ${checkedOut.err}`,
+          })
+        }
       }
 
       await verifyCopyBranch({

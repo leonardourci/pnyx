@@ -24,6 +24,7 @@ import { pullRequestLanding, pullRequestState } from '#integrations/github/pull-
 import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { loadHydra } from '#app/store.ts'
+import { log } from '#app/diagnostics.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
@@ -233,6 +234,13 @@ async function landedBranch({
     throw new Error('The worker needs an isolated project folder')
   }
 
+  if (card.copy && !sameProjectPath({
+    left: card.copy.path,
+    right: root,
+  })) {
+    throw new Error('The worker checkout is outside its recorded task copy')
+  }
+
   assertUnshared({
     hydraId,
     state: loadHydra({ hydraId }).state,
@@ -402,7 +410,7 @@ async function deliverHandoffs({
   })
 
   for (const event of events) {
-    if (event.type !== 'task.session' || !event.data.handoff) {
+    if (event.type !== 'task.session' || !event.data.handoff || event.data.brief === undefined) {
       continue
     }
 
@@ -428,7 +436,7 @@ async function deliverHandoffs({
       request: {
         card: card.id,
         expectedSession: event.data.session,
-        text: event.data.brief!,
+        text: event.data.brief,
         actor: 'pnyx',
         id,
         homes: [],
@@ -442,7 +450,7 @@ async function deliverHandoffs({
     hydraId,
     types: ['task.session'],
   }).find(event => {
-    if (event.type !== 'task.session' || !event.data.handoff) {
+    if (event.type !== 'task.session' || !event.data.handoff || event.data.brief === undefined) {
       return false
     }
 
@@ -686,10 +694,9 @@ export async function advanceQueues({
           previousHead: prepared.head,
         },
       })
-      let handoffEvent: string | undefined
+      let appendAttempted = false
       let recorded = false
-      let handoffError: unknown
-      let handoffFailed = false
+      let failure: { error: unknown } | undefined
 
       try {
         await git({
@@ -779,7 +786,7 @@ export async function advanceQueues({
               }
 
               decision.event.data.brief = brief
-              handoffEvent = decision.event.id
+              appendAttempted = true
               writer.append({ event: decision.event })
 
               return true
@@ -787,14 +794,13 @@ export async function advanceQueues({
           },
         }))
       } catch (error) {
-        handoffError = error
-        handoffFailed = true
+        failure = { error }
 
-        if (handoffEvent) {
+        if (appendAttempted) {
           try {
             recorded = Boolean(readHandoffEvent({
               hydraId,
-              eventId: handoffEvent,
+              eventId,
             }))
           } catch (outcomeError) {
             throw new AggregateError(
@@ -807,10 +813,31 @@ export async function advanceQueues({
             )
           }
         }
+
+        if (recorded) {
+          log({
+            level: 'warn',
+            operation: 'confirm committed worker handoff',
+            hydraId,
+            taskId: next.id,
+            error,
+          })
+        }
       }
 
       if (!recorded) {
         try {
+          const rollbackRoots = await workerRoots({
+            hydraId,
+            session: attached,
+          })
+          assertUnshared({
+            hydraId,
+            state: loadHydra({ hydraId }).state,
+            session: attached,
+            root: prepared.root,
+            roots: rollbackRoots,
+          })
           await restoreCheckout({
             cwd: prepared.cwd,
             root: prepared.root,
@@ -820,13 +847,13 @@ export async function advanceQueues({
             previousHead: prepared.head,
           })
         } catch (restoreError) {
-          if (handoffFailed) {
+          if (failure) {
             throw new AggregateError(
               [
-                handoffError,
+                failure.error,
                 restoreError,
               ],
-              `${String(handoffError)}\n${String(restoreError)}`,
+              `${String(failure.error)}\n${String(restoreError)}`,
               { cause: restoreError },
             )
           }
@@ -837,10 +864,17 @@ export async function advanceQueues({
 
       clearHandoff({ path: handoffFile })
 
-      if (handoffFailed) {
-        throw handoffError
+      if (failure && !recorded) {
+        throw failure.error
       }
     } catch (error) {
+      log({
+        level: 'error',
+        operation: 'worker handoff',
+        hydraId,
+        taskId: current.id,
+        error,
+      })
       if (active()) {
         releaseQueue({
           hydraId,
