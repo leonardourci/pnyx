@@ -154,9 +154,13 @@ export async function taskBranch({
 
   for (const name of existing) {
     const parts = name.split('/')
-    const firstTwoParts = parts.slice(0, 2)
+    const firstTwoParts = parts.slice(
+      0,
+      2,
+    )
     occupied.add(firstTwoParts.join('/'))
   }
+
   let branch = base
 
   for (let suffix = 2; occupied.has(branch); suffix++) {

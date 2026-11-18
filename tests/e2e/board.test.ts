@@ -42,7 +42,10 @@ test(
     })
     await page.getByRole(
       'button',
-      { name: 'Review the export', exact: true },
+      {
+        name: 'Review the export',
+        exact: true,
+      },
     ).waitFor()
     expect(await page.title()).toBe('Poseidon · Pnyx')
 

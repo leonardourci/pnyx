@@ -293,7 +293,10 @@ async function landedBranch({
     throw new Error('The worker folder has uncommitted changes')
   }
 
-  const { head, branch: previousBranch } = checkout
+  const {
+    head,
+    branch: previousBranch,
+  } = checkout
   const copy = card.copy ?? {
     path: cwd,
     project: card.project,
