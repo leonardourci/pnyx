@@ -396,20 +396,39 @@ export function duration({ ms }: { ms: number }) {
   return `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`
 }
 
-export const clock = ({
-  at,
-  seconds = false,
-}: {
-  at: string
-  seconds?: boolean
-}) => new Date(at).toLocaleTimeString(
-  [],
-  {
+export const clock = (() => {
+  const options: Intl.DateTimeFormatOptions = {
     hour: 'numeric',
     minute: '2-digit',
-    ...(seconds ? { second: '2-digit' } : {}),
-  },
-)
+  }
+  const minutes = new Intl.DateTimeFormat(
+    [],
+    options,
+  )
+  const seconds = new Intl.DateTimeFormat(
+    [],
+    {
+      ...options,
+      second: '2-digit',
+    },
+  )
+
+  return ({
+    at,
+    seconds: showSeconds = false,
+  }: {
+    at: string
+    seconds?: boolean
+  }) => {
+    const date = new Date(at)
+
+    if (Number.isNaN(date.getTime())) {
+      return date.toLocaleTimeString()
+    }
+
+    return (showSeconds ? seconds : minutes).format(date)
+  }
+})()
 
 // Shown in the header only while Hydra cannot start: nothing else can happen until a start works.
 export const hydraDown = ({ status }: { status?: HydraStatus }) => status?.state === 'down'
