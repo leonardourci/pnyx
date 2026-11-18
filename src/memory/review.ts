@@ -1,46 +1,65 @@
+import { readMemoryContext } from './context.ts'
+import { polisAccess, readableProjects } from '#memory/poleis.ts'
 import { learningDigest, staleLearnings } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { ownerMemory } from './owner-memory.ts'
-import type { HydraState } from '#app/model.ts'
-import { projectsFor } from '#projects/read.ts'
-import { readProjectMemory } from './project-memory.ts'
-import { projectIdentity } from '#projects/sources.ts'
+import { loadHydra } from '#app/store.ts'
+import { readableProjectMemory } from './project-memory.ts'
 
 export async function memoryReview({
-  state,
+  hydraId,
   now,
 }: {
-  state: HydraState
+  hydraId: string
   now: string
-}): Promise<string[]> {
-  const conditions = memoryConditions()
-  const attached = projectsFor({ state }).filter(project => !project.detached)
-  const projectLayers = await Promise.all(attached.map(async project => ({
-    name: `Project ${project.name}`,
-    lines: readProjectMemory(await projectIdentity(project)).learnings ?? [],
-  })))
-  const layers = [
-    {
-      name: 'Owner',
-      lines: ownerMemory().learnings?.lines ?? [],
-    },
-    ...projectLayers,
-  ]
+}) {
+  return readMemoryContext({
+    read: async () => {
+      const state = loadHydra({ hydraId }).state
+      const conditions = memoryConditions()
+      const attached = (await readableProjects({
+        state,
+        hydraId,
+      })).filter(project => !project.detached)
+      const projectLayers = await Promise.all(attached.map(async project => ({
+        name: `Project ${project.name}`,
+        lines: (await readableProjectMemory({
+          path: project.path,
+          hydraId,
+        }))?.learnings ?? [],
+      })))
+      const layers = [
+        {
+          name: 'Owner',
+          lines: ownerMemory({ hydraId }).learnings?.lines ?? [],
+        },
+        ...projectLayers,
+      ]
 
-  return layers.flatMap(layer => {
-    const lines = staleLearnings({
-      lines: layer.lines,
-      now,
-      conditions,
-    })
+      const lines = layers.flatMap(layer => {
+        const lines = staleLearnings({
+          lines: layer.lines,
+          now,
+          conditions,
+        })
 
-    return lines.length ? [
-      `${layer.name} memory:`,
-      learningDigest({
+        return lines.length ? [
+          `${layer.name} memory:`,
+          learningDigest({
+            lines,
+            now,
+            conditions,
+          }),
+        ] : []
+      })
+
+      return {
         lines,
-        now,
-        conditions,
-      }),
-    ] : []
+        access: {
+          poleis: polisAccess({ hydraId }).reads,
+          projects: attached.map(project => project.path),
+        },
+      }
+    },
   })
 }

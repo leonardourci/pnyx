@@ -1,3 +1,6 @@
+import { requireCommandMemoryAccess } from '#memory/command-access.ts'
+import { TASK_OPTIONS } from '#app/task-cli.ts'
+import { HYDRA_OPTIONS } from './cli.ts'
 import { proposeOwnerCommand } from '#app/confirmations.ts'
 import { parseArgs } from 'node:util'
 import { DEFAULT_HYDRA } from '#app/home-migration.ts'
@@ -5,7 +8,7 @@ import { loadHydra } from '#app/store.ts'
 import { AxiError } from 'axi-sdk-js'
 import { hydraBypasses } from './hydra.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
-import { guard, WRITE } from '#app/cli-support.ts'
+import { guard, WRITE, type Options } from '#app/cli-support.ts'
 import { ownerOnlyCommand } from '#app/command-registry.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -26,7 +29,7 @@ export function runsInBypass({
   return env.PNYX_HYDRA === hydraId && hydraBypasses({ state: loadHydra({ hydraId }).state })
 }
 
-// Hydra may propose owner-only actions, but only the owner can confirm them.
+// Native commands check cross-Hydra memory capabilities before owner-only proposals.
 export function ownerOnly<T extends Record<string, Command>>({
   commands,
   env = requestEnv(),
@@ -40,9 +43,16 @@ export function ownerOnly<T extends Record<string, Command>>({
   }: {
     name: string
     run: Command
-  }) =>
-    // eslint-disable-next-line pnyx/object-params -- runAxiCli owns the command signature.
-    (args: string[]) => {
+  }) => guard({
+    handler: ({ args }) => {
+      let commandOptions: Options = {}
+
+      if (name === 'task') {
+        commandOptions = TASK_OPTIONS
+      } else if (name === 'hydra') {
+        commandOptions = HYDRA_OPTIONS
+      }
+
       const {
         values,
         positionals,
@@ -50,6 +60,10 @@ export function ownerOnly<T extends Record<string, Command>>({
         args,
         options: {
           ...WRITE,
+          ...commandOptions,
+          polis: { type: 'string' },
+          'read-poleis': { type: 'string' },
+          firstmate: { type: 'string' },
           command: { type: 'string' },
           session: { type: 'string' },
           'command-name': { type: 'string' },
@@ -81,6 +95,14 @@ export function ownerOnly<T extends Record<string, Command>>({
 
       // A hosted Hydra without --hydra still writes to its own chat.
       const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
+
+      requireCommandMemoryAccess({
+        name,
+        args,
+        positionals,
+        values,
+        hydraId,
+      })
 
       if (hydra && ownerOnlyCommand({
         name,
@@ -169,7 +191,8 @@ export function ownerOnly<T extends Record<string, Command>>({
       }
 
       return notice({ output: result })
-    }
+    },
+  })
 
   return Object.fromEntries(Object.entries(commands)
     .map(([

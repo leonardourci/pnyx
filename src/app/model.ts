@@ -82,6 +82,10 @@ export type HydraChange = EventBase & (
   | {
     type: 'hydra.review'
     data: {
+      memoryAccess?: {
+        poleis: string[]
+        projects: string[]
+      }
       block: string
       reminders: string[]
       flags?: string[]

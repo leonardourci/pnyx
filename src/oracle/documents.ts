@@ -4,6 +4,7 @@ import type { Kind } from './model.ts'
 import { chunk, eventText, redact } from './text.ts'
 
 export interface Document {
+  project?: string
   card: string
   kind: Kind
   at: string
@@ -27,8 +28,8 @@ function* documentChunks({
 }
 
 export function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
-  // Conversation copies an older Pnyx logged are agent transcripts, not Pnyx data.
-  if (event.type === 'chat.message') {
+  // Timed reviews can include memory that has since been revoked or forgotten.
+  if (event.type === 'chat.message' || event.type === 'hydra.memory' || event.type === 'hydra.review') {
     return
   }
 

@@ -1,22 +1,27 @@
+import { readOwnerLogs } from './owner-memory-log.ts'
 import { memorySize, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
-import { required, guard, parse, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
+import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { HydraError } from '#store/errors.ts'
-import { ownerMemory, ownerRevision, ownerArchive, saveOwnerMemory, moveOwnerLearning } from './owner-memory.ts'
-import { findProject } from '#projects/read.ts'
+import { migrateOwnerMemory, ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis, type OwnerMeta } from './owner-memory.ts'
+import { withRegistryLock } from '#store/storage.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
+import { findReadableProject, memoryCaller } from './poleis.ts'
+import { POLIS_NAME } from './polis-policy.ts'
 
 function memoryList({
   memory,
+  budgetMemory = memory,
   budget,
   empty,
 }: {
   memory: Memory
+  budgetMemory?: Memory
   budget: number
   empty: string
 }): Output {
@@ -42,7 +47,7 @@ function memoryList({
 
   return {
     memory: entries.length ? entries : empty,
-    used: `${memorySize({ memory })} of ${budget} characters`,
+    used: `${memorySize({ memory: budgetMemory })} of ${budget} characters`,
   }
 }
 
@@ -91,8 +96,42 @@ function memoryChange({
   }
 }
 
+function ownerMeta({ values }: {
+  values: Record<string, string | boolean | undefined>
+}): OwnerMeta {
+  const revision = values['if-revision']
+
+  if (revision === undefined) {
+    return meta({ values })
+  }
+
+  const parts = String(revision).split(':')
+  const [
+    first,
+    second,
+  ] = parts
+  const polis = second === undefined ? 'shared' : first
+
+  if (polis === undefined || !POLIS_NAME.test(polis) || parts.length > 2) {
+    throw new HydraError({
+      message: 'Use the revision from owner memory list',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return {
+    ...meta({
+      values: {
+        ...values,
+        'if-revision': parts.at(-1),
+      },
+    }),
+    ifPolis: polis,
+  }
+}
+
 export const owner = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const usage = 'use owner memory list|set|forget|confirm|move|save|archive or owner worker-notes set|forget'
     const workerNotes = args[0] === 'worker-notes'
 
@@ -126,6 +165,9 @@ export const owner = guard({
         key: { type: 'string' },
         text: { type: 'string' },
         project: { type: 'string' },
+        to: { type: 'string' },
+        propose: { type: 'boolean' },
+        'if-destination-revision': { type: 'string' },
         kind: { type: 'string' },
         until: { type: 'string' },
         used: { type: 'string' },
@@ -141,6 +183,14 @@ export const owner = guard({
     }
 
     const action = positionals[1] ?? 'list'
+
+    if (action !== 'list' && !memoryCaller({ hydraId })) {
+      throw new HydraError({
+        message: 'Memory is unavailable',
+        code: 'NOT_FOUND',
+      })
+    }
+
     const learning = learningChange({
       action,
       kind: values.kind as string | undefined,
@@ -150,34 +200,89 @@ export const owner = guard({
     })
 
     if (action === 'list') {
-      return {
-        ...memoryList({
-          memory: ownerMemory(),
-          budget: OWNER_MEMORY_BUDGET,
-          empty: 'none: no owner memory yet',
-        }),
-        revision: ownerRevision(),
-        archived: ownerArchive(),
+      if (memoryCaller({ hydraId })) {
+        migrateOwnerMemory()
       }
+
+      return withRegistryLock({
+        fn: () => {
+          const logs = readOwnerLogs()
+          const memory = ownerMemory({
+            hydraId,
+            migrate: false,
+            logs,
+          })
+          const writable = writableOwnerMemory({
+            hydraId,
+            logs,
+          })
+
+          return {
+            ...memoryList({
+              memory,
+              budgetMemory: writable?.memory ?? {},
+              budget: OWNER_MEMORY_BUDGET,
+              empty: 'none: no owner memory yet',
+            }),
+            revision: writable?.revision,
+            writable: writable?.memory,
+            archived: ownerArchive({
+              hydraId,
+              logs,
+            }),
+          }
+        },
+      })
     }
 
     if (action === 'save' || action === 'archive') {
       const entry = saveOwnerMemory({
+        hydraId,
         key: 'learnings',
         after: null,
         learning,
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
 
       return {
         memory: 'learnings',
         state: action === 'save' ? 'saved' : 'archived',
-        revision: entry?.seq,
+        revision: entry?.revision,
       }
     }
 
+    const documentMove = values.to !== undefined
+    const hasLearningSelector = values.project !== undefined || values.text !== undefined
+    const mixedMoveSelectors = documentMove ? hasLearningSelector : values.key !== undefined
+
+    if (action === 'move' && mixedMoveSelectors) {
+      throw new HydraError({
+        message: 'Use --key and --to for a document move, or --project and --text for a learning move',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (action === 'move' && documentMove) {
+      return moveOwnerPolis({
+        hydraId,
+        args,
+        propose: Boolean(values.propose),
+        ifDestinationRevision: integer({
+          value: values['if-destination-revision'],
+          flag: '--if-destination-revision',
+        }),
+        destination: String(values.to),
+        key: required({
+          value: values.key as string | undefined,
+          what: '--key',
+        }),
+        meta: ownerMeta({ values }),
+      })
+    }
+
     if (action === 'move') {
-      const project = findProject({
+      const project = await findReadableProject({
+        hydraId,
         state: loadHydra({ hydraId }).state,
         ref: required({
           value: values.project as string | undefined,
@@ -187,33 +292,39 @@ export const owner = guard({
       })
 
       return moveOwnerLearning({
+        args,
+        propose: Boolean(values.propose),
+        ifDestinationRevision: integer({
+          value: values['if-destination-revision'],
+          flag: '--if-destination-revision',
+        }),
         path: project.path,
         hydraId,
         text: required({
           value: values.text as string | undefined,
           what: '--text <existing learning line>',
         }),
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
     }
 
     if (action === 'confirm') {
-      const memory = ownerMemory()
       const line = required({
         value: values.text as string | undefined,
         what: '--text <existing learning line>',
       })
       const entry = saveOwnerMemory({
+        hydraId,
         key: 'learnings',
-        after: memory.learnings?.text ?? null,
+        after: null,
         confirmed: line,
-        meta: meta({ values }),
+        meta: ownerMeta({ values }),
       })
 
       return {
         memory: 'learnings',
         state: 'confirmed',
-        revision: entry?.seq,
+        revision: entry?.revision,
       }
     }
 
@@ -225,7 +336,7 @@ export const owner = guard({
       values,
       usage,
     })
-    const m = meta({ values })
+    const m = ownerMeta({ values })
 
     if (key === 'workers') {
       checkWorkerNotes({
@@ -235,6 +346,7 @@ export const owner = guard({
     }
 
     const entry = saveOwnerMemory({
+      hydraId,
       key,
       after,
       learning,
@@ -244,8 +356,8 @@ export const owner = guard({
     return entry ? {
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
-      revision: entry.seq,
-      used: `${memorySize({ memory: ownerMemory() })} of ${OWNER_MEMORY_BUDGET} characters`,
+      revision: entry.revision,
+      used: `${memorySize({ memory: writableOwnerMemory({ hydraId })?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
       skipped: 'unchanged',
@@ -263,6 +375,21 @@ export function hydraMemory({
   hydraId: string
 }): Output {
   const action = positionals[1] ?? 'list'
+
+  if (!memoryCaller({ hydraId })) {
+    if (action === 'list') {
+      return memoryList({
+        memory: {},
+        budget: HYDRA_MEMORY_BUDGET,
+        empty: 'none: no Hydra memory yet',
+      })
+    }
+
+    throw new HydraError({
+      message: 'Memory is unavailable',
+      code: 'NOT_FOUND',
+    })
+  }
 
   if (action === 'list') {
     const state = loadHydra({ hydraId }).state
@@ -295,7 +422,7 @@ export function hydraMemory({
     key,
   )) {
     throw new HydraError({
-      message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} are Pnyx-wide owner memory`,
+      message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} belong in owner memory`,
       code: 'VALIDATION_ERROR',
       help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
     })

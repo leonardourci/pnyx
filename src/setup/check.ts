@@ -1,3 +1,4 @@
+import { readableProjects } from '#memory/poleis.ts'
 import { SET_UP_SKILL } from './skill-names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
@@ -6,8 +7,7 @@ import type { HydraState } from '#app/model.ts'
 import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
-import { projectMemoryView } from '#memory/project-memory.ts'
-import { projectsFor } from '#projects/read.ts'
+import { readableProjectMemory } from '#memory/project-memory.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
@@ -164,10 +164,16 @@ export async function setupCheck({
     })
   }
 
-  const profiles = await Promise.all(projectsFor({ state }).filter(project => !project.detached)
+  const profiles = await Promise.all((await readableProjects({
+    state,
+    hydraId,
+  })).filter(project => !project.detached)
     .map(async project => ({
       project,
-      status: (await projectMemoryView(project)).status,
+      status: (await readableProjectMemory({
+        ...project,
+        hydraId,
+      }))?.status,
     })))
 
   for (const {

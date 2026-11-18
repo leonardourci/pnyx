@@ -42,3 +42,5 @@ Before processing a wake, assigning work, relaying an owner answer, changing sco
 | act as Hydra from a Firstmate home | `pnyx-firstmate-as-hydra` |
 | the owner asks to save memory, a context reset, or memory nears its budget | `inscribe` |
 | act on a digest that shows Setup needed | `pnyx-set-up` |
+
+Use `inscribe` to read and edit the memory this Hydra can access. Narrow access directly. To widen a read list, add polis readers or move memory to additional readers, repeat the refused command with `--propose` and wait for the owner's Confirm, even in bypass modes.

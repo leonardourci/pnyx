@@ -12,7 +12,8 @@ import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { requestCwd, requestEnv } from '#app/request-context.ts'
+import { requestCwd, IDENTITY } from '#app/request-context.ts'
+import { memoryAgent, memoryAccessRevision } from '#memory/poleis.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -33,14 +34,26 @@ const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' |
   ? effectiveDispatch()
   : undefined
 
+function memoryRulesFor({ target }: { target: Target }): string | undefined {
+  const changesPolis = target.args.some(arg => /^--polis(?:=|$)/.test(arg))
+  const changesReads = target.args.some(arg => /^--read-poleis(?:=|$)/.test(arg))
+  const memoryCommand = target.name === 'settings' || target.name === 'owner'
+    || (target.name === 'project' && changesPolis)
+    || (target.name === 'hydra' && (changesPolis || changesReads))
+
+  return memoryCommand ? memoryAccessRevision() : undefined
+}
+
 function context({
   state,
   target,
   dispatch,
+  memory,
 }: {
   state: HydraState
   target: Target
   dispatch?: EffectiveDispatch
+  memory?: string
 }): string {
   const {
     name,
@@ -59,9 +72,10 @@ function context({
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
 
   return createHash('sha256').update(JSON.stringify({
-    config: name === 'hydra' || name === 'setup' ? state.config : undefined,
-    projects: name === 'project' ? state.projects : undefined,
+    config: name === 'hydra' || name === 'setup' || memory ? state.config : undefined,
+    projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
+    memory,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -112,6 +126,7 @@ export function proposeOwnerCommand({
   const value = JSON.stringify(target)
   const summary = `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
   const dispatch = dispatchFor({ target })
+  const memory = memoryRulesFor({ target })
   withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -132,6 +147,7 @@ export function proposeOwnerCommand({
               state: writer.state,
               target,
               dispatch,
+              memory,
             }),
             value,
             summary,
@@ -170,7 +186,7 @@ export const approval = guard({
     })
     const actor = meta({ values })
 
-    if (actor.actor === 'hydra' || requestEnv().PNYX_ACTOR === 'hydra') {
+    if (actor.actor === 'hydra' || memoryAgent()) {
       throw new HydraError({
         message: 'Only the owner can answer an approval question',
         code: 'OWNER_ONLY',
@@ -191,9 +207,10 @@ export const approval = guard({
     }
 
     const asked = loadHydra({ hydraId }).state.dispatchProposals?.find(p => p.token === token)
-    const dispatch = action === 'confirm' && asked?.kind === 'command'
-      ? dispatchFor({ target: JSON.parse(asked.value) as Target })
-      : undefined
+    const confirming = action === 'confirm' && asked?.kind === 'command'
+      ? JSON.parse(asked.value) as Target : undefined
+    const dispatch = confirming ? dispatchFor({ target: confirming }) : undefined
+    const memory = confirming ? memoryRulesFor({ target: confirming }) : undefined
     const selected = withWriter({
       hydraId,
       fn: ({ writer }) => {
@@ -225,6 +242,7 @@ export const approval = guard({
           state: writer.state,
           target: JSON.parse(proposal.value) as Target,
           dispatch,
+          memory,
         }) !== proposal.before) {
           throw new HydraError({
             message: 'The target changed; dismiss this question and ask Hydra to propose it again',
@@ -282,6 +300,18 @@ export const approval = guard({
 
     const target = JSON.parse(selected.value) as Target
     let output: string
+    const ownerEnv = { ...process.env }
+
+    for (const name of IDENTITY) {
+      delete ownerEnv[name]
+    }
+
+    ownerEnv.PNYX_HOME = pnyxHome()
+    ownerEnv.PNYX_ACTOR = 'web'
+
+    if (memory) {
+      ownerEnv.PNYX_MEMORY_ACCESS = memory
+    }
 
     try {
       const { stdout } = await exec(
@@ -307,11 +337,7 @@ export const approval = guard({
         ],
         {
           cwd: target.cwd,
-          env: {
-            ...process.env,
-            PNYX_HOME: pnyxHome(),
-            PNYX_ACTOR: 'web',
-          },
+          env: ownerEnv,
           maxBuffer: 4 * 1024 * 1024,
         },
       )
@@ -325,7 +351,11 @@ export const approval = guard({
 
       output = stdout.trim()
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
+      const stdout = error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string' ? error.stdout : ''
+      const commandOutput = stdout.trim()
+      const detail = commandOutput.length > 0
+        ? commandOutput
+        : error instanceof Error ? error.message : String(error)
       withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -348,6 +378,16 @@ export const approval = guard({
           }
         },
       })
+
+      const code = /^code: (REVISION_CONFLICT|CONFLICT)$/m.exec(stdout)?.[1]
+
+      if (memory && (code === 'CONFLICT' || code === 'REVISION_CONFLICT')) {
+        throw new HydraError({
+          message: 'Memory changed; propose the action again',
+          code,
+        })
+      }
+
       throw error
     }
 

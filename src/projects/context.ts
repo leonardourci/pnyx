@@ -1,15 +1,24 @@
+import { readableProjects } from '#memory/poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '#memory/learnings.ts'
 import type { HydraState } from '#app/model.ts'
-import { projectsFor } from './read.ts'
-import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView } from '#memory/project-memory.ts'
+import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
 
-export async function projectDigest({ state }: { state: HydraState }): Promise<string[]> {
-  const projects = projectsFor({ state }).filter(project => !project.detached)
+export async function projectDigest({
+  state,
+  hydraId,
+}: {
+  state: HydraState
+  hydraId: string
+}): Promise<string[]> {
+  const projects = (await readableProjects({
+    state,
+    hydraId,
+  })).filter(project => !project.detached)
 
   if (!projects.length) {
     return []
@@ -17,7 +26,15 @@ export async function projectDigest({ state }: { state: HydraState }): Promise<s
 
   const conditions = memoryConditions()
   const lines = await Promise.all(projects.map(async project => {
-    const view = await projectMemoryView(project)
+    const view = await readableProjectMemory({
+      ...project,
+      hydraId,
+    })
+
+    if (!view) {
+      return []
+    }
+
     const stale = staleLearnings({
       lines: view.learnings ?? [],
       conditions,
@@ -25,12 +42,18 @@ export async function projectDigest({ state }: { state: HydraState }): Promise<s
     })
     const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-    return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`
+    return [`- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
   }))
+
+  const summaries = lines.flat()
+
+  if (summaries.length === 0) {
+    return []
+  }
 
   return [
     'Projects (load memory on demand with pnyx-axi project show <name|path>):',
-    ...lines,
+    ...summaries,
   ]
 }
 
@@ -43,7 +66,10 @@ export async function projectWorkerContext({
   state: HydraState
   project?: string
 }): Promise<string> {
-  const project = projectsFor({ state }).filter(project => !project.detached)
+  const project = (await readableProjects({
+    state,
+    hydraId,
+  })).filter(project => !project.detached)
     .find(project => matchesProject({
       project,
       ref,
@@ -53,7 +79,14 @@ export async function projectWorkerContext({
     return ''
   }
 
-  const view = await projectMemoryView(project)
+  const view = await readableProjectMemory({
+    ...project,
+    hydraId,
+  })
+
+  if (!view) {
+    return ''
+  }
 
   return [
     `Project ${project.name}: shared memory (${view.status}).`,
