@@ -604,6 +604,191 @@ test(
         'test shared instructions',
       ],
     })
+    await personal.owner({
+      args: [
+        'hydra',
+        'worker-notes',
+        'set',
+        '--text',
+        'Private Hydra native notes',
+        '--reason',
+        'Test native prompt binding',
+      ],
+    })
+    const nativeFolder = personal.folder({ name: 'native-bound-header' })
+    await personal.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Native prompt binding',
+        '--key',
+        'native-bound-header',
+        '--folder',
+        nativeFolder,
+        '--brief',
+        'Test native prompt binding',
+      ],
+    })
+    const nativeTask = await personal.task({ key: 'native-bound-header' })
+    const nativeStart = await pnyxAxi({
+      args: [
+        'task',
+        'start',
+        nativeTask.id,
+        '--hydra',
+        personal.id,
+        '--harness',
+        'claude',
+        '--reason',
+        'Test native prompt binding',
+      ],
+      env: crossEnv,
+    })
+    expect(parsed(nativeStart)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'not found',
+    })
+    expect(pnyx.claude.sessions.some(session => session.cwd === nativeFolder)).toBe(false)
+    await personal.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            personal: {
+              readers: [
+                personal.id,
+                work.id,
+              ],
+            },
+          },
+        }),
+      ],
+    })
+    const lockedStart = await pnyxAxi({
+      args: [
+        'task',
+        'start',
+        nativeTask.id,
+        '--hydra',
+        personal.id,
+        '--harness',
+        'claude',
+        '--reason',
+        'Test both capability locks',
+      ],
+      env: crossEnv,
+    })
+    expect(parsed(lockedStart)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'not found',
+    })
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,work,personal',
+      ],
+    })
+    const sharedStart = await pnyxAxi({
+      args: [
+        'task',
+        'start',
+        nativeTask.id,
+        '--hydra',
+        personal.id,
+        '--harness',
+        'claude',
+        '--reason',
+        'Test admitted cross-Hydra worker',
+      ],
+      env: crossEnv,
+    })
+    expect(
+      sharedStart.status,
+      sharedStart.stdout + sharedStart.stderr,
+    ).toBe(0)
+    const nativeWorker = await personal.agent({ cwd: nativeFolder })
+    await until({
+      what: 'native prompt worker first turn',
+      check: () => nativeWorker.answered === 1,
+    })
+    expect(nativeWorker.received.join('\n')).toContain('Native prompt binding')
+    expect(nativeWorker.received.join('\n')).toContain('Private Hydra native notes')
+    expect(nativeWorker.received.join('\n')).toContain('Secret header nebula')
+    const boundRead = await pnyxAxi({
+      args: [
+        'owner',
+        'memory',
+        'list',
+        '--hydra',
+        personal.id,
+      ],
+      env: crossEnv,
+    })
+    expect(boundRead.stdout).not.toContain('Secret header nebula')
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,work',
+      ],
+    })
+    await personal.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ poleis: { personal: { readers: [personal.id] } } }),
+      ],
+    })
+    const ownFolder = personal.folder({ name: 'own-native-header' })
+    await personal.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Own native prompt binding',
+        '--key',
+        'own-native-header',
+        '--folder',
+        ownFolder,
+        '--brief',
+        'Test own native prompt binding',
+      ],
+    })
+    const ownStart = await pnyxAxi({
+      args: [
+        'task',
+        'start',
+        'own-native-header',
+        '--hydra',
+        personal.id,
+        '--harness',
+        'claude',
+        '--reason',
+        'Test own native prompt binding',
+      ],
+      env: {
+        ...crossEnv,
+        PNYX_HYDRA: personal.id,
+      },
+    })
+    expect(
+      ownStart.status,
+      ownStart.stdout + ownStart.stderr,
+    ).toBe(0)
+    const ownWorker = await personal.agent({ cwd: ownFolder })
+    await until({
+      what: 'own native prompt worker first turn',
+      check: () => ownWorker.answered === 1,
+    })
+    expect(ownWorker.received.join('\n')).toContain('Private Hydra native notes')
+    expect(ownWorker.received.join('\n')).toContain('Secret header nebula')
     const { worker } = await work.startTask({ key: 'polis-header' })
     expect(worker.received.join('\n')).toContain('Shared header instructions\nWork header quasar\n\n  Keep this indentation.\nwork header quasar')
     expect(worker.received.join('\n')).not.toContain('Secret header nebula')
@@ -2685,5 +2870,288 @@ test(
       },
     })).rejects.toMatchObject({ code: 'CONFLICT' })
     expect(attempts).toBe(3)
+  },
+)
+
+test(
+  'native cross-Hydra controls require every target memory capability',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    await target.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          poleis: {
+            shared: { readers: ['*'] },
+            'control-private': { readers: [target.id] },
+          },
+        }),
+      ],
+    })
+    await target.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'control-private',
+        '--read-poleis',
+        'shared,control-private',
+      ],
+    })
+    const folder = target.folder({ name: 'capability-target' })
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'capability-target',
+        '--title',
+        'Capability target',
+        '--folder',
+        folder,
+        '--brief',
+        'Original capability brief',
+      ],
+    })
+    const task = await target.task({ key: 'capability-target' })
+    const env = {
+      ...process.env,
+      PNYX_ACTOR: 'hydra',
+      PNYX_HYDRA: caller.id,
+      PNYX_TASK: undefined,
+    }
+    const controls = [
+      [
+        'task',
+        'create',
+        '--title',
+        'Unauthorized task',
+        '--brief',
+        'Unauthorized brief',
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'start',
+        task.id,
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'continue',
+        task.id,
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'reply',
+        task.id,
+        '--text',
+        'Private worker query',
+      ],
+      [
+        'task',
+        'attach',
+        task.id,
+        '--session',
+        'unavailable-session',
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'brief',
+        task.id,
+        '--brief',
+        'Unauthorized brief',
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'status',
+        task.id,
+        'working',
+        '--note',
+        'Unauthorized status',
+      ],
+      [
+        'task',
+        'stop',
+        task.id,
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'tools',
+        task.id,
+        '--grant',
+        'browser',
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        caller.id,
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'agent',
+        task.id,
+        'mode',
+        'bypass',
+      ],
+      [
+        'hydra',
+        'set',
+        '--name',
+        'Unauthorized name',
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'settings',
+        'set',
+        '--json',
+        '{"logDays":15}',
+        '--reason',
+        'Test cross-Hydra capability',
+      ],
+      [
+        'task',
+        'brief',
+        task.id,
+        '--brief',
+        'Spoofed actor brief',
+        '--actor',
+        'cli',
+      ],
+    ]
+
+    for (const args of controls) {
+      const refused = await pnyxAxi({
+        args: [
+          ...args,
+          `--hydra=${target.id}`,
+        ],
+        env,
+      })
+      expect(
+        parsed(refused),
+        args.join(' '),
+      ).toMatchObject({
+        code: 'NOT_FOUND',
+        error: 'not found',
+      })
+    }
+
+    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
+    const namedCreate = await pnyxAxi({
+      args: [
+        'hydra',
+        'create',
+        target.id,
+        '--name',
+        'Unauthorized target',
+      ],
+      env,
+    })
+    expect(parsed(namedCreate)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'not found',
+    })
+    await caller.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'move-capability',
+        '--title',
+        'Move capability',
+        '--brief',
+        'Original caller task',
+      ],
+    })
+    const moved = await pnyxAxi({
+      args: [
+        'task',
+        'move',
+        'move-capability',
+        '--to-hydra',
+        target.id,
+        '--reason',
+        'Test destination capability',
+      ],
+      env,
+    })
+    expect(parsed(moved)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'not found',
+    })
+    expect((await caller.task({ key: 'move-capability' })).title).toBe('Move capability')
+
+    expect((await target.task({ key: task.id })).brief).toBe('Original capability brief')
+    const missing = await pnyxAxi({
+      args: [
+        'task',
+        'start',
+        task.id,
+        '--hydra',
+        'missing-control-hydra',
+        '--reason',
+        'Test missing target',
+      ],
+      env,
+    })
+    expect(parsed(missing)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'not found',
+    })
+    const visibleTask = await pnyxAxi({
+      args: [
+        'task',
+        '--hydra',
+        target.id,
+        'show',
+        task.id,
+      ],
+      env,
+    })
+    expect(visibleTask.status).toBe(0)
+    expect(parsed(visibleTask).task.id).toBe(task.id)
+    await target.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'shared',
+      ],
+    })
+    const extraReads = await pnyxAxi({
+      args: [
+        'task',
+        'start',
+        task.id,
+        '--hydra',
+        target.id,
+        '--reason',
+        'Test target extra reads',
+      ],
+      env,
+    })
+    expect(parsed(extraReads)).toMatchObject({
+      code: 'NOT_FOUND',
+      error: 'not found',
+    })
   },
 )
