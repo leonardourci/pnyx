@@ -316,7 +316,10 @@ function mergeQuestion({
   }
 
   context.push(`Checks: ${link.checks ?? 'not read yet'}. Merge lands this work; Hold keeps the pull request open.`)
-  const cardTitle = card.title.replace(/[\\\[\]]/g, '\\$&')
+  const cardTitle = card.title.replace(
+    /[\\[\]]/g,
+    '\\$&',
+  )
   context.push(`[${cardTitle}](pnyx-task:${encodeURIComponent(card.id)})`)
 
   return {

@@ -183,7 +183,10 @@ function validateOwnerQuestion({
 }): void {
   const missing: string[] = []
 
-  const decision = question.slice(0, -1).trim()
+  const decision = question.slice(
+    0,
+    -1,
+  ).trim()
 
   if (!question.endsWith('?') || !decision || /[?\r\n]/.test(decision)) {
     missing.push('--question with one plain decision ending in ?')
