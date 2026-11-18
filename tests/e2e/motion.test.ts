@@ -598,15 +598,26 @@ test(
             && await card.evaluate(element => getComputedStyle(element).transform === 'none'),
         })
         await until({
-          what: 'the open card stops moving',
+          what: 'the open card and its column stop moving',
           check: async () => {
-            const first = JSON.stringify(await box())
-            await new Promise(resolve => setTimeout(
-              resolve,
-              300,
-            ))
+            const position = async () => JSON.stringify([
+              await box(),
+              await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop),
+            ])
+            const first = await position()
 
-            return first === JSON.stringify(await box())
+            for (let check = 0; check < 3; check++) {
+              await new Promise(resolve => setTimeout(
+                resolve,
+                300,
+              ))
+
+              if (first !== await position()) {
+                return false
+              }
+            }
+
+            return true
           },
         })
         await foldBack({ expanded: true })
