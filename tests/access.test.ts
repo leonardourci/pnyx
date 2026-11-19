@@ -800,3 +800,50 @@ test(
     ])
   },
 )
+
+test(
+  'the page Hydra list excludes a removed Hydra and retains the caller',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const proposed = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })
+    await caller.owner({
+      args: [
+        'approval',
+        'confirm',
+        proposed.token,
+        '--confirm',
+        proposed.token,
+      ],
+    })
+    const url = `http://127.0.0.1:${pnyx.port()}/zero`
+    const cookie = `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`
+    await zeroReady({
+      url: `${url}/`,
+      cookie,
+    })
+    const result = await until({
+      what: 'removed Hydra disappears from page query',
+      check: async () => {
+        const result = await readRows<{ id: string }[]>({
+          url,
+          cookie,
+          query: ({ zero }) => zero.materialize(queries.hydras.list()),
+        })
+
+        const callerPresent = result.rows.some(hydra => hydra.id === caller.id)
+        const targetAbsent = !result.rows.some(hydra => hydra.id === target.id)
+
+        return callerPresent && targetAbsent && result.rows
+      },
+    })
+    expect(result).toContainEqual(expect.objectContaining({ id: caller.id }))
+    expect(result).not.toContainEqual(expect.objectContaining({ id: target.id }))
+  },
+)

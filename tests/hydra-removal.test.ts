@@ -1,3 +1,8 @@
+import { hydraDir } from '#app/home-migration.ts'
+import { once } from 'node:events'
+import { hydraRemoval, infoPath } from '#app/server-state.ts'
+import { withWriter } from '#app/writer.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { spawn } from 'node:child_process'
 import { trackChildren } from '#workers/children.ts'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -140,6 +145,48 @@ test(
         'task',
         'create',
         '--key',
+        'moved',
+        '--title',
+        'Moved',
+        '--project',
+        folder,
+      ],
+    })
+    const movedCopy = (await target.owner({
+      args: [
+        'task',
+        'start',
+        'moved',
+      ],
+    })).agent.folder as string
+    await target.owner({
+      args: [
+        'task',
+        'stop',
+        'moved',
+      ],
+    })
+    await target.owner({
+      args: [
+        'task',
+        'move',
+        'moved',
+        '--to-hydra',
+        shared.id,
+      ],
+    })
+    writeFileSync(
+      join(
+        movedCopy,
+        'moved.txt',
+      ),
+      'surviving work',
+    )
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
         'pooled',
         '--title',
         'Pooled',
@@ -199,6 +246,21 @@ test(
       'keep this work',
     )
 
+    writeFileSync(
+      join(
+        movedCopy,
+        'moved.txt',
+      ),
+      'surviving work',
+    )
+    writeFileSync(
+      join(
+        pooled,
+        'dirty-pool.txt',
+      ),
+      'unrecorded work',
+    )
+
     const session = await caller.chat({ text: 'remove the other Hydra' })
     const proposal = await caller.as({ session }).run({
       args: [
@@ -211,6 +273,7 @@ test(
     expect(proposal.action).toContain('Tasks: 2')
     expect(proposal.action).toContain('Copies: 2.')
     expect(proposal.action).toContain(copy)
+    expect(proposal.action).toContain(`${pooled} (unrecorded checkout; landing unknown)`)
     expect(proposal.action).toContain('https://github.com/o/shop/pull/999')
     expect(existsSync(copy)).toBe(true)
     expect((await caller.as({ session }).refused({
@@ -234,6 +297,13 @@ test(
     expect(existsSync(copy)).toBe(false)
     expect(existsSync(pooled)).toBe(false)
     expect(existsSync(neighbor)).toBe(true)
+    expect(readFileSync(
+      join(
+        movedCopy,
+        'moved.txt',
+      ),
+      'utf8',
+    )).toBe('surviving work')
     expect(readFileSync(
       join(
         neighbor,
@@ -260,6 +330,14 @@ test(
     expect(worktrees).not.toContain(pooled)
     expect(worktrees).toContain(neighbor)
     expect(worker.closed).toBe(true)
+    const advertised = JSON.parse(readFileSync(
+      infoPath(),
+      'utf8',
+    )).url
+    const response = await fetch(advertised)
+    expect(response.status).toBe(200)
+    expect(new URL(response.url).pathname).not.toBe(`/hydra/${target.id}/`)
+
     expect((await caller.owner({
       args: [
         'hydra',
@@ -276,7 +354,7 @@ test(
     expect(rows({
       text: 'select data from events where hydra_id = $1 and type = \'task.created\'',
       values: [target.id],
-    })).toHaveLength(2)
+    })).toHaveLength(3)
     expect(rows<{ config: { removed: boolean } }>({
       text: 'select config from hydras where id = $1',
       values: [target.id],
@@ -426,7 +504,7 @@ test(
       task: 'worker',
     })
     children.spawned({ child: helper })
-    await children.stopAll()
+    await trackChildren({ hydraId: hydra.id }).stopAll()
     await until({
       what: 'worker and helper tools to exit',
       check: () => worker.exitCode !== null || worker.signalCode !== null,
@@ -584,5 +662,355 @@ test(
         'list',
       ],
     })).hydras.some((hydra: { id: string }) => hydra.id === target.id)).toBe(false)
+  },
+)
+
+test(
+  'filesystem edits after the preview require fresh approval and keep the copy',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const folder = projectFolder({
+      hydra: target,
+      name: 'changed-work',
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+        '--landing',
+        'branch',
+      ],
+    })
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'changed',
+        '--title',
+        'Changed',
+        '--project',
+        folder,
+      ],
+    })
+    const copy = (await target.owner({
+      args: [
+        'task',
+        'start',
+        'changed',
+      ],
+    })).agent.folder as string
+    const proposed = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })
+    writeFileSync(
+      join(
+        copy,
+        'new-work.txt',
+      ),
+      'keep new work',
+    )
+    const refused = await caller.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        proposed.token,
+        '--confirm',
+        proposed.token,
+      ],
+    })
+    expect(refused.code).toBe('CONFLICT')
+    expect(refused.error).toContain('Checkout work changed')
+    expect(readFileSync(
+      join(
+        copy,
+        'new-work.txt',
+      ),
+      'utf8',
+    )).toBe('keep new work')
+    await pnyx.restart()
+    expect(existsSync(copy)).toBe(true)
+    expect((await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })).confirmation).toBe('needed')
+  },
+)
+
+test(
+  'command copies cannot contain another registered source project',
+  async () => {
+    const target = await pnyx.hydra()
+    const folder = projectFolder({
+      hydra: target,
+      name: 'command-project',
+    })
+    const nested = projectFolder({
+      hydra: target,
+      name: 'copy-container/source',
+    })
+    const root = join(
+      nested,
+      '..',
+    )
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        nested,
+      ],
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+      ],
+    })
+    await target.owner({
+      args: [
+        'project',
+        'set',
+        folder,
+        '--copy',
+        `printf '%s\n' '${root}'`,
+      ],
+    })
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'unsafe',
+        '--title',
+        'Unsafe copy',
+        '--project',
+        folder,
+      ],
+    })
+    const refusal = await target.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'unsafe',
+      ],
+    })
+    expect(refusal.code).toBe('CONFLICT')
+    expect(refusal.error).toContain('contains a project')
+    expect(readFileSync(
+      join(
+        nested,
+        'source.txt',
+      ),
+      'utf8',
+    )).toBe('base')
+  },
+)
+
+test(
+  'an applying removal cannot be dismissed',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const proposed = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })
+    withWriter({
+      hydraId: caller.id,
+      fn: ({ writer }) => {
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: {
+            actor: 'web',
+            at: new Date().toISOString(),
+          },
+          cardId: '$hydra',
+          change: {
+            type: 'hydra.dispatch-progress',
+            data: {
+              token: proposed.token,
+              status: 'applying',
+            },
+          },
+        })
+
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      },
+    })
+    const refusal = await caller.ownerRefused({
+      args: [
+        'approval',
+        'dismiss',
+        proposed.token,
+      ],
+    })
+    expect(refusal.code).toBe('CONFLICT')
+    expect(refusal.error).toContain('already applying')
+  },
+)
+
+test(
+  'daemon shutdown joins a permanent close while its tools stop',
+  async ({ onTestFinished }) => {
+    const target = await pnyx.hydra()
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        "process.on('SIGTERM', () => process.send('stopping')); process.send('ready'); setInterval(() => {}, 1000)",
+      ],
+      {
+        detached: true,
+        stdio: [
+          'ignore',
+          'ignore',
+          'ignore',
+          'ipc',
+        ],
+      },
+    )
+    onTestFinished(() => {
+      child.kill('SIGKILL')
+    })
+    await once(
+      child,
+      'message',
+    )
+    trackChildren({ hydraId: target.id }).spawned({ child })
+    const stopping = once(
+      child,
+      'message',
+    )
+    const permanent = hydraRemoval.close!({ hydraId: target.id })
+    await stopping
+    await pnyx.restart({
+      whileStopped: () => {
+        expect(child.exitCode !== null || child.signalCode !== null).toBe(true)
+      },
+    })
+    await permanent
+  },
+)
+
+test(
+  'failed tool shutdown keeps copies and a retry stops persisted tools before deleting',
+  async ({ onTestFinished }) => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const folder = projectFolder({
+      hydra: target,
+      name: 'stop-retry',
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+        '--landing',
+        'branch',
+      ],
+    })
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'retry',
+        '--title',
+        'Retry',
+        '--project',
+        folder,
+      ],
+    })
+    const copy = (await target.owner({
+      args: [
+        'task',
+        'start',
+        'retry',
+      ],
+    })).agent.folder as string
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        'setInterval(() => {}, 1000)',
+      ],
+      {
+        detached: true,
+        stdio: 'ignore',
+      },
+    )
+    onTestFinished(() => {
+      child.kill('SIGKILL')
+    })
+    trackChildren({ hydraId: target.id }).spawned({ child })
+    const path = join(
+      hydraDir({ hydraId: target.id }),
+      'children.json',
+    )
+    const recorded = readFileSync(
+      path,
+      'utf8',
+    )
+    writeFileSync(
+      path,
+      'invalid',
+    )
+    const proposed = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })
+    const refused = await caller.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        proposed.token,
+        '--confirm',
+        proposed.token,
+      ],
+    })
+    expect(refused.error).toContain('Cannot verify recorded processes')
+    expect(existsSync(copy)).toBe(true)
+    expect(child.exitCode).toBe(null)
+    writeFileSync(
+      path,
+      recorded,
+    )
+    const retry = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })
+    await caller.owner({
+      args: [
+        'approval',
+        'confirm',
+        retry.token,
+        '--confirm',
+        retry.token,
+      ],
+    })
+    expect(existsSync(copy)).toBe(false)
+    expect(child.exitCode !== null || child.signalCode !== null).toBe(true)
   },
 )
