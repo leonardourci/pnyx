@@ -1,7 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import type { ServerMessage } from '#app/server-transport.ts'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, type Pnyx } from '../setup/pnyx.ts'
 
@@ -476,8 +475,27 @@ test(
         }),
       ],
     })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'resize',
+        '--width',
+        '600',
+      ],
+    })
     const held: (() => string)[] = []
     const replies = new Map<string, string | undefined>()
+
+    function releaseNextSave() {
+      const release = held.shift()
+
+      if (!release) {
+        throw new Error('Expected a held settings or view save')
+      }
+
+      return release()
+    }
+
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -490,14 +508,29 @@ test(
           server.onMessage(
             // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
             message => {
-              const frame: ServerMessage = JSON.parse(String(message))
+              const frame: unknown = JSON.parse(String(message))
               socket.send(message)
-              const commandReply = frame.type === 'receipt' || frame.type === 'error'
 
-              if (commandReply && frame.id && replies.has(frame.id)) {
+              if (!frame || typeof frame !== 'object') {
+                return
+              }
+
+              const trackedReply = 'id' in frame && typeof frame.id === 'string' && replies.has(frame.id)
+
+              if (!trackedReply || !('type' in frame)) {
+                return
+              }
+
+              if (frame.type === 'receipt') {
                 replies.set(
                   frame.id,
-                  frame.type === 'error' ? frame.code : 'receipt',
+                  'receipt',
+                )
+              }
+              if (frame.type === 'error' && 'code' in frame && typeof frame.code === 'string') {
+                replies.set(
+                  frame.id,
+                  frame.code,
                 )
               }
             },
@@ -505,24 +538,28 @@ test(
           socket.onMessage(
             // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
             message => {
-              const frame = JSON.parse(String(message))
+              const frame: unknown = JSON.parse(String(message))
+              const settingsCommand = frame && typeof frame === 'object' && 'name' in frame
+                && (frame.name === 'settings' || frame.name === 'view')
+              const settingsWrite = settingsCommand && 'args' in frame && Array.isArray(frame.args)
+                && frame.args[0] === 'set'
 
-              const settingsWrite = frame.name === 'settings' || frame.name === 'view'
-
-              if (settingsWrite && frame.args?.[0] === 'set') {
-                const id: string = frame.id
-                replies.set(
-                  id,
-                  undefined,
-                )
-                held.push(() => {
-                  server.send(message)
-
-                  return id
-                })
-              } else {
+              if (!settingsWrite || !('id' in frame) || typeof frame.id !== 'string') {
                 server.send(message)
+
+                return
               }
+
+              const id = frame.id
+              replies.set(
+                id,
+                undefined,
+              )
+              held.push(() => {
+                server.send(message)
+
+                return id
+              })
             },
           )
         },
@@ -571,13 +608,8 @@ test(
       },
     ).click()
     await draft.fill('beta')
-    const saveAlpha = held.shift()
-
-    if (!saveAlpha) {
-      throw new Error('Expected a pending creation for alpha')
-    }
-
-    saveAlpha()
+    const alphaSaveId = releaseNextSave()
+    await expect.poll(() => replies.get(alphaSaveId)).toBe('receipt')
     await expect.poll(async () => (await hydra.owner({
       args: [
         'settings',
@@ -621,23 +653,11 @@ test(
       },
     )
     expect(await remainingReader.isVisible()).toBe(true)
-    const removeReader = held.shift()
-
-    if (!removeReader) {
-      throw new Error('Expected a pending reader removal')
-    }
-
-    const removalId = removeReader()
+    const removalId = releaseNextSave()
     await expect.poll(() => replies.get(removalId)).toBe('REVISION_CONFLICT')
     await page.getByText(/revision/i).waitFor()
     await expect.poll(() => held.length).toBe(1)
-    const removeQueuedReader = held.shift()
-
-    if (!removeQueuedReader) {
-      throw new Error('Expected a queued reader removal')
-    }
-
-    const queuedRemovalId = removeQueuedReader()
+    const queuedRemovalId = releaseNextSave()
     await expect.poll(() => replies.get(queuedRemovalId)).toBeDefined()
     await remainingReader.waitFor({ state: 'hidden' })
     expect((await hydra.owner({
@@ -660,13 +680,7 @@ test(
         JSON.stringify({ poleis: { concurrent: { readers: [other.id] } } }),
       ],
     })
-    const createConcurrent = held.shift()
-
-    if (!createConcurrent) {
-      throw new Error('Expected a pending creation for concurrent')
-    }
-
-    const concurrentCreationId = createConcurrent()
+    const concurrentCreationId = releaseNextSave()
     await expect.poll(() => replies.get(concurrentCreationId)).toBeDefined()
     const concurrentReader = page.getByRole(
       'button',
@@ -698,17 +712,12 @@ test(
         exact: true,
       },
     )
+    await expect.poll(() => chatWidth.inputValue()).toBe('600')
     await chatWidth.fill('640')
     await chatWidth.press('Enter')
     await expect.poll(() => held.length).toBe(1)
-    const saveWidth = held.shift()
-
-    if (!saveWidth) {
-      throw new Error('Expected a pending chat width change')
-    }
-
     await concurrentReader.click()
-    expect(await concurrentReader.isVisible()).toBe(false)
+    await concurrentReader.waitFor({ state: 'hidden' })
 
     // A resize from another client invalidates only the Hydra view revision.
     await hydra.owner({
@@ -719,16 +728,10 @@ test(
         '560',
       ],
     })
-    const widthSaveId = saveWidth()
+    const widthSaveId = releaseNextSave()
     await expect.poll(() => replies.get(widthSaveId)).toBe('REVISION_CONFLICT')
     await expect.poll(() => held.length).toBe(1)
-    const saveConcurrentReader = held.shift()
-
-    if (!saveConcurrentReader) {
-      throw new Error('Expected a reader removal queued behind the width change')
-    }
-
-    const readerSaveId = saveConcurrentReader()
+    const readerSaveId = releaseNextSave()
     await expect.poll(() => replies.get(readerSaveId)).toBe('receipt')
     expect((await hydra.owner({
       args: [
