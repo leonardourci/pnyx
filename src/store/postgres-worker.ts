@@ -125,8 +125,8 @@ async function requireSchema({
       await client.query(`create index events_card_history on events (hydra_id, card_id, seq);
         create index events_type_history on events (hydra_id, type, seq)`)
 
-      // The page reads no events, and Hydra's chat reads the actions within the time its page spans.
       await client.query(ADD_HYDRA_REMOVAL)
+      // The page reads no events, and Hydra's chat reads the actions within the time its page spans.
       await client.query(`create index events_at on events (hydra_id, at);
         ${PAGE_PUBLICATION.replace(
           'create publication pnyx_page for table',
