@@ -3347,25 +3347,24 @@ test(
         'Second root',
       ]) {
         const id = (await hydra.task({ key: title })).id
-        const family = () => workspace.locator(`[data-family="${id}"]`)
-        const toggle = () => family().getByRole(
+        const family = workspace.locator(`[data-family="${id}"]`)
+        const toggle = family.getByRole(
           'button',
           {
             name: `Sub-tasks of ${title}`,
             exact: true,
           },
         )
-        await toggle().hover()
-        await restingBox({ target: toggle() })
-        await toggle().click()
+        await toggle.hover()
+        await restingBox({ target: toggle })
+        await toggle.click()
+        const fold = family.locator('[data-fold-open]')
         await until({
           what: `the sub-task fold of ${title} finishes opening`,
           check: async () => {
-            if (await toggle().getAttribute('aria-expanded') !== 'true') {
+            if (await toggle.getAttribute('aria-expanded') !== 'true') {
               return false
             }
-
-            const fold = family().locator('[data-fold-open]')
 
             // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched element.
             return fold.evaluate(node => node.getAttribute('data-fold-open') === 'true' && node.clientHeight >= node.scrollHeight)
@@ -3456,7 +3455,7 @@ test(
               // eslint-disable-next-line pnyx/object-params -- Playwright supplies the element and pointer position.
               (
                 node,
-                y,
+                pointer,
               ) => {
                 const family = node.closest<HTMLElement>('[data-family]')
 
@@ -3465,9 +3464,14 @@ test(
                 }
 
                 const box = node.getBoundingClientRect()
-                family.style.translate = `0 ${y - box.y - box.height / 2}px`
+                const x = pointer.x - box.x - box.width / 2
+                const y = pointer.y - box.y - box.height / 2
+                family.style.translate = `${x}px ${y}px`
               },
-              end.y + end.height / 2,
+              {
+                x: end.x + end.width / 2,
+                y: end.y + end.height / 2,
+              },
             )
             await until({
               what: 'the first root is under the stationary pointer',
