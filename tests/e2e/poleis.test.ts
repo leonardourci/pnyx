@@ -305,6 +305,7 @@ test(
     await studioOption.click()
     await expect.poll(() => held.length).toBe(1)
     expect(await projectPolis.innerText()).toContain('studio')
+    expect(await projectRow.getByRole('status').isVisible()).toBe(true)
     expect((await hydra.owner({
       args: [
         'project',
@@ -326,13 +327,13 @@ test(
     }
 
     saveProject()
-    await expect.poll(async () => (await hydra.owner({
+    await projectRow.getByRole('status').waitFor({ state: 'hidden' })
+    expect((await hydra.owner({
       args: [
         'project',
         'list',
       ],
     })).projects[0].polis).toBe('studio')
-    await projectRow.getByRole('status').waitFor({ state: 'hidden' })
     expect(await projectRow.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       (
@@ -445,12 +446,28 @@ test(
         'show',
       ],
     })).settings.poleis.studio.readers).toEqual([])
-    await expect.poll(async () => (await hydra.owner({
+    const unreadable = await hydra.owner({
       args: [
         'project',
         'list',
       ],
-    })).projects).toBe('none: no projects attached')
+    })
+    expect(unreadable.projects).toEqual([
+      expect.objectContaining({
+        path: folder,
+        state: 'attached',
+      }),
+    ])
+    expect(unreadable.projects[0]).not.toHaveProperty('polis')
+    expect((await hydra.ownerRefused({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        folder,
+      ],
+    })).code).toBe('NOT_FOUND')
   },
 )
 
