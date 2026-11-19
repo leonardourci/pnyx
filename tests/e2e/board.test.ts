@@ -1,4 +1,4 @@
-import type { Page } from 'playwright-core'
+import type { Locator, Page } from 'playwright-core'
 import { setTimeout as delay } from 'node:timers/promises'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -3565,6 +3565,28 @@ test(
         await card({ title: 'Kid one' }).waitFor()
       }
 
+      // The box of an element that has stopped moving: read the same twice in a row, as hover() waits for.
+      const restingBox = ({ target }: { target: Locator }) => {
+        let previous = ''
+
+        return until({
+          what: 'the element to rest',
+          check: async () => {
+            const box = await target.boundingBox()
+            const read = JSON.stringify(box)
+            const moved = read !== previous
+
+            previous = read
+
+            if (!box || moved) {
+              return undefined
+            }
+
+            return box
+          },
+        })
+      }
+
       const shiftDrag = async ({
         source,
         point,
@@ -3579,7 +3601,12 @@ test(
         armed?: ReturnType<typeof column>
         reason?: string
       }) => {
-        await card({ title: source }).hover()
+        // hover() first scrolls a sub-task card it reads as clipped to the axis end, which moves the Hydra off screen.
+        const held = await restingBox({ target: card({ title: source }) })
+        await page.mouse.move(
+          held.x + held.width / 2,
+          held.y + held.height / 2,
+        )
         const handle = page.getByRole(
           'button',
           {
@@ -3587,9 +3614,8 @@ test(
             exact: true,
           },
         )
-        await handle.hover()
+        const start = await restingBox({ target: handle })
         const end = await point()
-        const start = (await handle.boundingBox())!
         await page.mouse.move(
           start.x + start.width / 2,
           start.y + start.height / 2,
