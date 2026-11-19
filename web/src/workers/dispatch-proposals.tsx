@@ -104,7 +104,11 @@ export function DispatchProposals({
         <strong>{proposal.summary}</strong>
         <p className="muted">{note}</p>
         {proposal.error && <p role="alert">{proposal.error}</p>}
-        {proposal.status === 'applying' && <p role="status">Applying…</p>}
+        {proposal.status === 'applying' && (
+          <p role="status">
+            Applying… {proposal.kind === 'dispatch' && 'Dismiss hides this question without cancelling the action.'}
+          </p>
+        )}
         {proposal.kind === 'dispatch' ? (
           <ul>
             {changes.map(change => (

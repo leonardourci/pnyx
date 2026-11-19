@@ -223,6 +223,8 @@ test(
     })
     let hold = false
     const held: (() => void)[] = []
+    let heldId: string | undefined
+    let receiptForwarded = false
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: caller.id,
@@ -233,10 +235,19 @@ test(
         socket => {
           const server = socket.connectToServer()
           // eslint-disable-next-line pnyx/object-params -- Playwright supplies the frame.
+          server.onMessage(message => {
+            socket.send(message)
+
+            if (heldId && JSON.parse(String(message)).id === heldId) {
+              receiptForwarded = true
+            }
+          })
+          // eslint-disable-next-line pnyx/object-params -- Playwright supplies the frame.
           socket.onMessage(message => {
             const frame = JSON.parse(String(message))
 
             if (hold && frame.name === 'hydra' && frame.args?.[0] === 'remove') {
+              heldId = frame.id
               held.push(() => server.send(message))
             } else {
               server.send(message)
@@ -335,8 +346,14 @@ test(
       },
     ).click()
     hold = false
-    held[0]!()
-    await expect.poll(() => remove.isEnabled()).toBe(true)
+    const [release] = held
+
+    if (!release) {
+      throw new Error('The removal request was not intercepted')
+    }
+
+    release()
+    await expect.poll(() => receiptForwarded).toBe(true)
     expect(page.url()).toContain(`/hydra/${caller.id}/settings/`)
     await settings.getByRole(
       'button',
@@ -347,6 +364,7 @@ test(
     ).click()
     await settings.getByRole('alert').filter({ hasText: 'own Hydra' })
       .waitFor()
+    expect(page.url()).toContain(`/hydra/${caller.id}/settings/`)
     expect(await settings.getByRole(
       'button',
       {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -22,7 +22,7 @@ export function HydraRemoval({
   ] = useState('')
 
   const currentVisit = useRef(true)
-  useEffect(
+  useLayoutEffect(
     () => {
       currentVisit.current = true
 
@@ -32,7 +32,6 @@ export function HydraRemoval({
     },
     [],
   )
-  const pending = useRef(new Set<string>())
   const [
     pendingIds,
     setPendingIds,
@@ -49,12 +48,11 @@ export function HydraRemoval({
             aria-label={`Remove ${hydra.name}`}
             disabled={!connected || pendingIds.includes(hydra.id)}
             onClick={async () => {
-              if (pending.current.has(hydra.id)) {
-                return
-              }
-
-              pending.current.add(hydra.id)
-              setPendingIds([...pending.current])
+              setError('')
+              setPendingIds(ids => [
+                ...ids,
+                hydra.id,
+              ])
 
               try {
                 await command({
@@ -64,16 +62,18 @@ export function HydraRemoval({
                     hydra.id,
                   ],
                 })
-                setError('')
 
                 if (currentVisit.current) {
                   showConfirmation()
                 }
               } catch (error) {
-                setError(error instanceof Error ? error.message : String(error))
+                if (currentVisit.current) {
+                  setError(error instanceof Error ? error.message : String(error))
+                }
               } finally {
-                pending.current.delete(hydra.id)
-                setPendingIds([...pending.current])
+                if (currentVisit.current) {
+                  setPendingIds(ids => ids.filter(id => id !== hydra.id))
+                }
               }
             }}
           >Remove
