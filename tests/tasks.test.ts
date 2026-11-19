@@ -1401,7 +1401,7 @@ test(
       const preview = await hydra.owner({ args })
       expect(preview).toMatchObject({
         confirmation: 'needed',
-        token: expect.any(String),
+        token: expect.stringMatching(/\S/),
       })
 
       const result = await hydra.owner({

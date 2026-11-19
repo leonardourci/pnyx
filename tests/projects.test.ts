@@ -3615,7 +3615,7 @@ test(
       ],
     })
     const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
-    expect(retired?.closed).toBeDefined()
+    expect(retired).toMatchObject({ closed: { at: expect.any(String) } })
     const events = await readEvents({ hydraId: hydra.id })
     const landingEvent = events.find(event => event.id === landingReceipt.event.id)
     expect(landingEvent).toMatchObject({
