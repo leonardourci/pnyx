@@ -121,4 +121,5 @@ Rules:
 - `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
 - `e2e/motion.test.ts`: the motion off switch and reduced motion.
 - `e2e/performance.test.ts`: the large-workspace journey (see Performance journey).
+- `e2e/slow-link.test.ts`: a Hydra's large first sync loading over a slow link, on a server of its own.
 - `e2e/ui-metrics.test.ts`: page metrics written to the log files, never to Hydra events.
