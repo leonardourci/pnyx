@@ -465,8 +465,9 @@ async function commandCopy({
     .at(-1)
     ?.trim() ?? ''
 
-  const usable = isAbsolute(printed) && isFolder({ path: printed })
-    && realpathSync(printed) !== project.path
+  const path = isAbsolute(printed) && isFolder({ path: printed })
+    ? realpathSync(printed) : undefined
+  const usable = path && path !== project.path
 
   if (run.status !== 0 || !usable) {
     throw new HydraError({
@@ -478,12 +479,12 @@ async function commandCopy({
 
   protectedCopiesFolder({
     hydraId,
-    root: realpathSync(printed),
+    root: path,
     preserveSurvivors: false,
   })
 
   return {
-    path: realpathSync(printed),
+    path,
     project: project.path,
     via: 'command',
     state: 'active',

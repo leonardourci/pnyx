@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync, rmSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync, rmdirSync, readdirSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -81,12 +81,18 @@ export function protectedCopiesFolder({
     }
   }
 
-  if (!preserveSurvivors && survivors.some(path => within({
-    root: folder,
-    path,
-  }))) {
+  const overlapsSurvivor = survivors.some(path =>
+    within({
+      root: folder,
+      path,
+    }) || within({
+      root: path,
+      path: folder,
+    }))
+
+  if (!preserveSurvivors && overlapsSurvivor) {
     throw new HydraError({
-      message: `Copy contains another Hydra’s checkout: ${root}`,
+      message: `Copy overlaps another Hydra’s checkout: ${root}`,
       code: 'CONFLICT',
     })
   }
@@ -204,11 +210,16 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     root,
     folder,
     slots,
-    survivors,
   }
 }
 
-export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise<void> {
+export async function removeHydraPool({
+  hydraId,
+  verify,
+}: {
+  hydraId: string
+  verify?({ path }: { path: string }): Promise<void>
+}): Promise<void> {
   const pool = await hydraPool({ hydraId })
 
   function validateFolder() {
@@ -223,6 +234,12 @@ export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise
   }
 
   for (const slot of pool.slots) {
+    await verify?.({ path: slot.path })
+    protectedCopiesFolder({
+      hydraId,
+      root: slot.path,
+      preserveSurvivors: false,
+    })
     validateFolder()
 
     if (existsSync(slot.path) && !within({
@@ -255,42 +272,40 @@ export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise
 
   validateFolder()
 
-  function removeUnowned({ path }: { path: string }) {
+  const { survivors } = protectedCopiesFolder({ hydraId })
+
+  function removeEmptyFolders({ path }: { path: string }) {
+    const info = lstatSync(
+      path,
+      { throwIfNoEntry: false },
+    )
+
+    if (!info?.isDirectory()) {
+      return
+    }
+
     const canonical = canonicalPath({ path })
-    const containsSurvivor = pool.survivors.some(survivor => within({
-      root: canonical,
-      path: survivor,
-    }))
-    const inSurvivor = pool.survivors.some(survivor => within({
+
+    if (survivors.some(survivor => within({
       root: survivor,
       path: canonical,
-    }))
-
-    if (inSurvivor || !existsSync(path)) {
+    }))) {
       return
     }
 
-    if (containsSurvivor) {
-      for (const entry of readdirSync(path)) {
-        removeUnowned({
-          path: resolve(
-            path,
-            entry,
-          ),
-        })
-      }
-
-      return
+    for (const entry of readdirSync(path)) {
+      removeEmptyFolders({
+        path: resolve(
+          path,
+          entry,
+        ),
+      })
     }
 
-    rmSync(
-      path,
-      {
-        recursive: true,
-        force: true,
-      },
-    )
+    if (readdirSync(path).length === 0) {
+      rmdirSync(path)
+    }
   }
 
-  removeUnowned({ path: pool.root })
+  removeEmptyFolders({ path: pool.root })
 }
