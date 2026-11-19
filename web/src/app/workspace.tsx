@@ -98,7 +98,7 @@ function HydraDragName({
       data-sort-id={id}
       data-sort-kind="hydra"
       data-sort-scope="hydras"
-      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-workspace-title flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-[18ch] [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
+      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-workspace-title flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
     >{children}
     </div>
   )
