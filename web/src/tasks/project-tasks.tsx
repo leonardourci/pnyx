@@ -94,9 +94,9 @@ export function ProjectTasks({
       folds,
     ],
   )
-  const revealedFamily = reveal
-    ? rows.flat().find(family => family.ids.includes(reveal)) : undefined
-  const revealedKey = revealedFamily?.card.key
+  const revealedRow = reveal
+    ? rows.findIndex(row => row.some(family => family.ids.includes(reveal))) : -1
+  const revealedKey = rows[revealedRow]?.find(family => reveal && family.ids.includes(reveal))?.card.key
   useLayoutEffect(
     () => {
       if (revealedKey === undefined) {
@@ -119,14 +119,27 @@ export function ProjectTasks({
         horizontal: false,
       }) - column.clientTop
 
+      const bottom = top + family.offsetHeight
+      const visibleTop = column.scrollTop
+      const visibleBottom = visibleTop + column.clientHeight
+      const clippedAtTop = top < visibleTop
+      const clippedAtBottom = bottom > visibleBottom
+
+      if (clippedAtTop === clippedAtBottom) {
+        return
+      }
+
+      const fits = family.offsetHeight <= column.clientHeight
+      const alignTop = clippedAtTop === fits
       column.scrollTo({
-        top,
+        top: alignTop ? top : bottom - column.clientHeight,
         behavior: 'instant',
       })
     },
     [
       reveal,
       revealedKey,
+      revealedRow,
       width,
     ],
   )

@@ -5177,13 +5177,18 @@ test(
       y,
     )
     await page.mouse.down()
-    await page.mouse.move(
-      x + bounds.width,
-      y,
-    )
-    await page.locator('.physical-ghost').waitFor()
-    await page.keyboard.press('Escape')
-    await page.mouse.up()
+
+    try {
+      await page.mouse.move(
+        x + bounds.width,
+        y,
+      )
+      await page.locator('.physical-ghost').waitFor()
+      await page.keyboard.press('Escape')
+    } finally {
+      await page.mouse.up()
+    }
+
     await page.locator('.physical-ghost').waitFor({ state: 'detached' })
   },
 )

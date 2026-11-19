@@ -159,6 +159,10 @@ test(
         })
         await page.addInitScript(
           ({ hydra }) => {
+            if (!PerformanceObserver.supportedEntryTypes.includes('long-animation-frame')) {
+              throw new Error('The browser cannot measure long animation frames')
+            }
+
             const frames: PerformanceEntry[] = []
             // eslint-disable-next-line pnyx/object-params -- The browser owns this callback signature.
             const frameObserver = new PerformanceObserver(list => {
@@ -231,7 +235,7 @@ test(
     expect(await other.locator('.card-open').count()).toBe(1)
     expect(await other.locator('.hydra-page').count()).toBe(1)
     expect(await page.locator('*').count()).toBeLessThan(6000)
-    const load = await page.evaluate(() => {
+    const load = await page.evaluate(async () => {
       const measurement = (window as Window & {
         workspaceMeasurement?: WorkspaceMeasurement
       }).workspaceMeasurement
@@ -239,6 +243,8 @@ test(
       if (!measurement) {
         throw new Error('Workspace load measurement was not installed')
       }
+
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
       return {
         firstCard: measurement.firstCard,
@@ -265,7 +271,12 @@ test(
         exact: true,
       },
     ).elementHandle()
-    const originalBox = await visibleCard!.boundingBox()
+    const originalBox = await visibleCard.boundingBox()
+
+    if (!originalBox) {
+      throw new Error('The directly addressed Hydra has no visible task to track')
+    }
+
     const earlierProject = second.folder({ name: 'later-project' })
     mkdirSync(
       join(
@@ -275,8 +286,8 @@ test(
       { recursive: true },
     )
 
-    const anchorFrames = Promise.allSettled([
-      visibleCard!.evaluate(
+    const [positions] = await Promise.all([
+      visibleCard.evaluate(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callback signatures.
         async (
           element,
@@ -312,18 +323,18 @@ test(
           timeoutMs: PROJECT_APPEAR_TIMEOUT_MS,
         },
       ),
+      second.owner({
+        args: [
+          'project',
+          'add',
+          earlierProject,
+        ],
+      }),
     ])
-    await second.owner({
-      args: [
-        'project',
-        'add',
-        earlierProject,
-      ],
-    })
-    await other.locator(`.project-column[data-column="${earlierProject}"]`).waitFor()
-    await page.evaluate(() => new Promise(resolve => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve))
-    }))
+    expect(
+      positions.every(x => Math.abs(x - originalBox.x) < 0.5),
+      JSON.stringify(positions),
+    ).toBe(true)
     await until({
       what: 'an earlier Hydra changes width without stealing the direct address',
       check: async () => {
@@ -334,10 +345,10 @@ test(
     })
     expect(page.url()).toContain(`/hydra/${first.id}/`)
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
-    expect(await visibleCard!.evaluate(element => element.isConnected)).toBe(true)
-    const anchoredBox = await visibleCard!.boundingBox()
-    expect(anchoredBox!.y).toBeCloseTo(
-      originalBox!.y,
+    expect(await visibleCard.evaluate(element => element.isConnected)).toBe(true)
+    const anchoredBox = await visibleCard.boundingBox()
+    expect(anchoredBox?.y).toBeCloseTo(
+      originalBox.y,
       0,
     )
 
@@ -414,18 +425,6 @@ test(
       )).toBeLessThanOrEqual(MAX_TASK_COMMITS)
       expect(renders.filter(line => line.hydraId === second.id)).toEqual([])
     }
-
-    const [anchor] = await anchorFrames
-
-    if (anchor.status === 'rejected') {
-      throw anchor.reason
-    }
-
-    const positions = anchor.value
-    expect(
-      positions.every(x => Math.abs(x - originalBox!.x) < 0.5),
-      JSON.stringify(positions),
-    ).toBe(true)
 
     const fourth = workspace.getByRole(
       'button',
@@ -531,8 +530,7 @@ test(
 
     if (!inject('uiProfile')) {
       const frames = await page.evaluate(
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback signature.
-        since => {
+        async ({ since }) => {
           const measurement = (window as Window & {
             workspaceMeasurement?: WorkspaceMeasurement
           }).workspaceMeasurement
@@ -541,9 +539,11 @@ test(
             throw new Error('Workspace scroll measurement was not installed')
           }
 
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+
           return measurement.readFrames({ since })
         },
-        scrollStart,
+        { since: scrollStart },
       )
       expect(Math.max(
         0,
