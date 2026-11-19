@@ -465,11 +465,10 @@ async function commandCopy({
     .at(-1)
     ?.trim() ?? ''
 
-  const path = isAbsolute(printed) && isFolder({ path: printed })
+  const path = run.status === 0 && isAbsolute(printed) && isFolder({ path: printed })
     ? realpathSync(printed) : undefined
-  const usable = path && path !== project.path
 
-  if (run.status !== 0 || !usable) {
+  if (!path || path === project.path) {
     throw new HydraError({
       message: run.status !== 0 ? `the copy command of ${project.name} failed: ${run.stderr.trim().slice(-500)}` : `the copy command of ${project.name} must print the new folder's absolute path last, other than the project folder`,
       code: 'COPY_FAILED',

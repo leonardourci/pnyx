@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync, rmdirSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync, rmdirSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -23,6 +23,22 @@ function within({
 
 const canonicalPath = ({ path }: { path: string }) =>
   existsSync(path) ? realpathSync(path) : resolve(path)
+
+function overlaps({
+  left,
+  right,
+}: {
+  left: string
+  right: string
+}): boolean {
+  return within({
+    root: left,
+    path: right,
+  }) || within({
+    root: right,
+    path: left,
+  })
+}
 
 export function protectedCopiesFolder({
   hydraId,
@@ -81,16 +97,10 @@ export function protectedCopiesFolder({
     }
   }
 
-  const overlapsSurvivor = survivors.some(path =>
-    within({
-      root: folder,
-      path,
-    }) || within({
-      root: path,
-      path: folder,
-    }))
-
-  if (!preserveSurvivors && overlapsSurvivor) {
+  if (!preserveSurvivors && survivors.some(path => overlaps({
+    left: folder,
+    right: path,
+  }))) {
     throw new HydraError({
       message: `Copy overlaps another Hydra’s checkout: ${root}`,
       code: 'CONFLICT',
@@ -189,12 +199,9 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
         })
       }
 
-      const survives = survivors.some(survivor => within({
-        root: canonical,
-        path: survivor,
-      }) || within({
-        root: survivor,
-        path: canonical,
+      const survives = survivors.some(survivor => overlaps({
+        left: canonical,
+        right: survivor,
       }))
 
       if (insideRoot && (insideFolder || !existsSync(path)) && !survives) {
@@ -231,6 +238,8 @@ export async function removeHydraPool({
         code: 'CONFLICT',
       })
     }
+
+    return current
   }
 
   for (const slot of pool.slots) {
@@ -270,42 +279,25 @@ export async function removeHydraPool({
     }
   }
 
-  validateFolder()
+  const { survivors } = validateFolder()
+  const protectsPool = survivors.some(survivor => overlaps({
+    left: pool.folder,
+    right: survivor,
+  }))
 
-  const { survivors } = protectedCopiesFolder({ hydraId })
-
-  function removeEmptyFolders({ path }: { path: string }) {
-    const info = lstatSync(
-      path,
-      { throwIfNoEntry: false },
-    )
-
-    if (!info?.isDirectory()) {
-      return
-    }
-
-    const canonical = canonicalPath({ path })
-
-    if (survivors.some(survivor => within({
-      root: survivor,
-      path: canonical,
-    }))) {
-      return
-    }
-
-    for (const entry of readdirSync(path)) {
-      removeEmptyFolders({
-        path: resolve(
-          path,
-          entry,
-        ),
-      })
-    }
-
-    if (readdirSync(path).length === 0) {
-      rmdirSync(path)
-    }
+  if (protectsPool) {
+    return
   }
 
-  removeEmptyFolders({ path: pool.root })
+  try {
+    rmdirSync(pool.root)
+  } catch (error) {
+    const code = error instanceof Error && 'code' in error ? error.code : undefined
+    const nothingToRemove = code === 'ENOENT' || code === 'ENOTDIR'
+    const containsOtherFiles = code === 'ENOTEMPTY' || code === 'EEXIST'
+
+    if (!nothingToRemove && !containsOtherFiles) {
+      throw error
+    }
+  }
 }
