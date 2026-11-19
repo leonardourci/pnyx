@@ -3722,7 +3722,6 @@ test(
       })
       expect(await other.getAttribute('data-outdent-armed')).toBe('false')
       expect(order({ parent: family }).join()).toBe('Kid two,Kid one')
-      expect(outdents).toHaveLength(1)
 
       await shiftDrag({
         source: 'Kid one',
@@ -3734,6 +3733,8 @@ test(
         check: () => order().join() === 'Alpha root,Family root,Omega root,Kid one',
       })
       expect(order({ parent: family }).join()).toBe('Kid two')
+      // This drop's request reached the server after any the refused drop sent, so only the two real drops count.
+      expect(outdents).toHaveLength(2)
     } finally {
       await page.context().close()
     }
