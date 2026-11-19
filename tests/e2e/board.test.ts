@@ -5474,7 +5474,7 @@ test(
     await projectChip.click()
     const column = workspace.locator(`[data-column="${project}"]`)
     await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1500)
-    await expect.poll(async () => column.evaluate(
+    const distanceFromProject = () => column.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
       node => {
         const axis = node.closest<HTMLElement>('.workspace-axis')
@@ -5492,7 +5492,8 @@ test(
           axis.scrollWidth - axis.clientWidth,
         ))
       },
-    )).toBeLessThan(2)
+    )
+    await expect.poll(distanceFromProject).toBeLessThan(2)
     const axis = page.locator('.workspace-axis')
     const userScroll = await axis.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
@@ -5534,7 +5535,7 @@ test(
       .getAttribute('data-column')).toBe(project)
     expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(userScroll)
     await projectChip.dispatchEvent('click')
-    await expect.poll(() => axis.evaluate(({ scrollLeft }) => scrollLeft)).not.toBe(userScroll)
+    await expect.poll(distanceFromProject).toBeLessThan(2)
   },
 )
 
