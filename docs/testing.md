@@ -70,7 +70,7 @@ test('a reply reaches the worker once', async () => {
 })
 ```
 
-- `hydra.column({ role })` is a board column's id, `hydra.task({ key })` a task as `task show` prints it, and `hydra.startTask({ key, harness })` creates a task, starts its worker and waits for the worker's first turn.
+- `hydra.column({ role })` is a Hydra column's id, `hydra.task({ key })` a task as `task show` prints it, and `hydra.startTask({ key, harness })` creates a task, starts its worker and waits for the worker's first turn.
 - `hydra.owner({ args, input })` runs `pnyx-axi` as the owner and returns its output decoded from TOON; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` run it with the environment Pnyx gave that agent.
 - `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
@@ -110,7 +110,7 @@ Rules:
 - `settings.test.ts`: the settings every Hydra shares.
 - `storage.test.ts`: atomic writes, the seq race, restart, the legacy `events.jsonl` import and the real `serve` entry.
 - `migration.test.ts`: the migration from #378's schema at live size, and the upgrade's data check on a copy of an older schema.
-- `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
+- `tasks.test.ts`: the Hydra, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
