@@ -291,7 +291,7 @@ export function contextReportStatus({
 }: {
   note: ContextNote
   state: HydraState
-}): string {
+}): 'handled' | 'helper handling' | 'unhandled' {
   if (note.handled !== undefined) {
     return note.handled ? 'handled' : 'unhandled'
   }

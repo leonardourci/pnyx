@@ -449,6 +449,24 @@ test(
     )
     expect(report).toBeDefined()
     expect(report).not.toHaveProperty('reportStatus')
+
+    writeFileSync(
+      reportFile,
+      'Standalone result after the previous turn finished.\n',
+    )
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'report',
+        'export',
+        '--file',
+        reportFile,
+      ],
+    })
+    await until({
+      what: 'a stored result to wake Hydra on its own',
+      check: () => session.received.some(text => text.includes('result: Standalone result after the previous turn finished.')),
+    })
   },
 )
 
@@ -517,8 +535,9 @@ test(
           ],
         })
         expect(rest.through).toBeGreaterThan(Number(cursor))
-        reports.push(...rest.changes.filter((change: { actor: string }) => change.actor === 'worker:burst')
-          .map((change: { summary: string }) => change.summary))
+        const pending = rest.changes.filter((change: { actor: string }) => change.actor === 'worker:burst')
+        expect(pending).toEqual(expect.arrayContaining([expect.objectContaining({ reportStatus: 'unhandled' })]))
+        reports.push(...pending.map((change: { summary: string }) => change.summary))
         cursor = String(rest.through)
 
         if (reports.some(text => text.includes('Report 299:'))) {

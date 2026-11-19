@@ -106,11 +106,13 @@ export function wakeText({
   pick?: Parameters<typeof decisionsText>[0]['pick']
 }): string {
   const lines: string[] = []
-  const updates: string[] = []
   let overflow = false
+  let used = 0
 
   if (reasons.length) {
-    updates.push('Why you are woken:')
+    const heading = 'Why you are woken:'
+    lines.push(heading)
+    used = heading.length + 1
 
     for (const reason of reasons) {
       let line = reason
@@ -123,32 +125,35 @@ export function wakeText({
         })
       }
 
-      updates.push(sealed({ text: line }))
+      const escaped = sealed({ text: line })
+
+      // Helper batches apply their own input budget before claiming report leases.
+      if (!pick && used + escaped.length + 1 > WAKE_UPDATE_CHARS) {
+        overflow = true
+        break
+      }
+
+      lines.push(escaped)
+      used += escaped.length + 1
     }
   }
 
   if (reports.length) {
     const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
-    updates.push(`${count} arrived while you were busy.`)
+    const notice = `${count} arrived while you were busy.`
+
+    if (pick || used + notice.length + 1 <= WAKE_UPDATE_CHARS) {
+      lines.push(notice)
+      used += notice.length + 1
+    } else {
+      overflow = true
+    }
 
     if (pick) {
       for (const message of reports) {
-        updates.push(sealed({ text: hydraDelivery({ message }) }))
+        lines.push(sealed({ text: hydraDelivery({ message }) }))
       }
     }
-  }
-
-  let used = 0
-
-  for (const line of updates) {
-    // Helper batches apply their own input budget before claiming report leases.
-    if (!pick && used + line.length + 1 > WAKE_UPDATE_CHARS) {
-      overflow = true
-      break
-    }
-
-    lines.push(line)
-    used += line.length + 1
   }
 
   if (review) {

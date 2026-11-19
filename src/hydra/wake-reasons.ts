@@ -366,6 +366,14 @@ function ordinaryReasons({
   }
 
   switch (event.type) {
+    case 'task.report':
+      return reportActor({ actor: event.actor }) ? [
+        {
+          kind: 'report',
+          card: card.id,
+          detail: 'a stored result is ready in the report queue',
+        },
+      ] : []
     case 'project.refreshed':
       return event.data.state === 'needs-attention' || event.data.state === 'unknown' ? [
         {
