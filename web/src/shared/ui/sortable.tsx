@@ -637,7 +637,7 @@ export function SortableWorkspace({
   const [
     active,
     setActive,
-  ] = useState<SortItem | null>(null)
+  ] = useState<(SortItem & { pointerDrag: boolean }) | null>(null)
   useEffect(
     () => active ? trackUIDrag({
       action: active.kind,
@@ -711,22 +711,69 @@ export function SortableWorkspace({
       KEYBOARD_SENSOR_OPTIONS,
     ),
   )
-  const setModifier = useCallback(
-    ({ pressed }: { pressed: boolean }) => {
-      modifier.current = pressed
-      setShift(pressed)
+  const refreshTarget = useCallback(
+    () => {
+      detection.current = null
       const args = latestDetection.current
 
       if (args) {
         const hits = collisions({
           args,
-          nesting: pressed && itemOf({ data: args.active.data })?.kind === 'task',
+          nesting: modifier.current && itemOf({ data: args.active.data })?.kind === 'task',
         })
         const target = args.droppableContainers.find(container => container.id === hits[0]?.id)
         setOver(itemOf({ data: target?.data }) ?? null)
       }
     },
     [],
+  )
+
+  const setModifier = useCallback(
+    ({ pressed }: { pressed: boolean }) => {
+      modifier.current = pressed
+      setShift(pressed)
+      refreshTarget()
+    },
+    [refreshTarget],
+  )
+
+  useLayoutEffect(
+    () => {
+      if (active?.kind !== 'task' || !active.pointerDrag || !shift) {
+        return
+      }
+
+      // A reorder can slide a new target under a stationary pointer.
+      let pointed: Element | null | undefined
+
+      const refresh = () => {
+        frame = requestAnimationFrame(refresh)
+        const pointer = latestDetection.current?.pointerCoordinates
+
+        if (!pointer) {
+          return
+        }
+
+        const next = document.elementFromPoint(
+          pointer.x,
+          pointer.y,
+        )
+
+        if (next !== pointed) {
+          pointed = next
+          refreshTarget()
+        }
+      }
+
+      let frame = requestAnimationFrame(refresh)
+
+      return () => cancelAnimationFrame(frame)
+    },
+    [
+      active,
+      shift,
+      refreshTarget,
+    ],
   )
 
   useLayoutEffect(
@@ -884,7 +931,9 @@ export function SortableWorkspace({
     }) : size
     let grab: SortItem['grab']
 
-    if (box && activatorEvent instanceof PointerEvent) {
+    const pointerDrag = activatorEvent instanceof PointerEvent
+
+    if (box && pointerDrag) {
       const point: ReturnType<typeof grabPoint> = active.data.current?.pickup?.current
         ?? grabPoint({
           event: activatorEvent,
@@ -899,6 +948,7 @@ export function SortableWorkspace({
 
     setActive({
       ...item,
+      pointerDrag,
       grab,
       overlayStyle: {
         '--text-ui': styles?.getPropertyValue('--text-ui'),
