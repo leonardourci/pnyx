@@ -30,7 +30,7 @@ import { useHydraKeyboard } from '#web-preferences/keyboard-hydra.tsx'
 import { focusElement,KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
 import { useSaveView } from '#web-preferences/save-view.ts'
 import { useViewTheme } from '#web-preferences/view-theme.ts'
-import { useProjectIntents } from '#web-projects/project-resource.ts'
+import { useProjectIntents, useProjectsResource } from '#web-projects/project-resource.ts'
 import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -111,6 +111,8 @@ export function HydraView({
   preview,
   navigatePage,
   hydraLayout,
+  polisFilter,
+  filterPolis,
 }: {
   hydra: ReturnType<typeof useHydra>
   navigatePage: ReturnType<typeof useHydra>['navigate']
@@ -118,6 +120,8 @@ export function HydraView({
   edits: ReturnType<typeof useHydraEdits>
   preview: SortMove | null
   hydraLayout: string
+  polisFilter?: string
+  filterPolis({ polis }: { polis?: string }): void
 }) {
   const {
     state,
@@ -600,6 +604,12 @@ export function HydraView({
     width: modelWidth,
     collapsed: view.workspace.collapsed,
     loaded,
+  })
+  const projectSettings = useSharedSettings()
+  const { projects: polisProjects } = useProjectsResource({
+    command,
+    connected: connected && workspaceWindow.mounted,
+    revision: `${state.projectsRevision}:${JSON.stringify(projectSettings?.projectPoleis)}:${JSON.stringify(projectSettings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}`,
   })
   const protectedColumns = new Set(columns.filter(column =>
     viewport.protectsColumn({
@@ -1122,6 +1132,8 @@ export function HydraView({
             )}
           >
             <HydraChips
+              polisFilter={polisFilter}
+              filterPolis={filterPolis}
               hydras={edits.hydras}
               current={navigation.hydraId}
               navigate={navigate}
@@ -1323,6 +1335,14 @@ export function HydraView({
                                   <ProjectColumn
                                     key={c.id}
                                     column={c}
+                                    poleis={[
+                                      ...new Set(c.repositories.flatMap(path => {
+                                        const project = polisProjects.find(project =>
+                                          project.path === path)
+
+                                        return project?.polis ? [project.polis] : []
+                                      })),
+                                    ]}
                                     hydraId={navigation.hydraId}
                                     view={view}
                                     save={save}
