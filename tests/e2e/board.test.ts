@@ -10,6 +10,28 @@ import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const WHEEL_REST_MS = 750
 
+// The box of an element that has stopped moving: read the same twice in a row, as hover() waits for.
+const restingBox = ({ target }: { target: Locator }) => {
+  let previous = ''
+
+  return until({
+    what: 'the element to rest',
+    check: async () => {
+      const box = await target.boundingBox()
+      const read = JSON.stringify(box)
+      const moved = read !== previous
+
+      previous = read
+
+      if (!box || moved) {
+        return undefined
+      }
+
+      return box
+    },
+  })
+}
+
 let pnyx: Pnyx
 
 beforeAll(async () => {
@@ -3246,9 +3268,7 @@ test(
         )
         await handle.hover()
         const start = await handle.boundingBox()
-        const end = await to.boundingBox()
         expect(start).not.toBeNull()
-        expect(end).not.toBeNull()
         await page.mouse.move(
           start!.x + start!.width / 2,
           start!.y + start!.height / 2,
@@ -3263,9 +3283,11 @@ test(
         expect(await page.locator('.physical-ghost [data-drag-nest-hint]').count()).toBe(nestable ? 1 : 0)
         expect(await workspace.locator('[data-drag-column-hint]').count()).toBe(nestable ? 1 : 0)
         await page.keyboard.down('Shift')
+        // Lifting a family folds its sub-tasks into the ghost, so the target is measured where it rests after the lift.
+        const end = await restingBox({ target: to })
         await page.mouse.move(
-          end!.x + end!.width / 2,
-          end!.y + end!.height / 2,
+          end.x + end.width / 2,
+          end.y + end.height / 2,
           { steps: 12 },
         )
         const ghost = page.locator('.physical-ghost')
@@ -3563,28 +3585,6 @@ test(
         }
 
         await card({ title: 'Kid one' }).waitFor()
-      }
-
-      // The box of an element that has stopped moving: read the same twice in a row, as hover() waits for.
-      const restingBox = ({ target }: { target: Locator }) => {
-        let previous = ''
-
-        return until({
-          what: 'the element to rest',
-          check: async () => {
-            const box = await target.boundingBox()
-            const read = JSON.stringify(box)
-            const moved = read !== previous
-
-            previous = read
-
-            if (!box || moved) {
-              return undefined
-            }
-
-            return box
-          },
-        })
       }
 
       const shiftDrag = async ({
