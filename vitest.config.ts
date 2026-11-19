@@ -24,12 +24,13 @@ export default defineConfig({
     ],
     globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
-    // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order.
     sequence: {
       // A file's own afterAll hooks, such as stopping its server, run before the setup file deletes its scratch home.
       hooks: 'stack',
+      // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order. Files keep
+      // Vitest's order, longest first, since each runs alone in its own process, home and database.
       shuffle: {
-        files: true,
+        files: false,
         tests: true,
       },
     },
@@ -42,6 +43,11 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['tests/*.test.ts'],
+          // Each file runs a server, git and pnyx-axi processes; more files at once than half the cores starve each
+          // other of CPU. When half the cores is one worker, Vitest runs a project of group order 0 after every numbered
+          // group, so this project takes order 1 to run first.
+          sequence: { groupOrder: 1 },
+          maxWorkers: '50%',
         },
       },
       {
@@ -50,7 +56,10 @@ export default defineConfig({
           name: 'e2e',
           include: ['tests/e2e/*.test.ts'],
           exclude: ['tests/e2e/performance.test.ts'],
-          // A browser journey starts zero-cache and Chrome, which a loaded machine slows most.
+          // A browser journey runs zero-cache and Chrome beside its server. The journeys run after the integration files and on
+          // a quarter of the cores, so they starve neither those files nor each other of CPU.
+          sequence: { groupOrder: 2 },
+          maxWorkers: '25%',
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
         },
@@ -60,6 +69,7 @@ export default defineConfig({
         test: {
           name: 'performance',
           include: PERFORMANCE_JOURNEY ? ['tests/e2e/performance.test.ts'] : [],
+          sequence: { groupOrder: 3 },
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
         },
