@@ -358,8 +358,9 @@ test(
     expect(await oracleDialog.isVisible()).toBe(true)
     await oracleSearch.press('Escape')
     await oracleDialog.waitFor({ state: 'hidden' })
-    await page.locator('[data-project-polis="studio"]').first()
-      .waitFor()
+    const atlasColumn = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="Atlas"]`)
+    await atlasColumn.waitFor({ state: 'attached' })
+    expect(await atlasColumn.locator('[data-project-polis="studio"]').count()).toBe(0)
     await page.getByRole(
       'button',
       {
