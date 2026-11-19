@@ -673,10 +673,15 @@ test(
               frameCount: SAMPLE_FRAMES,
             },
           )
-          await close.click()
-          await modal.waitFor({ state: 'detached' })
-          const path = await sampling.evaluate(({ path }) => path)
-          await sampling.dispose()
+          let path: number[][]
+
+          try {
+            await close.click()
+            await modal.waitFor({ state: 'detached' })
+            path = await sampling.evaluate(({ path }) => path)
+          } finally {
+            await sampling.dispose()
+          }
           const distance = (bounds: number[]) => Math.max(...bounds.map((
             value,
             index,

@@ -311,29 +311,29 @@ test(
       { recursive: true },
     )
 
-    const [positions] = await Promise.all([
-      visibleCard.evaluate(
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callback signatures.
-        async (
-          element,
-          {
-            hydra,
-            project,
-            timeoutMs,
-            settleFrames,
-          },
-        ) => {
-          const positions = [element.getBoundingClientRect().x]
-          const selector = `[data-hydra-workspace="${CSS.escape(hydra)}"] .project-column[data-column="${CSS.escape(project)}"]`
-          const deadline = performance.now() + timeoutMs
+    const anchorSample = await visibleCard.evaluateHandle(
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callback signatures.
+      (
+        element,
+        {
+          hydra,
+          project,
+          timeoutMs,
+          settleFrames,
+        },
+      ) => {
+        const positions = [element.getBoundingClientRect().x]
+        const selector = `[data-hydra-workspace="${CSS.escape(hydra)}"] .project-column[data-column="${CSS.escape(project)}"]`
+        const deadline = performance.now() + timeoutMs
 
+        const sample = async () => {
           while (performance.now() < deadline && !document.querySelector(selector)) {
             await new Promise(requestAnimationFrame)
             positions.push(element.getBoundingClientRect().x)
           }
 
           if (!document.querySelector(selector)) {
-            throw new Error('The earlier Hydra did not render the new project column')
+            return null
           }
 
           for (let frame = 0; frame < settleFrames; frame++) {
@@ -342,22 +342,36 @@ test(
           }
 
           return positions
-        },
-        {
-          hydra: second.id,
-          project: earlierProject,
-          timeoutMs: PROJECT_APPEAR_TIMEOUT_MS,
-          settleFrames: ANCHOR_SETTLE_FRAMES,
-        },
-      ),
-      second.owner({
+        }
+
+        return { positions: sample() }
+      },
+      {
+        hydra: second.id,
+        project: earlierProject,
+        timeoutMs: PROJECT_APPEAR_TIMEOUT_MS,
+        settleFrames: ANCHOR_SETTLE_FRAMES,
+      },
+    )
+    let positions: number[] | null
+
+    try {
+      await second.owner({
         args: [
           'project',
           'add',
           earlierProject,
         ],
-      }),
-    ])
+      })
+      positions = await anchorSample.evaluate(sample => sample.positions)
+    } finally {
+      await anchorSample.dispose()
+    }
+
+    if (!positions) {
+      throw new Error('The earlier Hydra did not render the new project column')
+    }
+
     expect(
       positions.every(x => Math.abs(x - originalBox.x) < 0.5),
       JSON.stringify(positions),
