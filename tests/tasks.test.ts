@@ -1396,6 +1396,20 @@ test(
       ],
     })
     expect(beforeReminder.task.status).toMatchObject({ state: 'needs_you' })
+
+    const changeColumn = async ({ args }: { args: string[] }) => {
+      const preview = await hydra.owner({ args })
+      expect(preview.confirmation).toBe('needed')
+
+      return hydra.owner({
+        args: [
+          ...args,
+          '--confirm',
+          preview.token,
+        ],
+      })
+    }
+
     await hydra.owner({
       args: [
         'column',
@@ -1406,7 +1420,7 @@ test(
         'custom:reminder-updates',
       ],
     })
-    await hydra.owner({
+    await changeColumn({
       args: [
         'column',
         'rule',
@@ -1417,7 +1431,7 @@ test(
         'Custom reminder placement',
       ],
     })
-    await hydra.owner({
+    await changeColumn({
       args: [
         'column',
         'reorder',
@@ -1440,7 +1454,7 @@ test(
       at: new Date(Date.parse(due) + 1).toISOString(),
     })
     expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
-    await hydra.owner({
+    await changeColumn({
       args: [
         'column',
         'delete',
