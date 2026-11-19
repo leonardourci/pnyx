@@ -1,3 +1,4 @@
+import { readEvents } from '#app/event-log.ts'
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
