@@ -127,19 +127,26 @@ export function* retireableReviewQuestions({
   at: string
 }): Iterable<HydraEvent> {
   for (const card of Object.values(state.cards)) {
-    const ownerMerges = cardLanding({
-      card,
-      projects: state.projects ?? [],
-    })?.merge === 'owner'
-
-    if (ownerMerges) {
-      continue
-    }
-
-    for (const ask of openAsks({
+    const questions = openAsks({
       card,
       audience: 'owner',
-    }).filter(ask => ask.kind === 'merge')) {
+    }).filter(ask => ask.kind === 'merge')
+
+    for (const ask of questions) {
+      const ownerMerges = Object.values(state.cards).some(linked => {
+        const sharesPullRequest = linked.id === card.id
+          || linked.links.some(link => link.url === ask.url)
+
+        return sharesPullRequest && cardLanding({
+          card: linked,
+          projects: state.projects ?? [],
+        })?.merge === 'owner'
+      })
+
+      if (ownerMerges) {
+        continue
+      }
+
       const decision = hydraEvent({
         state,
         cardId: card.id,
@@ -231,48 +238,51 @@ export function reconcileAsks({
     }
   }
 
-  if (event.type !== 'card.linked' || card.status?.state === 'done' || card.outcome?.closed) {
+  if ((event.type !== 'card.linked' && event.type !== 'task.landing') || card.status?.state === 'done' || card.outcome?.closed) {
     return changes
   }
 
-  const link = event.data.after
-  const ownerMerges = cardLanding({
-    card,
-    projects: state.projects ?? [],
-  })?.merge === 'owner'
-  const ready = link && readyForReview({ link })
-  const existing = link && canonicalMergeQuestion({
-    state,
-    card,
-    url: link.url,
-  })
-  const alreadyAsked = existing && !existing.ask.closed
+  const links = event.type === 'card.linked' ? [event.data.after] : card.links
 
-  if (!ready || !ownerMerges || alreadyAsked) {
-    return changes
-  }
+  for (const link of links) {
+    const ownerMerges = cardLanding({
+      card,
+      projects: state.projects ?? [],
+    })?.merge === 'owner'
+    const ready = link && readyForReview({ link })
+    const existing = link && canonicalMergeQuestion({
+      state,
+      card,
+      url: link.url,
+    })
+    const alreadyAsked = existing && !existing.ask.closed
 
-  const asked = hydraEvent({
-    state,
-    cardId: card.id,
-    meta: {
-      id: `${event.id}:merge-question`,
-      at: event.at,
-      actor: 'pnyx',
-    },
-    change: {
-      type: 'task.asked',
-      data: mergeQuestion({
-        state,
-        card,
-        link,
-        id: `ask-${state.seq + 1}`,
-      }),
-    },
-  })
+    if (!ready || !ownerMerges || alreadyAsked) {
+      continue
+    }
 
-  if ('event' in asked) {
-    changes.push(asked.event)
+    const asked = hydraEvent({
+      state,
+      cardId: card.id,
+      meta: {
+        id: `${event.id}:${link.url}:merge-question`,
+        at: event.at,
+        actor: 'pnyx',
+      },
+      change: {
+        type: 'task.asked',
+        data: mergeQuestion({
+          state,
+          card,
+          link,
+          id: `ask-${state.seq + changes.length + 1}`,
+        }),
+      },
+    })
+
+    if ('event' in asked) {
+      changes.push(asked.event)
+    }
   }
 
   return changes

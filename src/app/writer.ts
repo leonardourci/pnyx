@@ -552,6 +552,10 @@ export function eventWriter({
           })
         }
 
+        if (event.type === 'task.landing') {
+          retireReviewQuestions({ writer })
+        }
+
         for (const declaration of operationDeclarations({
           before,
           state,

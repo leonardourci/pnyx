@@ -3594,7 +3594,7 @@ test(
         ],
       })).task.asks?.find((ask: { kind: string }) => ask.kind === 'merge'),
     })
-    await hydra.owner({
+    const landingReceipt = await hydra.owner({
       args: [
         'task',
         'landing',
@@ -3615,13 +3615,88 @@ test(
     })
     const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
     expect(retired.closed).toBeDefined()
+    expect(landingReceipt.card.column).toBe(current.task.column)
+    expect(landingReceipt.card.revision).toBe(current.task.revision)
     expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
-    expect(JSON.stringify(await hydra.owner({
+    await hydra.owner({
       args: [
         'task',
-        'updates',
+        'landing',
         'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'owner',
       ],
-    }))).toContain(url)
+    })
+    const restored = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(restored.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shared review',
+        '--key',
+        'shared-review',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'link',
+        'shared-review',
+        '--url',
+        url,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    const shared = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(shared.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'shared-review',
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    const settled = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(settled.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
   },
 )
