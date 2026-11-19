@@ -115,10 +115,11 @@ Rules:
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
-- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, a first sync over a slow link, keyboard shortcuts and the phone layout.
+- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, keyboard shortcuts and the phone layout.
 - `e2e/card-input.test.ts`: creating and starting tasks from card composers, outside-session controls and the task modal.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
 - `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
 - `e2e/motion.test.ts`: the motion off switch and reduced motion.
 - `e2e/performance.test.ts`: the large-workspace journey (see Performance journey).
+- `e2e/slow-link.test.ts`: a Hydra's large first sync loading over a slow link, on a server of its own.
 - `e2e/ui-metrics.test.ts`: page metrics written to the log files, never to Hydra events.
