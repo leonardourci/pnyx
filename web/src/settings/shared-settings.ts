@@ -10,6 +10,11 @@ interface SharedSettings {
   revision: number
 }
 
+interface SharedSettingsPatch {
+  settings: Partial<Settings>
+  revision?: number
+}
+
 const resources = new Map<string, ReturnType<typeof createShared>>()
 
 const applied = ({
@@ -24,16 +29,17 @@ const applied = ({
 })
 
 function createShared({ scope }: { scope: string }) {
-  return createSettingsResource<SharedSettings, Partial<Settings>>({
+  return createSettingsResource<SharedSettings, SharedSettingsPatch>({
     scope,
     project: ({
       state,
       patch,
     }) => state && {
       ...state,
+      revision: patch.revision ?? state.revision,
       settings: applied({
         settings: state.settings,
-        patch,
+        patch: patch.settings,
       }),
     },
     represented: ({
@@ -42,10 +48,10 @@ function createShared({ scope }: { scope: string }) {
     }) => {
       const after = applied({
         settings: state.settings,
-        patch,
+        patch: patch.settings,
       })
 
-      return Object.keys(patch).every(key => JSON.stringify(after[key as SettingKey])
+      return Object.keys(patch.settings).every(key => JSON.stringify(after[key as SettingKey])
         === JSON.stringify(state.settings[key as SettingKey]))
     },
     read: ({ receipt }) => {
@@ -125,7 +131,10 @@ export function saveSharedSettings({
       '--event-id',
       crypto.randomUUID(),
     ],
-    patch,
+    patch: {
+      settings: patch,
+      revision: expectedRevision,
+    },
     targets: Object.keys(patch),
   })
 }

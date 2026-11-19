@@ -54,7 +54,11 @@ test(
       ),
     })
     const workspaces = page.locator('[data-hydra-workspace]')
-    await page.locator(`[data-hydra-workspace="${neighbours[2].id}"]`).waitFor()
+    const initialHydras = [
+      hydra,
+      ...neighbours,
+    ]
+    await Promise.all(initialHydras.map(({ id }) => page.locator(`[data-hydra-workspace="${id}"]`).waitFor()))
     const workspaceOrder = await workspaces.evaluateAll(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       nodes => nodes.map(node => node.getAttribute('data-hydra-workspace')),
@@ -100,10 +104,28 @@ test(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       nodes => nodes.map(node => node.getAttribute('data-sort-id')),
     )).toEqual(workspaceOrder)
-    expect(await navigation.getByRole(
+    const sharedFilters = navigation.getByRole(
       'button',
-      { name: 'Filter polis shared' },
-    ).count()).toBeGreaterThan(1)
+      {
+        name: 'Filter polis shared',
+        exact: true,
+      },
+    )
+    expect(await sharedFilters.count()).toBe(2)
+    const secondSharedFilter = sharedFilters.nth(1)
+    await secondSharedFilter.press('Enter')
+    const personalWorkspace = page.locator(`[data-hydra-workspace="${personal.id}"]`)
+    await personalWorkspace.waitFor({ state: 'hidden' })
+    await navigation.getByRole(
+      'button',
+      {
+        name: 'Filter polis shared',
+        pressed: true,
+        exact: true,
+      },
+    ).first()
+      .click()
+    await personalWorkspace.waitFor()
     await page.getByRole(
       'button',
       {
@@ -434,6 +456,7 @@ test(
   async () => {
     const hydra = await pnyx.hydra()
     const other = await pnyx.hydra()
+    const third = await pnyx.hydra()
     await hydra.owner({
       args: [
         'settings',
@@ -445,6 +468,7 @@ test(
               readers: [
                 hydra.id,
                 other.id,
+                third.id,
               ],
             },
           },
@@ -452,6 +476,8 @@ test(
       ],
     })
     const held: (() => void)[] = []
+    let completed = 0
+    const requests = new Set<string>()
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -461,12 +487,25 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
         socket => {
           const server = socket.connectToServer()
+          server.onMessage(
+            // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+            message => {
+              const frame = JSON.parse(String(message))
+
+              if (requests.has(frame.id)) {
+                completed++
+              }
+
+              socket.send(message)
+            },
+          )
           socket.onMessage(
             // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
             message => {
               const frame = JSON.parse(String(message))
 
               if (frame.name === 'settings' && frame.args?.[0] === 'set') {
+                requests.add(frame.id)
                 held.push(() => server.send(message))
               } else {
                 server.send(message)
@@ -545,9 +584,22 @@ test(
         'settings',
         'set',
         '--json',
-        JSON.stringify({ poleis: { guarded: { readers: [] } } }),
+        JSON.stringify({
+          poleis: {
+            guarded: { readers: [] },
+            pushed: { readers: [] },
+          },
+        }),
       ],
     })
+    await page.locator('[aria-label="Polis pushed"]').waitFor()
+    await page.getByRole(
+      'button',
+      {
+        name: `Remove ${third.id} from guarded`,
+        exact: true,
+      },
+    ).click()
     const removeReader = held.shift()
 
     if (!removeReader) {
@@ -557,6 +609,15 @@ test(
     removeReader()
     const revisionError = page.getByText(/revision/i)
     await revisionError.waitFor()
+    await expect.poll(() => held.length).toBe(1)
+    const removeQueuedReader = held.shift()
+
+    if (!removeQueuedReader) {
+      throw new Error('Expected a queued reader removal')
+    }
+
+    removeQueuedReader()
+    await expect.poll(() => completed).toBe(3)
     expect((await hydra.owner({
       args: [
         'settings',
@@ -566,21 +627,6 @@ test(
       .toEqual([])
     expect(await draft.inputValue()).toBe('beta')
 
-    await page.reload()
-    await page.getByRole(
-      'button',
-      {
-        name: 'Settings',
-        exact: true,
-      },
-    ).click()
-    await page.getByRole(
-      'button',
-      {
-        name: '+ New polis',
-        exact: true,
-      },
-    ).click()
     await draft.fill('concurrent')
     await createPolis.click()
     await expect.poll(() => held.length).toBe(1)
@@ -599,7 +645,8 @@ test(
     }
 
     createConcurrent()
-    await revisionError.waitFor()
+    await expect.poll(() => completed).toBe(4)
+    await revisionError.last().waitFor()
     expect((await hydra.owner({
       args: [
         'settings',
