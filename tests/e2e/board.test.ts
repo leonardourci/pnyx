@@ -5274,7 +5274,7 @@ test(
     )
       .click()
     const field = frame.locator('.hydra-name-field input')
-    const renamed = 'Renamed Hydra with a name longer than its header can display in full'
+    const renamed = 'Renamed Hydra with a long workspace name'
     await field.fill(renamed)
     const nameBounds = await frame.locator('.hydra-drag-name').boundingBox()
     const editorBounds = await field.boundingBox()
