@@ -208,7 +208,7 @@ const longConversation = async ({
 // Journeys that only read a conversation share the one built for their shape; a journey that writes builds its own.
 const readConversations = new Map<string, ReturnType<typeof longConversation>>()
 
-const readOnlyConversation = (shape: Parameters<typeof longConversation>[0] = {}) => {
+const readOnlyConversation = ({ shape }: { shape: Parameters<typeof longConversation>[0] }) => {
   const key = JSON.stringify(shape)
 
   if (!readConversations.has(key)) {
@@ -227,7 +227,7 @@ test.each([
 ])(
   '$width px: older pages keep the reading position, reserve space for loading, and reach an early decision without looping',
   async ({ width }) => {
-    const hydra = await readOnlyConversation({ earlyQuestion: true })
+    const hydra = await readOnlyConversation({ shape: { earlyQuestion: true } })
 
     // The server's messages from a reply to an older-page read on wait here while holding, so the test decides when it lands.
     const olderReads = new Set<string>()
@@ -928,7 +928,7 @@ for (const input of Object.keys(UPWARD_INPUTS)) {
   test(
     `a ${input} up in a chat too short to scroll leaves the bottom and keeps the older pages it loads`,
     async () => {
-      const hydra = await readOnlyConversation({ exchanges: LONG_CHAT_EXCHANGES })
+      const hydra = await readOnlyConversation({ shape: { exchanges: LONG_CHAT_EXCHANGES } })
       const {
         page,
         reads,
