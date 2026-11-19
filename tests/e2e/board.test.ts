@@ -3350,20 +3350,37 @@ test(
 
     try {
       const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
-      await workspace.getByRole(
-        'button',
-        {
-          name: 'Sub-tasks of First root',
-          exact: true,
-        },
-      ).click()
-      await workspace.getByRole(
-        'button',
-        {
-          name: 'Sub-tasks of Second root',
-          exact: true,
-        },
-      ).click()
+
+      for (const title of [
+        'First root',
+        'Second root',
+      ]) {
+        const id = (await hydra.task({ key: title })).id
+        const family = workspace.locator(`[data-family="${id}"]`)
+        const toggle = family.getByRole(
+          'button',
+          {
+            name: `Sub-tasks of ${title}`,
+            exact: true,
+          },
+        )
+        await toggle.hover()
+        await restingBox({ target: toggle })
+        await toggle.click()
+        const fold = family.locator('[data-fold-open]')
+        await until({
+          what: `the sub-task fold of ${title} finishes opening`,
+          check: async () => {
+            if (await toggle.getAttribute('aria-expanded') !== 'true') {
+              return false
+            }
+
+            // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched element.
+            return fold.evaluate(node => node.getAttribute('data-fold-open') === 'true' && node.clientHeight >= node.scrollHeight)
+          },
+        })
+      }
+
       const card = ({ title }: { title: string }) => workspace.getByRole(
         'button',
         {
@@ -3377,14 +3394,21 @@ test(
         target,
         reason,
         nestable = true,
+        shiftBeforePickup = false,
       }: {
         source: string
         target: string
         reason?: string
         nestable?: boolean
+        shiftBeforePickup?: boolean
       }) => {
         const from = card({ title: source }), to = card({ title: target })
-        await from.hover()
+        await from.scrollIntoViewIfNeeded()
+        const held = await restingBox({ target: from })
+        await page.mouse.move(
+          held.x + held.width / 2,
+          held.y + held.height / 2,
+        )
         const handle = page.getByRole(
           'button',
           {
@@ -3392,23 +3416,30 @@ test(
             exact: true,
           },
         )
-        await handle.hover()
-        const start = await handle.boundingBox()
-        expect(start).not.toBeNull()
+        const start = await restingBox({ target: handle })
         await page.mouse.move(
-          start!.x + start!.width / 2,
-          start!.y + start!.height / 2,
+          start.x + start.width / 2,
+          start.y + start.height / 2,
         )
+
+        if (shiftBeforePickup) {
+          await page.keyboard.down('Shift')
+        }
+
         await page.mouse.down()
         await page.mouse.move(
-          start!.x + start!.width / 2 + 12,
-          start!.y + start!.height / 2,
+          start.x + start.width / 2 + 12,
+          start.y + start.height / 2,
           { steps: 3 },
         )
         await page.locator('.physical-ghost').waitFor()
         expect(await page.locator('.physical-ghost [data-drag-nest-hint]').count()).toBe(nestable ? 1 : 0)
         expect(await workspace.locator('[data-drag-column-hint]').count()).toBe(nestable ? 1 : 0)
-        await page.keyboard.down('Shift')
+
+        if (!shiftBeforePickup) {
+          await page.keyboard.down('Shift')
+        }
+
         // Lifting a family folds its sub-tasks into the ghost, so the target is measured where it rests after the lift.
         const end = await restingBox({ target: to })
         await page.mouse.move(
@@ -3426,9 +3457,63 @@ test(
           ).waitFor()
           expect(await ghost.locator('[data-drag-nest-hint]').count()).toBe(0)
           expect(await to.getAttribute('data-nest-armed')).toBe('false')
+
+          if (source === 'Loose task') {
+            // Pointer events or a Shift toggle would mask a watcher that never started.
+            await card({ title: 'First root' }).evaluate(
+              // eslint-disable-next-line pnyx/object-params -- Playwright supplies the element and pointer position.
+              (
+                node,
+                pointer,
+              ) => {
+                const family = node.closest<HTMLElement>('[data-family]')
+
+                if (!family) {
+                  throw new Error('First root is missing its task family')
+                }
+
+                const box = node.getBoundingClientRect()
+                const x = pointer.x - box.x - box.width / 2
+                const y = pointer.y - box.y - box.height / 2
+                family.style.translate = `${x}px ${y}px`
+              },
+              {
+                x: end.x + end.width / 2,
+                y: end.y + end.height / 2,
+              },
+            )
+            await until({
+              what: 'the first root is under the stationary pointer',
+              check: () => card({ title: 'First root' }).evaluate(
+                // eslint-disable-next-line pnyx/object-params -- Playwright supplies the element and serialized argument.
+                (
+                  node,
+                  point,
+                ) => node.contains(document.elementFromPoint(
+                  point.x,
+                  point.y,
+                )),
+                {
+                  x: end.x + end.width / 2,
+                  y: end.y + end.height / 2,
+                },
+              ),
+            })
+            await until({
+              what: 'the first root becomes the live nesting target',
+              check: async () => await card({ title: 'First root' }).getAttribute('data-nest-armed') === 'true',
+            })
+            expect(await ghost.locator('[data-drag-nest-refusal]').count()).toBe(0)
+            // eslint-disable-next-line pnyx/object-params -- Playwright supplies the element.
+            await card({ title: 'First root' }).evaluate(node => {
+              node.closest<HTMLElement>('[data-family]')?.style.removeProperty('translate')
+            })
+          }
+
           await page.keyboard.up('Shift')
           expect(await ghost.locator('[data-drag-nest-refusal]').count()).toBe(0)
           await page.keyboard.down('Shift')
+
           await to.hover()
           await ghost.getByText(
             reason,
@@ -3450,6 +3535,7 @@ test(
       const second = (await hydra.task({ key: 'Second root' })).id
       await drag({
         source: 'Loose task',
+        shiftBeforePickup: true,
         target: 'Existing child',
         reason: "Can't nest here: this task is already a sub-task",
       })
