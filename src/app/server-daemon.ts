@@ -1046,6 +1046,7 @@ export async function startServer({
   // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
   // claim, instead of leaving a server that holds it without serving.
   try {
+    // Holding a Hydra once imports a legacy events.jsonl, so the removal checks below read its rows.
     for (const id of hydraIds()) {
       try {
         const release = holdHydra({
@@ -1091,10 +1092,17 @@ export async function startServer({
       }
     }
 
-    const requestedConfig = hydraExists({ hydraId })
-      ? loadHydra({ hydraId }).state.config : undefined
+    const removedOrPending = ({ id }: { id: string }) => {
+      if (!hydraExists({ hydraId: id })) {
+        return false
+      }
 
-    if (requestedConfig?.removed || requestedConfig?.removing) {
+      const config = loadHydra({ hydraId: id }).state.config
+
+      return config?.removed === true || config?.removing === true
+    }
+
+    if (removedOrPending({ id: hydraId })) {
       const [activeId] = hydraIds().filter(id => !removalPending({ id }))
 
       if (!activeId) {
@@ -1109,10 +1117,7 @@ export async function startServer({
 
     named = await mount({ id: hydraId })
 
-    const defaultConfig = hydraExists({ hydraId: 'default' })
-      ? loadHydra({ hydraId: 'default' }).state.config : undefined
-
-    if (!defaultConfig?.removed && !defaultConfig?.removing) {
+    if (!removedOrPending({ id: 'default' })) {
       await mount({ id: 'default' })
     }
 
