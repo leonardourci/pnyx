@@ -129,7 +129,7 @@ test(
       ],
     })
     expect(proposal.confirmation).toBe('needed')
-    expect(proposal.action).toContain('1 tasks')
+    expect(proposal.action).toContain('Tasks: 1')
     expect(proposal.action).toContain(copy)
     expect(proposal.action).toContain('https://github.com/o/shop/pull/999')
     expect(existsSync(copy)).toBe(true)
@@ -240,6 +240,14 @@ test(
     }
 
     expect(proposal.confirmation).toBe('needed')
+    await target.owner({
+      args: ['task', 'create', '--title', 'Created after the preview'],
+    })
+    const stale = await caller.ownerRefused({
+      args: ['approval', 'confirm', proposal.token, '--confirm', proposal.token],
+    })
+    expect(stale.code).toBe('CONFLICT')
+    expect(stale.error).toContain('target changed')
     await caller.owner({
       args: [
         'approval',
@@ -279,7 +287,8 @@ test(
       },
     )
     onTestFinished(() => {
-      worker.kill('SIGKILL'); helper.kill('SIGKILL')
+      worker.kill('SIGKILL')
+      helper.kill('SIGKILL')
     })
     children.spawned({ child: worker })
     children.associate({

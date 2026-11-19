@@ -806,10 +806,14 @@ export async function mountOwnedHydra({
       }
 
       if (permanent) {
-        closed = true
-        agents.close()
+        try {
+          agents.close()
+          await agents.stopTools()
+        } finally {
+          await stop()
+        }
 
-        await agents.stopTools()
+        return
       }
 
       await stop()

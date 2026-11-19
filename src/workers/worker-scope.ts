@@ -149,10 +149,6 @@ function checkWorkerScope({
     throw workerRefusal({ message: `--actor ${declared} is refused: this worker writes as worker:${identity.task}` })
   }
 
-  if (name === 'hydra' && words[0] === 'remove') {
-    return
-  }
-
   const scope = workerScope({ name })
   const command = requestInvocation().name ?? name
 

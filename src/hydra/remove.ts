@@ -1,12 +1,12 @@
 import { requestEnv } from '#app/request-context.ts'
-import { existsSync, rmSync } from 'node:fs'
-import { join, relative, isAbsolute } from 'node:path'
+import { existsSync, realpathSync, rmSync } from 'node:fs'
+import { relative, isAbsolute, sep } from 'node:path'
 import { parse, WRITE, required, meta, type Output } from '#app/cli-support.ts'
-import { hydraIds, hydraDir } from '#app/home-migration.ts'
+import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { ownerActor } from '#app/actors.ts'
-import { proposeOwnerCommand } from '#app/confirmations.ts'
+import { approvedHydraRemoval, proposeOwnerCommand } from '#app/confirmations.ts'
 import { hydraRemoval } from '#app/server-state.ts'
 import { HydraError } from '#store/errors.ts'
 import { isManagedTask } from '#tasks/select.ts'
@@ -60,15 +60,11 @@ function removalTarget({
 
 async function removalPreview({
   id,
-  caller,
+  state,
 }: {
   id: string
-  caller: string
+  state: ReturnType<typeof removalTarget>
 }): Promise<string> {
-  const state = removalTarget({
-    id,
-    caller,
-  })
   const tasks = Object.values(state.cards).filter(card => !isManagedTask({ card }))
   const copies = tasks.flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : [])
   const unlanded: string[] = []
@@ -88,7 +84,11 @@ async function removalPreview({
 
   const prs = [...new Set(tasks.flatMap(card => card.links.filter(link => link.kind === 'github_pr' && link.state === 'open').map(link => link.url)))]
 
-  return `Remove ${state.config?.name || id}? ${tasks.length} tasks. ${copies.length} copies. Copies with unlanded work: ${unlanded.join(', ') || 'none'}. Open PRs: ${prs.join(', ') || 'none'} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
+  const name = state.config?.name ?? id
+  const unlandedPaths = unlanded.length ? unlanded.join(', ') : 'none'
+  const openPullRequests = prs.length ? prs.join(', ') : 'none'
+
+  return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${copies.length}. Copies with unlanded work: ${unlandedPaths}. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
 }
 
 export async function removeHydraCommand({ args }: { args: string[] }): Promise<Output> {
@@ -101,7 +101,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     options: WRITE,
     positionals: 2,
   })
-  const hydraId = requestEnv().PNYX_HYDRA || selectedHydra
+  const hydraId = requestEnv().PNYX_HYDRA ?? selectedHydra
   const id = required({
     value: positionals[1],
     what: 'Hydra id',
@@ -112,25 +112,28 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   })
   const actor = meta({ values })
   const approved = ownerActor({ actor: actor.actor }) && typeof values.confirm === 'string'
-    && loadHydra({ hydraId }).state.dispatchProposals?.some(proposal => proposal.token === values.confirm && proposal.kind === 'command'
-      && proposal.status === 'applying' && JSON.parse(proposal.value).name === 'hydra'
-      && JSON.parse(proposal.value).args[0] === 'remove' && JSON.parse(proposal.value).args[1] === id)
+    && approvedHydraRemoval({
+      hydraId,
+      id,
+      token: values.confirm,
+    })
 
   if (!approved) {
     return proposeOwnerCommand({
       name: 'hydra',
-      args,
+      args: ['remove', id],
       hydraId,
+      removalSeq: state.seq,
       summary: await removalPreview({
         id,
-        caller: hydraId,
+        state,
       }),
     })
   }
 
-  if (removing.has(id)) {
+  if (removing.size > 0) {
     throw new HydraError({
-      message: 'This Hydra is already being removed',
+      message: 'A Hydra is already being removed',
       code: 'CONFLICT',
     })
   }
@@ -143,18 +146,30 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   }
 
   removing.add(id)
+  let closing = false
 
   try {
-    await hydraRemoval.close({ hydraId: id })
     const cards = Object.values(state.cards)
+    const copies = cards.flatMap(card => card.copy && card.copy.state !== 'removed' && existsSync(card.copy.path)
+      ? [card.copy] : [])
 
-    for (const card of cards) {
-      const copy = card.copy
+    for (const copy of copies) {
+      const copyPath = realpathSync(copy.path)
+      const projectPath = existsSync(copy.project) ? realpathSync(copy.project) : copy.project
+      const projectFromCopy = relative(copyPath, projectPath)
 
-      if (!copy || !existsSync(copy.path)) {
-        continue
+      if (!projectFromCopy || (!isAbsolute(projectFromCopy) && projectFromCopy !== '..' && !projectFromCopy.startsWith(`..${sep}`))) {
+        throw new HydraError({
+          message: `Copy contains the project folder: ${copy.path}`,
+          code: 'CONFLICT',
+        })
       }
+    }
 
+    closing = true
+    await hydraRemoval.close({ hydraId: id })
+
+    for (const copy of copies) {
       if (copy.via === 'worktree') {
         const failure = await removeCopy({
           copy,
@@ -168,18 +183,6 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
           })
         }
       } else {
-        const within = relative(
-          copy.path,
-          copy.project,
-        )
-
-        if (!within || (!within.startsWith('..') && !isAbsolute(within))) {
-          throw new HydraError({
-            message: `Copy contains the project folder: ${copy.path}`,
-            code: 'CONFLICT',
-          })
-        }
-
         rmSync(
           copy.path,
           {
@@ -241,20 +244,12 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
         }
       },
     })
-    rmSync(
-      join(
-        hydraDir({ hydraId: id }),
-        'copies',
-      ),
-      {
-        recursive: true,
-        force: true,
-      },
-    )
-
     return { removed: id }
   } finally {
-    hydraRemoval.finished?.({ hydraId: id })
     removing.delete(id)
+
+    if (closing) {
+      hydraRemoval.finished?.({ hydraId: id })
+    }
   }
 }

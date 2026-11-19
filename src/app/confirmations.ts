@@ -49,11 +49,13 @@ function context({
   target,
   dispatch,
   memory,
+  removalSeq,
 }: {
   state: HydraState
   target: Target
   dispatch?: EffectiveDispatch
   memory?: string
+  removalSeq?: number
 }): string {
   const {
     name,
@@ -70,13 +72,15 @@ function context({
   }
 
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
+  const removalId = name === 'hydra' && args[0] === 'remove' ? args[1] : undefined
+  const removal = removalId ? removalSeq ?? loadHydra({ hydraId: removalId }).state.seq : undefined
 
   return createHash('sha256').update(JSON.stringify({
     config: name === 'hydra' || name === 'setup' || memory ? state.config : undefined,
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     memory,
-    removal: name === 'hydra' && args[0] === 'remove' ? loadHydra({ hydraId: args[1]! }).state.seq : undefined,
+    removal,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -87,16 +91,50 @@ function context({
     .digest('hex')
 }
 
+export function approvedHydraRemoval({
+  hydraId,
+  id,
+  token,
+}: {
+  hydraId: string
+  id: string
+  token: string
+}): boolean {
+  const state = loadHydra({ hydraId }).state
+  const proposal = state.dispatchProposals?.find(entry => entry.token === token)
+
+  if (state.config?.removed || proposal?.kind !== 'command' || proposal.status !== 'applying') {
+    return false
+  }
+
+  const target = JSON.parse(proposal.value) as Target
+
+  if (target.name !== 'hydra' || target.args[0] !== 'remove' || target.args[1] !== id) {
+    return false
+  }
+
+  if (context({ state, target }) !== proposal.before) {
+    throw new HydraError({
+      message: 'The target changed. Ask Hydra to propose the removal again',
+      code: 'CONFLICT',
+    })
+  }
+
+  return true
+}
+
 export function proposeOwnerCommand({
   name,
   args,
   hydraId,
   summary: requestedSummary,
+  removalSeq,
 }: {
   name: string
   args: string[]
   hydraId: string
   summary?: string
+  removalSeq?: number
 }): Output {
   const safe: string[] = []
 
@@ -151,6 +189,7 @@ export function proposeOwnerCommand({
               target,
               dispatch,
               memory,
+              removalSeq,
             }),
             value,
             summary,

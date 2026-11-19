@@ -29,6 +29,7 @@ export function HydraRemoval({
         <div key={hydra.id} className="mt-3 flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-2"><HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} /></span>
           <Button
+            aria-label={`Remove ${hydra.name}`}
             disabled={!connected}
             onClick={async () => {
               try {

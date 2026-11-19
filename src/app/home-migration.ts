@@ -330,14 +330,16 @@ export function hydraIds({
     }),
   ]
 
-  if (includeRemoved) {
-    return [...new Set(ids)].sort()
+  const sorted = [...new Set(ids)].sort()
+
+  if (includeRemoved || sorted.length === 0) {
+    return sorted
   }
 
-  const [removed] = query({ statements: [{ text: "select id from hydras where config->>'removed' = 'true'" }] })
-  const removedIds = new Set(removed?.map(row => String(row.id)))
+  const [removed] = query({ statements: [{ text: 'select id from hydras where removed' }] })
+  const removedIds = new Set(removed.map(row => String(row.id)))
 
-  return [...new Set(ids)].filter(id => !removedIds.has(id)).sort()
+  return sorted.filter(id => !removedIds.has(id))
 }
 
 export function hydraDir({

@@ -1,4 +1,3 @@
-import { loadHydra } from './store.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -14,11 +13,10 @@ import { allowedRequest, requestUrl, HYDRA_PATH, ZERO_QUERY_PATH, type RunningSe
 import { MAX_MESSAGE_BYTES, zeroCookieName } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
-import { hydraRemoval } from './server-state.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
-import { reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { hydraRemoval, reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
@@ -32,7 +30,7 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
-import { hydraExists } from './store.ts'
+import { hydraExists, loadHydra } from './store.ts'
 import { migrateSchema, query } from '#store/postgres.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
@@ -822,8 +820,12 @@ export async function startServer({
     served.delete(removedId)
     mounts.delete(removedId)
 
-    if (hydraId === removedId) {
-      hydraId = hydraIds()[0]!
+    const activeIds = hydraIds()
+
+    if (activeIds.includes(removedId)) {
+      mountAll()
+    } else if (hydraId === removedId) {
+      hydraId = activeIds[0] ?? hydraId
     }
 
     hydrasChanged()
@@ -939,6 +941,8 @@ export async function startServer({
   const close = async () => {
     const stopping = performance.now()
     closed = true
+    hydraRemoval.close = undefined
+    hydraRemoval.finished = undefined
     watcher.close()
     settingsWatcher.close()
     clearInterval(retry)
@@ -999,7 +1003,16 @@ export async function startServer({
   // claim, instead of leaving a server that holds it without serving.
   try {
     if (loadHydra({ hydraId }).state.config?.removed) {
-      hydraId = hydraIds()[0]!
+      const [activeId] = hydraIds()
+
+      if (!activeId) {
+        throw new HydraError({
+          message: 'No active Hydra is available',
+          code: 'NOT_FOUND',
+        })
+      }
+
+      hydraId = activeId
     }
 
     named = await mount({ id: hydraId })

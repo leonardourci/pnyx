@@ -594,8 +594,8 @@ export function SettingsPage({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
-  // The search the page opens with, such as a setting the Oracle sent here.
   showConfirmation(): void
+  // The search the page opens with, such as a setting the Oracle sent here.
   initialQuery?: string
   accountSetup?: AgentConfig['harness']
   hidden?: boolean
