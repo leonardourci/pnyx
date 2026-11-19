@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import { hydraPolisConfig } from '#memory/polis-policy.ts'
@@ -7,7 +7,7 @@ import type { Command } from '#web-app/connection.ts'
 import { Button, Input, Select, Switch } from '#web-shared/ui/controls.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { SettingStack } from '#web-shared/ui/setting-row.tsx'
-import { saveSharedSettings } from './shared-settings.ts'
+import { saveSharedSettings, useSharedSettingsState } from './shared-settings.ts'
 
 type Actions = {
   command: Command
@@ -86,12 +86,10 @@ export function HydraPoleis({
 }
 
 export function Poleis({
-  settings,
   hydras,
   command,
   notify,
 }: Actions & {
-  settings: Settings
   hydras: Pick<HydraSummary, 'id' | 'name'>[]
 }) {
   const [
@@ -103,16 +101,27 @@ export function Poleis({
     setCreating,
   ] = useState(false)
 
+  const draft = useRef(0)
+  const snapshot = useSharedSettingsState()
+  const settings = snapshot?.settings
+
+  if (!snapshot || !settings) {
+    return null
+  }
+
   const save = async ({
     polis,
     readers,
+    revision,
   }: {
+    revision?: number
     polis: string
     readers: string[]
   }) => {
     try {
       await saveSharedSettings({
         command,
+        revision,
         patch: { poleis: { [polis]: { readers } } },
       })
 
@@ -154,6 +163,7 @@ export function Poleis({
                     label={`Remove ${reader} from ${polis}`}
                     onClick={() => save({
                       polis,
+                      revision: snapshot.revision,
                       readers: readers.filter(id => id !== reader),
                     })}
                   />
@@ -167,6 +177,7 @@ export function Poleis({
                   options={options}
                   onChange={({ value }) => save({
                     polis,
+                    revision: snapshot.revision,
                     readers: [
                       ...readers,
                       value,
@@ -184,10 +195,12 @@ export function Poleis({
           onSubmit={async event => {
             event.preventDefault()
 
+            const attempt = ++draft.current
+
             if (await save({
               polis: name,
               readers: [],
-            })) {
+            }) && draft.current === attempt) {
               setName('')
               setCreating(false)
             }
@@ -198,7 +211,10 @@ export function Poleis({
             value={name}
             required
             pattern={String.raw`[a-z0-9][a-z0-9\-]{0,63}`}
-            onChange={event => setName(event.target.value)}
+            onChange={event => {
+              draft.current++
+              setName(event.target.value)
+            }}
           />
           <Button
             type="submit"
@@ -208,7 +224,14 @@ export function Poleis({
             )}
           >Create polis
           </Button>
-          <IconButton icon="close" label="Cancel new polis" onClick={() => setCreating(false)} />
+          <IconButton
+            icon="close"
+            label="Cancel new polis"
+            onClick={() => {
+              draft.current++
+              setCreating(false)
+            }}
+          />
         </form>
       ) : <Button onClick={() => setCreating(true)}>+ New polis</Button>}
     </SettingStack>

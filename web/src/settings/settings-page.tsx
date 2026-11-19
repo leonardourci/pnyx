@@ -385,7 +385,6 @@ export function SettingControl({
     case 'poleis':
       return (
         <Poleis
-          settings={settings}
           hydras={hydras}
           command={command}
           notify={notify}

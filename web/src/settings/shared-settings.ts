@@ -81,30 +81,37 @@ export function sharedSettings() {
   return resource
 }
 
-export function useSharedSettings(): Settings | undefined {
+export function useSharedSettingsState(): SharedSettings | undefined {
   const resource = sharedSettings()
 
   return useSyncExternalStore(
     resource.subscribe,
     resource.snapshot,
-  ).view?.settings
+  ).view ?? undefined
+}
+
+export function useSharedSettings(): Settings | undefined {
+  return useSharedSettingsState()?.settings
 }
 
 export function saveSharedSettings({
   command,
   patch,
   view,
+  revision,
 }: {
   command: Command
   patch: Partial<Settings>
+  revision?: number
   view?: {
     patch: Record<string, unknown>
     revision: number
   }
 }) {
-  const revisionGuard = view ? [
+  const expectedRevision = view?.revision ?? revision
+  const revisionGuard = expectedRevision !== undefined ? [
     '--if-revision',
-    String(view.revision),
+    String(expectedRevision),
   ] : []
 
   return sharedSettings().write({
