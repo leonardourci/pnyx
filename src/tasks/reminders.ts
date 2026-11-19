@@ -154,7 +154,9 @@ export function reminderRepeat({
 }
 
 export function clearReminder({ card }: { card: Card }) {
-  if (card.status?.id === card.reminder?.dueEvent) {
+  const declaration = card.reminder?.declaration ?? card.reminder?.dueEvent
+
+  if (card.status?.id === declaration) {
     if (card.reminder?.resume) {
       card.status = card.reminder.resume
     } else {
@@ -281,7 +283,11 @@ export function applyReminder({
       return true
     }
 
-    if (card.status && card.status.id !== card.reminder.dueEvent) {
+    if (!card.reminder.declaration && card.status?.id === card.reminder.dueEvent) {
+      card.reminder.declaration = card.reminder.dueEvent
+    }
+
+    if (card.status && card.status.id !== card.reminder.declaration) {
       card.reminder.resume = cloneValue({ value: card.status })
     }
 
@@ -296,6 +302,7 @@ export function applyReminder({
 
     if (event.data.column !== undefined) {
       // Older receipts moved the card and declared a status when replayed.
+      card.reminder.declaration = event.id
       card.column = event.data.column
       const declaration = {
         id: event.id,

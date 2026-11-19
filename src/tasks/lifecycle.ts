@@ -73,7 +73,9 @@ export function lifecycleMoves({
 }[] {
   const migrating = event?.type === 'board.columns' && event.actor === 'pnyx'
 
-  if (state.config?.hydra.kind === 'firstmate' || migrating) {
+  const reminderUpdate = event?.type === 'task.reminder-due' && event.data.column === undefined
+
+  if (state.config?.hydra.kind === 'firstmate' || migrating || reminderUpdate) {
     return []
   }
 
