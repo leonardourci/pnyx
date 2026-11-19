@@ -152,9 +152,12 @@ export function HydraChat({
   useEffect(
     () => {
       if (active && new URLSearchParams(location.search).has('new-chat')) {
-        stream.current?.parentElement?.parentElement?.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus()
+        const chat = stream.current?.closest('.hydra-chat')
+        const composer = chat?.querySelector<HTMLTextAreaElement>('.composer textarea')
+        composer?.focus()
         const url = new URL(location.href)
-        url.searchParams.delete('new-chat'); history.replaceState(
+        url.searchParams.delete('new-chat')
+        history.replaceState(
           null,
           '',
           url,

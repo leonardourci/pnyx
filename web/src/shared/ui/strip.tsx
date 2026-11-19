@@ -22,10 +22,11 @@ export function Strip<T>({
   const index = items.findIndex(item => itemKey({ item }) === reveal)
   useLayoutEffect(
     () => {
-      const target = element.current?.children[index]
+      const content = element.current
+      const target = content?.children[index]
       const scroller = scroll.current
 
-      if (!(target instanceof HTMLElement) || !scroller) {
+      if (!content || !(target instanceof HTMLElement) || !scroller) {
         return
       }
 
@@ -46,8 +47,18 @@ export function Strip<T>({
       }
 
       revealTarget()
-      const observer = new ResizeObserver(revealTarget)
-      observer.observe(element.current!)
+      let revealedScrollLeft = scroller.scrollLeft
+      const observer = new ResizeObserver(() => {
+        if (scroller.scrollLeft !== revealedScrollLeft) {
+          observer.disconnect()
+
+          return
+        }
+
+        revealTarget()
+        revealedScrollLeft = scroller.scrollLeft
+      })
+      observer.observe(content)
 
       return () => observer.disconnect()
     },
