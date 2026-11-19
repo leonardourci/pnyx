@@ -29,7 +29,7 @@
 - Errors print on stdout as `error`, `code` (`VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT` and others) and `help` lines with the command that fixes them. An unknown flag is named and the subcommand's valid flags are listed.
 - Exit codes: 0 for success and no-ops, 1 for errors, 2 for usage errors.
 - `help` lines suggest next commands, carrying `--hydra` forward and leaving runtime values as `<id>`.
-- Writes take `--event-id <id>` as an idempotency key and `--if-revision <n>` for an expected revision. For single-event writes, a repeated id appends nothing and answers with the original event and the current revision of what it changed. If the task moved to another Hydra, the retry returns the original event and `card.id`, without a revision. `apply` keeps its stored transaction receipt. Risky changes return a token to repeat with `--confirm <token>`.
+- Writes take `--event-id <id>` as an idempotency key and `--if-revision <n>` for an expected revision. Retrying a single-event write with the same id appends nothing and returns the original event with the current revision of the item it changed. If the task has moved to another Hydra, the retry returns the original event and `card.id` and omits the revision. Retrying `apply` returns the stored transaction receipt. Risky changes return a token to repeat with `--confirm <token>`.
 
 The reporting hooks print nothing, except at session start: in a folder inside an attached project, they print that project's open tasks (`pnyx-axi context`) into the new session. Agents learn the commands from the `pnyx-cli` skill (`pnyx-axi setup skills`).
 
