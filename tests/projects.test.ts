@@ -3551,6 +3551,348 @@ throw new Error('fixture allocation refusal')
 )
 
 test(
+  'helper-agent records do not block keeper selection or individual task moves',
+  async () => {
+    const keeper = await pnyx.hydra()
+    const path = keeper.folder({ name: 'helpers-project' })
+    await keeper.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const source = await legacyDuplicate({
+      pnyx,
+      id: 'helper-project-source',
+      projects: [
+        {
+          path,
+          landing: 'branch',
+        },
+      ],
+    })
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Finished work',
+        '--project',
+        path,
+      ],
+    })
+    const parent = created.card.id
+    const helper = await source.owner({
+      args: [
+        'push',
+        '--key',
+        'helper-record',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'general-purpose helper',
+        parent,
+        activity: 'finished',
+        agent: {
+          provider: 'claude',
+          sessionId: 'helper-session',
+          agentId: 'helper',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'helper-record',
+        },
+      }),
+    })
+    const workChild = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Real subtask',
+        '--project',
+        path,
+      ],
+    })
+    await source.owner({
+      args: [
+        'task',
+        'parent',
+        workChild.card.id,
+        parent,
+      ],
+    })
+    expect((await source.ownerRefused({
+      args: [
+        'task',
+        'move',
+        parent,
+        '--to-hydra',
+        keeper.id,
+      ],
+    })).code).toBe('CONFLICT')
+    expect((await keeper.ownerRefused({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })).code).toBe('CONFLICT')
+    await source.owner({
+      args: [
+        'task',
+        'parent',
+        workChild.card.id,
+        'none',
+      ],
+    })
+    await keeper.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })
+    expect((await keeper.task({ key: parent })).title).toBe('Finished work')
+    expect((await source.task({ key: helper.card.id })).id).toBe(helper.card.id)
+    expect((await keeper.ownerRefused({
+      args: [
+        'task',
+        'show',
+        helper.card.id,
+      ],
+    })).code).toBe('NOT_FOUND')
+    const target = await pnyx.hydra()
+    await keeper.owner({
+      args: [
+        'project',
+        'remove',
+        path,
+      ],
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const secondHelper = await keeper.owner({
+      args: [
+        'push',
+        '--key',
+        'second-helper',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Second helper',
+        parent,
+        activity: 'finished',
+        agent: {
+          provider: 'codex',
+          sessionId: 'second-session',
+          agentId: 'second',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'second-helper',
+        },
+      }),
+    })
+    await keeper.owner({
+      args: [
+        'task',
+        'move',
+        parent,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    expect((await target.task({ key: parent })).title).toBe('Finished work')
+    expect((await keeper.task({ key: secondHelper.card.id })).id).toBe(secondHelper.card.id)
+    expect((await target.ownerRefused({
+      args: [
+        'task',
+        'show',
+        secondHelper.card.id,
+      ],
+    })).code).toBe('NOT_FOUND')
+  },
+)
+
+test(
+  'attachment management survives an empty memory read list without revealing memory',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const path = source.folder({ name: 'hidden-memory-project' })
+    await source.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    await source.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        path,
+        '--key',
+        'preferences',
+        '--text',
+        'Private memory sentinel',
+      ],
+    })
+    await source.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        '',
+      ],
+    })
+    expect((await target.ownerRefused({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })).code).toBe('CONFLICT')
+    expect((await source.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual([
+      expect.objectContaining({
+        path,
+        state: 'attached',
+      }),
+    ])
+    const shown = await source.owner({
+      args: [
+        'project',
+        'show',
+        path,
+      ],
+    })
+    expect(shown).not.toHaveProperty('memory')
+    expect(shown.attachment).toEqual(expect.objectContaining({
+      path,
+      state: 'attached',
+    }))
+    expect((await source.ownerRefused({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        path,
+      ],
+    })).code).toBe('NOT_FOUND')
+    const env = {
+      ...process.env,
+      PNYX_ACTOR: 'hydra',
+      PNYX_HYDRA: source.id,
+      PNYX_TASK: undefined,
+    }
+    const foreignHydra = {
+      ...env,
+      PNYX_HYDRA: target.id,
+    }
+    const foreignProjects = parsed(await pnyxAxi({
+      env: foreignHydra,
+      args: [
+        'project',
+        'list',
+        '--hydra',
+        source.id,
+      ],
+    }))
+    expect(foreignProjects.projects).toBe('none: no projects attached')
+    expect(foreignProjects.help ?? []).not.toContainEqual(expect.stringContaining('project add'))
+    expect((await pnyxAxi({
+      env: foreignHydra,
+      args: [
+        'project',
+        'show',
+        path,
+        '--hydra',
+        source.id,
+      ],
+    })).stdout).toContain('NOT_FOUND')
+    expect((await pnyxAxi({
+      env: foreignHydra,
+      args: [
+        'project',
+        'remove',
+        path,
+        '--reason',
+        'Attempt to detach another Hydra attachment',
+        '--hydra',
+        source.id,
+      ],
+    })).stdout).toContain('NOT_FOUND')
+    expect(parsed(await pnyxAxi({
+      env,
+      args: [
+        'project',
+        'list',
+        '--hydra',
+        source.id,
+      ],
+    })).projects).toEqual([expect.objectContaining({ path })])
+    const shownToHydra = parsed(await pnyxAxi({
+      env,
+      args: [
+        'project',
+        'show',
+        path,
+        '--hydra',
+        source.id,
+      ],
+    }))
+    expect(shownToHydra.attachment).toEqual(expect.objectContaining({ path }))
+    expect(shownToHydra).not.toHaveProperty('memory')
+    const removed = await pnyxAxi({
+      env,
+      args: [
+        'project',
+        'remove',
+        path,
+        '--reason',
+        'Detach attachment without memory access',
+        '--hydra',
+        source.id,
+      ],
+    })
+    expect(removed.status).toBe(0)
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    expect((await target.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        path,
+      ],
+    })).memory.preferences).toBe('Private memory sentinel')
+  },
+)
+
+test(
   'ready review becomes an update when its task changes to Hydra merges',
   async () => {
     const hydra = await pnyx.hydra()
