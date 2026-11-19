@@ -70,27 +70,46 @@ function removalTarget({
   return state
 }
 
-async function removalPreview({
+async function removalPlan({
   id,
   state,
 }: {
   id: string
   state: ReturnType<typeof removalTarget>
-}): Promise<string> {
-  const recordedCopies = removalCopies({
+}) {
+  const copies = removalCopies({
     id,
     state,
   })
-  const tasks = Object.values(state.cards).filter(card => !isManagedTask({ card }))
   const pool = await hydraPool({ hydraId: id })
-  const recorded = new Set(recordedCopies.map(copy => copy.path))
-  const copies = new Set([
+  const recorded = new Set(copies.map(copy => copy.path))
+  const paths = new Set([
     ...recorded,
     ...pool.slots.map(slot => slot.path),
   ])
+
+  return {
+    copies,
+    pool,
+    recorded,
+    paths,
+  }
+}
+
+async function removalPreview({
+  id,
+  state,
+  plan,
+}: {
+  id: string
+  state: ReturnType<typeof removalTarget>
+  plan: Awaited<ReturnType<typeof removalPlan>>
+}): Promise<string> {
+  const cards = Object.values(state.cards)
+  const tasks = cards.filter(card => !isManagedTask({ card }))
   const unlanded: string[] = []
 
-  for (const card of Object.values(state.cards)) {
+  for (const card of cards) {
     if (card.copy && card.copy.state !== 'removed') {
       const check = await checkCopy({
         card,
@@ -103,8 +122,8 @@ async function removalPreview({
     }
   }
 
-  for (const slot of pool.slots) {
-    if (!recorded.has(slot.path)) {
+  for (const slot of plan.pool.slots) {
+    if (!plan.recorded.has(slot.path)) {
       unlanded.push(`${slot.path} (unrecorded checkout; landing unknown)`)
     }
   }
@@ -116,7 +135,7 @@ async function removalPreview({
   const unlandedPaths = unlanded.length ? unlanded.join(', ') : 'none'
   const openPullRequests = prs.length ? prs.join(', ') : 'none'
 
-  return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${copies.size}. Copies with unlanded work: ${unlandedPaths}. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
+  return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${plan.paths.size}. Copies with unlanded work: ${unlandedPaths}. Removal discards these copies in full, including ignored files. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
 }
 
 function removalCopies({
@@ -174,6 +193,11 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
 
   if (!approved) {
+    const plan = await removalPlan({
+      id,
+      state,
+    })
+
     return proposeOwnerCommand({
       name: 'hydra',
       args: [
@@ -182,10 +206,11 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
       ],
       hydraId,
       removalSeq: state.seq,
-      removalWork: await removalWork({ id }),
+      removalWork: await removalWork({ paths: plan.paths }),
       summary: await removalPreview({
         id,
         state,
+        plan,
       }),
     })
   }
@@ -318,7 +343,11 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
 
   try {
     await close({ hydraId: id })
-    const currentWork = await removalWork({ id })
+    const plan = await removalPlan({
+      id,
+      state,
+    })
+    const currentWork = await removalWork({ paths: plan.paths })
 
     const changed = !approvedWork || Object.entries(currentWork).some(([
       path,
@@ -329,12 +358,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       refuseChangedWork()
     }
 
-    const copies = removalCopies({
-      id,
-      state,
-    })
-
-    for (const copy of copies) {
+    for (const copy of plan.copies) {
       protectedCopiesFolder({ hydraId: id })
 
       if (!existsSync(copy.path)) {

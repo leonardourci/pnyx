@@ -3,18 +3,13 @@ import { constants, type Stats } from 'node:fs'
 import { lstat, open, readdir, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { git } from '#projects/git.ts'
-import { hydraPool } from '#projects/remove-pool.ts'
-import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
 
-export async function removalWork({ id }: { id: string }): Promise<Record<string, string>> {
-  const state = loadHydra({ hydraId: id }).state
-  const pool = await hydraPool({ hydraId: id })
-  const copies = Object.values(state.cards).flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : [])
-  const paths = new Set([
-    ...copies,
-    ...pool.slots.map(slot => slot.path),
-  ])
+export async function removalWork({
+  paths,
+}: {
+  paths: Iterable<string>
+}): Promise<Record<string, string>> {
   const work: Record<string, string> = {}
 
   for (const path of paths) {
@@ -48,6 +43,7 @@ export async function copyFingerprint({ path }: { path: string }): Promise<strin
     const status = await git({
       cwd: path,
       args: [
+        '--no-optional-locks',
         'status',
         '--porcelain=v2',
         '--branch',
@@ -98,7 +94,11 @@ export async function copyFingerprint({ path }: { path: string }): Promise<strin
 
     if (stat.isSymbolicLink()) {
       hash.update(JSON.stringify(await readlink(full)))
-    } else if (stat.isFile()) {
+
+      return
+    }
+
+    if (stat.isFile()) {
       const content = createHash('sha256')
       const file = await open(
         full,
@@ -132,29 +132,44 @@ export async function copyFingerprint({ path }: { path: string }): Promise<strin
         message: `Checkout file changed while reading it: ${full}`,
         code: 'CONFLICT',
       })
-    } else if (stat.isDirectory()) {
-      const children = name === '.' ? entries : await readdir(full)
+    }
 
-      for (const child of children.sort()) {
-        const childName = join(
-          name,
-          child,
-        )
-        const childStat = await lstat(join(
-          path,
-          childName,
-        ))
+    if (!stat.isDirectory()) {
+      return
+    }
 
-        // Git updates its checkout metadata while commands read it.
-        if (name === '.' && child === '.git' && childStat.isDirectory()) {
-          continue
-        }
+    const children = name === '.' ? entries : await readdir(full)
 
-        await visit({
-          name: childName,
-          stat: childStat,
-        })
+    for (const child of children.sort()) {
+      const childName = join(
+        name,
+        child,
+      )
+      const childStat = await lstat(join(
+        path,
+        childName,
+      ))
+
+      // Git updates its checkout metadata while commands read it.
+      if (name === '.' && child === '.git' && childStat.isDirectory()) {
+        continue
       }
+
+      await visit({
+        name: childName,
+        stat: childStat,
+      })
+    }
+
+    const after = await lstat(full)
+    const sameDirectory = after.isDirectory() && after.dev === stat.dev && after.ino === stat.ino
+    const unchanged = after.mtimeMs === stat.mtimeMs && after.ctimeMs === stat.ctimeMs
+
+    if (!sameDirectory || !unchanged) {
+      throw new HydraError({
+        message: `Checkout folder changed while reading it: ${full}`,
+        code: 'CONFLICT',
+      })
     }
   }
 
