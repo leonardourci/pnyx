@@ -162,6 +162,10 @@ export async function openHydra({
   // Explicit closes in a test's finally block run before afterEach can retain its page.
   // eslint-disable-next-line pnyx/object-params -- Playwright owns the close method signature.
   context.close = async options => {
+    if (!contexts.has(context)) {
+      return close(options)
+    }
+
     await retainContext({
       context,
       task,
