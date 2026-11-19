@@ -1692,6 +1692,8 @@ export function createHost({
 
     recover,
 
+    stopTools: children.stopAll,
+
     close: () => {
       closing = true
       usageTracker.close()

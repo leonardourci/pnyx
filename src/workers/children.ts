@@ -110,8 +110,8 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
 
   const stopping = new Map<string, Promise<void>>()
 
-  const stop = async ({ task }: { task: string }) => {
-    const recorded = [...live.values()].filter(child => child.task === task)
+  const stop = async ({ task }: { task?: string }) => {
+    const recorded = [...live.values()].filter(child => task === undefined || child.task === task)
 
     if (!recorded.length) {
       return
@@ -163,6 +163,7 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
   }
 
   return {
+    stopAll: () => stop({}),
     tasks() {
       return new Set([...live.values()].flatMap(child => child.task ? [child.task] : []))
     },
