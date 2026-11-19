@@ -3623,6 +3623,14 @@ test(
           exact: true,
         },
       )
+      await page.locator(`[data-hydra-workspace="${other.id}"]`).getByRole(
+        'button',
+        {
+          name: 'Ship the export',
+          exact: true,
+        },
+      )
+        .waitFor({ state: 'attached' })
       await title.waitFor()
       expect(await page.title()).toBe('Poseidon · Pnyx')
       await title.focus()

@@ -651,6 +651,7 @@ test(
               button,
               {
                 task,
+                hydraId,
                 frameCount,
               },
             ) => {
@@ -666,10 +667,11 @@ test(
               const sample = async () => {
                 await clicked
                 const boxes: (number[] | null)[] = []
+                const workspace = document.querySelector(`[data-hydra-workspace="${CSS.escape(hydraId)}"]`)
 
                 for (let frame = 0; frame < frameCount; frame++) {
                   await new Promise(requestAnimationFrame)
-                  const node = document.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
+                  const node = workspace?.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
 
                   const bounds = node?.getBoundingClientRect()
                   boxes.push(bounds ? [
@@ -687,6 +689,7 @@ test(
             },
             {
               task: id,
+              hydraId: hydra.id,
               frameCount: SAMPLE_FRAMES,
             },
           )
