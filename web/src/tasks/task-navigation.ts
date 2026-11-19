@@ -1,3 +1,4 @@
+import { motionDuration } from '#web-shared/motion.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
@@ -590,12 +591,13 @@ export function useTaskNavigation({
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && element) {
       highlight.current = element.animate(
         [
-          { boxShadow: '0 0 0 3px var(--color-gold-line)' },
+          { boxShadow: 'var(--shadow-task-highlight)' },
           { boxShadow: '0 0 0 0 transparent' },
         ],
         {
-          duration: 1200,
-          easing: 'ease-out',
+          duration: motionDuration({ speed: 'highlight' }),
+          easing: getComputedStyle(element).getPropertyValue('--ease-task-highlight')
+            .trim(),
         },
       )
     }

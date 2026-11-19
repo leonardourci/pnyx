@@ -246,6 +246,9 @@
 }
 
 @theme static {
+  --transition-duration-highlight: 1200ms;
+  --ease-task-highlight: ease-out;
+  --shadow-task-highlight: 0 0 0 --spacing(.75) var(--color-gold-line);
   --comment-highlight-strength: 24%;
   --comment-emphasis-strength: 45%;
   --comment-fade-duration: var(--transition-duration-base);
@@ -262,10 +265,10 @@
 }
 
 /* The global switch and OS preference also cover third-party and inline animations. */
-:root[data-motion="off"] { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); }
+:root[data-motion="off"] { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); --transition-duration-highlight: var(--transition-duration-instant); }
 :root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
 @media (prefers-reduced-motion: reduce) {
-  :root { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); }
+  :root { --transition-duration-fast: var(--transition-duration-instant); --transition-duration-base: var(--transition-duration-instant); --transition-duration-slow: var(--transition-duration-instant); --transition-duration-ambient: var(--transition-duration-instant); --transition-duration-highlight: var(--transition-duration-instant); }
   *, *::before, *::after { animation-duration: var(--transition-duration-instant)!important; animation-delay: var(--transition-duration-instant)!important; animation-iteration-count: 1!important; transition-duration: var(--transition-duration-instant)!important; transition-delay: var(--transition-duration-instant)!important; scroll-behavior: auto!important; }
 }
 

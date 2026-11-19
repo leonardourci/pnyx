@@ -14,10 +14,21 @@ test(
   'the global off switch and OS reduced motion make CSS and TypeScript motion instant',
   async () => {
     const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'motion',
+        '--title',
+        'Motion target',
+      ],
+    })
+    const target = await hydra.task({ key: 'motion' })
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'Check motion',
-      reply: 'Motion checked.',
+      reply: `Motion checked. [@Motion target](pnyx-task:${target.id})`,
     })
     const session = await hydra.chat({ text: 'Check motion' })
     await until({
@@ -59,6 +70,36 @@ test(
       },
     ).click()
     expect(await messageDuration()).toBe('0s')
+    await page.evaluate(() => {
+      const animate = Element.prototype.animate
+      const durations: number[] = []
+      Object.assign(
+        window,
+        { taskHighlightDurations: durations },
+      )
+
+      Element.prototype.animate = function (
+        frames,
+        options,
+      ) {
+        if (Array.isArray(frames) && frames.some(frame => 'boxShadow' in frame)) {
+          durations.push(Number(typeof options === 'number' ? options : options?.duration))
+        }
+
+        return animate.call(
+          this,
+          frames,
+          options,
+        )
+      }
+    })
+    await page.locator('.hydra-chat .task-reference-title').click()
+    const highlightDurations = () => page.evaluate(() => Reflect.get(
+      window,
+      'taskHighlightDurations',
+    ) as number[])
+    await expect.poll(highlightDurations).not.toEqual([])
+    expect(await highlightDurations()).toEqual([0])
     await page.evaluate(() => {
       document.documentElement.dataset.motion = 'normal'
     })
