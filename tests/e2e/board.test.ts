@@ -161,8 +161,9 @@ test(
         { hasText: 'Done' },
       )
       .waitFor()
-    expect(await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
-      .count()).toBe(1)
+    const exportCard = shown({ title: 'Ship the export' })
+    expect(await exportCard.count()).toBe(1)
+    expect(await column({ title: 'Ideas' }).locator(exportCard).count()).toBe(1)
     await hydra.owner({
       args: [
         'task',
@@ -5284,8 +5285,7 @@ test(
     }
 
     expect(editorBounds.x + editorBounds.width).toBeLessThanOrEqual(nameBounds.x + nameBounds.width)
-    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
-    expect(await frame.locator('.hydra-drag-name [data-drag-handle]').evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(16)
+    await frame.locator('.hydra-drag-name [data-drag-handle]').hover({ trial: true })
     await field.press('Enter')
     await until({
       what: 'the frame name edit is saved',

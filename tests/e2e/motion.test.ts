@@ -5,6 +5,7 @@ import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const SAMPLE_FRAMES = 60
+const STABLE_LAYOUT_FRAMES = 3
 let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
@@ -561,26 +562,30 @@ test(
           await openModalButton.hover()
           await until({
             what: 'the card and its column stop moving before opening the modal',
-            check: async () => {
-              const position = async () => JSON.stringify([
-                await box(),
-                await scrollTop(),
-              ])
-              const first = await position()
+            check: () => card.evaluate(
+              async (
+                element,
+                frameCount,
+              ) => {
+                const column = element.closest('.project-cards')
+                const position = () => JSON.stringify([
+                  element.getBoundingClientRect().toJSON(),
+                  column?.scrollTop,
+                ])
+                const initial = position()
 
-              for (let check = 0; check < 3; check++) {
-                await new Promise(resolve => setTimeout(
-                  resolve,
-                  300,
-                ))
+                for (let frame = 0; frame < frameCount; frame++) {
+                  await new Promise(requestAnimationFrame)
 
-                if (first !== await position()) {
-                  return false
+                  if (position() !== initial) {
+                    return false
+                  }
                 }
-              }
 
-              return true
-            },
+                return true
+              },
+              STABLE_LAYOUT_FRAMES,
+            ),
           })
           const slot = await box()
           const scrolled = await scrollTop()
