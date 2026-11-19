@@ -715,6 +715,7 @@ test(
       'retried-declaration',
     ]
     const first = await hydra.owner({ args: declare })
+    expect(first.notification).toBe('No Hydra wake from this lifecycle declaration')
     const later = await hydra.owner({
       args: [
         'task',
@@ -725,12 +726,13 @@ test(
         'Waiting on access',
       ],
     })
+    expect(later.notification).toBe('Hydra wake eligible; owner delivery not confirmed')
     expect(later.card.revision).toBeGreaterThan(first.card.revision)
 
     const retried = await hydra.owner({ args: declare })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
-    expect(retried.notification).toBe(first.notification)
+    expect(retried.notification).toBe('No Hydra wake from this lifecycle declaration')
     expect(retried.card).toEqual(later.card)
 
     await hydra.owner({
