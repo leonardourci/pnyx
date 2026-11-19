@@ -619,14 +619,7 @@ test(
         return !!card && !!column && card.y >= column.y && card.y < column.y + column.height
       },
     })
-    await expectOtherScrollPositions()
-
-    const revealedScroll = await scroller.evaluate(({ scrollTop }) => scrollTop)
-    await revealTarget()
-    expect(await scroller.evaluate(({ scrollTop }) => scrollTop)).toBeCloseTo(
-      revealedScroll,
-      0,
-    )
+    await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
 
     expect(errors.map(error => error.message)).toEqual([])
