@@ -209,6 +209,7 @@ test(
     })
     expect(proposal.confirmation).toBe('needed')
     expect(proposal.action).toContain('Tasks: 2')
+    expect(proposal.action).toContain('Copies: 2.')
     expect(proposal.action).toContain(copy)
     expect(proposal.action).toContain('https://github.com/o/shop/pull/999')
     expect(existsSync(copy)).toBe(true)
@@ -493,6 +494,16 @@ test(
         'locked',
       ],
     })).agent.folder as string
+    await target.owner({
+      args: [
+        'task',
+        'copy',
+        'locked',
+        'remove',
+        '--safe',
+      ],
+    })
+    expect(existsSync(locked)).toBe(true)
     git({
       cwd: folder,
       args: [
@@ -559,6 +570,14 @@ test(
     })
     await pnyx.restart()
     expect(existsSync(locked)).toBe(false)
+    expect(git({
+      cwd: folder,
+      args: [
+        'worktree',
+        'list',
+        '--porcelain',
+      ],
+    })).not.toContain(locked)
     expect((await caller.owner({
       args: [
         'hydra',

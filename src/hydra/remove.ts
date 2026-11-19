@@ -1,4 +1,4 @@
-import { hydraPool, removeHydraPool } from '#projects/remove-pool.ts'
+import { hydraPool, protectedCopiesFolder, removeHydraPool } from '#projects/remove-pool.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { existsSync, realpathSync, rmSync } from 'node:fs'
 import { relative, isAbsolute, sep } from 'node:path'
@@ -158,11 +158,12 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     caller: hydraId,
   })
   const actor = meta({ values })
-  const approved = ownerActor({ actor: actor.actor }) && typeof values.confirm === 'string'
+  const token = values.confirm
+  const approved = ownerActor({ actor: actor.actor }) && typeof token === 'string'
     && approvedHydraRemoval({
       hydraId,
       id,
-      token: values.confirm,
+      token,
     })
 
   if (!approved) {
@@ -198,7 +199,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     if (!approvedHydraRemoval({
       hydraId,
       id,
-      token: String(values.confirm),
+      token,
     })) {
       throw new HydraError({
         message: 'Removal approval is no longer available',
@@ -265,6 +266,8 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     const copies = removalCopies({ state })
 
     for (const copy of copies) {
+      protectedCopiesFolder({ hydraId: id })
+
       if (!existsSync(copy.path)) {
         continue
       }

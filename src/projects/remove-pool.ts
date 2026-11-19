@@ -18,16 +18,16 @@ function within({
     path,
   )
 
-  return part === '' || (!isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`))
+  return !isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`)
 }
 
 const canonicalPath = ({ path }: { path: string }) =>
   existsSync(path) ? realpathSync(path) : resolve(path)
 
-export async function hydraPool({ hydraId }: { hydraId: string }) {
+export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
   const root = copiesDir({ hydraId })
 
-  if (existsSync(root) && lstatSync(root).isSymbolicLink()) {
+  if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new HydraError({
       message: `Copies folder is a symbolic link: ${root}`,
       code: 'CONFLICT',
@@ -35,15 +35,11 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
   }
 
   const folder = canonicalPath({ path: root })
-  const state = loadHydra({ hydraId }).state
-  const projects = new Set([
-    ...state.projects?.map(project => project.path) ?? [],
-    ...Object.values(state.cards).flatMap(card => card.copy ? [card.copy.project] : []),
-  ])
 
   for (const id of hydraIds()) {
-    const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
-    const protectedPaths = current.projects?.map(project => project.path) ?? []
+    const current = loadHydra({ hydraId: id }).state
+    const projects = current.projects ?? []
+    const protectedPaths = projects.map(project => project.path)
 
     if (id !== hydraId) {
       protectedPaths.push(...Object.values(current.cards).flatMap(card =>
@@ -51,10 +47,13 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     }
 
     for (const path of protectedPaths) {
-      if (within({
+      const insideRoot = within({ root: resolve(root), path: resolve(path) })
+      const insideFolder = within({
         root: folder,
         path: canonicalPath({ path }),
-      })) {
+      })
+
+      if (insideRoot || insideFolder) {
         throw new HydraError({
           message: `Copies folder contains a project or another Hydra’s copy: ${path}`,
           code: 'CONFLICT',
@@ -63,6 +62,18 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     }
   }
 
+  return { root, folder }
+}
+
+export async function hydraPool({ hydraId }: { hydraId: string }) {
+  const { root, folder } = protectedCopiesFolder({ hydraId })
+  const state = loadHydra({ hydraId }).state
+  const attachedProjects = state.projects ?? []
+  const copies = Object.values(state.cards).flatMap(card => card.copy ? [card.copy] : [])
+  const projects = new Set([
+    ...attachedProjects.map(project => project.path),
+    ...copies.map(copy => copy.project),
+  ])
   const slots: {
     project: string
     path: string
@@ -73,7 +84,8 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     const common = await commonDir({ cwd: project })
 
     if (!common) {
-      const worktree = Object.values(state.cards).some(card => card.copy?.project === project && card.copy.via === 'worktree')
+      const worktree = copies.some(copy => copy.project === project && copy.via === 'worktree'
+        && (existsSync(copy.path) || existsSync(project)))
 
       if (worktree) {
         throw new HydraError({
@@ -113,26 +125,19 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       }
 
       const path = field.slice('worktree '.length)
-
       const canonical = canonicalPath({ path })
+      const insideRoot = within({ root: resolve(root), path: resolve(path) })
+        || within({ root: folder, path: resolve(path) })
+      const insideFolder = within({ root: folder, path: canonical })
 
-      if (within({
-        root: folder,
-        path: resolve(path),
-      }) && !within({
-        root: folder,
-        path: canonical,
-      })) {
+      if (insideRoot !== insideFolder && existsSync(path)) {
         throw new HydraError({
-          message: `Worktree resolves outside the copies folder: ${path}`,
+          message: `Worktree crosses the copies folder boundary: ${path}`,
           code: 'CONFLICT',
         })
       }
 
-      if (within({
-        root: folder,
-        path: canonical,
-      })) {
+      if (insideRoot && (insideFolder || !existsSync(path))) {
         slots.push({
           project,
           path,
@@ -143,6 +148,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
 
   return {
     root,
+    folder,
     slots,
   }
 }
@@ -150,7 +156,27 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
 export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise<void> {
   const pool = await hydraPool({ hydraId })
 
+  function validateFolder() {
+    const current = protectedCopiesFolder({ hydraId })
+
+    if (current.folder !== pool.folder) {
+      throw new HydraError({
+        message: `Copies folder changed during removal: ${pool.root}`,
+        code: 'CONFLICT',
+      })
+    }
+  }
+
   for (const slot of pool.slots) {
+    validateFolder()
+
+    if (existsSync(slot.path) && !within({ root: pool.folder, path: canonicalPath({ path: slot.path }) })) {
+      throw new HydraError({
+        message: `Worktree resolves outside the copies folder: ${slot.path}`,
+        code: 'CONFLICT',
+      })
+    }
+
     const removed = await git({
       cwd: slot.project,
       args: [
@@ -163,12 +189,13 @@ export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise
 
     if (!removed.ok) {
       throw new HydraError({
-        message: removed.err,
+        message: `${slot.path}: git could not remove the worktree (${removed.err})`,
         code: 'CONFLICT',
       })
     }
   }
 
+  validateFolder()
   rmSync(
     pool.root,
     {
