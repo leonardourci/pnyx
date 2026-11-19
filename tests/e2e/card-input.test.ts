@@ -865,7 +865,7 @@ test(
       const turn = pnyx.claude.plan({
         hydra: hydra.id,
         hold: true,
-        partial: 'Working on the message',
+        partial: 'Message',
         reply,
       })
       onTestFinished(() => turn.release())
