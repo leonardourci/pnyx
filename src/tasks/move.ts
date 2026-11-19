@@ -277,7 +277,7 @@ export function moveRefusal({
     })
   }
 
-  const child = others.find(c => c.parentId === card.id)
+  const child = others.find(c => c.parentId === card.id && !isManagedTask({ card: c }))
 
   if (child) {
     return refuse({

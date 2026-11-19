@@ -3538,3 +3538,150 @@ throw new Error('fixture allocation refusal')
     })).toBe(unlanded)
   },
 )
+
+test(
+  'helper-agent records do not block keeper selection or individual task moves',
+  async () => {
+    const keeper = await pnyx.hydra()
+    const path = keeper.folder({ name: 'helpers-project' })
+    await keeper.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    const source = await legacyDuplicate({
+      pnyx,
+      id: 'helper-project-source',
+      projects: [
+        {
+          path,
+          landing: 'branch',
+        },
+      ],
+    })
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Finished work',
+        '--project',
+        path,
+      ],
+    })
+    const parent = created.card.id
+    await source.owner({
+      args: [
+        'push',
+        '--key',
+        'helper-record',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'general-purpose helper',
+        parent,
+        activity: 'finished',
+        agent: {
+          provider: 'claude',
+          sessionId: 'helper-session',
+          agentId: 'helper',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'helper-record',
+        },
+      }),
+    })
+    const workChild = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Real subtask',
+        '--project',
+        path,
+      ],
+    })
+    await source.owner({
+      args: [
+        'task',
+        'parent',
+        workChild.card.id,
+        parent,
+      ],
+    })
+    expect((await keeper.ownerRefused({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })).code).toBe('CONFLICT')
+    await source.owner({
+      args: [
+        'task',
+        'parent',
+        workChild.card.id,
+        'none',
+      ],
+    })
+    await keeper.owner({
+      args: [
+        'project',
+        'keep',
+        path,
+      ],
+    })
+    expect((await keeper.task({ key: parent })).title).toBe('Finished work')
+    const target = await pnyx.hydra()
+    await keeper.owner({
+      args: [
+        'project',
+        'remove',
+        path,
+      ],
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    await keeper.owner({
+      args: [
+        'push',
+        '--key',
+        'second-helper',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        parent,
+        activity: 'finished',
+        agent: {
+          provider: 'codex',
+          sessionId: 'second-session',
+          agentId: 'second',
+        },
+        source: {
+          adapter: 'hooks',
+          objectId: 'second-helper',
+        },
+      }),
+    })
+    await keeper.owner({
+      args: [
+        'task',
+        'move',
+        parent,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    expect((await target.task({ key: parent })).title).toBe('Finished work')
+  },
+)
