@@ -121,7 +121,7 @@ undo refuses its individual events. See docs/pnyx-axi.md for the full operation 
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
 pnyx-axi hydra remove <id> [--hydra <caller>]
-Removal asks the owner to Confirm the task count, unlanded copies and open PRs in the caller’s chat. It stops workers and tools, detaches projects and discards task copies; history and Oracle stay, and GitHub PRs stay on GitHub. The last Hydra, caller’s own Hydra and Firstmate Hydras cannot be removed. Interrupted cleanup stays pending and resumes on restart.
+Removal asks the owner to Confirm the task count, unlanded copies and open PRs in the caller’s chat. It stops workers and tools, detaches projects, discards task copies and removes its own pooled worktree slots and registrations; history and Oracle stay, and GitHub PRs stay on GitHub. The last Hydra, caller’s own Hydra and Firstmate Hydras cannot be removed. Interrupted cleanup stays pending and resumes on restart.
 pnyx-axi hydra homes [--base <folder>]
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
