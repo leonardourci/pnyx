@@ -163,7 +163,7 @@ export function KeyRows({
                 <span className="keymap-action font-medium">{a.label}</span>
                 <span className="keymap-keys flex flex-wrap justify-end items-center gap-1">
                   {keys.map(key => (
-                    <Keycap as="span" className="keymap-key gap-0.75 py-px pl-1.5 pr-0.75 [&>kbd]:min-w-0 [&>kbd]:h-auto [&>kbd]:p-0 [&>kbd]:border-0 [&>kbd]:rounded-none [&>kbd]:bg-transparent [&>kbd]:shadow-none [&>kbd]:[font:inherit] [&>kbd]:text-ink" key={key}>
+                    <Keycap as="span" className="keymap-key gap-0.75 py-px pl-1.5 pr-0.75 whitespace-nowrap [&>kbd]:min-w-0 [&>kbd]:h-auto [&>kbd]:p-0 [&>kbd]:border-0 [&>kbd]:rounded-none [&>kbd]:bg-transparent [&>kbd]:shadow-none [&>kbd]:[font:inherit] [&>kbd]:text-ink" key={key}>
                       <kbd>{keyLabel({
                         keys: [key],
                         platform,
