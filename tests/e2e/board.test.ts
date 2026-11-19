@@ -7,11 +7,12 @@ import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 import { MOTION_DURATIONS } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 
 const WHEEL_REST_MS = 750
 // Tasks with the longest brief, whose first sync reaches the page as two 1 MiB chunks.
 const LARGE_SYNC_TASKS = 40
-const LARGE_BRIEF = 'x'.repeat(24_000)
+const LARGE_BRIEF = 'x'.repeat(MAX_BRIEF_LENGTH)
 // Chrome's emulated link, over which each chunk takes longer than Zero's default ping wait.
 const SLOW_LINK = {
   urlPattern: '',
@@ -3050,7 +3051,7 @@ test(
 )
 
 test(
-  'a Hydra whose first sync arrives slowly loads over a slow link',
+  'a Hydra with a large first sync loads over a slow link',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
