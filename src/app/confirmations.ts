@@ -126,7 +126,14 @@ export function approvedHydraRemoval({
     })
   }
 
-  return target.removalWork ?? {}
+  if (!target.removalWork) {
+    throw new HydraError({
+      message: 'This approval has no checkout preview. Propose removal again',
+      code: 'CONFLICT',
+    })
+  }
+
+  return target.removalWork
 }
 
 export function proposeOwnerCommand({
@@ -341,11 +348,17 @@ export const approval = guard({
     }
 
     if (values.confirm !== token) {
+      const previewTarget = JSON.parse(selected.value) as Target
+
       return {
         confirmation: 'needed',
         token,
         action: selected.summary,
-        preview: JSON.parse(selected.value),
+        preview: {
+          name: previewTarget.name,
+          args: previewTarget.args,
+          cwd: previewTarget.cwd,
+        },
       }
     }
 
@@ -491,3 +504,41 @@ export const approval = guard({
     }
   },
 })
+
+export function recoverOwnerCommands({ hydraId }: { hydraId: string }): void {
+  const { state } = loadHydra({ hydraId })
+  const interrupted = state.dispatchProposals?.filter(proposal =>
+    proposal.kind === 'command' && proposal.status === 'applying') ?? []
+
+  if (!interrupted.length || state.config?.removed || state.config?.removing) {
+    return
+  }
+
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      for (const proposal of interrupted) {
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: {
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+          cardId: HYDRA_CARD,
+          change: {
+            type: 'hydra.dispatch-progress',
+            data: {
+              token: proposal.token,
+              status: 'failed',
+              error: 'The server stopped before recording the result. Check whether the action completed before trying again.',
+            },
+          },
+        })
+
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      }
+    },
+  })
+}
