@@ -525,9 +525,9 @@ test(
       900,
     )
     await until({
-      what: 'the real wheel scroll advances the column',
+      what: 'the wheel reaches its destination before task navigation',
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
-      check: () => scroller.evaluate(element => element.scrollTop > 850),
+      check: () => scroller.evaluate(element => element.scrollTop >= 900),
     })
     const scroll = await finishScroll()
 
