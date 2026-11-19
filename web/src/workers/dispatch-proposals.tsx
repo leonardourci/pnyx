@@ -104,6 +104,7 @@ export function DispatchProposals({
       ? `${status.reason}. Dismiss it and ask Hydra again.`
       : 'Hydra proposes this change. Confirm to apply it.'
     const applying = proposal.status === 'applying'
+    const commandApplying = proposal.kind === 'command' && applying
     const applyingMessage = proposal.kind === 'dispatch'
       ? 'Applying… Dismiss hides this question. The action continues.'
       : 'Applying…'
@@ -146,7 +147,7 @@ export function DispatchProposals({
             </Button>
           )}
           <Button
-            disabled={!connected || Boolean(busy) || proposal.kind === 'command' && proposal.status === 'applying'}
+            disabled={!connected || Boolean(busy) || commandApplying}
             onClick={() => void resolve({
               name,
               token: proposal.token,
