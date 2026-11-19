@@ -30,7 +30,7 @@ const settings = table('settings')
   .columns({
     id: string(),
     revision: number(),
-    value: json<Stored<Settings>>(),
+    value: json<Stored<Partial<Settings>>>(),
   })
   .primaryKey('id')
 
