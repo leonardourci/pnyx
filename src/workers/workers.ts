@@ -279,7 +279,10 @@ export async function hydraCheck({
 
   const state = loadHydra({ hydraId }).state
   const pendingReports = new Map((state.contextNotes ?? []).filter(note => note.report)
-    .map(note => [note.seq, note] as const))
+    .map(note => [
+      note.seq,
+      note,
+    ] as const))
   const row = ({ e }: { e: HydraEvent }) => ({
     seq: e.seq,
     id: e.id,
