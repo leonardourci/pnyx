@@ -3,10 +3,14 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
+import { localToken } from '#app/server-state.ts'
+import { zeroCookieName } from '#app/server-protocol.ts'
+import { queries } from '#store/zero-schema.ts'
 import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 import { MOTION_DURATIONS } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { readRows, zeroReady } from '../setup/zero.ts'
 
 const WHEEL_REST_MS = 750
 
@@ -3043,6 +3047,111 @@ test(
       expect(pageErrors).toEqual([])
     } finally {
       await page.context().close()
+    }
+  },
+)
+
+test(
+  'the page loads from shared settings an older build stored without a key added since, and takes their rewrite at the same revision',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Task under older settings',
+      ],
+    })
+    const url = `http://127.0.0.1:${pnyx.port()}/zero`
+    const cookie = `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`
+    await zeroReady({
+      url: `${url}/`,
+      cookie,
+    })
+    const shown = await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })
+    const current = shown.settings
+    delete current.postgresUrl
+    expect(current).toHaveProperty('hiddenHydras')
+    // Stands in for the row a build older than hiddenHydras wrote, which the page can read before the starting server
+    // rewrites it. The server can copy a write into this row up to a minute late, when its file watcher misses it, so
+    // the stand-in sits a revision ahead where that copy cannot replace it, and the restore writes the current settings.
+    const ahead = shown.revision + 1
+    rows({
+      text: 'update settings set revision = $1, value = ($2::jsonb - \'hiddenHydras\')::json where id = \'shared\'',
+      values: [
+        ahead,
+        JSON.stringify({
+          ...current,
+          theme: 'dark',
+        }),
+      ],
+    })
+    const pageErrors: string[] = []
+    let page: Page | undefined
+
+    try {
+      await until({
+        what: 'zero-cache to serve the row without hiddenHydras',
+        check: async () => {
+          const read = await readRows<{ value: Record<string, unknown> } | undefined>({
+            url,
+            cookie,
+            query: ({ zero }) => zero.materialize(queries.settings.shared()),
+          })
+          const value = read.rows?.value
+
+          return value !== undefined && !('hiddenHydras' in value)
+        },
+      })
+      page = await openHydra({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+        prepare: async ({ page }) => {
+          page.on(
+            'pageerror',
+            error => pageErrors.push(error.message),
+          )
+        },
+      })
+      await page.locator(`[data-hydra-workspace="${hydra.id}"][data-connected="true"]`).waitFor()
+      await page.getByRole(
+        'button',
+        {
+          name: 'Task under older settings',
+          exact: true,
+        },
+      ).waitFor()
+      await page.locator('html[data-theme="dark"]').waitFor()
+      expect(pageErrors).toEqual([])
+
+      // Stands in for the starting server's rewrite of the row at its own revision.
+      rows({
+        text: 'update settings set value = $1 where id = \'shared\' and revision = $2',
+        values: [
+          JSON.stringify({
+            ...current,
+            theme: 'light',
+          }),
+          ahead,
+        ],
+      })
+      await page.locator('html[data-theme="light"]').waitFor()
+    } finally {
+      rows({
+        text: 'update settings set revision = $1, value = $2 where id = \'shared\' and revision = $3',
+        values: [
+          shown.revision,
+          JSON.stringify(current),
+          ahead,
+        ],
+      })
+      await page?.context().close()
     }
   },
 )

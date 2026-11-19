@@ -14,7 +14,7 @@ import { pnyxHome } from '#store/paths.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type PageSettings, type Settings, type SettingsEntry } from './model.ts'
-import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
+import { DEFAULT_SETTINGS, patchSettings, pickView, withDefaults } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
@@ -38,17 +38,17 @@ export interface SettingsRead {
 }
 
 function fold({ entries }: { entries: SettingsEntry[] }): SettingsRead {
-  const settings = structuredClone(DEFAULT_SETTINGS)
+  const stored: Partial<Settings> = {}
 
   for (const entry of entries) {
     Object.assign(
-      settings,
-      structuredClone(entry.after),
+      stored,
+      entry.after,
     )
   }
 
   return {
-    settings,
+    settings: withDefaults({ stored }),
     revision: entries.filter(entry => Object.keys(entry.after).length > 0).length,
     ids: new Set(entries.map(entry => entry.id)),
   }
@@ -428,7 +428,8 @@ export const shownSettings = ({ settings }: { settings: Settings }): Settings =>
 })
 
 // The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
-// stays their record, since it also names the database.
+// stays their record, since it also names the database. A copy at the row's own revision replaces it too, so a start
+// rewrites a row an older build wrote, which lacks the keys added since and keeps that build's defaults.
 export function mirrorSettings({
   settings,
   revision,
@@ -440,7 +441,7 @@ export function mirrorSettings({
     statements: [
       {
         text: `insert into settings (id, revision, value) values ('shared', $1, $2) on conflict (id)
-          do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
+          do update set revision = excluded.revision, value = excluded.value where settings.revision <= excluded.revision`,
         values: [
           revision,
           JSON.stringify(pageSettings({ settings })),
