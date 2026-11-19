@@ -5362,9 +5362,13 @@ test(
     const targetComposer = page.locator(`[data-hydra-workspace="${target.id}"] .composer textarea`)
     await earlierComposer.waitFor()
     await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${target.id}/?new-chat`)
-    await expect.poll(async () => targetComposer.evaluate(node => node === document.activeElement)).toBe(true)
+    await expect.poll(async () => targetComposer.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      node => node === document.activeElement,
+    )).toBe(true)
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
     await page.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the argument.
       id => {
         history.pushState(
           null,
@@ -5375,7 +5379,10 @@ test(
       },
       earlier.id,
     )
-    await expect.poll(async () => earlierComposer.evaluate(node => node === document.activeElement)).toBe(true)
+    await expect.poll(async () => earlierComposer.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      node => node === document.activeElement,
+    )).toBe(true)
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
   },
 )
@@ -5423,7 +5430,9 @@ test(
       .click()
     const column = workspace.locator(`[data-column="${project}"]`)
     await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1500)
-    await expect.poll(async () => column.evaluate(node => {
+    await expect.poll(async () => column.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      node => {
       const axis = node.closest<HTMLElement>('.workspace-axis')
 
       if (!axis) {
@@ -5431,12 +5440,14 @@ test(
       }
 
       const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
-      const left = node.getBoundingClientRect().left - axis.getBoundingClientRect().left + axis.scrollLeft - axis.clientLeft - padding
+      const offset = node.getBoundingClientRect().left - axis.getBoundingClientRect().left
+      const left = offset + axis.scrollLeft - axis.clientLeft - padding
 
       return Math.abs(axis.scrollLeft - Math.min(
         left,
         axis.scrollWidth - axis.clientWidth,
       ))
-    })).toBeLessThan(2)
+    },
+    )).toBeLessThan(2)
   },
 )
