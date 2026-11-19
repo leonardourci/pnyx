@@ -452,7 +452,7 @@ test(
 )
 
 test(
-  'polis saves reject stale readers, preserve drafts, and use the settings revision during a width save',
+  'polis saves reject stale edits, preserve newer drafts, and survive a conflicting width save',
   async () => {
     const hydra = await pnyx.hydra()
     const other = await pnyx.hydra()
@@ -686,7 +686,7 @@ test(
       ],
     })
     const concurrentCreationId = releaseNextSave()
-    await expect.poll(() => replies.get(concurrentCreationId)).toBeDefined()
+    await expect.poll(() => replies.get(concurrentCreationId)).toBe('REVISION_CONFLICT')
     const concurrentReader = page.getByRole(
       'button',
       {
@@ -723,6 +723,7 @@ test(
     await expect.poll(() => held.length).toBe(1)
     await concurrentReader.click()
     await concurrentReader.waitFor({ state: 'hidden' })
+    expect(held).toHaveLength(1)
 
     // A resize from another client invalidates only the Hydra view revision.
     await hydra.owner({

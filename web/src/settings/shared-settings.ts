@@ -104,7 +104,7 @@ export function saveSharedSettings({
   command,
   patch,
   view,
-  revision,
+  revision: settingsRevision,
 }: {
   command: Command
   patch: Partial<Settings>
@@ -114,8 +114,7 @@ export function saveSharedSettings({
     revision: number
   }
 }) {
-  const settingsRevision = view ? undefined : revision
-  const expectedRevision = view?.revision ?? settingsRevision
+  const expectedRevision = view ? view.revision : settingsRevision
   const revisionGuard = expectedRevision !== undefined ? [
     '--if-revision',
     String(expectedRevision),
@@ -134,7 +133,7 @@ export function saveSharedSettings({
     ],
     patch: {
       settings: patch,
-      settingsRevision,
+      settingsRevision: view ? undefined : settingsRevision,
     },
     targets: Object.keys(patch),
   })
