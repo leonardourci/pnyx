@@ -274,7 +274,7 @@ test(
 )
 
 test(
-  'a worker\'s report and status wait in Hydra\'s queue while it works, then reach it once as one wake, and progress wakes nobody',
+  'worker reports and stored results coalesce progress, wait for one wake and survive an interrupted turn',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'export' })
@@ -355,6 +355,23 @@ test(
         'Export works; ready for review',
       ],
     })
+    const reportFile = join(
+      folder,
+      'findings.md',
+    )
+    writeFileSync(
+      reportFile,
+      'Stored findings: invoices have been verified.\n',
+    )
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'report',
+        'export',
+        '--file',
+        reportFile,
+      ],
+    })
     await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -377,11 +394,15 @@ test(
     expect(waiting).not.toContain('progress')
     expect(session.received).toHaveLength(1)
 
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Export works; ready for review'),
+      hold: true,
+    })
     turn.release()
     await until({
-      what: 'Hydra to handle the wake',
-      check: () => session.answered === 2 && queueBox({ hydraId: hydra.id })?.waiting.length === 0
-      && queue({ hydraId: hydra.id })?.working === false,
+      what: 'Hydra to read the report wake',
+      check: () => session.received.length === 2 && queue({ hydraId: hydra.id })?.working === true,
     })
     const wake = session.received[1]!
     expect(wake.split('Export works; ready for review')).toHaveLength(2)
@@ -390,7 +411,25 @@ test(
     expect(wake).toContain('2 progress reports')
     expect(wake).toContain('Upload started')
     expect(wake).toContain('Need the SFTP password')
-    expect(session.received).toHaveLength(2)
+    expect(wake).toContain('result: Stored findings: invoices have been verified.')
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    await until({
+      what: 'the interrupted report turn to stop',
+      check: () => queue({ hydraId: hydra.id })?.working === false,
+    })
+    await hydra.chat({ text: 'Review the interrupted worker reports' })
+    await until({
+      what: 'the report to be delivered after interruption',
+      check: () => session.received.length >= 3,
+    })
+    const retried = session.received.find(text => text.endsWith('Review the interrupted worker reports'))!
+    expect(retried).toContain('Export works; ready for review')
+    expect(retried).toContain('result: Stored findings: invoices have been verified.')
   },
 )
 
@@ -750,6 +789,30 @@ test(
       })
     }
 
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Restart report',
+        '--key',
+        'restart-report',
+      ],
+    })
+    const restartTask = await hydra.task({ key: 'restart-report' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        restartTask.id,
+        '--actor',
+        `worker:${restartTask.id}`,
+        '--text',
+        'Worker report awaiting restart',
+      ],
+    })
+
     await pnyx.restart()
     // Hydra resumes its session once and is pointed at the messages it did not answer.
     const resumed = await until({
@@ -761,6 +824,13 @@ test(
       check: () => resumed.received.some(text => text.includes('restart cut your last turn')),
     })
     expect(resumed.received.filter(text => text.includes('restart cut your last turn'))).toHaveLength(1)
+    await until({
+      what: 'the pending worker report to survive restart',
+      check: () => resumed.received.some(text => text.includes('Worker report awaiting restart')),
+    })
+
+    const recoveredReport = resumed.received.find(text => text.includes('Worker report awaiting restart'))!
+    expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
 
     const { messages } = await hydra.owner({
       args: [
@@ -772,6 +842,7 @@ test(
       'plan the migration',
       'also check the indexes',
       'and the backups',
+      'Worker report awaiting restart',
     ])
   },
 )
