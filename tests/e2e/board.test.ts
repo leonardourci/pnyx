@@ -3353,12 +3353,14 @@ test(
             exact: true,
           },
         )
+        await toggle.scrollIntoViewIfNeeded()
+        await restingBox({ target: toggle })
         await toggle.click()
-        const fold = toggle.locator('xpath=ancestor::*[@data-family][1]').locator('[data-fold-open="true"]')
+        const fold = toggle.locator('xpath=ancestor::*[@data-family][1]').locator('[data-fold-open]')
         await until({
           what: `the sub-task fold of ${title} finishes opening`,
           // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched element.
-          check: () => fold.evaluate(node => node.clientHeight >= node.scrollHeight),
+          check: () => fold.evaluate(node => node.getAttribute('data-fold-open') === 'true' && node.clientHeight >= node.scrollHeight),
         })
       }
 
