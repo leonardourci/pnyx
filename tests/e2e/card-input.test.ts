@@ -864,7 +864,14 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
       })
-      const originalBrief = modal.getByText(
+      const instructions = modal.getByRole(
+        'region',
+        {
+          name: 'Instructions',
+          exact: true,
+        },
+      )
+      const originalBrief = instructions.getByText(
         initialBrief,
         { exact: true },
       )
@@ -879,7 +886,7 @@ test(
           updatedBrief,
         ],
       })
-      await modal.getByText(
+      await instructions.getByText(
         updatedBrief,
         { exact: true },
       ).waitFor({ state: 'visible' })
