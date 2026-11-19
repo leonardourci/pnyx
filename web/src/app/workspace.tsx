@@ -615,6 +615,17 @@ export function HydraView({
   const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
   const createColumn = () => {
+    if (view.workspace.collapsed || view.workspace.chatCollapsed) {
+      save({
+        patch: {
+          workspace: {
+            collapsed: false,
+            chatCollapsed: false,
+          },
+        },
+      })
+    }
+
     setPage({ page: 'hydra' }); setProjectRequest(true)
   }
 
@@ -1243,6 +1254,7 @@ export function HydraView({
                   <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
                     <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                       <HydraChat
+                        active={active}
                         hydraId={navigation.hydraId}
                         storageIdentity={hydra.storageHydra}
                         addProject={createColumn}

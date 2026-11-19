@@ -5284,6 +5284,30 @@ test(
       name: renamed,
       icon: 'poseidon',
     })
+
+    for (const fold of [
+      'Fold chat',
+      'Fold Hydra',
+    ]) {
+      await frame.getByRole(
+        'button',
+        {
+          name: fold,
+          exact: true,
+        },
+      ).click()
+      await frame.locator('.hydra-head').click({ button: 'right' })
+      await page.getByRole(
+        'button',
+        {
+          name: 'Add project',
+          exact: true,
+        },
+      ).click()
+      await expect.poll(async () => frame.locator('.composer textarea').inputValue()).toContain(' to this Hydra and ')
+      await frame.locator('.composer textarea').fill('')
+    }
+
     const grip = frame.getByRole(
       'button',
       {
@@ -5320,3 +5344,36 @@ test(
     await page.locator('.physical-ghost').waitFor({ state: 'detached' })
   },
 )
+
+test(
+  'new chat focuses only the addressed Hydra among mounted chats',
+  async ({ onTestFinished }) => {
+    const earlier = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: earlier.id,
+    })
+    onTestFinished(async () => {
+      await page.context().close()
+    })
+    await page.locator(`[data-hydra-workspace="${earlier.id}"] .composer textarea`).waitFor()
+    await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${target.id}/?new-chat`)
+    await expect.poll(async () => page.evaluate(() => document.activeElement?.closest('[data-hydra-workspace]')?.getAttribute('data-hydra-workspace'))).toBe(target.id)
+    expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
+    await page.evaluate(
+      id => {
+        history.pushState(
+          null,
+          '',
+          `/hydra/${id}/?new-chat`,
+        )
+        dispatchEvent(new PopStateEvent('popstate'))
+      },
+      earlier.id,
+    )
+    await expect.poll(async () => page.evaluate(() => document.activeElement?.closest('[data-hydra-workspace]')?.getAttribute('data-hydra-workspace'))).toBe(earlier.id)
+    expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
+  },
+)
+

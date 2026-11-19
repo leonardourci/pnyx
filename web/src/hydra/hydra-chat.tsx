@@ -102,6 +102,7 @@ const withFailure = ({
 } : item)
 
 export function HydraChat({
+  active,
   hydraId,
   storageIdentity,
   state,
@@ -121,6 +122,7 @@ export function HydraChat({
   taskActions,
   selectedTask,
 }: {
+  active: boolean
   hydraId: string
   storageIdentity: string
   addProject?(): void
@@ -149,7 +151,7 @@ export function HydraChat({
 
   useEffect(
     () => {
-      if (new URLSearchParams(location.search).has('new-chat')) {
+      if (active && new URLSearchParams(location.search).has('new-chat')) {
         stream.current?.parentElement?.parentElement?.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus()
         const url = new URL(location.href)
         url.searchParams.delete('new-chat'); history.replaceState(
@@ -159,7 +161,7 @@ export function HydraChat({
         )
       }
     },
-    [],
+    [active],
   )
   const [
     page,
