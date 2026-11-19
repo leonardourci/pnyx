@@ -559,36 +559,29 @@ test(
             },
           )
           await openModalButton.hover()
+          // Frame/WAAPI-only checks missed 7 px of scroll in CI; keep the approved bounded observation window.
           await until({
             what: 'the card and its column stop moving before opening the modal',
-            check: () => card.evaluate(async element => {
-              const scroller = element.closest('.project-cards')!
-              const position = () => JSON.stringify([
-                element.getBoundingClientRect().toJSON(),
-                scroller.scrollTop,
+            check: async () => {
+              const position = async () => JSON.stringify([
+                await box(),
+                await scrollTop(),
               ])
-              const before = position()
-              await new Promise(requestAnimationFrame)
+              const first = await position()
 
-              if (position() !== before) {
-                return false
-              }
+              for (let check = 0; check < 3; check++) {
+                await new Promise(resolve => setTimeout(
+                  resolve,
+                  300,
+                ))
 
-              for (let node: Element | null = element; node; node = node.parentElement) {
-                const moving = node.getAnimations().some(animation => {
-                  const end = animation.effect?.getComputedTiming().endTime
-                  const active = animation.pending || animation.playState === 'running'
-
-                  return active && Number.isFinite(end)
-                })
-
-                if (moving) {
+                if (first !== await position()) {
                   return false
                 }
               }
 
               return true
-            }),
+            },
           })
           const slot = await box()
           const scrolled = await scrollTop()
