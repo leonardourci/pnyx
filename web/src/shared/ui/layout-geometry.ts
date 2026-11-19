@@ -1,4 +1,3 @@
-// Motion transforms must not change a virtual list's scroll anchor.
 export function layoutOffset({
   element,
   horizontal,
