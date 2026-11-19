@@ -4981,8 +4981,8 @@ test(
     try {
       await first.waitFor()
       await second.waitFor()
-      await first.locator('.column-cards').waitFor()
-      const body = (await first.locator('.column-cards').boundingBox())!
+      // The view's project widths can land after the page opens, sliding the columns into place.
+      const body = await restingBox({ target: first.locator('.column-cards') })
       await page.mouse.move(
         body.x + body.width / 2,
         body.y + 80,
@@ -4997,8 +4997,8 @@ test(
       await page.keyboard.press('Escape')
       await page.mouse.up()
       expect(bodyPickedUp).toBe(0)
-      const heading = (await first.locator('.project-column-heading').boundingBox())!
-      const destination = (await second.locator('.project-column-heading').boundingBox())!
+      const heading = await restingBox({ target: first.locator('.project-column-heading') })
+      const destination = await restingBox({ target: second.locator('.project-column-heading') })
       const x = heading.x + heading.width * 0.6, y = heading.y + heading.height / 2
       expect(await page.evaluate(
         ({
