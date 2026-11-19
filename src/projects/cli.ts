@@ -195,32 +195,24 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'show') {
-    const projectRef = required({
-      value: ref,
-      what: 'project name or path',
+    if (!memoryCaller({ hydraId })) {
+      throw new HydraError({
+        message: 'project not found',
+        code: 'NOT_FOUND',
+      })
+    }
+
+    const attached = findProject({
+      state: current,
+      ref: required({
+        value: ref,
+        what: 'project name or path',
+      }),
     })
     const details = await readableProjectDetails({
       state: current,
       hydraId,
     })
-    let attached
-
-    try {
-      attached = findProject({
-        state: current,
-        ref: projectRef,
-        projects: details.map(detail => detail.project),
-      })
-    } catch (error) {
-      if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
-        throw error
-      }
-
-      attached = findProject({
-        state: current,
-        ref: projectRef,
-      })
-    }
 
     const attachment = projectRows({
       state: current,
@@ -228,7 +220,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })[0]
     const readable = details.some(detail => detail.project.path === attached.path)
 
-    if (memoryCaller({ hydraId }) && !readable) {
+    if (!readable) {
       return {
         project: attached.name,
         attachment,
@@ -298,6 +290,13 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
+  if (action === 'remove' && !memoryCaller({ hydraId })) {
+    throw new HydraError({
+      message: 'project not found',
+      code: 'NOT_FOUND',
+    })
+  }
+
   if (readonly) {
     throw new HydraError({
       message: 'This Hydra’s projects are managed by Firstmate',
@@ -312,35 +311,20 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
-  let projectRef = ref
-
-  if (action === 'set' || action === 'remove') {
-    const selected = required({
-      value: ref,
-      what: 'project',
-    })
-    const project = action === 'remove'
-      ? findProject({
-        state: current,
-        ref: selected,
-      })
-      : await findReadableProject({
-        hydraId,
-        state: current,
-        ref: selected,
-      })
-
-    if (action === 'set') {
-      requireProjectMemory({
-        hydraId,
-        ...(await projectIdentity(project)),
-      })
-    }
-
-    projectRef = project.path
-  }
-
   if (action === 'set') {
+    const project = await findReadableProject({
+      hydraId,
+      state: current,
+      ref: required({
+        value: ref,
+        what: 'project',
+      }),
+    })
+    requireProjectMemory({
+      hydraId,
+      ...(await projectIdentity(project)),
+    })
+
     if (values.clone || values.into || (!settings && !rules && values.copy === undefined)) {
       throw new HydraError({
         message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false], --copy <shell> or --landing pr|branch --merge owner|hydra',
@@ -375,10 +359,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
         const before = findProject({
           state,
-          ref: required({
-            value: projectRef,
-            what: 'project name or path',
-          }),
+          ref: project.path,
         })
         const command = String(values.command ?? before.startCommand?.command ?? '').trim()
         const name = String(values['command-name'] ?? before.startCommand?.name ?? '').trim()
@@ -508,7 +489,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       : findProject({
         state: current,
         ref: required({
-          value: projectRef,
+          value: ref,
           what: 'project name or path',
         }),
       }).path
@@ -536,9 +517,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         attach: true,
       })
     }
-  }
-
-  if (action !== 'remove') {
     requireProjectMemory({
       hydraId,
       ...(await projectIdentity({ path })),
@@ -629,6 +607,7 @@ Project add accepts a repository folder or a parent folder whose direct children
 A parent folder attaches those repositories as a named project in one transaction.
 pnyx-axi project keep <path> --hydra <keeper>
 Moves a legacy duplicate repository to its chosen Hydra atomically; any blocking task refuses the whole move.
+Work subtasks block the move. Automatic helper records stay on the source Hydra.
 pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]

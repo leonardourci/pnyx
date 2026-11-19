@@ -3613,6 +3613,15 @@ test(
         parent,
       ],
     })
+    expect((await source.ownerRefused({
+      args: [
+        'task',
+        'move',
+        parent,
+        '--to-hydra',
+        keeper.id,
+      ],
+    })).code).toBe('CONFLICT')
     expect((await keeper.ownerRefused({
       args: [
         'project',
@@ -3660,6 +3669,7 @@ test(
         '-',
       ],
       input: JSON.stringify({
+        title: 'Second helper',
         parent,
         activity: 'finished',
         agent: {
@@ -3746,7 +3756,10 @@ test(
       ],
     })
     expect(JSON.stringify(shown)).not.toContain('Private memory sentinel')
-    expect(JSON.stringify(shown)).toContain(path)
+    expect(shown.attachment).toEqual(expect.objectContaining({
+      path,
+      state: 'attached',
+    }))
     expect((await source.ownerRefused({
       args: [
         'project',
@@ -3762,6 +3775,22 @@ test(
       PNYX_HYDRA: source.id,
       PNYX_TASK: undefined,
     }
+    const foreignHydra = {
+      ...env,
+      PNYX_HYDRA: target.id,
+    }
+    expect((await pnyxAxi({
+      env: foreignHydra,
+      args: [
+        'project',
+        'remove',
+        path,
+        '--reason',
+        'Attempt to detach another Hydra attachment',
+        '--hydra',
+        source.id,
+      ],
+    })).stdout).toContain('NOT_FOUND')
     expect(parsed(await pnyxAxi({
       env,
       args: [
@@ -3771,6 +3800,18 @@ test(
         source.id,
       ],
     })).projects).toEqual([expect.objectContaining({ path })])
+    const shownToHydra = parsed(await pnyxAxi({
+      env,
+      args: [
+        'project',
+        'show',
+        path,
+        '--hydra',
+        source.id,
+      ],
+    }))
+    expect(shownToHydra.attachment).toEqual(expect.objectContaining({ path }))
+    expect(JSON.stringify(shownToHydra)).not.toContain('Private memory sentinel')
     const removed = await pnyxAxi({
       env,
       args: [
