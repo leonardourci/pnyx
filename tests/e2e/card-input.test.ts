@@ -827,11 +827,12 @@ test(
         folder,
       ],
     })
+    const task = await hydra.task({ key: 'layering' })
     await hydra.owner({
       args: [
         'task',
         'start',
-        'layering',
+        task.id,
         '--in-place',
       ],
     })
@@ -840,7 +841,6 @@ test(
       what: 'worker settles',
       check: () => worker.answered === 1,
     })
-    const task = await hydra.task({ key: 'layering' })
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -864,6 +864,12 @@ test(
         },
       )
       await modal.waitFor()
+      const openedModal = await modal.elementHandle()
+
+      if (!openedModal) {
+        throw new Error('Task modal disappeared after opening')
+      }
+
       await until({
         what: 'modal finishes opening',
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
@@ -896,6 +902,11 @@ test(
         { exact: true },
       ).waitFor({ state: 'visible' })
       expect(await originalBrief.isVisible()).toBe(false)
+      const idle = modal.getByText(
+        'Idle',
+        { exact: true },
+      )
+      await idle.waitFor({ state: 'visible' })
       const reply = 'Message handled'
       const partial = 'Message'
       const turn = pnyx.claude.plan({
@@ -929,30 +940,11 @@ test(
         { exact: true },
       ).waitFor({ state: 'visible' })
 
-      for (const status of [
-        'Running',
-        'Idle',
-      ]) {
-        if (status === 'Idle') {
-          turn.release()
-          await modal.getByText(
-            reply,
-            { exact: true },
-          ).waitFor({ state: 'visible' })
-        }
-
-        await until({
-          what: `worker is visibly ${status}`,
-          check: async () => await modal.getByText(
-            status,
-            { exact: true },
-          ).isVisible(),
-        })
-
+      const expectModalAboveCards = async () => {
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
-        const coverage = await modal.evaluate(element => {
+        const coverage = await openedModal.evaluate(element => {
           const bounds = element.getBoundingClientRect()
-          const cardsAboveModal: string[] = []
+          const blockedOverlaps: string[] = []
           let overlapCount = 0
 
           for (const card of document.querySelectorAll('article[data-task]')) {
@@ -993,18 +985,34 @@ test(
             )
 
             if (!element.contains(hit)) {
-              cardsAboveModal.push(card.textContent ?? '')
+              blockedOverlaps.push(card.textContent ?? '')
             }
           }
 
           return {
+            isModal: element.matches(':modal'),
             overlapCount,
-            cardsAboveModal,
+            blockedOverlaps,
           }
         })
+        expect(coverage.isModal).toBe(true)
         expect(coverage.overlapCount).toBeGreaterThan(0)
-        expect(coverage.cardsAboveModal).toEqual([])
+        expect(coverage.blockedOverlaps).toEqual([])
       }
+
+      await modal.getByText(
+        'Running',
+        { exact: true },
+      ).waitFor({ state: 'visible' })
+      await expectModalAboveCards()
+
+      turn.release()
+      await modal.getByText(
+        reply,
+        { exact: true },
+      ).waitFor({ state: 'visible' })
+      await idle.waitFor({ state: 'visible' })
+      await expectModalAboveCards()
     } finally {
       await page.context().close()
     }

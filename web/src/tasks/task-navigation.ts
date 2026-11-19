@@ -1,4 +1,3 @@
-import { useModalTask } from './presentation.ts'
 import { motionDuration, REDUCED_MOTION } from '#web-shared/motion.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -8,6 +7,7 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { focusElement } from '#web-preferences/keyboard-registry.tsx'
+import { useModalTask } from './presentation.ts'
 import { expandedByColumn, columnsFor, filterCards } from './view.ts'
 import { openTaskCard, afterTaskLayout, afterSteadyLayout, scrollTask } from './scroll-task.ts'
 
