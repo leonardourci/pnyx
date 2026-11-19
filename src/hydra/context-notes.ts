@@ -292,8 +292,8 @@ export function contextReportStatus({
   note: ContextNote
   state: HydraState
 }): 'handled' | 'helper handling' | 'unhandled' {
-  if (note.handled !== undefined) {
-    return note.handled ? 'handled' : 'unhandled'
+  if (note.handled) {
+    return 'handled'
   }
 
   const leased = Object.values(state.helper?.runs ?? {}).some(batch =>

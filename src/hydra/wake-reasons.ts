@@ -360,20 +360,23 @@ function ordinaryReasons({
     ]
   }
 
+  if (event.type === 'task.report' && card && !card.automaticTask && card.id !== HYDRA_CARD
+    && reportActor({ actor: event.actor }) && pnyxRunsHydra({ state })) {
+    return [
+      {
+        kind: 'report',
+        card: card.id,
+        detail: 'a stored result is ready in the report queue',
+      },
+    ]
+  }
+
   if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card || card.automaticTask
     || !hostedHydra({ state })) {
     return []
   }
 
   switch (event.type) {
-    case 'task.report':
-      return reportActor({ actor: event.actor }) ? [
-        {
-          kind: 'report',
-          card: card.id,
-          detail: 'a stored result is ready in the report queue',
-        },
-      ] : []
     case 'project.refreshed':
       return event.data.state === 'needs-attention' || event.data.state === 'unknown' ? [
         {

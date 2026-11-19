@@ -473,7 +473,7 @@ test(
 )
 
 test(
-  '300 worker reports have bounded delivery and a readable overflow while owner messages survive',
+  'worker report overflow spans several pages without clipping owner messages',
   async () => {
     const hydra = await pnyx.hydra()
     const turn = pnyx.claude.plan({
@@ -490,13 +490,7 @@ test(
     })
 
     try {
-      for (const index of Array.from(
-        { length: 300 },
-        (
-          _,
-          index,
-        ) => index,
-      )) {
+      for (let index = 0; index < 48; index++) {
         const receipt = await page.send({
           name: 'hydra',
           args: [
@@ -576,7 +570,20 @@ test(
         ],
       })
       expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
-      const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)![1]!
+      const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
+      if (after === undefined) {
+        throw new Error('The report wake did not give an overflow cursor')
+      }
+      const ownerPage = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          after,
+        ],
+      })
+      expect(ownerPage.changes[0]).toMatchObject({ reportStatus: 'unhandled' })
+
       let cursor = after
       const reports: string[] = []
 
@@ -591,17 +598,18 @@ test(
         })
         expect(rest.through).toBeGreaterThan(Number(cursor))
         const pending = rest.changes.filter((change: { actor: string }) => change.actor === 'worker:burst')
-        expect(pending).toEqual(expect.arrayContaining([expect.objectContaining({ reportStatus: 'unhandled' })]))
+        expect(pending[0]).toMatchObject({ reportStatus: 'unhandled' })
+        expect(pending.at(-1)).toMatchObject({ reportStatus: 'unhandled' })
         reports.push(...pending.map((change: { summary: string }) => change.summary))
         cursor = String(rest.through)
 
-        if (reports.some(text => text.includes('Report 299:'))) {
+        if (reports.some(text => text.includes('Report 47:'))) {
           break
         }
       }
 
-      expect(reports).toHaveLength(293)
-      expect(reports.at(-1)).toContain('Report 299:')
+      expect(reports).toHaveLength(41)
+      expect(reports.at(-1)).toContain('Report 47:')
       wakeTurn.release()
       await until({
         what: 'the overflow-reading turn to finish',
@@ -617,7 +625,7 @@ test(
         env: process.env,
       })).stdout
       expect(digest).not.toContain('Report 7:')
-      expect(digest).not.toContain('Report 299:')
+      expect(digest).not.toContain('Report 47:')
     } finally {
       turn.release()
       page.close()

@@ -107,6 +107,7 @@ export function wakeText({
 }): string {
   const lines: string[] = []
   let overflow = false
+  let reviewOverflow = false
   let used = 0
 
   if (reasons.length) {
@@ -171,6 +172,8 @@ export function wakeText({
           size: remaining,
         }))
       }
+
+      reviewOverflow = true
     }
   }
 
@@ -182,7 +185,7 @@ export function wakeText({
     lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   }
 
-  if (review && overflow) {
+  if (reviewOverflow) {
     const reviewedThrough = state.hydraReview?.seq ?? state.seq
     lines.push(`Read \`pnyx-axi history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
   }

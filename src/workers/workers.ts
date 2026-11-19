@@ -284,6 +284,7 @@ export async function hydraCheck({
       note.seq,
       note,
     ] as const))
+  const readReports: number[] = []
   const changesWithReportStatus = page.map(e => {
     const task = e.type === 'hydra.message' ? e.data.task : e.cardId
     const change = {
@@ -305,25 +306,20 @@ export async function hydraCheck({
       return change
     }
 
+    const reportStatus = contextReportStatus({
+      note,
+      state,
+    })
+
+    if (reportStatus !== 'helper handling') {
+      readReports.push(e.seq)
+    }
+
     return {
       ...change,
-      reportStatus: contextReportStatus({
-        note,
-        state,
-      }),
+      reportStatus,
     }
   })
-
-  if (hostedHydraRequest({ hydraId })) {
-    await askHost({
-      hydraId,
-      body: {
-        action: 'reports-read',
-        actor: HYDRA_ACTOR,
-        seqs: page.map(event => event.seq),
-      },
-    })
-  }
 
   const requests = Object.values(state.cards).flatMap(card => pendingPermissions({ card })
     .map(p => ({
@@ -354,6 +350,23 @@ export async function hydraCheck({
     )}s`,
   })))
 
+  const agents = await checkAttachments({
+    state,
+    connect,
+  })
+  const hosted = hostedHydraRequest({ hydraId })
+
+  if (hosted && readReports.length) {
+    await askHost({
+      hydraId,
+      body: {
+        action: 'reports-read',
+        actor: HYDRA_ACTOR,
+        seqs: readReports,
+      },
+    })
+  }
+
   return {
     hydraId,
     projects: projectRows({ state }),
@@ -369,17 +382,15 @@ export async function hydraCheck({
       })),
     requests: requests.length ? requests : 'none: no open permission requests',
     questions: asks.length ? asks : 'none: no open questions',
-    agents: await checkAttachments({
-      state,
-      connect,
-    }),
+    agents,
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     help: [
       ...directWordsHelp,
       ...typedHelp,
       ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
-      `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`,
+      ...(paged ? [`Run \`pnyx-axi hydra check --after ${through} --hydra ${hydraId}\` for the next page`] : []),
+      ...(!hosted && !paged ? [`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`] : []),
     ],
   }
 }
