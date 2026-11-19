@@ -146,15 +146,6 @@ export async function openHydra({
     },
     reducedMotion: reducedMotion ? 'reduce' : 'no-preference',
   })
-
-  if (process.env.PNYX_KEEP_TEST_FILES) {
-    await context.tracing.start({
-      screenshots: true,
-      snapshots: true,
-      sources: true,
-    })
-  }
-
   contexts.add(context)
   const close = context.close.bind(context)
   const task = evidenceTask
@@ -162,27 +153,10 @@ export async function openHydra({
   // Explicit closes in a test's finally block run before afterEach can retain its page.
   // eslint-disable-next-line pnyx/object-params -- Playwright owns the close method signature.
   context.close = async options => {
-    if (!contexts.has(context)) {
-      return close(options)
-    }
-
     await retainContext({
       context,
       task,
     })
-    const kept = process.env.PNYX_KEEP_TEST_FILES
-
-    if (kept) {
-      await context.tracing.stop({
-        path: join(
-          kept,
-          'browser',
-          task,
-          `${evidenceIndex++}-trace.zip`,
-        ),
-      })
-    }
-
     contexts.delete(context)
     await close(options)
   }
