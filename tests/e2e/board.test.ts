@@ -4979,8 +4979,6 @@ test(
     const second = workspace.locator('.project-column[aria-label="Beta"]')
 
     try {
-      await first.waitFor()
-      await second.waitFor()
       // The view's project widths can land after the page opens, sliding the columns into place.
       const body = await restingBox({ target: first.locator('.column-cards') })
       await page.mouse.move(
