@@ -1,3 +1,4 @@
+import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -474,6 +475,12 @@ async function commandCopy({
       help: ['Fix it with `pnyx-axi project set <name> --copy <shell command>`, or start with --in-place'],
     })
   }
+
+  protectedCopiesFolder({
+    hydraId,
+    root: realpathSync(printed),
+    preserveSurvivors: false,
+  })
 
   return {
     path: realpathSync(printed),

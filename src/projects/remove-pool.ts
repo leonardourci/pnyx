@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync, rmSync, readdirSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -24,9 +24,15 @@ function within({
 const canonicalPath = ({ path }: { path: string }) =>
   existsSync(path) ? realpathSync(path) : resolve(path)
 
-export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
-  const root = copiesDir({ hydraId })
-
+export function protectedCopiesFolder({
+  hydraId,
+  root = copiesDir({ hydraId }),
+  preserveSurvivors = true,
+}: {
+  hydraId: string
+  root?: string
+  preserveSurvivors?: boolean
+}) {
   if (lstatSync(
     root,
     { throwIfNoEntry: false },
@@ -39,14 +45,21 @@ export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
 
   const folder = canonicalPath({ path: root })
 
+  const survivors: string[] = []
+
   for (const id of hydraIds()) {
     const current = loadHydra({ hydraId: id }).state
     const projects = current.projects ?? []
-    const protectedPaths = projects.map(project => project.path)
+    const sourcePaths = Object.values(current.cards).flatMap(card =>
+      card.copy ? [card.copy.project] : [])
+    const protectedPaths = [
+      ...projects.map(project => project.path),
+      ...sourcePaths,
+    ]
 
     if (id !== hydraId) {
-      protectedPaths.push(...Object.values(current.cards).flatMap(card =>
-        card.copy && card.copy.state !== 'removed' ? [card.copy.path] : []))
+      survivors.push(...Object.values(current.cards).flatMap(card =>
+        card.copy && card.copy.state !== 'removed' ? [canonicalPath({ path: card.copy.path })] : []))
     }
 
     for (const path of protectedPaths) {
@@ -68,9 +81,20 @@ export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
     }
   }
 
+  if (!preserveSurvivors && survivors.some(path => within({
+    root: folder,
+    path,
+  }))) {
+    throw new HydraError({
+      message: `Copy contains another Hydra’s checkout: ${root}`,
+      code: 'CONFLICT',
+    })
+  }
+
   return {
     root,
     folder,
+    survivors,
   }
 }
 
@@ -78,6 +102,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
   const {
     root,
     folder,
+    survivors,
   } = protectedCopiesFolder({ hydraId })
   const state = loadHydra({ hydraId }).state
   const attachedProjects = state.projects ?? []
@@ -158,7 +183,15 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
         })
       }
 
-      if (insideRoot && (insideFolder || !existsSync(path))) {
+      const survives = survivors.some(survivor => within({
+        root: canonical,
+        path: survivor,
+      }) || within({
+        root: survivor,
+        path: canonical,
+      }))
+
+      if (insideRoot && (insideFolder || !existsSync(path)) && !survives) {
         slots.push({
           project,
           path,
@@ -171,6 +204,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     root,
     folder,
     slots,
+    survivors,
   }
 }
 
@@ -220,11 +254,43 @@ export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise
   }
 
   validateFolder()
-  rmSync(
-    pool.root,
-    {
-      recursive: true,
-      force: true,
-    },
-  )
+
+  function removeUnowned({ path }: { path: string }) {
+    const canonical = canonicalPath({ path })
+    const containsSurvivor = pool.survivors.some(survivor => within({
+      root: canonical,
+      path: survivor,
+    }))
+    const inSurvivor = pool.survivors.some(survivor => within({
+      root: survivor,
+      path: canonical,
+    }))
+
+    if (inSurvivor || !existsSync(path)) {
+      return
+    }
+
+    if (containsSurvivor) {
+      for (const entry of readdirSync(path)) {
+        removeUnowned({
+          path: resolve(
+            path,
+            entry,
+          ),
+        })
+      }
+
+      return
+    }
+
+    rmSync(
+      path,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+  }
+
+  removeUnowned({ path: pool.root })
 }
