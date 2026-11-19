@@ -3075,17 +3075,20 @@ test(
         'show',
       ],
     })
-    const [stored] = rows<{
-      revision: number
-      value: Record<string, unknown>
-    }>({ text: 'select revision, value from settings where id = \'shared\'' })
+    const stored = await until({
+      what: 'the page\'s settings row to hold the server\'s revision',
+      check: () => rows<{
+        revision: number
+        value: Record<string, unknown>
+      }>({ text: 'select revision, value from settings where id = \'shared\'' }).find(row => row.revision === revision),
+    })
     expect(stored.value).toHaveProperty('hiddenHydras')
     // Stands in for the row a build older than hiddenHydras wrote, which the page can read before the starting server
-    // rewrites it; a revision ahead of the server's keeps any copy the server makes meanwhile from replacing it.
-    const ahead = revision + 1
+    // rewrites it. The server copies the settings only when their revision moves, so the row keeps its revision and the
+    // restore leaves any newer copy alone.
     rows({
-      text: 'update settings set revision = $1, value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'',
-      values: [ahead],
+      text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\' and revision = $1',
+      values: [revision],
     })
     const pageErrors: string[] = []
     let page: Page | undefined
@@ -3125,11 +3128,10 @@ test(
       expect(pageErrors).toEqual([])
     } finally {
       rows({
-        text: 'update settings set revision = $1, value = $2 where id = \'shared\' and revision = $3',
+        text: 'update settings set value = $1 where id = \'shared\' and revision = $2',
         values: [
-          stored.revision,
           JSON.stringify(stored.value),
-          ahead,
+          revision,
         ],
       })
       await page?.context().close()
