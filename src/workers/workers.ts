@@ -5,6 +5,7 @@ import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { queuePosition } from './queue.ts'
 import { projectRows } from '#projects/read.ts'
+import { contextNoteBlock } from '#hydra/context-notes.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
@@ -412,7 +413,7 @@ const hydraDigestHandler = guard({
           }),
         ])
 
-        return hydraDigest({
+        const digest = hydraDigest({
           conditions: memoryConditions(),
           hydraId,
           owner,
@@ -422,6 +423,15 @@ const hydraDigestHandler = guard({
           readable: readable.map(project => project.path),
           setup: setupDigest({ items }),
         })
+
+        return [
+          digest,
+          contextNoteBlock({
+            notes: state.contextNotes ?? [],
+            hydraId,
+            state,
+          }),
+        ].filter(Boolean).join('\n')
       },
     })
   },
