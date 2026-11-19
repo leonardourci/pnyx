@@ -3583,7 +3583,7 @@ test(
       ],
     })
     const parent = created.card.id
-    await source.owner({
+    const helper = await source.owner({
       args: [
         'push',
         '--key',
@@ -3656,6 +3656,14 @@ test(
       ],
     })
     expect((await keeper.task({ key: parent })).title).toBe('Finished work')
+    expect((await source.task({ key: helper.card.id })).id).toBe(helper.card.id)
+    expect((await keeper.ownerRefused({
+      args: [
+        'task',
+        'show',
+        helper.card.id,
+      ],
+    })).code).toBe('NOT_FOUND')
     const target = await pnyx.hydra()
     await keeper.owner({
       args: [
@@ -3671,7 +3679,7 @@ test(
         path,
       ],
     })
-    await keeper.owner({
+    const secondHelper = await keeper.owner({
       args: [
         'push',
         '--key',
@@ -3704,6 +3712,14 @@ test(
       ],
     })
     expect((await target.task({ key: parent })).title).toBe('Finished work')
+    expect((await keeper.task({ key: secondHelper.card.id })).id).toBe(secondHelper.card.id)
+    expect((await target.ownerRefused({
+      args: [
+        'task',
+        'show',
+        secondHelper.card.id,
+      ],
+    })).code).toBe('NOT_FOUND')
   },
 )
 
