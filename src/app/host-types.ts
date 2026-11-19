@@ -242,6 +242,7 @@ export interface Host {
     card: Card
     page: ThreadPage
   }): ThreadPage
+  stopTools(): Promise<void>
   close(): void
 }
 

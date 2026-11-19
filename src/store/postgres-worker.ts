@@ -63,6 +63,8 @@ if (!PAGE_PUBLICATION) {
   throw new Error('schema.sql has no pnyx_page publication')
 }
 
+const ADD_HYDRA_REMOVAL = 'alter table hydras add column if not exists removed boolean not null default false'
+
 // Saved view rows drop the retired per-card widths; the events keep them, and replay ignores them.
 const REMOVE_CARD_WIDTHS = `update hydra_values
   set value = (value::jsonb #- '{workspace,cardWidths}')::json
@@ -123,6 +125,7 @@ async function requireSchema({
       await client.query(`create index events_card_history on events (hydra_id, card_id, seq);
         create index events_type_history on events (hydra_id, type, seq)`)
 
+      await client.query(ADD_HYDRA_REMOVAL)
       // The page reads no events, and Hydra's chat reads the actions within the time its page spans.
       await client.query(`create index events_at on events (hydra_id, at);
         ${PAGE_PUBLICATION.replace(
@@ -139,16 +142,16 @@ async function requireSchema({
     return
   }
 
-  if ((current === 5 || current === 6) && migrate) {
+  if ((current === 5 || current === 6 || current === 7) && migrate) {
     await client.query('begin')
 
     try {
-      if (current === 5) {
-        await client.query(PAGE_PUBLICATION.replace(
-          'create publication pnyx_page for table',
-          'alter publication pnyx_page set table',
-        ))
-      }
+      await client.query(ADD_HYDRA_REMOVAL)
+
+      await client.query(PAGE_PUBLICATION.replace(
+        'create publication pnyx_page for table',
+        'alter publication pnyx_page set table',
+      ))
 
       await client.query(`${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')

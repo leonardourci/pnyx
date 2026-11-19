@@ -114,7 +114,7 @@ export interface HydraSubscription {
 
 export interface RunningServer {
   port: number
-  // The address of the Hydra startServer was asked for.
+  // The server's root address, which opens an active Hydra.
   url: string
   socket: string | null
   // Hydras that could not be loaded, with the reason; the others keep working.
@@ -142,7 +142,7 @@ export interface MountedHydra {
     page?: string[]
   }): HydraSubscription
   settings(): void
-  close(): Promise<void>
+  close({ permanent }?: { permanent?: boolean }): Promise<void>
 }
 
 export type HydraRequest = {

@@ -75,6 +75,7 @@ function checkTouched({
 interface WriterOptions<T> {
   hydraId: string
   create?: boolean
+  removal?: boolean
   also?: string[]
   transaction?: {
     id: string
@@ -105,6 +106,7 @@ export function withWriter<T>({
   hydraId,
   fn,
   create = false,
+  removal = false,
   also = [],
   transaction,
   migrate = true,
@@ -144,6 +146,21 @@ export function withWriter<T>({
       hydraId: id,
       migrate,
     })
+
+    if (held.state.config?.removing && !removal) {
+      throw new HydraError({
+        message: `Hydra removal is pending: ${id}`,
+        code: 'CONFLICT',
+      })
+    }
+
+    if (held.state.config?.removed) {
+      throw new HydraError({
+        message: `Hydra was removed: ${id}`,
+        code: 'NOT_FOUND',
+      })
+    }
+
     privateDir({
       dir: hydraDir({
         hydraId: id,

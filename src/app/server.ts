@@ -94,6 +94,7 @@ export async function mountOwnedHydra({
   restart?(): void | Promise<void>
 }): Promise<MountedHydra> {
   let homes = (given ?? []).map(path => resolveHome({ path }))
+  let permanentClose: Promise<void> | undefined
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
   // Until recovery has stopped the previous server's agents, nothing may reopen a session.
@@ -804,7 +805,32 @@ export async function mountOwnedHydra({
       // The Done deadline follows the shared hours.
       kick()
     },
-    async close() {
+    async close({ permanent = false } = {}) {
+      if (permanentClose) {
+        return permanentClose
+      }
+
+      if (permanent) {
+        permanentClose = (async () => {
+          try {
+            agents.close()
+            await agents.stopTools()
+          } finally {
+            if (!closed) {
+              await stop()
+            }
+          }
+        })()
+
+        try {
+          await permanentClose
+        } finally {
+          permanentClose = undefined
+        }
+
+        return
+      }
+
       if (closed) {
         return
       }

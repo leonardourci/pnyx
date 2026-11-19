@@ -1,3 +1,4 @@
+import { query } from '#store/postgres.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { basename, dirname, join } from 'node:path'
@@ -303,7 +304,13 @@ function folders({ dir }: { dir: string }): string[] {
 }
 
 // Without migrate, Hydras still in boards/ are listed where they are instead of moved.
-export function hydraIds({ migrate = true }: { migrate?: boolean } = {}): string[] {
+export function hydraIds({
+  migrate = true,
+  includeRemoved = false,
+}: {
+  migrate?: boolean
+  includeRemoved?: boolean
+} = {}): string[] {
   const home = pnyxHome()
   const ids = migrate ? [
     ...folders({ dir: hydrasDir() }),
@@ -323,7 +330,16 @@ export function hydraIds({ migrate = true }: { migrate?: boolean } = {}): string
     }),
   ]
 
-  return [...new Set(ids)].sort()
+  const sorted = [...new Set(ids)].sort()
+
+  if (includeRemoved || sorted.length === 0) {
+    return sorted
+  }
+
+  const [removed] = query({ statements: [{ text: 'select id from hydras where removed' }] })
+  const removedIds = new Set(removed.map(row => String(row.id)))
+
+  return sorted.filter(id => !removedIds.has(id))
 }
 
 export function hydraDir({

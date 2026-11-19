@@ -7,6 +7,11 @@ import type { Command } from '#web-app/connection.ts'
 import { DISPATCH_CHANGED, useHeadsDispatch } from './heads-dispatch.ts'
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? 'none' : JSON.stringify(value)
+const COMMAND_PREVIEW_FIELDS = [
+  'name',
+  'args',
+  'cwd',
+]
 
 export function useDispatchProposals({
   state,
@@ -98,13 +103,23 @@ export function DispatchProposals({
     const note = status?.reason
       ? `${status.reason}. Dismiss it and ask Hydra again.`
       : 'Hydra proposes this change. Confirm to apply it.'
+    const applying = proposal.status === 'applying'
+    const commandApplying = proposal.kind === 'command' && applying
+    const applyingMessage = proposal.kind === 'dispatch'
+      ? 'Applying… Dismiss hides this question. The action continues.'
+      : 'Applying…'
+    const commandPreview = proposal.kind === 'command' ? JSON.stringify(
+      JSON.parse(proposal.value),
+      COMMAND_PREVIEW_FIELDS,
+      2,
+    ) : undefined
 
     return (
       <SettingsBox key={proposal.token} aria-label="Pending owner question">
         <strong>{proposal.summary}</strong>
         <p className="muted">{note}</p>
         {proposal.error && <p role="alert">{proposal.error}</p>}
-        {proposal.status === 'applying' && <p role="status">Applying… Dismiss hides this question without cancelling the action.</p>}
+        {applying && <p role="status">{applyingMessage}</p>}
         {proposal.kind === 'dispatch' ? (
           <ul>
             {changes.map(change => (
@@ -116,12 +131,7 @@ export function DispatchProposals({
             ))}
           </ul>
         ) : (
-          <pre>{JSON.stringify(
-            JSON.parse(proposal.value),
-            null,
-            2,
-          )}
-          </pre>
+          <pre>{commandPreview}</pre>
         )}
         <div className="row">
           {!status?.outOfDate && (
@@ -137,7 +147,7 @@ export function DispatchProposals({
             </Button>
           )}
           <Button
-            disabled={!connected || Boolean(busy)}
+            disabled={!connected || Boolean(busy) || commandApplying}
             onClick={() => void resolve({
               name,
               token: proposal.token,

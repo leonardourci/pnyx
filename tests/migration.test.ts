@@ -96,7 +96,7 @@ async function backToSchema1({
   })
   await sql({
     database: legacy,
-    text: SCHEMA_1,
+    text: `${SCHEMA_1}; alter table hydras add column removed boolean not null default false`,
   })
   const data = execFileSync(
     join(
@@ -130,6 +130,10 @@ async function backToSchema1({
       encoding: 'utf8',
     },
   )
+  await sql({
+    database: legacy,
+    text: 'alter table hydras drop column removed',
+  })
   const [{ last }] = await sql({
     database: legacy,
     text: 'select max(seq)::integer as last from events where hydra_id = $1',

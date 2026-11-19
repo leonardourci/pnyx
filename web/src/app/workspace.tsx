@@ -1480,6 +1480,16 @@ export function HydraView({
                     notify={notify}
                     upgrade={upgrade}
                     startUpgrade={startUpgrade}
+                    showConfirmation={() => {
+                      if (location.pathname !== `/hydra/${encodeURIComponent(navigation.hydraId)}/settings/`) {
+                        return
+                      }
+
+                      save({ patch: { workspace: { chatCollapsed: false } } })
+                        .catch(error => notify({ text: String(error) }))
+                      openChat({ id: navigation.hydraId })
+                        .catch((error: Error) => notify({ text: error.message }))
+                    }}
                   />
                 </ProfileSurface>
               </div>,

@@ -1,3 +1,4 @@
+import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -464,10 +465,10 @@ async function commandCopy({
     .at(-1)
     ?.trim() ?? ''
 
-  const usable = isAbsolute(printed) && isFolder({ path: printed })
-    && realpathSync(printed) !== project.path
+  const path = run.status === 0 && isAbsolute(printed) && isFolder({ path: printed })
+    ? realpathSync(printed) : undefined
 
-  if (run.status !== 0 || !usable) {
+  if (!path || path === project.path) {
     throw new HydraError({
       message: run.status !== 0 ? `the copy command of ${project.name} failed: ${run.stderr.trim().slice(-500)}` : `the copy command of ${project.name} must print the new folder's absolute path last, other than the project folder`,
       code: 'COPY_FAILED',
@@ -475,8 +476,14 @@ async function commandCopy({
     })
   }
 
+  protectedCopiesFolder({
+    hydraId,
+    root: path,
+    preserveSurvivors: false,
+  })
+
   return {
-    path: realpathSync(printed),
+    path,
     project: project.path,
     via: 'command',
     state: 'active',

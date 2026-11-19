@@ -1,3 +1,6 @@
+import { trackChildren } from '#workers/children.ts'
+import { finishHydraRemoval } from '#hydra/remove.ts'
+import { recoverOwnerCommands } from './confirmations.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -16,7 +19,7 @@ import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
-import { reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { hydraRemoval, reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
@@ -30,7 +33,7 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
-import { hydraExists } from './store.ts'
+import { holdHydra, hydraExists, loadHydra } from './store.ts'
 import { migrateSchema, query } from '#store/postgres.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
@@ -136,6 +139,7 @@ export async function startServer({
   let importing = true
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
+  const unmountedStops = new Set<Promise<void>>()
   const pendingLogs = new Map<string, () => void>()
   const skipped: Record<string, string> = {}
   let closed = false
@@ -693,6 +697,7 @@ export async function startServer({
   }
 
   const bound = (http.address() as { port: number }).port
+  const serverUrl = `http://127.0.0.1:${bound}/`
 
   for (const host of [
     `127.0.0.1:${bound}`,
@@ -737,7 +742,27 @@ export async function startServer({
     ready()
   }
 
-  const mount = ({ id }: { id: string }): Promise<MountedHydra> => {
+  const removalPending = ({ id }: { id: string }) => {
+    const [rows] = query({
+      statements: [
+        {
+          text: "select 1 from hydras where id = $1 and config->>'removing' = 'true'",
+          values: [id],
+        },
+      ],
+    })
+
+    return Boolean(rows?.length)
+  }
+
+  const mount = async ({ id }: { id: string }): Promise<MountedHydra> => {
+    if (removalPending({ id })) {
+      throw new HydraError({
+        message: `Hydra removal is pending: ${id}`,
+        code: 'CONFLICT',
+      })
+    }
+
     const known = mounts.get(id)
 
     if (known) {
@@ -745,10 +770,10 @@ export async function startServer({
     }
 
     if (closed) {
-      return Promise.reject(new HydraError({
+      throw new HydraError({
         message: 'the server is stopping',
         code: 'NOT_RUNNING',
-      }))
+      })
     }
 
     const opening = performance.now()
@@ -809,6 +834,46 @@ export async function startServer({
     return (await mount({ id })).url
   }
 
+  hydraRemoval.close = async ({ hydraId }) => {
+    served.delete(hydraId)
+    const mounted = mounts.get(hydraId)
+
+    if (mounted) {
+      const openHydra = await mounted
+      served.delete(hydraId)
+      await openHydra.close({ permanent: true })
+    } else {
+      const stopping = trackChildren({ hydraId }).stopAll()
+      unmountedStops.add(stopping)
+
+      try {
+        await stopping
+      } finally {
+        unmountedStops.delete(stopping)
+      }
+    }
+  }
+
+  hydraRemoval.finished = ({ hydraId: removedId }) => {
+    served.delete(removedId)
+    mounts.delete(removedId)
+
+    if (importing) {
+      return
+    }
+
+    const activeIds = hydraIds()
+
+    const primaryUnavailable = !activeIds.includes(removedId) || removalPending({ id: removedId })
+
+    if (hydraId === removedId && primaryUnavailable) {
+      hydraId = activeIds.find(id => !removalPending({ id })) ?? hydraId
+    }
+
+    mountAll()
+    hydrasChanged()
+  }
+
   let named: MountedHydra
 
   // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
@@ -820,7 +885,7 @@ export async function startServer({
     for (const id of hydraIds()) {
       const before = skipped[id]
 
-      if (!closed && !mounts.has(id)) {
+      if (!closed && !mounts.has(id) && !removalPending({ id })) {
         mount({ id }).catch((error: Error) => {
           if (error.message !== before) {
             log({
@@ -919,6 +984,8 @@ export async function startServer({
   const close = async () => {
     const stopping = performance.now()
     closed = true
+    hydraRemoval.close = undefined
+    hydraRemoval.finished = undefined
     watcher.close()
     settingsWatcher.close()
     clearInterval(retry)
@@ -926,6 +993,7 @@ export async function startServer({
     pendingLogs.forEach(stop => stop())
 
     try {
+      await Promise.allSettled(unmountedStops)
       const settled = await Promise.allSettled([...mounts].map(async ([
         id,
         mounting,
@@ -978,10 +1046,86 @@ export async function startServer({
   // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
   // claim, instead of leaving a server that holds it without serving.
   try {
-    named = await mount({ id: hydraId })
-    await mount({ id: 'default' })
+    // Holding a Hydra once imports a legacy events.jsonl, so the removal checks below read its rows.
+    for (const id of hydraIds()) {
+      try {
+        const release = holdHydra({
+          hydraId: id,
+          changed: () => {},
+        })
+        release()
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'hydra.import',
+          hydraId: id,
+          error,
+        })
+      }
+    }
 
     for (const id of hydraIds()) {
+      try {
+        if (removalPending({ id })) {
+          await finishHydraRemoval({ id })
+        }
+      } catch (error) {
+        log({
+          level: 'error',
+          operation: 'hydra.remove',
+          hydraId: id,
+          error,
+        })
+      }
+    }
+
+    for (const id of hydraIds()) {
+      try {
+        recoverOwnerCommands({ hydraId: id })
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'approval.recover',
+          hydraId: id,
+          error,
+        })
+      }
+    }
+
+    const removedOrPending = ({ id }: { id: string }) => {
+      if (!hydraExists({ hydraId: id })) {
+        return false
+      }
+
+      const config = loadHydra({ hydraId: id }).state.config
+
+      return config?.removed === true || config?.removing === true
+    }
+
+    if (removedOrPending({ id: hydraId })) {
+      const [activeId] = hydraIds().filter(id => !removalPending({ id }))
+
+      if (!activeId) {
+        throw new HydraError({
+          message: 'No active Hydra is available',
+          code: 'NOT_FOUND',
+        })
+      }
+
+      hydraId = activeId
+    }
+
+    named = await mount({ id: hydraId })
+
+    if (!removedOrPending({ id: 'default' })) {
+      await mount({ id: 'default' })
+    }
+
+    for (const id of hydraIds()) {
+      if (removalPending({ id })) {
+        continue
+      }
+
       try {
         await mount({ id })
       } catch (error) {
@@ -1020,7 +1164,7 @@ export async function startServer({
       text: JSON.stringify({
         pid: process.pid,
         port: bound,
-        url: named.url,
+        url: serverUrl,
         socket: named.socket,
         service: process.env.PNYX_SERVICE_ROLE === 'application'
           || process.env.XPC_SERVICE_NAME === serviceFile().label,
@@ -1046,7 +1190,7 @@ export async function startServer({
 
   return {
     port: bound,
-    url: named.url,
+    url: serverUrl,
     socket: named.socket,
     skipped: { ...skipped },
     open,
