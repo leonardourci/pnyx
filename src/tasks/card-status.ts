@@ -18,10 +18,6 @@ const ANSWER_STATES: Partial<Record<ReplyState, string>> = {
 }
 
 const WAITS: Partial<Record<TaskStatus, Omit<CardStatus, 'at'>>> = {
-  needs_you: {
-    kind: 'waiting',
-    text: 'waiting on a decision',
-  },
   blocked: {
     kind: 'blocked',
     text: 'blocked',
@@ -83,7 +79,7 @@ export function cardStatus({
   const readyReviews = reviewOnly && waiting.every(question => card.links.some(link =>
     link.url === question.ask?.url && readyForReview({ link })))
 
-  if (readyReviews && !card.reminder?.dueAt && !unsent.length) {
+  if (readyReviews && !unsent.length) {
     return {
       kind: 'asks',
       text: 'ready for review',
@@ -91,7 +87,7 @@ export function cardStatus({
     }
   }
 
-  if (waiting.length || card.reminder?.dueAt) {
+  if (waiting.length) {
     return {
       kind: 'asks',
       text: unsent.length && unsent.length === waiting.length ? 'answer not sent' : 'needs you',
@@ -238,16 +234,43 @@ export const statusLabel = ({ status }: { status: CardStatus }) => {
   return status.count ? `${text} · ${status.count}` : text
 }
 
-// Where the task stands, in the worker's own newest words: its latest status note or progress report.
 export function currentState({ card }: { card: Card }): {
   text: string
   at: string
-  source: 'note' | 'progress'
+  source: 'note' | 'progress' | 'reminder' | 'review'
 } | undefined {
   const note = (card.statusLog ?? [])
     .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
     .at(-1)
+  const reviewUpdates = card.links.flatMap(link => {
+    const at = link.checkedAt
+    const openDecision = (card.asks ?? []).some(ask =>
+      ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
+
+    if (!at || openDecision || !readyForReview({ link })) {
+      return []
+    }
+
+    const title = (link.title ?? 'Pull request').replace(
+      /[\\[\]]/g,
+      '\\$&',
+    )
+
+    return [
+      {
+        text: `[${title}](${link.url}) is ready for review.`,
+        at,
+        source: 'review' as const,
+      },
+    ]
+  })
   const said = [
+    ...reviewUpdates,
+    card.reminder?.dueAt ? {
+      text: 'Reminder due',
+      at: card.reminder.dueAt,
+      source: 'reminder' as const,
+    } : undefined,
     note ? {
       text: note.note,
       at: note.at,

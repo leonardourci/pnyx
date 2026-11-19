@@ -165,7 +165,7 @@ export function AskPanel({
         )}
         <ComposerField
           label="Your answer"
-          placeholder={options.length ? 'Add a note, or answer in your own words' : 'Your answer'}
+          placeholder="Your answer"
           value={text}
           change={({ text }) => setDraft({
             pick,

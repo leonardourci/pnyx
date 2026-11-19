@@ -213,7 +213,7 @@ export type HydraChange = EventBase & (
       reminder: string
       nextAt?: string | null
       grouped?: boolean
-      column: Column
+      column?: Column
       message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
     }
   }
@@ -289,6 +289,8 @@ export type HydraChange = EventBase & (
   | {
     type: 'task.ask.escalated'
     data: {
+      options?: Ask['options']
+      recommended?: number
       ask: string
       question?: string
       context?: string

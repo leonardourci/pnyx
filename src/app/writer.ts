@@ -17,7 +17,7 @@ import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
 import { replayOwned } from './reducer.ts'
 import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
-import { reconcileAsks } from '#tasks/delivery/merge-questions.ts'
+import { reconcileAsks, retireableReviewQuestions } from '#tasks/delivery/merge-questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
@@ -193,6 +193,10 @@ export function withWriter<T>({
 
   try {
     for (const stage of stages) {
+      if (migrate) {
+        retireReviewQuestions({ writer: stage.writer })
+      }
+
       const migrated = migrate ? migrateColumns({
         state: stage.writer.state,
         meta: {
@@ -210,6 +214,7 @@ export function withWriter<T>({
       writer: primary,
       writers,
     })
+
     const changes = stages.filter(stage => stage.pending.length).map(stage => {
       const rows = rowChanges({
         hydraId: stage.id,
@@ -566,6 +571,29 @@ export function eventWriter({
           }
         }
 
+        switch (event.type) {
+          case 'card.pushed':
+          case 'board.configured':
+          case 'card.linked':
+          case 'card.outcome':
+          case 'hydra.project':
+          case 'task.declared':
+          case 'task.landing':
+          case 'task.moved-in':
+          case 'task.moved-out':
+          case 'task.project':
+            if (event.type === 'card.pushed'
+              && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
+              break
+            }
+
+            retireReviewQuestions({
+              writer,
+              at: event.at,
+            })
+            break
+        }
+
         // A task's explicit lifecycle change moves its card, as its own event in the same write.
         for (const move of lifecycleMoves({
           before,
@@ -598,4 +626,19 @@ export function eventWriter({
   }
 
   return writer
+}
+
+function retireReviewQuestions({
+  writer,
+  at = new Date().toISOString(),
+}: {
+  writer: Writer
+  at?: string
+}): void {
+  for (const review of retireableReviewQuestions({
+    state: writer.state,
+    at,
+  })) {
+    writer.append({ event: review })
+  }
 }
