@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { useTaskModalSize } from './presentation.ts'
@@ -16,7 +17,8 @@ export function TaskCardModal({
 }) {
   const modal = useTaskModalSize()
 
-  return (
+  // Moving a dialog’s DOM ancestor removes it from the browser’s modal top layer.
+  return createPortal(
     <Dialog
       title={title}
       layoutId={layoutId}
@@ -54,6 +56,7 @@ export function TaskCardModal({
           value,
         })}
       />
-    </Dialog>
+    </Dialog>,
+    document.body,
   )
 }

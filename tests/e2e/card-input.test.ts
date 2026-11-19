@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
 import { git } from '../setup/upgrade.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
@@ -763,6 +763,203 @@ test(
       await page.reload()
       await card.waitFor()
       expect(await card.locator('.card-details').isVisible()).toBe(false)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test.each([
+  { theme: 'light' },
+  { theme: 'dark' },
+])(
+  'sending in a task modal keeps every workspace card behind it in $theme',
+  async ({ theme }) => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'layering' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { [folder]: 850 } } }),
+      ],
+    })
+
+    for (let index = 0; index < 6; index++) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          `Background task ${index}`,
+          '--folder',
+          folder,
+          '--project',
+          folder,
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'layering',
+        '--title',
+        'Task layering',
+        '--folder',
+        folder,
+        '--project',
+        folder,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'layering',
+        '--in-place',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    await until({
+      what: 'worker settles',
+      check: () => worker.answered === 1,
+    })
+    const task = await hydra.task({ key: 'layering' })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      await page.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        theme => {
+          document.documentElement.dataset.theme = theme
+        },
+        theme,
+      )
+      const card = page.locator(`article[data-task="${task.id}"]`).first()
+      await card.hover()
+      await card.getByRole(
+        'button',
+        {
+          name: 'Open modal',
+          exact: true,
+        },
+      ).click()
+      const modal = page.getByRole(
+        'dialog',
+        {
+          name: 'Task layering',
+          exact: true,
+        },
+      )
+      await modal.waitFor()
+      await until({
+        what: 'modal finishes opening',
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
+      })
+      const turn = pnyx.claude.plan({
+        hydra: hydra.id,
+        hold: true,
+        partial: 'Working on the message',
+        reply: 'Message handled',
+      })
+      onTestFinished(() => turn.release())
+      await modal.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      ).fill(`Keep the modal above the workspace in ${theme}`)
+      await modal.getByRole(
+        'button',
+        {
+          name: 'Send to worker',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'worker receives the modal message',
+        check: async () => worker.received.some(text => text.includes(`Keep the modal above the workspace in ${theme}`)),
+      })
+
+      for (const status of [
+        'Running',
+        'Idle',
+      ]) {
+        if (status === 'Idle') {
+          turn.release()
+        }
+
+        await until({
+          what: `worker is visibly ${status}`,
+          check: async () => await modal.getByText(
+            status,
+            { exact: true },
+          ).count() > 0,
+        })
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        expect(await modal.evaluate(element => element.matches(':modal'))).toBe(true)
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        const covered = await modal.evaluate(element => {
+          const bounds = element.getBoundingClientRect()
+          const overlapping: string[] = []
+
+          for (const card of document.querySelectorAll('article[data-task]')) {
+            if (element.contains(card)) {
+              continue
+            }
+
+            const box = card.getBoundingClientRect()
+            const left = Math.max(
+              bounds.left,
+              box.left,
+            )
+            const right = Math.min(
+              bounds.right,
+              box.right,
+            )
+            const top = Math.max(
+              bounds.top,
+              box.top,
+            )
+            const bottom = Math.min(
+              bounds.bottom,
+              box.bottom,
+            )
+
+            if (left >= right || top >= bottom) {
+              continue
+            }
+
+            const painted = document.elementFromPoint(
+              (left + right) / 2,
+              (top + bottom) / 2,
+            )
+
+            if (!element.contains(painted)) {
+              overlapping.push(card.textContent ?? '')
+            }
+          }
+
+          return overlapping
+        })
+        expect(covered).toEqual([])
+      }
     } finally {
       await page.context().close()
     }
