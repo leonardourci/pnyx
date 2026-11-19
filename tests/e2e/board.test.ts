@@ -3796,7 +3796,20 @@ test(
       hydraId: hydra.id,
     })
 
+    const traceFolder = process.env.PNYX_KEEP_TEST_FILES
+
     try {
+      if (traceFolder) {
+        mkdirSync(
+          traceFolder,
+          { recursive: true },
+        )
+        await page.context().tracing.start({
+          screenshots: true,
+          snapshots: true,
+        })
+      }
+
       const wide = await hydra.task({ key: 'wide' })
       const card = page.locator(`[data-hydra-workspace="${hydra.id}"] .card[data-task="${wide.id}"]`)
       await card.hover()
@@ -4543,7 +4556,18 @@ test(
       })
       expect(await draft.inputValue()).toBe('Keep the open conversation while moving')
     } finally {
-      await page.context().close()
+      try {
+        if (traceFolder) {
+          await page.context().tracing.stop({
+            path: join(
+              traceFolder,
+              'wide-card-trace.zip',
+            ),
+          })
+        }
+      } finally {
+        await page.context().close()
+      }
     }
   },
 )
