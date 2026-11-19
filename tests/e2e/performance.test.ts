@@ -363,7 +363,7 @@ test(
           earlierProject,
         ],
       })
-      positions = await anchorSample.evaluate(sample => sample.positions)
+      positions = await anchorSample.evaluate(({ positions }) => positions)
     } finally {
       await anchorSample.dispose()
     }
