@@ -23,18 +23,15 @@ export function HydraChips({
   filterPolis({ polis }: { polis?: string }): void
   createHydra(): unknown
 }) {
-  const poleis = [...new Set(hydras.map(hydra => hydra.polis ?? 'shared'))]
-  const grouped = poleis.flatMap(polis => hydras.filter(hydra => (hydra.polis ?? 'shared') === polis))
-
   return (
     <nav data-sort-surface={`hydra-chips:${current}`} className="hydra-chips flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden" aria-label="Hydra navigation">
-      <SortGroup id={`hydra-chips:${current}`} items={grouped.map(hydra => hydra.id)}>
-        {grouped.map((
+      <SortGroup id={`hydra-chips:${current}`} items={hydras.map(hydra => hydra.id)}>
+        {hydras.map((
           hydra,
           index,
         ) => {
           const polis = hydra.polis ?? 'shared'
-          const previousPolis = grouped[index - 1]?.polis ?? 'shared'
+          const previousPolis = hydras[index - 1]?.polis ?? 'shared'
           const startsPolis = index === 0 || previousPolis !== polis
           const selected = polisFilter === polis
           const nextFilter = selected ? undefined : polis
