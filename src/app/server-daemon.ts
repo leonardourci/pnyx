@@ -423,6 +423,11 @@ export async function startServer({
       socket,
       head,
     ) => {
+      // The HTTP server unhooks its own error listener on upgrade, so a client gone mid-upgrade would crash the server.
+      socket.on(
+        'error',
+        () => socket.destroy(),
+      )
       const url = requestUrl({ url: req.url })
 
       if (isZeroPath({ path: url.pathname })) {

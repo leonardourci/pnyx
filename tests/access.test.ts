@@ -1,5 +1,6 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
+import { connect } from 'node:net'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { localToken } from '#app/server-state.ts'
@@ -62,6 +63,47 @@ test(
       probe.closeAllConnections()
       await new Promise(resolve => probe.close(resolve))
     }
+  },
+)
+
+test(
+  'a /zero client that drops its socket mid-upgrade leaves the server answering',
+  async () => {
+    // A reset before the refusal is written fails its write (EPIPE); one after it arrives fails the next read (ECONNRESET).
+    for (const resetOnAnswer of [
+      false,
+      true,
+    ]) {
+      await new Promise<void>(resolve => {
+        const client = connect(
+          {
+            host: '127.0.0.1',
+            port: pnyx.port(),
+          },
+          () => {
+            client.write(`GET /zero/sync HTTP/1.1\r\nHost: 127.0.0.1:${pnyx.port()}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`)
+
+            if (!resetOnAnswer) {
+              client.resetAndDestroy()
+            }
+          },
+        )
+        client.on(
+          'data',
+          () => client.resetAndDestroy(),
+        )
+        client.on(
+          'error',
+          () => undefined,
+        )
+        client.once(
+          'close',
+          () => resolve(),
+        )
+      })
+    }
+
+    expect((await fetch(`http://127.0.0.1:${pnyx.port()}/health`)).status).toBe(200)
   },
 )
 

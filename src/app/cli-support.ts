@@ -12,7 +12,6 @@ import { briefChange } from '#tasks/updates.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { columnRule } from '#tasks/column-defaults.ts'
 import { readEvents } from './event-log.ts'
-import { replay, emptyHydra } from './reducer.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '#memory/workers.ts'
@@ -317,10 +316,27 @@ function receipt({
     }
   }
 
+  // A retried write's card may have moved to another Hydra since.
+  if (!Object.hasOwn(
+    state.cards,
+    event.cardId,
+  )) {
+    return {
+      event: {
+        seq: event.seq,
+        id: event.id,
+        type: event.type,
+      },
+      card: { id: event.cardId },
+    }
+  }
+
   const card = state.cards[event.cardId]!
 
   if (event.type === 'task.declared') {
-    const phase = declaredState({ declaration: card.status! })
+    // The card's log keeps every declaration, and a retried one may no longer be the card's status.
+    const declaration = card.statusLog!.find(entry => entry.id === event.id)!
+    const phase = declaredState({ declaration })
 
     return {
       event: {
@@ -413,34 +429,26 @@ function confirmationPreview({
   }
 }
 
-// The receipt the event with this id got when it was appended. An id already used
-// for another card or event type is a conflict, not a retry.
+// A retried event id's receipt, from its event and the current state, since rebuilding the state at append time would replay the log. An id already used for another card or event type is a conflict, not a retry.
 function originalReceipt(
   {
-    hydraId,
     state,
     id,
-    seq,
+    original,
     intent,
   }: {
-    hydraId: string
     state: HydraState
     id: string
-    seq: number
+    original: HydraEvent
     intent: Intent
   },
 ): Output {
-  const events = readEvents({
-    hydraId,
-    before: seq + 1,
-  })
-  const index = events.findIndex(e => e.id === id && e.seq === seq)
-  const original = events[index]!
+  // The key a card had when it moved to another Hydra still names it in a retry.
+  const sameCard = original.cardId === intent.card
+    || state.keys[intent.card] === original.cardId
+    || state.movedOut?.[original.cardId]?.key === intent.card
 
-  if (
-    original.type !== intent.type
-    || (original.cardId !== intent.card && state.keys[intent.card] !== original.cardId)
-  ) {
+  if (original.type !== intent.type || !sameCard) {
     throw new AxiError(
       `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       'IDEMPOTENCY_CONFLICT',
@@ -450,13 +458,7 @@ function originalReceipt(
 
   return {
     ...receipt({
-      state: replay({
-        state: emptyHydra(),
-        events: events.slice(
-          0,
-          index + 1,
-        ),
-      }),
+      state,
       event: original,
     }),
     duplicate: 'event id already applied; nothing appended',
@@ -510,19 +512,19 @@ export function commit(
       let out: Output
 
       if (seq !== undefined) {
-        out = originalReceipt({
-          hydraId,
-          state: writer.state,
-          id: meta.id!,
-          seq,
-          intent,
-        })
+        // eventIds is rebuilt from this Hydra's log, so its seq always names a saved event.
         const original = readEvents({
           hydraId,
-          ids: [meta.id!],
-        })[0]
+          seqs: [seq],
+        })[0]!
+        out = originalReceipt({
+          state: writer.state,
+          id: meta.id!,
+          original,
+          intent,
+        })
 
-        if (original?.type === 'hydra.memory' && original.data.key === 'workers') {
+        if (original.type === 'hydra.memory' && original.data.key === 'workers') {
           workerNotesNotice({
             writer,
             target: `Hydra ${hydraId}`,
