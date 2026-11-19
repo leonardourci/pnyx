@@ -3346,21 +3346,30 @@ test(
         'First root',
         'Second root',
       ]) {
-        const toggle = workspace.getByRole(
+        const id = (await hydra.task({ key: title })).id
+        const family = () => workspace.locator(`[data-family="${id}"]`)
+        const toggle = () => family().getByRole(
           'button',
           {
             name: `Sub-tasks of ${title}`,
             exact: true,
           },
         )
-        await toggle.scrollIntoViewIfNeeded()
-        await restingBox({ target: toggle })
-        await toggle.click()
-        const fold = toggle.locator('xpath=ancestor::*[@data-family][1]').locator('[data-fold-open]')
+        await toggle().hover()
+        await restingBox({ target: toggle() })
+        await toggle().click()
         await until({
           what: `the sub-task fold of ${title} finishes opening`,
-          // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched element.
-          check: () => fold.evaluate(node => node.getAttribute('data-fold-open') === 'true' && node.clientHeight >= node.scrollHeight),
+          check: async () => {
+            if (await toggle().getAttribute('aria-expanded') !== 'true') {
+              return false
+            }
+
+            const fold = family().locator('[data-fold-open]')
+
+            // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched element.
+            return fold.evaluate(node => node.getAttribute('data-fold-open') === 'true' && node.clientHeight >= node.scrollHeight)
+          },
         })
       }
 
