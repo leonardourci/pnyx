@@ -689,6 +689,66 @@ test(
 )
 
 test(
+  'a retried write answers from the task as it is now, and with its id alone once the task moved to another Hydra',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const other = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'retried',
+        '--title',
+        'Retried',
+      ],
+    })
+    const taskId = created.card.id as string
+    const declare = [
+      'task',
+      'status',
+      taskId,
+      'working',
+      '--note',
+      'First pass',
+      '--event-id',
+      'retried-declaration',
+    ]
+    const first = await hydra.owner({ args: declare })
+    const later = await hydra.owner({
+      args: [
+        'task',
+        'status',
+        taskId,
+        'blocked',
+        '--note',
+        'Waiting on access',
+      ],
+    })
+    expect(later.card.revision).toBeGreaterThan(first.card.revision)
+
+    const retried = await hydra.owner({ args: declare })
+    expect(retried.duplicate).toBe('event id already applied; nothing appended')
+    expect(retried.event).toEqual(first.event)
+    expect(retried.card).toEqual(later.card)
+
+    await hydra.owner({
+      args: [
+        'task',
+        'move',
+        taskId,
+        '--to-hydra',
+        other.id,
+      ],
+    })
+    const moved = await hydra.owner({ args: declare })
+    expect(moved.duplicate).toBe('event id already applied; nothing appended')
+    expect(moved.event).toEqual(first.event)
+    expect(moved.card).toEqual({ id: taskId })
+  },
+)
+
+test(
   'arrange retries remain duplicates after their peer changes family',
   async () => {
     const hydra = await pnyx.hydra()
