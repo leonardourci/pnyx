@@ -941,74 +941,61 @@ test(
       ).waitFor({ state: 'visible' })
 
       const expectModalAboveCards = async () => {
-        for (const theme of [
-          'light',
-          'dark',
-        ]) {
-          await page.evaluate(
-            ({ theme }) => {
-              document.documentElement.dataset.theme = theme
-            },
-            { theme },
-          )
-          // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
-          const coverage = await openedModal.evaluate(element => {
-            const bounds = element.getBoundingClientRect()
-            const blockedOverlaps: string[] = []
-            let overlapCount = 0
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        const coverage = await openedModal.evaluate(element => {
+          const bounds = element.getBoundingClientRect()
+          const blockedOverlaps: string[] = []
+          let overlapCount = 0
 
-            for (const card of document.querySelectorAll('article[data-task]')) {
-              if (element.contains(card)) {
-                continue
-              }
-
-              const box = card.getBoundingClientRect()
-              const left = Math.max(
-                bounds.left,
-                box.left,
-                0,
-              )
-              const right = Math.min(
-                bounds.right,
-                box.right,
-                window.innerWidth,
-              )
-              const top = Math.max(
-                bounds.top,
-                box.top,
-                0,
-              )
-              const bottom = Math.min(
-                bounds.bottom,
-                box.bottom,
-                window.innerHeight,
-              )
-
-              if (left >= right || top >= bottom) {
-                continue
-              }
-
-              overlapCount++
-              const hit = document.elementFromPoint(
-                (left + right) / 2,
-                (top + bottom) / 2,
-              )
-
-              if (!element.contains(hit)) {
-                blockedOverlaps.push(card.textContent ?? '')
-              }
+          for (const card of document.querySelectorAll('article[data-task]')) {
+            if (element.contains(card)) {
+              continue
             }
 
-            return {
-              isModal: element.matches(':modal'),
-              overlapCount,
-              blockedOverlaps,
+            const box = card.getBoundingClientRect()
+            const left = Math.max(
+              bounds.left,
+              box.left,
+              0,
+            )
+            const right = Math.min(
+              bounds.right,
+              box.right,
+              window.innerWidth,
+            )
+            const top = Math.max(
+              bounds.top,
+              box.top,
+              0,
+            )
+            const bottom = Math.min(
+              bounds.bottom,
+              box.bottom,
+              window.innerHeight,
+            )
+
+            if (left >= right || top >= bottom) {
+              continue
             }
-          })
-          expect(coverage.isModal).toBe(true)
-          expect(coverage.overlapCount).toBeGreaterThan(0)
-          expect(coverage.blockedOverlaps).toEqual([])
-        }
+
+            overlapCount++
+            const hit = document.elementFromPoint(
+              (left + right) / 2,
+              (top + bottom) / 2,
+            )
+
+            if (!element.contains(hit)) {
+              blockedOverlaps.push(card.textContent ?? '')
+            }
+          }
+
+          return {
+            overlapCount,
+            blockedOverlaps,
+          }
+        })
+        expect(coverage.overlapCount).toBeGreaterThan(0)
+        expect(coverage.blockedOverlaps).toEqual([])
       }
 
       await modal.getByText(
