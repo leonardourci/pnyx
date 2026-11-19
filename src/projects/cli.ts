@@ -1,7 +1,7 @@
 import { childRepositories, attachProjectGroup, projectGroupCommand } from './group-cli.ts'
 import { keepProject } from './ownership.ts'
 import { sharesWithMore } from '#memory/access-changes.ts'
-import { canRead, findReadableProject, readableProjectDetails, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
+import { canRead, memoryCaller, findReadableProject, readableProjectDetails, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -195,18 +195,44 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'show') {
-    return projectMemoryCommand({
+    const attached = findProject({
+      state: current,
+      ref: required({
+        value: ref,
+        what: 'project name or path',
+      }),
+    })
+    const details = await readableProjectDetails({
+      state: current,
+      hydraId,
+    })
+    const attachment = projectRows({
+      state: current,
+      projects: [attached],
+    })[0]
+    const readable = details.some(detail => detail.project.path === attached.path)
+
+    if (memoryCaller({ hydraId }) && !readable) {
+      return {
+        project: attached.name,
+        attachment,
+      }
+    }
+
+    const memory = await projectMemoryCommand({
       args: [
         'list',
         '--project',
-        required({
-          value: ref,
-          what: 'project name or path',
-        }),
+        attached.path,
         '--hydra',
         hydraId,
       ],
     })
+
+    return {
+      ...memory,
+      attachment,
+    }
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
@@ -220,7 +246,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     ]))
     const projects = projectRows({
       state: current,
-      projects: details.map(({ project }) => project),
+      projects: memoryCaller({ hydraId }) ? undefined : [],
     }).map(project => {
       const detail = detailsByPath.get(project.path)
 
@@ -273,18 +299,21 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   let projectRef = ref
 
   if (action === 'set' || action === 'remove') {
-    const project = await findReadableProject({
-      hydraId,
+    const project = findProject({
       state: current,
       ref: required({
         value: ref,
         what: 'project',
       }),
     })
-    requireProjectMemory({
-      hydraId,
-      ...(await projectIdentity(project)),
-    })
+
+    if (action === 'set') {
+      requireProjectMemory({
+        hydraId,
+        ...(await projectIdentity(project)),
+      })
+    }
+
     projectRef = project.path
   }
 
@@ -486,10 +515,12 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  requireProjectMemory({
-    hydraId,
-    ...(await projectIdentity({ path })),
-  })
+  if (action !== 'remove') {
+    requireProjectMemory({
+      hydraId,
+      ...(await projectIdentity({ path })),
+    })
+  }
 
   const result = withRegistryLock({
     fn: () => commit({
@@ -579,7 +610,7 @@ pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] -
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
-Project list includes each project’s polis and the Hydra’s readable destinations in readPoleis.
+Project list, show and remove expose attachments independently of memory read access. Project list includes each readable project’s polis and the Hydra’s readable destinations in readPoleis.
 Each project belongs to one polis (shared by default); only attached Hydras that may read that polis see its memory. Move changes its assigned polis explicitly.
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.

@@ -3685,3 +3685,120 @@ test(
     expect((await target.task({ key: parent })).title).toBe('Finished work')
   },
 )
+
+test(
+  'attachment management survives an empty memory read list without revealing memory',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const path = source.folder({ name: 'hidden-memory-project' })
+    await source.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    await source.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        path,
+        '--key',
+        'preferences',
+        '--text',
+        'Private memory sentinel',
+      ],
+    })
+    await source.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        '',
+      ],
+    })
+    expect((await target.ownerRefused({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })).code).toBe('CONFLICT')
+    expect((await source.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toEqual([
+      expect.objectContaining({
+        path,
+        state: 'attached',
+      }),
+    ])
+    const shown = await source.owner({
+      args: [
+        'project',
+        'show',
+        path,
+      ],
+    })
+    expect(JSON.stringify(shown)).not.toContain('Private memory sentinel')
+    expect(JSON.stringify(shown)).toContain(path)
+    expect((await source.ownerRefused({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        path,
+      ],
+    })).code).toBe('NOT_FOUND')
+    const env = {
+      ...process.env,
+      PNYX_ACTOR: 'hydra',
+      PNYX_HYDRA: source.id,
+      PNYX_TASK: undefined,
+    }
+    expect(parsed(await pnyxAxi({
+      env,
+      args: [
+        'project',
+        'list',
+        '--hydra',
+        source.id,
+      ],
+    })).projects).toEqual([expect.objectContaining({ path })])
+    const removed = await pnyxAxi({
+      env,
+      args: [
+        'project',
+        'remove',
+        path,
+        '--reason',
+        'Detach attachment without memory access',
+        '--hydra',
+        source.id,
+      ],
+    })
+    expect(removed.status).toBe(0)
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
+    expect((await target.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        path,
+      ],
+    })).memory.preferences).toBe('Private memory sentinel')
+  },
+)
