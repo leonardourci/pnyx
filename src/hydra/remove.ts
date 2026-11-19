@@ -70,7 +70,7 @@ function removalTarget({
   return state
 }
 
-async function removalPlan({
+async function prepareRemoval({
   id,
   state,
 }: {
@@ -103,7 +103,7 @@ async function removalPreview({
 }: {
   id: string
   state: ReturnType<typeof removalTarget>
-  plan: Awaited<ReturnType<typeof removalPlan>>
+  plan: Awaited<ReturnType<typeof prepareRemoval>>
 }): Promise<string> {
   const cards = Object.values(state.cards)
   const tasks = cards.filter(card => !isManagedTask({ card }))
@@ -193,7 +193,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
 
   if (!approved) {
-    const plan = await removalPlan({
+    const plan = await prepareRemoval({
       id,
       state,
     })
@@ -224,7 +224,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
   }
 
-  await removalPlan({
+  await prepareRemoval({
     id,
     state,
   })
@@ -342,7 +342,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
 
   try {
     await close({ hydraId: id })
-    const plan = await removalPlan({
+    const plan = await prepareRemoval({
       id,
       state,
     })
