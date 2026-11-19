@@ -27,7 +27,8 @@ import { askWording, openAsks } from '#tasks/ask-state.ts'
 import { lifecycleMove } from '#tasks/lifecycle.ts'
 import { COMMON, guard, integer, parse, type Output, summarize } from '#app/cli-support.ts'
 import { commands } from '#app/cli.ts'
-import { requestEnv } from '#app/request-context.ts'
+import { askHost } from '#app/server-state.ts'
+import { requestEnv, hostedHydraRequest } from '#app/request-context.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { pendingPermissions } from './permission-rules.ts'
 import { typedWords, type TypedWords } from './typed-words.ts'
@@ -312,6 +313,18 @@ export async function hydraCheck({
       }),
     }
   })
+
+  if (hostedHydraRequest({ hydraId })) {
+    await askHost({
+      hydraId,
+      body: {
+        action: 'reports-read',
+        actor: HYDRA_ACTOR,
+        seqs: page.map(event => event.seq),
+      },
+    })
+  }
+
   const requests = Object.values(state.cards).flatMap(card => pendingPermissions({ card })
     .map(p => ({
       id: p.id,
