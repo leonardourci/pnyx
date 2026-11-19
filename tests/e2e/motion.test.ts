@@ -618,12 +618,18 @@ test(
           const sampling = close.evaluate(
             async (
               button,
-              { task, frameCount },
+              {
+                task,
+                frameCount,
+              },
             ) => {
               await new Promise<void>(resolve => button.addEventListener(
                 'click',
                 () => resolve(),
-                { capture: true, once: true },
+                {
+                  capture: true,
+                  once: true,
+                },
               ))
               const boxes: number[][] = []
 
