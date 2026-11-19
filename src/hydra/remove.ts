@@ -240,6 +240,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
   }
 
   removing.add(id)
+
   try {
     await close({ hydraId: id })
     const copies = removalCopies({ state })
