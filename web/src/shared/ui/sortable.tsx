@@ -739,7 +739,7 @@ export function SortableWorkspace({
 
   useLayoutEffect(
     () => {
-      if (!active || active.kind !== 'task' || !shift || !latestDetection.current?.pointerCoordinates) {
+      if (!active || active.kind !== 'task' || !shift) {
         return
       }
 
@@ -750,6 +750,8 @@ export function SortableWorkspace({
         const pointer = latestDetection.current?.pointerCoordinates
 
         if (!pointer) {
+          frame = requestAnimationFrame(refresh)
+
           return
         }
 
