@@ -861,6 +861,19 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
       })
+      await hydra.owner({
+        args: [
+          'task',
+          'brief',
+          task.id,
+          '--brief',
+          'Instructions updated while the modal stays open',
+        ],
+      })
+      await modal.getByText(
+        'Instructions updated while the modal stays open',
+        { exact: true },
+      ).waitFor()
       const reply = 'Message handled'
       const partial = 'Message'
       const turn = pnyx.claude.plan({
