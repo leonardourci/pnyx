@@ -122,6 +122,7 @@ Rules:
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
 - `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
 - `e2e/motion.test.ts`: the motion off switch and reduced motion.
+- `e2e/questions.test.ts`: keyboard navigation in Waiting on you, task updates and group-answer receipt recovery after a reload.
 - `e2e/performance.test.ts`: the large-workspace journey (see Performance journey).
 - `e2e/slow-link.test.ts`: a Hydra's large first sync loading over a slow link, on a server of its own.
 - `e2e/ui-metrics.test.ts`: page metrics written to the log files, never to Hydra events.

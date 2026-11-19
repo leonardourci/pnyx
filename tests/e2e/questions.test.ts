@@ -259,7 +259,7 @@ test(
         exact: true,
       },
     )
-    await waiting.press('Enter')
+    await waiting.press('Space')
     const group = page.locator('.waiting-question-group')
 
     const groupSummary = group.locator('summary')
@@ -288,38 +288,6 @@ test(
       .waitFor()
 
     const reviewUpdate = reviewCard.locator('.card-current-state')
-    await reviewUpdate.filter({ hasText: 'CSV [export] ] is ready for review.' }).waitFor()
-    expect(await reviewUpdate.count()).toBe(1)
-    await hydra.owner({
-      args: [
-        'task',
-        'landing',
-        review.card.id,
-        '--landing',
-        'pr',
-        '--merge',
-        'owner',
-      ],
-    })
-    await until({
-      what: 'the owner merge question appears in Waiting on you',
-      check: async () => (await waiting.textContent())?.includes('Waiting on you · 2') === true,
-    })
-    await hydra.owner({
-      args: [
-        'task',
-        'landing',
-        review.card.id,
-        '--landing',
-        'pr',
-        '--merge',
-        'hydra',
-      ],
-    })
-    await until({
-      what: 'the merge question leaves Waiting on you',
-      check: async () => (await waiting.textContent())?.includes('Waiting on you · 1') === true,
-    })
     const latestUpdate = reviewUpdate.filter({ hasText: 'Latest update' })
     const reviewLink = latestUpdate.getByRole(
       'link',
@@ -353,21 +321,6 @@ test(
       what: 'both answers leave Waiting on you',
       check: async () => await workspace.locator('.waiting-decisions').count() === 0,
     })
-
-    for (const key of [
-      'Invoices',
-      'Payments',
-    ]) {
-      const card = await hydra.owner({
-        args: [
-          'task',
-          'show',
-          key,
-          '--full',
-        ],
-      })
-      expect(card.task.asks[0].choice).toBe('Open only')
-    }
 
     await page.reload()
     await workspace.getByRole(

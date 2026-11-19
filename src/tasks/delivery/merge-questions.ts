@@ -271,7 +271,12 @@ export function reconcileAsks({
     }
   }
 
-  if (event.type !== 'card.linked' && event.type !== 'task.landing') {
+  const mayNeedReview = event.type === 'card.linked'
+    || event.type === 'task.landing'
+    || event.type === 'task.project'
+    || event.type === 'card.pushed'
+
+  if (!mayNeedReview) {
     return changes
   }
 

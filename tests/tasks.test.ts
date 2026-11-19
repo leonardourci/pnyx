@@ -1830,7 +1830,10 @@ test(
     expect((await hydra.ownerRefused({ args: numericChoice })).code).toBe('VALIDATION_ERROR')
     await hydra.owner({ args: answer })
     const repeated = await hydra.owner({ args: answer })
-    expect(repeated.answers.every((receipt: { repeat?: boolean }) => receipt.repeat)).toBe(true)
+    expect(repeated.answers).toMatchObject([
+      { repeat: true },
+      { repeat: true },
+    ])
     const differentRetry = answer.map((
       value,
       index,

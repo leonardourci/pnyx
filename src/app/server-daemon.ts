@@ -1069,6 +1069,8 @@ async function mountHydra({
   pauseDelay,
   retryDelays,
   followDelay,
+      queueDelay,
+  queueDelay,
   queueDelay,
   recoveryPause,
   reviewClock,

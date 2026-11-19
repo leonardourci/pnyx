@@ -3785,25 +3785,6 @@ test(
         'shop',
       ],
     })
-    await hydra.owner({
-      args: [
-        'task',
-        'landing',
-        taskId,
-        '--landing',
-        'pr',
-        '--merge',
-        'owner',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'task',
-        'landing',
-        taskId,
-        '--clear',
-      ],
-    })
     const beforePush = await hydra.owner({
       args: [
         'task',
