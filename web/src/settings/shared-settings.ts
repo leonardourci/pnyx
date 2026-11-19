@@ -64,10 +64,12 @@ function createShared({ scope }: { scope: string }) {
         revision: saved.revision as number,
       } : undefined
     },
+    // A starting server rewrites the settings row at its own revision, so an equal revision replaces what the page holds,
+    // such as a cached row an older build wrote.
     newer: ({
       current,
       next,
-    }) => next.revision > current.revision,
+    }) => next.revision >= current.revision,
   })
 }
 

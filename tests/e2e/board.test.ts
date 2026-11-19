@@ -3052,7 +3052,7 @@ test(
 )
 
 test(
-  'the page loads from shared settings an older build stored without a key added since',
+  'the page loads from shared settings an older build stored without a key added since, and takes their rewrite at the same revision',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -3069,15 +3069,12 @@ test(
       url: `${url}/`,
       cookie,
     })
-    const socket = await hydra.page()
-    const shown = await socket.send({
-      name: 'settings',
-      args: ['show'],
-    }) as unknown as {
-      settings: Record<string, unknown>
-      revision: number
-    }
-    socket.close()
+    const shown = await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })
     const current = shown.settings
     delete current.postgresUrl
     expect(current).toHaveProperty('hiddenHydras')
@@ -3089,7 +3086,10 @@ test(
       text: 'update settings set revision = $1, value = ($2::jsonb - \'hiddenHydras\')::json where id = \'shared\'',
       values: [
         ahead,
-        JSON.stringify(current),
+        JSON.stringify({
+          ...current,
+          theme: 'dark',
+        }),
       ],
     })
     const pageErrors: string[] = []
@@ -3127,7 +3127,21 @@ test(
           exact: true,
         },
       ).waitFor()
+      await page.locator('html[data-theme="dark"]').waitFor()
       expect(pageErrors).toEqual([])
+
+      // Stands in for the starting server's rewrite of the row at its own revision.
+      rows({
+        text: 'update settings set value = $1 where id = \'shared\' and revision = $2',
+        values: [
+          JSON.stringify({
+            ...current,
+            theme: 'light',
+          }),
+          ahead,
+        ],
+      })
+      await page.locator('html[data-theme="light"]').waitFor()
     } finally {
       rows({
         text: 'update settings set revision = $1, value = $2 where id = \'shared\' and revision = $3',
