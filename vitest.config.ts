@@ -44,7 +44,8 @@ export default defineConfig({
           name: 'integration',
           include: ['tests/*.test.ts'],
           // Each file runs a server, git and pnyx-axi processes; more files at once than half the cores starve each
-          // other of CPU. Vitest runs a one-worker project of group order 0 last, so this group is numbered too.
+          // other of CPU. When half the cores is one worker, Vitest runs a project of group order 0 after every numbered
+          // group, so this project takes order 1 to run first.
           sequence: { groupOrder: 1 },
           maxWorkers: '50%',
         },
