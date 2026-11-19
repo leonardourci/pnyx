@@ -98,7 +98,7 @@ function HydraDragName({
       data-sort-id={id}
       data-sort-kind="hydra"
       data-sort-scope="hydras"
-      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-[calc(100vw-10rem)] flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-[18ch] [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
+      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-workspace-title flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
     >{children}
     </div>
   )
@@ -1049,7 +1049,7 @@ export function HydraView({
             },
           }}
           ref={setLayer}
-          className="app hydra-workspace group/workspace flex h-full w-max flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start max-[760px]:p-1.5"
+          className="app hydra-workspace group/workspace flex h-full w-max flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start max-phone:p-1.5"
           data-ui-surface="workspace"
           data-hydra-workspace={navigation.hydraId}
           data-active={active}
@@ -1136,7 +1136,7 @@ export function HydraView({
               }}
             />
           </Panel>
-          <motion.header layoutRoot className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-[calc(100vw-3.5rem)] flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
+          <motion.header layoutRoot className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
             <HydraDragName id={navigation.hydraId} name={shownHydra?.name ?? 'Hydra'} disabled={!connected}>
               {view.workspace.collapsed && (
                 <ProjectCounts
@@ -1232,7 +1232,7 @@ export function HydraView({
                     onClick={toggleChat}
                     icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                   />
-                  <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-[760px]:[&>.hydra-chat]:w-[calc(100vw-2.375rem)]! max-[760px]:[&>.hydra-chat]:basis-[calc(100vw-2.375rem)]!">
+                  <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
                     <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                       <HydraChat
                         hydraId={navigation.hydraId}

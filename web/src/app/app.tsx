@@ -601,7 +601,7 @@ export function App() {
             <motion.div
               onBeforeLayoutMeasure={() => anchor.current?.()}
               ref={axis}
-              className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2.5)] pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-[760px]:gap-2 max-[760px]:px-1.5 max-[760px]:pt-[calc(var(--spacing-topbar-height)+var(--spacing)*2)] max-[760px]:pb-1.5 max-[760px]:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
+              className="workspace-axis group/axis data-[dragging]:cursor-grabbing [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! flex h-dvh items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 pt-workspace-axis-top pb-3 snap-x snap-proximity scroll-px-3 overscroll-x-contain scroll-smooth data-[page=settings]:overflow-hidden max-phone:gap-2 max-phone:px-1.5 max-phone:pt-workspace-axis-phone-top max-phone:pb-1.5 max-phone:scroll-px-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto motion-reduce:scroll-auto [@media(pointer:coarse)]:[&.lenis]:snap-x"
               data-page={hydra.navigation.page}
               aria-label="Hydras"
             >

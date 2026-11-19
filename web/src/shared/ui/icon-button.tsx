@@ -8,7 +8,7 @@ const SIZES = {
   key: 'min-h-0 flex-none px-0.5 py-0 border-0 rounded-none bg-transparent text-muted enabled:hover:text-red enabled:hover:bg-transparent disabled:opacity-30 disabled:cursor-default',
   small: 'size-6 min-h-6 p-0 flex-none text-muted',
   copy: 'size-6.5 min-h-6.5 p-0 flex-none text-muted',
-  normal: 'size-[var(--control-h)] flex-none p-1.5',
+  normal: 'size-(--control-h) flex-none p-1.5',
   compact: 'size-6.5 min-h-0 flex-none rounded-full p-1 text-meta',
   toggle: 'min-w-3.5 flex-none px-0 py-0.5',
 }
