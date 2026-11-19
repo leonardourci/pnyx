@@ -563,13 +563,29 @@ test(
           await until({
             what: 'the card and its column stop moving before opening the modal',
             check: () => card.evaluate(
-              async (element, frames) => {
+              async (
+                element,
+                frames,
+              ) => {
                 const scroll = element.closest('.project-cards')
-                const position = () => {
-                  const { x, y, width, height } = element.getBoundingClientRect()
 
-                  return JSON.stringify([x, y, width, height, scroll?.scrollTop])
+                const position = () => {
+                  const {
+                    x,
+                    y,
+                    width,
+                    height,
+                  } = element.getBoundingClientRect()
+
+                  return JSON.stringify([
+                    x,
+                    y,
+                    width,
+                    height,
+                    scroll?.scrollTop,
+                  ])
                 }
+
                 const initial = position()
 
                 for (let frame = 0; frame < frames; frame++) {
@@ -627,6 +643,7 @@ test(
                   once: true,
                 },
               ))
+
               const sample = async () => {
                 await clicked
                 const boxes: number[][] = []

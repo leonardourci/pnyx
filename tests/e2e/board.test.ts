@@ -5231,7 +5231,8 @@ test(
     await frame.locator('.hydra-head').getByRole(
       'button',
       { name: /Edit / },
-    ).click()
+    )
+      .click()
     const field = frame.locator('.hydra-name-field input')
     await field.fill('Renamed Hydra')
     await field.press('Enter')
