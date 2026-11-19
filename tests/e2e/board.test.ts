@@ -3402,13 +3402,18 @@ test(
         nestable?: boolean
         shiftBeforePickup?: boolean
       }) => {
-        const from = card({ title: source }), to = card({ title: target })
-        await from.scrollIntoViewIfNeeded()
-        const held = await restingBox({ target: from })
-        await page.mouse.move(
-          held.x + held.width / 2,
-          held.y + held.height / 2,
+        const rootOrder = () => workspace.locator('[data-family]').evaluateAll(
+          // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched elements.
+          nodes => nodes.map(node => node.getAttribute('data-family')),
         )
+        const committedOrder = await rootOrder()
+        const from = card({ title: source }), to = card({ title: target })
+        await from.hover({
+          position: {
+            x: 8,
+            y: 8,
+          },
+        })
         const handle = page.getByRole(
           'button',
           {
@@ -3512,7 +3517,9 @@ test(
 
           await page.keyboard.up('Shift')
           expect(await ghost.locator('[data-drag-nest-refusal]').count()).toBe(0)
+          await expect.poll(rootOrder).not.toEqual(committedOrder)
           await page.keyboard.down('Shift')
+          await expect.poll(rootOrder).toEqual(committedOrder)
 
           await to.hover()
           await ghost.getByText(

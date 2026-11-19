@@ -730,11 +730,20 @@ export function SortableWorkspace({
 
   const setModifier = useCallback(
     ({ pressed }: { pressed: boolean }) => {
+      if (pressed && active?.kind === 'task') {
+        plain.current = null
+        move({ preview: null })
+      }
+
       modifier.current = pressed
       setShift(pressed)
       refreshTarget()
     },
-    [refreshTarget],
+    [
+      active?.kind,
+      move,
+      refreshTarget,
+    ],
   )
 
   useLayoutEffect(
