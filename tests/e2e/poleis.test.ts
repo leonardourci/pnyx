@@ -13,32 +13,17 @@ test(
   'the owner creates a polis, assigns its Hydra and project, and filters the workspace',
   async () => {
     const hydra = await pnyx.hydra()
-    const personal = await pnyx.hydra()
-    const third = await pnyx.hydra()
+    const neighbours = [
+      await pnyx.hydra(),
+      await pnyx.hydra(),
+      await pnyx.hydra(),
+    ]
     const folder = hydra.folder({ name: 'Atlas' })
     await hydra.owner({
       args: [
         'project',
         'add',
         folder,
-      ],
-    })
-    await personal.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({ poleis: { personal: { readers: [personal.id] } } }),
-      ],
-    })
-    await personal.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'personal',
-        '--read-poleis',
-        'shared,personal',
       ],
     })
     const held: (() => void)[] = []
@@ -68,21 +53,57 @@ test(
         },
       ),
     })
-    await page.locator(`[data-hydra-workspace="${hydra.id}"]`).waitFor()
-    await page.locator('nav[aria-label="Hydra navigation"]').first()
-      .locator(`[data-sort-id="${third.id}"]`)
-      .waitFor()
-    const chipOrder = await page.locator('nav[aria-label="Hydra navigation"]').first()
-      .locator('[data-sort-kind="hydra"]')
-      .evaluateAll(
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
-        nodes => nodes.map(node => node.getAttribute('data-sort-id')),
-      )
-    const workspaceOrder = await page.locator('[data-hydra-workspace]').evaluateAll(
+    const workspaces = page.locator('[data-hydra-workspace]')
+    await expect.poll(() => workspaces.count()).toBe(4)
+    const workspaceOrder = await workspaces.evaluateAll(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       nodes => nodes.map(node => node.getAttribute('data-hydra-workspace')),
     )
-    expect(chipOrder).toEqual(workspaceOrder)
+    const middleIds = workspaceOrder.slice(
+      1,
+      -1,
+    )
+    const personal = neighbours.find(candidate => middleIds.includes(candidate.id))
+
+    if (!personal) {
+      throw new Error('Expected a Hydra between two shared workspaces')
+    }
+
+    await personal.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ poleis: { personal: { readers: [personal.id] } } }),
+      ],
+    })
+    await personal.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'personal',
+        '--read-poleis',
+        'shared,personal',
+      ],
+    })
+    const navigation = page.getByRole(
+      'navigation',
+      { name: 'Hydra navigation' },
+    ).first()
+    await navigation.getByRole(
+      'button',
+      { name: 'Filter polis personal' },
+    ).waitFor()
+    const hydraChips = navigation.locator('[data-sort-kind="hydra"]')
+    await expect.poll(() => hydraChips.evaluateAll(
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
+      nodes => nodes.map(node => node.getAttribute('data-sort-id')),
+    )).toEqual(workspaceOrder)
+    expect(await navigation.getByRole(
+      'button',
+      { name: 'Filter polis shared' },
+    ).count()).toBe(1)
     await page.getByRole(
       'button',
       {
@@ -116,6 +137,10 @@ test(
       },
     ).click()
     const polis = settings.locator('[aria-label="Polis studio"]')
+    await settings.getByRole(
+      'textbox',
+      { name: 'New polis name' },
+    ).waitFor({ state: 'hidden' })
     await polis.getByRole(
       'combobox',
       { name: 'Add reader to studio' },
@@ -133,6 +158,12 @@ test(
         exact: true,
       },
     ).click()
+    await expect.poll(async () => (await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })).settings.poleis.studio.readers).toEqual([hydra.id])
     await settings.getByRole(
       'switch',
       {
@@ -237,6 +268,8 @@ test(
       },
     )
     await studioOption.waitFor()
+    const projectRow = page.getByRole('listitem').filter({ has: projectPolis })
+    const originalRow = await projectRow.elementHandle()
     expect(await page.getByRole(
       'option',
       {
@@ -253,7 +286,14 @@ test(
         'list',
       ],
     })).projects[0].polis).toBe('shared')
-    const projectRow = await projectPolis.locator('xpath=ancestor::li').elementHandle()
+    expect(await projectRow.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
+      (
+        node,
+        original,
+      ) => node === original && node.checkVisibility(),
+      originalRow,
+    )).toBe(true)
     const saveProject = held.shift()
 
     if (!saveProject) {
@@ -267,23 +307,16 @@ test(
         'list',
       ],
     })).projects[0].polis).toBe('studio')
-    await projectPolis.locator('xpath=ancestor::li').getByText(
-      'Saving project settings…',
-      { exact: true },
-    )
-      .waitFor({ state: 'hidden' })
-    expect(await projectRow?.evaluate(
-      // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
-      node => node.isConnected && node.checkVisibility(),
-    )).toBe(true)
-    expect(await projectPolis.locator('xpath=ancestor::li').evaluate(
+    await projectRow.getByRole('status').waitFor({ state: 'hidden' })
+    expect(await projectRow.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       (
         node,
         original,
-      ) => node === original,
-      projectRow,
+      ) => node === original && node.checkVisibility(),
+      originalRow,
     )).toBe(true)
+    await originalRow.dispose()
     const oracleSearch = page.getByRole(
       'combobox',
       {
@@ -419,8 +452,6 @@ test(
       ],
     })
     const held: (() => void)[] = []
-    let completed = 0
-    const requests = new Set<string>()
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -430,25 +461,12 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
         socket => {
           const server = socket.connectToServer()
-          server.onMessage(
+          socket.onMessage(
             // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
             message => {
               const frame = JSON.parse(String(message))
 
-              if (requests.has(frame.id)) {
-                completed++
-              }
-
-              socket.send(message)
-            },
-          )
-          socket.onMessage(
-          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
-            message => {
-              const frame = JSON.parse(String(message))
-
               if (frame.name === 'settings' && frame.args?.[0] === 'set') {
-                requests.add(frame.id)
                 held.push(() => server.send(message))
               } else {
                 server.send(message)
@@ -476,14 +494,12 @@ test(
       'textbox',
       { name: 'New polis name' },
     )
-    await draft.fill('alpha')
-    await page.getByRole(
+    const createPolis = page.getByRole(
       'button',
-      {
-        name: 'Create polis',
-        exact: true,
-      },
-    ).click()
+      { name: 'Create polis', exact: true },
+    )
+    await draft.fill('alpha')
+    await createPolis.click()
     await expect.poll(() => held.length).toBe(1)
     await page.getByRole(
       'button',
@@ -500,16 +516,19 @@ test(
       },
     ).click()
     await draft.fill('beta')
-    held.shift()!()
+    const saveAlpha = held.shift()
+
+    if (!saveAlpha) {
+      throw new Error('Expected a pending creation for alpha')
+    }
+
+    saveAlpha()
     await expect.poll(async () => (await hydra.owner({
       args: [
         'settings',
         'show',
       ],
-    })).settings.poleis.alpha.readers).toEqual([])
-    await expect.poll(() => completed).toBe(1)
-    await page.locator('[aria-label="Polis alpha"]').waitFor()
-    expect(await draft.inputValue()).toBe('beta')
+    })).settings.poleis.alpha?.readers).toEqual([])
     await page.getByRole(
       'button',
       {
@@ -526,9 +545,15 @@ test(
         JSON.stringify({ poleis: { guarded: { readers: [] } } }),
       ],
     })
-    held.shift()!()
-    await page.getByText(/revision/i).last()
-      .waitFor()
+    const removeReader = held.shift()
+
+    if (!removeReader) {
+      throw new Error('Expected a pending reader removal')
+    }
+
+    removeReader()
+    const revisionError = page.getByText(/revision/i)
+    await revisionError.waitFor()
     expect((await hydra.owner({
       args: [
         'settings',
@@ -537,6 +562,42 @@ test(
     })).settings.poleis.guarded.readers)
       .toEqual([])
     expect(await draft.inputValue()).toBe('beta')
+
+    await page.reload()
+    await page.getByRole(
+      'button',
+      { name: 'Settings', exact: true },
+    ).click()
+    await page.getByRole(
+      'button',
+      { name: '+ New polis', exact: true },
+    ).click()
+    await draft.fill('concurrent')
+    await createPolis.click()
+    await expect.poll(() => held.length).toBe(1)
+    await other.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ poleis: { concurrent: { readers: [other.id] } } }),
+      ],
+    })
+    const createConcurrent = held.shift()
+
+    if (!createConcurrent) {
+      throw new Error('Expected a pending creation for concurrent')
+    }
+
+    createConcurrent()
+    await revisionError.waitFor()
+    expect((await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })).settings.poleis.concurrent.readers).toEqual([other.id])
+    expect(await draft.inputValue()).toBe('concurrent')
   },
 )
 
@@ -590,9 +651,14 @@ test(
       .filter({ hasText: 'Projects' })
       .first()
       .click()
-    await page.locator('.project-row strong').filter({ hasText: 'ReadOnly' })
-      .waitFor()
-    expect(await page.getByRole(
+    const project = page.getByRole('listitem').filter({
+      has: page.getByText(
+        'ReadOnly',
+        { exact: true },
+      ),
+    })
+    await project.waitFor()
+    expect(await project.getByRole(
       'combobox',
       {
         name: 'Polis for ReadOnly',

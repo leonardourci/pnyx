@@ -101,20 +101,18 @@ export function Poleis({
     setCreating,
   ] = useState(false)
 
-  const draft = useRef(0)
+  const draftVersion = useRef(0)
   const snapshot = useSharedSettingsState()
-  const settings = snapshot?.settings
 
-  if (!snapshot || !settings) {
-    return null
+  if (!snapshot) {
+    return <p role="status" className="muted">Loading poleis…</p>
   }
 
+  const { settings, revision } = snapshot
   const save = async ({
     polis,
     readers,
-    revision,
   }: {
-    revision?: number
     polis: string
     readers: string[]
   }) => {
@@ -163,7 +161,6 @@ export function Poleis({
                     label={`Remove ${reader} from ${polis}`}
                     onClick={() => save({
                       polis,
-                      revision: snapshot.revision,
                       readers: readers.filter(id => id !== reader),
                     })}
                   />
@@ -177,7 +174,6 @@ export function Poleis({
                   options={options}
                   onChange={({ value }) => save({
                     polis,
-                    revision: snapshot.revision,
                     readers: [
                       ...readers,
                       value,
@@ -195,12 +191,13 @@ export function Poleis({
           onSubmit={async event => {
             event.preventDefault()
 
-            const attempt = ++draft.current
-
-            if (await save({
+            const submittedVersion = ++draftVersion.current
+            const saved = await save({
               polis: name,
               readers: [],
-            }) && draft.current === attempt) {
+            })
+
+            if (saved && draftVersion.current === submittedVersion) {
               setName('')
               setCreating(false)
             }
@@ -212,7 +209,7 @@ export function Poleis({
             required
             pattern={String.raw`[a-z0-9][a-z0-9\-]{0,63}`}
             onChange={event => {
-              draft.current++
+              draftVersion.current++
               setName(event.target.value)
             }}
           />
@@ -228,7 +225,7 @@ export function Poleis({
             icon="close"
             label="Cancel new polis"
             onClick={() => {
-              draft.current++
+              draftVersion.current++
               setCreating(false)
             }}
           />
