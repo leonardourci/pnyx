@@ -630,7 +630,20 @@ test(
       env: process.env,
     })).stdout
     expect(digest).toContain('Invoice report handled in background')
-    expect(digest).toContain('[handled]')
+    const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice report handled in background/)?.[1]
+    expect(reportSeq).toBeDefined()
+    const checked = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(reportSeq) - 1),
+      ],
+    })
+    expect(checked.changes).toContainEqual(expect.objectContaining({
+      seq: Number(reportSeq),
+      reportStatus: 'handled',
+    }))
     await hydra.chat({ text: 'Summarize the invoice status' })
     await until({
       what: 'main to read the handled report',

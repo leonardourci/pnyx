@@ -25,7 +25,7 @@ Raising your own, a worker's or a candidate's permission level still needs the o
 - When Pnyx runs you, never wait inside your turn: no `hydra check --wait` (Pnyx refuses it), no sleeps, no polling. End the turn; Pnyx wakes you with the next change, and worker updates wait for you in its queue.
 - Load the skill a step names before taking that step (see Load before).
 
-“Since your last turn” includes short worker report lines, marked handled when the routine helper already dealt with them, alongside routine context and pending owner answers. Only unhandled reports may need action; do not repeat handled work. Overflow names a history cursor. For a worker waiting on another task, record `task status <task> paused --wait-for <dependency> [--ready-when task-done|pr-opened|pr-merged]` (default `task-done`). The server checks readiness and resumes the worker; no Hydra turn is needed.
+Act on unhandled worker reports in “Since your last turn” when they need you. Leave reports marked `handled` or `helper handling` to the routine helper. For overflow, follow the `through` cursor from `hydra check` and read `reportStatus` on pending reports. Routine notes and pending owner answers are context only. For a worker waiting on another task, record `task status <task> paused --wait-for <dependency> [--ready-when task-done|pr-opened|pr-merged]` (default `task-done`). The server checks readiness and resumes the worker without waking Hydra.
 
 ## Tasks and owner decisions
 

@@ -7,7 +7,7 @@ import { historyCommand } from './history-command.ts'
 
 const CONTEXT_NOTE_LIMIT = 20
 const CONTEXT_TURN_LINES = 8
-export const CONTEXT_NOTE_CHARS = 400
+const CONTEXT_NOTE_CHARS = 400
 const QUESTION_CHARS = 90
 const ANSWER_CHARS = 180
 
@@ -24,7 +24,7 @@ export interface ContextNote {
 
 // Older snapshots recorded owner answers without metadata.
 const isOwnerAnswer = ({ note }: { note: ContextNote }) => note.ownerAnswer === true
-  || note.text.startsWith('Owner answered ')
+  || (!note.report && note.text.startsWith('Owner answered '))
 
 function line({
   text,
@@ -81,9 +81,10 @@ export function applyContextNotes({
       return
     }
 
-    const previousProgress = notes.filter(note => note.task === task && note.progress)
+    let progressCount = 1
     const retained = notes.filter(note => {
       if (progress && note.task === task && note.progress) {
+        progressCount += note.progress
         return false
       }
 
@@ -105,13 +106,7 @@ export function applyContextNotes({
     }
 
     if (progress) {
-      next.progress = 1 + previousProgress.reduce(
-        (
-          count,
-          note,
-        ) => count + (note.progress ?? 0),
-        0,
-      )
+      next.progress = progressCount
     }
 
     const pending = [
@@ -134,7 +129,7 @@ export function applyContextNotes({
       })
     } else if (event.type === 'task.declared') {
       add({
-        text: `declared ${event.data.state}: ${event.data.note ?? ''}`,
+        text: event.data.note ? `declared ${event.data.state}: ${event.data.note}` : `declared ${event.data.state}`,
         report: true,
       })
     } else if (event.type === 'task.report') {
@@ -290,6 +285,23 @@ export function contextTurnNotes({ notes }: { notes: ContextNote[] }): ContextNo
   )
 }
 
+export function contextReportStatus({
+  note,
+  state,
+}: {
+  note: ContextNote
+  state: HydraState
+}): string {
+  if (note.handled) {
+    return 'handled'
+  }
+
+  const leased = Object.values(state.helper?.runs ?? {}).some(batch =>
+    !batch.error && batch.seqs.includes(note.seq))
+
+  return leased ? 'helper handling' : 'unhandled'
+}
+
 export function contextNoteBlock({
   notes,
   hydraId,
@@ -314,16 +326,10 @@ export function contextNoteBlock({
       return `- ${text}`
     }
 
-    const handled = note.handled === true
-    const leased = Object.values(state.helper?.runs ?? {}).some(batch =>
-      !batch.error && batch.seqs.includes(note.seq))
-    let status = 'unhandled'
-
-    if (handled) {
-      status = 'handled'
-    } else if (leased) {
-      status = 'helper handling'
-    }
+    const status = contextReportStatus({
+      note,
+      state,
+    })
 
     let count = ''
 
@@ -338,22 +344,28 @@ export function contextNoteBlock({
     return `- seq ${note.seq} ${note.task ?? 'no task'} [${status}]${count}: ${text}`
   })
   const omitted = notes.slice(shown.length)
+  const lastOmitted = omitted.at(-1)
   const reports = omitted.filter(note => note.report)
   const firstReport = reports[0]
+  const overflow = []
 
   if (firstReport) {
-    lines.push(`- ${reports.length} more worker reports; read \`pnyx-axi hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` for the rest.`)
+    overflow.push(`${reports.length} more worker reports; read \`pnyx-axi hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` and follow its \`through\` cursor.`)
   }
 
   const otherNotes = omitted.length - reports.length
 
-  if (otherNotes) {
-    lines.push(`- ${otherNotes} more context notes; read \`${historyCommand({
+  if (otherNotes && lastOmitted) {
+    overflow.push(`${otherNotes} more context notes; read \`${historyCommand({
       hydraId,
       since: 'origin',
-      through: omitted.at(-1)!.seq,
+      through: lastOmitted.seq,
     })}\` for the rest.`)
   }
 
-  return `<pnyx-context>Since your last turn. Worker reports marked handled were already handled by the routine helper; do not act twice. Other notes are context only. Full report bodies remain in task history or hydra messages; each report names its event seq.\n${lines.join('\n')}\n</pnyx-context>`
+  if (overflow.length) {
+    lines.push(`- ${overflow.join(' ')}`)
+  }
+
+  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Leave reports marked handled or helper handling to the routine helper. Other notes are context only. Each report names its event seq. Read full bodies in task history or hydra messages.\n${lines.join('\n')}\n</pnyx-context>`
 }

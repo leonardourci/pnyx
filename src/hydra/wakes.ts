@@ -3,7 +3,6 @@ import { decisionsBlock } from '#tasks/decisions.ts'
 import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
 import { clip } from './digest.ts'
-import { CONTEXT_NOTE_CHARS } from './context-notes.ts'
 import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -80,6 +79,7 @@ export const decisionsText = ({
 })
 
 const WAKE_UPDATE_CHARS = 6000
+const WAKE_REASON_CHARS = 400
 
 // Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
 const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
@@ -108,13 +108,23 @@ export function wakeText({
   const lines: string[] = []
   const updates: string[] = []
 
+  const sealedReview = review ? sealed({ text: review }) : ''
+
+  if (review) {
+    const reviewText = pick ? sealedReview : clip({
+      text: sealedReview,
+      size: WAKE_UPDATE_CHARS - 1,
+    })
+    updates.push(reviewText)
+  }
+
   if (reasons.length) {
     updates.push(
       'Why you are woken:',
       ...reasons.map(line => sealed({
-        text: clip({
+        text: pick ? line : clip({
           text: line,
-          size: CONTEXT_NOTE_CHARS,
+          size: WAKE_REASON_CHARS,
         }),
       })),
     )
@@ -131,23 +141,22 @@ export function wakeText({
     }
   }
 
-  if (review) {
-    updates.push(sealed({ text: review }))
-  }
-
   let used = 0
-  let overflow = false
+  let overflow = !pick && sealedReview.length >= WAKE_UPDATE_CHARS
 
   for (const line of updates) {
     // Helper batches apply their own input budget before claiming report leases.
     if (!pick && used + line.length + 1 > WAKE_UPDATE_CHARS) {
       overflow = true
-      lines.push('More updates remain in history.')
       break
     }
 
     lines.push(line)
     used += line.length + 1
+  }
+
+  if (overflow) {
+    lines.push('Some wake details were shortened or omitted.')
   }
 
   if (check || overflow) {

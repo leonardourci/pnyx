@@ -5,7 +5,7 @@ import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { queuePosition } from './queue.ts'
 import { projectRows } from '#projects/read.ts'
-import { contextNoteBlock } from '#hydra/context-notes.ts'
+import { contextNoteBlock, contextReportStatus } from '#hydra/context-notes.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
@@ -277,6 +277,9 @@ export async function hydraCheck({
     typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`)
   }
 
+  const state = loadHydra({ hydraId }).state
+  const pendingReports = new Map((state.contextNotes ?? []).filter(note => note.report)
+    .map(note => [note.seq, note] as const))
   const row = ({ e }: { e: HydraEvent }) => ({
     seq: e.seq,
     id: e.id,
@@ -291,7 +294,22 @@ export async function hydraCheck({
     }),
   })
 
-  const state = loadHydra({ hydraId }).state
+  const changesWithReportStatus = page.map(e => {
+    const change = row({ e })
+    const note = pendingReports.get(e.seq)
+
+    if (!note) {
+      return change
+    }
+
+    return {
+      ...change,
+      reportStatus: contextReportStatus({
+        note,
+        state,
+      }),
+    }
+  })
   const requests = Object.values(state.cards).flatMap(card => pendingPermissions({ card })
     .map(p => ({
       id: p.id,
@@ -324,7 +342,7 @@ export async function hydraCheck({
   return {
     hydraId,
     projects: projectRows({ state }),
-    changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
+    changes: page.length ? changesWithReportStatus : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
     queues: Object.values(state.cards).filter(card => card.queue)
       .map(card => ({
