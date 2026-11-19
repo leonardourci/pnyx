@@ -241,13 +241,23 @@ test(
         'list',
       ],
     })).projects[0].polis).toBe('studio')
-    await page.getByRole(
+    const oracleSearch = page.getByRole(
       'combobox',
       {
         name: 'Oracle',
         exact: true,
       },
-    ).press('Escape')
+    )
+    // Oracle clears a nonempty search before closing.
+    await oracleSearch.press('Escape')
+    await oracleSearch.press('Escape')
+    await page.getByRole(
+      'dialog',
+      {
+        name: 'Oracle',
+        exact: true,
+      },
+    ).waitFor({ state: 'hidden' })
     await page.locator('[data-project-polis="studio"]').first()
       .waitFor()
     await page.getByRole(
