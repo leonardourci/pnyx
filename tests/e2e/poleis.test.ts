@@ -323,13 +323,13 @@ test(
     }
 
     saveProject()
-    await expect.poll(async () => (await hydra.owner({
+    await projectRow.getByRole('status').waitFor({ state: 'hidden' })
+    expect((await hydra.owner({
       args: [
         'project',
         'list',
       ],
     })).projects[0].polis).toBe('studio')
-    await projectRow.getByRole('status').waitFor({ state: 'hidden' })
     expect(await projectRow.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       (
