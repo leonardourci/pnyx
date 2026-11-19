@@ -14,6 +14,7 @@ export interface HydraIdentity {
 
 export interface HydraConfig {
   removed?: boolean
+  removing?: boolean
   polis?: string
   readPoleis?: string[]
   helper?: AgentConfig | false
