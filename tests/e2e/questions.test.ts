@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
+import { readEvents } from '#app/event-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
@@ -255,12 +256,36 @@ test(
         exact: true,
       },
     )
-    await waiting.click()
+    await waiting.focus()
+    await waiting.press('Tab')
     const group = page.locator('.waiting-question-group')
 
     const groupSummary = group.locator('summary')
-    await groupSummary.press('Space')
-    await groupSummary.press('ArrowDown')
+
+    if (process.env.PNYX_KEEP_TEST_FILES) {
+      for (const theme of [
+        'light',
+        'dark',
+      ]) {
+        await page.evaluate(
+          ({ theme }) => {
+            document.documentElement.dataset.theme = theme
+          },
+          { theme },
+        )
+        await page.screenshot({
+          path: join(
+            process.env.PNYX_KEEP_TEST_FILES,
+            `keyboard-${theme}.png`,
+          ),
+        })
+      }
+    }
+
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns evaluate callbacks.
+    expect(await groupSummary.evaluate(element => element === document.activeElement)).toBe(true)
+    await page.keyboard.press('Space')
+    await page.keyboard.press('ArrowDown')
     const firstQuestion = group.getByRole(
       'button',
       { name: /Include archived/ },
@@ -327,6 +352,35 @@ test(
 
     expect(await reviewCard.locator('.card-current-state').count()).toBe(1)
     expect(await reviewCard.locator('.card-current-state').textContent()).toContain('CSV export is ready for review.')
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        review.card.id,
+        '--landing',
+        'pr',
+        '--merge',
+        'owner',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        review.card.id,
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    await until({
+      what: 'the ready PR remains in Latest update after switching mergers',
+      check: async () => (await reviewCard.locator('.card-current-state').textContent())?.includes('CSV export is ready for review.') === true,
+    })
+    expect(await reviewCard.locator('.card-current-state').textContent()).toContain('Latest update')
+    expect(await reviewCard.locator('.card-current-state a').getAttribute('href')).toBe('https://github.com/sample/exports/pull/1')
+
     await waiting.click()
 
     if (await group.count() && await group.locator('details').getAttribute('open') === null) {
@@ -432,6 +486,8 @@ test(
       })
       expect(card.task.asks).toHaveLength(1)
       expect(card.task.asks[0].choice).toBe('Open only')
+      const answers = readEvents({ hydraId: hydra.id }).filter(event => event.type === 'hydra.message' && event.data.task === card.task.id && event.data.answers === card.task.asks[0].id)
+      expect(answers).toHaveLength(1)
     }
 
     await page.context().close()
