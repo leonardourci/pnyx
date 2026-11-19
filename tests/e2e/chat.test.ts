@@ -210,15 +210,19 @@ const readConversations = new Map<string, ReturnType<typeof longConversation>>()
 
 const readOnlyConversation = ({ shape }: { shape: Parameters<typeof longConversation>[0] }) => {
   const key = JSON.stringify(shape)
+  const built = readConversations.get(key)
 
-  if (!readConversations.has(key)) {
-    readConversations.set(
-      key,
-      longConversation(shape),
-    )
+  if (built) {
+    return built
   }
 
-  return readConversations.get(key)!
+  const building = longConversation(shape)
+  readConversations.set(
+    key,
+    building,
+  )
+
+  return building
 }
 
 test.each([

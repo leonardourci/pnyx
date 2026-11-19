@@ -1173,17 +1173,26 @@ test(
       error: 'error: HTTP 404: Not Found',
       classic: {},
     })
-    expect((await asHydra.refused({ args: merge })).error).not.toContain('branch rules unreadable')
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.not.stringContaining('branch rules unreadable'),
+    })
     publish({
       error: 'error: HTTP 403: Forbidden',
       classic: {},
     })
-    expect((await asHydra.refused({ args: merge })).error).not.toContain('branch rules unreadable')
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.not.stringContaining('branch rules unreadable'),
+    })
     publish({
       error: 'error: "Resource not found"\ncode: NOT_FOUND',
       classic: {},
     })
-    expect((await asHydra.refused({ args: merge })).error).not.toContain('branch rules unreadable')
+    expect(await asHydra.refused({ args: merge })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.not.stringContaining('branch rules unreadable'),
+    })
     publish({
       check: {
         ...run,
