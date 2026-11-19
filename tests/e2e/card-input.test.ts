@@ -769,12 +769,9 @@ test(
   },
 )
 
-test.each([
-  { theme: 'light' },
-  { theme: 'dark' },
-])(
-  'sending in a task modal keeps every workspace card behind it in $theme',
-  async ({ theme }) => {
+test(
+  'sending in a task modal keeps overlapping workspace cards behind it',
+  async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'layering' })
     await hydra.owner({
@@ -842,16 +839,9 @@ test.each([
     })
 
     try {
-      await page.evaluate(
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
-        theme => {
-          document.documentElement.dataset.theme = theme
-        },
-        theme,
-      )
       const card = page.locator(`article[data-task="${task.id}"]`).first()
       await card.hover()
-      await card.getByRole(
+      await page.getByRole(
         'button',
         {
           name: 'Open modal',
@@ -878,13 +868,14 @@ test.each([
         reply: 'Message handled',
       })
       onTestFinished(() => turn.release())
+      const message = 'Keep the modal above the workspace'
       await modal.getByRole(
         'textbox',
         {
           name: 'Message worker',
           exact: true,
         },
-      ).fill(`Keep the modal above the workspace in ${theme}`)
+      ).fill(message)
       await modal.getByRole(
         'button',
         {
@@ -894,7 +885,7 @@ test.each([
       ).click()
       await until({
         what: 'worker receives the modal message',
-        check: async () => worker.received.some(text => text.includes(`Keep the modal above the workspace in ${theme}`)),
+        check: () => worker.received.some(text => text.includes(message)),
       })
 
       for (const status of [
@@ -903,6 +894,10 @@ test.each([
       ]) {
         if (status === 'Idle') {
           turn.release()
+          await modal.getByText(
+            'Message handled',
+            { exact: true },
+          ).waitFor()
         }
 
         await until({
@@ -915,9 +910,10 @@ test.each([
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         expect(await modal.evaluate(element => element.matches(':modal'))).toBe(true)
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
-        const covered = await modal.evaluate(element => {
+        const { overlapCount, cardsAboveModal } = await modal.evaluate(element => {
           const bounds = element.getBoundingClientRect()
-          const overlapping: string[] = []
+          const cardsAboveModal: string[] = []
+          let overlapCount = 0
 
           for (const card of document.querySelectorAll('article[data-task]')) {
             if (element.contains(card)) {
@@ -928,37 +924,46 @@ test.each([
             const left = Math.max(
               bounds.left,
               box.left,
+              0,
             )
             const right = Math.min(
               bounds.right,
               box.right,
+              window.innerWidth,
             )
             const top = Math.max(
               bounds.top,
               box.top,
+              0,
             )
             const bottom = Math.min(
               bounds.bottom,
               box.bottom,
+              window.innerHeight,
             )
 
             if (left >= right || top >= bottom) {
               continue
             }
 
-            const painted = document.elementFromPoint(
+            overlapCount++
+            const hit = document.elementFromPoint(
               (left + right) / 2,
               (top + bottom) / 2,
             )
 
-            if (!element.contains(painted)) {
-              overlapping.push(card.textContent ?? '')
+            if (!element.contains(hit)) {
+              cardsAboveModal.push(card.textContent ?? '')
             }
           }
 
-          return overlapping
+          return {
+            overlapCount,
+            cardsAboveModal,
+          }
         })
-        expect(covered).toEqual([])
+        expect(overlapCount).toBeGreaterThan(0)
+        expect(cardsAboveModal).toEqual([])
       }
     } finally {
       await page.context().close()

@@ -17,7 +17,7 @@ export function TaskCardModal({
 }) {
   const modal = useTaskModalSize()
 
-  // Moving a dialog’s DOM ancestor removes it from the browser’s modal top layer.
+  // Moving a workspace card in the DOM would remove a nested dialog from the browser's top layer.
   return createPortal(
     <Dialog
       title={title}
