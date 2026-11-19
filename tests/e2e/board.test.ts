@@ -3075,20 +3075,18 @@ test(
         'show',
       ],
     })
-    const stored = await until({
-      what: 'the page\'s settings row to hold the server\'s revision',
-      check: () => rows<{
-        revision: number
-        value: Record<string, unknown>
-      }>({ text: 'select revision, value from settings where id = \'shared\'' }).find(row => row.revision === revision),
-    })
+    const [stored] = rows<{
+      revision: number
+      value: Record<string, unknown>
+    }>({ text: 'select revision, value from settings where id = \'shared\'' })
     expect(stored.value).toHaveProperty('hiddenHydras')
     // Stands in for the row a build older than hiddenHydras wrote, which the page can read before the starting server
-    // rewrites it. The server copies the settings only when their revision moves, so the row keeps its revision and the
-    // restore leaves any newer copy alone.
+    // rewrites it. The server can miss a settings write made just after it starts and still owe the row that revision,
+    // so the stand-in sits one revision ahead, where a copy the server owes cannot replace it.
+    const ahead = revision + 1
     rows({
-      text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\' and revision = $1',
-      values: [revision],
+      text: 'update settings set revision = $1, value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'',
+      values: [ahead],
     })
     const pageErrors: string[] = []
     let page: Page | undefined
@@ -3127,11 +3125,13 @@ test(
       ).waitFor()
       expect(pageErrors).toEqual([])
     } finally {
+      // Only the stand-in is put back; a copy the server made meanwhile carries hiddenHydras and stays.
       rows({
-        text: 'update settings set value = $1 where id = \'shared\' and revision = $2',
+        text: 'update settings set revision = $1, value = $2 where id = \'shared\' and revision = $3 and not (value::jsonb ? \'hiddenHydras\')',
         values: [
+          stored.revision,
           JSON.stringify(stored.value),
-          revision,
+          ahead,
         ],
       })
       await page?.context().close()
