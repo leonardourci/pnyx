@@ -609,6 +609,7 @@ Agent memory reads, writes and proposals are bound to the caller's native `PNYX_
 Removed Hydras leave active views. Their event history and `oracle <query> --hydra <removed-id>` remain available. The last Hydra, the caller’s own Hydra and Firstmate Hydras are ineligible. Settings runs the same command.
 
 Interrupted removals reject competing writes and resume on server restart. A failed cleanup leaves removal pending while surviving Hydras remain available. If checkout contents change after the preview, including during worker shutdown or while the server is down, create and confirm a fresh preview for the remaining cleanup.
+
 ### Related owner questions
 
 Waiting on you shows one group for each task or parent with sub-tasks, including a PR stack or batch organized under that parent. The group shows its question count, and its questions remain individually answerable. The Hydra badge counts these owner groups; worker questions and updates do not count. Expand a group to read its questions and context, open any card, or answer every question with a shared choice. Bulk choices are available only when every question offers that label with the same description; permissions remain individual.
