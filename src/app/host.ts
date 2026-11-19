@@ -1523,6 +1523,8 @@ export function createHost({
 
     unread,
 
+    reportsRead: turns.reportsRead,
+
     queue,
 
     action,
