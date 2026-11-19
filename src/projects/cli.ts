@@ -252,8 +252,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       detail.project.path,
       detail,
     ]))
+    const listedState = loadHydra({ hydraId }).state
+    const listedReadonly = listedState.config?.hydra.kind === 'firstmate'
     const projects = projectRows({
-      state: loadHydra({ hydraId }).state,
+      state: listedState,
       projects: memoryCaller({ hydraId }) ? undefined : [],
     }).map(project => {
       const detail = detailsByPath.get(project.path)
@@ -271,12 +273,12 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
     const listed: Output = {
       hydraId,
-      readonly,
-      revision: current.projectsRevision ?? 0,
+      readonly: listedReadonly,
+      revision: listedState.projectsRevision ?? 0,
       projects: projects.length ? projects : 'none: no projects attached',
     }
 
-    if (projects.length === 0 && !readonly) {
+    if (projects.length === 0 && !listedReadonly) {
       listed.help = [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`]
     }
 
