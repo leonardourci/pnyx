@@ -27,6 +27,7 @@ interface Target {
   name: string
   args: string[]
   cwd: string
+  removalWork?: Record<string, string>
 }
 
 // Read before taking a Hydra writer, so the shared registry lock is never taken inside one.
@@ -49,11 +50,13 @@ function context({
   target,
   dispatch,
   memory,
+  removalSeq,
 }: {
   state: HydraState
   target: Target
   dispatch?: EffectiveDispatch
   memory?: string
+  removalSeq?: number
 }): string {
   const {
     name,
@@ -70,12 +73,15 @@ function context({
   }
 
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
+  const removalId = name === 'hydra' && args[0] === 'remove' ? args[1] : undefined
+  const removal = removalId ? removalSeq ?? loadHydra({ hydraId: removalId }).state.seq : undefined
 
   return createHash('sha256').update(JSON.stringify({
     config: name === 'hydra' || name === 'setup' || memory ? state.config : undefined,
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     memory,
+    removal,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -86,14 +92,64 @@ function context({
     .digest('hex')
 }
 
+export function approvedHydraRemoval({
+  hydraId,
+  id,
+  token,
+}: {
+  hydraId: string
+  id: string
+  token: string
+}): false | Record<string, string> {
+  const state = loadHydra({ hydraId }).state
+  const proposal = state.dispatchProposals?.find(entry => entry.token === token)
+
+  const callerUnavailable = state.config?.removed || state.config?.removing
+
+  if (callerUnavailable || proposal?.kind !== 'command' || proposal.status !== 'applying') {
+    return false
+  }
+
+  const target = JSON.parse(proposal.value) as Target
+
+  if (target.name !== 'hydra' || target.args[0] !== 'remove' || target.args[1] !== id) {
+    return false
+  }
+
+  if (context({
+    state,
+    target,
+  }) !== proposal.before) {
+    throw new HydraError({
+      message: 'The target changed. Ask Hydra to propose the removal again',
+      code: 'CONFLICT',
+    })
+  }
+
+  if (!target.removalWork) {
+    throw new HydraError({
+      message: 'This approval has no checkout preview. Propose removal again',
+      code: 'CONFLICT',
+    })
+  }
+
+  return target.removalWork
+}
+
 export function proposeOwnerCommand({
   name,
   args,
   hydraId,
+  summary: requestedSummary,
+  removalSeq,
+  removalWork,
 }: {
   name: string
   args: string[]
   hydraId: string
+  summary?: string
+  removalSeq?: number
+  removalWork?: Record<string, string>
 }): Output {
   const safe: string[] = []
 
@@ -122,9 +178,10 @@ export function proposeOwnerCommand({
     name,
     args: safe,
     cwd: requestCwd(),
+    removalWork,
   }
   const value = JSON.stringify(target)
-  const summary = `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
+  const summary = requestedSummary ?? `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
   const dispatch = dispatchFor({ target })
   const memory = memoryRulesFor({ target })
   withWriter({
@@ -148,6 +205,7 @@ export function proposeOwnerCommand({
               target,
               dispatch,
               memory,
+              removalSeq,
             }),
             value,
             summary,
@@ -220,9 +278,9 @@ export const approval = guard({
           return undefined
         }
 
-        if (action === 'confirm' && proposal.status === 'applying') {
+        if (proposal.status === 'applying') {
           throw new HydraError({
-            message: 'This approved action is already applying; it will not run twice',
+            message: 'This approved action is already applying; it cannot be confirmed or dismissed',
             code: 'CONFLICT',
           })
         }
@@ -290,11 +348,17 @@ export const approval = guard({
     }
 
     if (values.confirm !== token) {
+      const previewTarget = JSON.parse(selected.value) as Target
+
       return {
         confirmation: 'needed',
         token,
         action: selected.summary,
-        preview: JSON.parse(selected.value),
+        preview: {
+          name: previewTarget.name,
+          args: previewTarget.args,
+          cwd: previewTarget.cwd,
+        },
       }
     }
 
@@ -308,6 +372,15 @@ export const approval = guard({
 
     ownerEnv.PNYX_HOME = pnyxHome()
     ownerEnv.PNYX_ACTOR = 'web'
+
+    const removesHydra = target.name === 'hydra' && target.args[0] === 'remove'
+
+    if (removesHydra) {
+      target.args.push(
+        '--confirm',
+        token,
+      )
+    }
 
     if (memory) {
       ownerEnv.PNYX_MEMORY_ACCESS = memory
@@ -379,7 +452,18 @@ export const approval = guard({
         },
       })
 
-      const code = /^code: (REVISION_CONFLICT|CONFLICT)$/m.exec(stdout)?.[1]
+      const code = /^code: ([A-Z_]+)$/m.exec(stdout)?.[1]
+
+      if (removesHydra) {
+        if (error instanceof HydraError) {
+          throw error
+        }
+
+        throw new HydraError({
+          message: detail,
+          code: code ?? 'UNKNOWN',
+        })
+      }
 
       if (memory && (code === 'CONFLICT' || code === 'REVISION_CONFLICT')) {
         throw new HydraError({
@@ -420,3 +504,41 @@ export const approval = guard({
     }
   },
 })
+
+export function recoverOwnerCommands({ hydraId }: { hydraId: string }): void {
+  const { state } = loadHydra({ hydraId })
+  const interrupted = state.dispatchProposals?.filter(proposal =>
+    proposal.kind === 'command' && proposal.status === 'applying') ?? []
+
+  if (!interrupted.length || state.config?.removed || state.config?.removing) {
+    return
+  }
+
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      for (const proposal of interrupted) {
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: {
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+          cardId: HYDRA_CARD,
+          change: {
+            type: 'hydra.dispatch-progress',
+            data: {
+              token: proposal.token,
+              status: 'failed',
+              error: 'The server stopped before recording the result. Check whether the action completed before trying again.',
+            },
+          },
+        })
+
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      }
+    },
+  })
+}

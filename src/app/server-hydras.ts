@@ -110,7 +110,7 @@ export function createHydra({
 }): string {
   return withRegistryLock({
     fn: () => {
-      const ids = hydraIds()
+      const ids = hydraIds({ includeRemoved: true })
       const eventId = attempt ? creationEventId({ attempt }) : undefined
 
       if (eventId) {

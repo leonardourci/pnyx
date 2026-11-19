@@ -1,3 +1,4 @@
+import { removeHydraCommand } from './remove.ts'
 import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
 import { readMemoryContext } from '#memory/context.ts'
 import { projectRows } from '#projects/read.ts'
@@ -111,8 +112,13 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
     return {
       hydras: hydras.map(id => {
-        hideDone({ hydraId: id })
-        const state = loadHydra({ hydraId: id }).state
+        let { state } = loadHydra({ hydraId: id })
+
+        if (!state.config?.removing) {
+          hideDone({ hydraId: id })
+          state = loadHydra({ hydraId: id }).state
+        }
+
         const config = hydraConfig({
           state,
           id,
@@ -140,6 +146,13 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         what: 'Hydra id',
       }))
   hydraDir({ hydraId: id })
+
+  if (loadHydra({ hydraId: id }).state.config?.removed) {
+    throw new HydraError({
+      message: `Hydra was removed: ${id}`,
+      code: 'NOT_FOUND',
+    })
+  }
 
   if (action === 'show') {
     return readMemoryContext({
@@ -509,6 +522,10 @@ export const HYDRA_OPTIONS: Options = {
 }
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  if (args[0] === 'remove') {
+    return removeHydraCommand({ args })
+  }
+
   if (args[0] === 'ask') {
     return hydraQuestion({ args: args.slice(1) })
   }

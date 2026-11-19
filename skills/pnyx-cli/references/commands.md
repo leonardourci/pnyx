@@ -79,4 +79,6 @@ The owner can apply access edits immediately. Hydra can narrow access directly. 
 
 Agent memory reads, writes and proposals use the caller's native `PNYX_HYDRA`. Naming another Hydra returns empty memory or `NOT_FOUND`.
 
+`pnyx-axi hydra remove <id> --hydra <caller>` requires the owner's Confirm in the caller’s chat. Settings runs the same command. See the [CLI guide](../../../docs/pnyx-axi.md) for cleanup, retention, safeguards and recovery.
+
 Use `project list`, `project show <path>` and `project remove <path>` to manage the Hydra's own attachments even when `readPoleis` is empty. Memory commands still require polis read access.

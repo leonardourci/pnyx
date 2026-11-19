@@ -7,6 +7,7 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { focusElement } from '#web-preferences/keyboard-registry.tsx'
+import { useModalTask } from './presentation.ts'
 import { expandedByColumn, columnsFor, filterCards } from './view.ts'
 import { openTaskCard, afterTaskLayout, afterSteadyLayout, scrollTask } from './scroll-task.ts'
 
@@ -55,8 +56,10 @@ export function useTaskNavigation({
     setRevealing(null)
   }
 
+  const modalTask = useModalTask({ hydraId })
   const interestRefs = [
     ...expanded,
+    modalTask,
     selectedRef,
     revealing,
   ].filter((id): id is string => id !== null)

@@ -1138,7 +1138,10 @@ test(
       env: {},
       signal: new AbortController().signal,
     })
-    const { input } = await driven({
+    const {
+      input,
+      events,
+    } = await driven({
       session,
       onEnd: ({ end }) => onTestFinished(end),
     })
@@ -1154,7 +1157,9 @@ test(
       )) && existsSync(join(
         root,
         'started',
-      )) && session.snapshot().work.runningTurns.length === 1,
+      )) && session.snapshot().work.runningTurns.length === 1
+        && events.some(event => typeof event === 'object' && event.type === 'tool'
+          && event.id === 'background' && !event.running),
     })
     const pids = JSON.parse(readFileSync(
       join(

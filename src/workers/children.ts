@@ -69,18 +69,55 @@ type Recorded = {
   preserveTools?: true
 }
 
+function recordedProcess({ value }: { value: unknown }): boolean {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const pid = 'pid' in value ? value.pid : undefined
+  const validPid = typeof pid === 'number' && Number.isSafeInteger(pid) && pid > 0
+  const validStart = 'start' in value && typeof value.start === 'string' && value.start.trim().length > 0
+  const validTask = !('task' in value) || typeof value.task === 'string'
+  const validPreserveTools = !('preserveTools' in value) || value.preserveTools === true
+
+  return validPid && validStart && validTask && validPreserveTools
+}
+
 const childrenPath = ({ hydraId }: { hydraId: string }) => join(
   hydraDir({ hydraId }),
   'children.json',
 )
 
-const read = ({ path }: { path: string }): Recorded[] => {
+const read = ({
+  path,
+  strict = false,
+}: {
+  path: string
+  strict?: boolean
+}): Recorded[] => {
   try {
-    return JSON.parse(readFileSync(
+    const recorded: unknown = JSON.parse(readFileSync(
       path,
       'utf8',
-    )) as Recorded[]
-  } catch {
+    ))
+
+    if (!Array.isArray(recorded) || !recorded.every(
+      (value: unknown) => recordedProcess({ value }),
+    )) {
+      throw new TypeError('Invalid recorded processes')
+    }
+
+    return recorded as Recorded[]
+  } catch (error) {
+    const missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'
+
+    if (strict && !missing) {
+      throw new HydraError({
+        message: `Cannot verify recorded processes: ${path}`,
+        code: 'AGENT_STOP_FAILED',
+      })
+    }
+
     return []
   }
 }
@@ -110,8 +147,8 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
 
   const stopping = new Map<string, Promise<void>>()
 
-  const stop = async ({ task }: { task: string }) => {
-    const recorded = [...live.values()].filter(child => child.task === task)
+  const stop = async ({ task }: { task?: string }) => {
+    const recorded = [...live.values()].filter(child => task === undefined || child.task === task)
 
     if (!recorded.length) {
       return
@@ -163,6 +200,23 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
   }
 
   return {
+    async stopAll() {
+      for (const child of read({
+        path,
+        strict: true,
+      })) {
+        if (!retained({ child }) || live.has(child.pid)) {
+          continue
+        }
+
+        live.set(
+          child.pid,
+          child,
+        )
+      }
+
+      await stop({})
+    },
     tasks() {
       return new Set([...live.values()].flatMap(child => child.task ? [child.task] : []))
     },
@@ -293,20 +347,45 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
 // The separate agent host of earlier builds, if one outlived the switch to this build. SIGTERM lets it close
 // its own agents, which it started in their own process groups.
 export async function stopOldHost() {
-  const owner = read({
-    path: join(
-      pnyxHome(),
-      'native/owner.json',
-    ),
-  }) as unknown as Partial<Recorded>
+  const path = join(
+    pnyxHome(),
+    'native/owner.json',
+  )
+  let owner: unknown
 
-  if (typeof owner.pid !== 'number' || typeof owner.start !== 'string') {
+  try {
+    owner = JSON.parse(readFileSync(
+      path,
+      'utf8',
+    ))
+  } catch (error) {
+    const missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'
+
+    if (!missing) {
+      log({
+        level: 'warn',
+        operation: 'agent.stop-old-host',
+        error,
+      })
+    }
+
     return
   }
 
+  if (!recordedProcess({ value: owner })) {
+    log({
+      level: 'warn',
+      operation: 'agent.stop-old-host',
+      error: `Cannot verify the old agent host: ${path}`,
+    })
+
+    return
+  }
+
+  const recorded = owner as Recorded
   const host = {
-    pid: owner.pid,
-    start: owner.start,
+    pid: recorded.pid,
+    start: recorded.start,
     localTime: true,
   }
 

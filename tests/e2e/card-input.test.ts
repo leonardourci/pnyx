@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
 import { git } from '../setup/upgrade.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
@@ -768,6 +768,263 @@ test(
       await page.reload()
       await card.waitFor()
       expect(await card.locator('.card-details').isVisible()).toBe(false)
+    } finally {
+      await page.context().close()
+    }
+  },
+)
+
+test(
+  'an open task modal shows brief updates and keeps overlapping cards behind it while sending',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'layering' })
+    const initialBrief = 'Original task instructions'
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { [folder]: 850 } } }),
+      ],
+    })
+
+    for (let index = 0; index < 6; index++) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          `Background task ${index}`,
+          '--folder',
+          folder,
+          '--project',
+          folder,
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'layering',
+        '--title',
+        'Task layering',
+        '--brief',
+        initialBrief,
+        '--folder',
+        folder,
+        '--project',
+        folder,
+      ],
+    })
+    const task = await hydra.task({ key: 'layering' })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        task.id,
+        '--in-place',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    await until({
+      what: 'worker settles',
+      check: () => worker.answered === 1,
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const card = page.locator(`article[data-task="${task.id}"]`).first()
+      await card.hover()
+      await page.getByRole(
+        'button',
+        {
+          name: 'Open modal',
+          exact: true,
+        },
+      ).click()
+      const modal = page.getByRole(
+        'dialog',
+        {
+          name: 'Task layering',
+          exact: true,
+        },
+      )
+      await modal.waitFor()
+      const openedModal = await modal.elementHandle()
+
+      if (!openedModal) {
+        throw new Error('Task modal disappeared after opening')
+      }
+
+      await until({
+        what: 'modal finishes opening',
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
+      })
+      const instructions = modal.getByRole(
+        'region',
+        {
+          name: 'Instructions',
+          exact: true,
+        },
+      )
+      const originalBrief = instructions.getByText(
+        initialBrief,
+        { exact: true },
+      )
+      await originalBrief.waitFor({ state: 'visible' })
+      const updatedBrief = 'Review the latest task instructions'
+      await hydra.owner({
+        args: [
+          'task',
+          'brief',
+          task.id,
+          '--brief',
+          updatedBrief,
+        ],
+      })
+      await instructions.getByText(
+        updatedBrief,
+        { exact: true },
+      ).waitFor({ state: 'visible' })
+      expect(await originalBrief.isVisible()).toBe(false)
+      const idle = modal.getByText(
+        'Idle',
+        { exact: true },
+      )
+      await idle.waitFor({ state: 'visible' })
+      const reply = 'Message handled'
+      const partial = 'Message'
+      const turn = pnyx.claude.plan({
+        hydra: hydra.id,
+        hold: true,
+        partial,
+        reply,
+      })
+      onTestFinished(() => turn.release())
+      const message = 'Keep the modal above the workspace'
+      await modal.getByRole(
+        'textbox',
+        {
+          name: 'Message worker',
+          exact: true,
+        },
+      ).fill(message)
+      await modal.getByRole(
+        'button',
+        {
+          name: 'Send to worker',
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'worker receives the modal message',
+        check: () => worker.received.some(text => text.includes(message)),
+      })
+      await modal.getByText(
+        partial,
+        { exact: true },
+      ).waitFor({ state: 'visible' })
+
+      const expectModalAboveCards = async () => {
+        // Theme-specific surface styles must keep the modal above every overlapping card.
+        for (const theme of [
+          'light',
+          'dark',
+        ]) {
+          await page.evaluate(
+            ({ theme }) => {
+              document.documentElement.dataset.theme = theme
+            },
+            { theme },
+          )
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+          const coverage = await openedModal.evaluate(element => {
+            const bounds = element.getBoundingClientRect()
+            const blockedOverlaps: string[] = []
+            let overlapCount = 0
+
+            for (const card of document.querySelectorAll('article[data-task]')) {
+              if (element.contains(card)) {
+                continue
+              }
+
+              const box = card.getBoundingClientRect()
+              const left = Math.max(
+                bounds.left,
+                box.left,
+                0,
+              )
+              const right = Math.min(
+                bounds.right,
+                box.right,
+                window.innerWidth,
+              )
+              const top = Math.max(
+                bounds.top,
+                box.top,
+                0,
+              )
+              const bottom = Math.min(
+                bounds.bottom,
+                box.bottom,
+                window.innerHeight,
+              )
+
+              if (left >= right || top >= bottom) {
+                continue
+              }
+
+              overlapCount++
+              const hit = document.elementFromPoint(
+                (left + right) / 2,
+                (top + bottom) / 2,
+              )
+
+              if (!element.contains(hit)) {
+                blockedOverlaps.push(card.textContent ?? '')
+              }
+            }
+
+            return {
+              isModal: element.matches(':modal'),
+              overlapCount,
+              blockedOverlaps,
+            }
+          })
+          expect(coverage.isModal).toBe(true)
+          expect(coverage.overlapCount).toBeGreaterThan(0)
+          expect(coverage.blockedOverlaps).toEqual([])
+        }
+      }
+
+      await modal.getByText(
+        'Running',
+        { exact: true },
+      ).waitFor({ state: 'visible' })
+      await expectModalAboveCards()
+
+      turn.release()
+      await modal.getByText(
+        reply,
+        { exact: true },
+      ).waitFor({ state: 'visible' })
+      await idle.waitFor({ state: 'visible' })
+      await expectModalAboveCards()
     } finally {
       await page.context().close()
     }
