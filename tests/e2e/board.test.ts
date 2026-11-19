@@ -5433,21 +5433,21 @@ test(
     await expect.poll(async () => column.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
       node => {
-      const axis = node.closest<HTMLElement>('.workspace-axis')
+        const axis = node.closest<HTMLElement>('.workspace-axis')
 
-      if (!axis) {
-        throw new Error('Project is outside its workspace scroll container')
-      }
+        if (!axis) {
+          throw new Error('Project is outside its workspace scroll container')
+        }
 
-      const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
-      const offset = node.getBoundingClientRect().left - axis.getBoundingClientRect().left
-      const left = offset + axis.scrollLeft - axis.clientLeft - padding
+        const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
+        const offset = node.getBoundingClientRect().left - axis.getBoundingClientRect().left
+        const left = offset + axis.scrollLeft - axis.clientLeft - padding
 
-      return Math.abs(axis.scrollLeft - Math.min(
-        left,
-        axis.scrollWidth - axis.clientWidth,
-      ))
-    },
+        return Math.abs(axis.scrollLeft - Math.min(
+          left,
+          axis.scrollWidth - axis.clientWidth,
+        ))
+      },
     )).toBeLessThan(2)
   },
 )
