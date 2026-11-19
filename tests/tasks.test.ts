@@ -1312,6 +1312,24 @@ test(
       expect(refused.code).toBe('VALIDATION_ERROR')
     }
 
+    expect((await asHydra.refused({
+      args: [
+        'task',
+        'ask',
+        'questions',
+        '--to',
+        'owner',
+        ...fields[0]!,
+        ...fields[1]!,
+        '--choice',
+        'Only open',
+        '--recommend',
+        '1',
+        '--reason',
+        'Accounting decision',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+
     for (const question of [
       '?',
       'Ready for review',
@@ -2142,13 +2160,17 @@ test(
       ) => {
         const flag = attempt[index - 1]
 
-        if (flag === '--questions') {
-          return JSON.stringify([questions[1].key])
-        }
-
         return flag === '--choice' ? 'Include archived' : value
       })
       expect((await hydra.ownerRefused({ args: failedQuestionWithDifferentChoice })).code).toBe('CONFLICT')
+      expect(readFileSync(
+        join(
+          gate,
+          'sent',
+        ),
+        'utf8',
+      ).trim()
+        .split('\n')).toHaveLength(1)
       const recovered = await hydra.owner({ args: attempt })
       expect(recovered.answers).toMatchObject([
         { repeat: true },
