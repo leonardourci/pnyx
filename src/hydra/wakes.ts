@@ -107,27 +107,24 @@ export function wakeText({
 }): string {
   const lines: string[] = []
   const updates: string[] = []
-
-  const sealedReview = review ? sealed({ text: review }) : ''
-
-  if (review) {
-    const reviewText = pick ? sealedReview : clip({
-      text: sealedReview,
-      size: WAKE_UPDATE_CHARS - 1,
-    })
-    updates.push(reviewText)
-  }
+  let overflow = false
 
   if (reasons.length) {
-    updates.push(
-      'Why you are woken:',
-      ...reasons.map(line => sealed({
-        text: pick ? line : clip({
-          text: line,
+    updates.push('Why you are woken:')
+
+    for (const reason of reasons) {
+      let line = reason
+
+      if (!pick && reason.length > WAKE_REASON_CHARS) {
+        overflow = true
+        line = clip({
+          text: reason,
           size: WAKE_REASON_CHARS,
-        }),
-      })),
-    )
+        })
+      }
+
+      updates.push(sealed({ text: line }))
+    }
   }
 
   if (reports.length) {
@@ -142,7 +139,6 @@ export function wakeText({
   }
 
   let used = 0
-  let overflow = !pick && sealedReview.length >= WAKE_UPDATE_CHARS
 
   for (const line of updates) {
     // Helper batches apply their own input budget before claiming report leases.
@@ -153,6 +149,24 @@ export function wakeText({
 
     lines.push(line)
     used += line.length + 1
+  }
+
+  if (review) {
+    const reviewText = sealed({ text: review })
+    const remaining = WAKE_UPDATE_CHARS - used - 1
+
+    if (pick || reviewText.length <= remaining) {
+      lines.push(reviewText)
+    } else {
+      overflow = true
+
+      if (remaining > 1) {
+        lines.push(clip({
+          text: reviewText,
+          size: remaining,
+        }))
+      }
+    }
   }
 
   if (overflow) {

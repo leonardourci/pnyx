@@ -283,22 +283,21 @@ export async function hydraCheck({
       note.seq,
       note,
     ] as const))
-  const row = ({ e }: { e: HydraEvent }) => ({
-    seq: e.seq,
-    id: e.id,
-    type: e.type,
-    task: e.cardId === '$board' ? 'none' : e.cardId,
-    action: e.type === 'hydra.message' ? e.data.action : 'none',
-    actor: OWNER_ACTORS.includes(e.actor) ? `owner (${e.actor})` : e.actor,
-    summary: compact({
-      text: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered)
-        .map(a => a.text ?? a.kind)
-        .join('; ') ?? 'Agent needs an answer' : summarize({ event: e }),
-    }),
-  })
-
   const changesWithReportStatus = page.map(e => {
-    const change = row({ e })
+    const task = e.type === 'hydra.message' ? e.data.task : e.cardId
+    const change = {
+      seq: e.seq,
+      id: e.id,
+      type: e.type,
+      task: task && task !== '$board' ? task : 'none',
+      action: e.type === 'hydra.message' ? e.data.action : 'none',
+      actor: OWNER_ACTORS.includes(e.actor) ? `owner (${e.actor})` : e.actor,
+      summary: compact({
+        text: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered)
+          .map(a => a.text ?? a.kind)
+          .join('; ') ?? 'Agent needs an answer' : summarize({ event: e }),
+      }),
+    }
     const note = pendingReports.get(e.seq)
 
     if (!note) {

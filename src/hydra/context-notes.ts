@@ -63,7 +63,7 @@ export function applyContextNotes({
   const add = ({
     id = event.id,
     text,
-    task = event.cardId,
+    task = event.type === 'hydra.message' ? event.data.task : event.cardId,
     ownerAnswer = false,
     report = false,
     progress = false,
@@ -83,7 +83,7 @@ export function applyContextNotes({
 
     let progressCount = 1
     const retained = notes.filter(note => {
-      if (progress && note.task === task && note.progress) {
+      if (progress && task && note.task === task && note.progress) {
         progressCount += note.progress
 
         return false
@@ -123,7 +123,6 @@ export function applyContextNotes({
   if (reportActor({ actor: event.actor })) {
     if (event.type === 'hydra.message') {
       add({
-        task: event.data.task,
         text: event.data.text,
         report: true,
         progress: event.data.kind === 'progress',
@@ -293,8 +292,8 @@ export function contextReportStatus({
   note: ContextNote
   state: HydraState
 }): string {
-  if (note.handled) {
-    return 'handled'
+  if (note.handled !== undefined) {
+    return note.handled ? 'handled' : 'unhandled'
   }
 
   const leased = Object.values(state.helper?.runs ?? {}).some(batch =>

@@ -868,6 +868,9 @@ export function createHydraTurns({
         })
 
         for (const note of contextTurnNotes({ notes })) {
+          if (note.report && contextReportStatus({ note, state: contextState }) === 'helper handling') {
+            continue
+          }
           contextPresented.set(
             note.id,
             note.seq,
@@ -1124,3 +1127,4 @@ export function createHydraTurns({
     sessionEnded,
   }
 }
+import { contextReportStatus } from './context-notes.ts'

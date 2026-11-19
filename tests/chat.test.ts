@@ -430,6 +430,23 @@ test(
     const retried = session.received.find(text => text.endsWith('Review the interrupted worker reports'))!
     expect(retried).toContain('Export works; ready for review')
     expect(retried).toContain('result: Stored findings: invoices have been verified.')
+    const reportSeq = retried.match(/seq (\d+) \S+ \[unhandled\]: Export works; ready for review/)?.[1]
+    expect(reportSeq).toBeDefined()
+    await until({
+      what: 'the retried report turn to finish',
+      check: () => queue({ hydraId: hydra.id })?.working === false,
+    })
+    const checked = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(reportSeq) - 1),
+      ],
+    })
+    const report = checked.changes.find((change: { seq: number }) => change.seq === Number(reportSeq))
+    expect(report).toBeDefined()
+    expect(report).not.toHaveProperty('reportStatus')
   },
 )
 
@@ -681,6 +698,7 @@ test(
     })
     expect(checked.changes).toContainEqual(expect.objectContaining({
       seq: Number(reportSeq),
+      task: id,
       reportStatus: 'handled',
     }))
     await hydra.chat({ text: 'Summarize the invoice status' })
