@@ -1439,7 +1439,7 @@ test(
       hydraId: hydra.id,
       at: new Date(Date.parse(due) + 1).toISOString(),
     })
-    expect(readEvents({ hydraId: hydra.id }).filter(event => event.type === 'card.moved' && event.cardId === card.id && event.at === new Date(Date.parse(due) + 1).toISOString())).toHaveLength(0)
+    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
     await hydra.owner({
       args: [
         'column',
@@ -1468,9 +1468,9 @@ test(
     expect(JSON.stringify(updates)).toContain('task.reminder-due')
     const history = readEvents({ hydraId: hydra.id })
     const dueIndex = history.findIndex(event => event.type === 'task.reminder-due' && event.cardId === card.id)
-    const dueEvent = history[dueIndex]!
+    const dueEvent = history[dueIndex]
 
-    if (dueEvent.type !== 'task.reminder-due') {
+    if (dueEvent?.type !== 'task.reminder-due') {
       throw new Error('Expected a reminder receipt')
     }
 
@@ -1481,7 +1481,13 @@ test(
         dueIndex,
       ),
     })
-    legacy.cards[card.id]!.reminder!.repeat = {
+    const scheduled = legacy.cards[card.id]?.reminder
+
+    if (!scheduled) {
+      throw new Error('Expected a scheduled reminder before its receipt')
+    }
+
+    scheduled.repeat = {
       everyMs: 60_000,
       until: 'task-done',
     }
@@ -1495,7 +1501,14 @@ test(
         },
       },
     })
-    delete legacy.cards[card.id]!.reminder!.declaration
+    const legacyReminder = legacy.cards[card.id]?.reminder
+
+    if (!legacyReminder) {
+      throw new Error('Expected a recurring reminder after its legacy receipt')
+    }
+
+    const withLaterStatus = structuredClone(legacy)
+    delete legacyReminder.declaration
     legacy = reduce({
       state: legacy,
       event: {
@@ -1517,48 +1530,33 @@ test(
         },
       },
     })
-    expect(legacy.cards[card.id]!.status).toEqual(beforeReminder.task.status)
+    expect(legacy.cards[card.id]?.status).toEqual(beforeReminder.task.status)
 
     const workerStatus = {
       ...beforeReminder.task.status,
       id: 'later-worker-status',
       state: 'working' as const,
     }
-    let preserved = replay({
-      state: emptyHydra(),
-      events: history.slice(
-        0,
-        dueIndex,
-      ),
-    })
-    preserved.cards[card.id]!.reminder!.repeat = {
-      everyMs: 60_000,
-      until: 'task-done',
+    const laterCard = withLaterStatus.cards[card.id]
+
+    if (!laterCard) {
+      throw new Error('Expected the task with the recurring reminder')
     }
-    preserved = reduce({
-      state: preserved,
+
+    laterCard.status = workerStatus
+    const repeatedWithLaterStatus = reduce({
+      state: withLaterStatus,
       event: {
         ...dueEvent,
-        data: {
-          ...dueEvent.data,
-          column: 'in_progress',
-        },
-      },
-    })
-    preserved.cards[card.id]!.status = workerStatus
-    preserved = reduce({
-      state: preserved,
-      event: {
-        ...dueEvent,
-        seq: preserved.seq + 1,
+        seq: withLaterStatus.seq + 1,
         id: 'worker-repeat',
       },
     })
-    preserved = reduce({
-      state: preserved,
+    const clearedWithLaterStatus = reduce({
+      state: repeatedWithLaterStatus,
       event: {
         ...dueEvent,
-        seq: preserved.seq + 1,
+        seq: repeatedWithLaterStatus.seq + 1,
         id: 'clear-worker-repeat',
         type: 'task.reminder',
         data: {
@@ -1567,7 +1565,7 @@ test(
         },
       },
     })
-    expect(preserved.cards[card.id]!.status).toEqual(workerStatus)
+    expect(clearedWithLaterStatus.cards[card.id]?.status).toEqual(workerStatus)
 
     const asked = await asHydra.run({
       args: [

@@ -256,13 +256,17 @@ test(
         exact: true,
       },
     )
-    await waiting.focus()
-    await waiting.press('Tab')
+    await waiting.press('Enter')
     const group = page.locator('.waiting-question-group')
 
     const groupSummary = group.locator('summary')
 
     if (process.env.PNYX_KEEP_TEST_FILES) {
+      mkdirSync(
+        process.env.PNYX_KEEP_TEST_FILES,
+        { recursive: true },
+      )
+
       for (const theme of [
         'light',
         'dark',
@@ -294,11 +298,6 @@ test(
     expect(await firstQuestion.evaluate(element => element === document.activeElement)).toBe(true)
 
     if (process.env.PNYX_KEEP_TEST_FILES) {
-      mkdirSync(
-        process.env.PNYX_KEEP_TEST_FILES,
-        { recursive: true },
-      )
-
       for (const theme of [
         'light',
         'dark',
@@ -363,6 +362,10 @@ test(
         'owner',
       ],
     })
+    await until({
+      what: 'the owner merge question appears in Waiting on you',
+      check: async () => (await waiting.textContent())?.includes('Waiting on you · 2') === true,
+    })
     await hydra.owner({
       args: [
         'task',
@@ -375,10 +378,12 @@ test(
       ],
     })
     await until({
-      what: 'the ready PR remains in Latest update after switching mergers',
-      check: async () => (await reviewCard.locator('.card-current-state').textContent())?.includes('CSV export is ready for review.') === true,
+      what: 'the merge question leaves Waiting on you',
+      check: async () => (await waiting.textContent())?.includes('Waiting on you · 1') === true,
     })
-    expect(await reviewCard.locator('.card-current-state').textContent()).toContain('Latest update')
+    const latestUpdate = await reviewCard.locator('.card-current-state').textContent()
+    expect(latestUpdate).toContain('Latest update')
+    expect(latestUpdate).toContain('CSV export is ready for review.')
     expect(await reviewCard.locator('.card-current-state a').getAttribute('href')).toBe('https://github.com/sample/exports/pull/1')
 
     await waiting.click()
@@ -471,6 +476,7 @@ test(
     })
     expect(attempts).toHaveLength(2)
     expect(attempts[1]).toBe(attempts[0])
+    const events = readEvents({ hydraId: hydra.id })
 
     for (const key of [
       'Invoices',
@@ -485,8 +491,10 @@ test(
         ],
       })
       expect(card.task.asks).toHaveLength(1)
-      expect(card.task.asks[0].choice).toBe('Open only')
-      const answers = readEvents({ hydraId: hydra.id }).filter(event => event.type === 'hydra.message' && event.data.task === card.task.id && event.data.answers === card.task.asks[0].id)
+      const [question] = card.task.asks
+      expect(question.choice).toBe('Open only')
+      const answers = events.filter(event => event.type === 'hydra.message'
+        && event.data.task === card.task.id && event.data.answers === question.id)
       expect(answers).toHaveLength(1)
     }
 

@@ -154,11 +154,12 @@ export function reminderRepeat({
 }
 
 export function clearReminder({ card }: { card: Card }) {
-  const declaration = card.reminder?.declaration ?? card.reminder?.dueEvent
+  const reminder = card.reminder
+  const declaration = reminder?.declaration ?? reminder?.dueEvent
 
-  if (card.status?.id === declaration) {
-    if (card.reminder?.resume) {
-      card.status = card.reminder.resume
+  if (declaration && card.status?.id === declaration) {
+    if (reminder?.resume) {
+      card.status = reminder.resume
     } else {
       delete card.status
     }
@@ -283,26 +284,32 @@ export function applyReminder({
       return true
     }
 
-    if (!card.reminder.declaration && card.status?.id === card.reminder.dueEvent) {
-      card.reminder.declaration = card.reminder.dueEvent
+    const reminder = card.reminder
+    const status = card.status
+    const previousDueEvent = reminder.dueEvent
+
+    if (!reminder.declaration && previousDueEvent && status?.id === previousDueEvent) {
+      reminder.declaration = previousDueEvent
     }
 
-    if (card.status && card.status.id !== card.reminder.declaration) {
-      card.reminder.resume = cloneValue({ value: card.status })
-    }
-
-    card.reminder.dueAt = event.at
-    card.reminder.dueEvent = event.id
+    reminder.dueAt = event.at
+    reminder.dueEvent = event.id
 
     if (event.data.nextAt) {
-      card.reminder.at = event.data.nextAt
+      reminder.at = event.data.nextAt
     } else if (event.data.nextAt === null) {
-      delete card.reminder.repeat
+      delete reminder.repeat
     }
 
     if (event.data.column !== undefined) {
       // Older receipts moved the card and declared a status when replayed.
-      card.reminder.declaration = event.id
+      if (!status) {
+        delete reminder.resume
+      } else if (status.id !== reminder.declaration) {
+        reminder.resume = cloneValue({ value: status })
+      }
+
+      reminder.declaration = event.id
       card.column = event.data.column
       const declaration = {
         id: event.id,

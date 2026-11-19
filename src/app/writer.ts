@@ -553,7 +553,10 @@ export function eventWriter({
         }
 
         if (event.type === 'task.landing') {
-          retireReviewQuestions({ writer })
+          retireReviewQuestions({
+            writer,
+            at: event.at,
+          })
         }
 
         for (const declaration of operationDeclarations({
@@ -615,10 +618,16 @@ export function eventWriter({
   return writer
 }
 
-function retireReviewQuestions({ writer }: { writer: Writer }): void {
+function retireReviewQuestions({
+  writer,
+  at = new Date().toISOString(),
+}: {
+  writer: Writer
+  at?: string
+}): void {
   for (const review of retireableReviewQuestions({
     state: writer.state,
-    at: new Date().toISOString(),
+    at,
   })) {
     writer.append({ event: review })
   }

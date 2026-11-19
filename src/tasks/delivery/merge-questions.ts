@@ -119,6 +119,23 @@ export function isCanonicalQuestion({
   return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
+function ownerReviewsPullRequests({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): boolean {
+  if (isManagedTask({ card }) || card.status?.state === 'done' || card.outcome?.closed) {
+    return false
+  }
+
+  return cardLanding({
+    card,
+    projects: state.projects ?? [],
+  })?.merge === 'owner'
+}
+
 export function* retireableReviewQuestions({
   state,
   at,
@@ -126,24 +143,26 @@ export function* retireableReviewQuestions({
   state: HydraState
   at: string
 }): Iterable<HydraEvent> {
-  for (const card of Object.values(state.cards)) {
+  const cards = Object.values(state.cards)
+  const ownerReviewCards = cards.filter(card => ownerReviewsPullRequests({
+    state,
+    card,
+  }))
+  const ownerReviewCardIds = new Set(ownerReviewCards.map(card => card.id))
+  const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card => card.links.map(link => link.url)))
+
+  for (const card of cards) {
+    if (ownerReviewCardIds.has(card.id)) {
+      continue
+    }
+
     const questions = openAsks({
       card,
       audience: 'owner',
     }).filter(ask => ask.kind === 'merge')
 
     for (const ask of questions) {
-      const ownerMerges = Object.values(state.cards).some(linked => {
-        const sharesPullRequest = linked.id === card.id
-          || linked.links.some(link => link.url === ask.url)
-
-        return sharesPullRequest && cardLanding({
-          card: linked,
-          projects: state.projects ?? [],
-        })?.merge === 'owner'
-      })
-
-      if (ownerMerges) {
+      if (ask.url && ownerReviewUrls.has(ask.url)) {
         continue
       }
 
@@ -238,26 +257,30 @@ export function reconcileAsks({
     }
   }
 
-  if ((event.type !== 'card.linked' && event.type !== 'task.landing') || card.status?.state === 'done' || card.outcome?.closed) {
+  if (event.type !== 'card.linked' && event.type !== 'task.landing') {
+    return changes
+  }
+
+  if (!ownerReviewsPullRequests({
+    state,
+    card,
+  })) {
     return changes
   }
 
   const links = event.type === 'card.linked' ? [event.data.after] : card.links
 
   for (const link of links) {
-    const ownerMerges = cardLanding({
-      card,
-      projects: state.projects ?? [],
-    })?.merge === 'owner'
-    const ready = link && readyForReview({ link })
-    const existing = link && canonicalMergeQuestion({
+    if (!link || !readyForReview({ link })) {
+      continue
+    }
+
+    const existing = canonicalMergeQuestion({
       state,
       card,
       url: link.url,
     })
-    const alreadyAsked = existing && !existing.ask.closed
-
-    if (!ready || !ownerMerges || alreadyAsked) {
+    if (existing && !existing.ask.closed) {
       continue
     }
 

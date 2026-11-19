@@ -3618,6 +3618,14 @@ test(
     expect(landingReceipt.card.column).toBe(current.task.column)
     expect(landingReceipt.card.revision).toBe(current.task.revision)
     expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
+    const updates = await hydra.owner({
+      args: [
+        'task',
+        'updates',
+        'review-update',
+      ],
+    })
+    expect(JSON.stringify(updates)).toContain(url)
     await hydra.owner({
       args: [
         'task',
@@ -3638,14 +3646,12 @@ test(
       ],
     })
     expect(restored.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
-    await hydra.owner({
+    const alias = await hydra.owner({
       args: [
         'task',
         'create',
         '--title',
         'Shared review',
-        '--key',
-        'shared-review',
         '--project',
         'shop',
       ],
@@ -3653,7 +3659,7 @@ test(
     await hydra.owner({
       args: [
         'link',
-        'shared-review',
+        alias.card.id,
         '--url',
         url,
       ],
@@ -3682,7 +3688,7 @@ test(
       args: [
         'task',
         'landing',
-        'shared-review',
+        alias.card.id,
         '--landing',
         'pr',
         '--merge',
