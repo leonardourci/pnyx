@@ -302,6 +302,7 @@ test(
     await studioOption.click()
     await expect.poll(() => held.length).toBe(1)
     expect(await projectPolis.innerText()).toContain('studio')
+    expect(await projectRow.getByRole('status').isVisible()).toBe(true)
     expect((await hydra.owner({
       args: [
         'project',
