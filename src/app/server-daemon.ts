@@ -1,3 +1,4 @@
+import { trackChildren } from '#workers/children.ts'
 import { finishHydraRemoval } from '#hydra/remove.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -31,7 +32,7 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
 import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
-import { hydraExists, loadHydra } from './store.ts'
+import { holdHydra, hydraExists, loadHydra } from './store.ts'
 import { migrateSchema, query } from '#store/postgres.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
@@ -837,6 +838,8 @@ export async function startServer({
       const openHydra = await mounted
       served.delete(hydraId)
       await openHydra.close({ permanent: true })
+    } else {
+      await trackChildren({ hydraId }).stopAll()
     }
   }
 
@@ -1030,6 +1033,23 @@ export async function startServer({
   try {
     for (const id of hydraIds()) {
       try {
+        const release = holdHydra({
+          hydraId: id,
+          changed: () => {},
+        })
+        release()
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'hydra.import',
+          hydraId: id,
+          error,
+        })
+      }
+    }
+
+    for (const id of hydraIds()) {
+      try {
         if (removalPending({ id })) {
           await finishHydraRemoval({ id })
         }
@@ -1111,7 +1131,7 @@ export async function startServer({
       text: JSON.stringify({
         pid: process.pid,
         port: bound,
-        url: named.url,
+        url: `http://127.0.0.1:${bound}/`,
         socket: named.socket,
         service: process.env.PNYX_SERVICE_ROLE === 'application'
           || process.env.XPC_SERVICE_NAME === serviceFile().label,
@@ -1137,7 +1157,7 @@ export async function startServer({
 
   return {
     port: bound,
-    url: named.url,
+    url: `http://127.0.0.1:${bound}/`,
     socket: named.socket,
     skipped: { ...skipped },
     open,

@@ -14,7 +14,7 @@ const HEALTH_TIMEOUT_MS = 60_000
 export interface ServerInfo {
   pid: number
   port: number
-  // The address of a Hydra on the server, ending in /hydra/<id>/; the record itself names the default Hydra.
+  // The stable root address redirects to the current primary Hydra.
   url: string
   // A Hydra's hook socket; null when it could not be bound, and hooks then spool.
   socket: string | null
