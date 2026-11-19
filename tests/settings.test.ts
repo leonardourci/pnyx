@@ -30,7 +30,7 @@ const queuedWidth = async ({ hydra }: { hydra: Hydra }) => {
 }
 
 test(
-  'shared settings reach other Hydras and their pages and survive a restart, while dragged widths stay local',
+  'shared settings reach other Hydras and their pages, saved 24-hour retention survives a restart, and dragged widths stay local',
   async () => {
     const first = await pnyx.hydra()
     const second = await pnyx.hydra()
@@ -84,10 +84,18 @@ test(
     expect(await queuedWidth({ hydra: first })).toBe(600)
     expect(await queuedWidth({ hydra: second })).toBe(defaultWidth)
 
+    await first.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"doneAfterHours":24}',
+      ],
+    })
     await pnyx.restart()
     expect(await settings({ hydra: second })).toMatchObject({
       theme: 'dark',
-      doneAfterHours: 0,
+      doneAfterHours: 24,
     })
     expect(await queuedWidth({ hydra: first })).toBe(600)
   },
