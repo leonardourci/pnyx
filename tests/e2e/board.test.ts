@@ -5377,3 +5377,58 @@ test(
   },
 )
 
+test(
+  'revealing the last folded project follows its final width',
+  async ({ onTestFinished }) => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'last-reveal' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            foldedProjects: { [project]: true },
+            projectWidths: { [project]: 1600 },
+          },
+        }),
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    onTestFinished(async () => {
+      await page.context().close()
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    await workspace.locator('.project-chips').getByRole(
+      'button',
+      {
+        name: 'last-reveal',
+        exact: true,
+      },
+    )
+      .click()
+    const column = workspace.locator(`[data-column="${project}"]`)
+    await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1500)
+    await expect.poll(async () => column.evaluate(node => {
+      const axis = document.querySelector<HTMLElement>('.workspace-axis')!
+      const padding = parseFloat(getComputedStyle(axis).scrollPaddingLeft) || 0
+      const left = node.getBoundingClientRect().left - axis.getBoundingClientRect().left + axis.scrollLeft - axis.clientLeft - padding
+
+      return Math.abs(axis.scrollLeft - Math.min(
+        left,
+        axis.scrollWidth - axis.clientWidth,
+      ))
+    })).toBeLessThan(2)
+  },
+)

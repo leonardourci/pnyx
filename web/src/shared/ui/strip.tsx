@@ -29,19 +29,27 @@ export function Strip<T>({
         return
       }
 
-      const targetLeft = layoutOffset({
-        element: target,
-        horizontal: true,
-      })
-      const scrollerLeft = layoutOffset({
-        element: scroller,
-        horizontal: true,
-      })
-      const padding = parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0
-      scroller.scrollTo({
-        left: targetLeft - scrollerLeft - scroller.clientLeft - padding,
-        behavior: 'instant',
-      })
+      const revealTarget = () => {
+        const targetLeft = layoutOffset({
+          element: target,
+          horizontal: true,
+        })
+        const scrollerLeft = layoutOffset({
+          element: scroller,
+          horizontal: true,
+        })
+        const padding = parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0
+        scroller.scrollTo({
+          left: targetLeft - scrollerLeft - scroller.clientLeft - padding,
+          behavior: 'instant',
+        })
+      }
+
+      revealTarget()
+      const observer = new ResizeObserver(revealTarget)
+      observer.observe(element.current!)
+
+      return () => observer.disconnect()
     },
     [
       index,
