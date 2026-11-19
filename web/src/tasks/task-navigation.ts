@@ -1,3 +1,4 @@
+import { useModalTask } from './presentation.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
@@ -54,8 +55,10 @@ export function useTaskNavigation({
     setRevealing(null)
   }
 
+  const modalTask = useModalTask({ hydraId })
   const interestRefs = [
     ...expanded,
+    modalTask,
     selectedRef,
     revealing,
   ].filter((id): id is string => id !== null)
