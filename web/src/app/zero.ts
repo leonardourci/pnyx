@@ -4,7 +4,8 @@ import { schema } from '#store/zero-schema.ts'
 import { ZERO_OWNER, ZERO_PATH } from '#app/server-protocol.ts'
 import { log } from './log.ts'
 
-// A 1 MiB first-sync chunk on a slow link outlasts Zero's default 5 s, and a dropped socket starts that sync over.
+// Zero drops a quiet socket after two ping waits and starts its sync over; one 1 MiB first-sync chunk on a slow link
+// outlasts two of the default 5 s waits.
 const PING_TIMEOUT_MS = 10_000
 
 // The page's one Zero client while the connection runs; the connection's views and every useQuery read through it.

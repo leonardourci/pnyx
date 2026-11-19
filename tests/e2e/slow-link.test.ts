@@ -6,8 +6,8 @@ import { startPnyx, type Pnyx } from '../setup/pnyx.ts'
 // Tasks with the longest brief, whose first sync reaches the page as two 1 MiB chunks.
 const LARGE_SYNC_TASKS = 40
 const LARGE_BRIEF = 'x'.repeat(MAX_BRIEF_LENGTH)
-// Chrome throttles WebSocket data to about a quarter of this rate: 13 to 15 s per chunk, past the 10 s Zero allows by
-// default and within the 20 s the page allows.
+// Chrome throttles WebSocket data to about a quarter of this rate: 13 to 15 s per chunk, longer than two default 5 s
+// ping waits and shorter than two of the page's 10 s ones.
 const SLOW_LINK = {
   urlPattern: '',
   latency: 150,
