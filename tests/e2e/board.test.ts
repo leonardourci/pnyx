@@ -5393,7 +5393,10 @@ test(
         },
       })
       await restingBox({ target: workspace })
-      const axis = page.getByLabel('Hydras', { exact: true })
+      const axis = page.getByLabel(
+        'Hydras',
+        { exact: true },
+      )
       await axis.evaluate(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
         axis => {
@@ -5451,7 +5454,10 @@ test(
         what: 'the browser clamps horizontal scroll before resize delivery',
         check: async () => axis.evaluate(
           // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
-          (element, previousScroll) => {
+          (
+            element,
+            previousScroll,
+          ) => {
             const end = element.scrollWidth - element.clientWidth
 
             return previousScroll > end && Math.abs(element.scrollLeft - end) < 1
