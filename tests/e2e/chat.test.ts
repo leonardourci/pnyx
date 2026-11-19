@@ -197,6 +197,14 @@ const longConversation = async ({
           'owner',
           '--question',
           'Approve the first release?',
+          '--context',
+          'Approval publishes the release. I will prepare it after your answer. [Hydra](pnyx-task:%24hydra)',
+          '--choice',
+          'Approve',
+          '--choice',
+          'Hold',
+          '--recommend',
+          '1',
         ],
       })
     }

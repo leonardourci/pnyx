@@ -154,9 +154,12 @@ export function reminderRepeat({
 }
 
 export function clearReminder({ card }: { card: Card }) {
-  if (card.status?.id === card.reminder?.dueEvent) {
-    if (card.reminder?.resume) {
-      card.status = card.reminder.resume
+  const reminder = card.reminder
+  const declaration = reminder?.declaration ?? reminder?.dueEvent
+
+  if (declaration && card.status?.id === declaration) {
+    if (reminder?.resume) {
+      card.status = reminder.resume
     } else {
       delete card.status
     }
@@ -281,34 +284,49 @@ export function applyReminder({
       return true
     }
 
-    if (card.status && card.status.id !== card.reminder.dueEvent) {
-      card.reminder.resume = cloneValue({ value: card.status })
+    const reminder = card.reminder
+    const status = card.status
+    const previousDueEvent = reminder.dueEvent
+
+    if (!reminder.declaration && previousDueEvent && status?.id === previousDueEvent) {
+      reminder.declaration = previousDueEvent
     }
 
-    card.reminder.dueAt = event.at
-    card.reminder.dueEvent = event.id
+    reminder.dueAt = event.at
+    reminder.dueEvent = event.id
 
     if (event.data.nextAt) {
-      card.reminder.at = event.data.nextAt
+      reminder.at = event.data.nextAt
     } else if (event.data.nextAt === null) {
-      delete card.reminder.repeat
+      delete reminder.repeat
     }
 
-    card.column = event.data.column
+    if (event.data.column !== undefined) {
+      // Older receipts moved the card and declared a status when replayed.
+      if (!status) {
+        delete reminder.resume
+      } else if (status.id !== reminder.declaration) {
+        reminder.resume = cloneValue({ value: status })
+      }
+
+      reminder.declaration = event.id
+      card.column = event.data.column
+      const declaration = {
+        id: event.id,
+        at: event.at,
+        actor: event.actor,
+        state: 'needs_you' as const,
+        note: event.data.message.text,
+      }
+      card.status = declaration
+      card.statusLog = [
+        ...(card.statusLog ?? []),
+        declaration,
+      ]
+    }
+
     card.hidden = false
     delete card.expired
-    const declaration = {
-      id: event.id,
-      at: event.at,
-      actor: event.actor,
-      state: 'needs_you' as const,
-      note: event.data.message.text,
-    }
-    card.status = declaration
-    card.statusLog = [
-      ...(card.statusLog ?? []),
-      declaration,
-    ]
 
     if (!event.data.grouped) {
       state.hydraMessages = [

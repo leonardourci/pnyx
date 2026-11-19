@@ -75,7 +75,16 @@ export function Popover({
       }
 
       position()
-      element.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus()
+      const controls = element.querySelectorAll<HTMLElement>('summary, button:not(:disabled), input:not(:disabled)')
+
+      for (const control of controls) {
+        control.focus()
+
+        if (document.activeElement === control) {
+          break
+        }
+      }
+
       const observer = new ResizeObserver(position)
       observer.observe(element)
       window.addEventListener(

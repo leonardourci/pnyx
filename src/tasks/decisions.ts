@@ -1,3 +1,4 @@
+import { waitingQuestions } from './card-status.ts'
 import { waitingPrompt } from './questions.ts'
 import { askWording, openAsks, activeAsks } from './ask-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -49,7 +50,12 @@ function cardDecisions({
   state: HydraState
   card: Card
 }): OpenDecision[] {
-  const asks = activeAsks({ card }).filter(ask => isCanonicalQuestion({
+  const waiting = new Set(waitingQuestions({
+    card,
+    cards: state.cards,
+  }).flatMap(question =>
+    question.ask ? [question.ask.id] : []))
+  const asks = activeAsks({ card }).filter(ask => (ask.audience !== 'owner' || waiting.has(ask.id)) && isCanonicalQuestion({
     state,
     card,
     ask,
@@ -64,7 +70,7 @@ function cardDecisions({
         id: ask.id,
         text: wording,
         card,
-        at: ask.escalated?.at ?? ask.at,
+        at: ask.reaskedAt ?? ask.escalated?.at ?? ask.at,
         detail: `${ask.id} ${quote({ text: wording })}${choice ? ` (recommended: ${choice})` : ''}`,
       } : {
         kind: 'worker question',
