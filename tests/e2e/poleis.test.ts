@@ -243,6 +243,9 @@ test(
         'show',
       ],
     })).hydra.polis).toBe('studio')
+    const atlasColumn = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="Atlas"]`)
+    const atlasBadge = atlasColumn.locator('[data-project-polis]')
+    await atlasColumn.locator('[data-project-polis="shared"]').waitFor({ state: 'attached' })
     await page.getByRole(
       'button',
       {
@@ -358,9 +361,7 @@ test(
     expect(await oracleDialog.isVisible()).toBe(true)
     await oracleSearch.press('Escape')
     await oracleDialog.waitFor({ state: 'hidden' })
-    const atlasColumn = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="Atlas"]`)
-    await atlasColumn.waitFor({ state: 'attached' })
-    expect(await atlasColumn.locator('[data-project-polis="studio"]').count()).toBe(0)
+    await atlasBadge.waitFor({ state: 'detached' })
     await page.getByRole(
       'button',
       {
