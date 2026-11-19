@@ -377,6 +377,8 @@ test(
         exact: true,
       },
     ).waitFor()
+    // Reload can render Zero's cached questions before the fresh answer rows arrive.
+    await workspace.locator('.waiting-decisions').waitFor({ state: 'detached' })
     expect(await workspace.locator('.waiting-decisions').count()).toBe(0)
     const retry = workspace.getByRole(
       'button',
