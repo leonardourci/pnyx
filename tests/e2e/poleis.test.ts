@@ -248,16 +248,18 @@ test(
         exact: true,
       },
     )
-    // Oracle clears a nonempty search before closing.
-    await oracleSearch.press('Escape')
-    await oracleSearch.press('Escape')
-    await page.getByRole(
+    const oracleDialog = page.getByRole(
       'dialog',
       {
         name: 'Oracle',
         exact: true,
       },
-    ).waitFor({ state: 'hidden' })
+    )
+    await oracleSearch.press('Escape')
+    await expect.poll(() => oracleSearch.inputValue()).toBe('')
+    expect(await oracleDialog.isVisible()).toBe(true)
+    await oracleSearch.press('Escape')
+    await oracleDialog.waitFor({ state: 'hidden' })
     await page.locator('[data-project-polis="studio"]').first()
       .waitFor()
     await page.getByRole(
