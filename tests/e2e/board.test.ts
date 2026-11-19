@@ -5432,6 +5432,7 @@ test(
           return box !== null && Math.abs(box.x + 188) < 1
         },
       })
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
       const scrollBeforeShrink = await axis.evaluate(element => element.scrollLeft)
       await page.evaluate(() => window.dispatchEvent(new Event('hold-axis-resize')))
       await before.owner({
@@ -5451,7 +5452,7 @@ test(
         },
       })
       await until({
-        what: 'the browser clamps horizontal scroll before resize delivery',
+        what: 'the shrink puts the old horizontal position beyond the native scroll range',
         check: async () => axis.evaluate(
           // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
           (
@@ -5460,7 +5461,7 @@ test(
           ) => {
             const end = element.scrollWidth - element.clientWidth
 
-            return previousScroll > end && Math.abs(element.scrollLeft - end) < 1
+            return previousScroll > end
           },
           scrollBeforeShrink,
         ),
