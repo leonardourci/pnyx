@@ -1480,6 +1480,10 @@ export function HydraView({
                     notify={notify}
                     upgrade={upgrade}
                     startUpgrade={startUpgrade}
+                    showConfirmation={() => {
+                      void navigate({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/` })
+                        .catch((error: Error) => notify({ text: error.message }))
+                    }}
                   />
                 </ProfileSurface>
               </div>,

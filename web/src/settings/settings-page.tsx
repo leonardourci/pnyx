@@ -1,3 +1,4 @@
+import { HydraRemoval } from './hydra-removal.tsx'
 import { Poleis, HydraPoleis } from './poleis.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
@@ -582,6 +583,7 @@ export function SettingsPage({
   startUpgrade,
   initialQuery = '',
   accountSetup,
+  showConfirmation,
   hidden = false,
 }: Saving & {
   hydras: HydraSummary[]
@@ -593,6 +595,7 @@ export function SettingsPage({
   upgrade?: UpgradeStatus
   startUpgrade(): void
   // The search the page opens with, such as a setting the Oracle sent here.
+  showConfirmation(): void
   initialQuery?: string
   accountSetup?: AgentConfig['harness']
   hidden?: boolean
@@ -729,6 +732,12 @@ export function SettingsPage({
 
   return (
     <SettingsFrame ref={surface} hidden={hidden}>
+      <HydraRemoval
+        hydras={hydras}
+        command={command}
+        connected={connected}
+        showConfirmation={showConfirmation}
+      />
       <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
       <div className="settings-search sticky top-0 z-20 pt-3.5 pb-2.5 bg-[linear-gradient(var(--color-background)_82%,transparent)] [&_.search-bar]:max-w-settings-search [&_.search-bar]:mx-auto [&_.search-bar]:my-0 [&_.search-bar]:px-3 [&_.search-bar]:py-2 [&_.search-bar]:shadow-settings-search [&_.search-bar:focus-within]:shadow-settings-focus [&_.search-bar-eye]:text-muted" ref={sticky}>
         <SearchBar
