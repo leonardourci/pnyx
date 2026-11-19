@@ -2,7 +2,7 @@ import { readMemoryContext } from '#memory/context.ts'
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
-import { contextNoteBlock, contextTurnNotes } from './context-notes.ts'
+import { contextNoteBlock, contextTurnNotes, contextReportStatus } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -1131,5 +1131,3 @@ export function createHydraTurns({
     sessionEnded,
   }
 }
-
-import { contextReportStatus } from './context-notes.ts'
