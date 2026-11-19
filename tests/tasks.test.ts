@@ -689,7 +689,7 @@ test(
 )
 
 test(
-  'a retried write answers from the task as it is now, and with its id alone once the task moved to another Hydra',
+  'a retried write answers for its own declaration from the task as it is now, and with the task id alone once the task moved to another Hydra',
   async () => {
     const hydra = await pnyx.hydra()
     const other = await pnyx.hydra()
@@ -707,7 +707,7 @@ test(
     const declare = [
       'task',
       'status',
-      taskId,
+      'retried',
       'working',
       '--note',
       'First pass',
@@ -730,6 +730,7 @@ test(
     const retried = await hydra.owner({ args: declare })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
+    expect(retried.notification).toBe(first.notification)
     expect(retried.card).toEqual(later.card)
 
     await hydra.owner({
