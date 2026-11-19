@@ -549,10 +549,12 @@ test(
             },
           )
           await openModalButton.hover()
-          const baseline: { position?: {
-            slot: number[]
-            scrolled: number
-          } } = {}
+          const baseline: {
+            position?: {
+              slot: number[]
+              scrolled: number
+            }
+          } = {}
           await until({
             what: 'the card and its column stop moving before opening the modal',
             check: async () => {
@@ -562,14 +564,26 @@ test(
                   stabilityMs,
                 ) => {
                   const scroller = element.closest('.project-cards')!
+
                   const position = () => {
-                    const { x, y, width, height } = element.getBoundingClientRect()
+                    const {
+                      x,
+                      y,
+                      width,
+                      height,
+                    } = element.getBoundingClientRect()
 
                     return {
-                      slot: [x, y, width, height],
+                      slot: [
+                        x,
+                        y,
+                        width,
+                        height,
+                      ],
                       scrolled: scroller.scrollTop,
                     }
                   }
+
                   const initial = position()
                   const initialPosition = JSON.stringify(initial)
                   const deadline = performance.now() + stabilityMs
@@ -596,7 +610,10 @@ test(
               return true
             },
           })
-          const { slot, scrolled } = baseline.position!
+          const {
+            slot,
+            scrolled,
+          } = baseline.position!
           await openModalButton.click()
           const modal = page.locator('dialog.task-modal')
           await until({
