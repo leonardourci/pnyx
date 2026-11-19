@@ -316,17 +316,15 @@ test(
       await Promise.all([
         worker,
         helper,
-      ].map(child => {
-        if (child.exitCode !== null || child.signalCode !== null) {
-          return Promise.resolve()
+      ].map(async child => {
+        if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+          return
         }
 
-        return new Promise<void>(resolve => {
-          child.once(
-            'exit',
-            () => resolve(),
-          )
-          child.kill('SIGKILL')
+        child.kill('SIGKILL')
+        await until({
+          what: 'the test child to exit',
+          check: () => child.exitCode !== null || child.signalCode !== null,
         })
       }))
     })
@@ -442,12 +440,24 @@ test(
     })).code).toBe('CONFLICT')
     await pnyx.restart()
     expect(existsSync(first)).toBe(false)
+    expect(existsSync(locked)).toBe(true)
+    expect((await target.ownerRefused({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Competing write after restart',
+      ],
+    })).code).toBe('CONFLICT')
     expect((await caller.owner({
       args: [
         'hydra',
-        'show',
+        'list',
       ],
-    })).hydra.id).toBe(caller.id)
+    })).hydras).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: caller.id }),
+      expect.objectContaining({ id: target.id }),
+    ]))
     git({
       cwd: folder,
       args: [

@@ -112,13 +112,13 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
     return {
       hydras: hydras.map(id => {
-        const removing = loadHydra({ hydraId: id }).state.config?.removing
+        let { state } = loadHydra({ hydraId: id })
 
-        if (!removing) {
+        if (!state.config?.removing) {
           hideDone({ hydraId: id })
+          state = loadHydra({ hydraId: id }).state
         }
 
-        const state = loadHydra({ hydraId: id }).state
         const config = hydraConfig({
           state,
           id,

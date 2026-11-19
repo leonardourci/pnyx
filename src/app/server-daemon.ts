@@ -752,10 +752,10 @@ export async function startServer({
 
   const mount = async ({ id }: { id: string }): Promise<MountedHydra> => {
     if (removalPending({ id })) {
-      return Promise.reject(new HydraError({
+      throw new HydraError({
         message: `Hydra removal is pending: ${id}`,
         code: 'CONFLICT',
-      }))
+      })
     }
 
     const known = mounts.get(id)
@@ -765,10 +765,10 @@ export async function startServer({
     }
 
     if (closed) {
-      return Promise.reject(new HydraError({
+      throw new HydraError({
         message: 'the server is stopping',
         code: 'NOT_RUNNING',
-      }))
+      })
     }
 
     const opening = performance.now()
@@ -830,10 +830,13 @@ export async function startServer({
   }
 
   hydraRemoval.close = async ({ hydraId }) => {
+    served.delete(hydraId)
     const mounted = mounts.get(hydraId)
 
     if (mounted) {
-      await (await mounted).close({ permanent: true })
+      const openHydra = await mounted
+      served.delete(hydraId)
+      await openHydra.close({ permanent: true })
     }
   }
 
@@ -841,13 +844,13 @@ export async function startServer({
     served.delete(removedId)
     mounts.delete(removedId)
 
+    if (importing) {
+      return
+    }
+
     const activeIds = hydraIds()
 
-    const pendingRemoval = removalPending({ id: removedId })
-
-    if (activeIds.includes(removedId) && !pendingRemoval) {
-      mountAll()
-    } else if (hydraId === removedId) {
+    if (hydraId === removedId) {
       hydraId = activeIds.find(id => !removalPending({ id })) ?? hydraId
     }
 
@@ -865,7 +868,7 @@ export async function startServer({
     for (const id of hydraIds()) {
       const before = skipped[id]
 
-      if (!closed && !mounts.has(id)) {
+      if (!closed && !mounts.has(id) && !removalPending({ id })) {
         mount({ id }).catch((error: Error) => {
           if (error.message !== before) {
             log({
@@ -1066,6 +1069,10 @@ export async function startServer({
     }
 
     for (const id of hydraIds()) {
+      if (removalPending({ id })) {
+        continue
+      }
+
       try {
         await mount({ id })
       } catch (error) {

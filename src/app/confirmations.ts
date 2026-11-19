@@ -103,7 +103,9 @@ export function approvedHydraRemoval({
   const state = loadHydra({ hydraId }).state
   const proposal = state.dispatchProposals?.find(entry => entry.token === token)
 
-  if (state.config?.removed || proposal?.kind !== 'command' || proposal.status !== 'applying') {
+  const callerUnavailable = state.config?.removed || state.config?.removing
+
+  if (callerUnavailable || proposal?.kind !== 'command' || proposal.status !== 'applying') {
     return false
   }
 
@@ -354,7 +356,9 @@ export const approval = guard({
     ownerEnv.PNYX_HOME = pnyxHome()
     ownerEnv.PNYX_ACTOR = 'web'
 
-    if (target.name === 'hydra' && target.args[0] === 'remove') {
+    const removesHydra = target.name === 'hydra' && target.args[0] === 'remove'
+
+    if (removesHydra) {
       target.args.push(
         '--confirm',
         token,
@@ -433,7 +437,11 @@ export const approval = guard({
 
       const code = /^code: ([A-Z_]+)$/m.exec(stdout)?.[1]
 
-      if (target.name === 'hydra' && target.args[0] === 'remove') {
+      if (removesHydra) {
+        if (error instanceof HydraError) {
+          throw error
+        }
+
         throw new HydraError({
           message: detail,
           code: code ?? 'UNKNOWN',

@@ -41,7 +41,11 @@ function removalTarget({
     })
   }
 
-  if (ids.length === 1) {
+  const state = loadHydra({ hydraId: id }).state
+  const hasSurvivor = ids.some(otherId => otherId !== id
+    && !loadHydra({ hydraId: otherId }).state.config?.removing)
+
+  if (!state.config?.removing && !hasSurvivor) {
     throw new HydraError({
       message: 'Cannot remove the last Hydra',
       code: 'CONFLICT',
@@ -54,8 +58,6 @@ function removalTarget({
       code: 'CONFLICT',
     })
   }
-
-  const state = loadHydra({ hydraId: id }).state
 
   if (state.config?.hydra.kind === 'firstmate') {
     throw new HydraError({
@@ -117,7 +119,10 @@ function removalCopies({ state }: { state: ReturnType<typeof removalTarget> }) {
       projectPath,
     )
 
-    if (!projectFromCopy || (!isAbsolute(projectFromCopy) && projectFromCopy !== '..' && !projectFromCopy.startsWith(`..${sep}`))) {
+    const outsideCopy = isAbsolute(projectFromCopy) || projectFromCopy === '..'
+      || projectFromCopy.startsWith(`..${sep}`)
+
+    if (!outsideCopy) {
       throw new HydraError({
         message: `Copy contains the project folder: ${copy.path}`,
         code: 'CONFLICT',
@@ -173,6 +178,13 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
 
   requireRemovalIdle()
 
+  if (!hydraRemoval.close) {
+    throw new HydraError({
+      message: 'Hydra removal requires the running server',
+      code: 'NOT_RUNNING',
+    })
+  }
+
   if (!state.config?.removing) {
     removalCopies({ state })
     withWriter({
@@ -218,7 +230,9 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
 
   requireRemovalIdle()
 
-  if (!hydraRemoval.close) {
+  const close = hydraRemoval.close
+
+  if (!close) {
     throw new HydraError({
       message: 'Hydra removal requires the running server',
       code: 'NOT_RUNNING',
@@ -226,13 +240,9 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
   }
 
   removing.add(id)
-  let closing = false
-
   try {
+    await close({ hydraId: id })
     const copies = removalCopies({ state })
-
-    closing = true
-    await hydraRemoval.close({ hydraId: id })
 
     for (const copy of copies) {
       if (!existsSync(copy.path)) {
@@ -320,8 +330,6 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
   } finally {
     removing.delete(id)
 
-    if (closing) {
-      hydraRemoval.finished?.({ hydraId: id })
-    }
+    hydraRemoval.finished?.({ hydraId: id })
   }
 }
