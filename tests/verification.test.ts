@@ -24,7 +24,6 @@ afterEach(() => {
   }
 })
 
-// Deslop ships TypeScript source that Pnyx's strict typecheck rejects, so it loads at runtime.
 const require = createRequire(import.meta.url)
 const selectorPath = require.resolve('deslop/src/config.ts')
 const selectorModule = pathToFileURL(selectorPath).href
