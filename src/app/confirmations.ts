@@ -27,6 +27,7 @@ interface Target {
   name: string
   args: string[]
   cwd: string
+  removalWork?: Record<string, string>
 }
 
 // Read before taking a Hydra writer, so the shared registry lock is never taken inside one.
@@ -99,7 +100,7 @@ export function approvedHydraRemoval({
   hydraId: string
   id: string
   token: string
-}): boolean {
+}): false | Record<string, string> {
   const state = loadHydra({ hydraId }).state
   const proposal = state.dispatchProposals?.find(entry => entry.token === token)
 
@@ -125,7 +126,7 @@ export function approvedHydraRemoval({
     })
   }
 
-  return true
+  return target.removalWork ?? {}
 }
 
 export function proposeOwnerCommand({
@@ -134,12 +135,14 @@ export function proposeOwnerCommand({
   hydraId,
   summary: requestedSummary,
   removalSeq,
+  removalWork,
 }: {
   name: string
   args: string[]
   hydraId: string
   summary?: string
   removalSeq?: number
+  removalWork?: Record<string, string>
 }): Output {
   const safe: string[] = []
 
@@ -168,6 +171,7 @@ export function proposeOwnerCommand({
     name,
     args: safe,
     cwd: requestCwd(),
+    removalWork,
   }
   const value = JSON.stringify(target)
   const summary = requestedSummary ?? `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
@@ -267,9 +271,9 @@ export const approval = guard({
           return undefined
         }
 
-        if (action === 'confirm' && proposal.status === 'applying') {
+        if (proposal.status === 'applying') {
           throw new HydraError({
-            message: 'This approved action is already applying; it will not run twice',
+            message: 'This approved action is already applying; it cannot be confirmed or dismissed',
             code: 'CONFLICT',
           })
         }
