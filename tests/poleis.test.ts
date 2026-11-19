@@ -1591,9 +1591,25 @@ test(
           'list',
         ],
       })
+      const detachShowing = allowed.owner({
+        args: [
+          'project',
+          'show',
+          path,
+        ],
+      })
+      blockedReads += 1
       await until({
-        what: 'attachment list Git read is gated',
+        what: 'attachment list and show Git reads are gated',
         check: () => sockets.length >= blockedReads,
+      })
+      await allowed.owner({
+        args: [
+          'hydra',
+          'set',
+          '--read-poleis',
+          '',
+        ],
       })
       await allowed.owner({
         args: [
@@ -1604,6 +1620,10 @@ test(
       })
       released = true
       sockets.forEach(socket => socket.end())
+      expect((await detachShowing).attachment).toMatchObject({
+        path,
+        state: 'detached',
+      })
       const detachedList = await detachListing
       expect(detachedList.projects).toContainEqual(expect.objectContaining({
         path,
@@ -1616,6 +1636,14 @@ test(
         ],
       })
       expect(detachedList.revision).toBe(currentList.revision)
+      await allowed.owner({
+        args: [
+          'hydra',
+          'set',
+          '--read-poleis',
+          'shared,vault',
+        ],
+      })
       await allowed.owner({
         args: [
           'project',

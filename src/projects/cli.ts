@@ -216,9 +216,14 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       hydraId,
     })
 
+    const shownState = loadHydra({ hydraId }).state
+    const shownProject = findProject({
+      state: shownState,
+      ref: attached.path,
+    })
     const attachment = projectRows({
-      state: current,
-      projects: [attached],
+      state: shownState,
+      projects: [shownProject],
     })[0]
     const readable = details.some(detail => detail.project.path === attached.path)
 
