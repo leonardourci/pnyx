@@ -5,7 +5,6 @@
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
 @theme {
   --breakpoint-phone: 760px;
-  --spacing-workspace-label: 18ch;
   --spacing-workspace-title: calc(100vw - --spacing(40));
   --spacing-workspace-bar: calc(100vw - --spacing(14));
   --spacing-phone-chat: calc(100vw - --spacing(9.5));
@@ -306,6 +305,7 @@ kbd {
 }
 
 @theme inline {
+  --spacing-workspace-label: 18ch;
   --color-usage-fill: color-mix(in srgb, var(--usage-tone, var(--color-surface)) 72%, var(--color-surface));
   --animate-comment-jump: comment-jump var(--comment-jump-duration) var(--ease-ui) both;
   --color-attachment-comments: color-mix(in srgb, var(--color-gold) 8%, transparent);
@@ -387,7 +387,7 @@ kbd {
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
 
-.message .attachment-card:not(.composer-field *) { @apply mx-px my-0 select-auto; }
+.message .attachment-card:not(.composer-field *) { @apply m-[0_1px] select-auto; }
 
 @keyframes hydra-spin { to { transform: rotate(360deg); } }
 
