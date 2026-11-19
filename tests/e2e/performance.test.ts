@@ -21,6 +21,7 @@ const ANCHOR_SETTLE_FRAMES = 40
 const EARLIER_PROJECTS = 3
 const WHEEL_DELTA = 900
 const MAX_TASK_COMMITS = 4
+const MAX_DOM_ELEMENTS = 6000
 const DISCOVERY_READ_BUDGETS = {
   models: 10,
   project: 6,
@@ -162,10 +163,7 @@ test(
         'Summarize the active work',
       ],
     })
-    const reads: {
-      name: string
-      args: string[]
-    }[] = []
+    const reads: string[] = []
     const errors: Error[] = []
     const page = await openHydra({
       port: pnyx.port(),
@@ -228,11 +226,12 @@ test(
           'websocket',
           socket => socket.on(
             'framesent',
-            ({payload}) => {
-              const frame = JSON.parse(String(payload))
+            ({ payload }) => {
+              const frame: unknown = JSON.parse(String(payload))
 
-              if (frame.type === 'command') {
-                reads.push(frame)
+              if (frame && typeof frame === 'object' && 'type' in frame && frame.type === 'command'
+                && 'name' in frame && typeof frame.name === 'string') {
+                reads.push(frame.name)
               }
             },
           ),
@@ -259,7 +258,7 @@ test(
     await expect.poll(() => workspace.locator('.project-column').count()).toBe(5)
     await expect.poll(() => other.locator('.card-open').count()).toBe(1)
     await expect.poll(() => page.locator('.hydra-page').count()).toBe(5)
-    expect(await page.locator('*').count()).toBeLessThan(6000)
+    expect(await page.locator('*').count()).toBeLessThan(MAX_DOM_ELEMENTS)
     const load = await page.evaluate(async () => {
       const measurement = (window as Window & {
         workspaceMeasurement?: WorkspaceMeasurement
@@ -395,14 +394,14 @@ test(
       0,
     )
 
-    expect(reads.some(read => read.name === 'catalog')).toBe(true)
+    expect(reads).toContain('catalog')
 
     for (const [
       name,
       budget,
     ] of Object.entries(DISCOVERY_READ_BUDGETS)) {
       expect(
-        reads.filter(read => read.name === name).length,
+        reads.filter(read => read === name).length,
         `${name} discovery is bounded across mounted Hydras`,
       ).toBeLessThanOrEqual(budget)
     }
@@ -476,7 +475,7 @@ test(
       },
     )
     await fourth.hover()
-    const keyboardMove = page.getByRole(
+    const keyboardMove = workspace.getByRole(
       'button',
       {
         name: 'Move Task 4',

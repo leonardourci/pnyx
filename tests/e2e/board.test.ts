@@ -5456,14 +5456,14 @@ test(
       await page.context().close()
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
-    await workspace.locator('.project-chips').getByRole(
+    const projectChip = workspace.locator('.project-chips').getByRole(
       'button',
       {
         name: 'last-reveal',
         exact: true,
       },
     )
-      .click()
+    await projectChip.click()
     const column = workspace.locator(`[data-column="${project}"]`)
     await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1500)
     await expect.poll(async () => column.evaluate(
@@ -5507,6 +5507,8 @@ test(
     })
     await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1700)
     expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(userScroll)
+    await projectChip.dispatchEvent('click')
+    await expect.poll(() => axis.evaluate(({ scrollLeft }) => scrollLeft)).toBeGreaterThan(userScroll)
   },
 )
 

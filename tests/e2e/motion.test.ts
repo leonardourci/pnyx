@@ -549,12 +549,7 @@ test(
             },
           )
           await openModalButton.hover()
-          const baseline: {
-            position?: {
-              slot: number[]
-              scrolled: number
-            }
-          } = {}
+          let baseline: { slot: number[]; scrolled: number } | undefined
           await until({
             what: 'the card and its column stop moving before opening the modal',
             check: async () => {
@@ -605,22 +600,32 @@ test(
                 return false
               }
 
-              baseline.position = settled
+              baseline = settled
 
               return true
             },
           })
+
+          if (!baseline) {
+            throw new Error('The card slot did not settle before opening the modal')
+          }
+
           const {
             slot,
             scrolled,
-          } = baseline.position!
+          } = baseline
           await openModalButton.click()
           const modal = page.locator('dialog.task-modal')
           await until({
             what: 'the modal finishes opening',
             check: async () => await modal.evaluate(element => getComputedStyle(element).transform === 'none'),
           })
-          const placeholder = (await column.locator('.card[aria-hidden]').boundingBox())!
+          const placeholder = await column.locator('.card[aria-hidden]').boundingBox()
+
+          if (!placeholder) {
+            throw new Error('The opened task did not leave a visible card slot')
+          }
+
           expect([
             placeholder.x,
             placeholder.y,
