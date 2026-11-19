@@ -296,6 +296,36 @@ test(
 )
 
 test(
+  'a restart gives the page\'s settings row back a key an older build\'s row lacked',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ hiddenHydras: [hydra.id] }),
+      ],
+    })
+    await until({
+      what: 'the hidden Hydra id on the page',
+      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([hydra.id]),
+    })
+
+    // Drops hiddenHydras from the page's row without moving its revision, as in a row a build older than hiddenHydras wrote.
+    await pnyx.restart({
+      whileStopped: () => {
+        rows({ text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'' })
+      },
+    })
+    await until({
+      what: 'the restarted server to give the page\'s row the hidden Hydra id again',
+      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([hydra.id]),
+    })
+  },
+)
+
+test(
   'layout reset removes project widths and keeps card heights',
   async () => {
     const hydra = await pnyx.hydra()

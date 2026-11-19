@@ -428,7 +428,8 @@ export const shownSettings = ({ settings }: { settings: Settings }): Settings =>
 })
 
 // The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
-// stays their record, since it also names the database.
+// stays their record, since it also names the database. A copy at the row's own revision replaces it too, so a start
+// rewrites a row an older build wrote, which lacks the keys added since and keeps that build's defaults.
 export function mirrorSettings({
   settings,
   revision,
@@ -440,7 +441,7 @@ export function mirrorSettings({
     statements: [
       {
         text: `insert into settings (id, revision, value) values ('shared', $1, $2) on conflict (id)
-          do update set revision = excluded.revision, value = excluded.value where settings.revision < excluded.revision`,
+          do update set revision = excluded.revision, value = excluded.value where settings.revision <= excluded.revision`,
         values: [
           revision,
           JSON.stringify(pageSettings({ settings })),
