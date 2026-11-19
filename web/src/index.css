@@ -4,6 +4,14 @@
 @font-face { font-family: "GFS Neohellenic"; src: url("/fonts/gfs-neohellenic/GFSNeohellenicBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
 @theme {
+  --breakpoint-phone: 760px;
+  --spacing-workspace-title: calc(100vw - --spacing(40));
+  --spacing-workspace-bar: calc(100vw - --spacing(14));
+  --spacing-phone-chat: calc(100vw - --spacing(9.5));
+  --spacing-workspace-axis-top: calc(var(--spacing-topbar-height) + --spacing(2.5));
+  --spacing-workspace-axis-phone-top: calc(var(--spacing-topbar-height) + --spacing(2));
+  --spacing-oracle-excerpt: 9em;
+  --spacing-search-basis: 140px;
   --color-background: #ffffff;
   --color-surface: #ffffff;
   --color-raised: #f5f5f5;
@@ -273,9 +281,9 @@ button {
 button:disabled {
   @apply opacity-45 cursor-default; }
 a {
-  @apply text-inherit [text-decoration:none]; }
+  @apply text-inherit no-underline; }
 a:hover {
-  @apply [text-decoration:underline]; }
+  @apply underline; }
 svg {
   @apply shrink-0; }
 code, pre {
@@ -331,18 +339,6 @@ kbd {
 .column-parked, .column-review { --column-color: var(--color-purple); }
 .column-done { --column-color: var(--color-green); }
 
-.request { margin-top: 8px; padding: 5px 7px; border-left: 2px solid var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
-
-.tone-0 { color: var(--color-gold); }
-
-.tone-1 { color: var(--color-blue); }
-
-.tone-2 { color: var(--color-purple); }
-
-.tone-3 { color: var(--color-green); }
-
-.thread:not(.hydra-messages) { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; scrollbar-gutter: stable; padding: 4px 16px 12px; }
-
 /* A streamed reply types in: untyped letters are laid out but transparent, the last few typed ramp up. */
 ::highlight(reveal-0) { color: color-mix(in srgb, var(--color-ink) 25%, transparent); }
 ::highlight(reveal-1) { color: color-mix(in srgb, var(--color-ink) 45%, transparent); }
@@ -362,28 +358,7 @@ kbd {
 
 @keyframes chat-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.thread:focus-visible { outline-offset: -3px; }
-
-.last-message { margin-top: 8px; padding: 6px 8px; border-left: 2px solid var(--color-line); background: var(--color-background); border-radius: 0 4px 4px 0; font-size: var(--text-meta); }
-
-.last-message strong { color: var(--color-ink); font-weight: 600; }
-
-.activity-stopped > i { border-radius: 1px; background: currentColor; }
 @keyframes comment-jump { 0% { opacity: .2; } 15% { opacity: 1; } 32% { opacity: .5; } 65% { opacity: .5; } 100% { opacity: 0; } }
-
-.running { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; font-size: var(--text-meta); color: var(--color-blue); }
-
-.running i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-
-.last-message { margin: 0; padding: 0; border: 0; background: transparent; color: var(--color-muted); font-size: var(--text-ui); }
-
-.last-message > strong { display: none; }
-
-.last-message .markdown > :first-child { margin-top: 0; }
-
-.agent-chip { font-size: var(--text-meta); border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); padding: 1px 8px; }
-
-.thread:not(.hydra-messages) { padding: 0; min-height: 0; flex: none; overflow: visible; }
 
 *:hover, *.scrolling { scrollbar-color: var(--color-control) transparent; }
 
@@ -407,18 +382,12 @@ kbd {
 [data-label-color="rose"] { --label-color: var(--color-rose); }
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
-.copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
-
-.button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
 .message .attachment-card:not(.composer-field *) { margin: 0 1px; user-select: auto; }
 
 @keyframes hydra-spin { to { transform: rotate(360deg); } }
 
-.hydra-hide { opacity: 0; }
-@media (hover: none) { .hydra-hide { opacity: 1; } }
 
-.icon-fold-columns { transform: rotate(90deg); }
 /* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {
   @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];

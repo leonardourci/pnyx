@@ -110,7 +110,7 @@ export function SearchBar({
       ))}
       <input
         ref={inputRef}
-        className="search-bar-input flex-[1_1_140px] min-w-25 border-0 outline-0 bg-transparent text-ink text-ui px-0.5 py-0.75 placeholder:text-muted"
+        className="search-bar-input flex-[1_1_var(--spacing-search-basis)] min-w-25 border-0 outline-0 bg-transparent text-ink text-ui px-0.5 py-0.75 placeholder:text-muted"
         aria-label={label}
         role={combobox ? 'combobox' : undefined}
         aria-expanded={combobox?.expanded}

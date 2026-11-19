@@ -45,7 +45,7 @@ export function SkillBadge({
           <span className="skill-remove-slot relative">
             {ICON_SPACE}
             <Button
-              className="skill-remove absolute left-0 top-1/2 -translate-y-1/2 inline-flex align-baseline items-center justify-center size-[1em] min-h-0 p-0 border-0 [font:inherit] leading-none text-inherit"
+              className="skill-remove absolute left-0 top-1/2 -translate-y-1/2 inline-flex align-baseline items-center justify-center size-attachment-icon min-h-0 p-0 border-0 [font:inherit] leading-none text-inherit"
               tabIndex={-1}
               aria-label={`Remove /${skill.name}`}
               onClick={remove}

@@ -174,7 +174,7 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
         <PreviewBubble owner>
           Ship <PreviewChip kind="task"><Icon name="task" size={ICON_SIZE.badge} />Add CSV export</PreviewChip> behind a flag, like
           {' '}<PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />#198</PreviewChip>.
-          {' '}Empty state: <span className="preview-image-chip inline-flex items-center gap-preview-image-gap h-preview-image-height pl-preview-image-left pr-preview-image-right py-0 border border-line rounded-preview-image bg-surface align-middle [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:h-[1em] [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-[linear-gradient(135deg,var(--color-gold-wash),var(--color-blue))] [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
+          {' '}Empty state: <span className="preview-image-chip inline-flex items-center gap-preview-image-gap h-preview-image-height pl-preview-image-left pr-preview-image-right py-0 border border-line rounded-preview-image bg-surface align-middle [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:h-attachment-icon [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-[linear-gradient(135deg,var(--color-gold-wash),var(--color-blue))] [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
         </PreviewBubble>
         <PreviewBubble >
           On it with <PreviewChip kind="skill"><Icon name="skill" size={ICON_SIZE.badge} />pnyx-report-progress</PreviewChip>.
