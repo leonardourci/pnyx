@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
-import { startPnyx, type Pnyx } from '../setup/pnyx.ts'
+import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 beforeAll(async () => {
@@ -323,12 +323,15 @@ test(
     }
 
     saveProject()
-    await expect.poll(async () => (await hydra.owner({
-      args: [
-        'project',
-        'list',
-      ],
-    })).projects[0].polis).toBe('studio')
+    await until({
+      what: 'the project polis move to reach CLI readers',
+      check: async () => (await hydra.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })).projects[0].polis === 'studio',
+    })
     await projectRow.getByRole('status').waitFor({ state: 'hidden' })
     expect(await projectRow.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
