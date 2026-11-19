@@ -1,3 +1,4 @@
+import { Poleis, HydraPoleis } from './poleis.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -344,7 +345,9 @@ export function SettingControl({
   saveHydra,
   dispatchError,
   accountSetup,
+  hydras,
 }: Saving & Hydra & {
+  hydras: Pick<HydraSummary, 'id' | 'name'>[]
   entry: CatalogEntry
   state: HydraState
   slide: Slide
@@ -379,6 +382,24 @@ export function SettingControl({
   })
 
   switch (entry.id) {
+    case 'poleis':
+      return (
+        <Poleis
+          settings={settings}
+          hydras={hydras}
+          command={command}
+          notify={notify}
+        />
+      )
+    case 'hydraPoleis':
+      return (
+        <HydraPoleis
+          state={state}
+          settings={settings}
+          command={command}
+          notify={notify}
+        />
+      )
     case 'theme':
       return (
         <Segmented
@@ -763,6 +784,7 @@ export function SettingsPage({
             {shown.filter(match => match.entry.section === item.id).map(match => {
               const control = (
                 <SettingControl
+                  hydras={hydras}
                   entry={match.entry}
                   state={state}
                   view={view}
