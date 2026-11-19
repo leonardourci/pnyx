@@ -1,3 +1,4 @@
+import { hydraPool, removeHydraPool } from '#projects/remove-pool.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { existsSync, realpathSync, rmSync } from 'node:fs'
 import { relative, isAbsolute, sep } from 'node:path'
@@ -77,7 +78,11 @@ async function removalPreview({
   state: ReturnType<typeof removalTarget>
 }): Promise<string> {
   const tasks = Object.values(state.cards).filter(card => !isManagedTask({ card }))
-  const copies = tasks.flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : [])
+  const pool = await hydraPool({ hydraId: id })
+  const copies = new Set([
+    ...tasks.flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : []),
+    ...pool.slots.map(slot => slot.path),
+  ])
   const unlanded: string[] = []
 
   for (const card of tasks) {
@@ -99,7 +104,7 @@ async function removalPreview({
   const unlandedPaths = unlanded.length ? unlanded.join(', ') : 'none'
   const openPullRequests = prs.length ? prs.join(', ') : 'none'
 
-  return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${copies.length}. Copies with unlanded work: ${unlandedPaths}. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
+  return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${copies.size}. Copies with unlanded work: ${unlandedPaths}. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
 }
 
 function removalCopies({ state }: { state: ReturnType<typeof removalTarget> }) {
@@ -187,6 +192,20 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
 
   if (!state.config?.removing) {
     removalCopies({ state })
+    await hydraPool({ hydraId: id })
+    requireRemovalIdle()
+
+    if (!approvedHydraRemoval({
+      hydraId,
+      id,
+      token: String(values.confirm),
+    })) {
+      throw new HydraError({
+        message: 'Removal approval is no longer available',
+        code: 'CONFLICT',
+      })
+    }
+
     withWriter({
       hydraId: id,
       fn: ({ writer }) => {
@@ -272,6 +291,8 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
         )
       }
     }
+
+    await removeHydraPool({ hydraId: id })
 
     withWriter({
       hydraId: id,

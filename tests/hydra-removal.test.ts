@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { trackChildren } from '#workers/children.ts'
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
@@ -135,6 +135,70 @@ test(
         'open',
       ],
     })
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'pooled',
+        '--title',
+        'Pooled',
+        '--project',
+        folder,
+      ],
+    })
+    const pooled = (await target.owner({
+      args: [
+        'task',
+        'start',
+        'pooled',
+      ],
+    })).agent.folder as string
+    await target.owner({
+      args: [
+        'task',
+        'copy',
+        'pooled',
+        'remove',
+        '--safe',
+      ],
+    })
+    expect((await target.owner({
+      args: [
+        'task',
+        'copy',
+        'pooled',
+      ],
+    })).copy.state).toBe('removed')
+    expect(existsSync(pooled)).toBe(true)
+    await shared.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'neighbor',
+        '--title',
+        'Neighbor',
+        '--project',
+        folder,
+      ],
+    })
+    const neighbor = (await shared.owner({
+      args: [
+        'task',
+        'start',
+        'neighbor',
+      ],
+    })).agent.folder as string
+
+    writeFileSync(
+      join(
+        neighbor,
+        'neighbor.txt',
+      ),
+      'keep this work',
+    )
+
     const session = await caller.chat({ text: 'remove the other Hydra' })
     const proposal = await caller.as({ session }).run({
       args: [
@@ -144,7 +208,7 @@ test(
       ],
     })
     expect(proposal.confirmation).toBe('needed')
-    expect(proposal.action).toContain('Tasks: 1')
+    expect(proposal.action).toContain('Tasks: 2')
     expect(proposal.action).toContain(copy)
     expect(proposal.action).toContain('https://github.com/o/shop/pull/999')
     expect(existsSync(copy)).toBe(true)
@@ -167,6 +231,33 @@ test(
       ],
     })
     expect(existsSync(copy)).toBe(false)
+    expect(existsSync(pooled)).toBe(false)
+    expect(existsSync(neighbor)).toBe(true)
+    expect(readFileSync(
+      join(
+        neighbor,
+        'neighbor.txt',
+      ),
+      'utf8',
+    )).toBe('keep this work')
+    expect(readFileSync(
+      join(
+        folder,
+        'source.txt',
+      ),
+      'utf8',
+    )).toBe('base')
+    expect(existsSync(folder)).toBe(true)
+    const worktrees = git({
+      cwd: folder,
+      args: [
+        'worktree',
+        'list',
+        '--porcelain',
+      ],
+    })
+    expect(worktrees).not.toContain(pooled)
+    expect(worktrees).toContain(neighbor)
     expect(worker.closed).toBe(true)
     expect((await caller.owner({
       args: [
@@ -184,7 +275,7 @@ test(
     expect(rows({
       text: 'select data from events where hydra_id = $1 and type = \'task.created\'',
       values: [target.id],
-    })).toHaveLength(1)
+    })).toHaveLength(2)
     expect(rows<{ config: { removed: boolean } }>({
       text: 'select config from hydras where id = $1',
       values: [target.id],
