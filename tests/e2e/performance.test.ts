@@ -622,7 +622,9 @@ test(
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
 
-    // Repeat-reveal drift also reproduces on main; its navigation fix is outside this rendering change.
+    await revealTarget()
+    await selectedCard.locator('.card-panel:focus').waitFor()
+    await expectOtherScrollPositions()
     expect(errors.map(error => error.message)).toEqual([])
   },
 )
