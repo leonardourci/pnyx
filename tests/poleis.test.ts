@@ -1615,7 +1615,6 @@ test(
           'list',
         ],
       })
-      expect(detachedList.revision).toBeDefined()
       expect(detachedList.revision).toBe(currentList.revision)
       await allowed.owner({
         args: [

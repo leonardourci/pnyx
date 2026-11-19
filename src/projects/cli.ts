@@ -17,7 +17,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
+import { findProject, projectFolder, projectName, projectRows, projectsFor, sharingHydras } from './read.ts'
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
@@ -194,14 +194,16 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  if (action === 'show') {
-    if (!memoryCaller({ hydraId })) {
-      throw new HydraError({
-        message: 'project not found',
-        code: 'NOT_FOUND',
-      })
-    }
+  const ownAttachments = memoryCaller({ hydraId })
 
+  if ((action === 'show' || action === 'remove') && !ownAttachments) {
+    throw new HydraError({
+      message: 'project not found',
+      code: 'NOT_FOUND',
+    })
+  }
+
+  if (action === 'show') {
     const attached = findProject({
       state: current,
       ref: required({
@@ -254,9 +256,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     ]))
     const listedState = loadHydra({ hydraId }).state
     const listedReadonly = listedState.config?.hydra.kind === 'firstmate'
+    const attachments = ownAttachments ? projectsFor({ state: listedState }) : []
     const projects = projectRows({
       state: listedState,
-      projects: memoryCaller({ hydraId }) ? undefined : [],
+      projects: attachments,
     }).map(project => {
       const detail = detailsByPath.get(project.path)
 
@@ -289,13 +292,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     throw new HydraError({
       message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project keep <path>, project set <name|path> or project remove <name|path>',
       code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (action === 'remove' && !memoryCaller({ hydraId })) {
-    throw new HydraError({
-      message: 'project not found',
-      code: 'NOT_FOUND',
     })
   }
 
