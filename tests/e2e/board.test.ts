@@ -161,7 +161,8 @@ test(
         { hasText: 'Done' },
       )
       .waitFor()
-    expect(await shown({ title: 'Ship the export' }).count()).toBe(1)
+    expect(await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
+      .count()).toBe(1)
     await hydra.owner({
       args: [
         'task',
@@ -2460,8 +2461,8 @@ test(
       })
       expect(await otherWorkspace.locator('[data-drag-slot=true], [data-nest-armed=true]').count()).toBe(0)
       await page.keyboard.down('Shift')
-      await page.locator('.physical-ghost [data-drag-nest-hint][data-shift=true]').waitFor()
       await root.hover()
+      await page.locator('.physical-ghost [data-drag-nest-hint][data-shift=true]').waitFor()
       await until({
         what: 'the source Hydra alone shows the nesting outline',
         check: async () => await workspace.locator('.card[data-task="root"]').getAttribute('data-nest-armed') === 'true',
@@ -5273,11 +5274,22 @@ test(
     )
       .click()
     const field = frame.locator('.hydra-name-field input')
-    await field.fill('Renamed Hydra')
+    const renamed = 'Renamed Hydra with a name longer than its header can display in full'
+    await field.fill(renamed)
+    const nameBounds = await frame.locator('.hydra-drag-name').boundingBox()
+    const editorBounds = await field.boundingBox()
+
+    if (!nameBounds || !editorBounds) {
+      throw new Error('The Hydra name editor is outside the page')
+    }
+
+    expect(editorBounds.x + editorBounds.width).toBeLessThanOrEqual(nameBounds.x + nameBounds.width)
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    expect(await frame.locator('.hydra-drag-name [data-drag-handle]').evaluate(element => element.getBoundingClientRect().width)).toBeGreaterThan(16)
     await field.press('Enter')
     await until({
       what: 'the frame name edit is saved',
-      check: async () => await page.title() === 'Renamed Hydra · Pnyx',
+      check: async () => await page.title() === `${renamed} · Pnyx`,
     })
     await frame.getByRole(
       'button',
@@ -5300,7 +5312,7 @@ test(
     const grip = frame.getByRole(
       'button',
       {
-        name: 'Move Renamed Hydra',
+        name: `Move ${renamed}`,
         exact: true,
       },
     )
