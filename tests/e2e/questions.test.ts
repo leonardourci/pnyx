@@ -34,7 +34,7 @@ beforeAll(async () => {
     ),
     JSON.stringify({
       state: 'open',
-      title: 'CSV [export]',
+      title: 'CSV [export] ]',
       head: 'a'.repeat(40),
       checks: '1 passed, 0 failed, 1 total',
     }),
@@ -289,7 +289,7 @@ test(
 
     expect(await reviewCard.locator('.card-current-state').count()).toBe(1)
     const reviewUpdate = reviewCard.locator('.card-current-state')
-    expect(await reviewUpdate.textContent()).toContain('CSV [export] is ready for review.')
+    expect(await reviewUpdate.textContent()).toContain('CSV [export] ] is ready for review.')
     await hydra.owner({
       args: [
         'task',
@@ -322,11 +322,11 @@ test(
     })
     const latestUpdate = await reviewUpdate.textContent()
     expect(latestUpdate).toContain('Latest update')
-    expect(latestUpdate).toContain('CSV [export] is ready for review.')
+    expect(latestUpdate).toContain('CSV [export] ] is ready for review.')
     const reviewLink = reviewUpdate.getByRole(
       'link',
       {
-        name: 'CSV [export]',
+        name: 'CSV [export] ]',
         exact: true,
       },
     )
