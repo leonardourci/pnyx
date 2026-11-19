@@ -144,15 +144,18 @@ export function* retireableReviewQuestions({
   at: string
 }): Iterable<HydraEvent> {
   const cards = Object.values(state.cards)
-  const questions = cards.flatMap(card => openAsks({
-    card,
-    audience: 'owner',
-  })
-    .filter(ask => ask.kind === 'merge')
-    .map(ask => ({
+  const questions = cards.flatMap(card => {
+    const asks = openAsks({
+      card,
+      audience: 'owner',
+    })
+    const mergeAsks = asks.filter(ask => ask.kind === 'merge')
+
+    return mergeAsks.map(ask => ({
       card,
       ask,
-    })))
+    }))
+  })
 
   if (!questions.length) {
     return
