@@ -5449,5 +5449,27 @@ test(
         ))
       },
     )).toBeLessThan(2)
+    const axis = page.locator('.workspace-axis')
+    const userScroll = await axis.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      node => {
+        node.scrollTo({
+          left: node.scrollLeft - 100,
+          behavior: 'instant',
+        })
+
+        return node.scrollLeft
+      },
+    )
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { [project]: 1800 } } }),
+      ],
+    })
+    await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1700)
+    expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(userScroll)
   },
 )
