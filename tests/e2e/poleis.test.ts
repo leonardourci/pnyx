@@ -54,7 +54,7 @@ test(
       ),
     })
     const workspaces = page.locator('[data-hydra-workspace]')
-    await expect.poll(() => workspaces.count()).toBe(4)
+    await page.locator(`[data-hydra-workspace="${neighbours[2].id}"]`).waitFor()
     const workspaceOrder = await workspaces.evaluateAll(
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the callback.
       nodes => nodes.map(node => node.getAttribute('data-hydra-workspace')),
