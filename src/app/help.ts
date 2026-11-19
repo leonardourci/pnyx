@@ -142,8 +142,8 @@ pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra send --task <id> --kind progress --text <message>
 Omit --kind progress for actionable results: queue a report for Hydra to relay; this does not confirm owner delivery.
 --kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
-pnyx-axi hydra ask --question <question> [--context <text>] [--choice <label>]... [--recommend <n>] [--details <text> | --details-file <path>]
-Hydra asks an owner decision with no task in chat. Task decisions use task ask --to owner on their card.
+pnyx-axi hydra ask --question <question> --context <text> --choice <label> --choice <label> [--choice <label>]... --recommend <n> [--details <text> | --details-file <path>]
+Hydra asks an owner decision with no task in chat. Supply at least two choices. Task decisions use task ask --to owner on their card.
 pnyx-axi hydra stop
 hydra stop ends Hydra's turn, or an agent change waiting for the owner, and cancels unread messages; routine wakes wait for the owner's next message.
 pnyx-axi hydra send-now <message-id> interrupts the current step to take a queued message.
