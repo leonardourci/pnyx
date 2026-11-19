@@ -571,9 +571,11 @@ test(
       })
       expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
       const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
+
       if (after === undefined) {
         throw new Error('The report wake did not give an overflow cursor')
       }
+
       const ownerPage = await hydra.owner({
         args: [
           'hydra',
