@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one.
+Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one.
 
 ```sh
 pnpm install
@@ -89,15 +89,15 @@ Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull reques
 
 | Kind | Local commands | CI check | Review instructions |
 |---|---|---|---|
-| Workflow | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop, write-ci-workflow |
-| Fixture | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop |
-| Shipped skill text | None | Lint, build and tests | Project, deslop |
-| Docs | None | Test scope | Project, deslop |
+| Workflow | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop, write-ci-workflow |
+| Fixture | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop |
+| Shipped skill text | None | Lint, build and tests | Project, kill-ai-slop |
+| Docs | None | Test scope | Project, kill-ai-slop |
 | Tests | Code commands | Lint, build and tests | Project, conventions, audit-tests |
-| UI | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop, write-front-end |
-| Back-end | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop |
+| UI | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop, write-front-end |
+| Back-end | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop |
 
-Project means `AGENTS.md`; conventions means `follow-conventions`. The instruction map uses Pnyx's contributor skills for `review-code`, `audit-tests` and `kill-ai-slop` (the local deslop skill).
+Project means `AGENTS.md`; conventions means `follow-conventions`. `review-code`, `audit-tests` and `kill-ai-slop` are deslop's shipped skills; the instruction map adds Pnyx's `follow-conventions`, `write-front-end` and `write-ci-workflow`.
 
 `Tests` runs on `pull_request` with read-only permissions, no secrets and no path filters. `Test scope` installs the selector from package.json without lifecycle hooks and reads the merge diff, including both paths of renames. It runs tests when the selection names `Lint, build and tests`. Docs-only changes skip that job, satisfying branch protection. The docs kind names `Test scope` because deslop requires a successful CI check to publish proof. A failed scope job still runs tests behind the approved `ci` environment. Description edits start no run; new pushes cancel older runs.
 

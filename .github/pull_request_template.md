@@ -12,7 +12,7 @@
 
 ## Validation
 
-<!-- What was run and what passed. For each new or changed test, name the user-visible behavior or past bug it guards and the flip that made its assertion fail; follow audit-tests. Note any test that failed or was skipped, and why. -->
+<!-- What was run and what passed. For each new or changed test, name the user-visible behavior or past bug it guards and the test that failed when its change was reverted in a throwaway copy. Note any test that failed or was skipped, and why. -->
 
 ## Review
 

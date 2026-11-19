@@ -21,7 +21,7 @@ Skills follow the [Agent Skills](https://agentskills.io) format: a folder holdin
 - [ ] Point to the rule's home (`AGENTS.md`, `docs/`, another skill) instead of restating it, so rules have one home and cannot drift apart. A skill holds what an agent needs only while doing that task.
 - [ ] Keep it short. Detail needed only sometimes goes in a `references/` file the body links to.
 - [ ] Describe the current project. A skill never asks for session journals, handoff files or a running history of reviews and test results.
-- [ ] Apply [deslop](../deslop/SKILL.md) to the text.
+- [ ] Run `pnpm deslop` on the committed text.
 
 ## Registration
 
