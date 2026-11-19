@@ -232,7 +232,9 @@ test(
     expect(await other.locator('.hydra-page').count()).toBe(1)
     expect(await page.locator('*').count()).toBeLessThan(6000)
     const load = await page.evaluate(() => {
-      const measurement = (window as Window & { workspaceMeasurement?: WorkspaceMeasurement }).workspaceMeasurement
+      const measurement = (window as Window & {
+        workspaceMeasurement?: WorkspaceMeasurement
+      }).workspaceMeasurement
 
       if (!measurement) {
         throw new Error('Workspace load measurement was not installed')
@@ -528,16 +530,21 @@ test(
     const scroll = await finishScroll()
 
     if (!inject('uiProfile')) {
-      // eslint-disable-next-line pnyx/object-params -- Playwright supplies the browser callback argument.
-      const frames = await page.evaluate(since => {
-        const measurement = (window as Window & { workspaceMeasurement?: WorkspaceMeasurement }).workspaceMeasurement
+      const frames = await page.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback signature.
+        since => {
+          const measurement = (window as Window & {
+            workspaceMeasurement?: WorkspaceMeasurement
+          }).workspaceMeasurement
 
-        if (!measurement) {
-          throw new Error('Workspace scroll measurement was not installed')
-        }
+          if (!measurement) {
+            throw new Error('Workspace scroll measurement was not installed')
+          }
 
-        return measurement.readFrames({ since })
-      }, scrollStart)
+          return measurement.readFrames({ since })
+        },
+        scrollStart,
+      )
       expect(Math.max(
         0,
         ...frames,

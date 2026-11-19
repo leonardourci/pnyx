@@ -94,7 +94,8 @@ export function ProjectTasks({
       folds,
     ],
   )
-  const revealedFamily = reveal ? rows.flat().find(family => family.ids.includes(reveal)) : undefined
+  const revealedFamily = reveal
+    ? rows.flat().find(family => family.ids.includes(reveal)) : undefined
   const revealedKey = revealedFamily?.card.key
   useLayoutEffect(
     () => {
