@@ -74,13 +74,26 @@ const childrenPath = ({ hydraId }: { hydraId: string }) => join(
   'children.json',
 )
 
-const read = ({ path }: { path: string }): Recorded[] => {
+const read = ({
+  path,
+  strict = false,
+}: {
+  path: string
+  strict?: boolean
+}): Recorded[] => {
   try {
     return JSON.parse(readFileSync(
       path,
       'utf8',
     )) as Recorded[]
-  } catch {
+  } catch (error) {
+    if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new HydraError({
+        message: `Cannot verify recorded processes: ${path}`,
+        code: 'AGENT_STOP_FAILED',
+      })
+    }
+
     return []
   }
 }
@@ -163,7 +176,19 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
   }
 
   return {
-    stopAll: () => stop({}),
+    async stopAll() {
+      for (const child of read({
+        path,
+        strict: true,
+      }).filter(child => retained({ child }))) {
+        live.set(
+          child.pid,
+          child,
+        )
+      }
+
+      await stop({})
+    },
     tasks() {
       return new Set([...live.values()].flatMap(child => child.task ? [child.task] : []))
     },
