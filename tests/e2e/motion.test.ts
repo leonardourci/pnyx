@@ -5,6 +5,7 @@ import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const SAMPLE_FRAMES = 60
+const SLOT_STABILITY_MS = 900
 let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
@@ -538,17 +539,6 @@ test(
         const card = column.locator(`.card[data-task="${id}"]:not(dialog *)`)
         const title = card.locator('.card-open')
 
-        const box = async () => {
-          const bounds = (await card.boundingBox())!
-
-          return [
-            bounds.x,
-            bounds.y,
-            bounds.width,
-            bounds.height,
-          ]
-        }
-
         const foldBack = async ({ expanded }: { expanded: boolean }) => {
           await card.hover()
           const openModalButton = card.getByRole(
@@ -559,32 +549,54 @@ test(
             },
           )
           await openModalButton.hover()
-          // Frame/WAAPI-only checks missed 7 px of scroll in CI; keep the approved bounded observation window.
+          const baseline: { position?: {
+            slot: number[]
+            scrolled: number
+          } } = {}
           await until({
             what: 'the card and its column stop moving before opening the modal',
             check: async () => {
-              const position = async () => JSON.stringify([
-                await box(),
-                await scrollTop(),
-              ])
-              const first = await position()
+              const settled = await card.evaluate(
+                async (
+                  element,
+                  stabilityMs,
+                ) => {
+                  const scroller = element.closest('.project-cards')!
+                  const position = () => {
+                    const { x, y, width, height } = element.getBoundingClientRect()
 
-              for (let check = 0; check < 3; check++) {
-                await new Promise(resolve => setTimeout(
-                  resolve,
-                  300,
-                ))
+                    return {
+                      slot: [x, y, width, height],
+                      scrolled: scroller.scrollTop,
+                    }
+                  }
+                  const initial = position()
+                  const initialPosition = JSON.stringify(initial)
+                  const deadline = performance.now() + stabilityMs
 
-                if (first !== await position()) {
-                  return false
-                }
+                  while (performance.now() < deadline) {
+                    await new Promise(requestAnimationFrame)
+
+                    if (JSON.stringify(position()) !== initialPosition) {
+                      return false
+                    }
+                  }
+
+                  return initial
+                },
+                SLOT_STABILITY_MS,
+              )
+
+              if (!settled) {
+                return false
               }
+
+              baseline.position = settled
 
               return true
             },
           })
-          const slot = await box()
-          const scrolled = await scrollTop()
+          const { slot, scrolled } = baseline.position!
           await openModalButton.click()
           const modal = page.locator('dialog.task-modal')
           await until({
