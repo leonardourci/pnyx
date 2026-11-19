@@ -83,7 +83,17 @@ jobs:
       - name: Tests
         env:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
-        run: pnpm exec vitest run
+        run: |
+          nproc
+          vmstat -n -t 5 > "$RUNNER_TEMP/vmstat.log" & sampler=$!
+          status=0
+          pnpm exec vitest run || status=$?
+          kill "$sampler"
+          exit "$status"
+
+      - name: CPU samples
+        if: always()
+        run: cat "$RUNNER_TEMP/vmstat.log"
 
       - name: Check workspace latency
         env:
