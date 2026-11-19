@@ -476,8 +476,7 @@ test(
       ],
     })
     const held: (() => void)[] = []
-    let completed = 0
-    const requests = new Set<string>()
+    const pendingRequests = new Set<string>()
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -491,12 +490,8 @@ test(
             // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
             message => {
               const frame = JSON.parse(String(message))
-
-              if (requests.has(frame.id)) {
-                completed++
-              }
-
               socket.send(message)
+              pendingRequests.delete(frame.id)
             },
           )
           socket.onMessage(
@@ -505,7 +500,7 @@ test(
               const frame = JSON.parse(String(message))
 
               if (frame.name === 'settings' && frame.args?.[0] === 'set') {
-                requests.add(frame.id)
+                pendingRequests.add(frame.id)
                 held.push(() => server.send(message))
               } else {
                 server.send(message)
@@ -600,6 +595,14 @@ test(
         exact: true,
       },
     ).click()
+    const remainingReader = page.getByRole(
+      'button',
+      {
+        name: `Remove ${other.id} from guarded`,
+        exact: true,
+      },
+    )
+    expect(await remainingReader.isVisible()).toBe(true)
     const removeReader = held.shift()
 
     if (!removeReader) {
@@ -617,7 +620,8 @@ test(
     }
 
     removeQueuedReader()
-    await expect.poll(() => completed).toBe(3)
+    await expect.poll(() => pendingRequests.size).toBe(0)
+    await remainingReader.waitFor({ state: 'hidden' })
     expect((await hydra.owner({
       args: [
         'settings',
@@ -645,8 +649,14 @@ test(
     }
 
     createConcurrent()
-    await expect.poll(() => completed).toBe(4)
-    await revisionError.last().waitFor()
+    await expect.poll(() => pendingRequests.size).toBe(0)
+    await page.getByRole(
+      'button',
+      {
+        name: `Remove ${other.id} from concurrent`,
+        exact: true,
+      },
+    ).waitFor()
     expect((await hydra.owner({
       args: [
         'settings',

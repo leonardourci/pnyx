@@ -133,7 +133,7 @@ export function saveSharedSettings({
     ],
     patch: {
       settings: patch,
-      revision: expectedRevision,
+      revision: view ? undefined : revision,
     },
     targets: Object.keys(patch),
   })
