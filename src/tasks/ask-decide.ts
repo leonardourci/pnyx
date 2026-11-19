@@ -118,6 +118,111 @@ const closed = ({
   }
 }
 
+function questionChoices({
+  options,
+  recommended,
+}: {
+  options?: Question['options']
+  recommended?: number
+}) {
+  const choices = (options ?? []).map(option => {
+    const label = text({
+      value: option.label,
+      what: 'a choice',
+      max: LABEL_MAX,
+    })
+
+    if (!label) {
+      throw invalid({ message: 'a choice is empty' })
+    }
+
+    if (!option.description?.trim()) {
+      return { label }
+    }
+
+    return {
+      label,
+      description: text({
+        value: option.description,
+        what: 'a choice description',
+        max: QUESTION_MAX,
+      }),
+    }
+  })
+
+  if (choices.length > OPTIONS_MAX) {
+    throw invalid({ message: `use at most ${OPTIONS_MAX} choices` })
+  }
+
+  if (new Set(choices.map(c => c.label)).size !== choices.length) {
+    throw invalid({ message: 'choices must have different labels' })
+  }
+
+  const invalidRecommendation = recommended !== undefined
+    && (!Number.isInteger(recommended) || recommended < 1 || recommended > choices.length)
+
+  if (invalidRecommendation) {
+    throw invalid({ message: choices.length ? `--recommend takes a choice number from 1 to ${choices.length}` : '--recommend needs choices' })
+  }
+
+  return choices
+}
+
+function validateOwnerQuestion({
+  card,
+  question,
+  context,
+  options,
+  recommended,
+}: {
+  card: Card
+  question: string
+  context?: string
+  options: NonNullable<Question['options']>
+  recommended?: number
+}): void {
+  const missing: string[] = []
+
+  const decision = question.slice(
+    0,
+    -1,
+  ).trim()
+
+  if (!question.endsWith('?') || !decision || /[?\r\n]/.test(decision)) {
+    missing.push('--question with one plain decision ending in ?')
+  }
+
+  const taskLinks = /\[(?:\\[^\r\n]|[^\\\]\r\n])+\]\(pnyx-task:([^\s)]+)\)/g
+  const explanation = context?.replace(
+    taskLinks,
+    '',
+  ).trim()
+
+  if (!explanation) {
+    missing.push('--context explaining what changes and what happens next')
+  }
+
+  const taskId = encodeURIComponent(card.id)
+  const links = context?.matchAll(taskLinks)
+  const linksToCard = links && [...links].some(link => link[1] === taskId)
+
+  if (!linksToCard) {
+    missing.push(`a card link in --context: [Card](pnyx-task:${taskId})`)
+  }
+
+  if (options.length < 2) {
+    missing.push('at least two --choice values')
+  }
+
+  if (recommended === undefined) {
+    missing.push('--recommend with one choice number')
+  }
+
+  if (missing.length) {
+    throw invalid({ message: `Owner questions need ${missing.join('; ')}` })
+  }
+}
+
 export function decideAsk({
   state,
   ref,
@@ -213,37 +318,14 @@ export function decideAsk({
     throw invalid({ message: 'a go question supplies its own Go and Hold choices' })
   }
 
-  const choices = (kind === 'go' ? [
-    { label: 'Go' },
-    { label: 'Hold' },
-  ] : options ?? []).map(option => ({
-    label: text({
-      value: option.label,
-      what: 'a choice',
-      max: LABEL_MAX,
-    })!,
-    ...(option.description?.trim() ? {
-      description: text({
-        value: option.description,
-        what: 'a choice description',
-        max: QUESTION_MAX,
-      }),
-    } : {}),
-  }))
-
-  if (choices.length > OPTIONS_MAX) {
-    throw invalid({ message: `use at most ${OPTIONS_MAX} choices` })
-  }
-
-  if (new Set(choices.map(c => c.label)).size !== choices.length) {
-    throw invalid({ message: 'choices must have different labels' })
-  }
-
-  const fits = Number.isInteger(recommended) && recommended! >= 1 && recommended! <= choices.length
-
-  if (recommended !== undefined && !fits) {
-    throw invalid({ message: choices.length ? `--recommend takes a choice number from 1 to ${choices.length}` : '--recommend needs choices' })
-  }
+  const recommendation = kind === 'go' ? 1 : recommended
+  const choices = questionChoices({
+    options: kind === 'go' ? [
+      { label: 'Go' },
+      { label: 'Hold' },
+    ] : options,
+    recommended: recommendation,
+  })
 
   const said = {
     question: text({
@@ -267,6 +349,16 @@ export function decideAsk({
     throw invalid({ message: 'the question is empty' })
   }
 
+  if (audience === 'owner') {
+    validateOwnerQuestion({
+      card,
+      question: said.question,
+      context: said.context,
+      options: choices,
+      recommended: recommendation,
+    })
+  }
+
   return hydraEvent({
     state,
     meta,
@@ -285,7 +377,7 @@ export function decideAsk({
         ...(said.context ? { context: said.context } : {}),
         ...(said.details ? { details: said.details } : {}),
         ...(choices.length ? { options: choices } : {}),
-        ...(recommended ? { recommended } : {}),
+        recommended: recommendation,
       },
     },
   })
@@ -298,6 +390,8 @@ export function decideEscalation({
   question,
   context,
   undelivered,
+  options,
+  recommended,
   meta,
 }: {
   state: HydraState
@@ -306,6 +400,8 @@ export function decideEscalation({
   question?: string
   context?: string
   undelivered?: boolean
+  options?: Question['options']
+  recommended?: number
   meta: Meta
 }): Decision {
   const card = askableTask({
@@ -350,6 +446,20 @@ export function decideEscalation({
     }),
   }
 
+  const recommendation = options === undefined ? recommended ?? ask.recommended : recommended
+  const choices = questionChoices({
+    options: options ?? ask.options,
+    recommended: recommendation,
+  })
+
+  validateOwnerQuestion({
+    card,
+    question: owner.question ?? ask.question,
+    context: owner.context ?? ask.context,
+    options: choices,
+    recommended: recommendation,
+  })
+
   return hydraEvent({
     state,
     meta,
@@ -358,6 +468,8 @@ export function decideEscalation({
       type: 'task.ask.escalated',
       data: {
         ask: ask.id,
+        options: choices,
+        recommended: recommendation,
         ...(owner.question ? { question: owner.question } : {}),
         ...(owner.context ? { context: owner.context } : {}),
       },
@@ -379,9 +491,10 @@ export const askReport = ({
   ...(ask.options ?? []).map((
     o,
     i,
-  ) => `${i + 1}. ${o.label}${o.description ? ` — ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
+  ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
   ...(ask.details ? [`Details: \`pnyx-axi task show ${task} --full --hydra ${hydraId}\``] : []),
-  `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\`; hand on only an owner decision: \`pnyx-axi task escalate ${task} ${ask.id} --reason "<why>" --hydra ${hydraId}\``,
+  `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\``,
+  `If the owner must decide, use \`pnyx-axi task escalate ${task} ${ask.id} --question "<decision?>" --context "<what changes, next action and [Card](pnyx-task:${encodeURIComponent(task)})>" --choice "<recommended choice>" --choice "<alternative>" --recommend 1 --reason "<why>" --hydra ${hydraId}\``,
 ].join('\n')
 
 const answeredMergeHold = ({ ask }: { ask: Ask }) =>

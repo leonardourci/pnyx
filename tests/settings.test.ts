@@ -203,7 +203,7 @@ test(
 )
 
 test(
-  'hiding Hydras is shared page state and preserves their tasks and workers',
+  'hiding Hydras is shared page state that a restart writes back into an older build\'s page row, and preserves their tasks and workers',
   async () => {
     const first = await pnyx.hydra()
     const second = await pnyx.hydra()
@@ -278,11 +278,23 @@ test(
       })).code).toBe('VALIDATION_ERROR')
     }
 
-    await pnyx.restart()
+    // Drops hiddenHydras from the page's row without moving its revision, as in a row a build older than hiddenHydras wrote.
+    await pnyx.restart({
+      whileStopped: () => {
+        rows({ text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'' })
+      },
+    })
     expect((await settings({ hydra: first })).hiddenHydras).toEqual([
       first.id,
       second.id,
     ])
+    await until({
+      what: 'the restarted server to give the page\'s row the hidden Hydra ids again',
+      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([
+        first.id,
+        second.id,
+      ]),
+    })
     await first.owner({
       args: [
         'settings',

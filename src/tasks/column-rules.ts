@@ -112,7 +112,7 @@ function statusRole({ card }: { card: Card }): Role | undefined {
     return 'done'
   }
 
-  if (ownerGates({ card }).length || card.reminder?.dueAt) {
+  if (ownerGates({ card }).length) {
     return 'needs_you'
   }
 
@@ -178,6 +178,31 @@ export function migrateColumns({
   const fallback = fallbackColumn({ columns })
   const placements = Object.fromEntries(Object.values(state.cards)
     .flatMap(card => {
+      const staleNeedsYou = columns.some(column => column.id === card.column && column.role === 'needs_you')
+        && !ownerGates({ card }).length
+
+      if (staleNeedsYou && !card.hidden && !isManagedTask({ card }) && state.config?.hydra.kind !== 'firstmate') {
+        const after = placeCard({
+          card: cardFacts({
+            card,
+            state,
+          }),
+          columns,
+        }) ?? fallback
+
+        if (after !== card.column) {
+          return [
+            [
+              card.id,
+              {
+                before: card.column,
+                after,
+              },
+            ],
+          ]
+        }
+      }
+
       if (columns.some(c => c.id === card.column)) {
         if (!rulesChanged || card.hidden || isManagedTask({ card })
           || state.config?.hydra.kind === 'firstmate') {

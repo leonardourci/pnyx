@@ -3853,3 +3853,319 @@ test(
     })).memory.preferences).toBe('Private memory sentinel')
   },
 )
+
+test(
+  'ready review becomes an update when its task changes to Hydra merges',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await createProject({
+      hydra,
+      landing: 'pr',
+      remote: 'https://github.com/o/shop.git',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Review cart',
+        '--key',
+        'review-update',
+        '--project',
+        'shop',
+      ],
+    })
+    const url = 'https://github.com/o/shop/pull/77'
+    writeFileSync(
+      join(
+        github,
+        'o',
+        'shop',
+        '77.json',
+      ),
+      JSON.stringify({
+        state: 'open',
+        title: 'Review cart',
+        head: 'd'.repeat(40),
+        checks: '1 passed, 0 failed, 1 total',
+      }),
+    )
+    await hydra.owner({
+      args: [
+        'link',
+        'review-update',
+        '--url',
+        url,
+      ],
+    })
+    const question = await until({
+      what: 'an owner merge decision',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'review-update',
+          '--full',
+        ],
+      })).task.asks?.find((ask: { kind: string }) => ask.kind === 'merge'),
+    })
+    const landingReceipt = await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    const current = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
+    expect(retired).toMatchObject({ closed: { at: expect.any(String) } })
+    const events = await readEvents({ hydraId: hydra.id })
+    const landingEvent = events.find(event => event.id === landingReceipt.event.id)
+    expect(landingEvent).toMatchObject({
+      type: 'task.landing',
+      at: retired?.closed?.at,
+    })
+    expect(landingReceipt.card.column).toBe(current.task.column)
+    expect(landingReceipt.card.revision).toBe(current.task.revision)
+    expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
+    const updates = await hydra.owner({
+      args: [
+        'task',
+        'updates',
+        'review-update',
+      ],
+    })
+    expect(JSON.stringify(updates)).toContain(url)
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'owner',
+      ],
+    })
+    const restored = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(restored.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
+    const alias = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shared review',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'link',
+        alias.card.id,
+        '--url',
+        url,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    const shared = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(shared.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
+    await hydra.owner({
+      args: [
+        'outcome',
+        alias.card.id,
+        'cancelled',
+        '--note',
+        'Shared review was abandoned',
+      ],
+    })
+    const settled = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(settled.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--clear',
+      ],
+    })
+    const beforeProjectChange = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    const taskId = beforeProjectChange.task.id
+    const pendingBeforeMove = beforeProjectChange.task.asks.filter((ask: { closed?: unknown }) =>
+      !ask.closed)
+    expect(pendingBeforeMove).toHaveLength(1)
+    const destination = hydra.folder({ name: 'hydra-merges' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        destination,
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    const projectReceipt = await hydra.owner({
+      args: [
+        'task',
+        'project',
+        taskId,
+        '--project',
+        destination,
+      ],
+    })
+    const moved = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        taskId,
+        '--full',
+      ],
+    })
+    expect(moved.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    expect(moved.task.asks).toContainEqual(expect.objectContaining({
+      id: pendingBeforeMove[0].id,
+      closed: expect.any(Object),
+    }))
+    expect(projectReceipt.event.type).toBe('task.project')
+    expect(projectReceipt.card.column).toBe(moved.task.column)
+    expect(projectReceipt.card.revision).toBe(moved.task.revision)
+    await hydra.owner({
+      args: [
+        'task',
+        'project',
+        taskId,
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        taskId,
+        '--landing',
+        'pr',
+        '--merge',
+        'owner',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        taskId,
+        '--clear',
+      ],
+    })
+    const beforePush = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        taskId,
+        '--full',
+      ],
+    })
+    const pendingBeforePush = beforePush.task.asks.filter((ask: { closed?: unknown }) =>
+      !ask.closed)
+    expect(pendingBeforePush).toHaveLength(1)
+    const renamed = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'review-update',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Review the CSV export' }),
+    })
+    const afterRename = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        taskId,
+        '--full',
+      ],
+    })
+    expect(renamed.card.id).toBe(taskId)
+    expect(afterRename.task.title).toBe('Review the CSV export')
+    const pendingAfterRename = afterRename.task.asks.filter((ask: { closed?: unknown }) =>
+      !ask.closed)
+    expect(pendingAfterRename).toEqual(pendingBeforePush)
+    const pushed = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'review-update',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ project: destination }),
+    })
+    const afterPush = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        taskId,
+        '--full',
+      ],
+    })
+    expect(afterPush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    expect(afterPush.task.asks).toContainEqual(expect.objectContaining({
+      id: pendingBeforePush[0].id,
+      closed: expect.any(Object),
+    }))
+    expect(pushed.card.column).toBe(afterPush.task.column)
+    expect(pushed.card.revision).toBe(afterPush.task.revision)
+  },
+)

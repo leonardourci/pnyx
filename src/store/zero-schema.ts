@@ -7,7 +7,7 @@ import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Reply } from '#workers/model.ts'
-import type { Settings } from '#settings/model.ts'
+import type { PageSettings } from '#settings/model.ts'
 import type { unmetPrerequisites } from '#tasks/dependencies.ts'
 
 // The page's view of src/store/schema.sql. zero-cache replicates only the tables of the pnyx_page publication, whole
@@ -30,7 +30,7 @@ const settings = table('settings')
   .columns({
     id: string(),
     revision: number(),
-    value: json<Stored<Settings>>(),
+    value: json<Stored<Partial<PageSettings>>>(),
   })
   .primaryKey('id')
 
