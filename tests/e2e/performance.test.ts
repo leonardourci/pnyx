@@ -406,24 +406,22 @@ test(
       ).toBeLessThanOrEqual(budget)
     }
 
-    await page.evaluate(async () => {
-      await document.fonts.ready
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    })
-    await workspace.getByLabel(
+    const conversation = workspace.getByLabel(
       'Hydra conversation',
       { exact: true },
-    ).getByText(
+    )
+    await conversation.getByText(
       'The active work is moving through the Hydra.',
       { exact: true },
     )
       .waitFor()
+    await page.evaluate(async () => {
+      await document.fonts.ready
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    })
     const finishStream = await beginUIWindow({ page })
     stream.release()
-    await workspace.getByLabel(
-      'Hydra conversation',
-      { exact: true },
-    ).getByText(
+    await conversation.getByText(
       'The active work is moving through the Hydra. The questions are waiting for a choice.',
       { exact: true },
     )
