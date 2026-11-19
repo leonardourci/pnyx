@@ -5622,6 +5622,64 @@ test(
     expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(userScroll)
     await projectChip.dispatchEvent('click')
     await expect.poll(distanceFromProject).toBeLessThan(2)
+
+    const other = await pnyx.hydra()
+    const activeWorkspace = page.locator(`[data-hydra-workspace="${other.id}"]`)
+    await activeWorkspace.locator('.hydra-page').waitFor({ state: 'attached' })
+    const viewport = await page.evaluate(() => ({
+      width: innerWidth,
+      height: innerHeight,
+    }))
+    const track = await axis.evaluate(({
+      scrollWidth,
+      clientWidth,
+      scrollLeft,
+    }) => ({
+      width: scrollWidth,
+      viewport: clientWidth,
+      scroll: scrollLeft,
+    }))
+    const endSlack = 50
+    const viewportGrowth = track.width - track.scroll + endSlack - track.viewport
+    const clampedWidth = Math.ceil(viewport.width + viewportGrowth)
+    await page.setViewportSize({
+      width: clampedWidth,
+      height: viewport.height,
+    })
+    await projectChip.dispatchEvent('click')
+    await expect.poll(() => axis.evaluate(({
+      scrollWidth,
+      clientWidth,
+      scrollLeft,
+    }) =>
+      Math.abs(scrollWidth - clientWidth - scrollLeft))).toBeLessThan(1)
+    const navigationScroll = await axis.evaluate(({ scrollLeft }) => scrollLeft)
+    await page.evaluate(
+      ({ id }) => {
+        history.pushState(
+          null,
+          '',
+          `/hydra/${id}/`,
+        )
+        dispatchEvent(new PopStateEvent('popstate'))
+      },
+      { id: other.id },
+    )
+    await expect.poll(() => activeWorkspace.getAttribute('data-active')).toBe('true')
+    expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(navigationScroll)
+    const activeBounds = await restingBox({ target: activeWorkspace })
+    await page.setViewportSize({
+      width: clampedWidth - endSlack * 2,
+      height: viewport.height,
+    })
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    await expect.poll(async () => {
+      const bounds = await activeWorkspace.boundingBox()
+
+      return bounds ? Math.abs(bounds.x - activeBounds.x) : Infinity
+    }).toBeLessThan(1)
   },
 )
 

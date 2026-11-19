@@ -7,6 +7,7 @@ export function Strip<T>({
   render,
   scroll,
   gap,
+  active,
   reveal,
   revealKey,
 }: {
@@ -15,6 +16,7 @@ export function Strip<T>({
   render({ item }: { item: T }): ReactNode
   scroll: RefObject<HTMLElement | null>
   gap: number
+  active: boolean
   reveal?: string | null
   revealKey?: string
 }) {
@@ -28,6 +30,15 @@ export function Strip<T>({
     () => {
       if (!reveal) {
         releasedReveal.current = null
+
+        return
+      }
+
+      if (!active) {
+        releasedReveal.current = {
+          item: reveal,
+          key: revealKey,
+        }
 
         return
       }
@@ -114,6 +125,7 @@ export function Strip<T>({
       return stopFollowing
     },
     [
+      active,
       index,
       reveal,
       revealKey,
