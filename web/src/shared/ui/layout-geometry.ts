@@ -1,3 +1,4 @@
+// Offset properties give scroll anchors a stable layout position during transforms.
 export function layoutOffset({
   element,
   horizontal,
