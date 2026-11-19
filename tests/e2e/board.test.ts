@@ -3069,29 +3069,29 @@ test(
       url: `${url}/`,
       cookie,
     })
-    const { revision } = await hydra.owner({
-      args: [
-        'settings',
-        'show',
+    const socket = await hydra.page()
+    const shown = await socket.send({
+      name: 'settings',
+      args: ['show'],
+    }) as unknown as {
+      settings: Record<string, unknown>
+      revision: number
+    }
+    socket.close()
+    const current = shown.settings
+    delete current.postgresUrl
+    expect(current).toHaveProperty('hiddenHydras')
+    // Stands in for the row a build older than hiddenHydras wrote, which the page can read before the starting server
+    // rewrites it. The server can copy a write into this row up to a minute late, when its file watcher misses it, so
+    // the stand-in sits a revision ahead where that copy cannot replace it, and the restore writes the current settings.
+    const ahead = shown.revision + 1
+    rows({
+      text: 'update settings set revision = $1, value = ($2::jsonb - \'hiddenHydras\')::json where id = \'shared\'',
+      values: [
+        ahead,
+        JSON.stringify(current),
       ],
     })
-    // The server copies a settings write into the page's row after the write returns, so an earlier test's copy may
-    // still be owed; once the row holds the newest revision, the server owes it nothing and leaves it alone.
-    const stored = await until({
-      what: 'the page\'s settings row to hold the newest revision',
-      check: () => {
-        const [row] = rows<{
-          revision: number
-          value: Record<string, unknown>
-        }>({ text: 'select revision, value from settings where id = \'shared\'' })
-
-        return row?.revision === revision && row
-      },
-    })
-    expect(stored.value).toHaveProperty('hiddenHydras')
-    // Stands in for the row a build older than hiddenHydras wrote, which the page can read before the starting server
-    // rewrites it.
-    rows({ text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'' })
     const pageErrors: string[] = []
     let page: Page | undefined
 
@@ -3129,12 +3129,12 @@ test(
       ).waitFor()
       expect(pageErrors).toEqual([])
     } finally {
-      // A newer revision the server wrote meanwhile stays.
       rows({
-        text: 'update settings set value = $1 where id = \'shared\' and revision = $2',
+        text: 'update settings set revision = $1, value = $2 where id = \'shared\' and revision = $3',
         values: [
-          JSON.stringify(stored.value),
-          stored.revision,
+          shown.revision,
+          JSON.stringify(current),
+          ahead,
         ],
       })
       await page?.context().close()
