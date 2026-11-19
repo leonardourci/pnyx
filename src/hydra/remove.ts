@@ -347,15 +347,14 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       id,
       state,
     })
-    const currentWork = await removalWork({ paths: plan.paths })
 
-    const changed = !approvedWork || Object.entries(currentWork).some(([
-      path,
-      hash,
-    ]) => approvedWork[path] !== hash)
-
-    if (changed) {
+    if (!approvedWork) {
       refuseChangedWork()
+    }
+
+    // Every checkout is checked before the first deletion, so a changed one leaves the others in place.
+    for (const path of plan.paths) {
+      await verify({ path })
     }
 
     for (const copy of plan.copies) {
