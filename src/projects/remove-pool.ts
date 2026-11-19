@@ -27,7 +27,10 @@ const canonicalPath = ({ path }: { path: string }) =>
 export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
   const root = copiesDir({ hydraId })
 
-  if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink()) {
+  if (lstatSync(
+    root,
+    { throwIfNoEntry: false },
+  )?.isSymbolicLink()) {
     throw new HydraError({
       message: `Copies folder is a symbolic link: ${root}`,
       code: 'CONFLICT',
@@ -47,7 +50,10 @@ export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
     }
 
     for (const path of protectedPaths) {
-      const insideRoot = within({ root: resolve(root), path: resolve(path) })
+      const insideRoot = within({
+        root: resolve(root),
+        path: resolve(path),
+      })
       const insideFolder = within({
         root: folder,
         path: canonicalPath({ path }),
@@ -62,11 +68,17 @@ export function protectedCopiesFolder({ hydraId }: { hydraId: string }) {
     }
   }
 
-  return { root, folder }
+  return {
+    root,
+    folder,
+  }
 }
 
 export async function hydraPool({ hydraId }: { hydraId: string }) {
-  const { root, folder } = protectedCopiesFolder({ hydraId })
+  const {
+    root,
+    folder,
+  } = protectedCopiesFolder({ hydraId })
   const state = loadHydra({ hydraId }).state
   const attachedProjects = state.projects ?? []
   const copies = Object.values(state.cards).flatMap(card => card.copy ? [card.copy] : [])
@@ -126,9 +138,18 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
 
       const path = field.slice('worktree '.length)
       const canonical = canonicalPath({ path })
-      const insideRoot = within({ root: resolve(root), path: resolve(path) })
-        || within({ root: folder, path: resolve(path) })
-      const insideFolder = within({ root: folder, path: canonical })
+      const insideRoot = within({
+        root: resolve(root),
+        path: resolve(path),
+      })
+        || within({
+          root: folder,
+          path: resolve(path),
+        })
+      const insideFolder = within({
+        root: folder,
+        path: canonical,
+      })
 
       if (insideRoot !== insideFolder && existsSync(path)) {
         throw new HydraError({
@@ -170,7 +191,10 @@ export async function removeHydraPool({ hydraId }: { hydraId: string }): Promise
   for (const slot of pool.slots) {
     validateFolder()
 
-    if (existsSync(slot.path) && !within({ root: pool.folder, path: canonicalPath({ path: slot.path }) })) {
+    if (existsSync(slot.path) && !within({
+      root: pool.folder,
+      path: canonicalPath({ path: slot.path }),
+    })) {
       throw new HydraError({
         message: `Worktree resolves outside the copies folder: ${slot.path}`,
         code: 'CONFLICT',
