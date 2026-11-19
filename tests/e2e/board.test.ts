@@ -5034,3 +5034,85 @@ test(
     }
   },
 )
+
+test(
+  'closed cards omit their single repository chip and retain tags',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'single-repository' })
+    mkdirSync(
+      join(
+        project,
+        '.git',
+      ),
+      { recursive: true },
+    )
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'single',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Single repository work',
+        project,
+        tags: ['Backend'],
+      }),
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const column = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="single-repository"]`)
+    await column.getByRole(
+      'button',
+      {
+        name: 'Single repository work',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await column.locator('.card-labels').allTextContents()).toEqual(['Backend'])
+    expect(await column.locator('[data-project-polis]').count()).toBe(0)
+    const frame = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    expect(await frame.locator('.hydra-chat .hydra-label').count()).toBe(0)
+    expect(await frame.locator('.project-chips .project-counts').count()).toBe(0)
+    await frame.getByRole(
+      'button',
+      { name: /Edit / },
+    ).click()
+    const field = frame.locator('.hydra-name-field input')
+    await field.fill('Renamed Hydra')
+    await field.press('Enter')
+    await until({
+      what: 'the frame name edit is saved',
+      check: async () => await page.title() === 'Renamed Hydra · Pnyx',
+    })
+    await frame.getByRole(
+      'button',
+      {
+        name: 'Change icon',
+        exact: true,
+      },
+    ).click()
+    await page.getByRole(
+      'option',
+      {
+        name: 'poseidon',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the frame icon edit is saved',
+      check: async () => await frame.locator('.hydra-head [data-icon=poseidon]').count() === 1,
+    })
+  },
+)

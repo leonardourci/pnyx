@@ -1,3 +1,4 @@
+import { HydraHead } from '#web-hydra/hydra-head.tsx'
 import { MOTION_EASING } from '#web-shared/motion.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceWindow } from './workspace-window.ts'
@@ -91,15 +92,21 @@ function HydraDragName({
   return (
     <div
       ref={sort.setNodeRef}
-      {...sort.attributes}
-      {...sort.listeners}
       data-sort-key={sort.key}
-      aria-label={`Move ${name}`}
       data-sort-id={id}
       data-sort-kind="hydra"
       data-sort-scope="hydras"
       className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-workspace-title flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
-    >{children}
+    >
+      <Button
+        {...sort.attributes}
+        {...sort.listeners}
+        ref={sort.setActivatorNodeRef}
+        aria-label={`Move ${name}`}
+        className="cursor-grab touch-none p-0.5"
+      ><Icon name="grip" />
+      </Button>
+      {children}
     </div>
   )
 }
@@ -1172,7 +1179,22 @@ export function HydraView({
                   )}
                 />
               )}
-              <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={ICON_SIZE.heading} />
+              <HydraHead
+                name={shownHydra?.name ?? ''}
+                icon={shownHydra?.icon}
+                taken={edits.hydras.filter(item =>
+                  item.id !== navigation.hydraId).map(item => item.name)}
+                connected={connected}
+                editHydra={({
+                  name,
+                  icon,
+                }) => edits.edit({
+                  id: navigation.hydraId,
+                  name,
+                  icon,
+                })}
+                addProject={createColumn}
+              />
             </HydraDragName>
             <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
               <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
@@ -1192,7 +1214,7 @@ export function HydraView({
                     data-sort-scope="projects"
                     data-sort-disabled={column.id === IDEAS_COLUMN}
                     onClick={() => revealProject({ id: column.id })}
-                  >{column.title}<ProjectCounts asks={column.asks} running={column.running} />
+                  >{column.title}
                   </SortableChip>
                 ))}
               </SortGroup>
@@ -1252,19 +1274,6 @@ export function HydraView({
                     <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                       <HydraChat
                         hydraId={navigation.hydraId}
-                        identity={shownHydra && {
-                          name: shownHydra.name,
-                          icon: shownHydra.icon,
-                          taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
-                        }}
-                        editHydra={({
-                          name,
-                          icon,
-                        }) => edits.edit({
-                          id: navigation.hydraId,
-                          name,
-                          icon,
-                        })}
                         storageIdentity={hydra.storageHydra}
                         addProject={createColumn}
                         projectRequest={projectRequest}
@@ -1343,7 +1352,7 @@ export function HydraView({
                                       ...new Set(c.repositories.flatMap(path => {
                                         const polis = projectPolisByPath.get(path)
 
-                                        return polis ? [polis] : []
+                                        return polis && polis !== (shownHydra?.polis ?? 'shared') ? [polis] : []
                                       })),
                                     ]}
                                     hydraId={navigation.hydraId}

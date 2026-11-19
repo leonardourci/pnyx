@@ -401,6 +401,7 @@ export const HydraCard = memo(function HydraCard({
   )
   const summary = (
     <CardSummary
+      showProject={showProject}
       card={card}
       status={status}
       now={now}
@@ -422,6 +423,7 @@ export const HydraCard = memo(function HydraCard({
   const closedSummary = useMemo(
     () => (
       <CardSummary
+        showProject={showProject}
         card={card}
         status={status}
         now={now}

@@ -77,6 +77,7 @@ export function CardSummary({
   heading,
   editing = false,
   tabIndex = -1,
+  showProject = true,
 }: {
   card: Card
   status: ObservedStatus
@@ -92,6 +93,7 @@ export function CardSummary({
   heading?: ReactNode
   editing?: boolean
   tabIndex?: number
+  showProject?: boolean
 }) {
   const agent = card.agent && <span className="card-agent ml-auto inline-flex text-muted" tabIndex={agentDetails ? 0 : undefined} aria-label={harnessName({ provider: card.agent.provider })}><Icon name={card.agent.provider} /></span>
 
@@ -128,7 +130,7 @@ export function CardSummary({
       </CardHeading>
       <TaskLabels
         card={card}
-        showProject={!!card.project}
+        showProject={showProject}
         legacyProject={legacyProject}
         colors={colors}
       />

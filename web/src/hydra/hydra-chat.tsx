@@ -44,8 +44,6 @@ import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
 import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, stillFailed, type FailedRead, type HistoryMode } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
-import { HydraHead } from './hydra-head.tsx'
-import { type HydraIdentity } from './hydra-title.tsx'
 import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
 import { HYDRA_SEND_SETTLED,readUnsent,saveUnsent } from './outbox.ts'
@@ -115,8 +113,6 @@ export function HydraChat({
   drafts,
   liveThread,
   queue,
-  identity,
-  editHydra,
   addProject,
   projectRequest,
   projectRequested,
@@ -127,16 +123,6 @@ export function HydraChat({
 }: {
   hydraId: string
   storageIdentity: string
-  // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
-  identity?: {
-    name: string
-    icon?: string
-    taken: string[]
-  }
-  editHydra?({
-    name,
-    icon,
-  }: HydraIdentity): void
   addProject?(): void
   projectRequest?: boolean
   projectRequested?(): void
@@ -1216,16 +1202,7 @@ export function HydraChat({
         flexBasis: width ?? view.hydraWidth,
       }}
     >
-      <HydraHead
-        name={identity?.name ?? config.name}
-        icon={identity?.icon}
-        taken={identity?.taken ?? []}
-        editHydra={editHydra}
-        addProject={addProject}
-        connected={connected}
-      >
-        {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
-      </HydraHead>
+      {down && <span className="hydra-status shrink-0 px-3.5 py-2.5 text-red text-meta" role="status">{down}</span>}
       <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
           className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
