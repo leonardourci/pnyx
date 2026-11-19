@@ -600,6 +600,7 @@ test(
         },
       )
     }
+
     const expectOtherScrollPositions = async () => {
       expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBeCloseTo(
         axisBeforeReveal,
