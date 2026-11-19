@@ -3075,19 +3075,23 @@ test(
         'show',
       ],
     })
-    const [stored] = rows<{
-      revision: number
-      value: Record<string, unknown>
-    }>({ text: 'select revision, value from settings where id = \'shared\'' })
+    // The server copies a settings write into the page's row after the write returns, so an earlier test's copy may
+    // still be owed; once the row holds the newest revision, the server owes it nothing and leaves it alone.
+    const stored = await until({
+      what: 'the page\'s settings row to hold the newest revision',
+      check: () => {
+        const [row] = rows<{
+          revision: number
+          value: Record<string, unknown>
+        }>({ text: 'select revision, value from settings where id = \'shared\'' })
+
+        return row?.revision === revision && row
+      },
+    })
     expect(stored.value).toHaveProperty('hiddenHydras')
     // Stands in for the row a build older than hiddenHydras wrote, which the page can read before the starting server
-    // rewrites it. The server can miss a settings write made just after it starts and still owe the row that revision,
-    // so the stand-in sits one revision ahead, where a copy the server owes cannot replace it.
-    const ahead = revision + 1
-    rows({
-      text: 'update settings set revision = $1, value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'',
-      values: [ahead],
-    })
+    // rewrites it.
+    rows({ text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'' })
     const pageErrors: string[] = []
     let page: Page | undefined
 
@@ -3125,13 +3129,12 @@ test(
       ).waitFor()
       expect(pageErrors).toEqual([])
     } finally {
-      // Only the stand-in is put back; a copy the server made meanwhile carries hiddenHydras and stays.
+      // A newer revision the server wrote meanwhile stays.
       rows({
-        text: 'update settings set revision = $1, value = $2 where id = \'shared\' and revision = $3 and not (value::jsonb ? \'hiddenHydras\')',
+        text: 'update settings set value = $1 where id = \'shared\' and revision = $2',
         values: [
-          stored.revision,
           JSON.stringify(stored.value),
-          ahead,
+          stored.revision,
         ],
       })
       await page?.context().close()
