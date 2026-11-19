@@ -3449,14 +3449,19 @@ test(
                 node,
                 y,
               ) => {
-                const family = node.closest<HTMLElement>('[data-family]')!
+                const family = node.closest<HTMLElement>('[data-family]')
+
+                if (!family) {
+                  throw new Error('First root is missing its task family')
+                }
+
                 const box = node.getBoundingClientRect()
                 family.style.translate = `0 ${y - box.y - box.height / 2}px`
               },
               end.y + end.height / 2,
             )
             await until({
-              what: 'the family moves the first root under the stationary pointer',
+              what: 'the first root is under the stationary pointer',
               check: () => card({ title: 'First root' }).evaluate(
                 // eslint-disable-next-line pnyx/object-params -- Playwright supplies the element and serialized argument.
                 (
@@ -3479,7 +3484,7 @@ test(
             expect(await ghost.locator('[data-drag-nest-refusal]').count()).toBe(0)
             // eslint-disable-next-line pnyx/object-params -- Playwright supplies the element.
             await card({ title: 'First root' }).evaluate(node => {
-              node.closest<HTMLElement>('[data-family]')!.style.removeProperty('translate')
+              node.closest<HTMLElement>('[data-family]')?.style.removeProperty('translate')
             })
           }
 

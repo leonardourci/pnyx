@@ -637,7 +637,7 @@ export function SortableWorkspace({
   const [
     active,
     setActive,
-  ] = useState<SortItem | null>(null)
+  ] = useState<(SortItem & { pointerDrag: boolean }) | null>(null)
   useEffect(
     () => active ? trackUIDrag({
       action: active.kind,
@@ -739,7 +739,7 @@ export function SortableWorkspace({
 
   useLayoutEffect(
     () => {
-      if (!active || active.kind !== 'task' || !shift) {
+      if (active?.kind !== 'task' || !active.pointerDrag || !shift) {
         return
       }
 
@@ -747,11 +747,10 @@ export function SortableWorkspace({
       let pointed: Element | null | undefined
 
       const refresh = () => {
+        frame = requestAnimationFrame(refresh)
         const pointer = latestDetection.current?.pointerCoordinates
 
         if (!pointer) {
-          frame = requestAnimationFrame(refresh)
-
           return
         }
 
@@ -764,8 +763,6 @@ export function SortableWorkspace({
           pointed = next
           refreshTarget()
         }
-
-        frame = requestAnimationFrame(refresh)
       }
 
       let frame = requestAnimationFrame(refresh)
@@ -934,7 +931,9 @@ export function SortableWorkspace({
     }) : size
     let grab: SortItem['grab']
 
-    if (box && activatorEvent instanceof PointerEvent) {
+    const pointerDrag = activatorEvent instanceof PointerEvent
+
+    if (box && pointerDrag) {
       const point: ReturnType<typeof grabPoint> = active.data.current?.pickup?.current
         ?? grabPoint({
           event: activatorEvent,
@@ -949,6 +948,7 @@ export function SortableWorkspace({
 
     setActive({
       ...item,
+      pointerDrag,
       grab,
       overlayStyle: {
         '--text-ui': styles?.getPropertyValue('--text-ui'),
