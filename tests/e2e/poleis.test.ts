@@ -496,7 +496,10 @@ test(
     )
     const createPolis = page.getByRole(
       'button',
-      { name: 'Create polis', exact: true },
+      {
+        name: 'Create polis',
+        exact: true,
+      },
     )
     await draft.fill('alpha')
     await createPolis.click()
@@ -566,11 +569,17 @@ test(
     await page.reload()
     await page.getByRole(
       'button',
-      { name: 'Settings', exact: true },
+      {
+        name: 'Settings',
+        exact: true,
+      },
     ).click()
     await page.getByRole(
       'button',
-      { name: '+ New polis', exact: true },
+      {
+        name: '+ New polis',
+        exact: true,
+      },
     ).click()
     await draft.fill('concurrent')
     await createPolis.click()

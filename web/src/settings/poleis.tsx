@@ -108,7 +108,11 @@ export function Poleis({
     return <p role="status" className="muted">Loading poleis…</p>
   }
 
-  const { settings, revision } = snapshot
+  const {
+    settings,
+    revision,
+  } = snapshot
+
   const save = async ({
     polis,
     readers,
