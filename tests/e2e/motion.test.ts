@@ -608,11 +608,23 @@ test(
             0,
           )))
           expect(await scrollTop()).toBe(scrolled)
-          const sampling = page.evaluate(
-            async ({
-              task,
-              frameCount,
-            }) => {
+          const close = modal.getByRole(
+            'button',
+            {
+              name: 'Close',
+              exact: true,
+            },
+          ).first()
+          const sampling = close.evaluate(
+            async (
+              button,
+              { task, frameCount },
+            ) => {
+              await new Promise<void>(resolve => button.addEventListener(
+                'click',
+                () => resolve(),
+                { capture: true, once: true },
+              ))
               const boxes: number[][] = []
 
               for (let frame = 0; frame < frameCount; frame++) {
@@ -637,14 +649,7 @@ test(
               frameCount: SAMPLE_FRAMES,
             },
           )
-          await modal.getByRole(
-            'button',
-            {
-              name: 'Close',
-              exact: true,
-            },
-          ).first()
-            .click()
+          await close.click()
           await modal.waitFor({ state: 'detached' })
           const path = await sampling
           const distance = (bounds: number[]) => Math.max(...bounds.map((
@@ -652,6 +657,10 @@ test(
             index,
           ) => Math.abs(value - slot[index]!)))
           const distances = path.map(distance)
+          expect(
+            Math.max(...distances),
+            JSON.stringify(path),
+          ).toBeGreaterThan(1)
           expect(
             distances.at(-1),
             JSON.stringify(path),
@@ -663,6 +672,7 @@ test(
             ) => index === 0 || value <= distances[index - 1]! + 1),
             JSON.stringify(path),
           ).toBe(true)
+          expect(await scrollTop()).toBe(scrolled)
           expect(await title.getAttribute('aria-expanded')).toBe(String(expanded))
         }
 
