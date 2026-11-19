@@ -71,6 +71,7 @@ export function HydraPoleis({
               ...access.readPoleis,
               option.value,
             ] : access.readPoleis.filter(polis => polis !== option.value)
+
             return save({
               args: [
                 '--read-poleis',
