@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from '../setup/browser.ts'
+import { recordBrowserDiagnostics } from '../setup/browser-diagnostics.ts'
 import { startPnyx, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -793,6 +794,10 @@ test(
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
+      prepare: ({ page }) => recordBrowserDiagnostics({
+        page,
+        name: 'firstmate',
+      }),
       reducedMotion: true,
     })
     await page.getByRole(

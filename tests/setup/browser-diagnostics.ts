@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from 'playwright-core'
 
-export async function recordDragDiagnostics({
+export async function recordBrowserDiagnostics({
   page,
   name,
 }: {
@@ -17,7 +17,7 @@ export async function recordDragDiagnostics({
 
   const folder = join(
     kept,
-    'drag-diagnostics',
+    'browser-diagnostics',
     name,
   )
   mkdirSync(
@@ -36,6 +36,13 @@ export async function recordDragDiagnostics({
     'console',
     message => {
       const text = message.text()
+
+      if (text.startsWith('PNYX_FIRST_ESCAPE ')) {
+        entries.push({
+          event: 'firstEscape',
+          state: JSON.parse(text.slice('PNYX_FIRST_ESCAPE '.length)),
+        })
+      }
 
       if (text.startsWith('PNYX_DRAG_DIAGNOSTIC ')) {
         entries.push(JSON.parse(text.slice('PNYX_DRAG_DIAGNOSTIC '.length)))
@@ -66,6 +73,88 @@ export async function recordDragDiagnostics({
       }))
     }
 
+    const describe = ({ node }: { node: Element | null }) => node ? {
+      tag: node.tagName,
+      class: node.className,
+      hydra: node.closest<HTMLElement>('[data-hydra-workspace]')?.dataset.hydraWorkspace,
+    } : null
+    let lastDialog: HTMLDialogElement | null = null
+    const nativeShowModal = HTMLDialogElement.prototype.showModal
+
+    HTMLDialogElement.prototype.showModal = function () {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- Keep the opened node available after DOM detachment.
+      lastDialog = this
+      append({
+        event: 'showModalBefore',
+        state: {
+          node: describe({ node: this }),
+          open: this.open,
+          modal: this.matches(':modal'),
+          stack: new Error().stack,
+        },
+      })
+      nativeShowModal.call(this)
+      append({
+        event: 'showModalAfter',
+        state: {
+          open: this.open,
+          modal: this.matches(':modal'),
+        },
+      })
+    }
+
+    const nativeClose = HTMLDialogElement.prototype.close
+
+    // eslint-disable-next-line pnyx/object-params -- The native dialog close method owns this signature.
+    HTMLDialogElement.prototype.close = function (...args: Parameters<HTMLDialogElement['close']>) {
+      append({
+        event: 'closeBefore',
+        state: {
+          open: this.open,
+          modal: this.matches(':modal'),
+          stack: new Error().stack,
+        },
+      })
+      nativeClose.apply(
+        this,
+        args,
+      )
+      append({
+        event: 'closeAfter',
+        state: {
+          open: this.open,
+          modal: this.matches(':modal'),
+        },
+      })
+    }
+
+    new MutationObserver(records => {
+      if (!lastDialog?.open) {
+        return
+      }
+
+      for (const record of records) {
+        for (const node of [...record.removedNodes]) {
+          if (node === lastDialog || node.contains(lastDialog)) {
+            append({
+              event: 'dialogDetached',
+              state: {
+                removed: node instanceof Element ? describe({ node }) : null,
+                parent: record.target instanceof Element ? describe({ node: record.target }) : null,
+                connected: lastDialog.isConnected,
+                modal: lastDialog.matches(':modal'),
+              },
+            })
+          }
+        }
+      }
+    }).observe(
+      document,
+      {
+        childList: true,
+        subtree: true,
+      },
+    )
     document.addEventListener(
       'pnyx:drag-diagnostic',
       event => {
@@ -151,6 +240,28 @@ export async function recordDragDiagnostics({
             axis: document.querySelector('.workspace-axis')?.scrollLeft,
             dragging: document.querySelector('[data-dragging]')?.getAttribute('data-dragging'),
             ghost: document.querySelector('.physical-ghost')?.textContent,
+            dialogs: [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].map(dialog => {
+              const option = dialog.querySelector<HTMLElement>('[data-value="panel:projects"]')
+              const box = option?.getBoundingClientRect()
+              const style = getComputedStyle(dialog)
+
+              return {
+                modal: dialog.matches(':modal'),
+                open: dialog.open,
+                connected: dialog.isConnected,
+                node: describe({ node: dialog }),
+                box: dialog.getBoundingClientRect().toJSON(),
+                position: style.position,
+                zIndex: style.zIndex,
+                option: box?.toJSON(),
+                hit: box ? describe({
+                  node: document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                }) : null,
+              }
+            }),
             cards: [...document.querySelectorAll<HTMLElement>('.card[data-task]:not(.physical-ghost *)')].map(card => ({
               id: card.dataset.task,
               title: card.querySelector('.card-open')?.textContent,

@@ -2,6 +2,7 @@
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { MOTION_CSS_EASING, MOTION_DURATIONS, motionDuration } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
+import { recordBrowserDiagnostics } from '../setup/browser-diagnostics.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const SAMPLE_FRAMES = 60
@@ -223,6 +224,10 @@ test(
       const page = await openHydra({
         port: pnyx.port(),
         hydraId: hydra.id,
+        prepare: ({ page }) => recordBrowserDiagnostics({
+          page,
+          name: `opening-${theme}`,
+        }),
       })
 
       try {
@@ -281,6 +286,42 @@ test(
                     bounds.left + bounds.width * fraction,
                     y,
                   )
+
+                  if (!escaped && hit && card.contains(hit) && !hit.closest('[popover], .resize')) {
+                    console.info('PNYX_FIRST_ESCAPE ' + JSON.stringify({
+                      frame,
+                      point: {
+                        x: bounds.left + bounds.width * fraction,
+                        y,
+                      },
+                      bounds: bounds.toJSON(),
+                      content: card.querySelector('.card-content')!.getBoundingClientRect().toJSON(),
+                      element: hit.outerHTML.slice(
+                        0,
+                        2000,
+                      ),
+                      elementBounds: hit.getBoundingClientRect().toJSON(),
+                      cardStyle: {
+                        overflow: getComputedStyle(card).overflow,
+                        contain: getComputedStyle(card).contain,
+                        transform: getComputedStyle(card).transform,
+                      },
+                      parents: [
+                        ...function* () {
+                          for (let p = hit.parentElement; p; p = p.parentElement) {
+                            yield {
+                              tag: p.tagName,
+                              class: p.className,
+                              box: p.getBoundingClientRect().toJSON(),
+                              overflow: getComputedStyle(p).overflow,
+                              contain: getComputedStyle(p).contain,
+                            }
+                          }
+                        }(),
+                      ],
+                    }))
+                  }
+
                   escaped ||= !!hit && card.contains(hit) && !hit.closest('[popover], .resize')
                 }
               }

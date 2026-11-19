@@ -9,7 +9,6 @@ import { queries } from '#store/zero-schema.ts'
 import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 import { MOTION_DURATIONS } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
-import { recordDragDiagnostics } from '../setup/drag-diagnostics.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 import { readRows, zeroReady } from '../setup/zero.ts'
 
@@ -3364,10 +3363,6 @@ test(
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
-      prepare: ({ page }) => recordDragDiagnostics({
-        page,
-        name: 'nesting',
-      }),
     })
 
     try {
@@ -3781,29 +3776,23 @@ test(
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
-      prepare: async ({ page }) => {
-        await recordDragDiagnostics({
-          page,
-          name: 'outdent',
-        })
-        await page.routeWebSocket(
-          /\/ws\?/,
-          // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
-          socket => {
-            const server = socket.connectToServer()
-            // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
-            socket.onMessage(message => {
-              const frame = JSON.parse(String(message))
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
 
-              if (frame.name === 'task' && frame.args?.[0] === 'parent') {
-                outdents.push(frame.args[frame.args.indexOf('--event-id') + 1])
-              }
+            if (frame.name === 'task' && frame.args?.[0] === 'parent') {
+              outdents.push(frame.args[frame.args.indexOf('--event-id') + 1])
+            }
 
-              server.send(message)
-            })
-          },
-        )
-      },
+            server.send(message)
+          })
+        },
+      ),
     })
 
     try {
