@@ -1168,34 +1168,22 @@ test(
     const failed = await asHydra.refused({ args: merge })
     expect(failed.code).toBe('CONFLICT')
     expect(failed.error).toContain('check is not green')
-    // Every way GitHub hides a private repository's rules leaves the other evidence to decide.
+    // Every way GitHub hides a private repository's rules counts as hidden, not unreadable; unreadable classic protection keeps the merge refused.
     publish({
       error: 'error: HTTP 404: Not Found',
-      classic: null,
-      check: {
-        ...run,
-        conclusion: 'failure',
-      },
+      classic: {},
     })
-    expect((await asHydra.refused({ args: merge })).error).toContain('check is not green')
+    expect((await asHydra.refused({ args: merge })).error).not.toContain('branch rules unreadable')
     publish({
       error: 'error: HTTP 403: Forbidden',
-      classic: null,
-      check: {
-        ...run,
-        conclusion: 'failure',
-      },
+      classic: {},
     })
-    expect((await asHydra.refused({ args: merge })).error).toContain('check is not green')
+    expect((await asHydra.refused({ args: merge })).error).not.toContain('branch rules unreadable')
     publish({
       error: 'error: "Resource not found"\ncode: NOT_FOUND',
-      classic: null,
-      check: {
-        ...run,
-        conclusion: 'failure',
-      },
+      classic: {},
     })
-    expect((await asHydra.refused({ args: merge })).error).toContain('check is not green')
+    expect((await asHydra.refused({ args: merge })).error).not.toContain('branch rules unreadable')
     publish({
       check: {
         ...run,
