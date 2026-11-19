@@ -447,7 +447,21 @@ test(
         'project',
         'list',
       ],
-    })).projects).toBe('none: no projects attached')
+    })).projects).toEqual([
+      expect.objectContaining({
+        path: folder,
+        state: 'attached',
+      }),
+    ])
+    expect((await hydra.ownerRefused({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        folder,
+      ],
+    })).code).toBe('NOT_FOUND')
   },
 )
 
