@@ -3735,9 +3735,8 @@ test(
         '--full',
       ],
     })
-    const pendingBeforeMove = beforeProjectChange.task.asks.filter((ask: { closed?: unknown }) => {
-      return !ask.closed
-    })
+    const taskId = beforeProjectChange.task.id
+    const pendingBeforeMove = beforeProjectChange.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)
     expect(pendingBeforeMove).toHaveLength(1)
     const destination = hydra.folder({ name: 'hydra-merges' })
     await hydra.owner({
@@ -3755,7 +3754,7 @@ test(
       args: [
         'task',
         'project',
-        'review-update',
+        taskId,
         '--project',
         destination,
       ],
@@ -3764,11 +3763,15 @@ test(
       args: [
         'task',
         'show',
-        'review-update',
+        taskId,
         '--full',
       ],
     })
     expect(moved.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    expect(moved.task.asks).toContainEqual(expect.objectContaining({
+      id: pendingBeforeMove[0].id,
+      closed: expect.any(Object),
+    }))
     expect(projectReceipt.event.type).toBe('task.project')
     expect(projectReceipt.card.column).toBe(moved.task.column)
     expect(projectReceipt.card.revision).toBe(moved.task.revision)
@@ -3776,7 +3779,7 @@ test(
       args: [
         'task',
         'project',
-        'review-update',
+        taskId,
         '--project',
         'shop',
       ],
@@ -3785,7 +3788,7 @@ test(
       args: [
         'task',
         'landing',
-        'review-update',
+        taskId,
         '--landing',
         'pr',
         '--merge',
@@ -3796,7 +3799,7 @@ test(
       args: [
         'task',
         'landing',
-        'review-update',
+        taskId,
         '--clear',
       ],
     })
@@ -3804,11 +3807,33 @@ test(
       args: [
         'task',
         'show',
-        'review-update',
+        taskId,
         '--full',
       ],
     })
-    expect(beforePush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
+    const pendingBeforePush = beforePush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)
+    expect(pendingBeforePush).toHaveLength(1)
+    const renamed = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'review-update',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Review the CSV export' }),
+    })
+    const afterRename = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        taskId,
+        '--full',
+      ],
+    })
+    expect(renamed.card.id).toBe(taskId)
+    expect(afterRename.task.title).toBe('Review the CSV export')
+    expect(afterRename.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toEqual(pendingBeforePush)
     const pushed = await hydra.owner({
       args: [
         'push',
@@ -3823,11 +3848,15 @@ test(
       args: [
         'task',
         'show',
-        'review-update',
+        taskId,
         '--full',
       ],
     })
     expect(afterPush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    expect(afterPush.task.asks).toContainEqual(expect.objectContaining({
+      id: pendingBeforePush[0].id,
+      closed: expect.any(Object),
+    }))
     expect(pushed.card.column).toBe(afterPush.task.column)
     expect(pushed.card.revision).toBe(afterPush.task.revision)
   },

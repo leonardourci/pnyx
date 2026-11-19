@@ -573,15 +573,6 @@ export function eventWriter({
 
         switch (event.type) {
           case 'card.pushed':
-            if (before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
-              break
-            }
-
-            retireReviewQuestions({
-              writer,
-              at: event.at,
-            })
-            break
           case 'board.configured':
           case 'card.linked':
           case 'card.outcome':
@@ -591,6 +582,11 @@ export function eventWriter({
           case 'task.moved-in':
           case 'task.moved-out':
           case 'task.project':
+            if (event.type === 'card.pushed'
+              && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
+              break
+            }
+
             retireReviewQuestions({
               writer,
               at: event.at,
