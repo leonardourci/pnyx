@@ -512,21 +512,23 @@ test(
           theme,
         )
         const column = page.locator(`[data-hydra-workspace="${hydra.id}"] section[data-column="ideas"]`)
+        const scroller = column.locator('.project-cards')
+        const scrollTop = () => scroller.evaluate(element => element.scrollTop)
         await column.locator('.card[data-task]').first()
           .waitFor()
-        await column.locator('.project-cards').evaluate(scroller => {
-          scroller.scrollTop = scroller.scrollHeight
+        await scroller.evaluate(element => {
+          element.scrollTop = element.scrollHeight
         })
         await until({
           what: 'the scrolled column settles',
           check: async () => {
-            const first = await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+            const first = await scrollTop()
             await new Promise(resolve => setTimeout(
               resolve,
               200,
             ))
 
-            return first > 0 && first === await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+            return first > 0 && first === await scrollTop()
           },
         })
         const id = await column.evaluate(section => {
@@ -569,7 +571,7 @@ test(
             check: async () => {
               const position = async () => JSON.stringify([
                 await box(),
-                await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop),
+                await scrollTop(),
               ])
               const first = await position()
 
@@ -588,7 +590,7 @@ test(
             },
           })
           const slot = await box()
-          const scrolled = await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+          const scrolled = await scrollTop()
           await openModalButton.click()
           const modal = page.locator('dialog.task-modal')
           await until({
@@ -605,7 +607,7 @@ test(
             value,
             0,
           )))
-          expect(await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)).toBe(scrolled)
+          expect(await scrollTop()).toBe(scrolled)
           const sampling = page.evaluate(
             async ({
               task,
