@@ -63,7 +63,10 @@ export function Strip<T>({
       observer.observe(scroller)
 
       // Width changes before the target can cancel out and leave the strip's total width unchanged.
-      for (const item of Array.from(content.children).slice(0, index + 1)) {
+      for (const item of Array.from(content.children).slice(
+        0,
+        index + 1,
+      )) {
         observer.observe(item)
       }
 
