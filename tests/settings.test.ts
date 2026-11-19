@@ -35,6 +35,13 @@ test(
     const first = await pnyx.hydra()
     const second = await pnyx.hydra()
 
+    expect((await first.owner({
+      args: [
+        'settings',
+        'schema',
+      ],
+    })).defaults.doneAfterHours).toBe(1)
+
     await first.owner({
       args: [
         'settings',
@@ -72,8 +79,19 @@ test(
     expect(await queuedWidth({ hydra: first })).toBe(600)
     expect(await queuedWidth({ hydra: second })).toBe(defaultWidth)
 
+    await first.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"doneAfterHours":24}',
+      ],
+    })
     await pnyx.restart()
-    expect(await settings({ hydra: second })).toMatchObject({ theme: 'dark' })
+    expect(await settings({ hydra: second })).toMatchObject({
+      theme: 'dark',
+      doneAfterHours: 24,
+    })
     expect(await queuedWidth({ hydra: first })).toBe(600)
   },
 )
