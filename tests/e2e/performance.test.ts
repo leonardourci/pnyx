@@ -558,6 +558,7 @@ test(
 
     const axis = page.locator('.workspace-axis')
     const otherColumn = workspace.locator(`[data-column="${projects[0]}"] .column-cards`)
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
     const otherScroll = await otherColumn.evaluate(element => {
       element.scrollTo({
         top: element.scrollHeight,
