@@ -1,7 +1,9 @@
 import type { HydraState } from '#app/model.ts'
 import { decisionsBlock } from '#tasks/decisions.ts'
-import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
+import { QUIET_REPLY, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
+import { clip } from './digest.ts'
+import { CONTEXT_NOTE_CHARS } from './context-notes.ts'
 import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -77,10 +79,11 @@ export const decisionsText = ({
   }),
 })
 
+const WAKE_UPDATE_CHARS = 6000
+
 // Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
 const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
 
-// One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 export function wakeText({
   hydraId,
   state,
@@ -103,29 +106,56 @@ export function wakeText({
   pick?: Parameters<typeof decisionsText>[0]['pick']
 }): string {
   const lines: string[] = []
+  const updates: string[] = []
 
   if (reasons.length) {
-    lines.push(
+    updates.push(
       'Why you are woken:',
-      ...reasons.map(line => sealed({ text: line })),
+      ...reasons.map(line => sealed({
+        text: clip({
+          text: line,
+          size: CONTEXT_NOTE_CHARS,
+        }),
+      })),
     )
   }
 
   if (reports.length) {
     const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
-    lines.push(`${count} arrived while you were busy. Handle them together and answer once.`)
+    updates.push(`${count} arrived while you were busy. Short report lines are in the since-last-turn context; read full bodies only when needed.`)
 
-    for (const message of reports) {
-      lines.push(sealed({ text: hydraDelivery({ message }) }))
+    if (pick) {
+      for (const message of reports) {
+        updates.push(sealed({
+          text: `- seq ${state.eventIds[message.id]} ${message.task ?? 'no task'}: ${clip({
+            text: message.text,
+            size: CONTEXT_NOTE_CHARS,
+          })}`,
+        }))
+      }
     }
   }
 
-  if (check) {
-    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+  if (review) {
+    updates.push(sealed({ text: review }))
   }
 
-  if (review) {
-    lines.push(sealed({ text: review }))
+  let used = 0
+  let overflow = false
+
+  for (const line of updates) {
+    if (used + line.length + 1 > WAKE_UPDATE_CHARS) {
+      overflow = true
+      lines.push('More updates remain in history.')
+      break
+    }
+
+    lines.push(line)
+    used += line.length + 1
+  }
+
+  if (check || overflow) {
+    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   }
 
   lines.push(decisionsText({

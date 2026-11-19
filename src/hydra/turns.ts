@@ -858,11 +858,13 @@ export function createHydraTurns({
           `${memoryNote}\n${REPLY_RULES}`,
         ) : text)
         const continuingTurn = joinsTurn && running?.activity === 'working'
-        const pendingNotes = loadHydra({ hydraId }).state.contextNotes ?? []
+        const contextState = loadHydra({ hydraId }).state
+        const pendingNotes = contextState.contextNotes ?? []
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
         const context = contextNoteBlock({
           notes,
           hydraId,
+          state: contextState,
         })
 
         for (const note of contextTurnNotes({ notes })) {

@@ -343,7 +343,7 @@ function ordinaryReasons({
       } : {
         kind: 'report',
         card: task,
-        detail: `from ${event.actor}, in its envelope below`,
+        detail: `from ${event.actor}, in the since-last-turn report lines`,
       },
     ]
   }
