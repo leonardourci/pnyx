@@ -82,12 +82,21 @@ const read = ({
   strict?: boolean
 }): Recorded[] => {
   try {
-    return JSON.parse(readFileSync(
+    const recorded: unknown = JSON.parse(readFileSync(
       path,
       'utf8',
-    )) as Recorded[]
+    ))
+
+    if (!Array.isArray(recorded) || !recorded.every(child => child && typeof child === 'object'
+      && typeof child.pid === 'number' && Number.isSafeInteger(child.pid) && child.pid > 0)) {
+      throw new TypeError('Invalid recorded processes')
+    }
+
+    return recorded
   } catch (error) {
-    if (strict && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+    const missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'
+
+    if (strict && !missing) {
       throw new HydraError({
         message: `Cannot verify recorded processes: ${path}`,
         code: 'AGENT_STOP_FAILED',
@@ -180,7 +189,11 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
       for (const child of read({
         path,
         strict: true,
-      }).filter(child => retained({ child }))) {
+      })) {
+        if (!retained({ child }) || live.has(child.pid)) {
+          continue
+        }
+
         live.set(
           child.pid,
           child,
