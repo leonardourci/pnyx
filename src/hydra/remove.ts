@@ -224,6 +224,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
   }
 
+  // Refuses an unsafe copies folder or unreadable worktrees before the removal fence is written.
   await prepareRemoval({
     id,
     state,
