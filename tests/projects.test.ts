@@ -3052,7 +3052,13 @@ if (branch === 'iris/target') {
           'done',
         ],
       })
-      await pnyx.restart()
+      // A scratch server checks its queue at once, where the shared one waits for its next 30-second check.
+      await pnyx.stop()
+      child = launch({ afterCommit: false })
+      await until({
+        what: 'third scratch server ready',
+        check: () => ready,
+      })
       await until({
         what: 'worker advances again after committed intent recovery',
         check: async () => (await hydra.owner({
