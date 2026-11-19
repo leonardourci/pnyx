@@ -1048,6 +1048,15 @@ export function createHydraTurns({
         contextPresented.clear()
       }
 
+      for (const note of writer.state.contextNotes ?? []) {
+        if (note.report && contextReportStatus({
+          note,
+          state: writer.state,
+        }) === 'helper handling') {
+          contextPresented.delete(note.id)
+        }
+      }
+
       if (contextPresented.size && outcome?.status === 'completed') {
         applyDecision({
           writer,
@@ -1112,6 +1121,30 @@ export function createHydraTurns({
     }
   }
 
+  const reportsRead = ({ seqs }: { seqs: number[] }) => {
+    if (!hydraBusy()) {
+      return
+    }
+
+    const state = loadHydra({ hydraId }).state
+    const selected = new Set(seqs)
+
+    for (const note of state.contextNotes ?? []) {
+      const readable = note.report && selected.has(note.seq)
+        && contextReportStatus({
+          note,
+          state,
+        }) !== 'helper handling'
+
+      if (readable) {
+        contextPresented.set(
+          note.id,
+          note.seq,
+        )
+      }
+    }
+  }
+
   return {
     cancel: () => {
       stopGeneration += 1
@@ -1121,6 +1154,7 @@ export function createHydraTurns({
       await hydraTurn
     },
     digest,
+    reportsRead,
     hydraSession,
     hydra,
     startedByOwner,

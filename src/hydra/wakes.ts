@@ -182,6 +182,10 @@ export function wakeText({
     lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   }
 
+  if (review && overflow) {
+    lines.push(`Read \`pnyx-axi history --kind hydra.review --after ${after} --full --hydra ${hydraId}\` for the full timed-review details.`)
+  }
+
   lines.push(decisionsText({
     state,
     now,
