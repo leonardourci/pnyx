@@ -253,7 +253,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       detail,
     ]))
     const projects = projectRows({
-      state: current,
+      state: loadHydra({ hydraId }).state,
       projects: memoryCaller({ hydraId }) ? undefined : [],
     }).map(project => {
       const detail = detailsByPath.get(project.path)

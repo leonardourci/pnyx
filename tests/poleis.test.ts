@@ -1152,7 +1152,7 @@ test(
       args: [
         'project',
         'show',
-        'polis-project',
+        path,
       ],
     })
     expect(JSON.stringify(initialProjectMemory)).toContain('Project pulsar learning')
