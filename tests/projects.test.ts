@@ -3782,7 +3782,7 @@ test(
         path,
       ],
     })
-    expect(JSON.stringify(shown)).not.toContain('Private memory sentinel')
+    expect(shown).not.toHaveProperty('memory')
     expect(shown.attachment).toEqual(expect.objectContaining({
       path,
       state: 'attached',
@@ -3806,6 +3806,25 @@ test(
       ...env,
       PNYX_HYDRA: target.id,
     }
+    expect(parsed(await pnyxAxi({
+      env: foreignHydra,
+      args: [
+        'project',
+        'list',
+        '--hydra',
+        source.id,
+      ],
+    })).projects).toBe('none: no projects attached')
+    expect((await pnyxAxi({
+      env: foreignHydra,
+      args: [
+        'project',
+        'show',
+        path,
+        '--hydra',
+        source.id,
+      ],
+    })).stdout).toContain('NOT_FOUND')
     expect((await pnyxAxi({
       env: foreignHydra,
       args: [
@@ -3838,7 +3857,7 @@ test(
       ],
     }))
     expect(shownToHydra.attachment).toEqual(expect.objectContaining({ path }))
-    expect(JSON.stringify(shownToHydra)).not.toContain('Private memory sentinel')
+    expect(shownToHydra).not.toHaveProperty('memory')
     const removed = await pnyxAxi({
       env,
       args: [

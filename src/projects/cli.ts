@@ -204,43 +204,36 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'show') {
-    const attached = findProject({
+    const project = findProject({
       state: current,
       ref: required({
         value: ref,
         what: 'project name or path',
       }),
     })
-    const details = await readableProjectDetails({
-      state: current,
-      hydraId,
-    })
-
-    const readable = details.some(detail => detail.project.path === attached.path)
     let memory: Output | undefined
 
-    if (readable) {
-      try {
-        memory = await projectMemoryCommand({
-          args: [
-            'list',
-            '--project',
-            attached.path,
-            '--hydra',
-            hydraId,
-          ],
-        })
-      } catch (error) {
-        if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
-          throw error
-        }
+    try {
+      memory = await projectMemoryCommand({
+        args: [
+          'list',
+          '--project',
+          project.path,
+          '--hydra',
+          hydraId,
+        ],
+      })
+    } catch (error) {
+      // An unreadable or detached project still has an attachment record.
+      if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+        throw error
       }
     }
 
     const shownState = loadHydra({ hydraId }).state
     const shownProject = findProject({
       state: shownState,
-      ref: attached.path,
+      ref: project.path,
     })
     const attachment = projectRows({
       state: shownState,
@@ -255,10 +248,10 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
-    const details = await readableProjectDetails({
+    const details = ownAttachments ? await readableProjectDetails({
       state: current,
       hydraId,
-    })
+    }) : []
     const detailsByPath = new Map(details.map(detail => [
       detail.project.path,
       detail,
@@ -290,7 +283,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       projects: projects.length ? projects : 'none: no projects attached',
     }
 
-    if (projects.length === 0 && !listedReadonly) {
+    if (ownAttachments && projects.length === 0 && !listedReadonly) {
       listed.help = [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`]
     }
 
@@ -553,6 +546,14 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         })) ?? null
 
         const detached = action === 'remove'
+
+        if (detached && !before) {
+          throw new HydraError({
+            message: 'project not found',
+            code: 'NOT_FOUND',
+          })
+        }
+
         const sharedWith = detached ? [] : sharingHydras({
           hydraId,
           path,
