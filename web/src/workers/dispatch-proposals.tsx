@@ -104,7 +104,7 @@ export function DispatchProposals({
         <strong>{proposal.summary}</strong>
         <p className="muted">{note}</p>
         {proposal.error && <p role="alert">{proposal.error}</p>}
-        {proposal.status === 'applying' && <p role="status">Applying… Dismiss hides this question without cancelling the action.</p>}
+        {proposal.status === 'applying' && <p role="status">Applying…</p>}
         {proposal.kind === 'dispatch' ? (
           <ul>
             {changes.map(change => (
@@ -137,7 +137,7 @@ export function DispatchProposals({
             </Button>
           )}
           <Button
-            disabled={!connected || Boolean(busy)}
+            disabled={!connected || Boolean(busy) || proposal.kind === 'command' && proposal.status === 'applying'}
             onClick={() => void resolve({
               name,
               token: proposal.token,

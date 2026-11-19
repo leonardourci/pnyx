@@ -199,3 +199,160 @@ test(
     await expect.poll(() => chevronDirection({ control: summary })).toBe('down')
   },
 )
+
+test(
+  'Settings reveals removal confirmation in folded chat, blocks duplicate requests and ignores a late receipt',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    await caller.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Removal caller',
+      ],
+    })
+    await target.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Removal target',
+      ],
+    })
+    let hold = false
+    const held: (() => void)[] = []
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: caller.id,
+      reducedMotion: true,
+      prepare: async ({ page }) => page.routeWebSocket(
+        /\/ws\?/,
+        // eslint-disable-next-line pnyx/object-params -- Playwright supplies the socket.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright supplies the frame.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+
+            if (hold && frame.name === 'hydra' && frame.args?.[0] === 'remove') {
+              held.push(() => server.send(message))
+            } else {
+              server.send(message)
+            }
+          })
+        },
+      ),
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${caller.id}"]`)
+    await workspace.getByRole(
+      'button',
+      {
+        name: 'Fold chat',
+        exact: true,
+      },
+    ).click()
+    await workspace.locator('.workspace-chat.collapsed').waitFor()
+    await page.getByRole(
+      'button',
+      {
+        name: 'Settings',
+        exact: true,
+      },
+    ).click()
+    const settings = page.getByRole(
+      'region',
+      {
+        name: 'Settings',
+        exact: true,
+      },
+    )
+    await settings.getByRole(
+      'button',
+      {
+        name: 'Remove Removal target',
+        exact: true,
+      },
+    ).click()
+    await page.waitForURL(`**/hydra/${caller.id}/`)
+    const question = workspace.getByRole(
+      'region',
+      { name: 'Pending owner question' },
+    )
+    await question.getByRole(
+      'button',
+      {
+        name: 'Confirm',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await workspace.locator('.workspace-chat.collapsed').count()).toBe(0)
+    expect((await caller.owner({
+      args: [
+        'hydra',
+        'list',
+      ],
+    })).hydras.some((hydra: { id: string }) => hydra.id === target.id)).toBe(true)
+    await question.getByRole(
+      'button',
+      {
+        name: 'Dismiss',
+        exact: true,
+      },
+    ).click()
+    await question.waitFor({ state: 'hidden' })
+    await page.getByRole(
+      'button',
+      {
+        name: 'Settings',
+        exact: true,
+      },
+    ).click()
+    hold = true
+    const remove = settings.getByRole(
+      'button',
+      {
+        name: 'Remove Removal target',
+        exact: true,
+      },
+    )
+    await remove.click()
+    await expect.poll(() => held.length).toBe(1)
+    expect(await remove.isEnabled()).toBe(false)
+    await page.getByRole(
+      'button',
+      {
+        name: 'Close Settings',
+        exact: true,
+      },
+    ).click()
+    await page.getByRole(
+      'button',
+      {
+        name: 'Settings',
+        exact: true,
+      },
+    ).click()
+    hold = false
+    held[0]!()
+    await expect.poll(() => remove.isEnabled()).toBe(true)
+    expect(page.url()).toContain(`/hydra/${caller.id}/settings/`)
+    await settings.getByRole(
+      'button',
+      {
+        name: 'Remove Removal caller',
+        exact: true,
+      },
+    ).click()
+    await settings.getByRole('alert').filter({ hasText: 'own Hydra' })
+      .waitFor()
+    expect(await settings.getByRole(
+      'button',
+      {
+        name: 'Remove Removal caller',
+        exact: true,
+      },
+    ).isEnabled()).toBe(true)
+  },
+)

@@ -1481,7 +1481,13 @@ export function HydraView({
                     upgrade={upgrade}
                     startUpgrade={startUpgrade}
                     showConfirmation={() => {
-                      void navigate({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/` })
+                      if (location.pathname !== `/hydra/${encodeURIComponent(navigation.hydraId)}/settings/`) {
+                        return
+                      }
+
+                      save({ patch: { workspace: { chatCollapsed: false } } })
+                        .catch(error => notify({ text: String(error) }))
+                      openChat({ id: navigation.hydraId })
                         .catch((error: Error) => notify({ text: error.message }))
                     }}
                   />

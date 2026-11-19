@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -21,6 +21,23 @@ export function HydraRemoval({
     setError,
   ] = useState('')
 
+  const currentVisit = useRef(true)
+  useEffect(
+    () => {
+      currentVisit.current = true
+
+      return () => {
+        currentVisit.current = false
+      }
+    },
+    [],
+  )
+  const pending = useRef(new Set<string>())
+  const [
+    pendingIds,
+    setPendingIds,
+  ] = useState<string[]>([])
+
   return (
     <section className="my-3 rounded-xl border border-gold-line p-4" aria-label="Hydras">
       <h2>Hydras</h2>
@@ -30,8 +47,15 @@ export function HydraRemoval({
           <span className="inline-flex items-center gap-2"><HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} /></span>
           <Button
             aria-label={`Remove ${hydra.name}`}
-            disabled={!connected}
+            disabled={!connected || pendingIds.includes(hydra.id)}
             onClick={async () => {
+              if (pending.current.has(hydra.id)) {
+                return
+              }
+
+              pending.current.add(hydra.id)
+              setPendingIds([...pending.current])
+
               try {
                 await command({
                   name: 'hydra',
@@ -41,9 +65,15 @@ export function HydraRemoval({
                   ],
                 })
                 setError('')
-                showConfirmation()
+
+                if (currentVisit.current) {
+                  showConfirmation()
+                }
               } catch (error) {
                 setError(error instanceof Error ? error.message : String(error))
+              } finally {
+                pending.current.delete(hydra.id)
+                setPendingIds([...pending.current])
               }
             }}
           >Remove
