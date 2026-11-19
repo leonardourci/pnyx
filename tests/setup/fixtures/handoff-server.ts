@@ -49,6 +49,7 @@ const server = await startServer({
   port: 0,
   query: claude.query,
   spawnCodex: codex.spawnCodex,
+  queueDelay: 100,
   recoveryPause: 100,
 })
 await server.open({ id: hydraId })

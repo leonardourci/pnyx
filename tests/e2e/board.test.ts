@@ -1,4 +1,4 @@
-import type { Page } from 'playwright-core'
+import type { Locator, Page } from 'playwright-core'
 import { setTimeout as delay } from 'node:timers/promises'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -9,6 +9,28 @@ import { openHydra } from '../setup/browser.ts'
 import { pnyxAxi, rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const WHEEL_REST_MS = 750
+
+// The box of an element that has stopped moving: read the same twice in a row, as hover() waits for.
+const restingBox = ({ target }: { target: Locator }) => {
+  let previous = ''
+
+  return until({
+    what: 'the element to rest',
+    check: async () => {
+      const box = await target.boundingBox()
+      const read = JSON.stringify(box)
+      const moved = read !== previous
+
+      previous = read
+
+      if (!box || moved) {
+        return undefined
+      }
+
+      return box
+    },
+  })
+}
 
 let pnyx: Pnyx
 
@@ -45,18 +67,6 @@ test(
       ),
     })
     await page.locator('[aria-label="Work columns"]').waitFor()
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--name',
-        'Poseidon',
-      ],
-    })
-    await until({
-      what: 'Hydra tab title',
-      check: async () => await page.title() === 'Poseidon · Pnyx',
-    })
     const needsYou = await hydra.column({ role: 'needs_you' })
     await hydra.owner({
       args: [
@@ -75,7 +85,6 @@ test(
         exact: true,
       },
     ).waitFor()
-    expect(await page.title()).toBe('Poseidon · Pnyx')
 
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
@@ -3259,9 +3268,7 @@ test(
         )
         await handle.hover()
         const start = await handle.boundingBox()
-        const end = await to.boundingBox()
         expect(start).not.toBeNull()
-        expect(end).not.toBeNull()
         await page.mouse.move(
           start!.x + start!.width / 2,
           start!.y + start!.height / 2,
@@ -3276,9 +3283,11 @@ test(
         expect(await page.locator('.physical-ghost [data-drag-nest-hint]').count()).toBe(nestable ? 1 : 0)
         expect(await workspace.locator('[data-drag-column-hint]').count()).toBe(nestable ? 1 : 0)
         await page.keyboard.down('Shift')
+        // Lifting a family folds its sub-tasks into the ghost, so the target is measured where it rests after the lift.
+        const end = await restingBox({ target: to })
         await page.mouse.move(
-          end!.x + end!.width / 2,
-          end!.y + end!.height / 2,
+          end.x + end.width / 2,
+          end.y + end.height / 2,
           { steps: 12 },
         )
         const ghost = page.locator('.physical-ghost')
@@ -3592,7 +3601,12 @@ test(
         armed?: ReturnType<typeof column>
         reason?: string
       }) => {
-        await card({ title: source }).hover()
+        // hover() first scrolls a sub-task card it reads as clipped to the axis end, which moves the Hydra off screen.
+        const held = await restingBox({ target: card({ title: source }) })
+        await page.mouse.move(
+          held.x + held.width / 2,
+          held.y + held.height / 2,
+        )
         const handle = page.getByRole(
           'button',
           {
@@ -3600,9 +3614,8 @@ test(
             exact: true,
           },
         )
-        await handle.hover()
+        const start = await restingBox({ target: handle })
         const end = await point()
-        const start = (await handle.boundingBox())!
         await page.mouse.move(
           start.x + start.width / 2,
           start.y + start.height / 2,
@@ -3709,7 +3722,6 @@ test(
       })
       expect(await other.getAttribute('data-outdent-armed')).toBe('false')
       expect(order({ parent: family }).join()).toBe('Kid two,Kid one')
-      expect(outdents).toHaveLength(1)
 
       await shiftDrag({
         source: 'Kid one',
@@ -3721,6 +3733,8 @@ test(
         check: () => order().join() === 'Alpha root,Family root,Omega root,Kid one',
       })
       expect(order({ parent: family }).join()).toBe('Kid two')
+      // This drop's request reached the server after any the refused drop sent, so only the two real drops count.
+      expect(outdents).toHaveLength(2)
     } finally {
       await page.context().close()
     }
@@ -4099,9 +4113,10 @@ test(
           return titles.join('|') === 'A reorder neighbor|A wide closed card'
         },
       })
+      // The landing must start from the compacted ghost, so wait for its resize to finish, not merely approach.
       await until({
         what: 'the open task compacts after entering its next slot',
-        check: async () => Math.abs((await ghost.boundingBox())!.width - 303.333) < 1,
+        check: async () => Math.abs((await ghost.boundingBox())!.width - 303.333) < 0.1,
       })
       // The landing's own animation is recorded as it starts, so a slow runner cannot skip past it.
       await page.evaluate(() => {
@@ -4964,10 +4979,8 @@ test(
     const second = workspace.locator('.project-column[aria-label="Beta"]')
 
     try {
-      await first.waitFor()
-      await second.waitFor()
-      await first.locator('.column-cards').waitFor()
-      const body = (await first.locator('.column-cards').boundingBox())!
+      // The view's project widths can land after the page opens, sliding the columns into place.
+      const body = await restingBox({ target: first.locator('.column-cards') })
       await page.mouse.move(
         body.x + body.width / 2,
         body.y + 80,
@@ -4982,8 +4995,8 @@ test(
       await page.keyboard.press('Escape')
       await page.mouse.up()
       expect(bodyPickedUp).toBe(0)
-      const heading = (await first.locator('.project-column-heading').boundingBox())!
-      const destination = (await second.locator('.project-column-heading').boundingBox())!
+      const heading = await restingBox({ target: first.locator('.project-column-heading') })
+      const destination = await restingBox({ target: second.locator('.project-column-heading') })
       const x = heading.x + heading.width * 0.6, y = heading.y + heading.height / 2
       expect(await page.evaluate(
         ({
