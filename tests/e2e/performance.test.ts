@@ -49,10 +49,19 @@ test(
     for (let index = 0; index < EARLIER_PROJECTS; index++) {
       const path = second.folder({ name: `earlier-project-${index}` })
       mkdirSync(
-        join(path, '.git'),
+        join(
+          path,
+          '.git',
+        ),
         { recursive: true },
       )
-      await second.owner({ args: ['project', 'add', path] })
+      await second.owner({
+        args: [
+          'project',
+          'add',
+          path,
+        ],
+      })
     }
 
     for (let index = 0; index < PROJECT_TASKS.length; index++) {
@@ -293,7 +302,7 @@ test(
     }
 
     const earlierProject = second.folder({ name: 'later-project' })
-    const earlierWidth = await other.evaluate(({ offsetWidth }) => offsetWidth)
+    const earlierWidth = await other.evaluate(({ clientWidth }) => clientWidth)
     mkdirSync(
       join(
         earlierProject,
@@ -353,7 +362,7 @@ test(
       positions.every(x => Math.abs(x - originalBox.x) < 0.5),
       JSON.stringify(positions),
     ).toBe(true)
-    expect(await other.evaluate(({ offsetWidth }) => offsetWidth)).toBeGreaterThan(earlierWidth)
+    expect(await other.evaluate(({ clientWidth }) => clientWidth)).toBeGreaterThan(earlierWidth)
     await until({
       what: 'an earlier Hydra changes width without stealing the direct address',
       check: async () => {
@@ -544,7 +553,10 @@ test(
       what: 'the wheel reaches its destination before task navigation',
       check: () => scroller.evaluate(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
-        (element, delta) => element.scrollTop >= delta,
+        (
+          element,
+          delta,
+        ) => element.scrollTop >= delta,
         WHEEL_DELTA,
       ),
     })
@@ -644,7 +656,11 @@ test(
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
 
-    await scroller.evaluate(element => element.scrollTo({ top: 0, behavior: 'instant' }))
+    // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+    await scroller.evaluate(element => element.scrollTo({
+      top: 0,
+      behavior: 'instant',
+    }))
     const displacedCard = await selectedCard.boundingBox()
     expect(displacedCard?.y).toBeGreaterThanOrEqual(initialColumnBox.y + initialColumnBox.height)
     await revealTarget()
