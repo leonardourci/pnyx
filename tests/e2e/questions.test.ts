@@ -191,6 +191,7 @@ test(
     const attempts: string[] = []
     let lostReceipt: string | undefined
     let dropped = false
+    const receiptDropped = Promise.withResolvers<void>()
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -226,6 +227,7 @@ test(
 
             if (!dropped && lostReceipt && received.id === lostReceipt) {
               dropped = true
+              receiptDropped.resolve()
 
               return
             }
@@ -369,10 +371,7 @@ test(
       expect(card.task.asks[0].choice).toBe('Open only')
     }
 
-    await until({
-      what: 'the first group answer receipt is dropped',
-      check: async () => dropped,
-    })
+    await receiptDropped.promise
     await page.reload()
     await workspace.getByRole(
       'button',
@@ -388,6 +387,8 @@ test(
     await retry.waitFor()
     // Reload can render Zero's cached questions before the fresh answer rows arrive.
     await workspace.locator('.waiting-decisions').waitFor({ state: 'detached' })
+    expect(await workspace.locator('.waiting-decisions').count()).toBe(0)
+    expect(dropped).toBe(true)
 
     await retry.click()
     await until({
