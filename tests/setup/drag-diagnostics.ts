@@ -30,17 +30,19 @@ export async function recordDragDiagnostics({
     snapshots: true,
     sources: true,
   })
+  const entries: unknown[] = []
+
+  page.on(
+    'console',
+    message => {
+      const text = message.text()
+
+      if (text.startsWith('PNYX_DRAG_DIAGNOSTIC ')) {
+        entries.push(JSON.parse(text.slice('PNYX_DRAG_DIAGNOSTIC '.length)))
+      }
+    },
+  )
   await page.addInitScript(() => {
-    const entries: unknown[] = JSON.parse(sessionStorage.getItem('dragDiagnosticEntries') ?? '[]')
-    window.addEventListener(
-      'beforeunload',
-      () => {
-        sessionStorage.setItem(
-          'dragDiagnosticEntries',
-          JSON.stringify(entries),
-        )
-      },
-    )
     const pointer = {
       x: 0,
       y: 0,
@@ -56,18 +58,14 @@ export async function recordDragDiagnostics({
       event: string
       state: unknown
     }) => {
-      entries.push({
+      console.debug('PNYX_DRAG_DIAGNOSTIC ' + JSON.stringify({
         at: performance.now(),
         origin: performance.timeOrigin,
         event,
         state,
-      })
+      }))
     }
 
-    Object.assign(
-      window,
-      { dragDiagnosticEntries: entries },
-    )
     document.addEventListener(
       'pnyx:drag-diagnostic',
       event => {
@@ -193,11 +191,7 @@ export async function recordDragDiagnostics({
           folder,
           'frames.json',
         ),
-        JSON.stringify(await page.evaluate(() =>
-          Reflect.get(
-            window,
-            'dragDiagnosticEntries',
-          ))),
+        JSON.stringify(entries),
       )
       await context.tracing.stop({
         path: join(
