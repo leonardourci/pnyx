@@ -340,6 +340,7 @@ export function Oracle({
   // While a filter is half-typed, the menu's selection stands in for the results list's.
   const shownResult = token ? menuAction : current
   const settings: SettingProps = {
+    hydras,
     view,
     connected,
     save,
@@ -910,11 +911,11 @@ export function Oracle({
         onKeyDown={inputKey}
       />
       {open && (
-        <div className="oracle-body grid flex-1 min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t border-subtle max-[760px]:grid-cols-1 max-[760px]:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="oracle-body grid flex-1 min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t border-subtle max-phone:grid-cols-1 max-phone:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
           <div
             ref={list}
             id={listId}
-            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity ease-ui duration-fast data-pending:opacity-55 max-[760px]:border-r-0 max-[760px]:border-b"
+            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity ease-ui duration-fast data-pending:opacity-55 max-phone:border-r-0 max-phone:border-b"
             role="listbox"
             aria-label={ask ? 'Ask' : listLabel}
             data-pending={dimmed || undefined}

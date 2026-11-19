@@ -1209,7 +1209,7 @@ export function HydraChat({
 
   return (
     <aside
-      className="hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-[760px]:w-70 max-[760px]:basis-70 [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto"
+      className="hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-70 max-phone:basis-70 [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto"
       aria-label="Hydra’s chat"
       style={{
         width: width ?? view.hydraWidth,
@@ -1228,7 +1228,7 @@ export function HydraChat({
       </HydraHead>
       <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
         <div
-          className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:outline-offset-[-3px]"
+          className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
           ref={streamRef}
           data-key-scope="thread"
           role="region"

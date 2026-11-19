@@ -16,6 +16,7 @@ import { PROJECT_CONTENT_INSET, projectWidth } from './project-layout.ts'
 
 export function ProjectColumn({
   column,
+  poleis,
   hydraId,
   view,
   save,
@@ -23,6 +24,7 @@ export function ProjectColumn({
   children,
   create,
 }: {
+  poleis?: string[]
   column: ProjectColumnData
   hydraId: string
   view: ViewPreferences
@@ -149,7 +151,7 @@ export function ProjectColumn({
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
       lifted={lifted}
-      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-[760px]:snap-start data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-inset data-[outdent-armed=true]:ring-gold ${folded ? 'folded min-w-12' : ''}`}
+      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-phone:snap-start data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-inset data-[outdent-armed=true]:ring-gold ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}
       data-outdent-armed={outdentArmed}
@@ -164,6 +166,7 @@ export function ProjectColumn({
     >
       <ProjectColumnHeader
         column={column}
+        poleis={poleis}
         folded={folded}
         hint={showHint}
         drag={sort}

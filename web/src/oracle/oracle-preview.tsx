@@ -76,7 +76,7 @@ function Snippets({
         snippet,
         index,
       ) => (
-        <p key={index} className="oracle-snippet flex flex-col gap-0.5 max-h-[9em] overflow-hidden px-2 py-1.5 border-l-2 border-gold-line rounded-sm bg-background whitespace-pre-wrap wrap-anywhere">
+        <p key={index} className="oracle-snippet flex flex-col gap-0.5 max-h-oracle-excerpt overflow-hidden px-2 py-1.5 border-l-2 border-gold-line rounded-sm bg-background whitespace-pre-wrap wrap-anywhere">
           <span className="muted small">{SNIPPET_SOURCES[snippet.kind]} · {relativeTime({
             at: snippet.at,
             now,
@@ -240,6 +240,10 @@ export function FilterPreview({
 }
 
 export interface SettingProps {
+  hydras: {
+    id: string
+    name: string
+  }[]
   view: ViewPreferences
   connected: boolean
   save({ patch }: { patch: unknown }): Promise<boolean>

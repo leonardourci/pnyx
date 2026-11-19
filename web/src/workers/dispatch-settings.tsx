@@ -37,9 +37,9 @@ function CandidateRow({
 }: ComponentProps<'div'> & { add?: boolean }) {
   const appearance = add
     ? 'dispatch-add border-b-0 [&>.account-model-picker]:col-span-full [&>.account-model-picker]:justify-self-start [&>.account-model-picker>.button]:min-h-6 [&>.account-model-picker>.button]:gap-1 [&>.account-model-picker>.button]:text-meta'
-    : 'dispatch-candidate border-b border-subtle [&>.hydra-agent-pickers]:col-span-7 [&>.hydra-agent-pickers]:col-start-1 [&>.hydra-agent-pickers]:grid [&>.hydra-agent-pickers]:grid-cols-subgrid [&>.hydra-agent-pickers]:gap-x-[normal] [&>.hydra-agent-pickers>:nth-child(2_of_.picker-field)]:col-start-3 [&>.hydra-agent-pickers>:nth-child(3_of_.picker-field)]:col-start-5 [&>.hydra-agent-pickers>.tooltip-anchor]:col-start-7 [&>.hydra-agent-pickers>[role=alert]]:col-span-full [&_.select-menu]:top-[calc(100%+4px)] [&_.select-menu]:bottom-auto [&>.dispatch-remove-slot]:col-start-[-2] [&>.dispatch-remove-slot]:justify-self-end [&>.hydra-agent-pickers>*]:justify-self-start [&>.hydra-agent-pickers>.tooltip-anchor]:justify-self-center max-[760px]:[&>.hydra-agent-pickers]:flex max-[760px]:[&>.hydra-agent-pickers]:basis-full'
+    : 'dispatch-candidate border-b border-subtle [&>.hydra-agent-pickers]:col-span-7 [&>.hydra-agent-pickers]:col-start-1 [&>.hydra-agent-pickers]:grid [&>.hydra-agent-pickers]:grid-cols-subgrid [&>.hydra-agent-pickers]:gap-x-[normal] [&>.hydra-agent-pickers>:nth-child(2_of_.picker-field)]:col-start-3 [&>.hydra-agent-pickers>:nth-child(3_of_.picker-field)]:col-start-5 [&>.hydra-agent-pickers>.tooltip-anchor]:col-start-7 [&>.hydra-agent-pickers>[role=alert]]:col-span-full [&_.select-menu]:top-[calc(100%+--spacing(1))] [&_.select-menu]:bottom-auto [&>.dispatch-remove-slot]:col-start-[-2] [&>.dispatch-remove-slot]:justify-self-end [&>.hydra-agent-pickers>*]:justify-self-start [&>.hydra-agent-pickers>.tooltip-anchor]:justify-self-center max-phone:[&>.hydra-agent-pickers]:flex max-phone:[&>.hydra-agent-pickers]:basis-full'
 
-  return <div {...props} className={`col-span-full grid grid-cols-subgrid items-center py-2 px-0 max-[760px]:flex max-[760px]:flex-wrap max-[760px]:gap-(--settings-column-gap) max-[760px]:py-(--settings-column-gap) ${appearance}`} />
+  return <div {...props} className={`col-span-full grid grid-cols-subgrid items-center py-2 px-0 max-phone:flex max-phone:flex-wrap max-phone:gap-(--settings-column-gap) max-phone:py-(--settings-column-gap) ${appearance}`} />
 }
 
 const CELL_CLASSES = 'dispatch-cell [:where(&)]:w-full py-0.5 px-1.25 border-transparent bg-transparent hover:border-line focus:border-gold-line focus:bg-surface focus:outline-none'
@@ -141,7 +141,7 @@ function useStartsNow({
 
 function HowPicked() {
   return (
-    <section className="dispatch-how py-2.5 px-3 border border-subtle rounded-lg bg-background [&_ol]:mt-2 [&_ol]:mx-0 [&_ol]:mb-0 [&_ol]:p-0 [&_ol]:list-none [&_ol]:grid [&_ol]:grid-cols-3 [&_ol]:gap-2.5 [&_li]:pl-2 [&_li]:border-l-2 [&_li]:border-gold-line [&_li]:text-muted [&_li]:text-meta [&_li_strong]:flex [&_li_strong]:items-center [&_li_strong]:gap-1.25 [&_li_strong]:mb-0.5 [&_li_strong]:text-ink [&_li_strong]:text-ui [&>.dispatch-desc]:mt-2 [&>.dispatch-desc]:mx-0 [&>.dispatch-desc]:mb-0 max-[760px]:[&_ol]:grid-cols-1" aria-labelledby="dispatch-how">
+    <section className="dispatch-how py-2.5 px-3 border border-subtle rounded-lg bg-background [&_ol]:mt-2 [&_ol]:mx-0 [&_ol]:mb-0 [&_ol]:p-0 [&_ol]:list-none [&_ol]:grid [&_ol]:grid-cols-3 [&_ol]:gap-2.5 [&_li]:pl-2 [&_li]:border-l-2 [&_li]:border-gold-line [&_li]:text-muted [&_li]:text-meta [&_li_strong]:flex [&_li_strong]:items-center [&_li_strong]:gap-1.25 [&_li_strong]:mb-0.5 [&_li_strong]:text-ink [&_li_strong]:text-ui [&>.dispatch-desc]:mt-2 [&>.dispatch-desc]:mx-0 [&>.dispatch-desc]:mb-0 max-phone:[&_ol]:grid-cols-1" aria-labelledby="dispatch-how">
       <h4 id="dispatch-how"><Icon name="about" size={ICON_SIZE.inline} />How a worker’s agent is picked</h4>
       <ol>
         <li><strong><Icon name="dispatch" size={ICON_SIZE.inline} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
@@ -263,7 +263,7 @@ function RuleGroup({
   })
 
   return (
-    <div className="dispatch-rule col-span-full grid grid-cols-subgrid pb-1.5 [&+.dispatch-rule]:border-t [&+.dispatch-rule]:border-line max-[760px]:block" data-rule={name}>
+    <div className="dispatch-rule col-span-full grid grid-cols-subgrid pb-1.5 [&+.dispatch-rule]:border-t [&+.dispatch-rule]:border-line max-phone:block" data-rule={name}>
       <div className="dispatch-rule-head col-span-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-y-0.5 gap-x-3 pt-3 [&>.dispatch-remove-slot]:row-start-1 [&>.dispatch-remove-slot]:col-start-2">
         <div className="dispatch-rule-text contents [&>:first-child]:justify-self-start [&>:not(:first-child)]:col-span-full">
           {fixed ? (
@@ -495,7 +495,7 @@ function RulesTable({
         change saves as soon as you pick it or leave the field; a problem shows beside its rule
         and saves nothing.
       </DispatchDescription>
-      <div className="dispatch-table [--dispatch-space:minmax(calc(var(--settings-column-gap)/2),1fr)] grid grid-cols-[repeat(4,max-content_var(--dispatch-space))_max-content] py-0 px-5 border border-line rounded-lg bg-surface [&_.dispatch-cell[data-changed]]:bg-gold-wash [&_.picker-field[data-changed]>:is(.select,.account-model-picker)>.button]:bg-gold-wash [&_.fast-toggle[data-changed]]:bg-gold-wash [&_[aria-invalid=true]]:shadow-invalid [&_.picker-field[data-invalid]>:is(.select,.account-model-picker)>.button]:shadow-invalid max-[760px]:grid-cols-1">
+      <div className="dispatch-table [--dispatch-space:minmax(calc(var(--settings-column-gap)/2),1fr)] grid grid-cols-[repeat(4,max-content_var(--dispatch-space))_max-content] py-0 px-5 border border-line rounded-lg bg-surface [&_.dispatch-cell[data-changed]]:bg-gold-wash [&_.picker-field[data-changed]>:is(.select,.account-model-picker)>.button]:bg-gold-wash [&_.fast-toggle[data-changed]]:bg-gold-wash [&_[aria-invalid=true]]:shadow-invalid [&_.picker-field[data-invalid]>:is(.select,.account-model-picker)>.button]:shadow-invalid max-phone:grid-cols-1">
         <RuleGroup
           draft={draft}
           at="default"
