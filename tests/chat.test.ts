@@ -444,7 +444,9 @@ test(
         String(Number(reportSeq) - 1),
       ],
     })
-    const report = checked.changes.find((change: { seq: number }) => change.seq === Number(reportSeq))
+    const report = checked.changes.find(
+      (change: { seq: number }) => change.seq === Number(reportSeq),
+    )
     expect(report).toBeDefined()
     expect(report).not.toHaveProperty('reportStatus')
   },
@@ -640,9 +642,10 @@ test(
     })
     expect(helper.answered).toBe(0)
 
-    pnyx.claude.plan({
+    const reportHelperTurn = pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice report handled in background'),
+      hold: true,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -666,6 +669,20 @@ test(
       ],
     })
     helperTurn.release()
+    await until({
+      what: 'helper to hold the report',
+      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_ACTOR?.startsWith('helper:')
+        && session.received.some(text => text.includes('End of invoice evidence'))),
+    })
+    await hydra.chat({ text: 'Check the invoice report while the helper works' })
+    await until({
+      what: 'main to finish reading the leased report',
+      check: () => main.received.some(text => text.includes('Check the invoice report while the helper works'))
+        && queue({ hydraId: hydra.id })?.working === false,
+    })
+    expect(main.received.find(text => text.includes('Check the invoice report while the helper works')))
+      .toContain('[helper handling]')
+    reportHelperTurn.release()
     await until({
       what: 'helper to finish the worker report',
       check: () => rows<{ count: number }>({
@@ -704,9 +721,9 @@ test(
     await hydra.chat({ text: 'Summarize the invoice status' })
     await until({
       what: 'main to read the handled report',
-      check: () => main.received.some(text => text.includes('Invoice report handled in background')),
+      check: () => main.received.some(text => text.includes('Summarize the invoice status')),
     })
-    const delivered = main.received.find(text => text.includes('Invoice report handled in background'))!
+    const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
     expect(delivered).toContain('[handled]')
     expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
     pnyx.claude.plan({
