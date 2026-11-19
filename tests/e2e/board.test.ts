@@ -163,7 +163,8 @@ test(
       .waitFor()
     const exportCard = shown({ title: 'Ship the export' })
     expect(await exportCard.count()).toBe(1)
-    expect(await column({ title: 'Ideas' }).locator(exportCard).count()).toBe(1)
+    expect(await column({ title: 'Ideas' }).locator(exportCard)
+      .count()).toBe(1)
     await hydra.owner({
       args: [
         'task',
