@@ -731,6 +731,46 @@ export function SortableWorkspace({
 
   useLayoutEffect(
     () => {
+      if (!active || active.kind !== 'task' || !shift || !latestDetection.current?.pointerCoordinates) {
+        return
+      }
+
+      // A reorder can slide a new target under a stationary pointer.
+      let frame = 0
+      let pointed: Element | null = null
+
+      const refresh = () => {
+        const pointer = latestDetection.current?.pointerCoordinates
+
+        if (pointer) {
+          const next = document.elementFromPoint(
+            pointer.x,
+            pointer.y,
+          )
+
+          if (next !== pointed) {
+            pointed = next
+            detection.current = null
+            setModifier({ pressed: modifier.current })
+          }
+        }
+
+        frame = requestAnimationFrame(refresh)
+      }
+
+      frame = requestAnimationFrame(refresh)
+
+      return () => cancelAnimationFrame(frame)
+    },
+    [
+      active,
+      shift,
+      setModifier,
+    ],
+  )
+
+  useLayoutEffect(
+    () => {
       if (!active) {
         return
       }
