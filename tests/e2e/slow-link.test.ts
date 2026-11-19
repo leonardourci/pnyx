@@ -60,16 +60,12 @@ test(
       },
     })
 
-    try {
-      await page.getByRole(
-        'button',
-        {
-          name: 'Large task 1',
-          exact: true,
-        },
-      ).waitFor({ timeout: SLOW_SYNC_MS })
-    } finally {
-      await page.context().close()
-    }
+    await page.getByRole(
+      'button',
+      {
+        name: 'Large task 1',
+        exact: true,
+      },
+    ).waitFor({ timeout: SLOW_SYNC_MS })
   },
 )
