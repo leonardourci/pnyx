@@ -5428,6 +5428,14 @@ test(
   async ({ onTestFinished }) => {
     const hydra = await pnyx.hydra()
     const project = hydra.folder({ name: 'last-reveal' })
+    const earlier = hydra.folder({ name: 'earlier-reveal' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        earlier,
+      ],
+    })
     await hydra.owner({
       args: [
         'project',
@@ -5507,8 +5515,26 @@ test(
     })
     await expect.poll(async () => (await column.boundingBox())?.width).toBeGreaterThan(1700)
     expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(userScroll)
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            projectOrder: [
+              project,
+              earlier,
+            ],
+          },
+        }),
+      ],
+    })
+    await expect.poll(() => workspace.locator('.project-column').nth(1)
+      .getAttribute('data-column')).toBe(project)
+    expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBe(userScroll)
     await projectChip.dispatchEvent('click')
-    await expect.poll(() => axis.evaluate(({ scrollLeft }) => scrollLeft)).toBeGreaterThan(userScroll)
+    await expect.poll(() => axis.evaluate(({ scrollLeft }) => scrollLeft)).not.toBe(userScroll)
   },
 )
 
