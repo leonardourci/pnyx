@@ -410,6 +410,14 @@ test(
       await document.fonts.ready
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     })
+    await workspace.getByLabel(
+      'Hydra conversation',
+      { exact: true },
+    ).getByText(
+      'The active work is moving through the Hydra.',
+      { exact: true },
+    )
+      .waitFor()
     const finishStream = await beginUIWindow({ page })
     stream.release()
     await workspace.getByLabel(
