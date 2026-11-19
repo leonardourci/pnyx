@@ -5680,6 +5680,11 @@ test(
       width: clampedWidth - endSlack * 2,
       height: viewport.height,
     })
+    await expect.poll(() => axis.evaluate(({
+      scrollWidth,
+      clientWidth,
+    }) => scrollWidth - clientWidth))
+      .toBeGreaterThan(navigationScroll)
     await page.evaluate(() => new Promise<void>(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     }))
