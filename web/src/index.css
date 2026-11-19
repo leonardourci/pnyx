@@ -387,7 +387,7 @@ kbd {
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
 
-.message .attachment-card:not(.composer-field *) { @apply m-[0_1px] select-auto; }
+.message .attachment-card:not(.composer-field *) { @apply mt-0 mr-px mb-0 ml-px select-auto; }
 
 @keyframes hydra-spin { to { transform: rotate(360deg); } }
 
