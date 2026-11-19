@@ -559,29 +559,36 @@ test(
             },
           )
           await openModalButton.hover()
-          // Three unchanged frames still captured 1.196 px of settling in CI.
           await until({
             what: 'the card and its column stop moving before opening the modal',
-            check: async () => {
-              const position = async () => JSON.stringify([
-                await box(),
-                await scrollTop(),
+            check: () => card.evaluate(async element => {
+              const scroller = element.closest('.project-cards')!
+              const position = () => JSON.stringify([
+                element.getBoundingClientRect().toJSON(),
+                scroller.scrollTop,
               ])
-              const first = await position()
+              const before = position()
+              await new Promise(requestAnimationFrame)
 
-              for (let check = 0; check < 3; check++) {
-                await new Promise(resolve => setTimeout(
-                  resolve,
-                  300,
-                ))
+              if (position() !== before) {
+                return false
+              }
 
-                if (first !== await position()) {
+              for (let node: Element | null = element; node; node = node.parentElement) {
+                const moving = node.getAnimations().some(animation => {
+                  const end = animation.effect?.getComputedTiming().endTime
+                  const active = animation.pending || animation.playState === 'running'
+
+                  return active && Number.isFinite(end)
+                })
+
+                if (moving) {
                   return false
                 }
               }
 
               return true
-            },
+            }),
           })
           const slot = await box()
           const scrolled = await scrollTop()
