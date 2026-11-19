@@ -862,10 +862,11 @@ test(
         check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
       })
       const reply = 'Message handled'
+      const partial = 'Message'
       const turn = pnyx.claude.plan({
         hydra: hydra.id,
         hold: true,
-        partial: 'Message',
+        partial,
         reply,
       })
       onTestFinished(() => turn.release())
@@ -888,6 +889,10 @@ test(
         what: 'worker receives the modal message',
         check: () => worker.received.some(text => text.includes(message)),
       })
+      await modal.getByText(
+        partial,
+        { exact: true },
+      ).waitFor({ state: 'visible' })
 
       for (const status of [
         'Running',
