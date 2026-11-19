@@ -1604,10 +1604,18 @@ test(
       })
       released = true
       sockets.forEach(socket => socket.end())
-      expect((await detachListing).projects).toContainEqual(expect.objectContaining({
+      const detachedList = await detachListing
+      expect(detachedList.projects).toContainEqual(expect.objectContaining({
         path,
         state: 'detached',
       }))
+      const currentList = await allowed.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })
+      expect(detachedList.revision).toBe(currentList.revision)
       await allowed.owner({
         args: [
           'project',
