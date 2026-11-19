@@ -44,7 +44,8 @@ export default defineConfig({
           name: 'integration',
           include: ['tests/*.test.ts'],
           // Each file runs a server, git and pnyx-axi processes; more files at once than half the cores starve each
-          // other of CPU.
+          // other of CPU. Vitest runs a one-worker project of group order 0 last, so this group is numbered too.
+          sequence: { groupOrder: 1 },
           maxWorkers: '50%',
         },
       },
@@ -56,7 +57,7 @@ export default defineConfig({
           exclude: ['tests/e2e/performance.test.ts'],
           // A browser journey runs zero-cache and Chrome beside its server. The journeys run after the integration files and on
           // a quarter of the cores, so they starve neither those files nor each other of CPU.
-          sequence: { groupOrder: 1 },
+          sequence: { groupOrder: 2 },
           maxWorkers: '25%',
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
@@ -67,7 +68,7 @@ export default defineConfig({
         test: {
           name: 'performance',
           include: PERFORMANCE_JOURNEY ? ['tests/e2e/performance.test.ts'] : [],
-          sequence: { groupOrder: 2 },
+          sequence: { groupOrder: 3 },
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
         },
