@@ -530,7 +530,7 @@ test(
     children.spawned({ child: helper })
     await trackChildren({ hydraId: hydra.id }).stopAll()
     await until({
-      what: 'worker and helper tools to exit',
+      what: 'the task worker to exit',
       check: () => worker.exitCode !== null || worker.signalCode !== null,
     })
     await until({
