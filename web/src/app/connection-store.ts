@@ -474,6 +474,7 @@ export function createHydraConnection({
           return preview ? {
             ...hydra,
             name: preview.name,
+            polis: preview.polis ?? 'shared',
           } : hydra
         }),
       },

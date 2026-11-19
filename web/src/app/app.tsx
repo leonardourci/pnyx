@@ -44,6 +44,10 @@ export function App() {
   const duration = useMotionDuration()
   const hydra = useHydra()
 
+  const [
+    polisFilter,
+    filterPolis,
+  ] = useState<string | undefined>()
   const current = hydra.navigation.hydraId
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
@@ -98,6 +102,22 @@ export function App() {
   ) =>
     orderedHydras.findIndex(item => item.id === a.navigation.hydraId)
     - orderedHydras.findIndex(item => item.id === b.navigation.hydraId))
+
+  const currentPolis = orderedHydras.find(item => item.id === current)?.polis ?? 'shared'
+  const shownFilter = currentPolis === polisFilter ? polisFilter : undefined
+  useEffect(
+    () => {
+      if (polisFilter && currentPolis !== polisFilter) {
+        filterPolis(undefined)
+      }
+    },
+    [
+      currentPolis,
+      polisFilter,
+    ],
+  )
+  const visibleWorkspaces = workspaces.filter(workspace => !shownFilter
+    || (orderedHydras.find(item => item.id === workspace.navigation.hydraId)?.polis ?? 'shared') === shownFilter)
 
   const drop = ({ preview }: { preview: SortMove }) => {
     const commit = async () => {
@@ -279,7 +299,8 @@ export function App() {
     commit().catch((error: Error) => setRootError(error.message))
   }
 
-  const workspaceOrder = workspaces.map(workspace => workspace.navigation.hydraId).join(':')
+  const visibleWorkspaceIds = visibleWorkspaces.map(workspace => workspace.navigation.hydraId)
+  const workspaceOrder = visibleWorkspaceIds.join(':')
 
   useLayoutEffect(
     () => {
@@ -580,6 +601,22 @@ export function App() {
     ],
   )
 
+  const choosePolis = async ({ polis }: { polis?: string }) => {
+    const destination = orderedHydras.find(item => (item.polis ?? 'shared') === polis)
+
+    if (polis && currentPolis !== polis && destination) {
+      try {
+        await navigate({ url: `/hydra/${encodeURIComponent(destination.id)}/` })
+      } catch (error) {
+        rootNotify({ text: error instanceof Error ? error.message : String(error) })
+
+        return
+      }
+    }
+
+    filterPolis(polis)
+  }
+
   const hydraLayout = preview?.kind === 'hydra' ? `${preview.id}:${preview.over}:${preview.before}` : ''
 
   return (
@@ -614,10 +651,12 @@ export function App() {
                   />
                   </StatusNotice>
                 )}
-                <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
-                  {workspaces.map(workspace => (
+                <SortGroup id="hydra-axis" items={visibleWorkspaceIds}>
+                  {visibleWorkspaces.map(workspace => (
                     <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
                       <WorkspaceInstance
+                        polisFilter={shownFilter}
+                        filterPolis={choosePolis}
                         active={workspace.navigation.hydraId === current}
                         navigatePage={hydra.navigate}
                         navigate={navigate}

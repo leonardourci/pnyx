@@ -1,3 +1,5 @@
+import { Fragment } from 'react'
+import { Chip } from '#web-shared/ui/chip.tsx'
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { HydraSummary } from '#app/server-hydras.ts'
@@ -11,16 +13,28 @@ export function HydraChips({
   current,
   navigate,
   createHydra,
+  polisFilter,
+  filterPolis,
 }: {
   hydras: HydraSummary[]
   current: string
   navigate({ url }: { url: string }): Promise<void>
+  polisFilter?: string
+  filterPolis({ polis }: { polis?: string }): void
   createHydra(): unknown
 }) {
   return (
     <nav data-sort-surface={`hydra-chips:${current}`} className="hydra-chips flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden" aria-label="Hydra navigation">
       <SortGroup id={`hydra-chips:${current}`} items={hydras.map(hydra => hydra.id)}>
-        {hydras.map(hydra => {
+        {hydras.map((
+          hydra,
+          index,
+        ) => {
+          const polis = hydra.polis ?? 'shared'
+          const previousPolis = hydras[index - 1]?.polis ?? 'shared'
+          const startsPolis = index === 0 || previousPolis !== polis
+          const selected = polisFilter === polis
+          const nextFilter = selected ? undefined : polis
           const waiting = hydra.asks ?? hydra.projects.reduce(
             (
               count,
@@ -30,24 +44,40 @@ export function HydraChips({
           )
 
           return (
-            <SortableChip
-              item={{
-                id: hydra.id,
-                kind: 'hydra',
-                scope: 'hydras',
-                hydra: hydra.id,
-              }}
-              key={hydra.id}
-              variant="hydra"
-              data-sort-id={hydra.id}
-              data-sort-kind="hydra"
-              data-sort-scope="hydras"
-              aria-current={hydra.id === current ? 'page' : undefined}
-              onClick={() => navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })}
-            >
-              <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
-              <WaitingCount count={waiting} />
-            </SortableChip>
+            <Fragment key={hydra.id}>
+              {startsPolis && (
+                <Chip
+                  variant="settings"
+                  aria-label={`Filter polis ${polis}`}
+                  aria-pressed={selected}
+                  onClick={() => filterPolis({ polis: nextFilter })}
+                >{polis}
+                </Chip>
+              )}
+              <SortableChip
+                item={{
+                  id: hydra.id,
+                  kind: 'hydra',
+                  scope: 'hydras',
+                  hydra: hydra.id,
+                }}
+                variant="hydra"
+                data-sort-id={hydra.id}
+                data-sort-kind="hydra"
+                data-sort-scope="hydras"
+                aria-current={hydra.id === current ? 'page' : undefined}
+                onClick={() => {
+                  if (polisFilter !== polis) {
+                    filterPolis({})
+                  }
+
+                  return navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })
+                }}
+              >
+                <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
+                <WaitingCount count={waiting} />
+              </SortableChip>
+            </Fragment>
           )
         })}
       </SortGroup>

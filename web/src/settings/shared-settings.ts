@@ -10,6 +10,11 @@ interface SharedSettings {
   revision: number
 }
 
+interface SharedSettingsPatch {
+  settings: Partial<Settings>
+  settingsRevision?: number
+}
+
 const resources = new Map<string, ReturnType<typeof createShared>>()
 
 const applied = ({
@@ -24,16 +29,17 @@ const applied = ({
 })
 
 function createShared({ scope }: { scope: string }) {
-  return createSettingsResource<SharedSettings, Partial<Settings>>({
+  return createSettingsResource<SharedSettings, SharedSettingsPatch>({
     scope,
     project: ({
       state,
       patch,
     }) => state && {
       ...state,
+      revision: patch.settingsRevision ?? state.revision,
       settings: applied({
         settings: state.settings,
-        patch,
+        patch: patch.settings,
       }),
     },
     represented: ({
@@ -42,10 +48,10 @@ function createShared({ scope }: { scope: string }) {
     }) => {
       const after = applied({
         settings: state.settings,
-        patch,
+        patch: patch.settings,
       })
 
-      return Object.keys(patch).every(key => JSON.stringify(after[key as SettingKey])
+      return Object.keys(patch.settings).every(key => JSON.stringify(after[key as SettingKey])
         === JSON.stringify(state.settings[key as SettingKey]))
     },
     read: ({ receipt }) => {
@@ -81,30 +87,37 @@ export function sharedSettings() {
   return resource
 }
 
-export function useSharedSettings(): Settings | undefined {
+export function useSharedSettingsState(): SharedSettings | undefined {
   const resource = sharedSettings()
 
   return useSyncExternalStore(
     resource.subscribe,
     resource.snapshot,
-  ).view?.settings
+  ).view ?? undefined
+}
+
+export function useSharedSettings(): Settings | undefined {
+  return useSharedSettingsState()?.settings
 }
 
 export function saveSharedSettings({
   command,
   patch,
   view,
+  revision: settingsRevision,
 }: {
   command: Command
   patch: Partial<Settings>
+  revision?: number
   view?: {
     patch: Record<string, unknown>
     revision: number
   }
 }) {
-  const revisionGuard = view ? [
+  const expectedRevision = view ? view.revision : settingsRevision
+  const revisionGuard = expectedRevision !== undefined ? [
     '--if-revision',
-    String(view.revision),
+    String(expectedRevision),
   ] : []
 
   return sharedSettings().write({
@@ -118,7 +131,10 @@ export function saveSharedSettings({
       '--event-id',
       crypto.randomUUID(),
     ],
-    patch,
+    patch: {
+      settings: patch,
+      settingsRevision: view ? undefined : settingsRevision,
+    },
     targets: Object.keys(patch),
   })
 }

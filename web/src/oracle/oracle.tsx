@@ -340,6 +340,7 @@ export function Oracle({
   // While a filter is half-typed, the menu's selection stands in for the results list's.
   const shownResult = token ? menuAction : current
   const settings: SettingProps = {
+    hydras,
     view,
     connected,
     save,
