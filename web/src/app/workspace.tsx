@@ -584,14 +584,18 @@ export function HydraView({
   const phone = viewport.width <= WORKSPACE_SIZING.phone
   const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
     : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.hydraWidth
-  let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2
-    + chatWidth + WORKSPACE_SIZING.columnGap
-  const projectSnaps = columns.map(column => {
-    const left = projectLeft
-    projectLeft += columnWidth({ item: column }) + WORKSPACE_SIZING.columnGap
+  let projectSnaps: number[] | undefined
 
-    return left
-  })
+  if (phone) {
+    let projectLeft = WORKSPACE_SIZING.phoneInset / 2 + chatWidth + WORKSPACE_SIZING.columnGap
+    projectSnaps = columns.map(column => {
+      const left = projectLeft
+      projectLeft += columnWidth({ item: column }) + WORKSPACE_SIZING.columnGap
+
+      return left
+    })
+  }
+
   const workspaceSizing = useWorkspaceSizing({
     element: layer,
     collapsed: view.workspace.collapsed,
