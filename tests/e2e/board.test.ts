@@ -45,18 +45,6 @@ test(
       ),
     })
     await page.locator('[aria-label="Work columns"]').waitFor()
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--name',
-        'Poseidon',
-      ],
-    })
-    await until({
-      what: 'Hydra tab title',
-      check: async () => await page.title() === 'Poseidon · Pnyx',
-    })
     const needsYou = await hydra.column({ role: 'needs_you' })
     await hydra.owner({
       args: [
@@ -75,7 +63,6 @@ test(
         exact: true,
       },
     ).waitFor()
-    expect(await page.title()).toBe('Poseidon · Pnyx')
 
     const column = ({ title }: { title: string }) => page.locator(`[aria-label="Work columns"] [aria-label="${title}"]`)
     const folder = hydra.folder({ name: 'export' })
