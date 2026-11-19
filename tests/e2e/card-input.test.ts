@@ -770,10 +770,11 @@ test(
 )
 
 test(
-  'sending in a task modal keeps overlapping workspace cards behind it',
+  'an open task modal shows brief updates and keeps overlapping cards behind it while sending',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'layering' })
+    const initialBrief = 'Original task instructions'
     await hydra.owner({
       args: [
         'project',
@@ -813,6 +814,8 @@ test(
         'layering',
         '--title',
         'Task layering',
+        '--brief',
+        initialBrief,
         '--folder',
         folder,
         '--project',
@@ -861,19 +864,26 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
       })
+      const originalBrief = modal.getByText(
+        initialBrief,
+        { exact: true },
+      )
+      await originalBrief.waitFor({ state: 'visible' })
+      const updatedBrief = 'Review the latest task instructions'
       await hydra.owner({
         args: [
           'task',
           'brief',
           task.id,
           '--brief',
-          'Instructions updated while the modal stays open',
+          updatedBrief,
         ],
       })
       await modal.getByText(
-        'Instructions updated while the modal stays open',
+        updatedBrief,
         { exact: true },
-      ).waitFor()
+      ).waitFor({ state: 'visible' })
+      expect(await originalBrief.isVisible()).toBe(false)
       const reply = 'Message handled'
       const partial = 'Message'
       const turn = pnyx.claude.plan({
