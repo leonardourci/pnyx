@@ -3806,7 +3806,7 @@ test(
       ...env,
       PNYX_HYDRA: target.id,
     }
-    expect(parsed(await pnyxAxi({
+    const foreignProjects = parsed(await pnyxAxi({
       env: foreignHydra,
       args: [
         'project',
@@ -3814,7 +3814,9 @@ test(
         '--hydra',
         source.id,
       ],
-    })).projects).toBe('none: no projects attached')
+    }))
+    expect(foreignProjects.projects).toBe('none: no projects attached')
+    expect(foreignProjects).not.toHaveProperty('help')
     expect((await pnyxAxi({
       env: foreignHydra,
       args: [

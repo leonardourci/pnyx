@@ -213,20 +213,22 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
     let memory: Output | undefined
 
-    try {
-      memory = await projectMemoryCommand({
-        args: [
-          'list',
-          '--project',
-          project.path,
-          '--hydra',
-          hydraId,
-        ],
-      })
-    } catch (error) {
-      // An unreadable or detached project still has an attachment record.
-      if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
-        throw error
+    if (!project.detached) {
+      try {
+        memory = await projectMemoryCommand({
+          args: [
+            'list',
+            '--project',
+            project.path,
+            '--hydra',
+            hydraId,
+          ],
+        })
+      } catch (error) {
+        if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+          throw error
+        }
+        // Attachment metadata remains visible when memory access is denied.
       }
     }
 
@@ -621,7 +623,7 @@ pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] -
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
-Project list, show and remove expose attachments independently of memory read access. Project list includes each readable project’s polis and the Hydra’s readable destinations in readPoleis.
+Project list, show and remove work independently of memory access for the owner and the Hydra that holds the attachment. Project list includes each readable project’s polis and the Hydra’s readable destinations in readPoleis.
 Each project belongs to one polis (shared by default); only attached Hydras that may read that polis see its memory. Move changes its assigned polis explicitly.
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
