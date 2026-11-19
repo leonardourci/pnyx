@@ -5542,7 +5542,7 @@ test(
         JSON.stringify({ workspace: { chatCollapsed: false } }),
       ],
     })
-    expect(heldQueries.length).toBeGreaterThan(0)
+    await expect.poll(() => heldQueries.length).toBeGreaterThan(0)
 
     const releaseQueries = async () => {
       // Keep the first target snapshot behind the focus poll's deadline to exercise a late-mounted composer.
