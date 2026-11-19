@@ -86,14 +86,15 @@ jobs:
         run: |
           nproc
           vmstat -n -t 5 > "$RUNNER_TEMP/vmstat.log" & sampler=$!
+          (while sleep 20; do date +%T; ps -eo rss=,nlwp=,args= --sort=-rss | head -10 | cut -c1-170; done) > "$RUNNER_TEMP/ps.log" & top=$!
           status=0
           pnpm exec vitest run || status=$?
-          kill "$sampler"
+          kill "$sampler" "$top"
           exit "$status"
 
       - name: CPU samples
         if: always()
-        run: cat "$RUNNER_TEMP/vmstat.log"
+        run: cat "$RUNNER_TEMP/vmstat.log" "$RUNNER_TEMP/ps.log"
 
       - name: Check workspace latency
         env:
