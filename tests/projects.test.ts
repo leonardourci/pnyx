@@ -3816,7 +3816,7 @@ test(
       ],
     }))
     expect(foreignProjects.projects).toBe('none: no projects attached')
-    expect(foreignProjects.help).not.toContainEqual(expect.stringContaining('project add'))
+    expect(foreignProjects.help ?? []).not.toContainEqual(expect.stringContaining('project add'))
     expect((await pnyxAxi({
       env: foreignHydra,
       args: [
