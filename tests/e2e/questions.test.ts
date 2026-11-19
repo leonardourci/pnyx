@@ -369,6 +369,10 @@ test(
       expect(card.task.asks[0].choice).toBe('Open only')
     }
 
+    await until({
+      what: 'the first group answer receipt is dropped',
+      check: async () => dropped,
+    })
     await page.reload()
     await workspace.getByRole(
       'button',
@@ -384,8 +388,6 @@ test(
     await retry.waitFor()
     // Reload can render Zero's cached questions before the fresh answer rows arrive.
     await workspace.locator('.waiting-decisions').waitFor({ state: 'detached' })
-    expect(await workspace.locator('.waiting-decisions').count()).toBe(0)
-    expect(dropped).toBe(true)
 
     await retry.click()
     await until({
