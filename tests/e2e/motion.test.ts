@@ -1,5 +1,5 @@
 /* eslint-disable pnyx/object-params -- Playwright owns evaluation callback signatures. */
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { MOTION_CSS_EASING, MOTION_DURATIONS, motionDuration } from '../../web/src/shared/motion.ts'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
@@ -39,6 +39,9 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
     })
+    onTestFinished(async () => {
+      await page.context().close()
+    })
     const label = page.locator(`[data-hydra-workspace="${hydra.id}"] .message`).first()
     const messageDuration = () => label.evaluate(
       element => getComputedStyle(element).animationDuration,
@@ -70,36 +73,34 @@ test(
       },
     ).click()
     expect(await messageDuration()).toBe('0s')
-    await page.evaluate(() => {
+    await page.evaluate((taskId) => {
       const animate = Element.prototype.animate
-      const durations: number[] = []
-      Object.assign(
-        window,
-        { taskHighlightDurations: durations },
-      )
 
       Element.prototype.animate = function (
+        this: Element,
         frames,
         options,
       ) {
-        if (Array.isArray(frames) && frames.some(frame => 'boxShadow' in frame)) {
-          durations.push(Number(typeof options === 'number' ? options : options?.duration))
-        }
-
-        return animate.call(
+        const animation = animate.call(
           this,
           frames,
           options,
         )
+
+        const task = this.closest('[data-task]')
+        const hasShadow = Array.isArray(frames) && frames.some(frame => 'boxShadow' in frame)
+
+        if (task?.getAttribute('data-task') === taskId && hasShadow) {
+          const duration = animation.effect?.getComputedTiming().duration
+          document.documentElement.dataset.taskHighlightDuration = String(duration)
+          Element.prototype.animate = animate
+        }
+
+        return animation
       }
-    })
-    await page.locator('.hydra-chat .task-reference-title').click()
-    const highlightDurations = () => page.evaluate(() => Reflect.get(
-      window,
-      'taskHighlightDurations',
-    ) as number[])
-    await expect.poll(highlightDurations).not.toEqual([])
-    expect(await highlightDurations()).toEqual([0])
+    }, target.id)
+    await page.locator('.hydra-chat .task-reference-title').filter({ hasText: 'Motion target' }).click()
+    await expect.poll(() => page.locator('html').getAttribute('data-task-highlight-duration')).toBe('0')
     await page.evaluate(() => {
       document.documentElement.dataset.motion = 'normal'
     })

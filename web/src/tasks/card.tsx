@@ -945,7 +945,7 @@ export const HydraCard = memo(function HydraCard({
       {hoverActions}
       {selected && !modal && (
         <Resize
-          className="bottom-0! right-auto! left-[calc(50%-_--spacing(12))]! h-6! w-24 after:top-4.25!"
+          className="bottom-0! right-auto! left-1/2! -translate-x-1/2 h-6! w-24 after:top-4.25!"
           label="Resize card"
           axis="y"
           value={height}

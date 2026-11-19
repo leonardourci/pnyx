@@ -1,4 +1,4 @@
-import { motionDuration } from '#web-shared/motion.ts'
+import { motionDuration, REDUCED_MOTION } from '#web-shared/motion.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
@@ -588,16 +588,18 @@ export function useTaskNavigation({
       selected: true,
     })
 
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && element) {
+    if (element && !window.matchMedia(REDUCED_MOTION).matches) {
+      const duration = motionDuration({ speed: 'highlight' })
+      const styles = getComputedStyle(element)
+      const highlightEasing = styles.getPropertyValue('--ease-task-highlight').trim()
       highlight.current = element.animate(
         [
           { boxShadow: 'var(--shadow-task-highlight)' },
           { boxShadow: '0 0 0 0 transparent' },
         ],
         {
-          duration: motionDuration({ speed: 'highlight' }),
-          easing: getComputedStyle(element).getPropertyValue('--ease-task-highlight')
-            .trim(),
+          duration,
+          easing: highlightEasing === '' ? 'ease-out' : highlightEasing,
         },
       )
     }
