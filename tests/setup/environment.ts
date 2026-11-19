@@ -23,6 +23,7 @@ const GUARDED = [
   'systemctl',
   'brew',
 ]
+const CHILD_HEAP_MB = 1024
 const KEEP = /^(VITEST|__VITEST|CI$|TERM$|FORCE_COLOR$|NO_COLOR$|PNYX_KEEP_TEST_FILES$)/
 
 // Short paths leave room for the Unix socket names Pnyx makes inside its home.
@@ -84,6 +85,8 @@ Object.assign(
       'gitconfig',
     ),
     LANG: 'en_US.UTF-8',
+    // zero-cache sizes its buffers from the heap limit, which on a 16 GB runner lets each file's copy grow to 4 GB.
+    NODE_OPTIONS: `--max-old-space-size=${CHILD_HEAP_MB}`,
     ...inject('postgres'),
   },
 )

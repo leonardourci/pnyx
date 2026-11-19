@@ -86,6 +86,11 @@ test(
       },
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    // At 1440px the repository column ends off-screen, and a click on its Send lands while the axis re-anchors.
+    await page.setViewportSize({
+      width: 1920,
+      height: 900,
+    })
 
     try {
       await workspace.getByRole(
