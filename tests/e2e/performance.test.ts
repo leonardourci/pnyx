@@ -255,10 +255,10 @@ test(
       what: 'the non-first Hydra stays selected after all five load',
       check: async () => await page.locator('[data-hydra-workspace][data-connected=true]').count() === 5,
     })
-    expect(await workspace.locator('.card-open').count()).toBe(EXPECTED_MOUNTED_TASKS)
-    expect(await workspace.locator('.project-column').count()).toBe(5)
-    expect(await other.locator('.card-open').count()).toBe(1)
-    expect(await other.locator('.hydra-page').count()).toBe(1)
+    await expect.poll(() => workspace.locator('.card-open').count()).toBe(EXPECTED_MOUNTED_TASKS)
+    await expect.poll(() => workspace.locator('.project-column').count()).toBe(5)
+    await expect.poll(() => other.locator('.card-open').count()).toBe(1)
+    await expect.poll(() => page.locator('.hydra-page').count()).toBe(5)
     expect(await page.locator('*').count()).toBeLessThan(6000)
     const load = await page.evaluate(async () => {
       const measurement = (window as Window & {
@@ -411,7 +411,6 @@ test(
       await document.fonts.ready
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     })
-    expect(await page.locator('.hydra-page').count()).toBe(5)
     const finishStream = await beginUIWindow({ page })
     stream.release()
     await workspace.getByLabel(
@@ -680,6 +679,7 @@ test(
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
 
+    await selectedCard.locator('.card-panel:focus').blur()
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
     await scroller.evaluate(element => element.scrollTo({
       top: 0,

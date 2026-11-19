@@ -3,9 +3,9 @@ import { hydraTitle } from '#web-app/view.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
-import { ContextMenu,menuPoint,opensMenu } from '#web-shared/ui/menu.tsx'
-import { useCallback,useState } from 'react'
-import { HYDRA_ICONS,HydraNameEditor,type HydraIdentity } from './hydra-title.tsx'
+import { ContextMenu, menuPoint, opensMenu } from '#web-shared/ui/menu.tsx'
+import { useCallback, useState } from 'react'
+import { HYDRA_ICONS, HydraNameEditor, type HydraIdentity } from './hydra-title.tsx'
 
 export function HydraHead({
   name,
@@ -43,7 +43,8 @@ export function HydraHead({
   const canEdit = !!editHydra && connected
 
   const openMenu = ({ event }: { event: Parameters<typeof menuPoint>[0]['event'] & { preventDefault(): void } }) => {
-    event.preventDefault(); setMenu(menuPoint({ event }))
+    event.preventDefault()
+    setMenu(menuPoint({ event }))
   }
 
   return (
@@ -69,7 +70,8 @@ export function HydraHead({
             name,
             icon,
           }) => {
-            setEditing(false); editHydra({
+            setEditing(false)
+            editHydra({
               name,
               icon,
             })

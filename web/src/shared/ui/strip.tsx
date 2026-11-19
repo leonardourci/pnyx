@@ -49,9 +49,14 @@ export function Strip<T>({
 
       revealTarget()
       let revealedScrollLeft = scroller.scrollLeft
+      const onScroll = () => {
+        if (scroller.scrollLeft !== revealedScrollLeft) {
+          stopFollowing()
+        }
+      }
       const observer = new ResizeObserver(() => {
         if (scroller.scrollLeft !== revealedScrollLeft) {
-          observer.disconnect()
+          stopFollowing()
 
           return
         }
@@ -59,6 +64,18 @@ export function Strip<T>({
         revealTarget()
         revealedScrollLeft = scroller.scrollLeft
       })
+      const stopFollowing = () => {
+        observer.disconnect()
+        scroller.removeEventListener(
+          'scroll',
+          onScroll,
+        )
+      }
+      scroller.addEventListener(
+        'scroll',
+        onScroll,
+        { passive: true },
+      )
       observer.observe(content)
       observer.observe(scroller)
 
@@ -70,7 +87,7 @@ export function Strip<T>({
         observer.observe(item)
       }
 
-      return () => observer.disconnect()
+      return stopFollowing
     },
     [
       index,

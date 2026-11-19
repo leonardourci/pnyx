@@ -1252,7 +1252,7 @@ export function HydraView({
                     onClick={toggleChat}
                     icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                   />
-                  <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
+                  <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
                     <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                       <HydraChat
                         active={active}

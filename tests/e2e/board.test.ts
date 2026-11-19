@@ -5389,6 +5389,10 @@ test(
     await page.locator(`[data-hydra-workspace="${target.id}"] .hydra-head`).waitFor({ state: 'visible' })
     await earlierComposer.waitFor({ state: 'attached' })
     expect(await targetComposer.isVisible()).toBe(false)
+    expect(await earlierComposer.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+      node => node === document.activeElement,
+    )).toBe(false)
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(true)
     await target.owner({
       args: [
