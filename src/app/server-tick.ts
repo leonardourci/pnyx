@@ -305,14 +305,10 @@ export function createServerTick({
             state: state(),
             hours: readSettings().settings.doneAfterHours,
           }),
+          ...(!queueRun && (queueNeedsRetry || Object.values(state().cards).some(c => c.queue))
+            ? [queueCheckedAt + queueDelay] : []),
         ]
           .filter((at): at is number => at !== undefined)
-
-        const queuePending = queueNeedsRetry || Object.values(state().cards).some(card => card.queue)
-
-        if (!queueRun && queuePending) {
-          deadlines.push(queueCheckedAt + queueDelay)
-        }
 
         if (spoolDirty) {
           deadlines.push(spoolRetryAt)

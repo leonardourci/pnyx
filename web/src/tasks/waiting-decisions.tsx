@@ -73,10 +73,12 @@ export function WaitingDecisions({
                 edge: 'end',
               })
             }
-          } else if (event.key === 'Tab' && !event.shiftKey && event.target === trigger) {
+          } else if (event.key === ' ' && event.target === trigger) {
             event.preventDefault()
             event.stopPropagation()
-            trigger?.click()
+          } else if (event.key === 'Tab' && !event.shiftKey && event.target === trigger) {
+            event.preventDefault()
+            event.stopPropagation(); trigger?.click()
           }
         }}
       >

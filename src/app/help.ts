@@ -272,7 +272,7 @@ pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] 
 Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
 Default columns put completed held tasks in Done; the hold still applies if the task reopens.
 Before pausing with a ready result, run hydra send --task <id> --text "<result with links>" without --kind progress.
-Use task ask for a decision. The blocked and needs_you declarations wake Hydra. Needs you holds open owner decisions and permission requests. Ready results, reminders and declarations without owner decisions appear as updates.
+Questions use task ask; blocked/needs_you wake Hydra but do not confirm owner delivery. Needs you holds only an open owner question; ready results, reminders and declarations without questions are updates.
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 --wait-for records a dependency wait (default task-done); pr-opened accepts an open or merged linked PR, and pr-merged requires one or more non-closed linked PRs, all merged. Pnyx resumes the waiting worker once with the dependency and PR link, preserving holds and open decisions. These waits never expire on a timer.
