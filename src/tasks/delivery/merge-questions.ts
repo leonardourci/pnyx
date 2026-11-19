@@ -144,27 +144,21 @@ export function* retireableReviewQuestions({
   at: string
 }): Iterable<HydraEvent> {
   const cards = Object.values(state.cards)
-  const ownerReviewCards = cards.filter(card => ownerReviewsPullRequests({
-    state,
-    card,
-  }))
+  const questions = cards.flatMap(card => openAsks({ card, audience: 'owner' })
+    .filter(ask => ask.kind === 'merge').map(ask => ({ card, ask })))
+
+  if (!questions.length) {
+    return
+  }
+
+  const ownerReviewCards = cards.filter(card => ownerReviewsPullRequests({ state, card }))
   const ownerReviewCardIds = new Set(ownerReviewCards.map(card => card.id))
   const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card => card.links.map(link => link.url)))
 
-  for (const card of cards) {
-    if (ownerReviewCardIds.has(card.id)) {
+  for (const { card, ask } of questions) {
+    if (ownerReviewCardIds.has(card.id) || (ask.url && ownerReviewUrls.has(ask.url))) {
       continue
     }
-
-    const questions = openAsks({
-      card,
-      audience: 'owner',
-    }).filter(ask => ask.kind === 'merge')
-
-    for (const ask of questions) {
-      if (ask.url && ownerReviewUrls.has(ask.url)) {
-        continue
-      }
 
       const decision = hydraEvent({
         state,
@@ -187,7 +181,6 @@ export function* retireableReviewQuestions({
       if ('event' in decision) {
         yield decision.event
       }
-    }
   }
 }
 

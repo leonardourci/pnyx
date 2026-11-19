@@ -1,3 +1,4 @@
+import { readEvents } from '#app/event-log.ts'
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
@@ -3615,6 +3616,8 @@ test(
     })
     const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
     expect(retired.closed).toBeDefined()
+    const landingEvent = readEvents({ hydraId: hydra.id }).find(event => event.id === landingReceipt.event.id)
+    expect(retired.closed.at).toBe(landingEvent?.at)
     expect(landingReceipt.card.column).toBe(current.task.column)
     expect(landingReceipt.card.revision).toBe(current.task.revision)
     expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
@@ -3687,12 +3690,11 @@ test(
     await hydra.owner({
       args: [
         'task',
-        'landing',
+        'outcome',
         alias.card.id,
-        '--landing',
-        'pr',
-        '--merge',
-        'hydra',
+        'cancelled',
+        '--note',
+        'Shared review was abandoned',
       ],
     })
     const settled = await hydra.owner({
