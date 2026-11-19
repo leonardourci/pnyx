@@ -559,13 +559,26 @@ test(
     const axis = page.locator('.workspace-axis')
     const otherColumn = workspace.locator(`[data-column="${projects[0]}"] .column-cards`)
     const otherScroll = await otherColumn.evaluate(element => {
-      element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
+      element.scrollTo({
+        top: element.scrollHeight,
+        behavior: 'instant',
+      })
 
       return element.scrollTop
     })
     expect(otherScroll).toBeGreaterThan(0)
     const project = workspace.locator(`[data-column="${projects[1]}"]`)
-    await workspace.getByRole('navigation', { name: 'Projects', exact: true }).getByText('project-1', { exact: true }).click()
+    await workspace.getByRole(
+      'navigation',
+      {
+        name: 'Projects',
+        exact: true,
+      },
+    ).getByText(
+      'project-1',
+      { exact: true },
+    )
+      .click()
     await until({
       what: 'the project chip aligns its column with the workspace axis',
       check: async () => {

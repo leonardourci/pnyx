@@ -5275,7 +5275,12 @@ test(
       what: 'the frame icon edit is saved',
       check: async () => await frame.locator('.hydra-head [data-icon=poseidon]').count() === 1,
     })
-    await expect.poll(async () => (await hydra.owner({ args: ['hydra', 'show'] })).hydra).toMatchObject({
+    await expect.poll(async () => (await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra).toMatchObject({
       name: renamed,
       icon: 'poseidon',
     })
