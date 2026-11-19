@@ -1,5 +1,6 @@
 import { trackChildren } from '#workers/children.ts'
 import { finishHydraRemoval } from '#hydra/remove.ts'
+import { recoverOwnerCommands } from './confirmations.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -137,6 +138,7 @@ export async function startServer({
   let importing = true
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
+  const unmountedStops = new Set<Promise<void>>()
   const pendingLogs = new Map<string, () => void>()
   const skipped: Record<string, string> = {}
   let closed = false
@@ -694,6 +696,7 @@ export async function startServer({
   }
 
   const bound = (http.address() as { port: number }).port
+  const serverUrl = `http://127.0.0.1:${bound}/`
 
   for (const host of [
     `127.0.0.1:${bound}`,
@@ -839,7 +842,14 @@ export async function startServer({
       served.delete(hydraId)
       await openHydra.close({ permanent: true })
     } else {
-      await trackChildren({ hydraId }).stopAll()
+      const stopping = trackChildren({ hydraId }).stopAll()
+      unmountedStops.add(stopping)
+
+      try {
+        await stopping
+      } finally {
+        unmountedStops.delete(stopping)
+      }
     }
   }
 
@@ -853,10 +863,13 @@ export async function startServer({
 
     const activeIds = hydraIds()
 
-    if (hydraId === removedId) {
+    const primaryUnavailable = !activeIds.includes(removedId) || removalPending({ id: removedId })
+
+    if (hydraId === removedId && primaryUnavailable) {
       hydraId = activeIds.find(id => !removalPending({ id })) ?? hydraId
     }
 
+    mountAll()
     hydrasChanged()
   }
 
@@ -979,6 +992,7 @@ export async function startServer({
     pendingLogs.forEach(stop => stop())
 
     try {
+      await Promise.allSettled(unmountedStops)
       const settled = await Promise.allSettled([...mounts].map(async ([
         id,
         mounting,
@@ -1063,6 +1077,19 @@ export async function startServer({
       }
     }
 
+    for (const id of hydraIds()) {
+      try {
+        recoverOwnerCommands({ hydraId: id })
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'approval.recover',
+          hydraId: id,
+          error,
+        })
+      }
+    }
+
     const requestedConfig = hydraExists({ hydraId })
       ? loadHydra({ hydraId }).state.config : undefined
 
@@ -1131,7 +1158,7 @@ export async function startServer({
       text: JSON.stringify({
         pid: process.pid,
         port: bound,
-        url: `http://127.0.0.1:${bound}/`,
+        url: serverUrl,
         socket: named.socket,
         service: process.env.PNYX_SERVICE_ROLE === 'application'
           || process.env.XPC_SERVICE_NAME === serviceFile().label,
@@ -1157,7 +1184,7 @@ export async function startServer({
 
   return {
     port: bound,
-    url: `http://127.0.0.1:${bound}/`,
+    url: serverUrl,
     socket: named.socket,
     skipped: { ...skipped },
     open,

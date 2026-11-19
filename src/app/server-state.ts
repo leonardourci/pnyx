@@ -14,7 +14,7 @@ const HEALTH_TIMEOUT_MS = 60_000
 export interface ServerInfo {
   pid: number
   port: number
-  // The stable root address redirects to the current primary Hydra.
+  // The persisted URL is the root address. readServer returns a Hydra's page URL.
   url: string
   // A Hydra's hook socket; null when it could not be bound, and hooks then spool.
   socket: string | null
