@@ -153,30 +153,47 @@ export function HydraChat({
 
   useEffect(
     () => {
-      const url = new URL(location.href)
-
-      if (!active || composerVisible === false || !url.searchParams.has('new-chat')) {
+      if (!active || composerVisible === false) {
         return
       }
 
-      const chat = stream.current?.closest('.hydra-chat')
-      const composer = chat?.querySelector<HTMLTextAreaElement>('.composer textarea')
-      composer?.focus()
+      const focusNewChat = () => {
+        const url = new URL(location.href)
+        const addressedHydra = url.pathname.split('/')[2]
 
-      if (!composer || document.activeElement !== composer) {
-        return
+        if (!url.searchParams.has('new-chat')) {
+          return
+        }
+
+        if (addressedHydra && addressedHydra !== encodeURIComponent(hydraId)) {
+          return
+        }
+
+        const chat = stream.current?.closest('.hydra-chat')
+        const composer = chat?.querySelector<HTMLTextAreaElement>('.composer textarea')
+        composer?.focus()
+
+        if (!composer || document.activeElement !== composer) {
+          return
+        }
+
+        url.searchParams.delete('new-chat')
+        history.replaceState(
+          history.state,
+          '',
+          url,
+        )
       }
 
-      url.searchParams.delete('new-chat')
-      history.replaceState(
-        history.state,
-        '',
-        url,
-      )
+      focusNewChat()
+      window.addEventListener('popstate', focusNewChat)
+
+      return () => window.removeEventListener('popstate', focusNewChat)
     },
     [
       active,
       composerVisible,
+      hydraId,
     ],
   )
   const [

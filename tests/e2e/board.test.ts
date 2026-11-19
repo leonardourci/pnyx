@@ -5369,9 +5369,24 @@ test(
     })
     const earlierComposer = page.locator(`[data-hydra-workspace="${earlier.id}"] .composer textarea`)
     const targetComposer = page.locator(`[data-hydra-workspace="${target.id}"] .composer textarea`)
+    const requestChat = async ({ hydraId }: { hydraId: string }) => {
+      await page.evaluate(
+        ({ hydraId }) => {
+          history.pushState(
+            null,
+            '',
+            `/hydra/${hydraId}/?new-chat`,
+          )
+          dispatchEvent(new PopStateEvent('popstate'))
+        },
+        { hydraId },
+      )
+    }
+
     await earlierComposer.waitFor()
-    await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${target.id}/?new-chat`)
-    await page.locator(`[data-hydra-workspace="${target.id}"] .hydra-head`).waitFor()
+    await requestChat({ hydraId: target.id })
+    await page.locator(`[data-hydra-workspace="${target.id}"] .hydra-head`).waitFor({ state: 'visible' })
+    await earlierComposer.waitFor({ state: 'attached' })
     expect(await targetComposer.isVisible()).toBe(false)
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(true)
     await target.owner({
@@ -5387,23 +5402,19 @@ test(
       node => node === document.activeElement,
     )).toBe(true)
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
-    await page.evaluate(
-      // eslint-disable-next-line pnyx/object-params -- Playwright passes the argument.
-      id => {
-        history.pushState(
-          null,
-          '',
-          `/hydra/${id}/?new-chat`,
-        )
-        dispatchEvent(new PopStateEvent('popstate'))
-      },
-      earlier.id,
-    )
-    await expect.poll(async () => earlierComposer.evaluate(
-      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
-      node => node === document.activeElement,
-    )).toBe(true)
-    expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
+
+    const requestEarlierChat = async () => {
+      await requestChat({ hydraId: earlier.id })
+      await expect.poll(async () => earlierComposer.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+        node => node === document.activeElement,
+      )).toBe(true)
+      expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
+    }
+
+    await requestEarlierChat()
+    await earlierComposer.blur()
+    await requestEarlierChat()
   },
 )
 
