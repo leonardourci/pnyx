@@ -1783,15 +1783,25 @@ test(
         'Include archived',
       ],
     })
-    expect(rows<{ summary: { asks: number; projects: { name: string; asks: number }[] } }>({
+    expect(rows<{
+      summary: {
+        asks: number
+        projects: {
+          name: string
+          asks: number
+        }[]
+      }
+    }>({
       text: 'select summary from hydras where id = $1',
       values: [hydra.id],
     })[0]?.summary).toMatchObject({
       asks: 1,
-      projects: expect.arrayContaining([expect.objectContaining({
-        name: 'exports',
-        asks: 1,
-      })]),
+      projects: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'exports',
+          asks: 1,
+        }),
+      ]),
     })
     const keys = grouped.groups[0].questions.map((question: { key: string }) => question.key)
     const snapshot = JSON.stringify(keys)
@@ -1807,7 +1817,10 @@ test(
       'batch-open-only',
     ]
     expect((await asHydra.refused({ args: answer })).code).toBe('OWNER_ONLY')
-    const malformedSnapshot = JSON.stringify([...keys, 'not-a-question-key'])
+    const malformedSnapshot = JSON.stringify([
+      ...keys,
+      'not-a-question-key',
+    ])
     const malformedAnswer = answer.map(value => value === snapshot ? malformedSnapshot : value)
     expect((await hydra.ownerRefused({ args: malformedAnswer })).code).toBe('VALIDATION_ERROR')
     const numericChoice = answer.map((
