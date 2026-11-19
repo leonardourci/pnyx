@@ -6,7 +6,7 @@ import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 import { isManagedTask } from './select.ts'
 
-export const DEFAULT_DONE_HOURS = 24
+export const DEFAULT_DONE_HOURS = 1
 export const MAX_DONE_HOURS = 876000
 export const HOUR_MS = 60 * 60 * 1000
 

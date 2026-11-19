@@ -30,10 +30,17 @@ const queuedWidth = async ({ hydra }: { hydra: Hydra }) => {
 }
 
 test(
-  'a shared setting changed from one Hydra is what every Hydra and its page read, while a column width stays with its own board',
+  'shared settings reach other Hydras and their pages, saved 24-hour retention survives a restart, and dragged widths stay local',
   async () => {
     const first = await pnyx.hydra()
     const second = await pnyx.hydra()
+
+    expect((await first.owner({
+      args: [
+        'settings',
+        'schema',
+      ],
+    })).defaults.doneAfterHours).toBe(1)
 
     await first.owner({
       args: [
@@ -55,7 +62,12 @@ test(
     expect(await page.send({
       name: 'settings',
       args: ['show'],
-    })).toMatchObject({ settings: { theme: 'dark' } })
+    })).toMatchObject({
+      settings: {
+        theme: 'dark',
+        doneAfterHours: 0,
+      },
+    })
     page.close()
 
     const queued = await first.column({ role: 'queued' })
@@ -72,8 +84,23 @@ test(
     expect(await queuedWidth({ hydra: first })).toBe(600)
     expect(await queuedWidth({ hydra: second })).toBe(defaultWidth)
 
+    await first.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"doneAfterHours":24}',
+      ],
+    })
     await pnyx.restart()
-    expect(await settings({ hydra: second })).toMatchObject({ theme: 'dark' })
+    expect(await settings({ hydra: second })).toMatchObject({
+      theme: 'dark',
+      doneAfterHours: 24,
+    })
+    await until({
+      what: 'the page settings to show 24-hour retention after restart',
+      check: () => pageSettings()?.doneAfterHours === 24,
+    })
     expect(await queuedWidth({ hydra: first })).toBe(600)
   },
 )
