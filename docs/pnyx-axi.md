@@ -604,7 +604,7 @@ The owner applies access edits immediately. Hydra may narrow access directly. Wi
 
 Agent memory reads, writes and proposals are bound to the caller's native `PNYX_HYDRA`. Naming another Hydra returns empty memory or `NOT_FOUND`; task visibility and owner targeting keep their existing behavior.
 
-`pnyx-axi hydra remove <id> --hydra <caller>` opens a confirmation in the caller’s chat. The preview lists task and copy counts, copies with unlanded work, and open PRs. It marks pooled Git worktrees without a task record as having unknown landing state. Confirm stops the target’s workers and tools, discards its task copies, removes its pooled worktrees from disk and Git, and detaches its projects. Cleanup preserves project folders, other Hydras’ copies (including moved tasks’ checkouts), open PRs, and files in the pool outside those checkouts.
+`pnyx-axi hydra remove <id> --hydra <caller>` opens a confirmation in the caller’s chat. The preview lists task and copy counts, copies with unlanded work, and open PRs. It marks pooled Git worktrees without a task record as having unknown landing state. Confirm stops the target’s workers and tools, discards its task copies, removes its pooled worktrees from disk and Git, and detaches its projects. Cleanup discards each checkout in full, including ignored files. It preserves project folders, other Hydras’ copies (including moved tasks’ checkouts), open PRs, and pool contents outside those checkouts.
 
 Removed Hydras leave active views. Their event history and `oracle <query> --hydra <removed-id>` remain available. The last Hydra, the caller’s own Hydra and Firstmate Hydras are ineligible. Settings runs the same command.
 
