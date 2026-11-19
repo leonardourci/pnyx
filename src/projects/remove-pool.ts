@@ -225,7 +225,7 @@ export async function removeHydraPool({
   verify,
 }: {
   hydraId: string
-  verify?({ path }: { path: string }): Promise<void>
+  verify({ path }: { path: string }): Promise<void>
 }): Promise<void> {
   const pool = await hydraPool({ hydraId })
 
@@ -243,7 +243,7 @@ export async function removeHydraPool({
   }
 
   for (const slot of pool.slots) {
-    await verify?.({ path: slot.path })
+    await verify({ path: slot.path })
     protectedCopiesFolder({
       hydraId,
       root: slot.path,
