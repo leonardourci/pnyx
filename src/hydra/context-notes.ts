@@ -85,6 +85,7 @@ export function applyContextNotes({
     const retained = notes.filter(note => {
       if (progress && note.task === task && note.progress) {
         progressCount += note.progress
+
         return false
       }
 
