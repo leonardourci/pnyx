@@ -186,9 +186,15 @@ export function HydraChat({
       }
 
       focusNewChat()
-      window.addEventListener('popstate', focusNewChat)
+      window.addEventListener(
+        'popstate',
+        focusNewChat,
+      )
 
-      return () => window.removeEventListener('popstate', focusNewChat)
+      return () => window.removeEventListener(
+        'popstate',
+        focusNewChat,
+      )
     },
     [
       active,

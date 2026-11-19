@@ -5369,6 +5369,7 @@ test(
     })
     const earlierComposer = page.locator(`[data-hydra-workspace="${earlier.id}"] .composer textarea`)
     const targetComposer = page.locator(`[data-hydra-workspace="${target.id}"] .composer textarea`)
+
     const requestChat = async ({ hydraId }: { hydraId: string }) => {
       await page.evaluate(
         ({ hydraId }) => {
