@@ -119,6 +119,92 @@ export function isCanonicalQuestion({
   return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
+function ownerReviewsPullRequests({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): boolean {
+  if (isManagedTask({ card }) || card.status?.state === 'done' || card.outcome?.closed) {
+    return false
+  }
+
+  return cardLanding({
+    card,
+    projects: state.projects ?? [],
+  })?.merge === 'owner'
+}
+
+export function* retireableReviewQuestions({
+  state,
+  at,
+}: {
+  state: HydraState
+  at: string
+}): Iterable<HydraEvent> {
+  const cards = Object.values(state.cards)
+  const questions = cards.flatMap(card => {
+    const asks = openAsks({
+      card,
+      audience: 'owner',
+    })
+    const mergeAsks = asks.filter(ask => ask.kind === 'merge')
+
+    return mergeAsks.map(ask => ({
+      cardId: card.id,
+      ask,
+    }))
+  })
+
+  if (!questions.length) {
+    return
+  }
+
+  const ownerReviewCards = cards.filter(card => ownerReviewsPullRequests({
+    state,
+    card,
+  }))
+  const ownerReviewCardIds = new Set(ownerReviewCards.map(card => card.id))
+  const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card =>
+    card.links.map(link => link.url)))
+
+  for (const {
+    cardId,
+    ask,
+  } of questions) {
+    if (ownerReviewCardIds.has(cardId)) {
+      continue
+    }
+
+    if (ask.url && ownerReviewUrls.has(ask.url)) {
+      continue
+    }
+
+    const decision = hydraEvent({
+      state,
+      cardId,
+      meta: {
+        at,
+        actor: 'pnyx',
+        id: `${ask.id}:${cardId}:${state.seq}:review-update`,
+      },
+      change: {
+        type: 'task.ask.closed',
+        data: {
+          ask: ask.id,
+          reason: 'The current landing rule does not require an owner merge decision',
+          evidence: ask.url ?? cardId,
+        },
+      },
+    })
+
+    if ('event' in decision) {
+      yield decision.event
+    }
+  }
+}
+
 export function reconcileAsks({
   state,
   event,
@@ -185,48 +271,56 @@ export function reconcileAsks({
     }
   }
 
-  if (event.type !== 'card.linked' || card.status?.state === 'done' || card.outcome?.closed) {
+  if (event.type !== 'card.linked' && event.type !== 'task.landing') {
     return changes
   }
 
-  const link = event.data.after
-  const ownerMerges = cardLanding({
-    card,
-    projects: state.projects ?? [],
-  })?.merge === 'owner'
-  const ready = link && readyForReview({ link })
-  const existing = link && canonicalMergeQuestion({
+  if (!ownerReviewsPullRequests({
     state,
     card,
-    url: link.url,
-  })
-  const alreadyAsked = existing && !existing.ask.closed
-
-  if (!ready || !ownerMerges || alreadyAsked) {
+  })) {
     return changes
   }
 
-  const asked = hydraEvent({
-    state,
-    cardId: card.id,
-    meta: {
-      id: `${event.id}:merge-question`,
-      at: event.at,
-      actor: 'pnyx',
-    },
-    change: {
-      type: 'task.asked',
-      data: mergeQuestion({
-        state,
-        card,
-        link,
-        id: `ask-${state.seq + 1}`,
-      }),
-    },
-  })
+  const links = event.type === 'card.linked' ? [event.data.after] : card.links
 
-  if ('event' in asked) {
-    changes.push(asked.event)
+  for (const link of links) {
+    if (!link || !readyForReview({ link })) {
+      continue
+    }
+
+    const existing = canonicalMergeQuestion({
+      state,
+      card,
+      url: link.url,
+    })
+
+    if (existing && !existing.ask.closed) {
+      continue
+    }
+
+    const asked = hydraEvent({
+      state,
+      cardId: card.id,
+      meta: {
+        id: `${event.id}:${link.url}:merge-question`,
+        at: event.at,
+        actor: 'pnyx',
+      },
+      change: {
+        type: 'task.asked',
+        data: mergeQuestion({
+          state,
+          card,
+          link,
+          id: `ask-${state.seq + changes.length + 1}`,
+        }),
+      },
+    })
+
+    if ('event' in asked) {
+      changes.push(asked.event)
+    }
   }
 
   return changes
@@ -269,19 +363,25 @@ function mergeQuestion({
     context.push(`${workerLabel}: ${ownerContext({ text: workerText })}`)
   }
 
-  context.push(`Checks: ${link.checks ?? 'not read yet'}`)
+  context.push(`Checks: ${link.checks ?? 'not read yet'}. Merge lands this work; Hold keeps the pull request open.`)
+  const cardTitle = card.title.replace(
+    /[\\[\]]/g,
+    '\\$&',
+  )
+  context.push(`[${cardTitle}](pnyx-task:${encodeURIComponent(card.id)})`)
 
   return {
     id,
     audience: 'owner',
     kind: 'merge',
     url: link.url,
-    question: `Ready for review: PR #${number}`,
+    question: `Merge PR #${number}?`,
     context: context.join('\n'),
     options: [
       { label: 'Merge' },
       { label: 'Hold' },
     ],
+    recommended: 1,
   }
 }
 

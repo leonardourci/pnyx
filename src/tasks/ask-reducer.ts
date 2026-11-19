@@ -221,6 +221,8 @@ export function applyAsk({
     card.asks = card.asks.map(a => (a.id === event.data.ask ? {
       ...a,
       audience: 'owner',
+      options: event.data.options ?? a.options,
+      recommended: event.data.recommended ?? a.recommended,
       escalated: {
         id: event.id,
         at: event.at,

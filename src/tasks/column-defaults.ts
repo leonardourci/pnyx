@@ -1,9 +1,6 @@
 import type { COLUMNS, HydraColumn, ColumnCondition, ColumnRule } from './columns-model.ts'
 
-const NO_OWNER: ColumnCondition[] = [
-  '!owner-question',
-  '!reminder-due',
-]
+const NO_OWNER: ColumnCondition[] = ['!owner-question']
 
 const UNFINISHED: ColumnCondition[] = [
   ...NO_OWNER,
@@ -49,10 +46,7 @@ const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
       'worker:hydra',
     ],
   ],
-  needs_you: [
-    ['owner-question'],
-    ['reminder-due'],
-  ],
+  needs_you: [['owner-question']],
   parked: [
     [
       ...ACTIVE,
@@ -70,6 +64,27 @@ const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
     ],
   ],
 }
+
+function withReminderExclusion({ rule }: { rule: ColumnRule }): ColumnRule {
+  return rule.map(conditions => conditions.flatMap(condition =>
+    condition === '!owner-question' ? [
+      condition,
+      '!reminder-due',
+    ] : [condition]))
+}
+
+const PREVIOUS_REMINDER_RULES: Record<string, ColumnRule> = Object.fromEntries(
+  Object.entries(DEFAULT_COLUMN_RULES).map(([
+    role,
+    rule,
+  ]) => [
+    role,
+    role === 'needs_you' ? [
+      ...rule,
+      ['reminder-due'],
+    ] : withReminderExclusion({ rule }),
+  ]),
+)
 
 const PREVIOUS_HOLD_RULES: Record<string, ColumnRule> = {
   queued: [
@@ -100,8 +115,15 @@ export function columnRule({ column }: { column: HydraColumn }): ColumnRule {
 }
 
 export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraColumn {
-  const previous = PREVIOUS_HOLD_RULES[column.role ?? '']
-  const unchangedDefault = previous && JSON.stringify(column.rule) === JSON.stringify(previous)
+  const role = column.role ?? ''
+  const holdRule = PREVIOUS_HOLD_RULES[role]
+  const previous = holdRule ? withReminderExclusion({ rule: holdRule }) : undefined
+  const savedRule = JSON.stringify(column.rule)
+  const unchangedDefault = [
+    previous,
+    PREVIOUS_REMINDER_RULES[role],
+  ]
+    .some(rule => rule && savedRule === JSON.stringify(rule))
 
   if (column.rule !== undefined && !unchangedDefault) {
     return column
@@ -109,7 +131,7 @@ export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraCo
 
   return {
     ...column,
-    rule: structuredClone(DEFAULT_COLUMN_RULES[column.role ?? ''] ?? []),
+    rule: structuredClone(DEFAULT_COLUMN_RULES[role] ?? []),
   }
 }
 

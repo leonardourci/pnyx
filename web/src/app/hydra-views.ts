@@ -2,6 +2,7 @@ import type { ConnectionState, ErroredQuery, ResultType, TypedView, Zero } from 
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Settings } from '#settings/model.ts'
+import { withDefaults } from '#settings/settings.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { emptyHydra } from '#app/reducer.ts'
@@ -403,8 +404,7 @@ export function watchInstallation({
 
       if (view.data && view.error === undefined) {
         settings({
-          // Zero types json columns as plain JSON; the value is the Settings the server last applied.
-          settings: view.data.value as Settings,
+          settings: withDefaults({ stored: view.data.value }),
           revision: view.data.revision,
         })
       }
