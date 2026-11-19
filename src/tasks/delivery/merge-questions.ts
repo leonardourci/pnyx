@@ -152,7 +152,7 @@ export function* retireableReviewQuestions({
     const mergeAsks = asks.filter(ask => ask.kind === 'merge')
 
     return mergeAsks.map(ask => ({
-      card,
+      cardId: card.id,
       ask,
     }))
   })
@@ -166,31 +166,34 @@ export function* retireableReviewQuestions({
     card,
   }))
   const ownerReviewCardIds = new Set(ownerReviewCards.map(card => card.id))
-  const ownerReviewLinks = ownerReviewCards.flatMap(card => card.links)
-  const ownerReviewUrls = new Set(ownerReviewLinks.map(link => link.url))
+  const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card => card.links.map(link => link.url)))
 
   for (const {
-    card,
+    cardId,
     ask,
   } of questions) {
-    if (ownerReviewCardIds.has(card.id) || (ask.url && ownerReviewUrls.has(ask.url))) {
+    if (ownerReviewCardIds.has(cardId)) {
+      continue
+    }
+
+    if (ask.url && ownerReviewUrls.has(ask.url)) {
       continue
     }
 
     const decision = hydraEvent({
       state,
-      cardId: card.id,
+      cardId,
       meta: {
         at,
         actor: 'pnyx',
-        id: `${ask.id}:${card.id}:${state.seq}:review-update`,
+        id: `${ask.id}:${cardId}:${state.seq}:review-update`,
       },
       change: {
         type: 'task.ask.closed',
         data: {
           ask: ask.id,
           reason: 'The current landing rule does not require an owner merge decision',
-          evidence: ask.url ?? card.id,
+          evidence: ask.url ?? cardId,
         },
       },
     })

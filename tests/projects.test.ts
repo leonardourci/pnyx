@@ -3615,10 +3615,13 @@ test(
       ],
     })
     const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
-    expect(retired.closed).toBeDefined()
+    expect(retired?.closed).toBeDefined()
     const events = await readEvents({ hydraId: hydra.id })
     const landingEvent = events.find(event => event.id === landingReceipt.event.id)
-    expect(landingEvent).toMatchObject({ at: retired.closed.at })
+    expect(landingEvent).toMatchObject({
+      type: 'task.landing',
+      at: retired?.closed?.at,
+    })
     expect(landingReceipt.card.column).toBe(current.task.column)
     expect(landingReceipt.card.revision).toBe(current.task.revision)
     expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
