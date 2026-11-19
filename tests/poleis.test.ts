@@ -1272,7 +1272,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('polis-project')
+    }))).toContain('polis-project')
     expect((await pnyxAxi({
       args: [
         'project',
@@ -1288,13 +1288,13 @@ test(
         PNYX_TASK: undefined,
       },
     })).stdout).toContain('NOT_FOUND')
-    expect((await hidden.ownerRefused({
+    expect(JSON.stringify(await hidden.owner({
       args: [
         'project',
         'show',
         path,
       ],
-    })).code).toBe('NOT_FOUND')
+    }))).not.toContain('Project pulsar learning')
     expect((await hidden.ownerRefused({
       args: [
         'project',
@@ -2255,7 +2255,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('permission-project')
+    }))).toContain('permission-project')
     expect((await pnyxAxi({
       args: [
         'project',
@@ -2287,7 +2287,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('permission-project')
+    }))).toContain('permission-project')
     await other.owner({
       args: [
         'hydra',

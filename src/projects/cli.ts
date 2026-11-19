@@ -195,17 +195,33 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'show') {
-    const attached = findProject({
-      state: current,
-      ref: required({
-        value: ref,
-        what: 'project name or path',
-      }),
+    const projectRef = required({
+      value: ref,
+      what: 'project name or path',
     })
     const details = await readableProjectDetails({
       state: current,
       hydraId,
     })
+    let attached
+
+    try {
+      attached = findProject({
+        state: current,
+        ref: projectRef,
+        projects: details.map(detail => detail.project),
+      })
+    } catch (error) {
+      if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+        throw error
+      }
+
+      attached = findProject({
+        state: current,
+        ref: projectRef,
+      })
+    }
+
     const attachment = projectRows({
       state: current,
       projects: [attached],
@@ -299,13 +315,20 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   let projectRef = ref
 
   if (action === 'set' || action === 'remove') {
-    const project = findProject({
-      state: current,
-      ref: required({
-        value: ref,
-        what: 'project',
-      }),
+    const selected = required({
+      value: ref,
+      what: 'project',
     })
+    const project = action === 'remove'
+      ? findProject({
+        state: current,
+        ref: selected,
+      })
+      : await findReadableProject({
+        hydraId,
+        state: current,
+        ref: selected,
+      })
 
     if (action === 'set') {
       requireProjectMemory({
