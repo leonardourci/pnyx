@@ -107,7 +107,7 @@ Rules:
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
 - `settings.test.ts`: the settings every Hydra shares.
 - `storage.test.ts`: atomic writes, the seq race, restart, the legacy `events.jsonl` import and the real `serve` entry.
-- `migration.test.ts`: the migration from #378's schema at live size.
+- `migration.test.ts`: the migration from #378's schema at live size, and the upgrade's data check on a copy of an older schema.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.

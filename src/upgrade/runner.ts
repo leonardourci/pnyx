@@ -466,8 +466,9 @@ async function upgrade({
         signal,
       }),
     })
-    // The new build checks Postgres and imports every Hydra still kept in events.jsonl in a transaction it rolls back;
-    // if that fails, the folder goes back and the running server keeps its files.
+    // The new build checks Postgres, migrates a copy of an older schema and imports every Hydra still kept in
+    // events.jsonl in a transaction it rolls back; if that fails, the folder goes back and the running server keeps its
+    // files.
     await step({
       name: 'data',
       work: () => run({
