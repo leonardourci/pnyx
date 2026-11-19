@@ -3719,5 +3719,116 @@ test(
       ],
     })
     expect(settled.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--clear',
+      ],
+    })
+    const beforeProjectChange = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    const pendingBeforeMove = beforeProjectChange.task.asks.filter((ask: { closed?: unknown }) => {
+      return !ask.closed
+    })
+    expect(pendingBeforeMove).toHaveLength(1)
+    const destination = hydra.folder({ name: 'hydra-merges' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        destination,
+        '--landing',
+        'pr',
+        '--merge',
+        'hydra',
+      ],
+    })
+    const projectReceipt = await hydra.owner({
+      args: [
+        'task',
+        'project',
+        'review-update',
+        '--project',
+        destination,
+      ],
+    })
+    const moved = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(moved.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    expect(projectReceipt.event.type).toBe('task.project')
+    expect(projectReceipt.card.column).toBe(moved.task.column)
+    expect(projectReceipt.card.revision).toBe(moved.task.revision)
+    await hydra.owner({
+      args: [
+        'task',
+        'project',
+        'review-update',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--landing',
+        'pr',
+        '--merge',
+        'owner',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'landing',
+        'review-update',
+        '--clear',
+      ],
+    })
+    const beforePush = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(beforePush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
+    const pushed = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'review-update',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ project: destination }),
+    })
+    const afterPush = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'review-update',
+        '--full',
+      ],
+    })
+    expect(afterPush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(0)
+    expect(pushed.card.column).toBe(afterPush.task.column)
+    expect(pushed.card.revision).toBe(afterPush.task.revision)
   },
 )
