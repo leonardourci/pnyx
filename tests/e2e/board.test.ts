@@ -5305,6 +5305,7 @@ test(
         },
       ).click()
       const composer = frame.locator('.composer textarea')
+      await expect.poll(async () => composer.isVisible()).toBe(true)
       await expect.poll(async () => composer.inputValue()).toContain(' to this Hydra and ')
       await composer.fill('')
     }
@@ -5351,6 +5352,14 @@ test(
   async ({ onTestFinished }) => {
     const earlier = await pnyx.hydra()
     const target = await pnyx.hydra()
+    await target.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { chatCollapsed: true } }),
+      ],
+    })
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: earlier.id,
@@ -5362,6 +5371,17 @@ test(
     const targetComposer = page.locator(`[data-hydra-workspace="${target.id}"] .composer textarea`)
     await earlierComposer.waitFor()
     await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${target.id}/?new-chat`)
+    await targetComposer.waitFor({ state: 'attached' })
+    expect(await targetComposer.isVisible()).toBe(false)
+    expect(new URL(page.url()).searchParams.has('new-chat')).toBe(true)
+    await target.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { chatCollapsed: false } }),
+      ],
+    })
     await expect.poll(async () => targetComposer.evaluate(
       // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
       node => node === document.activeElement,

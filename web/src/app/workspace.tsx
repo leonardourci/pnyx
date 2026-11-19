@@ -626,7 +626,8 @@ export function HydraView({
       })
     }
 
-    setPage({ page: 'hydra' }); setProjectRequest(true)
+    setPage({ page: 'hydra' })
+    setProjectRequest(true)
   }
 
   const keyboard = useHydraKeyboard({
@@ -1255,6 +1256,7 @@ export function HydraView({
                     <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                       <HydraChat
                         active={active}
+                        composerVisible={!view.workspace.collapsed && !view.workspace.chatCollapsed}
                         hydraId={navigation.hydraId}
                         storageIdentity={hydra.storageHydra}
                         addProject={createColumn}

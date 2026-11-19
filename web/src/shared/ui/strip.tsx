@@ -39,7 +39,8 @@ export function Strip<T>({
           element: scroller,
           horizontal: true,
         })
-        const padding = parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0
+        const scrollPaddingLeft = parseFloat(getComputedStyle(scroller).scrollPaddingLeft)
+        const padding = Number.isNaN(scrollPaddingLeft) ? 0 : scrollPaddingLeft
         scroller.scrollTo({
           left: targetLeft - scrollerLeft - scroller.clientLeft - padding,
           behavior: 'instant',
@@ -59,6 +60,12 @@ export function Strip<T>({
         revealedScrollLeft = scroller.scrollLeft
       })
       observer.observe(content)
+      observer.observe(scroller)
+
+      // Width changes before the target can cancel out and leave the strip's total width unchanged.
+      for (const item of Array.from(content.children).slice(0, index + 1)) {
+        observer.observe(item)
+      }
 
       return () => observer.disconnect()
     },

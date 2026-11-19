@@ -103,6 +103,7 @@ const withFailure = ({
 
 export function HydraChat({
   active,
+  composerVisible,
   hydraId,
   storageIdentity,
   state,
@@ -123,6 +124,7 @@ export function HydraChat({
   selectedTask,
 }: {
   active: boolean
+  composerVisible?: boolean
   hydraId: string
   storageIdentity: string
   addProject?(): void
@@ -151,20 +153,31 @@ export function HydraChat({
 
   useEffect(
     () => {
-      if (active && new URLSearchParams(location.search).has('new-chat')) {
-        const chat = stream.current?.closest('.hydra-chat')
-        const composer = chat?.querySelector<HTMLTextAreaElement>('.composer textarea')
-        composer?.focus()
-        const url = new URL(location.href)
-        url.searchParams.delete('new-chat')
-        history.replaceState(
-          null,
-          '',
-          url,
-        )
+      const url = new URL(location.href)
+
+      if (!active || composerVisible === false || !url.searchParams.has('new-chat')) {
+        return
       }
+
+      const chat = stream.current?.closest('.hydra-chat')
+      const composer = chat?.querySelector<HTMLTextAreaElement>('.composer textarea')
+      composer?.focus()
+
+      if (!composer || document.activeElement !== composer) {
+        return
+      }
+
+      url.searchParams.delete('new-chat')
+      history.replaceState(
+        history.state,
+        '',
+        url,
+      )
     },
-    [active],
+    [
+      active,
+      composerVisible,
+    ],
   )
   const [
     page,
