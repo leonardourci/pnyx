@@ -3362,6 +3362,15 @@ test(
   'the browser tab names the Hydra and the selected task, following renames',
   async () => {
     const hydra = await pnyx.hydra()
+    const other = await pnyx.hydra()
+    await other.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship the export',
+      ],
+    })
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -3390,7 +3399,7 @@ test(
           'Ship the export',
         ],
       })
-      const title = page.getByRole(
+      const title = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
         'button',
         {
           name: 'Ship the export',

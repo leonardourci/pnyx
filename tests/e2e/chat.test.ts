@@ -1216,7 +1216,7 @@ test(
       })
       expect(sent[1]?.scope).toBe(second.id)
       expect(sent[1]?.id).toBe(sent[0]?.id)
-      expect(await workspace.locator('.hydra-page').count()).toBe(0)
+      await workspace.locator('.hydra-page').waitFor({ state: 'attached' })
       await until({
         what: 'the replay receipt is held',
         check: () => !!releaseReceipt,
@@ -1268,7 +1268,7 @@ test(
         what: 'the off-screen send restores its refusal',
         check: () => refusals === 2,
       })
-      expect(await workspace.locator('.hydra-page').count()).toBe(0)
+      await workspace.locator('.hydra-page').waitFor({ state: 'attached' })
       await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${second.id}/`)
       await workspace.getByText(
         'Refused second Hydra message',
