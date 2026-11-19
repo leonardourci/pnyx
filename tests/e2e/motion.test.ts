@@ -5,7 +5,6 @@ import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const SAMPLE_FRAMES = 60
-const STABLE_LAYOUT_FRAMES = 3
 let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
@@ -562,44 +561,26 @@ test(
           await openModalButton.hover()
           await until({
             what: 'the card and its column stop moving before opening the modal',
-            check: () => card.evaluate(
-              async (
-                element,
-                frames,
-              ) => {
-                const scroll = element.closest('.project-cards')
+            check: async () => {
+              const position = async () => JSON.stringify([
+                await box(),
+                await scrollTop(),
+              ])
+              const first = await position()
 
-                const position = () => {
-                  const {
-                    x,
-                    y,
-                    width,
-                    height,
-                  } = element.getBoundingClientRect()
+              for (let check = 0; check < 3; check++) {
+                await new Promise(resolve => setTimeout(
+                  resolve,
+                  300,
+                ))
 
-                  return JSON.stringify([
-                    x,
-                    y,
-                    width,
-                    height,
-                    scroll?.scrollTop,
-                  ])
+                if (first !== await position()) {
+                  return false
                 }
+              }
 
-                const initial = position()
-
-                for (let frame = 0; frame < frames; frame++) {
-                  await new Promise(requestAnimationFrame)
-
-                  if (position() !== initial) {
-                    return false
-                  }
-                }
-
-                return true
-              },
-              STABLE_LAYOUT_FRAMES,
-            ),
+              return true
+            },
           })
           const slot = await box()
           const scrolled = await scrollTop()
@@ -682,6 +663,7 @@ test(
           } finally {
             await sampling.dispose()
           }
+
           const distance = (bounds: number[]) => Math.max(...bounds.map((
             value,
             index,
