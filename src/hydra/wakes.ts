@@ -1,6 +1,6 @@
 import type { HydraState } from '#app/model.ts'
 import { decisionsBlock } from '#tasks/decisions.ts'
-import { QUIET_REPLY, reportActor } from './hydra.ts'
+import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
 import { clip } from './digest.ts'
 import { CONTEXT_NOTE_CHARS } from './context-notes.ts'
@@ -122,16 +122,11 @@ export function wakeText({
 
   if (reports.length) {
     const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
-    updates.push(`${count} arrived while you were busy. Short report lines are in the since-last-turn context; read full bodies only when needed.`)
+    updates.push(`${count} arrived while you were busy.`)
 
     if (pick) {
       for (const message of reports) {
-        updates.push(sealed({
-          text: `- seq ${state.eventIds[message.id]} ${message.task ?? 'no task'}: ${clip({
-            text: message.text,
-            size: CONTEXT_NOTE_CHARS,
-          })}`,
-        }))
+        updates.push(sealed({ text: hydraDelivery({ message }) }))
       }
     }
   }
@@ -144,7 +139,8 @@ export function wakeText({
   let overflow = false
 
   for (const line of updates) {
-    if (used + line.length + 1 > WAKE_UPDATE_CHARS) {
+    // Helper batches apply their own input budget before claiming report leases.
+    if (!pick && used + line.length + 1 > WAKE_UPDATE_CHARS) {
       overflow = true
       lines.push('More updates remain in history.')
       break

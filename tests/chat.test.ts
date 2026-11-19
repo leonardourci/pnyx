@@ -606,7 +606,7 @@ test(
         '--actor',
         `worker:${id}`,
         '--text',
-        'Invoice report handled in background',
+        `Invoice report handled in background\n${'Supporting invoice detail. '.repeat(100)}End of invoice evidence`,
       ],
     })
     helperTurn.release()
@@ -617,6 +617,9 @@ test(
         values: [hydra.id],
       })[0]!.count >= 2,
     })
+    expect(pnyx.claude.sessions.filter(session => session.env.PNYX_ACTOR?.startsWith('helper:'))
+      .flatMap(session => session.received)
+      .some(text => text.includes('End of invoice evidence'))).toBe(true)
     const digest = (await pnyxAxi({
       args: [
         'hydra',
