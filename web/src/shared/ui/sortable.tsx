@@ -350,6 +350,44 @@ const keyboardCoordinates: KeyboardCoordinateGetter = (
   )
 }
 
+function diagnosticItem({ item }: { item: SortItem | null | undefined }) {
+  if (!item) {
+    return null
+  }
+
+  return {
+    id: item.id,
+    kind: item.kind,
+    scope: item.scope,
+    hydra: item.hydra,
+    parent: item.parent,
+    hasChildren: item.hasChildren,
+    zone: item.zone,
+    root: item.root,
+    size: item.size,
+    origin: item.origin,
+    grab: item.grab,
+  }
+}
+
+function dragDiagnostic({
+  event,
+  state,
+}: {
+  event: string
+  state: unknown
+}) {
+  document.dispatchEvent(new CustomEvent(
+    'pnyx:drag-diagnostic',
+    {
+      detail: {
+        event,
+        state,
+      },
+    },
+  ))
+}
+
 function collisions({
   args,
   nesting,
@@ -380,6 +418,26 @@ function collisions({
       const inOwnFamily = !!sourceNode?.closest('[data-family]')?.contains(pointed)
       const target = containers.find(container => card ? container.node.current === card
         : !inOwnFamily && container.data.current?.item?.zone === 'outdent' && !!container.node.current?.contains(pointed))
+
+      dragDiagnostic({
+        event: 'nestingCollision',
+        state: {
+          pointer: args.pointerCoordinates,
+          source: diagnosticItem({ item: itemOf({ data: args.active.data }) }),
+          pointed: pointed?.outerHTML.slice(
+            0,
+            500,
+          ),
+          pointedTask: card?.getAttribute('data-task'),
+          inOwnFamily,
+          target: diagnosticItem({ item: itemOf({ data: target?.data }) }),
+          containers: containers.map(container => ({
+            id: container.id,
+            item: diagnosticItem({ item: itemOf({ data: container.data }) }),
+            box: container.node.current?.getBoundingClientRect().toJSON(),
+          })),
+        },
+      })
 
       return target ? [{ id: target.id }] : []
     }
@@ -722,6 +780,15 @@ export function SortableWorkspace({
           nesting: modifier.current && itemOf({ data: args.active.data })?.kind === 'task',
         })
         const target = args.droppableContainers.find(container => container.id === hits[0]?.id)
+        dragDiagnostic({
+          event: 'refreshTarget',
+          state: {
+            pointer: args.pointerCoordinates,
+            modifier: modifier.current,
+            hits,
+            target: diagnosticItem({ item: itemOf({ data: target?.data }) }),
+          },
+        })
         setOver(itemOf({ data: target?.data }) ?? null)
       }
     },
@@ -730,6 +797,15 @@ export function SortableWorkspace({
 
   const setModifier = useCallback(
     ({ pressed }: { pressed: boolean }) => {
+      dragDiagnostic({
+        event: 'modifier',
+        state: {
+          pressed,
+          active: diagnosticItem({ item: active }),
+          plain: plain.current,
+        },
+      })
+
       if (pressed && active?.kind === 'task') {
         plain.current = null
         move({ preview: null })
@@ -753,6 +829,13 @@ export function SortableWorkspace({
       }
 
       // A reorder can slide a new target under a stationary pointer.
+      dragDiagnostic({
+        event: 'watchStart',
+        state: {
+          active: diagnosticItem({ item: active }),
+          shift,
+        },
+      })
       let pointed: Element | null | undefined
 
       const refresh = () => {
@@ -768,6 +851,19 @@ export function SortableWorkspace({
           pointer.y,
         )
 
+        dragDiagnostic({
+          event: 'watchFrame',
+          state: {
+            pointer,
+            next: next?.outerHTML.slice(
+              0,
+              500,
+            ),
+            changed: next !== pointed,
+            modifier: modifier.current,
+          },
+        })
+
         if (next !== pointed) {
           pointed = next
           refreshTarget()
@@ -776,7 +872,16 @@ export function SortableWorkspace({
 
       let frame = requestAnimationFrame(refresh)
 
-      return () => cancelAnimationFrame(frame)
+      return () => {
+        dragDiagnostic({
+          event: 'watchStop',
+          state: {
+            active: diagnosticItem({ item: active }),
+            shift,
+          },
+        })
+        cancelAnimationFrame(frame)
+      }
     },
     [
       active,
@@ -1270,6 +1375,18 @@ export function SortableWorkspace({
       }
     }
   }
+
+  useLayoutEffect(() => {
+    dragDiagnostic({
+      event: 'committedState',
+      state: {
+        active: diagnosticItem({ item: active }),
+        over: diagnosticItem({ item: over }),
+        shift,
+        plain: plain.current,
+      },
+    })
+  })
 
   const dragState = useMemo(
     () => ({
