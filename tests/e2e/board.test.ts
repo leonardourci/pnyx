@@ -105,7 +105,7 @@ test(
         folder,
       ],
     })
-    const shown = ({ title }: { title: string }) => page.locator(
+    const shown = ({ title }: { title: string }) => page.locator(`[data-hydra-workspace="${hydra.id}"]`).locator(
       'article',
       {
         has: page.getByRole(
@@ -117,7 +117,7 @@ test(
         ),
       },
     )
-    await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
+    await shown({ title: 'Ship the export' }).and(column({ title: 'Ideas' }).locator('article'))
       .waitFor()
     await shown({ title: 'Ship the export' }).locator(
       '.agent-activity',
@@ -137,7 +137,7 @@ test(
         'export',
       ],
     })
-    await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
+    await shown({ title: 'Ship the export' }).and(column({ title: 'Ideas' }).locator('article'))
       .locator(
         '.agent-activity',
         { hasText: 'Running' },
@@ -155,7 +155,7 @@ test(
         'Export shipped',
       ],
     })
-    await column({ title: 'Ideas' }).locator(shown({ title: 'Ship the export' }))
+    await shown({ title: 'Ship the export' }).and(column({ title: 'Ideas' }).locator('article'))
       .locator(
         '.agent-activity',
         { hasText: 'Done' },
@@ -163,7 +163,8 @@ test(
       .waitFor()
     const exportCard = shown({ title: 'Ship the export' })
     expect(await exportCard.count()).toBe(1)
-    expect(await column({ title: 'Ideas' }).locator(exportCard)
+    expect(await column({ title: 'Ideas' }).locator('article')
+      .and(exportCard)
       .count()).toBe(1)
     await hydra.owner({
       args: [
