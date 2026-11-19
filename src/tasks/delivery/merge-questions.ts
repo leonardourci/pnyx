@@ -280,6 +280,7 @@ export function reconcileAsks({
       card,
       url: link.url,
     })
+
     if (existing && !existing.ask.closed) {
       continue
     }
