@@ -12,7 +12,7 @@ interface SharedSettings {
 
 interface SharedSettingsPatch {
   settings: Partial<Settings>
-  revision?: number
+  settingsRevision?: number
 }
 
 const resources = new Map<string, ReturnType<typeof createShared>>()
@@ -36,7 +36,7 @@ function createShared({ scope }: { scope: string }) {
       patch,
     }) => state && {
       ...state,
-      revision: patch.revision ?? state.revision,
+      revision: patch.settingsRevision ?? state.revision,
       settings: applied({
         settings: state.settings,
         patch: patch.settings,
@@ -114,7 +114,8 @@ export function saveSharedSettings({
     revision: number
   }
 }) {
-  const expectedRevision = view?.revision ?? revision
+  const settingsRevision = view ? undefined : revision
+  const expectedRevision = view?.revision ?? settingsRevision
   const revisionGuard = expectedRevision !== undefined ? [
     '--if-revision',
     String(expectedRevision),
@@ -133,7 +134,7 @@ export function saveSharedSettings({
     ],
     patch: {
       settings: patch,
-      revision: view ? undefined : revision,
+      settingsRevision,
     },
     targets: Object.keys(patch),
   })
