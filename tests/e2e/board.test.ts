@@ -36,6 +36,23 @@ const restingBox = ({ target }: { target: Locator }) => {
   })
 }
 
+const clipAtViewportEdge = ({ target }: { target: Locator }) => target.evaluate(
+  // eslint-disable-next-line pnyx/object-params -- Playwright supplies the matched element.
+  node => {
+    const axis = node.closest<HTMLElement>('.workspace-axis')
+
+    if (!axis) {
+      throw new Error('The task has no workspace axis')
+    }
+
+    const box = node.getBoundingClientRect()
+    axis.scrollLeft += box.left + box.width / 2 - innerWidth - 1
+    const clipped = node.getBoundingClientRect()
+
+    return clipped.left + clipped.width / 2 > innerWidth
+  },
+)
+
 let pnyx: Pnyx
 
 beforeAll(async () => {
@@ -3408,12 +3425,7 @@ test(
         )
         const committedOrder = await rootOrder()
         const from = card({ title: source }), to = card({ title: target })
-        await from.hover({
-          position: {
-            x: 8,
-            y: 8,
-          },
-        })
+        await from.hover()
         const handle = page.getByRole(
           'button',
           {
@@ -3446,12 +3458,9 @@ test(
         }
 
         // Lifting a family folds its sub-tasks into the ghost, so the target is measured where it rests after the lift.
+        expect(await clipAtViewportEdge({ target: to })).toBe(true)
+        await to.hover()
         const end = await restingBox({ target: to })
-        await page.mouse.move(
-          end.x + end.width / 2,
-          end.y + end.height / 2,
-          { steps: 12 },
-        )
         const ghost = page.locator('.physical-ghost')
         await ghost.waitFor()
 
@@ -3831,18 +3840,16 @@ test(
       }: {
         source: string
         point(): Promise<{
+          target: Locator
           x: number
           y: number
         }>
         armed?: ReturnType<typeof column>
         reason?: string
       }) => {
-        // hover() first scrolls a sub-task card it reads as clipped to the axis end, which moves the Hydra off screen.
-        const held = await restingBox({ target: card({ title: source }) })
-        await page.mouse.move(
-          held.x + held.width / 2,
-          held.y + held.height / 2,
-        )
+        const from = card({ title: source })
+        expect(await clipAtViewportEdge({ target: from })).toBe(true)
+        await from.hover()
         const handle = page.getByRole(
           'button',
           {
@@ -3851,7 +3858,6 @@ test(
           },
         )
         const start = await restingBox({ target: handle })
-        const end = await point()
         await page.mouse.move(
           start.x + start.width / 2,
           start.y + start.height / 2,
@@ -3865,11 +3871,13 @@ test(
         const ghost = page.locator('.physical-ghost')
         await ghost.waitFor()
         await page.keyboard.down('Shift')
-        await page.mouse.move(
-          end.x,
-          end.y,
-          { steps: 12 },
-        )
+        const end = await point()
+        await end.target.hover({
+          position: {
+            x: end.x,
+            y: end.y,
+          },
+        })
 
         if (armed) {
           await until({
@@ -3897,28 +3905,34 @@ test(
         first: string
         second: string
       }) => {
+        const target = ideas.locator('.project-cards')
+        const box = (await target.boundingBox())!
         const a = (await card({ title: first }).boundingBox())!
         const b = (await card({ title: second }).boundingBox())!
         const sameRow = Math.abs(a.y - b.y) < 1
 
         return sameRow ? {
-          x: (a.x + a.width + b.x) / 2,
-          y: a.y + a.height / 2,
+          target,
+          x: (a.x + a.width + b.x) / 2 - box.x,
+          y: a.y + a.height / 2 - box.y,
         } : {
-          x: a.x + a.width / 2,
-          y: (a.y + a.height + b.y) / 2,
+          target,
+          x: a.x + a.width / 2 - box.x,
+          y: (a.y + a.height + b.y) / 2 - box.y,
         }
       }
 
       const below = async ({ area }: { area: ReturnType<typeof column> }) => {
-        const box = (await area.locator('.project-cards').boundingBox())!
+        const target = area.locator('.project-cards')
+        const box = (await target.boundingBox())!
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluate callback.
         const cards = await area.locator('.card[data-task]').evaluateAll(nodes =>
           Math.max(...nodes.map(node => node.getBoundingClientRect().bottom)))
 
         return {
-          x: box.x + box.width / 2,
-          y: (cards + box.y + box.height) / 2,
+          target,
+          x: box.width / 2,
+          y: (cards + box.y + box.height) / 2 - box.y,
         }
       }
 
