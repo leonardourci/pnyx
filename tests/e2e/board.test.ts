@@ -4099,9 +4099,10 @@ test(
           return titles.join('|') === 'A reorder neighbor|A wide closed card'
         },
       })
+      // The landing must start from the compacted ghost, so wait for its resize to finish, not merely approach.
       await until({
         what: 'the open task compacts after entering its next slot',
-        check: async () => Math.abs((await ghost.boundingBox())!.width - 303.333) < 1,
+        check: async () => Math.abs((await ghost.boundingBox())!.width - 303.333) < 0.1,
       })
       // The landing's own animation is recorded as it starts, so a slow runner cannot skip past it.
       await page.evaluate(() => {
