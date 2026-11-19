@@ -299,7 +299,8 @@ export function App() {
     commit().catch((error: Error) => setRootError(error.message))
   }
 
-  const workspaceOrder = workspaces.map(workspace => workspace.navigation.hydraId).join(':')
+  const visibleWorkspaceIds = visibleWorkspaces.map(workspace => workspace.navigation.hydraId)
+  const workspaceOrder = visibleWorkspaceIds.join(':')
 
   useLayoutEffect(
     () => {
@@ -601,14 +602,13 @@ export function App() {
   )
 
   const choosePolis = async ({ polis }: { polis?: string }) => {
-    const selectedPolis = orderedHydras.find(item => item.id === current)?.polis ?? 'shared'
     const destination = orderedHydras.find(item => (item.polis ?? 'shared') === polis)
 
-    if (polis && selectedPolis !== polis && destination) {
+    if (polis && currentPolis !== polis && destination) {
       try {
         await navigate({ url: `/hydra/${encodeURIComponent(destination.id)}/` })
       } catch (error) {
-        rootNotify({ text: (error as Error).message })
+        rootNotify({ text: error instanceof Error ? error.message : String(error) })
 
         return
       }
@@ -651,7 +651,7 @@ export function App() {
                   />
                   </StatusNotice>
                 )}
-                <SortGroup id="hydra-axis" items={workspaces.map(workspace => workspace.navigation.hydraId)}>
+                <SortGroup id="hydra-axis" items={visibleWorkspaceIds}>
                   {visibleWorkspaces.map(workspace => (
                     <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
                       <WorkspaceInstance

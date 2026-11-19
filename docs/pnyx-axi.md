@@ -586,7 +586,7 @@ Lifecycle columns, custom rules, manual placement overrides and the column CLI r
 
 ## Poleis
 
-In Settings, Poleis manages names and actual readers, including `shared`, which starts open to every Hydra and can be narrowed by the owner; Hydra chooses its home under “Lives in” and its read list under “Also reads”. The project editor assigns a project through `project move` and offers the Hydra’s readable poleis. Navigation groups Hydras by their home polis; selecting a polis filters the workspace, and selecting it again clears the filter. Project column headings show their repositories’ poleis. These controls use the same settings and commands as the CLI.
+In Settings, the owner creates poleis and manages their readers, including readers of `shared`. For each Hydra, “Lives in” sets its home and “Also reads” sets its read list. The project editor offers the Hydra’s readable poleis as destinations for `project move`. Project column headings show their repositories’ poleis. Select a polis in the top bar to filter the workspace by Hydra home, and select it again to clear the filter.
 
 Hydra config stores its home polis in `polis` and its full read list in `readPoleis`. The defaults are `shared` and `["shared"]`. Changing the home polis does not add it to the read list.
 

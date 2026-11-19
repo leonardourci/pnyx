@@ -38,7 +38,7 @@ function pendingProject({
     return 'Detaching…'
   }
 
-  if (action === 'set') {
+  if (action === 'set' || action === 'move') {
     return 'Saving project settings…'
   }
 

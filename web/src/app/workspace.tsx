@@ -611,6 +611,10 @@ export function HydraView({
     connected: connected && workspaceWindow.mounted,
     revision: `${state.projectsRevision}:${JSON.stringify(projectSettings?.projectPoleis)}:${JSON.stringify(projectSettings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}`,
   })
+  const projectPolisByPath = new Map(polisProjects.map(project => [
+    project.path,
+    project.polis,
+  ]))
   const protectedColumns = new Set(columns.filter(column =>
     viewport.protectsColumn({
       hydra: navigation.hydraId,
@@ -1337,10 +1341,9 @@ export function HydraView({
                                     column={c}
                                     poleis={[
                                       ...new Set(c.repositories.flatMap(path => {
-                                        const project = polisProjects.find(project =>
-                                          project.path === path)
+                                        const polis = projectPolisByPath.get(path)
 
-                                        return project?.polis ? [project.polis] : []
+                                        return polis ? [polis] : []
                                       })),
                                     ]}
                                     hydraId={navigation.hydraId}

@@ -64,14 +64,17 @@ export function HydraChips({
                   scope: 'hydras',
                   hydra: hydra.id,
                 }}
-                key={hydra.id}
                 variant="hydra"
                 data-sort-id={hydra.id}
                 data-sort-kind="hydra"
                 data-sort-scope="hydras"
                 aria-current={hydra.id === current ? 'page' : undefined}
                 onClick={() => {
-                  filterPolis({}); void navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })
+                  if (polisFilter !== polis) {
+                    filterPolis({})
+                  }
+
+                  return navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })
                 }}
               >
                 <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />

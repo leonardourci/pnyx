@@ -122,6 +122,15 @@ test(
         exact: true,
       },
     ).click()
+    await expect.poll(async () => (await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra.readPoleis).toEqual([
+      'shared',
+      'studio',
+    ])
     await settings.getByRole(
       'combobox',
       {
@@ -150,7 +159,13 @@ test(
         'show',
       ],
     })).hydra.polis).toBe('shared')
-    held.shift()!()
+    const saveHome = held.shift()
+
+    if (!saveHome) {
+      throw new Error('Expected a pending Hydra home change')
+    }
+
+    saveHome()
     await expect.poll(async () => (await hydra.owner({
       args: [
         'hydra',
@@ -189,6 +204,14 @@ test(
       },
     )
     await projectPolis.click()
+    const studioOption = page.getByRole(
+      'option',
+      {
+        name: 'studio',
+        exact: true,
+      },
+    )
+    await studioOption.waitFor()
     expect(await page.getByRole(
       'option',
       {
@@ -196,13 +219,7 @@ test(
         exact: true,
       },
     ).count()).toBe(0)
-    await page.getByRole(
-      'option',
-      {
-        name: 'studio',
-        exact: true,
-      },
-    ).click()
+    await studioOption.click()
     await expect.poll(() => held.length).toBe(1)
     expect(await projectPolis.innerText()).toContain('studio')
     expect((await hydra.owner({
@@ -211,7 +228,13 @@ test(
         'list',
       ],
     })).projects[0].polis).toBe('shared')
-    held.shift()!()
+    const saveProject = held.shift()
+
+    if (!saveProject) {
+      throw new Error('Expected a pending project move')
+    }
+
+    saveProject()
     await expect.poll(async () => (await hydra.owner({
       args: [
         'project',
@@ -234,6 +257,13 @@ test(
         exact: true,
       },
     ).click()
+    await expect.poll(() => page.getByRole(
+      'button',
+      {
+        name: 'Filter polis studio',
+        exact: true,
+      },
+    ).getAttribute('aria-pressed')).toBe('true')
     await expect.poll(() => page.locator(`[data-hydra-workspace="${personal.id}"]`).count()).toBe(0)
     expect(await page.locator(`[data-hydra-workspace="${hydra.id}"]`).count()).toBe(1)
     await page.getByRole(
@@ -302,5 +332,11 @@ test(
         'show',
       ],
     })).settings.poleis.studio.readers).toEqual([])
+    await expect.poll(async () => (await hydra.owner({
+      args: [
+        'project',
+        'list',
+      ],
+    })).projects).toBe('none: no projects attached')
   },
 )

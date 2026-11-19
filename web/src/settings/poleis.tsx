@@ -41,7 +41,7 @@ export function HydraPoleis({
         ],
       })
     } catch (error) {
-      notify({ text: (error as Error).message })
+      notify({ text: error instanceof Error ? error.message : String(error) })
     }
   }
 
@@ -71,7 +71,7 @@ export function HydraPoleis({
               ...access.readPoleis,
               option.value,
             ] : access.readPoleis.filter(polis => polis !== option.value)
-            void save({
+            return save({
               args: [
                 '--read-poleis',
                 reads.join(','),
@@ -117,7 +117,7 @@ export function Poleis({
 
       return true
     } catch (error) {
-      notify({ text: (error as Error).message })
+      notify({ text: error instanceof Error ? error.message : String(error) })
 
       return false
     }
@@ -196,7 +196,7 @@ export function Poleis({
             aria-label="New polis name"
             value={name}
             required
-            pattern="[a-z0-9][a-z0-9-]{0,63}"
+            pattern={String.raw`[a-z0-9][a-z0-9\-]{0,63}`}
             onChange={event => setName(event.target.value)}
           />
           <Button

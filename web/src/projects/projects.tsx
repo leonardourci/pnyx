@@ -209,7 +209,7 @@ export function Projects({
                   ],
                 })
               } catch (error) {
-                notify({ text: (error as Error).message })
+                notify({ text: error instanceof Error ? error.message : String(error) })
               }
             }}
           />

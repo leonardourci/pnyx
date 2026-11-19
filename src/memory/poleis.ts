@@ -127,6 +127,11 @@ export async function readableProjectDetails({
     project,
   ]))
   const settings = readSettings().settings
+  const readPoleis = polisAccess({
+    hydraId,
+    state: current,
+    settings,
+  }).reads
 
   return identities.flatMap((
     { id },
@@ -148,11 +153,7 @@ export async function readableProjectDetails({
       {
         project,
         polis: settings.projectPoleis[id] ?? 'shared',
-        readPoleis: polisAccess({
-          hydraId,
-          state: current,
-          settings,
-        }).reads,
+        readPoleis,
       },
     ]
   })

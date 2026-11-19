@@ -214,17 +214,26 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       state: current,
       hydraId,
     })
+    const detailsByPath = new Map(details.map(detail => [
+      detail.project.path,
+      detail,
+    ]))
     const projects = projectRows({
       state: current,
       projects: details.map(({ project }) => project),
-    }).map((
-      project,
-      index,
-    ) => ({
-      ...project,
-      polis: details[index]!.polis,
-      readPoleis: details[index]!.readPoleis,
-    }))
+    }).map(project => {
+      const detail = detailsByPath.get(project.path)
+
+      if (!detail) {
+        return project
+      }
+
+      return {
+        ...project,
+        polis: detail.polis,
+        readPoleis: detail.readPoleis,
+      }
+    })
 
     const listed: Output = {
       hydraId,
