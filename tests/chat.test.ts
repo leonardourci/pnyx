@@ -1,6 +1,8 @@
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { withWriter } from '#app/writer.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -481,6 +483,11 @@ test(
     })
     const session = await hydra.chat({ text: 'Hold the report burst' })
     const page = await hydra.page()
+    const wakeTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('more worker reports'),
+      hold: true,
+    })
 
     try {
       for (const index of Array.from(
@@ -511,22 +518,68 @@ test(
           'Keep the owner message intact under the report cap',
         ],
       })
+      // The timer runs only while Hydra is idle; queue the saved-review fixture during its held turn.
+      withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => {
+          const decision = hydraEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            cardId: HYDRA_CARD,
+            change: {
+              type: 'hydra.review',
+              data: {
+                block: `Timed review:\n${'Timed review evidence. '.repeat(1000)}End of timed review evidence`,
+                reminders: [],
+                flags: ['oversized review fixture'],
+                wake: true,
+              },
+            },
+          })
+
+          if ('event' in decision) {
+            writer.append({ event: decision.event })
+          }
+        },
+      })
+      await until({
+        what: 'the timed review to join the report wake',
+        check: () => queueBox({ hydraId: hydra.id })?.waiting.some(update => update.kind === 'timed review'),
+      })
       turn.release()
       await until({
         what: 'owner and bounded wake delivered',
-        check: () => session.answered >= 3,
+        check: () => session.received.some(text => text.includes('more worker reports'))
+          && queue({ hydraId: hydra.id })?.working === true,
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
       const wake = session.received.find(text => text.includes('more worker reports'))!
       expect(wake).toBeDefined()
       expect(wake.length).toBeLessThan(12_000)
       expect(wake).not.toContain('Long report body '.repeat(30))
+      const reviewAfter = wake.match(/history --kind hydra.review --after (\d+) --full/)?.[1]
+      expect(reviewAfter).toBeDefined()
+      expect(wake).not.toContain('End of timed review evidence')
+      const fullReview = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--after',
+          reviewAfter!,
+          '--full',
+        ],
+      })
+      expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
       const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)![1]!
       let cursor = after
       const reports: string[] = []
 
       for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
-        const rest = await hydra.owner({
+        const rest = await hydra.as({ session }).run({
           args: [
             'hydra',
             'check',
@@ -547,9 +600,26 @@ test(
 
       expect(reports).toHaveLength(293)
       expect(reports.at(-1)).toContain('Report 299:')
+      wakeTurn.release()
+      await until({
+        what: 'the overflow-reading turn to finish',
+        check: () => queue({ hydraId: hydra.id })?.working === false,
+      })
+      const digest = (await pnyxAxi({
+        args: [
+          'hydra',
+          'digest',
+          '--hydra',
+          hydra.id,
+        ],
+        env: process.env,
+      })).stdout
+      expect(digest).not.toContain('Report 7:')
+      expect(digest).not.toContain('Report 299:')
     } finally {
       turn.release()
       page.close()
+      wakeTurn.release()
     }
   },
 )
