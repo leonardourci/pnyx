@@ -2810,18 +2810,20 @@ if (branch === 'iris/target') {
       return child
     }
 
+    const childReady = () => {
+      if (ended) {
+        throw new Error(errors)
+      }
+
+      return ready
+    }
+
     let child = launch({ afterCommit: false })
 
     try {
       await until({
         what: 'scratch child server ready',
-        check: () => {
-          if (ended) {
-            throw new Error(errors)
-          }
-
-          return ready
-        },
+        check: childReady,
       })
       await hydra.owner({
         args: [
@@ -2938,7 +2940,7 @@ if (branch === 'iris/target') {
       child = launch({ afterCommit: true })
       await until({
         what: 'second scratch server ready',
-        check: () => ready,
+        check: childReady,
       })
       await hydra.owner({
         args: [
@@ -3052,12 +3054,12 @@ if (branch === 'iris/target') {
           'done',
         ],
       })
-      // A scratch server checks its queue at once, where the shared one waits for its next 30-second check.
+      // The scratch server checks its queue again every 100 ms; the shared one waits 30 seconds after its check on start.
       await pnyx.stop()
       child = launch({ afterCommit: false })
       await until({
         what: 'third scratch server ready',
-        check: () => ready,
+        check: childReady,
       })
       await until({
         what: 'worker advances again after committed intent recovery',
