@@ -909,8 +909,11 @@ test(
         })
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         expect(await modal.evaluate(element => element.matches(':modal'))).toBe(true)
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
-        const { overlapCount, cardsAboveModal } = await modal.evaluate(element => {
+
+        const {
+          overlapCount,
+          cardsAboveModal,
+        } = await modal.evaluate(element => {
           const bounds = element.getBoundingClientRect()
           const cardsAboveModal: string[] = []
           let overlapCount = 0
