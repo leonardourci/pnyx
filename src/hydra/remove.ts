@@ -224,11 +224,10 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
   }
 
-  removalCopies({
+  await removalPlan({
     id,
     state,
   })
-  await hydraPool({ hydraId: id })
   requireRemovalIdle()
 
   if (!approvedHydraRemoval({
