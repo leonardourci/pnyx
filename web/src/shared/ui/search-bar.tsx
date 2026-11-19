@@ -1,3 +1,4 @@
+import { Keycap } from './keycap.tsx'
 import { useState, type KeyboardEvent, type ComponentProps, type Ref } from 'react'
 import { composing } from '#web-shared/ime.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -150,7 +151,7 @@ export function SearchBar({
         onBlur={() => setMarked(undefined)}
       />
       {count && <span className="search-bar-count text-meta text-muted whitespace-nowrap" aria-live="polite">{count}</span>}
-      {hint && <kbd className="search-bar-key inline-flex items-center px-1.25 py-0 border border-line border-b-2 rounded-compact bg-raised text-muted font-mono text-meta">{hint}</kbd>}
+      {hint && <Keycap className="search-bar-key px-1.25 py-0">{hint}</Keycap>}
     </div>
   )
 }

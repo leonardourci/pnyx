@@ -1,3 +1,4 @@
+import { Keycap } from '#web-shared/ui/keycap.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { useEffect, useState, type ComponentProps } from 'react'
 import { bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
@@ -162,7 +163,7 @@ export function KeyRows({
                 <span className="keymap-action font-medium">{a.label}</span>
                 <span className="keymap-keys flex flex-wrap justify-end items-center gap-1">
                   {keys.map(key => (
-                    <span className="keymap-key inline-flex items-center gap-0.75 py-px pl-1.5 pr-0.75 border border-line border-b-2 rounded-compact bg-raised text-muted font-mono text-meta whitespace-nowrap [&>kbd]:min-w-0 [&>kbd]:h-auto [&>kbd]:p-0 [&>kbd]:border-0 [&>kbd]:rounded-none [&>kbd]:bg-transparent [&>kbd]:shadow-none [&>kbd]:[font:inherit] [&>kbd]:text-ink" key={key}>
+                    <Keycap as="span" className="keymap-key gap-0.75 py-px pl-1.5 pr-0.75 [&>kbd]:min-w-0 [&>kbd]:h-auto [&>kbd]:p-0 [&>kbd]:border-0 [&>kbd]:rounded-none [&>kbd]:bg-transparent [&>kbd]:shadow-none [&>kbd]:[font:inherit] [&>kbd]:text-ink" key={key}>
                       <kbd>{keyLabel({
                         keys: [key],
                         platform,
@@ -179,7 +180,7 @@ export function KeyRows({
                           bindings: { [a.id]: keys.filter(k => k !== key) },
                         })}
                       />
-                    </span>
+                    </Keycap>
                   ))}
                   {capturing === a.id
                     ? <span className="keymap-capture text-gold text-meta" role="status">Press a key… Esc cancels</span>
