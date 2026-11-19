@@ -18,6 +18,9 @@ type SpendResult = {
   readings: Record<string, UsageReading>
 }
 
+// A thread costs tens of megabytes, so an idle Hydra's counter lets it go; the next count starts another.
+const IDLE_MS = 30_000
+
 // Counting reads transcripts, so it runs in a worker thread, off the server's event loop.
 // One count runs at a time; asking during it runs one more count, on the inputs of that moment.
 export function spendCounter({
@@ -34,6 +37,19 @@ export function spendCounter({
   let busy = false
   let again = false
   let closed = false
+  let idle: ReturnType<typeof setTimeout> | undefined
+
+  const retire = () => {
+    const thread = worker
+    worker = undefined
+    thread?.terminate().catch((error: Error) => {
+      log({
+        level: 'error',
+        operation: 'spend.count',
+        error,
+      })
+    })
+  }
 
   const finish = () => {
     busy = false
@@ -41,7 +57,15 @@ export function spendCounter({
     if (again) {
       again = false
       count()
+
+      return
     }
+
+    idle = setTimeout(
+      retire,
+      IDLE_MS,
+    )
+    idle.unref()
   }
 
   const start = () => {
@@ -79,6 +103,8 @@ export function spendCounter({
   }
 
   function count() {
+    clearTimeout(idle)
+
     if (closed) {
       return
     }
@@ -108,6 +134,7 @@ export function spendCounter({
     count,
     close: async () => {
       closed = true
+      clearTimeout(idle)
       await worker?.terminate()
       worker = undefined
     },
