@@ -1,7 +1,7 @@
+import { removalWork } from './removal-work.ts'
 import { hydraPool, protectedCopiesFolder, removeHydraPool } from '#projects/remove-pool.ts'
 import { requestEnv } from '#app/request-context.ts'
-import { existsSync, realpathSync, rmSync } from 'node:fs'
-import { relative, isAbsolute, sep } from 'node:path'
+import { existsSync, rmSync } from 'node:fs'
 import { parse, WRITE, required, meta, type Output } from '#app/cli-support.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -77,6 +77,7 @@ async function removalPreview({
   id: string
   state: ReturnType<typeof removalTarget>
 }): Promise<string> {
+  removalCopies({ state })
   const tasks = Object.values(state.cards).filter(card => !isManagedTask({ card }))
   const pool = await hydraPool({ hydraId: id })
   const copies = new Set([
@@ -98,7 +99,16 @@ async function removalPreview({
     }
   }
 
-  const prs = [...new Set(tasks.flatMap(card => card.links.filter(link => link.kind === 'github_pr' && link.state === 'open').map(link => link.url)))]
+  const recorded = new Set(tasks.flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : []))
+
+  for (const slot of pool.slots) {
+    if (!recorded.has(slot.path)) {
+      unlanded.push(`${slot.path} (unrecorded checkout; landing unknown)`)
+    }
+  }
+
+  const openLinks = tasks.flatMap(card => card.links).filter(link => link.kind === 'github_pr' && link.state === 'open')
+  const prs = [...new Set(openLinks.map(link => link.url))]
 
   const name = state.config?.name ?? id
   const unlandedPaths = unlanded.length ? unlanded.join(', ') : 'none'
@@ -117,22 +127,11 @@ function removalCopies({ state }: { state: ReturnType<typeof removalTarget> }) {
       continue
     }
 
-    const copyPath = realpathSync(copy.path)
-    const projectPath = existsSync(copy.project) ? realpathSync(copy.project) : copy.project
-    const projectFromCopy = relative(
-      copyPath,
-      projectPath,
-    )
-
-    const outsideCopy = isAbsolute(projectFromCopy) || projectFromCopy === '..'
-      || projectFromCopy.startsWith(`..${sep}`)
-
-    if (!outsideCopy) {
-      throw new HydraError({
-        message: `Copy contains the project folder: ${copy.path}`,
-        code: 'CONFLICT',
-      })
-    }
+    protectedCopiesFolder({
+      hydraId: state.config!.id,
+      root: copy.path,
+      preserveSurvivors: false,
+    })
   }
 
   return copies
@@ -175,6 +174,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
       ],
       hydraId,
       removalSeq: state.seq,
+      removalWork: await removalWork({ id }),
       summary: await removalPreview({
         id,
         state,
@@ -222,6 +222,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
                 id,
               }),
               removing: true,
+              removalWork: approved,
             },
           },
         })
@@ -263,6 +264,46 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
 
   try {
     await close({ hydraId: id })
+    const currentWork = await removalWork({ id })
+    const changed = !state.config.removalWork || Object.entries(currentWork).some(([
+      path,
+      hash,
+    ]) => state.config!.removalWork![path] !== hash)
+
+    if (changed) {
+      withWriter({
+        hydraId: id,
+        removal: true,
+        fn: ({ writer }) => {
+          const decision = hydraEvent({
+            state: writer.state,
+            meta: actor,
+            cardId: '$board',
+            change: {
+              type: 'board.configured',
+              data: {
+                ...hydraConfig({
+                  state: writer.state,
+                  id,
+                }),
+                removing: false,
+                removalWork: undefined,
+              },
+            },
+          })
+
+          if ('event' in decision) {
+            writer.append({ event: decision.event })
+          }
+        },
+      })
+
+      throw new HydraError({
+        message: 'Checkout work changed. Propose removal again for a fresh preview',
+        code: 'CONFLICT',
+      })
+    }
+
     const copies = removalCopies({ state })
 
     for (const copy of copies) {
