@@ -515,22 +515,26 @@ test(
                 return
               }
 
-              const trackedReply = 'id' in frame && typeof frame.id === 'string' && replies.has(frame.id)
+              if (!('id' in frame) || typeof frame.id !== 'string' || !('type' in frame)) {
+                return
+              }
 
-              if (!trackedReply || !('type' in frame)) {
+              const id = frame.id
+
+              if (!replies.has(id)) {
                 return
               }
 
               if (frame.type === 'receipt') {
                 replies.set(
-                  frame.id,
+                  id,
                   'receipt',
                 )
               }
 
               if (frame.type === 'error' && 'code' in frame && typeof frame.code === 'string') {
                 replies.set(
-                  frame.id,
+                  id,
                   frame.code,
                 )
               }
