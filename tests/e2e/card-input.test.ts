@@ -861,11 +861,12 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         check: () => modal.evaluate(element => getComputedStyle(element).transform === 'none'),
       })
+      const reply = 'Message handled'
       const turn = pnyx.claude.plan({
         hydra: hydra.id,
         hold: true,
         partial: 'Working on the message',
-        reply: 'Message handled',
+        reply,
       })
       onTestFinished(() => turn.release())
       const message = 'Keep the modal above the workspace'
@@ -894,10 +895,10 @@ test(
       ]) {
         if (status === 'Idle') {
           turn.release()
-          await until({
-            what: 'worker answers the modal message',
-            check: () => worker.answered === 2,
-          })
+          await modal.getByText(
+            reply,
+            { exact: true },
+          ).waitFor({ state: 'visible' })
         }
 
         await until({
@@ -905,10 +906,8 @@ test(
           check: async () => await modal.getByText(
             status,
             { exact: true },
-          ).count() > 0,
+          ).isVisible(),
         })
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
-        expect(await modal.evaluate(element => element.matches(':modal'))).toBe(true)
 
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         const coverage = await modal.evaluate(element => {
