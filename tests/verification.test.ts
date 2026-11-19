@@ -24,9 +24,9 @@ afterEach(() => {
   }
 })
 
-// Deslop ships JavaScript without declarations; resolve its installed module for runtime import.
+// Deslop ships TypeScript source that Pnyx's strict typecheck rejects, so it loads at runtime.
 const require = createRequire(import.meta.url)
-const selectorPath = require.resolve('deslop/src/config.js')
+const selectorPath = require.resolve('deslop/src/config.ts')
 const selectorModule = pathToFileURL(selectorPath).href
 const {
   select,

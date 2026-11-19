@@ -35,9 +35,11 @@ jobs:
         run: |
           git diff --no-renames --name-only -z HEAD^1 HEAD > "$RUNNER_TEMP/paths"
           node --input-type=module -e "
-            import { readFileSync } from 'node:fs'
-            // The selector is installed in the runner's temporary directory, resolved at runtime.
-            const { select } = await import(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop/src/config.js')
+            import { readFileSync, realpathSync } from 'node:fs'
+            import { createRequire } from 'node:module'
+            const deslop = realpathSync(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop')
+            const { createJiti } = createRequire(deslop + '/package.json')('jiti')
+            const { select } = await createJiti(deslop).import(deslop + '/src/config.ts')
             const config = JSON.parse(readFileSync('deslop.config.json', 'utf8'))
             const paths = readFileSync(process.argv[1], 'utf8').split('\0').filter(Boolean)
             if (!paths.length) throw new Error('Empty change list')
