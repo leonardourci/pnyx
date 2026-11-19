@@ -144,43 +144,57 @@ export function* retireableReviewQuestions({
   at: string
 }): Iterable<HydraEvent> {
   const cards = Object.values(state.cards)
-  const questions = cards.flatMap(card => openAsks({ card, audience: 'owner' })
-    .filter(ask => ask.kind === 'merge').map(ask => ({ card, ask })))
+  const questions = cards.flatMap(card => openAsks({
+    card,
+    audience: 'owner',
+  })
+    .filter(ask => ask.kind === 'merge')
+    .map(ask => ({
+      card,
+      ask,
+    })))
 
   if (!questions.length) {
     return
   }
 
-  const ownerReviewCards = cards.filter(card => ownerReviewsPullRequests({ state, card }))
+  const ownerReviewCards = cards.filter(card => ownerReviewsPullRequests({
+    state,
+    card,
+  }))
   const ownerReviewCardIds = new Set(ownerReviewCards.map(card => card.id))
-  const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card => card.links.map(link => link.url)))
+  const ownerReviewLinks = ownerReviewCards.flatMap(card => card.links)
+  const ownerReviewUrls = new Set(ownerReviewLinks.map(link => link.url))
 
-  for (const { card, ask } of questions) {
+  for (const {
+    card,
+    ask,
+  } of questions) {
     if (ownerReviewCardIds.has(card.id) || (ask.url && ownerReviewUrls.has(ask.url))) {
       continue
     }
 
-      const decision = hydraEvent({
-        state,
-        cardId: card.id,
-        meta: {
-          at,
-          actor: 'pnyx',
-          id: `${ask.id}:${card.id}:${state.seq}:review-update`,
+    const decision = hydraEvent({
+      state,
+      cardId: card.id,
+      meta: {
+        at,
+        actor: 'pnyx',
+        id: `${ask.id}:${card.id}:${state.seq}:review-update`,
+      },
+      change: {
+        type: 'task.ask.closed',
+        data: {
+          ask: ask.id,
+          reason: 'The current landing rule does not require an owner merge decision',
+          evidence: ask.url ?? card.id,
         },
-        change: {
-          type: 'task.ask.closed',
-          data: {
-            ask: ask.id,
-            reason: 'The current landing rule does not require an owner merge decision',
-            evidence: ask.url ?? card.id,
-          },
-        },
-      })
+      },
+    })
 
-      if ('event' in decision) {
-        yield decision.event
-      }
+    if ('event' in decision) {
+      yield decision.event
+    }
   }
 }
 

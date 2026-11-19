@@ -3616,7 +3616,8 @@ test(
     })
     const retired = current.task.asks.find((ask: { id: string }) => ask.id === question.id)
     expect(retired.closed).toBeDefined()
-    const landingEvent = readEvents({ hydraId: hydra.id }).find(event => event.id === landingReceipt.event.id)
+    const events = readEvents({ hydraId: hydra.id })
+    const landingEvent = events.find(event => event.id === landingReceipt.event.id)
     expect(retired.closed.at).toBe(landingEvent?.at)
     expect(landingReceipt.card.column).toBe(current.task.column)
     expect(landingReceipt.card.revision).toBe(current.task.revision)
@@ -3689,7 +3690,6 @@ test(
     expect(shared.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toHaveLength(1)
     await hydra.owner({
       args: [
-        'task',
         'outcome',
         alias.card.id,
         'cancelled',
