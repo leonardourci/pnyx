@@ -248,17 +248,19 @@ test(
 
     writeFileSync(
       join(
-        movedCopy,
-        'moved.txt',
-      ),
-      'surviving work',
-    )
-    writeFileSync(
-      join(
         pooled,
         'dirty-pool.txt',
       ),
       'unrecorded work',
+    )
+    const unrelatedFile = join(
+      pooled,
+      '..',
+      'outside-checkouts.txt',
+    )
+    writeFileSync(
+      unrelatedFile,
+      'keep this file',
     )
 
     const session = await caller.chat({ text: 'remove the other Hydra' })
@@ -298,6 +300,10 @@ test(
     expect(existsSync(pooled)).toBe(false)
     expect(existsSync(neighbor)).toBe(true)
     expect(readFileSync(
+      unrelatedFile,
+      'utf8',
+    )).toBe('keep this file')
+    expect(readFileSync(
       join(
         movedCopy,
         'moved.txt',
@@ -329,11 +335,13 @@ test(
     })
     expect(worktrees).not.toContain(pooled)
     expect(worktrees).toContain(neighbor)
+    expect(worktrees).toContain(movedCopy)
     expect(worker.closed).toBe(true)
     const advertised = JSON.parse(readFileSync(
       infoPath(),
       'utf8',
     )).url
+    expect(new URL(advertised).pathname).toBe('/')
     const response = await fetch(advertised)
     expect(response.status).toBe(200)
     expect(new URL(response.url).pathname).not.toBe(`/hydra/${target.id}/`)
@@ -638,6 +646,16 @@ test(
       expect.objectContaining({ id: caller.id }),
       expect.objectContaining({ id: target.id }),
     ]))
+    const legacy = await legacyDuplicate({
+      pnyx,
+      id: `recovery-${target.id}`,
+      projects: [
+        {
+          path: folder,
+          landing: 'branch',
+        },
+      ],
+    })
     git({
       cwd: folder,
       args: [
@@ -646,7 +664,14 @@ test(
         locked,
       ],
     })
-    await pnyx.restart()
+    await pnyx.restart({
+      whileStopped: () => {
+        rows({
+          text: 'delete from hydras where id = $1',
+          values: [legacy.id],
+        })
+      },
+    })
     expect(existsSync(locked)).toBe(false)
     expect(git({
       cwd: folder,
@@ -666,8 +691,8 @@ test(
 )
 
 test(
-  'filesystem edits after the preview require fresh approval and keep the copy',
-  async () => {
+  'an ignored file written while stopping tools requires fresh approval and keeps the copy',
+  async ({ onTestFinished }) => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra()
     const folder = projectFolder({
@@ -702,6 +727,42 @@ test(
         'changed',
       ],
     })).agent.folder as string
+    writeFileSync(
+      join(
+        copy,
+        '.gitignore',
+      ),
+      'new-work.txt\n',
+    )
+    const workPath = join(
+      copy,
+      'new-work.txt',
+    )
+    const tool = spawn(
+      process.execPath,
+      [
+        '-e',
+        "process.once('SIGTERM', () => { require('node:fs').writeFileSync(process.argv[1], 'keep new work'); process.exit(0) }); process.send('ready'); setInterval(() => {}, 1000)",
+        workPath,
+      ],
+      {
+        detached: true,
+        stdio: [
+          'ignore',
+          'ignore',
+          'ignore',
+          'ipc',
+        ],
+      },
+    )
+    onTestFinished(() => {
+      tool.kill('SIGKILL')
+    })
+    await once(
+      tool,
+      'message',
+    )
+    trackChildren({ hydraId: target.id }).spawned({ child: tool })
     const proposed = await caller.owner({
       args: [
         'hydra',
@@ -709,13 +770,6 @@ test(
         target.id,
       ],
     })
-    writeFileSync(
-      join(
-        copy,
-        'new-work.txt',
-      ),
-      'keep new work',
-    )
     const refused = await caller.ownerRefused({
       args: [
         'approval',
@@ -734,6 +788,13 @@ test(
       ),
       'utf8',
     )).toBe('keep new work')
+    const reopened = await caller.owner({
+      args: [
+        'hydra',
+        'list',
+      ],
+    })
+    expect(reopened.hydras).toContainEqual(expect.objectContaining({ id: target.id }))
     await pnyx.restart()
     expect(existsSync(copy)).toBe(true)
     expect((await caller.owner({
@@ -817,7 +878,7 @@ test(
 )
 
 test(
-  'an applying removal cannot be dismissed',
+  'an applying removal can only be dismissed after the interrupted approval is recovered',
   async () => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra()
@@ -861,6 +922,15 @@ test(
     })
     expect(refusal.code).toBe('CONFLICT')
     expect(refusal.error).toContain('already applying')
+    await pnyx.restart()
+    const dismissed = await caller.owner({
+      args: [
+        'approval',
+        'dismiss',
+        proposed.token,
+      ],
+    })
+    expect(dismissed.state).toBe('dismissed')
   },
 )
 
@@ -969,7 +1039,7 @@ test(
     )
     writeFileSync(
       path,
-      'invalid',
+      '[{}]',
     )
     const proposed = await caller.owner({
       args: [
@@ -993,6 +1063,13 @@ test(
     writeFileSync(
       path,
       recorded,
+    )
+    writeFileSync(
+      join(
+        copy,
+        'work-after-failed-stop.txt',
+      ),
+      'included in the retry preview',
     )
     const retry = await caller.owner({
       args: [
