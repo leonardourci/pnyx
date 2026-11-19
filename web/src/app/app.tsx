@@ -634,7 +634,7 @@ export function App() {
           move={({ preview }) => startTransition(() => setPreview(preview))}
           drop={drop}
         >
-          <WorkspaceViewport>
+          <WorkspaceViewport axis={axis}>
             <motion.div
               onBeforeLayoutMeasure={() => anchor.current?.()}
               ref={axis}

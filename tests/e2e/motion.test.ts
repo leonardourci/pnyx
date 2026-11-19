@@ -635,21 +635,19 @@ test(
 
               const sample = async () => {
                 await clicked
-                const boxes: number[][] = []
+                const boxes: (number[] | null)[] = []
 
                 for (let frame = 0; frame < frameCount; frame++) {
                   await new Promise(requestAnimationFrame)
                   const node = document.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
 
-                  if (node) {
-                    const bounds = node.getBoundingClientRect()
-                    boxes.push([
-                      bounds.x,
-                      bounds.y,
-                      bounds.width,
-                      bounds.height,
-                    ])
-                  }
+                  const bounds = node?.getBoundingClientRect()
+                  boxes.push(bounds ? [
+                    bounds.x,
+                    bounds.y,
+                    bounds.width,
+                    bounds.height,
+                  ] : null)
                 }
 
                 return boxes
@@ -662,7 +660,7 @@ test(
               frameCount: SAMPLE_FRAMES,
             },
           )
-          let path: number[][]
+          let path: (number[] | null)[]
 
           try {
             await close.click()
@@ -672,11 +670,16 @@ test(
             await sampling.dispose()
           }
 
-          const distance = (bounds: number[]) => Math.max(...bounds.map((
-            value,
-            index,
-          ) => Math.abs(value - slot[index]!)))
-          const distances = path.map(distance)
+          const distances = path.map(bounds => {
+            if (!bounds) {
+              throw new Error('The card slot disappeared during the modal close')
+            }
+
+            return Math.max(...bounds.map((
+              value,
+              index,
+            ) => Math.abs(value - slot[index]!)))
+          })
           expect(
             Math.max(...distances),
             JSON.stringify(path),

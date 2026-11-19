@@ -6,6 +6,7 @@ import { startPnyx, until } from '../setup/pnyx.ts'
 import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 
 const IDEA_TASKS = 4
+const EXPECTED_MOUNTED_TASKS = 129
 const PROJECT_TASKS = [
   32,
   82,
@@ -111,7 +112,6 @@ test(
         }),
       )),
     ]
-    expect(changes).toHaveLength(129)
     await first.owner({
       args: [
         'apply',
@@ -146,11 +146,12 @@ test(
         JSON.stringify({ workspace: { projectWidths: { ideas: 836 } } }),
       ],
     })
+    const targetTask = await first.task({ key: 'project-1-80' })
     const stream = pnyx.claude.plan({
       hydra: first.id,
       text: 'Summarize the active work',
       partial: 'The active work is moving through the Hydra.',
-      reply: 'The active work is moving through the Hydra. The questions are waiting for a choice.',
+      reply: `The active work is moving through the Hydra. The questions are waiting for a choice.\n\n[@Project 1 task 80](pnyx-task:${targetTask.id})`,
       hold: true,
     })
     await first.owner({
@@ -254,7 +255,7 @@ test(
       what: 'the non-first Hydra stays selected after all five load',
       check: async () => await page.locator('[data-hydra-workspace][data-connected=true]').count() === 5,
     })
-    expect(await workspace.locator('.card-open').count()).toBe(changes.length)
+    expect(await workspace.locator('.card-open').count()).toBe(EXPECTED_MOUNTED_TASKS)
     expect(await workspace.locator('.project-column').count()).toBe(5)
     expect(await other.locator('.card-open').count()).toBe(1)
     expect(await other.locator('.hydra-page').count()).toBe(1)
@@ -465,7 +466,7 @@ test(
         ) => count + line.count,
         0,
       )).toBeLessThanOrEqual(MAX_TASK_COMMITS)
-      expect(renders.filter(line => line.hydraId === second.id)).toEqual([])
+      expect(renders.filter(line => line.hydraId !== first.id)).toEqual([])
     }
 
     const fourth = workspace.getByRole(
@@ -555,7 +556,27 @@ test(
       reportDragResponsiveness({ metrics: drag })
     }
 
-    const scroller = workspace.locator(`[data-column="${projects[1]}"] .column-cards`)
+    const axis = page.locator('.workspace-axis')
+    const otherColumn = workspace.locator(`[data-column="${projects[0]}"] .column-cards`)
+    const otherScroll = await otherColumn.evaluate(element => {
+      element.scrollTo({ top: element.scrollHeight, behavior: 'instant' })
+
+      return element.scrollTop
+    })
+    expect(otherScroll).toBeGreaterThan(0)
+    const project = workspace.locator(`[data-column="${projects[1]}"]`)
+    await workspace.getByRole('navigation', { name: 'Projects', exact: true }).getByText('project-1', { exact: true }).click()
+    await until({
+      what: 'the project chip aligns its column with the workspace axis',
+      check: async () => {
+        const columnBounds = await project.boundingBox()
+        const axisBounds = await axis.boundingBox()
+
+        return !!columnBounds && !!axisBounds && Math.abs(columnBounds.x - axisBounds.x - 12) < 2
+      },
+    })
+    expect(await otherColumn.evaluate(({ scrollTop }) => scrollTop)).toBe(otherScroll)
+    const scroller = project.locator('.column-cards')
     await scroller.hover()
     const finishScroll = await beginUIWindow({ page })
     const scrollStart = await page.evaluate(() => performance.now())
@@ -604,12 +625,8 @@ test(
       })
     }
 
-    expect(await workspace.locator('.card-open').count()).toBe(changes.length)
-    const axis = page.locator('.workspace-axis')
+    expect(await workspace.locator('.card-open').count()).toBe(EXPECTED_MOUNTED_TASKS)
     const axisBeforeReveal = await axis.evaluate(({ scrollLeft }) => scrollLeft)
-    const otherColumn = workspace.locator('[data-column="ideas"] .column-cards')
-    const otherScroll = await otherColumn.evaluate(({ scrollTop }) => scrollTop)
-    const targetTask = await first.task({ key: 'project-1-80' })
     const targetCard = scroller.locator(`.card[data-task="${targetTask.id}"]`)
     const selectedCard = targetCard.and(scroller.locator('.card.selected'))
     const initialCardBox = await targetCard.boundingBox()
@@ -621,29 +638,7 @@ test(
 
     expect(initialCardBox.y).toBeGreaterThanOrEqual(initialColumnBox.y + initialColumnBox.height)
 
-    const revealTarget = async () => {
-      await page.evaluate(
-        async ({
-          hydra,
-          id,
-        }) => {
-          dispatchEvent(new CustomEvent(
-            'pnyx:workspace-target',
-            {
-              detail: {
-                hydra,
-                id,
-              },
-            },
-          ))
-          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-        },
-        {
-          hydra: first.id,
-          id: targetTask.id,
-        },
-      )
-    }
+    const reference = workspace.locator('.hydra-chat .task-reference-title').filter({ hasText: 'Project 1 task 80' })
 
     const expectOtherScrollPositions = async () => {
       expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBeCloseTo(
@@ -665,7 +660,8 @@ test(
       })
     }
 
-    await revealTarget()
+    // Playwright's click would scroll the conversation into view before testing the reference.
+    await reference.dispatchEvent('click')
     await expectTargetInColumnViewport({ what: 'the selected task enters its column viewport' })
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
@@ -677,7 +673,7 @@ test(
     }))
     const displacedCard = await selectedCard.boundingBox()
     expect(displacedCard?.y).toBeGreaterThanOrEqual(initialColumnBox.y + initialColumnBox.height)
-    await revealTarget()
+    await reference.dispatchEvent('click')
     await expectTargetInColumnViewport({ what: 'a repeated reveal keeps the selected task in its column viewport' })
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()

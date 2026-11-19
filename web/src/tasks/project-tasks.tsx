@@ -37,6 +37,11 @@ export function ProjectTasks({
   const rows = useMemo(
     () => {
       const count = singleColumn ? 1 : cardGrid({ width }).columns
+
+      if (count === 1) {
+        return items.map(card => [card])
+      }
+
       const rows: Card[][] = []
       let row: Card[] = []
 

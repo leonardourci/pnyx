@@ -1279,6 +1279,7 @@ export function HydraView({
                                 },
                               ]}
                               itemKey={({ item }) => item.id}
+                              scroll={viewport.axis}
                               gap={WORKSPACE_SIZING.columnGap}
                               reveal={columnRequest?.id}
                               revealKey={columnRequest?.key}

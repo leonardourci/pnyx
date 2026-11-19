@@ -1,12 +1,15 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
 
 const Context = createContext<{
+  axis: RefObject<HTMLDivElement | null>
   width: number
 } | null>(null)
 
 export function WorkspaceViewport({
+  axis,
   children,
 }: {
+  axis: RefObject<HTMLDivElement | null>
   children: ReactNode
 }) {
   const [
@@ -30,9 +33,13 @@ export function WorkspaceViewport({
   )
   const value = useMemo(
     () => ({
+      axis,
       width,
     }),
-    [width],
+    [
+      axis,
+      width,
+    ],
   )
 
   return <Context value={value}>{children}</Context>

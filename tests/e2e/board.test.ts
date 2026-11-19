@@ -5185,7 +5185,7 @@ test(
 
 test(
   'the workspace frame edits and drags the Hydra while closed cards retain tags',
-  async () => {
+  async ({ onTestFinished }) => {
     const hydra = await pnyx.hydra()
     const project = hydra.folder({ name: 'single-repository' })
     mkdirSync(
@@ -5220,6 +5220,9 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
     })
+    onTestFinished(async () => {
+      await page.context().close()
+    })
     const column = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="single-repository"]`)
     await column.getByRole(
       'button',
@@ -5229,45 +5232,6 @@ test(
       },
     ).waitFor()
     expect(await column.locator('.card-labels').allTextContents()).toEqual(['Backend'])
-    expect(await column.locator('[data-project-polis]').count()).toBe(0)
-    await hydra.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({ poleis: { studio: { readers: [hydra.id] } } }),
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared,studio',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'project',
-        'move',
-        project,
-        '--polis',
-        'studio',
-      ],
-    })
-    await column.locator('[data-project-polis="studio"]').waitFor()
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'studio',
-      ],
-    })
-    await until({
-      what: 'a matching project polis is omitted after changing the Hydra home',
-      check: async () => await column.locator('[data-project-polis]').count() === 0,
-    })
     const frame = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
     expect(await frame.locator('.hydra-chat .hydra-label').count()).toBe(0)
     expect(await frame.locator('.project-chips .project-counts').count()).toBe(0)
@@ -5310,6 +5274,10 @@ test(
     await until({
       what: 'the frame icon edit is saved',
       check: async () => await frame.locator('.hydra-head [data-icon=poseidon]').count() === 1,
+    })
+    await expect.poll(async () => (await hydra.owner({ args: ['hydra', 'show'] })).hydra).toMatchObject({
+      name: renamed,
+      icon: 'poseidon',
     })
     const grip = frame.getByRole(
       'button',

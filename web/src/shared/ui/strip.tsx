@@ -1,9 +1,11 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react'
+import { layoutOffset } from './layout-geometry.ts'
 
 export function Strip<T>({
   items,
   itemKey,
   render,
+  scroll,
   gap,
   reveal,
   revealKey,
@@ -11,6 +13,7 @@ export function Strip<T>({
   items: T[]
   itemKey({ item }: { item: T }): string
   render({ item }: { item: T }): ReactNode
+  scroll: RefObject<HTMLElement | null>
   gap: number
   reveal?: string | null
   revealKey?: string
@@ -19,9 +22,18 @@ export function Strip<T>({
   const index = items.findIndex(item => itemKey({ item }) === reveal)
   useLayoutEffect(
     () => {
-      element.current?.children[index]?.scrollIntoView({
-        block: 'nearest',
-        inline: 'start',
+      const target = element.current?.children[index]
+      const scroller = scroll.current
+
+      if (!(target instanceof HTMLElement) || !scroller) {
+        return
+      }
+
+      const targetLeft = layoutOffset({ element: target, horizontal: true })
+      const scrollerLeft = layoutOffset({ element: scroller, horizontal: true })
+      const padding = parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0
+      scroller.scrollTo({
+        left: targetLeft - scrollerLeft - scroller.clientLeft - padding,
         behavior: 'instant',
       })
     },
@@ -29,6 +41,7 @@ export function Strip<T>({
       index,
       reveal,
       revealKey,
+      scroll,
     ],
   )
 
