@@ -1,4 +1,4 @@
-import { expect, inject, test } from 'vitest'
+import { expect, inject, onTestFinished, test } from 'vitest'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { openHydra } from '../setup/browser.ts'
@@ -17,6 +17,8 @@ const FIRST_CARD_BUDGET_MS = 2000
 const SCROLL_FRAME_BUDGET_MS = 250
 const PROJECT_APPEAR_TIMEOUT_MS = 5000
 const ANCHOR_SETTLE_FRAMES = 40
+const EARLIER_PROJECTS = 3
+const WHEEL_DELTA = 900
 const MAX_TASK_COMMITS = 4
 const DISCOVERY_READ_BUDGETS = {
   models: 10,
@@ -43,6 +45,15 @@ test(
     const first = hydras.at(-1)!
     const second = hydras[0]!
     const projects = []
+
+    for (let index = 0; index < EARLIER_PROJECTS; index++) {
+      const path = second.folder({ name: `earlier-project-${index}` })
+      mkdirSync(
+        join(path, '.git'),
+        { recursive: true },
+      )
+      await second.owner({ args: ['project', 'add', path] })
+    }
 
     for (let index = 0; index < PROJECT_TASKS.length; index++) {
       const path = first.folder({ name: `project-${index}` })
@@ -218,6 +229,9 @@ test(
         )
       },
     })
+    onTestFinished(async () => {
+      await page.context().close()
+    })
     const workspace = page.locator(`[data-hydra-workspace="${first.id}"]`)
     const other = page.locator(`[data-hydra-workspace="${second.id}"]`)
     await workspace.getByRole(
@@ -279,6 +293,7 @@ test(
     }
 
     const earlierProject = second.folder({ name: 'later-project' })
+    const earlierWidth = await other.evaluate(({ offsetWidth }) => offsetWidth)
     mkdirSync(
       join(
         earlierProject,
@@ -338,6 +353,7 @@ test(
       positions.every(x => Math.abs(x - originalBox.x) < 0.5),
       JSON.stringify(positions),
     ).toBe(true)
+    expect(await other.evaluate(({ offsetWidth }) => offsetWidth)).toBeGreaterThan(earlierWidth)
     await until({
       what: 'an earlier Hydra changes width without stealing the direct address',
       check: async () => {
@@ -522,12 +538,15 @@ test(
     const scrollStart = await page.evaluate(() => performance.now())
     await page.mouse.wheel(
       0,
-      900,
+      WHEEL_DELTA,
     )
     await until({
       what: 'the wheel reaches its destination before task navigation',
-      // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
-      check: () => scroller.evaluate(element => element.scrollTop >= 900),
+      check: () => scroller.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+        (element, delta) => element.scrollTop >= delta,
+        WHEEL_DELTA,
+      ),
     })
     const scroll = await finishScroll()
 
@@ -564,9 +583,8 @@ test(
     const axisBeforeReveal = await axis.evaluate(({ scrollLeft }) => scrollLeft)
     const otherColumn = workspace.locator('[data-column="ideas"] .column-cards')
     const otherScroll = await otherColumn.evaluate(({ scrollTop }) => scrollTop)
-    const targetTitle = 'Project 1 task 80'
     const targetTask = await first.task({ key: 'project-1-80' })
-    const targetCard = scroller.locator('.card').filter({ hasText: targetTitle })
+    const targetCard = scroller.locator(`.card[data-task="${targetTask.id}"]`)
     const selectedCard = targetCard.and(scroller.locator('.card.selected'))
     const initialCardBox = await targetCard.boundingBox()
     const initialColumnBox = await scroller.boundingBox()
@@ -626,6 +644,9 @@ test(
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
 
+    await scroller.evaluate(element => element.scrollTo({ top: 0, behavior: 'instant' }))
+    const displacedCard = await selectedCard.boundingBox()
+    expect(displacedCard?.y).toBeGreaterThanOrEqual(initialColumnBox.y + initialColumnBox.height)
     await revealTarget()
     await expectTargetInColumnViewport({ what: 'a repeated reveal keeps the selected task in its column viewport' })
     await selectedCard.locator('.card-panel:focus').waitFor()

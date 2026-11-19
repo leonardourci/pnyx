@@ -5,6 +5,7 @@ import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const SAMPLE_FRAMES = 60
+const STABLE_LAYOUT_FRAMES = 3
 let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
@@ -521,15 +522,8 @@ test(
         })
         await until({
           what: 'the scrolled column settles',
-          check: async () => {
-            const first = await scrollTop()
-            await new Promise(resolve => setTimeout(
-              resolve,
-              200,
-            ))
-
-            return first > 0 && first === await scrollTop()
-          },
+          check: () => scroller.evaluate(element => element.scrollTop > 0
+            && Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop) < 1),
         })
         const id = await column.evaluate(section => {
           const visible = section.querySelector('.project-cards')!.getBoundingClientRect()
@@ -558,7 +552,7 @@ test(
 
         const foldBack = async ({ expanded }: { expanded: boolean }) => {
           await card.hover()
-          const openModalButton = page.getByRole(
+          const openModalButton = card.getByRole(
             'button',
             {
               name: 'Open modal',
@@ -568,26 +562,28 @@ test(
           await openModalButton.hover()
           await until({
             what: 'the card and its column stop moving before opening the modal',
-            check: async () => {
-              const position = async () => JSON.stringify([
-                await box(),
-                await scrollTop(),
-              ])
-              const first = await position()
+            check: () => card.evaluate(
+              async (element, frames) => {
+                const scroll = element.closest('.project-cards')
+                const position = () => {
+                  const { x, y, width, height } = element.getBoundingClientRect()
 
-              for (let check = 0; check < 3; check++) {
-                await new Promise(resolve => setTimeout(
-                  resolve,
-                  300,
-                ))
-
-                if (first !== await position()) {
-                  return false
+                  return JSON.stringify([x, y, width, height, scroll?.scrollTop])
                 }
-              }
+                const initial = position()
 
-              return true
-            },
+                for (let frame = 0; frame < frames; frame++) {
+                  await new Promise(requestAnimationFrame)
+
+                  if (position() !== initial) {
+                    return false
+                  }
+                }
+
+                return true
+              },
+              STABLE_LAYOUT_FRAMES,
+            ),
           })
           const slot = await box()
           const scrolled = await scrollTop()
@@ -615,15 +611,15 @@ test(
               exact: true,
             },
           ).first()
-          const sampling = close.evaluate(
-            async (
+          const sampling = await close.evaluateHandle(
+            (
               button,
               {
                 task,
                 frameCount,
               },
             ) => {
-              await new Promise<void>(resolve => button.addEventListener(
+              const clicked = new Promise<void>(resolve => button.addEventListener(
                 'click',
                 () => resolve(),
                 {
@@ -631,24 +627,29 @@ test(
                   once: true,
                 },
               ))
-              const boxes: number[][] = []
+              const sample = async () => {
+                await clicked
+                const boxes: number[][] = []
 
-              for (let frame = 0; frame < frameCount; frame++) {
-                await new Promise(requestAnimationFrame)
-                const node = document.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
+                for (let frame = 0; frame < frameCount; frame++) {
+                  await new Promise(requestAnimationFrame)
+                  const node = document.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
 
-                if (node) {
-                  const bounds = node.getBoundingClientRect()
-                  boxes.push([
-                    bounds.x,
-                    bounds.y,
-                    bounds.width,
-                    bounds.height,
-                  ])
+                  if (node) {
+                    const bounds = node.getBoundingClientRect()
+                    boxes.push([
+                      bounds.x,
+                      bounds.y,
+                      bounds.width,
+                      bounds.height,
+                    ])
+                  }
                 }
+
+                return boxes
               }
 
-              return boxes
+              return { path: sample() }
             },
             {
               task: id,
@@ -657,7 +658,8 @@ test(
           )
           await close.click()
           await modal.waitFor({ state: 'detached' })
-          const path = await sampling
+          const path = await sampling.evaluate(({ path }) => path)
+          await sampling.dispose()
           const distance = (bounds: number[]) => Math.max(...bounds.map((
             value,
             index,

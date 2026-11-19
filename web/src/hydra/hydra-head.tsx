@@ -48,7 +48,7 @@ export function HydraHead({
 
   return (
     <div
-      className="hydra-head font-brand font-bold flex items-center justify-start gap-2 shrink-0 text-pane [&_strong]:min-w-0 [&_strong]:truncate [&_strong]:[font-weight:inherit] [&_.hydra-name-editor]:flex-1 [&_.hydra-name-editor]:max-w-90 [&_.hydra-name-field_.input]:text-ui"
+      className="hydra-head font-brand font-bold flex min-w-0 items-center justify-start gap-2 text-pane [&_strong]:min-w-0 [&_strong]:truncate [&_strong]:[font-weight:inherit] [&_.hydra-name-editor]:min-w-0 [&_.hydra-name-editor]:flex-1 [&_.hydra-name-editor]:max-w-90 [&_.hydra-name-field_.input]:text-ui"
       onContextMenu={event => canEdit && openMenu({ event })}
       onKeyDown={event => canEdit && opensMenu({ event }) && openMenu({
         event: {

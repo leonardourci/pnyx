@@ -104,7 +104,7 @@ function HydraDragName({
         ref={sort.setActivatorNodeRef}
         data-drag-handle
         aria-label={`Move ${name}`}
-        className="cursor-grab touch-none p-0.5"
+        className="shrink-0 cursor-grab touch-none p-0.5"
       ><Icon name="grip" />
       </Button>
       {children}
