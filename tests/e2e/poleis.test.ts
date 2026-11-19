@@ -243,9 +243,6 @@ test(
         'show',
       ],
     })).hydra.polis).toBe('studio')
-    const atlasColumn = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="Atlas"]`)
-    const atlasBadge = atlasColumn.locator('[data-project-polis]')
-    await atlasColumn.locator('[data-project-polis="shared"]').waitFor({ state: 'attached' })
     await page.getByRole(
       'button',
       {
@@ -253,6 +250,9 @@ test(
         exact: true,
       },
     ).click()
+    const atlasColumn = page.locator(`[data-hydra-workspace="${hydra.id}"] .project-column[aria-label="Atlas"]`)
+    const atlasBadge = atlasColumn.locator('[data-project-polis]')
+    await atlasColumn.locator('[data-project-polis="shared"]').waitFor({ state: 'attached' })
     await page.getByRole(
       'button',
       {
