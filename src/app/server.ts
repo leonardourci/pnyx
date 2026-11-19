@@ -3,6 +3,7 @@ import { followGit } from '#tasks/delivery/follow-git.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followedLinks } from '#tasks/delivery/follow.ts'
+import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { createLatestFeed } from './latest-feed.ts'
@@ -61,6 +62,7 @@ export async function mountOwnedHydra({
   pauseDelay,
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
+  queueDelay = QUEUE_POLL_MS,
   recoveryPause,
   reviewClock,
   reminderScheduler = systemReminderScheduler,
@@ -82,6 +84,7 @@ export async function mountOwnedHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  queueDelay?: number
   recoveryPause?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
@@ -340,6 +343,7 @@ export async function mountOwnedHydra({
     closed: () => closed || !recovered,
     pump,
     followDelay,
+    queueDelay,
     reminderScheduler,
     runWorker,
     triedResends,

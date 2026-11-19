@@ -98,7 +98,7 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry and followed pull requests wait between reads; tests shorten them.
+  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry, followed pull requests wait between reads and queues wait between checks; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -106,6 +106,7 @@ export async function startServer({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  queueDelay?: number
   recoveryPause?: number
   // How often the process line is written; tests shorten it.
   processLineMs?: number
@@ -1207,6 +1208,7 @@ async function mountHydra({
   pauseDelay,
   retryDelays,
   followDelay,
+  queueDelay,
   recoveryPause,
   reviewClock,
   reminderScheduler,
@@ -1229,6 +1231,7 @@ async function mountHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  queueDelay?: number
   recoveryPause?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
@@ -1251,6 +1254,7 @@ async function mountHydra({
     pauseDelay,
     retryDelays,
     followDelay,
+    queueDelay,
     recoveryPause,
     reviewClock,
     reminderScheduler,
