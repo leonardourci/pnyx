@@ -1,4 +1,4 @@
-import { removalWork } from './removal-work.ts'
+import { copyFingerprint, removalWork } from './removal-work.ts'
 import { hydraPool, protectedCopiesFolder, removeHydraPool } from '#projects/remove-pool.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { existsSync, rmSync } from 'node:fs'
@@ -77,16 +77,20 @@ async function removalPreview({
   id: string
   state: ReturnType<typeof removalTarget>
 }): Promise<string> {
-  removalCopies({ state })
+  const recordedCopies = removalCopies({
+    id,
+    state,
+  })
   const tasks = Object.values(state.cards).filter(card => !isManagedTask({ card }))
   const pool = await hydraPool({ hydraId: id })
+  const recorded = new Set(recordedCopies.map(copy => copy.path))
   const copies = new Set([
-    ...tasks.flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : []),
+    ...recorded,
     ...pool.slots.map(slot => slot.path),
   ])
   const unlanded: string[] = []
 
-  for (const card of tasks) {
+  for (const card of Object.values(state.cards)) {
     if (card.copy && card.copy.state !== 'removed') {
       const check = await checkCopy({
         card,
@@ -98,8 +102,6 @@ async function removalPreview({
       }
     }
   }
-
-  const recorded = new Set(tasks.flatMap(card => card.copy && card.copy.state !== 'removed' ? [card.copy.path] : []))
 
   for (const slot of pool.slots) {
     if (!recorded.has(slot.path)) {
@@ -117,7 +119,13 @@ async function removalPreview({
   return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${copies.size}. Copies with unlanded work: ${unlandedPaths}. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
 }
 
-function removalCopies({ state }: { state: ReturnType<typeof removalTarget> }) {
+function removalCopies({
+  id,
+  state,
+}: {
+  id: string
+  state: ReturnType<typeof removalTarget>
+}) {
   const cards = Object.values(state.cards)
   const copies = cards.flatMap(card => card.copy && card.copy.state !== 'removed'
     ? [card.copy] : [])
@@ -128,7 +136,7 @@ function removalCopies({ state }: { state: ReturnType<typeof removalTarget> }) {
     }
 
     protectedCopiesFolder({
-      hydraId: state.config!.id,
+      hydraId: id,
       root: copy.path,
       preserveSurvivors: false,
     })
@@ -191,48 +199,50 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
   }
 
-  if (!state.config?.removing) {
-    removalCopies({ state })
-    await hydraPool({ hydraId: id })
-    requireRemovalIdle()
+  removalCopies({
+    id,
+    state,
+  })
+  await hydraPool({ hydraId: id })
+  requireRemovalIdle()
 
-    if (!approvedHydraRemoval({
-      hydraId,
-      id,
-      token,
-    })) {
-      throw new HydraError({
-        message: 'Removal approval is no longer available',
-        code: 'CONFLICT',
-      })
-    }
-
-    withWriter({
-      hydraId: id,
-      fn: ({ writer }) => {
-        const pending = hydraEvent({
-          state: writer.state,
-          meta: actor,
-          cardId: '$board',
-          change: {
-            type: 'board.configured',
-            data: {
-              ...hydraConfig({
-                state: writer.state,
-                id,
-              }),
-              removing: true,
-              removalWork: approved,
-            },
-          },
-        })
-
-        if ('event' in pending) {
-          writer.append({ event: pending.event })
-        }
-      },
+  if (!approvedHydraRemoval({
+    hydraId,
+    id,
+    token,
+  })) {
+    throw new HydraError({
+      message: 'Removal approval is no longer available',
+      code: 'CONFLICT',
     })
   }
+
+  withWriter({
+    hydraId: id,
+    removal: true,
+    fn: ({ writer }) => {
+      const pending = hydraEvent({
+        state: writer.state,
+        meta: actor,
+        cardId: '$board',
+        change: {
+          type: 'board.configured',
+          data: {
+            ...hydraConfig({
+              state: writer.state,
+              id,
+            }),
+            removing: true,
+            removalWork: approved,
+          },
+        },
+      })
+
+      if ('event' in pending) {
+        writer.append({ event: pending.event })
+      }
+    },
+  })
 
   return finishHydraRemoval({ id })
 }
@@ -260,51 +270,69 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     })
   }
 
+  const approvedWork = state.config.removalWork
+
+  const refuseChangedWork = () => {
+    withWriter({
+      hydraId: id,
+      removal: true,
+      fn: ({ writer }) => {
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: actor,
+          cardId: '$board',
+          change: {
+            type: 'board.configured',
+            data: {
+              ...hydraConfig({
+                state: writer.state,
+                id,
+              }),
+              removing: false,
+              removalWork: undefined,
+            },
+          },
+        })
+
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      },
+    })
+
+    throw new HydraError({
+      message: 'Checkout work changed. Propose removal again for a fresh preview',
+      code: 'CONFLICT',
+    })
+  }
+
+  const verify = async ({ path }: { path: string }) => {
+    const fingerprint = await copyFingerprint({ path })
+
+    if (fingerprint !== undefined && approvedWork?.[path] !== fingerprint) {
+      refuseChangedWork()
+    }
+  }
+
   removing.add(id)
 
   try {
     await close({ hydraId: id })
     const currentWork = await removalWork({ id })
-    const changed = !state.config.removalWork || Object.entries(currentWork).some(([
+
+    const changed = !approvedWork || Object.entries(currentWork).some(([
       path,
       hash,
-    ]) => state.config!.removalWork![path] !== hash)
+    ]) => approvedWork[path] !== hash)
 
     if (changed) {
-      withWriter({
-        hydraId: id,
-        removal: true,
-        fn: ({ writer }) => {
-          const decision = hydraEvent({
-            state: writer.state,
-            meta: actor,
-            cardId: '$board',
-            change: {
-              type: 'board.configured',
-              data: {
-                ...hydraConfig({
-                  state: writer.state,
-                  id,
-                }),
-                removing: false,
-                removalWork: undefined,
-              },
-            },
-          })
-
-          if ('event' in decision) {
-            writer.append({ event: decision.event })
-          }
-        },
-      })
-
-      throw new HydraError({
-        message: 'Checkout work changed. Propose removal again for a fresh preview',
-        code: 'CONFLICT',
-      })
+      refuseChangedWork()
     }
 
-    const copies = removalCopies({ state })
+    const copies = removalCopies({
+      id,
+      state,
+    })
 
     for (const copy of copies) {
       protectedCopiesFolder({ hydraId: id })
@@ -312,6 +340,13 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       if (!existsSync(copy.path)) {
         continue
       }
+
+      await verify({ path: copy.path })
+      protectedCopiesFolder({
+        hydraId: id,
+        root: copy.path,
+        preserveSurvivors: false,
+      })
 
       if (copy.via === 'worktree') {
         const failure = await removeCopy({
@@ -336,7 +371,10 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       }
     }
 
-    await removeHydraPool({ hydraId: id })
+    await removeHydraPool({
+      hydraId: id,
+      verify,
+    })
 
     withWriter({
       hydraId: id,
@@ -382,6 +420,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
               }),
               removed: true,
               removing: false,
+              removalWork: undefined,
             },
           },
         })
