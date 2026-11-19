@@ -43,6 +43,8 @@ export default defineConfig({
         test: {
           name: 'integration',
           include: ['tests/*.test.ts'],
+          // Each file runs a server, git and pnyx-axi processes; more at once than half the cores leaves them CPU-starved.
+          maxWorkers: '50%',
         },
       },
       {
@@ -52,9 +54,9 @@ export default defineConfig({
           include: ['tests/e2e/*.test.ts'],
           exclude: ['tests/e2e/performance.test.ts'],
           // A browser journey runs zero-cache and Chrome beside its server, so the journeys run after the integration files,
-          // on half the cores, instead of starving them of CPU.
+          // on a quarter of the cores, instead of starving each other of CPU.
           sequence: { groupOrder: 1 },
-          maxWorkers: '50%',
+          maxWorkers: '25%',
           testTimeout: BROWSER_TIMEOUT_MS,
           hookTimeout: BROWSER_TIMEOUT_MS,
         },
