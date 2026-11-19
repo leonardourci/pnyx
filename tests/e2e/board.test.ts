@@ -5371,7 +5371,7 @@ test(
     const targetComposer = page.locator(`[data-hydra-workspace="${target.id}"] .composer textarea`)
     await earlierComposer.waitFor()
     await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${target.id}/?new-chat`)
-    await targetComposer.waitFor({ state: 'attached' })
+    await page.locator(`[data-hydra-workspace="${target.id}"] .hydra-head`).waitFor()
     expect(await targetComposer.isVisible()).toBe(false)
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(true)
     await target.owner({
