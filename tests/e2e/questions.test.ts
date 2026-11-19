@@ -287,9 +287,9 @@ test(
     await reviewCard.locator('.card-link').first()
       .waitFor()
 
-    expect(await reviewCard.locator('.card-current-state').count()).toBe(1)
     const reviewUpdate = reviewCard.locator('.card-current-state')
-    expect(await reviewUpdate.textContent()).toContain('CSV [export] ] is ready for review.')
+    await reviewUpdate.filter({ hasText: 'CSV [export] ] is ready for review.' }).waitFor()
+    expect(await reviewUpdate.count()).toBe(1)
     await hydra.owner({
       args: [
         'task',
@@ -320,16 +320,16 @@ test(
       what: 'the merge question leaves Waiting on you',
       check: async () => (await waiting.textContent())?.includes('Waiting on you · 1') === true,
     })
-    const latestUpdate = await reviewUpdate.textContent()
-    expect(latestUpdate).toContain('Latest update')
-    expect(latestUpdate).toContain('CSV [export] ] is ready for review.')
-    const reviewLink = reviewUpdate.getByRole(
+    const latestUpdate = reviewUpdate.filter({ hasText: 'Latest update' })
+    const reviewLink = latestUpdate.getByRole(
       'link',
       {
         name: 'CSV [export] ]',
         exact: true,
       },
     )
+    await reviewLink.waitFor()
+    expect(await latestUpdate.textContent()).toContain('CSV [export] ] is ready for review.')
     expect(await reviewLink.getAttribute('href')).toBe('https://github.com/sample/exports/pull/1')
 
     await waiting.click()
