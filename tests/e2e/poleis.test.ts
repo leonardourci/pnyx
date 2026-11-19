@@ -103,7 +103,7 @@ test(
     expect(await navigation.getByRole(
       'button',
       { name: 'Filter polis shared' },
-    ).count()).toBe(1)
+    ).count()).toBeGreaterThan(1)
     await page.getByRole(
       'button',
       {

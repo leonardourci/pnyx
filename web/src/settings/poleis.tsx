@@ -105,7 +105,7 @@ export function Poleis({
   const snapshot = useSharedSettingsState()
 
   if (!snapshot) {
-    return <p role="status" className="muted">Loading poleis…</p>
+    return <p role="status" className="text-muted">Loading poleis…</p>
   }
 
   const {
