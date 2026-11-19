@@ -1152,7 +1152,7 @@ test(
       args: [
         'project',
         'show',
-        'polis-project',
+        path,
       ],
     })
     expect(JSON.stringify(initialProjectMemory)).toContain('Project pulsar learning')
@@ -1272,7 +1272,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('polis-project')
+    }))).toContain('polis-project')
     expect((await pnyxAxi({
       args: [
         'project',
@@ -1288,13 +1288,13 @@ test(
         PNYX_TASK: undefined,
       },
     })).stdout).toContain('NOT_FOUND')
-    expect((await hidden.ownerRefused({
+    expect(JSON.stringify(await hidden.owner({
       args: [
         'project',
         'show',
         path,
       ],
-    })).code).toBe('NOT_FOUND')
+    }))).not.toContain('Project pulsar learning')
     expect((await hidden.ownerRefused({
       args: [
         'project',
@@ -1549,7 +1549,7 @@ test(
         args: [
           'project',
           'remove',
-          'polis-project',
+          path,
         ],
       })
       sockets.forEach(socket => socket.end())
@@ -1591,23 +1591,43 @@ test(
           'list',
         ],
       })
+      const detachShowing = allowed.owner({
+        args: [
+          'project',
+          'show',
+          path,
+        ],
+      })
+      blockedReads += 1
       await until({
-        what: 'attachment list Git read is gated',
+        what: 'attachment list and show Git reads are gated',
         check: () => sockets.length >= blockedReads,
       })
       await allowed.owner({
         args: [
           'project',
           'remove',
-          'polis-project',
+          path,
         ],
       })
       released = true
       sockets.forEach(socket => socket.end())
-      expect((await detachListing).projects).toContainEqual(expect.objectContaining({
+      expect((await detachShowing).attachment).toMatchObject({
+        path,
+        state: 'detached',
+      })
+      const detachedList = await detachListing
+      expect(detachedList.projects).toContainEqual(expect.objectContaining({
         path,
         state: 'detached',
       }))
+      const currentList = await allowed.owner({
+        args: [
+          'project',
+          'list',
+        ],
+      })
+      expect(detachedList.revision).toBe(currentList.revision)
       await allowed.owner({
         args: [
           'project',
@@ -1637,7 +1657,7 @@ test(
       })
       released = true
       sockets.forEach(socket => socket.end())
-      expect(JSON.stringify(await listing)).not.toContain(path)
+      expect(JSON.stringify(await listing)).toContain(path)
 
       released = false
       blockedReads = sockets.length + 1
@@ -1701,7 +1721,7 @@ test(
         args: [
           'project',
           'remove',
-          'polis-project',
+          path,
         ],
       })
       released = true
@@ -1883,7 +1903,7 @@ test(
           args: [
             'project',
             'remove',
-            'polis-project',
+            path,
           ],
         })
         released = true
@@ -2255,7 +2275,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('permission-project')
+    }))).toContain('permission-project')
     expect((await pnyxAxi({
       args: [
         'project',
@@ -2287,7 +2307,7 @@ test(
         'project',
         'list',
       ],
-    }))).not.toContain('permission-project')
+    }))).toContain('permission-project')
     await other.owner({
       args: [
         'hydra',
