@@ -1,3 +1,4 @@
+import { hydraPolisConfig } from '#memory/polis-policy.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import type { HydraSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
@@ -122,6 +123,7 @@ export function summarize({
           ...openDecisions({ state }).map(decision => decision.card.id),
         ]).size,
         id,
+        polis: hydraPolisConfig({ state }).polis,
         identity: hydraIdentity({ hydraId: id }),
         creationAttempt: creationAttempt({ event: initial }),
         name: config.name,

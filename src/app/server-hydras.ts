@@ -21,6 +21,7 @@ export interface HydraProjectSummary {
 }
 export interface HydraSummary {
   asks?: number
+  polis?: string
   creationAttempt?: string
   identity?: string
   id: string

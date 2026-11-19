@@ -108,7 +108,7 @@ export function requireProjectMemory({
   }
 }
 
-export async function readableProjects({
+export async function readableProjectDetails({
   hydraId,
   state,
 }: {
@@ -144,8 +144,30 @@ export async function readableProjects({
       return []
     }
 
-    return [project]
+    return [
+      {
+        project,
+        polis: settings.projectPoleis[id] ?? 'shared',
+        readPoleis: polisAccess({
+          hydraId,
+          state: current,
+          settings,
+        }).reads,
+      },
+    ]
   })
+}
+
+export async function readableProjects({
+  hydraId,
+  state,
+}: Parameters<typeof readableProjectDetails>[0]) {
+  const details = await readableProjectDetails({
+    hydraId,
+    state,
+  })
+
+  return details.map(({ project }) => project)
 }
 
 export async function findReadableProject({

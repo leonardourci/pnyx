@@ -1,7 +1,7 @@
 import { childRepositories, attachProjectGroup, projectGroupCommand } from './group-cli.ts'
 import { keepProject } from './ownership.ts'
 import { sharesWithMore } from '#memory/access-changes.ts'
-import { canRead, findReadableProject, readableProjects, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
+import { canRead, findReadableProject, readableProjectDetails, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
@@ -210,13 +210,21 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
+    const details = await readableProjectDetails({
+      state: current,
+      hydraId,
+    })
     const projects = projectRows({
       state: current,
-      projects: await readableProjects({
-        state: current,
-        hydraId,
-      }),
-    })
+      projects: details.map(({ project }) => project),
+    }).map((
+      project,
+      index,
+    ) => ({
+      ...project,
+      polis: details[index]!.polis,
+      readPoleis: details[index]!.readPoleis,
+    }))
 
     const listed: Output = {
       hydraId,
@@ -562,6 +570,7 @@ pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] -
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
+Project list includes each project’s polis and the Hydra’s readable destinations in readPoleis.
 Each project belongs to one polis (shared by default); only attached Hydras that may read that polis see its memory. Move changes its assigned polis explicitly.
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
