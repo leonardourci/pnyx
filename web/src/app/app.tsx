@@ -314,11 +314,13 @@ export function App() {
         return
       }
 
-      let previous: number | undefined
+      let previous: {
+        left: number
+        range: number
+        available: number
+        scroll: number
+      } | undefined
       let clamped = false
-      let previousRange: number | undefined
-      let previousScroll: number | undefined
-      let previousAvailable: number | undefined
       let wheelQuiet: ReturnType<typeof setTimeout> | undefined
 
       const protectShrink = () => {
@@ -360,13 +362,17 @@ export function App() {
       }
 
       const rememberScroll = () => {
+        if (!previous) {
+          return
+        }
+
         const {
           left,
           available,
         } = position()
 
-        if (left === previous && available === previousAvailable) {
-          previousScroll = surface.scrollLeft
+        if (left === previous.left && available === previous.available) {
+          previous.scroll = surface.scrollLeft
         }
       }
 
@@ -378,19 +384,19 @@ export function App() {
         } = position()
         group.dataset.axisOffset = String(left)
         group.dataset.axisRange = String(range)
+        const actualScroll = surface.scrollLeft
+        const last = previous
         // A shrinking track can clamp the browser before its resize observer runs.
-        const beforeResize = previousScroll
-        const browserClamped = beforeResize !== undefined && previousAvailable !== undefined
-          && available < previousAvailable
-          && Math.abs(surface.scrollLeft - available) < SCROLL_EDGE_EPSILON
-          && beforeResize > available
-        const scroll = browserClamped ? beforeResize : surface.scrollLeft
+        const trackShrank = last && available < last.available
+        const atScrollEnd = Math.abs(actualScroll - available) < SCROLL_EDGE_EPSILON
+        const scroll = trackShrank && atScrollEnd && last.scroll > available
+          ? last.scroll : actualScroll
         const restore = clamped && available >= left
         const shift = previous === undefined || restore
-          ? left - scroll : left - previous
+          ? left - scroll : left - previous.left
         clamped = available < left
 
-        const shrinking = previousRange !== undefined && range < previousRange
+        const shrinking = previous !== undefined && range < previous.range
 
         if (shrinking) {
           protectShrink()
@@ -402,7 +408,7 @@ export function App() {
           left + range,
         ) : desired
 
-        if (destination !== surface.scrollLeft || shrinking) {
+        if (destination !== actualScroll || shrinking) {
           if (smoothScroll.current) {
             smoothScroll.current.resize()
             smoothScroll.current.scrollTo(
@@ -420,10 +426,12 @@ export function App() {
           }
         }
 
-        previous = left
-        previousRange = range
-        previousScroll = surface.scrollLeft
-        previousAvailable = available
+        previous = {
+          left,
+          range,
+          available,
+          scroll: surface.scrollLeft,
+        }
       }
 
       surface.addEventListener(

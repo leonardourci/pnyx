@@ -5199,7 +5199,7 @@ test(
       hydraId: before.id,
       prepare: async ({ page }) => {
         await page.addInitScript(() => {
-          // Force resize delivery after the native clamp so observer ordering cannot hide the bug.
+          // Native scrolling can clamp before ResizeObserver delivers the new dimensions.
           const NativeResizeObserver = ResizeObserver
           let held = false
           const pending: (() => void)[] = []
@@ -5229,16 +5229,14 @@ test(
               })
             }
           }
-          Reflect.set(
-            window,
-            'holdAxisResize',
+          window.addEventListener(
+            'hold-axis-resize',
             () => {
               held = true
             },
           )
-          Reflect.set(
-            window,
-            'releaseAxisResize',
+          window.addEventListener(
+            'release-axis-resize',
             () => {
               held = false
               pending.splice(0).forEach(deliver => deliver())
@@ -5259,7 +5257,11 @@ test(
       const earlier = page.locator(`[data-hydra-workspace="${before.id}"]`)
       await until({
         what: 'earlier Hydra starts wide',
-        check: async () => (await earlier.boundingBox())!.width > 2000,
+        check: async () => {
+          const box = await earlier.boundingBox()
+
+          return box !== null && box.width > 2000
+        },
       })
       await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${hydra.id}"]`).click()
       const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
@@ -5272,7 +5274,11 @@ test(
       ).waitFor()
       await until({
         what: 'addressed Hydra starts aligned',
-        check: async () => Math.abs((await workspace.boundingBox())!.x - 12) < 1,
+        check: async () => {
+          const box = await workspace.boundingBox()
+
+          return box !== null && Math.abs(box.x - 12) < 1
+        },
       })
       await page.getByRole(
         'button',
@@ -5299,10 +5305,7 @@ test(
         .filter({ hasText: 'Projects' })
         .first()
       await projects.waitFor()
-      await page.evaluate(() => Reflect.get(
-        window,
-        'holdAxisResize',
-      )())
+      await page.evaluate(() => window.dispatchEvent(new Event('hold-axis-resize')))
       await before.owner({
         args: [
           'view',
@@ -5313,15 +5316,20 @@ test(
       })
       await until({
         what: 'earlier Hydra shrinks',
-        check: async () => (await earlier.boundingBox())!.width < 1500,
+        check: async () => {
+          const box = await earlier.boundingBox()
+
+          return box !== null && box.width < 1500
+        },
       })
-      await page.evaluate(() => Reflect.get(
-        window,
-        'releaseAxisResize',
-      )())
+      await page.evaluate(() => window.dispatchEvent(new Event('release-axis-resize')))
       await until({
         what: 'addressed Hydra remains aligned',
-        check: async () => Math.abs((await workspace.boundingBox())!.x - 12) < 1,
+        check: async () => {
+          const box = await workspace.boundingBox()
+
+          return box !== null && Math.abs(box.x - 12) < 1
+        },
       })
       await projects.click()
       await page.mouse.click(
@@ -5365,7 +5373,7 @@ test(
           const first = await earlier.boundingBox()
           const second = await workspace.boundingBox()
 
-          return first!.width > 2000 && second!.width > 2000
+          return first !== null && second !== null && first.width > 2000 && second.width > 2000
         },
       })
       await until({
@@ -5378,10 +5386,15 @@ test(
       })
       await until({
         what: 'the wide Hydra remains aligned before panning',
-        check: async () => Math.abs((await workspace.boundingBox())!.x - 12) < 1,
+        check: async () => {
+          const box = await workspace.boundingBox()
+
+          return box !== null && Math.abs(box.x - 12) < 1
+        },
       })
       await restingBox({ target: workspace })
-      await page.locator('.workspace-axis').evaluate(
+      const axis = page.getByLabel('Hydras', { exact: true })
+      await axis.evaluate(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
         axis => {
           Reflect.set(
@@ -5410,12 +5423,14 @@ test(
       ))
       await until({
         what: 'the owner pans within the addressed Hydra',
-        check: async () => Math.abs((await workspace.boundingBox())!.x + 188) < 1,
+        check: async () => {
+          const box = await workspace.boundingBox()
+
+          return box !== null && Math.abs(box.x + 188) < 1
+        },
       })
-      await page.evaluate(() => Reflect.get(
-        window,
-        'holdAxisResize',
-      )())
+      const scrollBeforeShrink = await axis.evaluate(element => element.scrollLeft)
+      await page.evaluate(() => window.dispatchEvent(new Event('hold-axis-resize')))
       await before.owner({
         args: [
           'view',
@@ -5426,15 +5441,32 @@ test(
       })
       await until({
         what: 'earlier Hydra shrinks again',
-        check: async () => (await earlier.boundingBox())!.width < 1500,
+        check: async () => {
+          const box = await earlier.boundingBox()
+
+          return box !== null && box.width < 1500
+        },
       })
-      await page.evaluate(() => Reflect.get(
-        window,
-        'releaseAxisResize',
-      )())
+      await until({
+        what: 'the browser clamps horizontal scroll before resize delivery',
+        check: async () => axis.evaluate(
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+          (element, previousScroll) => {
+            const end = element.scrollWidth - element.clientWidth
+
+            return previousScroll > end && Math.abs(element.scrollLeft - end) < 1
+          },
+          scrollBeforeShrink,
+        ),
+      })
+      await page.evaluate(() => window.dispatchEvent(new Event('release-axis-resize')))
       await until({
         what: 'the owner’s horizontal position survives clamping',
-        check: async () => Math.abs((await workspace.boundingBox())!.x + 188) < 1,
+        check: async () => {
+          const box = await workspace.boundingBox()
+
+          return box !== null && Math.abs(box.x + 188) < 1
+        },
       })
     } finally {
       await page.context().close()
