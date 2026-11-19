@@ -527,6 +527,7 @@ test(
                   'receipt',
                 )
               }
+
               if (frame.type === 'error' && 'code' in frame && typeof frame.code === 'string') {
                 replies.set(
                   frame.id,
