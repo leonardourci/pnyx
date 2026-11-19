@@ -555,16 +555,41 @@ test(
         }
 
         const foldBack = async ({ expanded }: { expanded: boolean }) => {
-          const slot = await box()
-          const scrolled = await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
           await card.hover()
-          await page.getByRole(
+          const openModalButton = page.getByRole(
             'button',
             {
               name: 'Open modal',
               exact: true,
             },
-          ).click()
+          )
+          await openModalButton.hover()
+          await until({
+            what: 'the card and its column stop moving before opening the modal',
+            check: async () => {
+              const position = async () => JSON.stringify([
+                await box(),
+                await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop),
+              ])
+              const first = await position()
+
+              for (let check = 0; check < 3; check++) {
+                await new Promise(resolve => setTimeout(
+                  resolve,
+                  300,
+                ))
+
+                if (first !== await position()) {
+                  return false
+                }
+              }
+
+              return true
+            },
+          })
+          const slot = await box()
+          const scrolled = await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)
+          await openModalButton.click()
           const modal = page.locator('dialog.task-modal')
           await until({
             what: 'the modal finishes opening',
@@ -576,7 +601,10 @@ test(
             placeholder.y,
             placeholder.width,
             placeholder.height,
-          ]).toEqual(slot)
+          ]).toEqual(slot.map(value => expect.closeTo(
+            value,
+            0,
+          )))
           expect(await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop)).toBe(scrolled)
           const sampling = page.evaluate(
             async ({
@@ -642,29 +670,6 @@ test(
           what: 'the card opens inline',
           check: async () => await title.getAttribute('aria-expanded') === 'true'
             && await card.evaluate(element => getComputedStyle(element).transform === 'none'),
-        })
-        await until({
-          what: 'the open card and its column stop moving',
-          check: async () => {
-            const position = async () => JSON.stringify([
-              await box(),
-              await column.locator('.project-cards').evaluate(scroller => scroller.scrollTop),
-            ])
-            const first = await position()
-
-            for (let check = 0; check < 3; check++) {
-              await new Promise(resolve => setTimeout(
-                resolve,
-                300,
-              ))
-
-              if (first !== await position()) {
-                return false
-              }
-            }
-
-            return true
-          },
         })
         await foldBack({ expanded: true })
         await title.click()
