@@ -894,10 +894,10 @@ test(
       ]) {
         if (status === 'Idle') {
           turn.release()
-          await modal.getByText(
-            'Message handled',
-            { exact: true },
-          ).waitFor()
+          await until({
+            what: 'worker answers the modal message',
+            check: () => worker.answered === 2,
+          })
         }
 
         await until({
@@ -910,10 +910,8 @@ test(
         // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
         expect(await modal.evaluate(element => element.matches(':modal'))).toBe(true)
 
-        const {
-          overlapCount,
-          cardsAboveModal,
-        } = await modal.evaluate(element => {
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns browser callbacks.
+        const coverage = await modal.evaluate(element => {
           const bounds = element.getBoundingClientRect()
           const cardsAboveModal: string[] = []
           let overlapCount = 0
@@ -965,8 +963,8 @@ test(
             cardsAboveModal,
           }
         })
-        expect(overlapCount).toBeGreaterThan(0)
-        expect(cardsAboveModal).toEqual([])
+        expect(coverage.overlapCount).toBeGreaterThan(0)
+        expect(coverage.cardsAboveModal).toEqual([])
       }
     } finally {
       await page.context().close()
