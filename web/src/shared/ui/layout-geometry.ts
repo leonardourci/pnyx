@@ -10,9 +10,10 @@ export function layoutOffset({
   let parent: HTMLElement | null = element
 
   while (parent) {
-    offset += horizontal ? parent.offsetLeft + (parent.offsetParent?.clientLeft ?? 0)
-      : parent.offsetTop + (parent.offsetParent?.clientTop ?? 0)
     const offsetParent: Element | null = parent.offsetParent
+    const position = horizontal ? parent.offsetLeft : parent.offsetTop
+    const border = horizontal ? offsetParent?.clientLeft : offsetParent?.clientTop
+    offset += position + (border ?? 0)
     parent = offsetParent instanceof HTMLElement ? offsetParent : null
   }
 

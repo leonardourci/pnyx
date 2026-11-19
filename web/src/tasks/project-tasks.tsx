@@ -9,7 +9,6 @@ import { taskRollup } from './project-view.ts'
 
 interface Family {
   card: Card
-  ids: string[]
   open: boolean
 }
 
@@ -57,7 +56,6 @@ export function ProjectTasks({
         ]
         const family = {
           card,
-          ids,
           open: ids.some(id => selected.includes(id)) || ids.length > 1 && !!folds[card.id],
         }
 

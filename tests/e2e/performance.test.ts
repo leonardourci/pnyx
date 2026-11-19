@@ -16,6 +16,7 @@ const LOAD_FRAME_BUDGET_MS = 1000
 const FIRST_CARD_BUDGET_MS = 2000
 const SCROLL_FRAME_BUDGET_MS = 250
 const PROJECT_APPEAR_TIMEOUT_MS = 5000
+const ANCHOR_SETTLE_FRAMES = 40
 const MAX_TASK_COMMITS = 4
 const DISCOVERY_READ_BUDGETS = {
   models: 10,
@@ -295,9 +296,10 @@ test(
             hydra,
             project,
             timeoutMs,
+            settleFrames,
           },
         ) => {
-          const positions: number[] = []
+          const positions = [element.getBoundingClientRect().x]
           const selector = `[data-hydra-workspace="${CSS.escape(hydra)}"] .project-column[data-column="${CSS.escape(project)}"]`
           const deadline = performance.now() + timeoutMs
 
@@ -310,7 +312,7 @@ test(
             throw new Error('The earlier Hydra did not render the new project column')
           }
 
-          for (let frame = 0; frame < 40; frame++) {
+          for (let frame = 0; frame < settleFrames; frame++) {
             await new Promise(requestAnimationFrame)
             positions.push(element.getBoundingClientRect().x)
           }
@@ -321,6 +323,7 @@ test(
           hydra: second.id,
           project: earlierProject,
           timeoutMs: PROJECT_APPEAR_TIMEOUT_MS,
+          settleFrames: ANCHOR_SETTLE_FRAMES,
         },
       ),
       second.owner({
@@ -557,16 +560,26 @@ test(
     }
 
     expect(await workspace.locator('.card-open').count()).toBe(changes.length)
-    const axisBeforeReveal = await page.locator('.workspace-axis').evaluate(({ scrollLeft }) => scrollLeft)
+    const axis = page.locator('.workspace-axis')
+    const axisBeforeReveal = await axis.evaluate(({ scrollLeft }) => scrollLeft)
     const otherColumn = workspace.locator('[data-column="ideas"] .column-cards')
     const otherScroll = await otherColumn.evaluate(({ scrollTop }) => scrollTop)
     const targetTitle = 'Project 1 task 80'
     const targetTask = await first.task({ key: 'project-1-80' })
+    const targetCard = scroller.locator('.card').filter({ hasText: targetTitle })
+    const selectedCard = targetCard.and(scroller.locator('.card.selected'))
+    const initialCardBox = await targetCard.boundingBox()
+    const initialColumnBox = await scroller.boundingBox()
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const scrollBefore = await scroller.evaluate(({ scrollTop }) => scrollTop)
+    if (!initialCardBox || !initialColumnBox) {
+      throw new Error('The reveal fixture needs a rendered target and column')
+    }
+
+    expect(initialCardBox.y).toBeGreaterThanOrEqual(initialColumnBox.y + initialColumnBox.height)
+
+    const revealTarget = async () => {
       await page.evaluate(
-        ({
+        async ({
           hydra,
           id,
         }) => {
@@ -579,37 +592,41 @@ test(
               },
             },
           ))
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
         },
         {
           hydra: first.id,
           id: targetTask.id,
         },
       )
-      await workspace.locator('.card.selected').filter({ hasText: targetTitle })
-        .waitFor()
-      await until({
-        what: 'the revealed task is inside its column viewport',
-        check: async () => {
-          const card = await workspace.locator('.card.selected').filter({ hasText: targetTitle })
-            .boundingBox()
-          const column = await scroller.boundingBox()
-
-          return !!card && !!column && card.y >= column.y && card.y < column.y + column.height
-        },
-      })
-      expect(await page.locator('.workspace-axis').evaluate(({ scrollLeft }) => scrollLeft)).toBeCloseTo(
+    }
+    const expectOtherScrollPositions = async () => {
+      expect(await axis.evaluate(({ scrollLeft }) => scrollLeft)).toBeCloseTo(
         axisBeforeReveal,
         0,
       )
       expect(await otherColumn.evaluate(({ scrollTop }) => scrollTop)).toBe(otherScroll)
-
-      if (attempt) {
-        expect(await scroller.evaluate(({ scrollTop }) => scrollTop)).toBeCloseTo(
-          scrollBefore,
-          0,
-        )
-      }
     }
+
+    await revealTarget()
+    await until({
+      what: 'the selected task enters its column viewport',
+      check: async () => {
+        const card = await selectedCard.boundingBox()
+        const column = await scroller.boundingBox()
+
+        return !!card && !!column && card.y >= column.y && card.y < column.y + column.height
+      },
+    })
+    await expectOtherScrollPositions()
+
+    const revealedScroll = await scroller.evaluate(({ scrollTop }) => scrollTop)
+    await revealTarget()
+    expect(await scroller.evaluate(({ scrollTop }) => scrollTop)).toBeCloseTo(
+      revealedScroll,
+      0,
+    )
+    await expectOtherScrollPositions()
 
     expect(errors.map(error => error.message)).toEqual([])
   },
