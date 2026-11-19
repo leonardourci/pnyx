@@ -298,6 +298,7 @@ test(
         exact: true,
       },
     ).waitFor()
+    expect(await question.innerText()).not.toContain('removalWork')
     expect(await workspace.locator('.workspace-chat.collapsed').count()).toBe(0)
     expect((await caller.owner({
       args: [
