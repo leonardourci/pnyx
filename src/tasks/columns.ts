@@ -122,9 +122,10 @@ export function placeCard({
 }) {
   const facts = new Set<string>(card)
 
-  return columns.find(column => columnRule({ column }).some(conditions =>
-    conditions.every(condition => condition.startsWith('!')
-      ? !facts.has(condition.slice(1)) : facts.has(condition))))?.id
+  return columns.find(column => (column.role !== 'needs_you' || facts.has('owner-question'))
+    && columnRule({ column }).some(conditions =>
+      conditions.every(condition => condition.startsWith('!')
+        ? !facts.has(condition.slice(1)) : facts.has(condition))))?.id
 }
 
 function parseCondition({ condition }: { condition: string }): ColumnCondition {

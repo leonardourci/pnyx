@@ -121,6 +121,7 @@ export interface TaskReminder {
   dueAt?: string
   repeat?: ReminderRepeat
   dueEvent?: string
+  declaration?: string
   resume?: TaskDeclaration
 }
 

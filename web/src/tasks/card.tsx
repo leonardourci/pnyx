@@ -43,6 +43,8 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
 const STATE_SOURCE = {
+  reminder: 'Scheduled reminder',
+  review: 'Pull request update',
   note: "Worker's status note",
   progress: "Worker's progress report",
 }
@@ -872,7 +874,7 @@ export const HydraCard = memo(function HydraCard({
                   </CardSection>
                 )}
                 {factual && (
-                  <CardSection heading="Current state" className="card-current-state">
+                  <CardSection heading="Latest update" className="card-current-state">
                     <RichText text={factual.text} />
                     <p className="muted small">{stateSource}, {relativeTime({
                       at: factual.at,

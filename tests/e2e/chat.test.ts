@@ -197,6 +197,14 @@ const longConversation = async ({
           'owner',
           '--question',
           'Approve the first release?',
+          '--context',
+          'Approval publishes the release. I will prepare it after your answer. [Hydra](pnyx-task:%24hydra)',
+          '--choice',
+          'Approve',
+          '--choice',
+          'Hold',
+          '--recommend',
+          '1',
         ],
       })
     }
@@ -205,49 +213,25 @@ const longConversation = async ({
   return hydra
 }
 
-test(
-  'a long conversation opens on its newest messages, and scrolling up loads the older pages until the first message',
-  async () => {
-    const hydra = await longConversation()
-    const page = await openHydra({
-      port: pnyx.port(),
-      hydraId: hydra.id,
-    })
-    const conversation = page.locator(CONVERSATION)
-    await conversation.getByText(
-      'answer 25',
-      { exact: true },
-    ).waitFor()
-    expect(await conversation.getByText(
-      'question 1',
-      { exact: true },
-    ).count()).toBe(0)
+// Journeys that only read a conversation share the one built for their shape; a journey that writes builds its own.
+const readConversations = new Map<string, ReturnType<typeof longConversation>>()
 
-    await conversation.hover()
-    await until({
-      what: 'scrolling up to reach the first message',
-      check: async () => {
-        await page.mouse.wheel(
-          0,
-          -2000,
-        )
+const readOnlyConversation = ({ shape }: { shape: Parameters<typeof longConversation>[0] }) => {
+  const key = JSON.stringify(shape)
+  const built = readConversations.get(key)
 
-        return await conversation.getByText(
-          'question 1',
-          { exact: true },
-        ).count() > 0
-      },
-    })
-    await conversation.getByText(
-      'answer 1',
-      { exact: true },
-    ).waitFor()
-    expect(await conversation.getByText(
-      'question 1',
-      { exact: true },
-    ).count()).toBe(1)
-  },
-)
+  if (built) {
+    return built
+  }
+
+  const building = longConversation(shape)
+  readConversations.set(
+    key,
+    building,
+  )
+
+  return building
+}
 
 test.each([
   { width: 1440 },
@@ -255,7 +239,7 @@ test.each([
 ])(
   '$width px: older pages keep the reading position, reserve space for loading, and reach an early decision without looping',
   async ({ width }) => {
-    const hydra = await longConversation({ earlyQuestion: true })
+    const hydra = await readOnlyConversation({ shape: { earlyQuestion: true } })
 
     // The server's messages from a reply to an older-page read on wait here while holding, so the test decides when it lands.
     const olderReads = new Set<string>()
@@ -956,7 +940,7 @@ for (const input of Object.keys(UPWARD_INPUTS)) {
   test(
     `a ${input} up in a chat too short to scroll leaves the bottom and keeps the older pages it loads`,
     async () => {
-      const hydra = await longConversation({ exchanges: LONG_CHAT_EXCHANGES })
+      const hydra = await readOnlyConversation({ shape: { exchanges: LONG_CHAT_EXCHANGES } })
       const {
         page,
         reads,

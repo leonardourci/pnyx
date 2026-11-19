@@ -1,3 +1,4 @@
+import { ownerQuestionGroups, decisionKey } from '#tasks/question-groups.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queueCardInput, validateCardInput } from '#workers/card-input.ts'
@@ -126,6 +127,7 @@ export const TASK_OPTIONS: Options = {
     type: 'string',
     multiple: true,
   },
+  questions: { type: 'string' },
   kind: { type: 'string' },
   file: { type: 'string' },
   url: { type: 'string' },
@@ -241,6 +243,26 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         }),
       },
     })
+  }
+
+  if (action === 'questions') {
+    const state = loadHydra({ hydraId }).state
+    const groups = ownerQuestionGroups({ state }).map(group => ({
+      task: group.card.id,
+      title: group.card.title,
+      count: group.decisions.length,
+      questions: group.decisions.map(decision => ({
+        key: decisionKey({ decision }),
+        kind: decision.kind,
+        question: decision.text,
+      })),
+      choices: group.choices,
+    }))
+
+    return {
+      groups: groups.length ? groups : 'none: no owner questions',
+      count: groups.length,
+    }
   }
 
   if (action === 'report-review') {
@@ -1193,7 +1215,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
-  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question' || action === 'reask'
+  if (action === 'ask' || action === 'answer-group' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question' || action === 'reask'
     || action === 'defer-question' || action === 'discuss-question') {
     return askCommand({
       action,

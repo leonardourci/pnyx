@@ -25,7 +25,7 @@ The tests run the built CLI and serve the built page, so run `pnpm run build` af
 
 Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Postgres log there before they are deleted; CI does this and uploads the folder when a run fails.
 
-A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, and none of the calling shell's identity or settings. Files run in parallel and in a random order, and so do the tests in each file: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
+A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts, so zero-cache, which sizes its buffers from the heap limit, stays small. The integration files run on half the cores, longest first, and the browser journeys run after them on a quarter of the cores (one at a time on a 4-core CI runner), so no file is starved of CPU or memory. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
 ### Performance journey
 
@@ -85,8 +85,10 @@ Rules:
 - Wait with `until` on an observable condition. No fixed sleeps and no retries: a test that fails now and then is a bug.
 - Use the IDs a command returned. Expected values are written out, not computed.
 - Edge cases of tricky logic go in the same area file, calling the function directly only when the server cannot reach the case cheaply.
-- A browser journey earns its place only for what needs a real page: rendering, scrolling, live updates.
-- No duplicate, cosmetic or snapshot tests, and none that break on a rename that keeps behaviour. A new case that fits an existing test becomes assertions in it.
+- A browser journey earns its place only for what needs a real page: rendering, scrolling, live updates. It never re-checks what an integration test already pins.
+- No duplicate, cosmetic or snapshot tests, and none that break on a rename that keeps behaviour. A new case that fits an existing test becomes assertions in it, and a flow that differs only in its input runs once with an assertion per input.
+- A file starts one server, and its journeys share one browser. A test starts a server of its own only when starting or stopping that server is what it proves.
+- A wait on one of the server's intervals shortens that interval through the server's option (`followDelay`, `queueDelay`), never by raising the wait's bound.
 - Nothing outside the test's scratch folders: never a real home, agent, terminal or GitHub.
 - A test that pins a known bug is wrong; skip it with a note naming the task that fixes the bug. `tests/hooks.test.ts` holds one such skipped case.
 - A hook, or any command a harness waits on, is judged by its outcome (it ended by itself, exit code, output), never by a wall-clock bound.
@@ -115,7 +117,7 @@ Rules:
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
-- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, keyboard shortcuts and the phone layout.
+- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, loading shared settings an older build stored and taking their rewrite at the same revision, keyboard shortcuts and the phone layout.
 - `e2e/card-input.test.ts`: creating and starting tasks from card composers, outside-session controls and the task modal.
 - `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
 - `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
