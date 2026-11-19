@@ -73,33 +73,37 @@ test(
       },
     ).click()
     expect(await messageDuration()).toBe('0s')
-    await page.evaluate((taskId) => {
-      const animate = Element.prototype.animate
+    await page.evaluate(
+      taskId => {
+        const animate = Element.prototype.animate
 
-      Element.prototype.animate = function (
-        this: Element,
-        frames,
-        options,
-      ) {
-        const animation = animate.call(
-          this,
+        Element.prototype.animate = function (
+          this: Element,
           frames,
           options,
-        )
+        ) {
+          const animation = animate.call(
+            this,
+            frames,
+            options,
+          )
 
-        const task = this.closest('[data-task]')
-        const hasShadow = Array.isArray(frames) && frames.some(frame => 'boxShadow' in frame)
+          const task = this.closest('[data-task]')
+          const hasShadow = Array.isArray(frames) && frames.some(frame => 'boxShadow' in frame)
 
-        if (task?.getAttribute('data-task') === taskId && hasShadow) {
-          const duration = animation.effect?.getComputedTiming().duration
-          document.documentElement.dataset.taskHighlightDuration = String(duration)
-          Element.prototype.animate = animate
+          if (task?.getAttribute('data-task') === taskId && hasShadow) {
+            const duration = animation.effect?.getComputedTiming().duration
+            document.documentElement.dataset.taskHighlightDuration = String(duration)
+            Element.prototype.animate = animate
+          }
+
+          return animation
         }
-
-        return animation
-      }
-    }, target.id)
-    await page.locator('.hydra-chat .task-reference-title').filter({ hasText: 'Motion target' }).click()
+      },
+      target.id,
+    )
+    await page.locator('.hydra-chat .task-reference-title').filter({ hasText: 'Motion target' })
+      .click()
     await expect.poll(() => page.locator('html').getAttribute('data-task-highlight-duration')).toBe('0')
     await page.evaluate(() => {
       document.documentElement.dataset.motion = 'normal'
