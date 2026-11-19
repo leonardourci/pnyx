@@ -13,6 +13,7 @@ export interface HydraIdentity {
 }
 
 export interface HydraConfig {
+  removed?: boolean
   polis?: string
   readPoleis?: string[]
   helper?: AgentConfig | false

@@ -144,6 +144,14 @@ export function withWriter<T>({
       hydraId: id,
       migrate,
     })
+
+    if (held.state.config?.removed) {
+      throw new HydraError({
+        message: `Hydra was removed: ${id}`,
+        code: 'NOT_FOUND',
+      })
+    }
+
     privateDir({
       dir: hydraDir({
         hydraId: id,

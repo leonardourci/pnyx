@@ -21,6 +21,7 @@ const hydras = table('hydras')
   .columns({
     id: string(),
     seq: number(),
+    removed: boolean(),
     config: json<Stored<Omit<HydraConfig, 'columns'>>>().optional(),
     summary: json<Stored<HydraSummary>>(),
   })
@@ -457,10 +458,14 @@ const answering = (query: ReturnType<typeof zql.replies.where>) => query.where(
 // puts back in order.
 export const queries = defineQueries({
   hydras: {
-    list: defineQuery(() => zql.hydras.orderBy(
+    list: defineQuery(() => zql.hydras.where(
+      'removed',
+      false,
+    ).orderBy(
       'id',
       'asc',
-    ).limit(HYDRA_LIMIT)),
+    )
+      .limit(HYDRA_LIMIT)),
   },
   hydra: {
     one: defineQuery(

@@ -366,6 +366,7 @@ function stateRows({
     row: {
       id: hydraId,
       config: configRest,
+      removed: config?.removed === true,
       // ponytail: a Firstmate home's projects change without an event; the row catches up on the next write.
       summary: summarize({
         id: hydraId,

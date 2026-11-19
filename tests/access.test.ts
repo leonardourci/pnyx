@@ -775,6 +775,7 @@ test(
     expect(published.find(table => table.tablename === 'hydras')!.attnames!.sort()).toEqual([
       'config',
       'id',
+      'removed',
       'seq',
       'summary',
     ])
