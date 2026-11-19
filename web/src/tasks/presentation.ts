@@ -215,12 +215,16 @@ const subscribeModal = (changed: () => void) => {
   }
 }
 
+function modalTask({ hydraId }: { hydraId: string }) {
+  return location.pathname === `/hydra/${encodeURIComponent(hydraId)}/`
+    ? new URLSearchParams(location.search).get('task') : null
+}
+
 // The task whose modal this Hydra's address opens; the board behind it keeps its own layout.
 export function useModalTask({ hydraId }: { hydraId: string }) {
   return useSyncExternalStore(
     subscribeModal,
-    () => location.pathname === `/hydra/${encodeURIComponent(hydraId)}/`
-      ? new URLSearchParams(location.search).get('task') : null,
+    () => modalTask({ hydraId }),
   )
 }
 
@@ -231,7 +235,10 @@ export function useTaskModal({
   id: string
   hydraId: string
 }) {
-  const modal = useModalTask({ hydraId }) === id
+  const modal = useSyncExternalStore(
+    subscribeModal,
+    () => modalTask({ hydraId }) === id,
+  )
 
   return {
     modal,

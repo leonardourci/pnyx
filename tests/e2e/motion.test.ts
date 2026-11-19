@@ -668,10 +668,36 @@ test(
                 await clicked
                 const boxes: (number[] | null)[] = []
                 const workspace = document.querySelector(`[data-hydra-workspace="${CSS.escape(hydraId)}"]`)
+                const selector = `.card[data-task="${CSS.escape(task)}"]:not(dialog *)`
+
+                // Back navigation can mount the returning card after the click's first frame.
+                if (!workspace?.querySelector(selector)) {
+                  await new Promise<void>((
+                    resolve,
+                    reject,
+                  ) => {
+                    const observer = new MutationObserver(() => {
+                      if (workspace?.querySelector(selector)) {
+                        observer.disconnect()
+                        resolve()
+                      } else if (!document.querySelector('dialog.task-modal')) {
+                        observer.disconnect()
+                        reject(new Error('The modal closed without restoring its card'))
+                      }
+                    })
+                    observer.observe(
+                      document.body,
+                      {
+                        childList: true,
+                        subtree: true,
+                      },
+                    )
+                  })
+                }
 
                 for (let frame = 0; frame < frameCount; frame++) {
                   await new Promise(requestAnimationFrame)
-                  const node = workspace?.querySelector(`.card[data-task="${CSS.escape(task)}"]:not(dialog *)`)
+                  const node = workspace?.querySelector(selector)
 
                   const bounds = node?.getBoundingClientRect()
                   boxes.push(bounds ? [
