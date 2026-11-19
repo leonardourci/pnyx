@@ -382,10 +382,9 @@ test(
       { name: 'Retry group answer: Export batch' },
     )
     await retry.waitFor()
-    await until({
-      what: 'the answered questions stay out of Waiting on you after reload',
-      check: async () => await workspace.locator('.waiting-decisions').count() === 0,
-    })
+    // Reload can render Zero's cached questions before the fresh answer rows arrive.
+    await workspace.locator('.waiting-decisions').waitFor({ state: 'detached' })
+    expect(await workspace.locator('.waiting-decisions').count()).toBe(0)
     expect(dropped).toBe(true)
 
     await retry.click()
