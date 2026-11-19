@@ -442,17 +442,19 @@ test(
         'show',
       ],
     })).settings.poleis.studio.readers).toEqual([])
-    await expect.poll(async () => (await hydra.owner({
+    const unreadable = await hydra.owner({
       args: [
         'project',
         'list',
       ],
-    })).projects).toEqual([
+    })
+    expect(unreadable.projects).toEqual([
       expect.objectContaining({
         path: folder,
         state: 'attached',
       }),
     ])
+    expect(unreadable.projects[0]).not.toHaveProperty('polis')
     expect((await hydra.ownerRefused({
       args: [
         'project',
