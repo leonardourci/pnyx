@@ -140,11 +140,11 @@ function UpdateLine({
   children?: ReactNode
 }) {
   return (
-    <div className="update-line grid grid-cols-[1.375rem_minmax(0,1fr)] gap-2 items-start [&+.update-line]:mt-1.5">
+    <div className="update-line grid grid-cols-[--spacing(5.5)_minmax(0,1fr)] gap-2 items-start [&+.update-line]:mt-1.5">
       <UpdateIcon kind={kind} icon={icon} label={label} />
       <div className="update-main grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.75 items-baseline min-w-0 [&>:is(time,.tooltip-anchor)]:col-start-2 [&>:is(time,.tooltip-anchor)]:row-start-1 [&>:not(time,.tooltip-anchor)]:col-span-full [&>.update-title]:col-start-1 [&>.update-title]:col-end-auto [&>.update-title]:row-start-1 [&_time]:text-muted [&_time]:text-meta [&_time]:leading-5.5 [&_time]:whitespace-nowrap">
         {at && <UpdateTime at={at} plain={plain} />}
-        {title && <div className="update-title font-semibold leading-5.5 wrap-anywhere [&_.card-link]:py-0 [&_.card-link]:leading-4.5 [&_.card-link]:align-[1px] in-[.update-decision]:text-gold">{title}</div>}
+        {title && <div className="update-title font-semibold leading-5.5 wrap-anywhere [&_.card-link]:py-0 [&_.card-link]:leading-4.5 [&_.card-link]:align-[--spacing(0.25)] in-[.update-decision]:text-gold">{title}</div>}
         {children}
       </div>
     </div>
@@ -188,7 +188,7 @@ export function UpdateEntry({
             title={(
               <>
                 <span>{update.state}</span>
-                <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[-2px] text-muted" aria-hidden="true">
+                <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[calc(--spacing(0.5)*-1)] text-muted" aria-hidden="true">
                   <DisclosureChevron expanded={open} size={ICON_SIZE.inline} />
                 </span>
               </>
@@ -220,7 +220,7 @@ function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> })
   const you = decision.actor === 'You'
 
   return (
-    <div className="decision-answer grid grid-cols-[1.375rem_minmax(0,1fr)] gap-1.5 items-start">
+    <div className="decision-answer grid grid-cols-[--spacing(5.5)_minmax(0,1fr)] gap-1.5 items-start">
       <UpdateIcon kind={you ? 'ask' : 'hydra'} label={`Answered by ${you ? 'you' : decision.actor}`} />
       <div className="decision-answer-text grid gap-0.5 min-w-0">
         {decision.choice && <CollapsibleText text={decision.choice} />}
@@ -346,7 +346,7 @@ function GroupHeading({
         plain
         title={(
           <>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states text-muted text-meta font-normal">{states}</span>
-            <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[-2px] text-muted" aria-hidden="true"><DisclosureChevron expanded={open} size={ICON_SIZE.inline} /></span>
+            <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[calc(--spacing(0.5)*-1)] text-muted" aria-hidden="true"><DisclosureChevron expanded={open} size={ICON_SIZE.inline} /></span>
           </>
         )}
       />

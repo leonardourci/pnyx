@@ -466,7 +466,8 @@ creates this home's database (pnyx for ~/.pnyx); elsewhere it only checks. Host,
 PGPORT and PGUSER, unless the postgresUrl setting names the Postgres; then setup postgres only checks it and starts
 or changes nothing.
 --check writes no Hydra data (it creates this home's empty database if missing): it reports what is missing and
-imports each Hydra still kept in events.jsonl in a transaction it rolls back.
+imports each Hydra still kept in events.jsonl in a transaction it rolls back. A database at an older schema stays
+as it is: the check migrates a copy made with pg_dump and pg_restore, then drops the copy.
 --url saves the postgresUrl setting without the server, which cannot start while that URL is wrong; --url '' clears
 it. The server applies it on its next start.
 setup installs the server's login service.

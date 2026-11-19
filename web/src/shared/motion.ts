@@ -11,6 +11,7 @@ export const MOTION_DURATIONS = {
   base: 180,
   slow: 320,
   ambient: 1600,
+  highlight: 1200,
 } as const
 const FALLBACK_EASING = [
   0.2,

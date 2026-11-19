@@ -190,16 +190,3 @@ export async function sql({
     await client.end()
   }
 }
-
-// The schema version this build's schema.sql creates, so a schema change does not edit the tests.
-export const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(readFileSync(
-  join(
-    import.meta.dirname,
-    '..',
-    '..',
-    'src',
-    'store',
-    'schema.sql',
-  ),
-  'utf8',
-))?.[1])

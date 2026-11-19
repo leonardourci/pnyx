@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@rocicorp/zero@1.11.5': 78121382cb274ef0f479fd64afab182532e2f2dd556dbb07696cdfc783db291c
+  '@rocicorp/zero@1.11.5': 96ad8bdf09ec47b45c5ef6d5ec5b2de293f49e2bc5749294d96a80f8318a0c13
 
 importers:
 
@@ -19,7 +19,7 @@ importers:
         version: 0.10.3
       '@rocicorp/zero':
         specifier: 1.11.5
-        version: 1.11.5(patch_hash=78121382cb274ef0f479fd64afab182532e2f2dd556dbb07696cdfc783db291c)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))
+        version: 1.11.5(patch_hash=96ad8bdf09ec47b45c5ef6d5ec5b2de293f49e2bc5749294d96a80f8318a0c13)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))
       '@tanstack/react-virtual':
         specifier: ^3.14.26
         version: 3.14.26(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -4719,7 +4719,7 @@ snapshots:
     dependencies:
       node-gyp-build: 4.8.4
 
-  '@rocicorp/zero@1.11.5(patch_hash=78121382cb274ef0f479fd64afab182532e2f2dd556dbb07696cdfc783db291c)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))':
+  '@rocicorp/zero@1.11.5(patch_hash=96ad8bdf09ec47b45c5ef6d5ec5b2de293f49e2bc5749294d96a80f8318a0c13)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))':
     dependencies:
       '@badrap/valita': 0.5.5
       '@databases/escape-identifier': 1.0.3

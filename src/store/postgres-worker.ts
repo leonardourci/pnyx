@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
 import { errorDetails } from './error-details.ts'
 import { CONFLICT_CODE } from './errors.ts'
 import type { Outcome, Reply, Request, Statement } from './postgres.ts'
+import { SCHEMA, SCHEMA_VERSION } from './schema.ts'
 
 const MISSING_DATABASE = '3D000'
 // Two processes opening a new home at once migrate it once, under this advisory lock.
@@ -56,22 +56,12 @@ function adminConfig(): pg.ClientConfig {
   }
 }
 
-const SCHEMA = readFileSync(
-  new URL(
-    './schema.sql',
-    import.meta.url,
-  ),
-  'utf8',
-)
 // The page's publication as schema.sql creates it, which a migration sets an older database's to.
 const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHEMA)?.[0] ?? ''
 
 if (!PAGE_PUBLICATION) {
   throw new Error('schema.sql has no pnyx_page publication')
 }
-
-// schema.sql names its own version, so the number has one source.
-const SCHEMA_VERSION = Number(/insert into schema_version \(version\) values \((\d+)\)/.exec(SCHEMA)?.[1])
 
 // Saved view rows drop the retired per-card widths; the events keep them, and replay ignores them.
 const REMOVE_CARD_WIDTHS = `update hydra_values

@@ -18,7 +18,7 @@ function Subtasks({
   children,
   ...props
 }: ComponentProps<'div'>) {
-  return <div {...props} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-1px)]">{children}</div>
+  return <div {...props} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-_--spacing(0.25))]">{children}</div>
 }
 
 export interface FamilyCard {

@@ -16,6 +16,8 @@ const WORKER_ENTRY = new URL(
 // itself well before (STATEMENT_TIMEOUT_MS in the worker).
 const PROGRESS_POLL_MS = 1000
 const QUERY_TIMEOUT_MS = 30_000
+// Migrating a large history outlasts an ordinary statement's wait.
+const MIGRATION_TIMEOUT_MS = 10 * 60_000
 // Postgres refuses U+0000 and a lone UTF-16 surrogate even in json columns, so one stored value holding either would
 // fail every later write.
 const NUL = '\u0000'
@@ -210,6 +212,20 @@ export function configuredUrl(): string | undefined {
   return url
 }
 
+// Points this process at another database for this home, as the upgrade's data check does with its copy, until
+// useConfiguredDatabase points it back.
+export function useDatabase({ url }: { url: string }): void {
+  configuredUrls.set(
+    homeDatabase(),
+    url,
+  )
+}
+
+// The next query reads the postgresUrl setting again.
+export function useConfiguredDatabase(): void {
+  configuredUrls.delete(homeDatabase())
+}
+
 // Replaces U+0000 and lone surrogates with U+FFFD in every string and key of a record headed for Postgres, in place, so
 // memory and rows keep the same text.
 export function storable<Value>({ value }: { value: Value }): Value {
@@ -330,3 +346,10 @@ export function query({
 
   return reply.results
 }
+
+export const migrateSchema = ({ progress }: { progress?(): void } = {}) => query({
+  schema: 'migrate',
+  timeoutMs: MIGRATION_TIMEOUT_MS,
+  progress,
+  statements: [],
+})

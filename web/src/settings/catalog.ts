@@ -28,6 +28,11 @@ export const SETTING_ICONS: Record<string, string> = {
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
 export const SETTINGS_SECTIONS = [
   {
+    id: 'poleis',
+    label: 'Poleis',
+    icon: 'columns',
+  },
+  {
     id: 'appearance',
     label: 'Appearance',
     icon: 'theme',
@@ -125,6 +130,28 @@ const TEXT_SIZE = [
 ]
 
 export const SETTINGS_CATALOG: CatalogEntry[] = [
+  {
+    id: 'poleis',
+    section: 'poleis',
+    label: 'Poleis',
+    description: '',
+    related: [
+      'memory',
+      'readers',
+      'access',
+    ],
+  },
+  {
+    id: 'hydraPoleis',
+    section: 'hydra',
+    label: 'Polis',
+    description: '',
+    related: [
+      'memory',
+      'reads',
+      'lives',
+    ],
+  },
   {
     id: 'theme',
     section: 'appearance',

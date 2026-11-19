@@ -9,11 +9,8 @@ import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } f
 import { git } from './setup/upgrade.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
-import { QUEUE_POLL_MS } from '#workers/queue.ts'
 
 const RESTART_FLOW_TIMEOUT_MS = 120_000
-// A scratch server reaches a newly ready handoff on its next queue poll.
-const HANDOFF_CRASH_WAIT_MS = QUEUE_POLL_MS + 15_000
 
 let pnyx: Pnyx
 const github = join(
@@ -1037,29 +1034,11 @@ test(
   },
 )
 
-test.each([
-  {
-    repo: 'private-forbidden',
-    rulesError: 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN',
-  },
-  {
-    repo: 'private-missing',
-    rulesError: 'error: HTTP 404: Not Found',
-  },
-  {
-    repo: 'private-http-forbidden',
-    rulesError: 'error: HTTP 403: Forbidden',
-  },
-  {
-    repo: 'private-structured-missing',
-    rulesError: 'error: "Resource not found"\ncode: NOT_FOUND',
-  },
-])(
-  'Hydra merges $repo with unreadable branch rules while enforcing approval and readable checks',
-  async ({
-    repo,
-    rulesError,
-  }) => {
+test(
+  'Hydra merges a private repository whose branch rules GitHub hides while enforcing approval and readable checks',
+  async () => {
+    const repo = 'private'
+    const rulesError = 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN'
     const hydra = await pnyx.hydra()
     const folder = join(
       github,
@@ -1190,6 +1169,31 @@ test.each([
     const failed = await asHydra.refused({ args: merge })
     expect(failed.code).toBe('CONFLICT')
     expect(failed.error).toContain('check is not green')
+    // Every way GitHub hides a private repository's rules counts as hidden, not unreadable; unreadable classic protection keeps the merge refused.
+    publish({
+      error: 'error: HTTP 404: Not Found',
+      classic: {},
+    })
+    const hiddenAs404 = await asHydra.refused({ args: merge })
+    expect(hiddenAs404.code).toBe('CONFLICT')
+    expect(hiddenAs404.error).toContain('classic protection unreadable')
+    expect(hiddenAs404.error).not.toContain('branch rules unreadable')
+    publish({
+      error: 'error: HTTP 403: Forbidden',
+      classic: {},
+    })
+    const hiddenAs403 = await asHydra.refused({ args: merge })
+    expect(hiddenAs403.code).toBe('CONFLICT')
+    expect(hiddenAs403.error).toContain('classic protection unreadable')
+    expect(hiddenAs403.error).not.toContain('branch rules unreadable')
+    publish({
+      error: 'error: "Resource not found"\ncode: NOT_FOUND',
+      classic: {},
+    })
+    const hiddenAsNotFound = await asHydra.refused({ args: merge })
+    expect(hiddenAsNotFound.code).toBe('CONFLICT')
+    expect(hiddenAsNotFound.error).toContain('classic protection unreadable')
+    expect(hiddenAsNotFound.error).not.toContain('branch rules unreadable')
     publish({
       check: {
         ...run,
@@ -2807,18 +2811,20 @@ if (branch === 'iris/target') {
       return child
     }
 
+    const childReady = () => {
+      if (ended) {
+        throw new Error(errors)
+      }
+
+      return ready
+    }
+
     let child = launch({ afterCommit: false })
 
     try {
       await until({
         what: 'scratch child server ready',
-        check: () => {
-          if (ended) {
-            throw new Error(errors)
-          }
-
-          return ready
-        },
+        check: childReady,
       })
       await hydra.owner({
         args: [
@@ -2831,7 +2837,6 @@ if (branch === 'iris/target') {
       })
       await until({
         what: 'checkout hook kills the server before handoff commit',
-        timeoutMs: HANDOFF_CRASH_WAIT_MS,
         check: () => ended,
       })
       expect(readFileSync(
@@ -2936,7 +2941,7 @@ if (branch === 'iris/target') {
       child = launch({ afterCommit: true })
       await until({
         what: 'second scratch server ready',
-        check: () => ready,
+        check: childReady,
       })
       await hydra.owner({
         args: [
@@ -2949,7 +2954,6 @@ if (branch === 'iris/target') {
       })
       await until({
         what: 'server killed after durable handoff commit',
-        timeoutMs: HANDOFF_CRASH_WAIT_MS,
         check: () => ended,
       })
       const committedWork = join(
@@ -3051,7 +3055,13 @@ if (branch === 'iris/target') {
           'done',
         ],
       })
-      await pnyx.restart()
+      // The scratch server checks its queue again every 100 ms; the shared one waits 30 seconds after its check on start.
+      await pnyx.stop()
+      child = launch({ afterCommit: false })
+      await until({
+        what: 'third scratch server ready',
+        check: childReady,
+      })
       await until({
         what: 'worker advances again after committed intent recovery',
         check: async () => (await hydra.owner({

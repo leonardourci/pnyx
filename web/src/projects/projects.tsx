@@ -1,9 +1,10 @@
+import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { ProjectForm, ProjectList } from './folder-ui.tsx'
 import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useEffect, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import { AddProject } from './add-project.tsx'
-import { Button, Input, Switch, Textarea } from '#web-shared/ui/controls.tsx'
+import { Button, Input, Select, Switch, Textarea } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { useProjectsResource, type ProjectRow } from './project-resource.ts'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
@@ -145,6 +146,7 @@ export function Projects({
   command: Command
   notify({ text }: { text: string }): void
 }) {
+  const settings = useSharedSettings()
   const {
     projects,
     readonly,
@@ -156,7 +158,7 @@ export function Projects({
   } = useProjectsResource({
     command,
     connected,
-    revision: `${state.projectsRevision ?? 0}:${state.config?.hydra.kind}:${state.config?.hydra.home ?? ''}`,
+    revision: `${JSON.stringify(settings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}:${JSON.stringify(settings?.projectPoleis)}:${state.projectsRevision ?? 0}:${state.config?.hydra.kind}:${state.config?.hydra.home ?? ''}`,
   })
   useEffect(
     () => {
@@ -185,6 +187,34 @@ export function Projects({
     <li key={p.path} className={`project-row flex items-center justify-between gap-3 py-2 px-0 [&>div]:min-w-0 [&.detached_strong]:text-muted ${p.state === 'detached' ? 'detached' : ''}`}>
       <div className="project-details flex-1">
         <strong>{p.name}</strong><span className="project-path block text-muted text-ui wrap-anywhere">{p.path}</span>
+        {!readonly && p.state === 'attached' && (
+          <label>Polis<Select
+            label={`Polis for ${p.name}`}
+            value={p.polis ?? 'shared'}
+            options={(p.readPoleis ?? []).map(polis => ({
+              value: polis,
+              label: polis,
+            }))}
+            disabled={!connected}
+            onChange={async ({ value }) => {
+              try {
+                await mutate({
+                  args: [
+                    'move',
+                    p.path,
+                    '--polis',
+                    value,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                })
+              } catch (error) {
+                notify({ text: error instanceof Error ? error.message : String(error) })
+              }
+            }}
+          />
+          </label>
+        )}
         {p.pending && <span role="status">{p.pending}</span>}
         {!readonly && p.state === 'attached' && (
           <ProjectLanding

@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
-import { SCHEMA_VERSION, binaries, sql } from './setup/postgres.ts'
-import { rows, startPnyx, type Pnyx } from './setup/pnyx.ts'
+import { SCHEMA_VERSION } from '#store/schema.ts'
+import { binaries, sql } from './setup/postgres.ts'
+import { parsed, pnyxAxi, rows, startPnyx, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -387,5 +389,178 @@ test(
       ],
     })
     expect(refused.code).toBe('VALIDATION_ERROR')
+  },
+)
+
+// Each check gets only the PATH it names, so whether pg_dump is found does not depend on the machine's own folders.
+const dataCheck = ({ path }: { path: string }) => pnyxAxi({
+  args: [
+    'setup',
+    'postgres',
+    '--check',
+  ],
+  env: {
+    ...process.env,
+    PATH: path,
+  },
+})
+
+// A PATH with only a brew whose keg-only postgresql@17 is this run's Postgres, as Homebrew installs it.
+const homebrewOnly = () => {
+  const bin = mkdtempSync(join(
+    process.env.TMPDIR!,
+    'brew-',
+  ))
+  writeFileSync(
+    join(
+      bin,
+      'brew',
+    ),
+    `#!/bin/sh\n[ "$*" = "--prefix postgresql@17" ] || exit 1\necho ${dirname(binaries())}\n`,
+    { mode: 0o755 },
+  )
+
+  return bin
+}
+
+const copyLeft = async () => (await sql({
+  database: 'postgres',
+  text: 'select 1 from pg_database where datname = $1',
+  values: [`${homeDatabase()}_upgrade_check`],
+})).length > 0
+
+const liveVersion = async () => (await sql({
+  database: homeDatabase(),
+  text: 'select max(version) as version from schema_version',
+}))[0]!.version
+
+const tasks = async ({ hydra }: { hydra: Hydra }) => ({
+  list: (await hydra.owner({
+    args: [
+      'task',
+      'list',
+      '--fields',
+      'attention,parent,status,worker,hold,queue',
+    ],
+  })).tasks,
+  waiting: await hydra.task({ key: 'second' }),
+})
+
+test(
+  'the upgrade check migrates a copy of a schema 5 database the old server still holds, with Homebrew\'s keg-only pg_dump, and the server migrates the database itself when it starts, keeping every Hydra\'s tasks',
+  async () => {
+    const hydras = [
+      await pnyx.hydra(),
+      await pnyx.hydra(),
+    ]
+
+    for (const hydra of hydras) {
+      for (const key of [
+        'first',
+        'second',
+      ]) {
+        await hydra.owner({
+          args: [
+            'task',
+            'create',
+            '--title',
+            `${hydra.id} ${key}`,
+            '--key',
+            key,
+          ],
+        })
+      }
+
+      await hydra.owner({
+        args: [
+          'task',
+          'depend',
+          'second',
+          '--on',
+          'first',
+        ],
+      })
+    }
+
+    const before = await Promise.all(hydras.map(hydra => tasks({ hydra })))
+
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        // What schema 5's build left: a page publication without the Hydra's seq.
+        await sql({
+          database: homeDatabase(),
+          text: `alter publication pnyx_page drop table hydras;
+            alter publication pnyx_page add table hydras (id, config, summary);
+            delete from schema_version;
+            insert into schema_version (version) values (5)`,
+        })
+        const oldServer = new pg.Client({ database: homeDatabase() })
+        await oldServer.connect()
+
+        try {
+          const check = await dataCheck({ path: homebrewOnly() })
+          expect(
+            check.status,
+            check.stdout,
+          ).toBe(0)
+          expect(parsed(check)).toMatchObject({
+            database: homeDatabase(),
+            schema: 5,
+            imported: 'none: no Hydra waiting',
+          })
+          expect(await liveVersion()).toBe(5)
+          expect(await copyLeft()).toBe(false)
+        } finally {
+          await oldServer.end()
+        }
+      },
+    })
+
+    expect(rows<{ version: number }>({ text: 'select max(version) as version from schema_version' })[0]!.version).toBe(SCHEMA_VERSION)
+    expect(rows<{ columns: string[] }>({ text: 'select attnames as columns from pg_publication_tables where pubname = \'pnyx_page\' and tablename = \'hydras\'' })[0]!.columns).toContain('seq')
+    expect(await Promise.all(hydras.map(hydra => tasks({ hydra })))).toEqual(before)
+  },
+)
+
+test(
+  'the upgrade check refuses a schema this build cannot migrate, or cannot copy without pg_dump, and leaves the database as it was',
+  async () => {
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        const database = homeDatabase()
+        const setVersion = ({ to }: { to: number }) => sql({
+          database,
+          text: `delete from schema_version; insert into schema_version (version) values (${to})`,
+        })
+        await setVersion({ to: 3 })
+
+        const untouched = async () => {
+          expect(await copyLeft()).toBe(false)
+          expect(await liveVersion()).toBe(3)
+        }
+
+        // Put back even when an assertion fails, so the restart and the file's later tests still start.
+        try {
+          const withoutTools = await dataCheck({
+            path: mkdtempSync(join(
+              process.env.TMPDIR!,
+              'no-tools-',
+            )),
+          })
+          expect(withoutTools.status).toBe(1)
+          expect(withoutTools.stdout).toContain('pg_dump could not copy the database for the data check')
+          await untouched()
+
+          const unmigratable = await dataCheck({ path: binaries() })
+          expect(unmigratable.status).toBe(1)
+          expect(unmigratable.stdout).toContain(`a copy of database ${database} at schema 3 did not migrate to schema ${SCHEMA_VERSION}`)
+          await untouched()
+        } finally {
+          await setVersion({ to: SCHEMA_VERSION })
+        }
+      },
+    })
   },
 )

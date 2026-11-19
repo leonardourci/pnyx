@@ -849,7 +849,7 @@ export const HydraCard = memo(function HydraCard({
           <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @task-details/task:grid-rows-1'}`}>
             <div hidden={chatOnly} className="card-details [&[hidden]]:hidden flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
               <CardPanel ref={contextScroll.ref} {...panel({ id: 'context' })}>
-                {card.copy?.state === 'flagged' && <div className="copy-warning"><RichText text={card.copy.reason ?? ''} /></div>}
+                {card.copy?.state === 'flagged' && <div className="copy-warning text-gold text-meta"><RichText text={card.copy.reason ?? ''} /></div>}
                 {waiting.length > 0 && (card.intent || factual) && (
                   <ContextIndex
                     questions={waiting.length}
@@ -947,7 +947,7 @@ export const HydraCard = memo(function HydraCard({
       {hoverActions}
       {selected && !modal && (
         <Resize
-          className="bottom-0! right-auto! left-[calc(50%-3rem)]! h-6! w-24 after:top-4.25!"
+          className="bottom-0! right-auto! left-1/2! -translate-x-1/2 h-6! w-24 after:top-4.25!"
           label="Resize card"
           axis="y"
           value={height}
