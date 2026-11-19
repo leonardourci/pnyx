@@ -5454,9 +5454,55 @@ test(
         JSON.stringify({ workspace: { chatCollapsed: true } }),
       ],
     })
+    const heldQueries: (() => void)[] = []
+    let holdTarget = true
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: earlier.id,
+      prepare: ({ page }) => page.routeWebSocket(
+        /\/zero\//,
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the socket callback.
+        socket => {
+          const server = socket.connectToServer()
+          // eslint-disable-next-line pnyx/object-params -- Playwright owns the frame callback.
+          socket.onMessage(message => {
+            const frame = JSON.parse(String(message))
+            const patches = frame[1]?.desiredQueriesPatch
+
+            if (holdTarget && Array.isArray(patches)) {
+              const held = patches.filter(({
+                name,
+                args,
+              }: {
+                name?: string
+                args?: { hydraId?: string }[]
+              }) => name === 'hydra.one' && args?.[0]?.hydraId === target.id)
+              const sent = patches.filter((patch: unknown) => !held.includes(patch))
+
+              if (held.length) {
+                heldQueries.push(() => server.send(JSON.stringify([
+                  frame[0],
+                  {
+                    ...frame[1],
+                    desiredQueriesPatch: held,
+                  },
+                ])))
+                server.send(JSON.stringify([
+                  frame[0],
+                  {
+                    ...frame[1],
+                    desiredQueriesPatch: sent,
+                  },
+                ]))
+
+                return
+              }
+            }
+
+            server.send(message)
+          })
+        },
+      ),
     })
     onTestFinished(async () => {
       await page.context().close()
@@ -5496,10 +5542,30 @@ test(
         JSON.stringify({ workspace: { chatCollapsed: false } }),
       ],
     })
-    await expect.poll(async () => targetComposer.evaluate(
-      // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
-      node => node === document.activeElement,
-    )).toBe(true)
+    expect(heldQueries.length).toBeGreaterThan(0)
+
+    const releaseQueries = async () => {
+      // Keep the first target snapshot behind the focus poll's deadline to exercise a late-mounted composer.
+      await delay(1500)
+      holdTarget = false
+
+      for (const release of heldQueries) {
+        release()
+      }
+    }
+
+    const released = releaseQueries()
+
+    try {
+      await targetComposer.waitFor()
+      await expect.poll(async () => targetComposer.evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright passes the element.
+        node => node === document.activeElement,
+      )).toBe(true)
+    } finally {
+      await released
+    }
+
     expect(new URL(page.url()).searchParams.has('new-chat')).toBe(false)
 
     const requestEarlierChat = async () => {
