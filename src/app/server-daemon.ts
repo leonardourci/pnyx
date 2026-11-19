@@ -1,3 +1,4 @@
+import { loadHydra } from './store.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -13,6 +14,7 @@ import { allowedRequest, requestUrl, HYDRA_PATH, ZERO_QUERY_PATH, type RunningSe
 import { MAX_MESSAGE_BYTES, zeroCookieName } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
+import { hydraRemoval } from './server-state.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
@@ -808,6 +810,25 @@ export async function startServer({
     return (await mount({ id })).url
   }
 
+  hydraRemoval.close = async ({ hydraId }) => {
+    const mounted = mounts.get(hydraId)
+
+    if (mounted) {
+      await (await mounted).close({ permanent: true })
+    }
+  }
+
+  hydraRemoval.finished = ({ hydraId: removedId }) => {
+    served.delete(removedId)
+    mounts.delete(removedId)
+
+    if (hydraId === removedId) {
+      hydraId = hydraIds()[0]!
+    }
+
+    hydrasChanged()
+  }
+
   let named: MountedHydra
 
   // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
@@ -977,8 +998,15 @@ export async function startServer({
   // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
   // claim, instead of leaving a server that holds it without serving.
   try {
+    if (loadHydra({ hydraId }).state.config?.removed) {
+      hydraId = hydraIds()[0]!
+    }
+
     named = await mount({ id: hydraId })
-    await mount({ id: 'default' })
+
+    if (!loadHydra({ hydraId: 'default' }).state.config?.removed) {
+      await mount({ id: 'default' })
+    }
 
     for (const id of hydraIds()) {
       try {

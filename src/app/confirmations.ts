@@ -76,6 +76,7 @@ function context({
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     memory,
+    removal: name === 'hydra' && args[0] === 'remove' ? loadHydra({ hydraId: args[1]! }).state.seq : undefined,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -90,10 +91,12 @@ export function proposeOwnerCommand({
   name,
   args,
   hydraId,
+  summary: requestedSummary,
 }: {
   name: string
   args: string[]
   hydraId: string
+  summary?: string
 }): Output {
   const safe: string[] = []
 
@@ -124,7 +127,7 @@ export function proposeOwnerCommand({
     cwd: requestCwd(),
   }
   const value = JSON.stringify(target)
-  const summary = `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
+  const summary = requestedSummary ?? `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
   const dispatch = dispatchFor({ target })
   const memory = memoryRulesFor({ target })
   withWriter({
@@ -308,6 +311,13 @@ export const approval = guard({
 
     ownerEnv.PNYX_HOME = pnyxHome()
     ownerEnv.PNYX_ACTOR = 'web'
+
+    if (target.name === 'hydra' && target.args[0] === 'remove') {
+      target.args.push(
+        '--confirm',
+        token,
+      )
+    }
 
     if (memory) {
       ownerEnv.PNYX_MEMORY_ACCESS = memory

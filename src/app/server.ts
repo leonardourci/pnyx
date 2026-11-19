@@ -800,9 +800,16 @@ export async function mountOwnedHydra({
       // The Done deadline follows the shared hours.
       kick()
     },
-    async close() {
+    async close({ permanent = false } = {}) {
       if (closed) {
         return
+      }
+
+      if (permanent) {
+        closed = true
+        agents.close()
+
+        await agents.stopTools()
       }
 
       await stop()

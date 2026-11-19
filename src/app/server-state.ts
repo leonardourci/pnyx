@@ -150,6 +150,11 @@ export function localToken(): string {
   ).trim()
 }
 
+export const hydraRemoval = {
+  close: undefined as undefined | (({ hydraId }: { hydraId: string }) => Promise<void>),
+  finished: undefined as undefined | (({ hydraId }: { hydraId: string }) => void),
+}
+
 type Ask = ({ body }: { body: Record<string, unknown> }) => Promise<Record<string, unknown>>
 const hosts = new Map<string, Ask>()
 

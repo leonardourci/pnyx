@@ -142,7 +142,7 @@ export interface MountedHydra {
     page?: string[]
   }): HydraSubscription
   settings(): void
-  close(): Promise<void>
+  close({ permanent }?: { permanent?: boolean }): Promise<void>
 }
 
 export type HydraRequest = {
