@@ -362,6 +362,7 @@ test(
     await oracleSearch.press('Escape')
     await oracleDialog.waitFor({ state: 'hidden' })
     await atlasBadge.waitFor({ state: 'detached' })
+    expect(await atlasColumn.count()).toBe(1)
     await page.getByRole(
       'button',
       {
