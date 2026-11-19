@@ -154,9 +154,6 @@
   ],
   "instructions": {
     "project": "AGENTS.md",
-    "review-code": ".agents/skills/review-code/SKILL.md",
-    "audit-tests": ".agents/skills/audit-tests/SKILL.md",
-    "kill-ai-slop": ".agents/skills/deslop/SKILL.md",
     "write-front-end": ".agents/skills/write-front-end/SKILL.md",
     "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md",
     "follow-conventions": ".agents/skills/follow-conventions/SKILL.md"
