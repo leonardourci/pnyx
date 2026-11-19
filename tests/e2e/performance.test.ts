@@ -609,20 +609,25 @@ test(
       expect(await otherColumn.evaluate(({ scrollTop }) => scrollTop)).toBe(otherScroll)
     }
 
-    await revealTarget()
-    await until({
-      what: 'the selected task enters its column viewport',
-      check: async () => {
-        const card = await selectedCard.boundingBox()
-        const column = await scroller.boundingBox()
+    const expectTargetInColumnViewport = async ({ what }: { what: string }) => {
+      await until({
+        what,
+        check: async () => {
+          const card = await selectedCard.boundingBox()
+          const column = await scroller.boundingBox()
 
-        return !!card && !!column && card.y >= column.y && card.y < column.y + column.height
-      },
-    })
+          return !!card && !!column && card.y >= column.y && card.y < column.y + column.height
+        },
+      })
+    }
+
+    await revealTarget()
+    await expectTargetInColumnViewport({ what: 'the selected task enters its column viewport' })
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
 
     await revealTarget()
+    await expectTargetInColumnViewport({ what: 'a repeated reveal keeps the selected task in its column viewport' })
     await selectedCard.locator('.card-panel:focus').waitFor()
     await expectOtherScrollPositions()
     expect(errors.map(error => error.message)).toEqual([])
