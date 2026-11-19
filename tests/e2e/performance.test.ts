@@ -557,6 +557,60 @@ test(
     }
 
     expect(await workspace.locator('.card-open').count()).toBe(changes.length)
+    const axisBeforeReveal = await page.locator('.workspace-axis').evaluate(({ scrollLeft }) => scrollLeft)
+    const otherColumn = workspace.locator('[data-column="ideas"] .column-cards')
+    const otherScroll = await otherColumn.evaluate(({ scrollTop }) => scrollTop)
+    const targetTitle = 'Project 1 task 80'
+    const targetTask = await first.task({ key: 'project-1-80' })
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const scrollBefore = await scroller.evaluate(({ scrollTop }) => scrollTop)
+      await page.evaluate(
+        ({
+          hydra,
+          id,
+        }) => {
+          dispatchEvent(new CustomEvent(
+            'pnyx:workspace-target',
+            {
+              detail: {
+                hydra,
+                id,
+              },
+            },
+          ))
+        },
+        {
+          hydra: first.id,
+          id: targetTask.id,
+        },
+      )
+      await workspace.locator('.card.selected').filter({ hasText: targetTitle })
+        .waitFor()
+      await until({
+        what: 'the revealed task is inside its column viewport',
+        check: async () => {
+          const card = await workspace.locator('.card.selected').filter({ hasText: targetTitle })
+            .boundingBox()
+          const column = await scroller.boundingBox()
+
+          return !!card && !!column && card.y >= column.y && card.y < column.y + column.height
+        },
+      })
+      expect(await page.locator('.workspace-axis').evaluate(({ scrollLeft }) => scrollLeft)).toBeCloseTo(
+        axisBeforeReveal,
+        0,
+      )
+      expect(await otherColumn.evaluate(({ scrollTop }) => scrollTop)).toBe(otherScroll)
+
+      if (attempt) {
+        expect(await scroller.evaluate(({ scrollTop }) => scrollTop)).toBeCloseTo(
+          scrollBefore,
+          0,
+        )
+      }
+    }
+
     expect(errors.map(error => error.message)).toEqual([])
   },
 )

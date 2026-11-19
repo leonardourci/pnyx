@@ -77,7 +77,6 @@ export function TaskFamily({
   actions,
   selected,
   width,
-  reveal,
   preview,
   renderCard,
 }: {
@@ -87,7 +86,6 @@ export function TaskFamily({
   actions: Record<string, CurrentAction>
   selected: string[]
   width: number
-  reveal?: string | null
   preview: SortMove | null
 } & FamilyRenderer) {
   const [
@@ -195,7 +193,6 @@ export function TaskFamily({
                 selected={selected}
                 hydra={hydraId}
                 width={width - SUBTASK_INDENT}
-                reveal={reveal}
                 singleColumn
                 render={({ card: child }) => (
                   <DraggableFamily

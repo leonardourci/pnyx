@@ -340,7 +340,6 @@ export function HydraView({
   const modalTask = useModalTask({ hydraId: navigation.hydraId })
   const {
     selected,
-    revealing,
     expandedIds,
     cards,
     columns: statusColumns,
@@ -608,11 +607,6 @@ export function HydraView({
     project.path,
     project.polis,
   ]))
-  const revealingColumn = revealing && state.cards[revealing]
-    ? taskProjectGroup({
-      state,
-      card: state.cards[revealing]!,
-    }) : columnRequest?.id
 
   const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
@@ -1286,7 +1280,7 @@ export function HydraView({
                               ]}
                               itemKey={({ item }) => item.id}
                               gap={WORKSPACE_SIZING.columnGap}
-                              reveal={revealingColumn}
+                              reveal={columnRequest?.id}
                               revealKey={columnRequest?.key}
                               render={({ item: c }) => {
                                 if (c.id === 'create-project') {
@@ -1387,7 +1381,6 @@ export function HydraView({
                                             selected={expandedIds}
                                             hydra={navigation.hydraId}
                                             width={width}
-                                            reveal={revealing}
                                             render={({
                                               card: item,
                                               width: familyWidth,
@@ -1395,7 +1388,6 @@ export function HydraView({
                                               <TaskFamily
                                                 card={item}
                                                 width={familyWidth}
-                                                reveal={revealing}
                                                 hydraId={navigation.hydraId}
                                                 state={state}
                                                 actions={actions}

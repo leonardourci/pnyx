@@ -1,11 +1,10 @@
 import { useFamilyFolds } from './task-view.ts'
 import { motion } from 'motion/react'
-import { useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { WORKSPACE_SIZING, cardGrid } from '#web-shared/card-sizing.ts'
-import { layoutOffset } from '#web-shared/ui/layout-geometry.ts'
 import { taskRollup } from './project-view.ts'
 
 interface Family {
@@ -21,7 +20,6 @@ export function ProjectTasks({
   selected,
   hydra,
   width,
-  reveal,
   singleColumn = false,
   render,
 }: {
@@ -31,7 +29,6 @@ export function ProjectTasks({
   selected: string[]
   hydra: string
   width: number
-  reveal?: string | null
   singleColumn?: boolean
   render({
     card,
@@ -41,7 +38,6 @@ export function ProjectTasks({
     width: number
   }): ReactNode
 }) {
-  const element = useRef<HTMLDivElement>(null)
   const [folds] = useFamilyFolds({ hydraId: hydra })
   const gap = WORKSPACE_SIZING.cardGap
   const rows = useMemo(
@@ -94,59 +90,9 @@ export function ProjectTasks({
       folds,
     ],
   )
-  const revealedRow = reveal
-    ? rows.findIndex(row => row.some(family => family.ids.includes(reveal))) : -1
-  const revealedKey = rows[revealedRow]?.find(family => reveal && family.ids.includes(reveal))?.card.key
-  useLayoutEffect(
-    () => {
-      if (revealedKey === undefined) {
-        return
-      }
-
-      const list = element.current
-      const column = list?.closest<HTMLElement>('.column-cards')
-      const family = list?.querySelector<HTMLElement>(`:scope > [data-family-key="${CSS.escape(revealedKey)}"]`)
-
-      if (!column || !family) {
-        return
-      }
-
-      const top = layoutOffset({
-        element: family,
-        horizontal: false,
-      }) - layoutOffset({
-        element: column,
-        horizontal: false,
-      }) - column.clientTop
-
-      const bottom = top + family.offsetHeight
-      const visibleTop = column.scrollTop
-      const visibleBottom = visibleTop + column.clientHeight
-      const clippedAtTop = top < visibleTop
-      const clippedAtBottom = bottom > visibleBottom
-
-      if (clippedAtTop === clippedAtBottom) {
-        return
-      }
-
-      const fits = family.offsetHeight <= column.clientHeight
-      const alignTop = clippedAtTop === fits
-      column.scrollTo({
-        top: alignTop ? top : bottom - column.clientHeight,
-        behavior: 'instant',
-      })
-    },
-    [
-      reveal,
-      revealedKey,
-      revealedRow,
-      width,
-    ],
-  )
 
   return (
     <div
-      ref={element}
       data-scroll-content
       className="relative flex w-full flex-wrap content-start"
       style={{ gap }}
@@ -158,7 +104,6 @@ export function ProjectTasks({
           <motion.div
             key={family.card.key}
             layout="position"
-            data-family-key={family.card.key}
             className="min-w-0 flex-none"
             style={{ width: cellWidth }}
           >{render({
