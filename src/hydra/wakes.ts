@@ -183,7 +183,8 @@ export function wakeText({
   }
 
   if (review && overflow) {
-    lines.push(`Read \`pnyx-axi history --kind hydra.review --after ${after} --full --hydra ${hydraId}\` for the full timed-review details.`)
+    const reviewedThrough = state.hydraReview?.seq ?? state.seq
+    lines.push(`Read \`pnyx-axi history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
   }
 
   lines.push(decisionsText({

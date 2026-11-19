@@ -560,16 +560,18 @@ test(
       expect(wake).toBeDefined()
       expect(wake.length).toBeLessThan(12_000)
       expect(wake).not.toContain('Long report body '.repeat(30))
-      const reviewAfter = wake.match(/history --kind hydra.review --after (\d+) --full/)?.[1]
-      expect(reviewAfter).toBeDefined()
+      const reviewBefore = wake.match(/history --kind hydra.review --before (\d+) --limit 1 --full/)?.[1]
+      expect(reviewBefore).toBeDefined()
       expect(wake).not.toContain('End of timed review evidence')
       const fullReview = await hydra.owner({
         args: [
           'history',
           '--kind',
           'hydra.review',
-          '--after',
-          reviewAfter!,
+          '--before',
+          reviewBefore!,
+          '--limit',
+          '1',
           '--full',
         ],
       })
