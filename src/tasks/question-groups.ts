@@ -14,6 +14,18 @@ export const decisionKey = ({ decision }: { decision: OpenDecision }) => [
   decision.at ?? '',
 ].map(encodeURIComponent).join('/')
 
+export function questionGroupCard({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}): Card {
+  const parent = card.parentId ? state.cards[card.parentId] : undefined
+
+  return parent ?? card
+}
+
 export function ownerQuestionGroups({ state }: { state: HydraState }): QuestionGroup[] {
   const groups = new Map<string, QuestionGroup>()
 
@@ -28,8 +40,10 @@ export function ownerQuestionGroups({ state }: { state: HydraState }): QuestionG
       continue
     }
 
-    const parent = task.parentId ? state.cards[task.parentId] : undefined
-    const card = parent ?? task
+    const card = questionGroupCard({
+      state,
+      card: task,
+    })
     const group = groups.get(card.id) ?? {
       card,
       decisions: [],

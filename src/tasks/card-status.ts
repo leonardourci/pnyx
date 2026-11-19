@@ -251,9 +251,14 @@ export function currentState({ card }: { card: Card }): {
       return []
     }
 
+    const title = (link.title ?? 'Pull request').replace(
+      /[\\[\]]/g,
+      '\\$&',
+    )
+
     return [
       {
-        text: `[${link.title ?? 'Pull request'}](${link.url}) is ready for review.`,
+        text: `[${title}](${link.url}) is ready for review.`,
         at,
         source: 'review' as const,
       },

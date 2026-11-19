@@ -26,4 +26,4 @@ Use the legacy `column list`, `column rule`, `column create|rename|describe|reor
 
 Rely on checked completion and recorded PR merges. A finished turn or passing local checks does not declare completion. Done retention keeps its existing task overrides and shared default of 24 hours. Parents stay open while any child is unfinished.
 
-Needs you holds only open owner questions that block work. Due reminders, ready results and declarations without a question are updates. A custom Needs you rule still requires an owner question.
+Needs you holds open decisions that require the owner, including questions and permission requests. Due reminders, ready results and declarations without a decision are updates. A custom Needs you rule still requires an owner decision.

@@ -1,4 +1,4 @@
-import { ownerQuestionGroups, decisionKey } from './question-groups.ts'
+import { decisionKey, ownerQuestionGroups, questionGroupCard } from './question-groups.ts'
 import { readFileSync } from 'node:fs'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { clarificationText, decideQuestionAction } from './question-actions.ts'
@@ -636,8 +636,15 @@ async function answerGroup({
     })
   }
 
-  if (!Array.isArray(members) || !members.length || !members.every((key): key is string => typeof key === 'string')
-    || new Set(members).size !== members.length) {
+  if (!Array.isArray(members) || !members.length || !members.every((key): key is string => {
+    if (typeof key !== 'string') {
+      return false
+    }
+
+    const parts = key.split('/')
+
+    return parts.length === 3 && !!parts[0] && !!parts[1]
+  }) || new Set(members).size !== members.length) {
     throw new HydraError({
       code: 'VALIDATION_ERROR',
       message: '--questions must contain unique question keys',
@@ -661,8 +668,10 @@ async function answerGroup({
     const target = cardsByKey.get(task)
     const ask = target?.asks?.find(ask => encodeURIComponent(ask.id) === id && ask.audience === 'owner')
     const event = `${attempt}:${key}`
-    const parent = target?.parentId ? state.cards[target.parentId] : undefined
-    const root = parent ?? target
+    const root = target && questionGroupCard({
+      state,
+      card: target,
+    })
 
     if (!target || !ask || root?.id !== card.id) {
       throw new HydraError({
@@ -684,8 +693,8 @@ async function answerGroup({
       })
     }
 
-    const repeat = answeredByAttempt || priorReply?.state === 'queued'
-      || priorReply?.state === 'delivery_unknown' || priorReply?.accepted === true
+    const inFlight = priorReply?.state === 'queued' || priorReply?.state === 'delivery_unknown'
+    const repeat = answeredByAttempt || inFlight || priorReply?.accepted === true
 
     return {
       key,
@@ -710,10 +719,17 @@ async function answerGroup({
     })
   }
 
-  for (const member of pending) {
-    const index = member.ask.options?.findIndex(option => option.label === choice) ?? -1
+  if (pending.length && !group?.choices.includes(choice)) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'Use a shared choice label; answer different decisions individually',
+    })
+  }
 
-    if (index < 0 || !group?.choices.includes(choice)) {
+  for (const member of pending) {
+    const index = member.ask.options?.findIndex(option => option.label === choice)
+
+    if (index === undefined || index < 0) {
       throw new HydraError({
         code: 'VALIDATION_ERROR',
         message: 'Use a shared choice label; answer different decisions individually',
@@ -749,13 +765,12 @@ async function answerGroup({
       .find(group => group.card.id === card.id)
     const latestKeys = latestGroup?.decisions.map(decision => decisionKey({ decision }))
     const latestAsk = latest.cards[member.card.id]?.asks?.find(ask => ask.id === member.ask.id)
-    const index = latestAsk?.options?.findIndex(option => option.label === choice) ?? -1
+    const index = latestAsk?.options?.findIndex(option => option.label === choice)
 
     const changed = !latestKeys || latestKeys.length !== remaining.size
       || latestKeys.some(key => !remaining.has(key))
 
-    if (changed
-      || !latestGroup?.choices.includes(choice) || index < 0) {
+    if (changed || !latestGroup?.choices.includes(choice) || index === undefined || index < 0) {
       throw new HydraError({
         code: 'CONFLICT',
         message: 'The question group changed during delivery. Earlier answers may have been sent. Read task questions again.',

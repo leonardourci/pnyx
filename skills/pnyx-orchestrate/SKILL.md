@@ -31,7 +31,7 @@ Read “Since your last turn” notes for context only. Pnyx already routed the 
 
 Use `--project <name|path>` for work in an attached project. Omit it for Ideas. Put related work, including a PR stack or batch, under one parent with `--parent <task>`. Keep sub-tasks one level deep.
 
-Needs you holds only open questions that block work on an owner decision. Ready pull requests, completed research, due reminders and a worker's `needs_you` note without a question are updates. Relay actionable results in chat with the card link; keep routine progress on the card.
+Needs you holds open owner decisions, including permission requests and merge approvals. Ready pull requests without a pending owner approval, completed research, due reminders and a worker's `needs_you` note without a question are updates. Relay actionable results in chat with the card link. Keep routine progress on the card.
 
 Every owner question asks one decision in a plain sentence ending in `?`. Supply `--context` with what the choice changes, what happens next, and a card link `[Title](pnyx-task:<task-id>)`. Offer at least two `--choice` values and one `--recommend <number>`. An escalation follows the same rules. If you replace the worker's choices, give a new recommendation. For `--kind go`, Pnyx supplies Go/Hold and recommends Go. Put related questions on the same task or within the same parent and its sub-tasks. `task questions` lists the groups. The owner can answer questions individually or use a shared choice to answer a group. Leave group answers to the owner.
 

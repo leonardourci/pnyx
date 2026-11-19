@@ -215,12 +215,6 @@ export function withWriter<T>({
       writers,
     })
 
-    if (migrate) {
-      for (const stage of stages) {
-        retireReviewQuestions({ writer: stage.writer })
-      }
-    }
-
     const changes = stages.filter(stage => stage.pending.length).map(stage => {
       const rows = rowChanges({
         hydraId: stage.id,
@@ -552,13 +546,6 @@ export function eventWriter({
           })
         }
 
-        if (event.type === 'task.landing') {
-          retireReviewQuestions({
-            writer,
-            at: event.at,
-          })
-        }
-
         for (const declaration of operationDeclarations({
           before,
           state,
@@ -582,6 +569,23 @@ export function eventWriter({
           if ('event' in declared) {
             writer.append({ event: declared.event })
           }
+        }
+
+        switch (event.type) {
+          case 'board.configured':
+          case 'card.linked':
+          case 'card.outcome':
+          case 'hydra.project':
+          case 'task.declared':
+          case 'task.landing':
+          case 'task.moved-in':
+          case 'task.moved-out':
+          case 'task.project':
+            retireReviewQuestions({
+              writer,
+              at: event.at,
+            })
+            break
         }
 
         // A task's explicit lifecycle change moves its card, as its own event in the same write.

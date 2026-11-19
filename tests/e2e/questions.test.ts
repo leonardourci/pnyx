@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { readEvents } from '#app/event-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { openHydra } from '../setup/browser.ts'
@@ -34,7 +34,7 @@ beforeAll(async () => {
     ),
     JSON.stringify({
       state: 'open',
-      title: 'CSV export',
+      title: 'CSV [export]',
       head: 'a'.repeat(40),
       checks: '1 passed, 0 failed, 1 total',
     }),
@@ -235,6 +235,9 @@ test(
         },
       ),
     })
+    onTestFinished(async () => {
+      await page.context().close()
+    })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
     await workspace.getByRole(
       'button',
@@ -261,31 +264,6 @@ test(
 
     const groupSummary = group.locator('summary')
 
-    if (process.env.PNYX_KEEP_TEST_FILES) {
-      mkdirSync(
-        process.env.PNYX_KEEP_TEST_FILES,
-        { recursive: true },
-      )
-
-      for (const theme of [
-        'light',
-        'dark',
-      ]) {
-        await page.evaluate(
-          ({ theme }) => {
-            document.documentElement.dataset.theme = theme
-          },
-          { theme },
-        )
-        await page.screenshot({
-          path: join(
-            process.env.PNYX_KEEP_TEST_FILES,
-            `keyboard-${theme}.png`,
-          ),
-        })
-      }
-    }
-
     // eslint-disable-next-line pnyx/object-params -- Playwright owns evaluate callbacks.
     expect(await groupSummary.evaluate(element => element === document.activeElement)).toBe(true)
     await page.keyboard.press('Space')
@@ -296,26 +274,6 @@ test(
     ).first()
     // eslint-disable-next-line pnyx/object-params -- Playwright owns evaluate callbacks.
     expect(await firstQuestion.evaluate(element => element === document.activeElement)).toBe(true)
-
-    if (process.env.PNYX_KEEP_TEST_FILES) {
-      for (const theme of [
-        'light',
-        'dark',
-      ]) {
-        await page.evaluate(
-          ({ theme }) => {
-            document.documentElement.dataset.theme = theme
-          },
-          { theme },
-        )
-        await page.screenshot({
-          path: join(
-            process.env.PNYX_KEEP_TEST_FILES,
-            `questions-${theme}.png`,
-          ),
-        })
-      }
-    }
 
     await waiting.click()
     await workspace.getByRole(
@@ -329,28 +287,9 @@ test(
     await reviewCard.locator('.card-link').first()
       .waitFor()
 
-    if (process.env.PNYX_KEEP_TEST_FILES) {
-      for (const theme of [
-        'light',
-        'dark',
-      ]) {
-        await page.evaluate(
-          ({ theme }) => {
-            document.documentElement.dataset.theme = theme
-          },
-          { theme },
-        )
-        await page.screenshot({
-          path: join(
-            process.env.PNYX_KEEP_TEST_FILES,
-            `updates-${theme}.png`,
-          ),
-        })
-      }
-    }
-
     expect(await reviewCard.locator('.card-current-state').count()).toBe(1)
-    expect(await reviewCard.locator('.card-current-state').textContent()).toContain('CSV export is ready for review.')
+    const reviewUpdate = reviewCard.locator('.card-current-state')
+    expect(await reviewUpdate.textContent()).toContain('CSV [export] is ready for review.')
     await hydra.owner({
       args: [
         'task',
@@ -381,10 +320,17 @@ test(
       what: 'the merge question leaves Waiting on you',
       check: async () => (await waiting.textContent())?.includes('Waiting on you · 1') === true,
     })
-    const latestUpdate = await reviewCard.locator('.card-current-state').textContent()
+    const latestUpdate = await reviewUpdate.textContent()
     expect(latestUpdate).toContain('Latest update')
-    expect(latestUpdate).toContain('CSV export is ready for review.')
-    expect(await reviewCard.locator('.card-current-state a').getAttribute('href')).toBe('https://github.com/sample/exports/pull/1')
+    expect(latestUpdate).toContain('CSV [export] is ready for review.')
+    const reviewLink = reviewUpdate.getByRole(
+      'link',
+      {
+        name: 'CSV [export]',
+        exact: true,
+      },
+    )
+    expect(await reviewLink.getAttribute('href')).toBe('https://github.com/sample/exports/pull/1')
 
     await waiting.click()
 
@@ -423,16 +369,6 @@ test(
       expect(card.task.asks[0].choice).toBe('Open only')
     }
 
-    if (process.env.PNYX_KEEP_TEST_FILES) {
-      await workspace.locator('.hydra-chat').scrollIntoViewIfNeeded()
-      await page.screenshot({
-        path: join(
-          process.env.PNYX_KEEP_TEST_FILES,
-          'answered.png',
-        ),
-      })
-    }
-
     await page.reload()
     await workspace.getByRole(
       'button',
@@ -448,26 +384,6 @@ test(
     )
     await retry.waitFor()
     expect(dropped).toBe(true)
-
-    if (process.env.PNYX_KEEP_TEST_FILES) {
-      for (const theme of [
-        'light',
-        'dark',
-      ]) {
-        await page.evaluate(
-          ({ theme }) => {
-            document.documentElement.dataset.theme = theme
-          },
-          { theme },
-        )
-        await page.screenshot({
-          path: join(
-            process.env.PNYX_KEEP_TEST_FILES,
-            `retry-${theme}.png`,
-          ),
-        })
-      }
-    }
 
     await retry.click()
     await until({
@@ -497,7 +413,5 @@ test(
         && event.data.task === card.task.id && event.data.answers === question.id)
       expect(answers).toHaveLength(1)
     }
-
-    await page.context().close()
   },
 )

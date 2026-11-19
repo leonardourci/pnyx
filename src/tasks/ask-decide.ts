@@ -491,7 +491,7 @@ export const askReport = ({
   ...(ask.options ?? []).map((
     o,
     i,
-  ) => `${i + 1}. ${o.label}${o.description ? ` — ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
+  ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
   ...(ask.details ? [`Details: \`pnyx-axi task show ${task} --full --hydra ${hydraId}\``] : []),
   `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\``,
   `If the owner must decide, use \`pnyx-axi task escalate ${task} ${ask.id} --question "<decision?>" --context "<what changes, next action and [Card](pnyx-task:${encodeURIComponent(task)})>" --choice "<recommended choice>" --choice "<alternative>" --recommend 1 --reason "<why>" --hydra ${hydraId}\``,
