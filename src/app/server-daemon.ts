@@ -1,3 +1,4 @@
+import { finishHydraRemoval } from '#hydra/remove.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -736,7 +737,27 @@ export async function startServer({
     ready()
   }
 
-  const mount = ({ id }: { id: string }): Promise<MountedHydra> => {
+  const removalPending = ({ id }: { id: string }) => {
+    const [rows] = query({
+      statements: [
+        {
+          text: "select 1 from hydras where id = $1 and config->>'removing' = 'true'",
+          values: [id],
+        },
+      ],
+    })
+
+    return Boolean(rows?.length)
+  }
+
+  const mount = async ({ id }: { id: string }): Promise<MountedHydra> => {
+    if (removalPending({ id })) {
+      return Promise.reject(new HydraError({
+        message: `Hydra removal is pending: ${id}`,
+        code: 'CONFLICT',
+      }))
+    }
+
     const known = mounts.get(id)
 
     if (known) {
@@ -822,10 +843,12 @@ export async function startServer({
 
     const activeIds = hydraIds()
 
-    if (activeIds.includes(removedId)) {
+    const pendingRemoval = removalPending({ id: removedId })
+
+    if (activeIds.includes(removedId) && !pendingRemoval) {
       mountAll()
     } else if (hydraId === removedId) {
-      hydraId = activeIds[0] ?? hydraId
+      hydraId = activeIds.find(id => !removalPending({ id })) ?? hydraId
     }
 
     hydrasChanged()
@@ -1002,8 +1025,26 @@ export async function startServer({
   // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
   // claim, instead of leaving a server that holds it without serving.
   try {
-    if (loadHydra({ hydraId }).state.config?.removed) {
-      const [activeId] = hydraIds()
+    for (const id of hydraIds()) {
+      try {
+        if (removalPending({ id })) {
+          await finishHydraRemoval({ id })
+        }
+      } catch (error) {
+        log({
+          level: 'error',
+          operation: 'hydra.remove',
+          hydraId: id,
+          error,
+        })
+      }
+    }
+
+    const requestedConfig = hydraExists({ hydraId })
+      ? loadHydra({ hydraId }).state.config : undefined
+
+    if (requestedConfig?.removed || requestedConfig?.removing) {
+      const [activeId] = hydraIds().filter(id => !removalPending({ id }))
 
       if (!activeId) {
         throw new HydraError({
@@ -1017,7 +1058,10 @@ export async function startServer({
 
     named = await mount({ id: hydraId })
 
-    if (!loadHydra({ hydraId: 'default' }).state.config?.removed) {
+    const defaultConfig = hydraExists({ hydraId: 'default' })
+      ? loadHydra({ hydraId: 'default' }).state.config : undefined
+
+    if (!defaultConfig?.removed && !defaultConfig?.removing) {
       await mount({ id: 'default' })
     }
 

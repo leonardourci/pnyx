@@ -113,7 +113,10 @@ export function approvedHydraRemoval({
     return false
   }
 
-  if (context({ state, target }) !== proposal.before) {
+  if (context({
+    state,
+    target,
+  }) !== proposal.before) {
     throw new HydraError({
       message: 'The target changed. Ask Hydra to propose the removal again',
       code: 'CONFLICT',
@@ -428,7 +431,14 @@ export const approval = guard({
         },
       })
 
-      const code = /^code: (REVISION_CONFLICT|CONFLICT)$/m.exec(stdout)?.[1]
+      const code = /^code: ([A-Z_]+)$/m.exec(stdout)?.[1]
+
+      if (target.name === 'hydra' && target.args[0] === 'remove') {
+        throw new HydraError({
+          message: detail,
+          code: code ?? 'UNKNOWN',
+        })
+      }
 
       if (memory && (code === 'CONFLICT' || code === 'REVISION_CONFLICT')) {
         throw new HydraError({

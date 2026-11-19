@@ -16,6 +16,15 @@ import { hydraEvent } from './hydra.ts'
 
 const removing = new Set<string>()
 
+function requireRemovalIdle() {
+  if (removing.size > 0) {
+    throw new HydraError({
+      message: 'A Hydra is already being removed',
+      code: 'CONFLICT',
+    })
+  }
+}
+
 function removalTarget({
   id,
   caller,
@@ -91,6 +100,34 @@ async function removalPreview({
   return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${copies.length}. Copies with unlanded work: ${unlandedPaths}. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
 }
 
+function removalCopies({ state }: { state: ReturnType<typeof removalTarget> }) {
+  const cards = Object.values(state.cards)
+  const copies = cards.flatMap(card => card.copy && card.copy.state !== 'removed'
+    ? [card.copy] : [])
+
+  for (const copy of copies) {
+    if (!existsSync(copy.path)) {
+      continue
+    }
+
+    const copyPath = realpathSync(copy.path)
+    const projectPath = existsSync(copy.project) ? realpathSync(copy.project) : copy.project
+    const projectFromCopy = relative(
+      copyPath,
+      projectPath,
+    )
+
+    if (!projectFromCopy || (!isAbsolute(projectFromCopy) && projectFromCopy !== '..' && !projectFromCopy.startsWith(`..${sep}`))) {
+      throw new HydraError({
+        message: `Copy contains the project folder: ${copy.path}`,
+        code: 'CONFLICT',
+      })
+    }
+  }
+
+  return copies
+}
+
 export async function removeHydraCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
@@ -121,7 +158,10 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   if (!approved) {
     return proposeOwnerCommand({
       name: 'hydra',
-      args: ['remove', id],
+      args: [
+        'remove',
+        id,
+      ],
       hydraId,
       removalSeq: state.seq,
       summary: await removalPreview({
@@ -131,12 +171,52 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     })
   }
 
-  if (removing.size > 0) {
-    throw new HydraError({
-      message: 'A Hydra is already being removed',
-      code: 'CONFLICT',
+  requireRemovalIdle()
+
+  if (!state.config?.removing) {
+    removalCopies({ state })
+    withWriter({
+      hydraId: id,
+      fn: ({ writer }) => {
+        const pending = hydraEvent({
+          state: writer.state,
+          meta: actor,
+          cardId: '$board',
+          change: {
+            type: 'board.configured',
+            data: {
+              ...hydraConfig({
+                state: writer.state,
+                id,
+              }),
+              removing: true,
+            },
+          },
+        })
+
+        if ('event' in pending) {
+          writer.append({ event: pending.event })
+        }
+      },
     })
   }
+
+  return finishHydraRemoval({ id })
+}
+
+export async function finishHydraRemoval({ id }: { id: string }): Promise<Output> {
+  const state = loadHydra({ hydraId: id }).state
+
+  if (!state.config?.removing || state.config.removed) {
+    return { removed: id }
+  }
+
+  const actor = {
+    actor: 'pnyx',
+    at: new Date().toISOString(),
+  }
+
+  requireRemovalIdle()
 
   if (!hydraRemoval.close) {
     throw new HydraError({
@@ -149,27 +229,16 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   let closing = false
 
   try {
-    const cards = Object.values(state.cards)
-    const copies = cards.flatMap(card => card.copy && card.copy.state !== 'removed' && existsSync(card.copy.path)
-      ? [card.copy] : [])
-
-    for (const copy of copies) {
-      const copyPath = realpathSync(copy.path)
-      const projectPath = existsSync(copy.project) ? realpathSync(copy.project) : copy.project
-      const projectFromCopy = relative(copyPath, projectPath)
-
-      if (!projectFromCopy || (!isAbsolute(projectFromCopy) && projectFromCopy !== '..' && !projectFromCopy.startsWith(`..${sep}`))) {
-        throw new HydraError({
-          message: `Copy contains the project folder: ${copy.path}`,
-          code: 'CONFLICT',
-        })
-      }
-    }
+    const copies = removalCopies({ state })
 
     closing = true
     await hydraRemoval.close({ hydraId: id })
 
     for (const copy of copies) {
+      if (!existsSync(copy.path)) {
+        continue
+      }
+
       if (copy.via === 'worktree') {
         const failure = await removeCopy({
           copy,
@@ -195,6 +264,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
 
     withWriter({
       hydraId: id,
+      removal: true,
       fn: ({ writer }) => {
         for (const project of writer.state.projects ?? []) {
           if (project.detached) {
@@ -235,6 +305,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
                 id,
               }),
               removed: true,
+              removing: false,
             },
           },
         })
@@ -244,6 +315,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
         }
       },
     })
+
     return { removed: id }
   } finally {
     removing.delete(id)

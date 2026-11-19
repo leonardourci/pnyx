@@ -3,7 +3,7 @@ import { trackChildren } from '#workers/children.ts'
 import { existsSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { git } from './setup/upgrade.ts'
 
@@ -22,6 +22,48 @@ beforeAll(async () => {
   expect(refusal.error).toContain('last Hydra')
 })
 
+function projectFolder({
+  hydra,
+  name,
+}: {
+  hydra: Hydra
+  name: string
+}) {
+  const folder = hydra.folder({ name })
+  git({
+    cwd: folder,
+    args: [
+      'init',
+      '-b',
+      'main',
+    ],
+  })
+  writeFileSync(
+    join(
+      folder,
+      'source.txt',
+    ),
+    'base',
+  )
+  git({
+    cwd: folder,
+    args: [
+      'add',
+      '.',
+    ],
+  })
+  git({
+    cwd: folder,
+    args: [
+      'commit',
+      '-m',
+      'base',
+    ],
+  })
+
+  return folder
+}
+
 test(
   'removal requires owner confirmation, discards unlanded copies, detaches only its projects and keeps history searchable after restart',
   async () => {
@@ -30,36 +72,9 @@ test(
       id: 'default',
       create: false,
     })
-    const folder = target.folder({ name: 'shared' })
-    git({
-      cwd: folder,
-      args: [
-        'init',
-        '-b',
-        'main',
-      ],
-    })
-    writeFileSync(
-      join(
-        folder,
-        'source.txt',
-      ),
-      'base',
-    )
-    git({
-      cwd: folder,
-      args: [
-        'add',
-        '.',
-      ],
-    })
-    git({
-      cwd: folder,
-      args: [
-        'commit',
-        '-m',
-        'base',
-      ],
+    const folder = projectFolder({
+      hydra: target,
+      name: 'shared',
     })
 
     await target.owner({
@@ -241,10 +256,21 @@ test(
 
     expect(proposal.confirmation).toBe('needed')
     await target.owner({
-      args: ['task', 'create', '--title', 'Created after the preview'],
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Created after the preview',
+      ],
     })
     const stale = await caller.ownerRefused({
-      args: ['approval', 'confirm', proposal.token, '--confirm', proposal.token],
+      args: [
+        'approval',
+        'confirm',
+        proposal.token,
+        '--confirm',
+        proposal.token,
+      ],
     })
     expect(stale.code).toBe('CONFLICT')
     expect(stale.error).toContain('target changed')
@@ -286,9 +312,23 @@ test(
         stdio: 'ignore',
       },
     )
-    onTestFinished(() => {
-      worker.kill('SIGKILL')
-      helper.kill('SIGKILL')
+    onTestFinished(async () => {
+      await Promise.all([
+        worker,
+        helper,
+      ].map(child => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          return Promise.resolve()
+        }
+
+        return new Promise<void>(resolve => {
+          child.once(
+            'exit',
+            () => resolve(),
+          )
+          child.kill('SIGKILL')
+        })
+      }))
     })
     children.spawned({ child: worker })
     children.associate({
@@ -305,5 +345,124 @@ test(
       what: 'unassigned helper tools to exit',
       check: () => helper.exitCode !== null || helper.signalCode !== null,
     })
+  },
+)
+
+test(
+  'a partial removal fences writes and resumes after restart without recreating discarded copies',
+  async () => {
+    const caller = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const folder = projectFolder({
+      hydra: target,
+      name: 'recovery',
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+        '--landing',
+        'branch',
+      ],
+    })
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'first',
+        '--title',
+        'First',
+        '--project',
+        folder,
+      ],
+    })
+    const first = (await target.owner({
+      args: [
+        'task',
+        'start',
+        'first',
+      ],
+    })).agent.folder as string
+    await target.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'locked',
+        '--title',
+        'Locked',
+        '--project',
+        folder,
+      ],
+    })
+    const locked = (await target.owner({
+      args: [
+        'task',
+        'start',
+        'locked',
+      ],
+    })).agent.folder as string
+    git({
+      cwd: folder,
+      args: [
+        'worktree',
+        'lock',
+        locked,
+      ],
+    })
+    const proposed = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        target.id,
+      ],
+    })
+    const failed = await caller.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        proposed.token,
+        '--confirm',
+        proposed.token,
+      ],
+    })
+    expect(failed.code).toBe('CONFLICT')
+    expect(failed.error).toContain('git could not remove')
+    expect(existsSync(first)).toBe(false)
+    expect(existsSync(locked)).toBe(true)
+    expect((await target.ownerRefused({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Competing write',
+      ],
+    })).code).toBe('CONFLICT')
+    await pnyx.restart()
+    expect(existsSync(first)).toBe(false)
+    expect((await caller.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra.id).toBe(caller.id)
+    git({
+      cwd: folder,
+      args: [
+        'worktree',
+        'unlock',
+        locked,
+      ],
+    })
+    await pnyx.restart()
+    expect(existsSync(locked)).toBe(false)
+    expect((await caller.owner({
+      args: [
+        'hydra',
+        'list',
+      ],
+    })).hydras.some((hydra: { id: string }) => hydra.id === target.id)).toBe(false)
   },
 )
