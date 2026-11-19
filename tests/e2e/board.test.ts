@@ -5164,3 +5164,280 @@ test(
     }
   },
 )
+
+test(
+  'shrinking an earlier Hydra preserves alignment and the owner’s horizontal scroll',
+  async () => {
+    const before = await pnyx.hydra()
+    const hydra = await pnyx.hydra()
+    await before.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ workspace: { projectWidths: { ideas: 1600 } } }),
+      ],
+    })
+    await before.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Earlier task',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Resize target',
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: before.id,
+      prepare: async ({ page }) => {
+        await page.addInitScript(() => {
+          // Force resize delivery after the native clamp so observer ordering cannot hide the bug.
+          const NativeResizeObserver = ResizeObserver
+          let held = false
+          const pending: (() => void)[] = []
+          window.ResizeObserver = class extends NativeResizeObserver {
+            // eslint-disable-next-line pnyx/object-params -- ResizeObserver owns the constructor.
+            constructor(callback: ResizeObserverCallback) {
+              // eslint-disable-next-line pnyx/object-params -- ResizeObserver owns the callback.
+              super((
+                entries,
+                observer,
+              ) => {
+                const axis = entries.some(entry => entry.target.matches(
+                  '.workspace-axis, .workspace-track, [data-hydra-workspace]',
+                ))
+
+                if (held && axis) {
+                  pending.push(() => callback(
+                    entries,
+                    observer,
+                  ))
+                } else {
+                  callback(
+                    entries,
+                    observer,
+                  )
+                }
+              })
+            }
+          }
+          Reflect.set(
+            window,
+            'holdAxisResize',
+            () => {
+              held = true
+            },
+          )
+          Reflect.set(
+            window,
+            'releaseAxisResize',
+            () => {
+              held = false
+              pending.splice(0).forEach(deliver => deliver())
+            },
+          )
+        })
+      },
+    })
+
+    try {
+      await page.getByRole(
+        'button',
+        {
+          name: 'Earlier task',
+          exact: true,
+        },
+      ).waitFor()
+      const earlier = page.locator(`[data-hydra-workspace="${before.id}"]`)
+      await until({
+        what: 'earlier Hydra starts wide',
+        check: async () => (await earlier.boundingBox())!.width > 2000,
+      })
+      await page.locator(`.topbar [data-sort-kind="hydra"][data-sort-id="${hydra.id}"]`).click()
+      const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Resize target',
+          exact: true,
+        },
+      ).waitFor()
+      await until({
+        what: 'addressed Hydra starts aligned',
+        check: async () => Math.abs((await workspace.boundingBox())!.x - 12) < 1,
+      })
+      await page.getByRole(
+        'button',
+        {
+          name: 'Oracle',
+          exact: true,
+        },
+      ).click()
+      await page.getByRole(
+        'combobox',
+        {
+          name: 'Oracle',
+          exact: true,
+        },
+      ).fill('Projects')
+      const projects = page.getByRole(
+        'group',
+        {
+          name: 'Settings and actions',
+          exact: true,
+        },
+      )
+        .getByRole('option')
+        .filter({ hasText: 'Projects' })
+        .first()
+      await projects.waitFor()
+      await page.evaluate(() => Reflect.get(
+        window,
+        'holdAxisResize',
+      )())
+      await before.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({ workspace: { projectWidths: { ideas: 280 } } }),
+        ],
+      })
+      await until({
+        what: 'earlier Hydra shrinks',
+        check: async () => (await earlier.boundingBox())!.width < 1500,
+      })
+      await page.evaluate(() => Reflect.get(
+        window,
+        'releaseAxisResize',
+      )())
+      await until({
+        what: 'addressed Hydra remains aligned',
+        check: async () => Math.abs((await workspace.boundingBox())!.x - 12) < 1,
+      })
+      await projects.click()
+      await page.mouse.click(
+        12,
+        450,
+      )
+      await page.getByRole(
+        'dialog',
+        {
+          name: 'Oracle',
+          exact: true,
+        },
+      ).waitFor({ state: 'hidden' })
+      await workspace.getByRole(
+        'button',
+        {
+          name: 'Resize target',
+          exact: true,
+        },
+      ).waitFor()
+
+      await before.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({ workspace: { projectWidths: { ideas: 1600 } } }),
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({ workspace: { projectWidths: { ideas: 1600 } } }),
+        ],
+      })
+      await until({
+        what: 'both Hydras are wide',
+        check: async () => {
+          const first = await earlier.boundingBox()
+          const second = await workspace.boundingBox()
+
+          return first!.width > 2000 && second!.width > 2000
+        },
+      })
+      await until({
+        what: 'the addressed project finishes growing',
+        check: async () => {
+          const column = await workspace.locator('section[data-column="ideas"]').boundingBox()
+
+          return !!column && column.width > 1599
+        },
+      })
+      await until({
+        what: 'the wide Hydra remains aligned before panning',
+        check: async () => Math.abs((await workspace.boundingBox())!.x - 12) < 1,
+      })
+      await restingBox({ target: workspace })
+      await page.locator('.workspace-axis').evaluate(
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
+        axis => {
+          Reflect.set(
+            window,
+            'ownerAxisScrolled',
+            false,
+          )
+          axis.addEventListener(
+            'scroll',
+            () => Reflect.set(
+              window,
+              'ownerAxisScrolled',
+              true,
+            ),
+            { once: true },
+          )
+          axis.scrollTo({
+            left: axis.scrollLeft + 200,
+            behavior: 'instant',
+          })
+        },
+      )
+      await page.waitForFunction(() => Reflect.get(
+        window,
+        'ownerAxisScrolled',
+      ))
+      await until({
+        what: 'the owner pans within the addressed Hydra',
+        check: async () => Math.abs((await workspace.boundingBox())!.x + 188) < 1,
+      })
+      await page.evaluate(() => Reflect.get(
+        window,
+        'holdAxisResize',
+      )())
+      await before.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          JSON.stringify({ workspace: { projectWidths: { ideas: 280 } } }),
+        ],
+      })
+      await until({
+        what: 'earlier Hydra shrinks again',
+        check: async () => (await earlier.boundingBox())!.width < 1500,
+      })
+      await page.evaluate(() => Reflect.get(
+        window,
+        'releaseAxisResize',
+      )())
+      await until({
+        what: 'the owner’s horizontal position survives clamping',
+        check: async () => Math.abs((await workspace.boundingBox())!.x + 188) < 1,
+      })
+    } finally {
+      await page.context().close()
+    }
+  },
+)
