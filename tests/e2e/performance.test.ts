@@ -15,12 +15,18 @@ const PROJECT_TASKS = [
 const LOAD_FRAME_BUDGET_MS = 1000
 const FIRST_CARD_BUDGET_MS = 2000
 const SCROLL_FRAME_BUDGET_MS = 250
+const PROJECT_APPEAR_TIMEOUT_MS = 5000
 const MAX_TASK_COMMITS = 4
 const DISCOVERY_READ_BUDGETS = {
   models: 10,
   project: 6,
   catalog: 5,
   rule: 10,
+}
+
+interface WorkspaceMeasurement {
+  firstCard: number
+  readFrames({ since }: { since: number }): number[]
 }
 
 test(
@@ -138,19 +144,37 @@ test(
       name: string
       args: string[]
     }[] = []
+    const errors: Error[] = []
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: first.id,
-      prepare: async ({page}) => {
+      prepare: async ({ page }) => {
+        page.on(
+          'pageerror',
+          error => errors.push(error),
+        )
         await page.setViewportSize({
           width: 1512,
           height: 900,
         })
         await page.addInitScript(
           ({ hydra }) => {
-            const measurement = {
+            const frames: PerformanceEntry[] = []
+            // eslint-disable-next-line pnyx/object-params -- The browser owns this callback signature.
+            const frameObserver = new PerformanceObserver(list => {
+              frames.push(...list.getEntries())
+            })
+            frameObserver.observe({
+              type: 'long-animation-frame',
+              buffered: true,
+            })
+            const measurement: WorkspaceMeasurement = {
               firstCard: 0,
-              frames: [] as number[],
+              readFrames({ since }) {
+                frames.push(...frameObserver.takeRecords())
+
+                return frames.filter(frame => frame.startTime >= since).map(frame => frame.duration)
+              },
             }
             Object.assign(
               window,
@@ -171,13 +195,6 @@ test(
                 subtree: true,
               },
             )
-            // eslint-disable-next-line pnyx/object-params -- The browser owns this callback signature.
-            new PerformanceObserver(list => {
-              measurement.frames.push(...list.getEntries().map(entry => entry.duration))
-            }).observe({
-              type: 'long-animation-frame',
-              buffered: true,
-            })
           },
           { hydra: first.id },
         )
@@ -198,11 +215,6 @@ test(
     })
     const workspace = page.locator(`[data-hydra-workspace="${first.id}"]`)
     const other = page.locator(`[data-hydra-workspace="${second.id}"]`)
-    const errors: Error[] = []
-    page.on(
-      'pageerror',
-      error => errors.push(error),
-    )
     await workspace.getByRole(
       'button',
       {
@@ -219,12 +231,18 @@ test(
     expect(await other.locator('.card-open').count()).toBe(1)
     expect(await other.locator('.hydra-page').count()).toBe(1)
     expect(await page.locator('*').count()).toBeLessThan(6000)
-    const load = await page.evaluate(() => (window as unknown as {
-      workspaceMeasurement: {
-        firstCard: number
-        frames: number[]
+    const load = await page.evaluate(() => {
+      const measurement = (window as Window & { workspaceMeasurement?: WorkspaceMeasurement }).workspaceMeasurement
+
+      if (!measurement) {
+        throw new Error('Workspace load measurement was not installed')
       }
-    }).workspaceMeasurement)
+
+      return {
+        firstCard: measurement.firstCard,
+        frames: measurement.readFrames({ since: 0 }),
+      }
+    })
     expect(load.firstCard).toBeGreaterThan(0)
     expect(load.firstCard).toBeLessThan(FIRST_CARD_BUDGET_MS)
     expect(Math.max(
@@ -235,7 +253,9 @@ test(
       check: 'owner-sized load',
       ...load,
     })
-    await page.evaluate(() => document.fonts.ready.then(() => undefined))
+    await page.evaluate(async () => {
+      await document.fonts.ready
+    })
     const visibleCard = await workspace.getByRole(
       'button',
       {
@@ -261,14 +281,20 @@ test(
           {
             hydra,
             project,
+            timeoutMs,
           },
         ) => {
           const positions: number[] = []
-          const selector = `[data-hydra-workspace="${CSS.escape(hydra)}"] [data-sort-kind="project"][data-sort-id="${CSS.escape(project)}"]`
+          const selector = `[data-hydra-workspace="${CSS.escape(hydra)}"] .project-column[data-column="${CSS.escape(project)}"]`
+          const deadline = performance.now() + timeoutMs
 
-          while (!document.querySelector(selector)) {
+          while (performance.now() < deadline && !document.querySelector(selector)) {
             await new Promise(requestAnimationFrame)
             positions.push(element.getBoundingClientRect().x)
+          }
+
+          if (!document.querySelector(selector)) {
+            throw new Error('The earlier Hydra did not render the new project column')
           }
 
           for (let frame = 0; frame < 40; frame++) {
@@ -281,6 +307,7 @@ test(
         {
           hydra: second.id,
           project: earlierProject,
+          timeoutMs: PROJECT_APPEAR_TIMEOUT_MS,
         },
       ),
     ])
@@ -487,13 +514,8 @@ test(
 
     const scroller = workspace.locator(`[data-column="${projects[1]}"] .column-cards`)
     await scroller.hover()
-    await page.evaluate(() => {
-      const measurement = (window as unknown as {
-        workspaceMeasurement: { frames: number[] }
-      }).workspaceMeasurement
-      measurement.frames = []
-    })
     const finishScroll = await beginUIWindow({ page })
+    const scrollStart = await page.evaluate(() => performance.now())
     await page.mouse.wheel(
       0,
       900,
@@ -506,9 +528,16 @@ test(
     const scroll = await finishScroll()
 
     if (!inject('uiProfile')) {
-      const frames = await page.evaluate(() => (window as unknown as {
-        workspaceMeasurement: { frames: number[] }
-      }).workspaceMeasurement.frames)
+      // eslint-disable-next-line pnyx/object-params -- Playwright supplies the browser callback argument.
+      const frames = await page.evaluate(since => {
+        const measurement = (window as Window & { workspaceMeasurement?: WorkspaceMeasurement }).workspaceMeasurement
+
+        if (!measurement) {
+          throw new Error('Workspace scroll measurement was not installed')
+        }
+
+        return measurement.readFrames({ since })
+      }, scrollStart)
       expect(Math.max(
         0,
         ...frames,

@@ -443,6 +443,7 @@ export const HydraCard = memo(function HydraCard({
       card,
       status,
       now,
+      showProject,
       labelColors,
       legacyProject,
       progress,

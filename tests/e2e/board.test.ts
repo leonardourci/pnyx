@@ -5040,7 +5040,7 @@ test(
 )
 
 test(
-  'closed cards omit their single repository chip and retain tags',
+  'the workspace frame edits and drags the Hydra while closed cards retain tags',
   async () => {
     const hydra = await pnyx.hydra()
     const project = hydra.folder({ name: 'single-repository' })
@@ -5118,5 +5118,28 @@ test(
       what: 'the frame icon edit is saved',
       check: async () => await frame.locator('.hydra-head [data-icon=poseidon]').count() === 1,
     })
+    const grip = frame.getByRole(
+      'button',
+      {
+        name: 'Move Renamed Hydra',
+        exact: true,
+      },
+    )
+    await grip.hover()
+    const bounds = await grip.boundingBox()
+
+    if (!bounds) {
+      throw new Error('The Hydra drag handle is outside the page')
+    }
+
+    const x = bounds.x + bounds.width / 2
+    const y = bounds.y + bounds.height / 2
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + bounds.width, y)
+    await page.locator('.physical-ghost').waitFor()
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    await page.locator('.physical-ghost').waitFor({ state: 'detached' })
   },
 )

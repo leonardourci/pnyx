@@ -33,15 +33,16 @@ export function TaskLabels({
   legacyProject?: boolean
   colors?: SavedLabelColor[]
 }) {
+  const projectVisible = showProject && !!card.project
   const tags = card.tags.filter(tag => tag !== card.project)
 
-  if (!showProject && !tags.length) {
+  if (!projectVisible && !tags.length) {
     return null
   }
 
   return (
     <div className="card-labels flex shrink-0 flex-wrap gap-1">
-      {showProject && (
+      {projectVisible && (
         <CardProjectLabel
           card={card}
           legacyProject={legacyProject}

@@ -4,7 +4,7 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { ContextMenu,menuPoint,opensMenu } from '#web-shared/ui/menu.tsx'
-import { useCallback,useState,type ReactNode } from 'react'
+import { useCallback,useState } from 'react'
 import { HYDRA_ICONS,HydraNameEditor,type HydraIdentity } from './hydra-title.tsx'
 
 export function HydraHead({
@@ -14,7 +14,6 @@ export function HydraHead({
   editHydra,
   addProject,
   connected,
-  children,
 }: {
   name: string
   icon?: string
@@ -25,7 +24,6 @@ export function HydraHead({
   }: HydraIdentity): void
   addProject?(): void
   connected: boolean
-  children?: ReactNode
 }) {
   const [
     editing,
@@ -102,7 +100,6 @@ export function HydraHead({
           </Button>
         </>
       )}
-      {children}
       {menu && (
         <ContextMenu label={`${hydraTitle({ name })} menu`} at={menu} close={closeMenu}>
           <Button onClick={() => setEditing(true)}>Edit</Button>

@@ -16,9 +16,9 @@ export function Strip<T>({
   revealKey?: string
 }) {
   const element = useRef<HTMLDivElement>(null)
+  const index = items.findIndex(item => itemKey({ item }) === reveal)
   useLayoutEffect(
     () => {
-      const index = items.findIndex(item => itemKey({ item }) === reveal)
       element.current?.children[index]?.scrollIntoView({
         block: 'nearest',
         inline: 'start',
@@ -26,6 +26,7 @@ export function Strip<T>({
       })
     },
     [
+      index,
       reveal,
       revealKey,
     ],

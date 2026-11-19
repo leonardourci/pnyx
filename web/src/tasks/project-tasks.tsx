@@ -5,6 +5,7 @@ import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { WORKSPACE_SIZING, cardGrid } from '#web-shared/card-sizing.ts'
+import { layoutOffset } from '#web-shared/ui/layout-geometry.ts'
 import { taskRollup } from './project-view.ts'
 
 interface Family {
@@ -93,25 +94,39 @@ export function ProjectTasks({
       folds,
     ],
   )
-  const cellWidth = ({ row }: { row: Family[] }) => (width - (row.length - 1) * gap) / row.length
-  const signature = rows.map(row => row.map(family => family.card.key).join(',')).join('|')
+  const revealedFamily = reveal ? rows.flat().find(family => family.ids.includes(reveal)) : undefined
+  const revealedKey = revealedFamily?.card.key
   useLayoutEffect(
     () => {
-      const family = rows.flat().find(family => family.ids.includes(reveal ?? ''))
-
-      if (family) {
-        const node = [...element.current?.querySelectorAll<HTMLElement>('[data-family-key]') ?? []]
-          .find(node => node.dataset.familyKey === family.card.key)
-        node?.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-          behavior: 'instant',
-        })
+      if (revealedKey === undefined) {
+        return
       }
+
+      const list = element.current
+      const column = list?.closest<HTMLElement>('.column-cards')
+      const family = list?.querySelector<HTMLElement>(`:scope > [data-family-key="${CSS.escape(revealedKey)}"]`)
+
+      if (!column || !family) {
+        return
+      }
+
+      const top = layoutOffset({
+        element: family,
+        horizontal: false,
+      }) - layoutOffset({
+        element: column,
+        horizontal: false,
+      }) - column.clientTop
+
+      column.scrollTo({
+        top,
+        behavior: 'instant',
+      })
     },
     [
       reveal,
-      signature,
+      revealedKey,
+      width,
     ],
   )
 
@@ -122,19 +137,23 @@ export function ProjectTasks({
       className="relative flex w-full flex-wrap content-start"
       style={{ gap }}
     >
-      {rows.flatMap(row => row.map(family => (
-        <motion.div
-          key={family.card.key}
-          layout="position"
-          data-family-key={family.card.key}
-          className="min-w-0 flex-none"
-          style={{ width: cellWidth({ row }) }}
-        >{render({
-            card: family.card,
-            width: cellWidth({ row }),
-          })}
-        </motion.div>
-      )))}
+      {rows.flatMap(row => {
+        const cellWidth = (width - (row.length - 1) * gap) / row.length
+
+        return row.map(family => (
+          <motion.div
+            key={family.card.key}
+            layout="position"
+            data-family-key={family.card.key}
+            className="min-w-0 flex-none"
+            style={{ width: cellWidth }}
+          >{render({
+              card: family.card,
+              width: cellWidth,
+            })}
+          </motion.div>
+        ))
+      })}
     </div>
   )
 }

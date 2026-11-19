@@ -12,7 +12,8 @@ export function layoutOffset({
   while (parent) {
     offset += horizontal ? parent.offsetLeft + (parent.offsetParent?.clientLeft ?? 0)
       : parent.offsetTop + (parent.offsetParent?.clientTop ?? 0)
-    parent = parent.offsetParent as HTMLElement | null
+    const offsetParent = parent.offsetParent
+    parent = offsetParent instanceof HTMLElement ? offsetParent : null
   }
 
   return offset

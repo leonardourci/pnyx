@@ -102,6 +102,7 @@ function HydraDragName({
         {...sort.attributes}
         {...sort.listeners}
         ref={sort.setActivatorNodeRef}
+        data-drag-handle
         aria-label={`Move ${name}`}
         className="cursor-grab touch-none p-0.5"
       ><Icon name="grip" />
@@ -600,7 +601,7 @@ export function HydraView({
   const projectSettings = useSharedSettings()
   const { projects: polisProjects } = useProjectsResource({
     command,
-    connected: connected,
+    connected,
     revision: `${state.projectsRevision}:${JSON.stringify(projectSettings?.projectPoleis)}:${JSON.stringify(projectSettings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}`,
   })
   const projectPolisByPath = new Map(polisProjects.map(project => [
