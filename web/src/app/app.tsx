@@ -17,6 +17,8 @@ import { placements } from './hydra-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
 import { HydraView } from './workspace.tsx'
 
+const SCROLL_EDGE_EPSILON = 1
+
 const WorkspaceInstance = memo(function WorkspaceInstance({
   hydra,
   workspace,
@@ -312,9 +314,13 @@ export function App() {
         return
       }
 
-      let previous: number | undefined
+      let previous: {
+        left: number
+        range: number
+        available: number
+        scroll: number
+      } | undefined
       let clamped = false
-      let previousRange: number | undefined
       let wheelQuiet: ReturnType<typeof setTimeout> | undefined
 
       const protectShrink = () => {
@@ -339,7 +345,7 @@ export function App() {
         protectShrink()
       }
 
-      const align = () => {
+      const position = () => {
         const padding = parseFloat(getComputedStyle(surface).scrollPaddingLeft) || 0
         const left = group.offsetLeft + inner.offsetLeft - surface.offsetLeft - padding
 
@@ -347,27 +353,62 @@ export function App() {
           0,
           group.offsetWidth - surface.clientWidth,
         )
+
+        return {
+          left,
+          range,
+          available: surface.scrollWidth - surface.clientWidth,
+        }
+      }
+
+      const rememberScroll = () => {
+        if (!previous) {
+          return
+        }
+
+        const {
+          left,
+          available,
+        } = position()
+
+        if (left === previous.left && available === previous.available) {
+          previous.scroll = surface.scrollLeft
+        }
+      }
+
+      const align = () => {
+        const {
+          left,
+          range,
+          available,
+        } = position()
         group.dataset.axisOffset = String(left)
         group.dataset.axisRange = String(range)
-        const available = surface.scrollWidth - surface.clientWidth
+        const actualScroll = surface.scrollLeft
+        const last = previous
+        // A shrinking track can clamp the browser before its resize observer runs.
+        const trackShrank = last && available < last.available
+        const atScrollEnd = Math.abs(actualScroll - available) < SCROLL_EDGE_EPSILON
+        const scroll = trackShrank && atScrollEnd && last.scroll > available
+          ? last.scroll : actualScroll
         const restore = clamped && available >= left
         const shift = previous === undefined || restore
-          ? left - surface.scrollLeft : left - previous
+          ? left - scroll : left - previous.left
         clamped = available < left
 
-        const shrinking = previousRange !== undefined && range < previousRange
+        const shrinking = previous !== undefined && range < previous.range
 
         if (shrinking) {
           protectShrink()
         }
 
-        const desired = surface.scrollLeft + shift
+        const desired = scroll + shift
         const destination = shrinking ? Math.min(
           desired,
           left + range,
         ) : desired
 
-        if (destination !== surface.scrollLeft || shrinking) {
+        if (destination !== actualScroll || shrinking) {
           if (smoothScroll.current) {
             smoothScroll.current.resize()
             smoothScroll.current.scrollTo(
@@ -385,10 +426,19 @@ export function App() {
           }
         }
 
-        previous = left
-        previousRange = range
+        previous = {
+          left,
+          range,
+          available,
+          scroll: surface.scrollLeft,
+        }
       }
 
+      surface.addEventListener(
+        'scroll',
+        rememberScroll,
+        { passive: true },
+      )
       surface.addEventListener(
         'wheel',
         wheel,
@@ -406,6 +456,10 @@ export function App() {
 
       return () => {
         clearTimeout(wheelQuiet)
+        surface.removeEventListener(
+          'scroll',
+          rememberScroll,
+        )
         surface.removeEventListener(
           'wheel',
           wheel,
