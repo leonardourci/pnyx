@@ -711,22 +711,30 @@ export function SortableWorkspace({
       KEYBOARD_SENSOR_OPTIONS,
     ),
   )
-  const setModifier = useCallback(
-    ({ pressed }: { pressed: boolean }) => {
-      modifier.current = pressed
-      setShift(pressed)
+  const refreshTarget = useCallback(
+    () => {
+      detection.current = null
       const args = latestDetection.current
 
       if (args) {
         const hits = collisions({
           args,
-          nesting: pressed && itemOf({ data: args.active.data })?.kind === 'task',
+          nesting: modifier.current && itemOf({ data: args.active.data })?.kind === 'task',
         })
         const target = args.droppableContainers.find(container => container.id === hits[0]?.id)
         setOver(itemOf({ data: target?.data }) ?? null)
       }
     },
     [],
+  )
+
+  const setModifier = useCallback(
+    ({ pressed }: { pressed: boolean }) => {
+      modifier.current = pressed
+      setShift(pressed)
+      refreshTarget()
+    },
+    [refreshTarget],
   )
 
   useLayoutEffect(
@@ -736,36 +744,36 @@ export function SortableWorkspace({
       }
 
       // A reorder can slide a new target under a stationary pointer.
-      let frame = 0
-      let pointed: Element | null = null
+      let pointed: Element | null | undefined
 
       const refresh = () => {
         const pointer = latestDetection.current?.pointerCoordinates
 
-        if (pointer) {
-          const next = document.elementFromPoint(
-            pointer.x,
-            pointer.y,
-          )
+        if (!pointer) {
+          return
+        }
 
-          if (next !== pointed) {
-            pointed = next
-            detection.current = null
-            setModifier({ pressed: modifier.current })
-          }
+        const next = document.elementFromPoint(
+          pointer.x,
+          pointer.y,
+        )
+
+        if (next !== pointed) {
+          pointed = next
+          refreshTarget()
         }
 
         frame = requestAnimationFrame(refresh)
       }
 
-      frame = requestAnimationFrame(refresh)
+      let frame = requestAnimationFrame(refresh)
 
       return () => cancelAnimationFrame(frame)
     },
     [
       active,
       shift,
-      setModifier,
+      refreshTarget,
     ],
   )
 
