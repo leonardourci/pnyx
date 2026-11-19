@@ -103,6 +103,8 @@ Project means `AGENTS.md`; conventions means `follow-conventions`. The instructi
 
 The PR controls the workflow, selector spec and config, so changes to those files need owner review. The read-only token, absence of secrets and approval-gated tests limit what untrusted code can do.
 
+The throwaway drag-diagnostics branch fixes the test seed to `1795117809244` and retains Playwright traces, last-frame screenshots and per-frame drag state for the nesting and outdent journeys in the `drag-diagnostics` CI artifact. Its draft PR is for diagnosis and is closed after the cause is found.
+
 For CI approval:
 
 1. Push committed work to the PR branch and run `pnpm deslop`.

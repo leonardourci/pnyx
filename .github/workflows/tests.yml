@@ -83,7 +83,7 @@ jobs:
       - name: Tests
         env:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
-        run: pnpm exec vitest run
+        run: pnpm exec vitest run --sequence.seed=1795117809244
 
       - name: Check workspace latency
         env:
@@ -108,3 +108,12 @@ jobs:
           path: ${{ runner.temp }}/test-files
           retention-days: 3
           if-no-files-found: ignore
+
+      - name: Keep drag diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drag-diagnostics
+          path: ${{ runner.temp }}/test-files/drag-diagnostics
+          retention-days: 3
+          if-no-files-found: warn
