@@ -97,7 +97,8 @@ export function summarize({
 
         const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
         const taskIds = new Set(tasks.map(task => task.id))
-        const asks = groups.filter(group => group.decisions.some(decision => taskIds.has(decision.card.id)))
+        const asks = groups.filter(group =>
+          group.decisions.some(decision => taskIds.has(decision.card.id)))
 
         return {
           name: p.name,

@@ -3736,7 +3736,8 @@ test(
       ],
     })
     const taskId = beforeProjectChange.task.id
-    const pendingBeforeMove = beforeProjectChange.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)
+    const pendingBeforeMove = beforeProjectChange.task.asks.filter((ask: { closed?: unknown }) =>
+      !ask.closed)
     expect(pendingBeforeMove).toHaveLength(1)
     const destination = hydra.folder({ name: 'hydra-merges' })
     await hydra.owner({
@@ -3811,7 +3812,8 @@ test(
         '--full',
       ],
     })
-    const pendingBeforePush = beforePush.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)
+    const pendingBeforePush = beforePush.task.asks.filter((ask: { closed?: unknown }) =>
+      !ask.closed)
     expect(pendingBeforePush).toHaveLength(1)
     const renamed = await hydra.owner({
       args: [
@@ -3833,7 +3835,9 @@ test(
     })
     expect(renamed.card.id).toBe(taskId)
     expect(afterRename.task.title).toBe('Review the CSV export')
-    expect(afterRename.task.asks.filter((ask: { closed?: unknown }) => !ask.closed)).toEqual(pendingBeforePush)
+    const pendingAfterRename = afterRename.task.asks.filter((ask: { closed?: unknown }) =>
+      !ask.closed)
+    expect(pendingAfterRename).toEqual(pendingBeforePush)
     const pushed = await hydra.owner({
       args: [
         'push',
