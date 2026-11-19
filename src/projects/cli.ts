@@ -216,6 +216,27 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       hydraId,
     })
 
+    const readable = details.some(detail => detail.project.path === attached.path)
+    let memory: Output | undefined
+
+    if (readable) {
+      try {
+        memory = await projectMemoryCommand({
+          args: [
+            'list',
+            '--project',
+            attached.path,
+            '--hydra',
+            hydraId,
+          ],
+        })
+      } catch (error) {
+        if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+          throw error
+        }
+      }
+    }
+
     const shownState = loadHydra({ hydraId }).state
     const shownProject = findProject({
       state: shownState,
@@ -225,26 +246,9 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       state: shownState,
       projects: [shownProject],
     })[0]
-    const readable = details.some(detail => detail.project.path === attached.path)
-
-    if (!readable) {
-      return {
-        project: attached.name,
-        attachment,
-      }
-    }
-
-    const memory = await projectMemoryCommand({
-      args: [
-        'list',
-        '--project',
-        attached.path,
-        '--hydra',
-        hydraId,
-      ],
-    })
 
     return {
+      project: shownProject.name,
       ...memory,
       attachment,
     }

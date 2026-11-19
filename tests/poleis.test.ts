@@ -1605,14 +1605,6 @@ test(
       })
       await allowed.owner({
         args: [
-          'hydra',
-          'set',
-          '--read-poleis',
-          '',
-        ],
-      })
-      await allowed.owner({
-        args: [
           'project',
           'remove',
           path,
@@ -1636,14 +1628,6 @@ test(
         ],
       })
       expect(detachedList.revision).toBe(currentList.revision)
-      await allowed.owner({
-        args: [
-          'hydra',
-          'set',
-          '--read-poleis',
-          'shared,vault',
-        ],
-      })
       await allowed.owner({
         args: [
           'project',
