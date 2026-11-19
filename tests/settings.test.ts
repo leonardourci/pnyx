@@ -97,6 +97,10 @@ test(
       theme: 'dark',
       doneAfterHours: 24,
     })
+    await until({
+      what: 'the page settings to show 24-hour retention after restart',
+      check: () => pageSettings()?.doneAfterHours === 24,
+    })
     expect(await queuedWidth({ hydra: first })).toBe(600)
   },
 )
