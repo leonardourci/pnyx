@@ -19,7 +19,10 @@ export function Strip<T>({
   revealKey?: string
 }) {
   const element = useRef<HTMLDivElement>(null)
-  const releasedReveal = useRef<{ item: string; key?: string } | null>(null)
+  const releasedReveal = useRef<{
+    item: string
+    key?: string
+  } | null>(null)
   const index = items.findIndex(item => itemKey({ item }) === reveal)
   useLayoutEffect(
     () => {

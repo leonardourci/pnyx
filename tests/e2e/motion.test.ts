@@ -549,7 +549,10 @@ test(
             },
           )
           await openModalButton.hover()
-          let baseline: { slot: number[]; scrolled: number } | undefined
+          let baseline: {
+            slot: number[]
+            scrolled: number
+          } | undefined
           await until({
             what: 'the card and its column stop moving before opening the modal',
             check: async () => {
