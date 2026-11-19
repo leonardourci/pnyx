@@ -941,6 +941,7 @@ test(
       ).waitFor({ state: 'visible' })
 
       const expectModalAboveCards = async () => {
+        // Theme-specific surface styles must keep the modal above every overlapping card.
         for (const theme of [
           'light',
           'dark',
