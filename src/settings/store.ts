@@ -14,7 +14,7 @@ import { pnyxHome } from '#store/paths.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type PageSettings, type Settings, type SettingsEntry } from './model.ts'
-import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
+import { DEFAULT_SETTINGS, patchSettings, pickView, withDefaults } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
@@ -38,17 +38,17 @@ export interface SettingsRead {
 }
 
 function fold({ entries }: { entries: SettingsEntry[] }): SettingsRead {
-  const settings = structuredClone(DEFAULT_SETTINGS)
+  const stored: Partial<Settings> = {}
 
   for (const entry of entries) {
     Object.assign(
-      settings,
-      structuredClone(entry.after),
+      stored,
+      entry.after,
     )
   }
 
   return {
-    settings,
+    settings: withDefaults({ stored }),
     revision: entries.filter(entry => Object.keys(entry.after).length > 0).length,
     ids: new Set(entries.map(entry => entry.id)),
   }
