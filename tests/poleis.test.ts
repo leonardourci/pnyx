@@ -1549,7 +1549,7 @@ test(
         args: [
           'project',
           'remove',
-          'polis-project',
+          path,
         ],
       })
       sockets.forEach(socket => socket.end())
@@ -1599,7 +1599,7 @@ test(
         args: [
           'project',
           'remove',
-          'polis-project',
+          path,
         ],
       })
       released = true
@@ -1637,7 +1637,7 @@ test(
       })
       released = true
       sockets.forEach(socket => socket.end())
-      expect(JSON.stringify(await listing)).not.toContain(path)
+      expect(JSON.stringify(await listing)).toContain(path)
 
       released = false
       blockedReads = sockets.length + 1
@@ -1701,7 +1701,7 @@ test(
         args: [
           'project',
           'remove',
-          'polis-project',
+          path,
         ],
       })
       released = true

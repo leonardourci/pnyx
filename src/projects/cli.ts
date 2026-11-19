@@ -517,6 +517,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         attach: true,
       })
     }
+
     requireProjectMemory({
       hydraId,
       ...(await projectIdentity({ path })),
