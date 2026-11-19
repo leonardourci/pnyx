@@ -1331,8 +1331,12 @@ test(
         behavior: 'instant',
       }))
       await until({
-        what: 'an unfocused open family leaves the viewport',
-        check: async () => await workspace.locator('.card.selected').count() === 0,
+        what: 'an unfocused open family stays mounted outside the viewport',
+        check: async () => {
+          const bounds = await workspace.locator('.card.selected').boundingBox()
+
+          return !!bounds && bounds.y + bounds.height < 0
+        },
       })
       // eslint-disable-next-line pnyx/object-params -- Playwright owns the element callback.
       await scroller.evaluate(element => element.scrollTo({
@@ -2352,7 +2356,7 @@ test(
     try {
       const workspace = page.locator(`[data-hydra-workspace="${id}"]`)
       const otherWorkspace = page.locator(`[data-hydra-workspace="${otherId}"]`)
-      expect(await otherWorkspace.locator('[data-family="root"]').count()).toBe(0)
+      await otherWorkspace.locator('[data-family="root"]').waitFor({ state: 'attached' })
       await page.locator(`[data-hydra-workspace="${id}"][data-connected="true"]`).waitFor()
       const root = workspace.getByRole(
         'button',

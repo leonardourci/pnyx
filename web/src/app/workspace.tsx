@@ -1,9 +1,9 @@
 import { HydraHead } from '#web-hydra/hydra-head.tsx'
 import { MOTION_EASING } from '#web-shared/motion.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
-import { useWorkspaceWindow } from './workspace-window.ts'
+import { useWorkspaceSizing } from './workspace-sizing.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
-import { WindowedStrip } from '#web-shared/ui/windowed-strip.tsx'
+import { Strip } from '#web-shared/ui/strip.tsx'
 import { WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
 import { ProjectTasks } from '#web-tasks/project-tasks.tsx'
 import { ProfileSurface } from './profile-surface.tsx'
@@ -584,19 +584,6 @@ export function HydraView({
   const phone = viewport.width <= WORKSPACE_SIZING.phone
   const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
     : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.hydraWidth
-  const modelWidth = Math.max(
-    viewport.width - (phone ? WORKSPACE_SIZING.phoneFrameMargin : WORKSPACE_SIZING.frameMargin),
-    (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset)
-      + chatWidth + WORKSPACE_SIZING.columnGap
-      + columns.reduce(
-        (
-          total,
-          column,
-        ) => total + columnWidth({ item: column })
-        + WORKSPACE_SIZING.columnGap,
-        WORKSPACE_SIZING.createColumn,
-      ),
-  )
   let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2
     + chatWidth + WORKSPACE_SIZING.columnGap
   const projectSnaps = columns.map(column => {
@@ -605,36 +592,21 @@ export function HydraView({
 
     return left
   })
-  const workspaceWindow = useWorkspaceWindow({
+  const workspaceSizing = useWorkspaceSizing({
     element: layer,
-    hydra: navigation.hydraId,
-    width: modelWidth,
     collapsed: view.workspace.collapsed,
     loaded,
   })
   const projectSettings = useSharedSettings()
   const { projects: polisProjects } = useProjectsResource({
     command,
-    connected: connected && workspaceWindow.mounted,
+    connected: connected,
     revision: `${state.projectsRevision}:${JSON.stringify(projectSettings?.projectPoleis)}:${JSON.stringify(projectSettings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}`,
   })
   const projectPolisByPath = new Map(polisProjects.map(project => [
     project.path,
     project.polis,
   ]))
-  const protectedColumns = new Set(columns.filter(column =>
-    viewport.protectsColumn({
-      hydra: navigation.hydraId,
-      id: column.id,
-    })
-    || [...(viewport.tasks.get(navigation.hydraId) ?? [])].some(id => {
-      const card = state.cards[id]
-
-      return card && taskProjectGroup({
-        state,
-        card,
-      }) === column.id
-    })).map(column => column.id))
   const revealingColumn = revealing && state.cards[revealing]
     ? taskProjectGroup({
       state,
@@ -1040,7 +1012,7 @@ export function HydraView({
     )
   }
 
-  const showWorkspace = workspaceWindow.mounted && (loaded || hydra.creating) && page === 'hydra'
+  const showWorkspace = (loaded || hydra.creating) && page === 'hydra'
 
   return (
     <KeyboardProvider
@@ -1054,7 +1026,7 @@ export function HydraView({
       <HydraComposerSources
         state={state}
         command={command}
-        connected={connected && workspaceWindow.mounted}
+        connected={connected}
         references={references}
         openTask={revealTask}
         notify={notify}
@@ -1062,10 +1034,10 @@ export function HydraView({
       >
         <motion.div
           layout="position"
-          initial={{minWidth: workspaceWindow.minimum}}
+          initial={{minWidth: workspaceSizing.minimum}}
           transition={{
             layout: {
-              duration: hydraLayout ? workspaceWindow.duration / 1000 : 0,
+              duration: hydraLayout ? workspaceSizing.duration / 1000 : 0,
               ease: MOTION_EASING,
             },
           }}
@@ -1080,7 +1052,6 @@ export function HydraView({
           data-seq={state.seq}
           data-connected={connected}
           style={{
-            width: workspaceWindow.width,
             '--text-ui': `${view.fontSize}px`,
             '--text-chat': `${view.chatFontSize}px`,
             '--text-code': `${view.codeFontSize}px`,
@@ -1302,7 +1273,7 @@ export function HydraView({
                       <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
                         <div data-sort-surface={`project-columns:${navigation.hydraId}`} className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0" aria-label="Work columns">
                           <SortGroup id={`project-columns:${navigation.hydraId}`} items={columns.map(column => column.id)}>
-                            <WindowedStrip
+                            <Strip
                               items={[
                                 ...columns,
                                 {
@@ -1313,14 +1284,9 @@ export function HydraView({
                                 },
                               ]}
                               itemKey={({ item }) => item.id}
-                              scroll={viewport.axis.current}
                               gap={WORKSPACE_SIZING.columnGap}
-                              protectedItems={protectedColumns}
                               reveal={revealingColumn}
                               revealKey={columnRequest?.key}
-                              padding={(phone ? WORKSPACE_SIZING.phoneFrameMargin
-                                : WORKSPACE_SIZING.frameMargin) / 2}
-                              size={columnWidth}
                               render={({ item: c }) => {
                                 if (c.id === 'create-project') {
                                   return <div className="add-column w-57.5 flex-none p-2"><Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button></div>
@@ -1366,7 +1332,6 @@ export function HydraView({
                                       group: c.id,
                                     })}
                                   >{({
-                                      scroll,
                                       width,
                                     }) => (
                                       <>
@@ -1419,9 +1384,7 @@ export function HydraView({
                                             state={state}
                                             actions={actions}
                                             selected={expandedIds}
-                                            column={c.id}
                                             hydra={navigation.hydraId}
-                                            scroll={scroll}
                                             width={width}
                                             reveal={revealing}
                                             render={({
@@ -1431,7 +1394,6 @@ export function HydraView({
                                               <TaskFamily
                                                 card={item}
                                                 width={familyWidth}
-                                                scroll={scroll}
                                                 reveal={revealing}
                                                 hydraId={navigation.hydraId}
                                                 state={state}

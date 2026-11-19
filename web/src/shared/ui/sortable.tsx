@@ -1,4 +1,4 @@
-import { layoutBox } from './scroll-offset.ts'
+import { layoutBox } from './layout-geometry.ts'
 import { useKept } from '#web-shared/stable.ts'
 import { trackUIDrag } from '#web-app/ui-metrics.ts'
 import { CARD_SIZING, WORKSPACE_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'

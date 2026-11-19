@@ -77,7 +77,6 @@ export function TaskFamily({
   actions,
   selected,
   width,
-  scroll,
   reveal,
   preview,
   renderCard,
@@ -88,7 +87,6 @@ export function TaskFamily({
   actions: Record<string, CurrentAction>
   selected: string[]
   width: number
-  scroll: HTMLElement | null
   reveal?: string | null
   preview: SortMove | null
 } & FamilyRenderer) {
@@ -195,10 +193,8 @@ export function TaskFamily({
                 state={state}
                 actions={actions}
                 selected={selected}
-                column={`children:${card.id}`}
                 hydra={hydraId}
                 width={width - SUBTASK_INDENT}
-                scroll={scroll}
                 reveal={reveal}
                 singleColumn
                 render={({ card: child }) => (

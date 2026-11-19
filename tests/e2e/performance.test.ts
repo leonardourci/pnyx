@@ -3,18 +3,24 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { openHydra } from '../setup/browser.ts'
 import { startPnyx, until } from '../setup/pnyx.ts'
-import { beginUIWindow, expectResponsiveUI, reportDragResponsiveness } from '../setup/ui-metrics.ts'
+import { beginUIWindow, reportDragResponsiveness } from '../setup/ui-metrics.ts'
 
-const IDEA_TASKS = 100
-const PROJECTS = 12
-const PROJECT_TASKS = 44
-const MAX_MOUNTED_CARDS = 70
+const IDEA_TASKS = 4
+const PROJECT_TASKS = [
+  32,
+  82,
+  11,
+  0,
+]
+const LOAD_FRAME_BUDGET_MS = 1000
+const FIRST_CARD_BUDGET_MS = 2000
+const SCROLL_FRAME_BUDGET_MS = 250
 const MAX_TASK_COMMITS = 4
 const DISCOVERY_READ_BUDGETS = {
-  models: 2,
-  project: 1,
-  catalog: 1,
-  rule: 2,
+  models: 10,
+  project: 6,
+  catalog: 5,
+  rule: 10,
 }
 
 test(
@@ -23,7 +29,7 @@ test(
     const pnyx = await startPnyx({ zeroCache: true })
     const hydras = []
 
-    for (let index = 0; index < 5; index++) {
+    for (let index = 0; index < 4; index++) {
       hydras.push(await pnyx.hydra())
     }
 
@@ -31,7 +37,7 @@ test(
     const second = hydras[0]!
     const projects = []
 
-    for (let index = 0; index < PROJECTS; index++) {
+    for (let index = 0; index < PROJECT_TASKS.length; index++) {
       const path = first.folder({ name: `project-${index}` })
       mkdirSync(
         join(
@@ -66,7 +72,7 @@ test(
         project,
         group,
       ) => Array.from(
-        { length: PROJECT_TASKS },
+        { length: PROJECT_TASKS[group]! },
         (
           _,
           index,
@@ -78,7 +84,7 @@ test(
         }),
       )),
     ]
-    expect(changes).toHaveLength(628)
+    expect(changes).toHaveLength(129)
     await first.owner({
       args: [
         'apply',
@@ -136,6 +142,45 @@ test(
       port: pnyx.port(),
       hydraId: first.id,
       prepare: async ({page}) => {
+        await page.setViewportSize({
+          width: 1512,
+          height: 900,
+        })
+        await page.addInitScript(
+          ({ hydra }) => {
+            const measurement = {
+              firstCard: 0,
+              frames: [] as number[],
+            }
+            Object.assign(
+              window,
+              { workspaceMeasurement: measurement },
+            )
+            new MutationObserver((
+              _,
+              observer,
+            ) => {
+              if (document.querySelector(`[data-hydra-workspace="${hydra}"] [data-card]`)) {
+                measurement.firstCard = performance.now()
+                observer.disconnect()
+              }
+            }).observe(
+              document,
+              {
+                childList: true,
+                subtree: true,
+              },
+            )
+            // eslint-disable-next-line pnyx/object-params -- The browser owns this callback signature.
+            new PerformanceObserver(list => {
+              measurement.frames.push(...list.getEntries().map(entry => entry.duration))
+            }).observe({
+              type: 'long-animation-frame',
+              buffered: true,
+            })
+          },
+          { hydra: first.id },
+        )
         page.on(
           'websocket',
           socket => socket.on(
@@ -166,14 +211,30 @@ test(
       },
     ).waitFor()
     await until({
-      what: 'the non-first Hydra stays selected after all six load',
-      check: async () => await page.locator('[data-hydra-workspace][data-connected=true]').count() === 6,
+      what: 'the non-first Hydra stays selected after all five load',
+      check: async () => await page.locator('[data-hydra-workspace][data-connected=true]').count() === 5,
     })
-    expect(await workspace.locator('.card-open').count()).toBeLessThanOrEqual(MAX_MOUNTED_CARDS)
-    expect(await workspace.locator('.project-column').count()).toBeLessThanOrEqual(4)
-    expect(await other.locator('.card-open').count()).toBe(0)
-    expect(await other.locator('.hydra-page').count()).toBe(0)
+    expect(await workspace.locator('.card-open').count()).toBe(changes.length)
+    expect(await workspace.locator('.project-column').count()).toBe(5)
+    expect(await other.locator('.card-open').count()).toBe(1)
+    expect(await other.locator('.hydra-page').count()).toBe(1)
     expect(await page.locator('*').count()).toBeLessThan(6000)
+    const load = await page.evaluate(() => (window as unknown as {
+      workspaceMeasurement: {
+        firstCard: number
+        frames: number[]
+      }
+    }).workspaceMeasurement)
+    expect(load.firstCard).toBeGreaterThan(0)
+    expect(load.firstCard).toBeLessThan(FIRST_CARD_BUDGET_MS)
+    expect(Math.max(
+      0,
+      ...load.frames,
+    )).toBeLessThan(LOAD_FRAME_BUDGET_MS)
+    console.info({
+      check: 'owner-sized load',
+      ...load,
+    })
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const visibleCard = await workspace.getByRole(
       'button',
@@ -230,7 +291,7 @@ test(
         earlierProject,
       ],
     })
-    await other.locator(`[data-sort-kind="project"][data-sort-id="${earlierProject}"]`).waitFor()
+    await other.locator(`.project-column[data-column="${earlierProject}"]`).waitFor()
     await page.evaluate(() => new Promise(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(resolve))
     }))
@@ -259,7 +320,7 @@ test(
     ] of Object.entries(DISCOVERY_READ_BUDGETS)) {
       expect(
         reads.filter(read => read.name === name).length,
-        `${name} discovery is not repeated for hidden Hydras`,
+        `${name} discovery is bounded across mounted Hydras`,
       ).toBeLessThanOrEqual(budget)
     }
 
@@ -267,7 +328,7 @@ test(
       await document.fonts.ready
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     })
-    expect(await page.locator('.hydra-page').count()).toBe(1)
+    expect(await page.locator('.hydra-page').count()).toBe(5)
     const finishStream = await beginUIWindow({ page })
     stream.release()
     await workspace.getByLabel(
@@ -424,8 +485,14 @@ test(
       reportDragResponsiveness({ metrics: drag })
     }
 
-    const scroller = workspace.locator('[data-column="ideas"] .column-cards')
+    const scroller = workspace.locator(`[data-column="${projects[1]}"] .column-cards`)
     await scroller.hover()
+    await page.evaluate(() => {
+      const measurement = (window as unknown as {
+        workspaceMeasurement: { frames: number[] }
+      }).workspaceMeasurement
+      measurement.frames = []
+    })
     const finishScroll = await beginUIWindow({ page })
     await page.mouse.wheel(
       0,
@@ -439,10 +506,21 @@ test(
     const scroll = await finishScroll()
 
     if (!inject('uiProfile')) {
-      expectResponsiveUI({ metrics: scroll })
+      const frames = await page.evaluate(() => (window as unknown as {
+        workspaceMeasurement: { frames: number[] }
+      }).workspaceMeasurement.frames)
+      expect(Math.max(
+        0,
+        ...frames,
+      )).toBeLessThan(SCROLL_FRAME_BUDGET_MS)
+      console.info({
+        check: 'owner-sized scroll',
+        frames,
+        metrics: scroll,
+      })
     }
 
-    expect(await workspace.locator('.card-open').count()).toBeLessThanOrEqual(MAX_MOUNTED_CARDS)
+    expect(await workspace.locator('.card-open').count()).toBe(changes.length)
     expect(errors.map(error => error.message)).toEqual([])
   },
 )

@@ -1,4 +1,4 @@
-import { layoutOffset } from './scroll-offset.ts'
+import { layoutOffset } from './layout-geometry.ts'
 import { useSessionViewResource, sessionViewKey } from '#web-app/session-view.ts'
 import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
