@@ -166,7 +166,9 @@ export function* retireableReviewQuestions({
     card,
   }))
   const ownerReviewCardIds = new Set(ownerReviewCards.map(card => card.id))
-  const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card => card.links.map(link => link.url)))
+  const ownerReviewUrls = new Set(ownerReviewCards.flatMap(card => {
+    return card.links.map(link => link.url)
+  }))
 
   for (const {
     cardId,
