@@ -1,12 +1,13 @@
 import { hydraDir } from '#app/home-migration.ts'
 import { once } from 'node:events'
-import { hydraRemoval, infoPath } from '#app/server-state.ts'
+import { hydraRemoval, infoPath, processStart } from '#app/server-state.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { spawn } from 'node:child_process'
-import { trackChildren } from '#workers/children.ts'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { stopOldHost, trackChildren } from '#workers/children.ts'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pnyxHome } from '#store/storage.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
@@ -277,6 +278,21 @@ test(
     expect(proposal.action).toContain(copy)
     expect(proposal.action).toContain(`${pooled} (unrecorded checkout; landing unknown)`)
     expect(proposal.action).toContain('https://github.com/o/shop/pull/999')
+    const preview = await caller.owner({
+      args: [
+        'approval',
+        'confirm',
+        proposal.token,
+      ],
+    })
+    expect(preview.preview).toMatchObject({
+      name: 'hydra',
+      args: [
+        'remove',
+        target.id,
+      ],
+    })
+    expect(preview.preview).not.toHaveProperty('removalWork')
     expect(existsSync(copy)).toBe(true)
     expect((await caller.as({ session }).refused({
       args: [
@@ -520,6 +536,62 @@ test(
     await until({
       what: 'unassigned helper tools to exit',
       check: () => helper.exitCode !== null || helper.signalCode !== null,
+    })
+  },
+)
+
+test(
+  'a legacy host recorded as a single process is stopped',
+  async ({ onTestFinished }) => {
+    const folder = join(
+      pnyxHome(),
+      'native',
+    )
+    const path = join(
+      folder,
+      'owner.json',
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        'setInterval(() => {}, 1000)',
+      ],
+      { stdio: 'ignore' },
+    )
+    onTestFinished(() => {
+      child.kill('SIGKILL')
+      rmSync(
+        path,
+        { force: true },
+      )
+    })
+    const pid = child.pid
+
+    if (pid === undefined) {
+      throw new Error('The legacy host did not start')
+    }
+
+    const start = processStart({
+      pid,
+      localTime: true,
+    })
+    expect(start).not.toBeNull()
+    writeFileSync(
+      path,
+      JSON.stringify({
+        pid,
+        start,
+      }),
+    )
+    await stopOldHost()
+    await until({
+      what: 'the legacy host to exit',
+      check: () => child.exitCode !== null || child.signalCode !== null,
     })
   },
 )
@@ -782,28 +854,37 @@ test(
     expect(refused.code).toBe('CONFLICT')
     expect(refused.error).toContain('Checkout work changed')
     expect(readFileSync(
-      join(
-        copy,
-        'new-work.txt',
-      ),
+      workPath,
       'utf8',
     )).toBe('keep new work')
-    const reopened = await caller.owner({
+    await target.owner({
       args: [
-        'hydra',
-        'list',
+        'task',
+        'create',
+        '--title',
+        'Created after removal refusal',
       ],
     })
-    expect(reopened.hydras).toContainEqual(expect.objectContaining({ id: target.id }))
     await pnyx.restart()
     expect(existsSync(copy)).toBe(true)
-    expect((await caller.owner({
+    const retry = await caller.owner({
       args: [
         'hydra',
         'remove',
         target.id,
       ],
-    })).confirmation).toBe('needed')
+    })
+    expect(retry.confirmation).toBe('needed')
+    await caller.owner({
+      args: [
+        'approval',
+        'confirm',
+        retry.token,
+        '--confirm',
+        retry.token,
+      ],
+    })
+    expect(existsSync(copy)).toBe(false)
   },
 )
 
@@ -1039,7 +1120,7 @@ test(
     )
     writeFileSync(
       path,
-      '[{}]',
+      JSON.stringify([{ pid: child.pid }]),
     )
     const proposed = await caller.owner({
       args: [
