@@ -84,7 +84,7 @@ Send a message in Hydra's composer, for example:
 
 > Look at this project and help me plan a small improvement.
 
-The first message starts Hydra's agent session. Hydra reports missing setup in chat, runs setup commands directly and asks for credentials when a harness needs a login.
+The first message starts Hydra's agent session. Hydra reports missing setup in chat, runs setup commands directly and directs the owner to sign in through the harness when a login is needed. Credentials stay out of Hydra chat.
 
 Read the [dispatch guide](docs/pnyx-axi.md#kinds-the-light-check-and-the-worker-contract) to configure your harnesses, models and accounts.
 

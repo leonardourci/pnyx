@@ -10,7 +10,7 @@ metadata:
 
 Pnyx checks its setup each time a Hydra session opens, in its own code, and lists only what is missing under "Setup needed" in your digest. A complete setup prints nothing. `pnyx-axi setup check --hydra <hydra>` prints the same list again (exit 1 while anything is missing).
 
-Each row names who fixes it. Do the `you` rows yourself, without asking. For `owner` rows that name a `pnyx-axi` command, run that command with `--hydra <hydra>` as usual, except `setup`, which serves every Hydra and refuses `--hydra`. Agent setup commands run directly and report their result. For `owner` rows without a command, ask the owner in one short line. Greet a first setup with one line ("A few things to set up") before the cards; that line is the turn's reply, so never add `NO_REPLY` after it. When the owner dismisses one, note it in owner memory (`preferences`) and do not raise it again.
+Each row names who fixes it. Do the `you` rows yourself, without asking. For `owner` rows that name a `pnyx-axi` command, run that command with `--hydra <hydra>` as usual, except `setup`, which serves every Hydra and refuses `--hydra`. Agent setup commands run directly and report their result. For `project-owner`, use the keeper the owner named, otherwise the current Hydra; run `project keep` with that ID and report the keeper and moved tasks from its receipt. For `owner` rows without a command, ask the owner in one short line. Greet a first setup with one line ("A few things to set up") before the cards; that line is the turn's reply, so never add `NO_REPLY` after it. When the owner dismisses one, note it in owner memory (`preferences`) and do not raise it again.
 
 After a fix, run `setup check` again and report only what is still missing.
 

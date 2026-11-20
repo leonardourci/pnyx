@@ -57,7 +57,7 @@ export const settings = guard({
         help: [
           'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
-          'poleis patches named poleis (null removes, shared is reserved); readers are Hydra ids or *; projectPoleis patches project assignments (null restores shared); --propose saves a Confirm question',
+          'poleis patches named poleis (null removes, shared is reserved); readers are Hydra ids or *; projectPoleis patches project assignments (null restores shared); --propose is accepted for compatibility and applies directly with a notice',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
