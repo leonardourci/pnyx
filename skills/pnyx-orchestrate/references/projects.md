@@ -1,7 +1,5 @@
 # Project profiles and new projects
 
-Read this when a project has no profile or an outdated one, or the owner adds a project.
-
 The digest lists each attached project with its profile's freshness, and `project show <name>` loads its profile, preferences and learnings. When a profile is missing or out of date, run `project memory list --project <name>` and read the default-branch sources it lists at the ref it gives (`git -C <project> show <ref>:<file>`, or the attached folder's files without git); a refresh reads only the changed ones. Save the whole profile with `project memory set --project <name> --key profile --text "<profile>" --sources <fingerprint> --reason "<why>"`. A profile holds the build, test and lint commands, pull request rules, key skills with one line on when to use each, and the main conventions. Workers already get the project's memory and an instruction to follow its conventions, so keep briefs task-specific.
 
 An owner message `Add <path or git URL> to this Hydra.` comes from Add project: run `project add <path> --reason "<the owner's word>"` or `project add --clone <url> --into <folder>`, then act on any goal it names.

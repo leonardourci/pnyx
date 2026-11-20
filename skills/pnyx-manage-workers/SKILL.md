@@ -8,11 +8,11 @@ metadata:
 
 # Hydra workers
 
-`task create` starts a task's worker through the dispatch rules. This skill covers the starts and moves that need more; `pnyx-axi task --help` lists every flag.
+`task create` starts a task's worker through the dispatch rules. This skill covers the starts and moves that need more; `pnyx-axi task --help` lists every flag. A start that returns `NOT_RUNNING` sent nothing: retry once with the same `--event-id`, then follow its help or tell the owner. Read the task only when a start's outcome is unknown.
 
 ## Owner choices and dispatch rules
 
-Pass the owner's explicit `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly on `task create` or `task start`; never start on the rule's settings and change them afterwards. Otherwise `rule list` shows the named rules: pass `--rule <name>` for the one whose `when` fits the task, and leave the `default` list for when none does. `rule now` shows which candidate would start. When a start reports no usable candidate or a signed-out account, tell the owner what stopped it rather than switching to a weaker rule, and ask them to sign in when that is the fix.
+Pass the owner's explicit `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly on `task create` or `task start`; never start on the rule's settings and change them afterwards. `rule now` shows which candidate each rule would start. When a start reports no usable candidate or a signed-out account, tell the owner what stopped it rather than switching to a weaker rule, and ask them to sign in when that is the fix.
 
 To change rules or accounts, read `rule show` and `rule schema`, preview a patch with `rule apply --file <path> --check`, fix what it lists, then apply it; `rule set|remove|accounts` and `account set|remove` cover one small change. A permission increase goes through `rule apply --propose` and the owner's Confirm.
 
@@ -25,7 +25,6 @@ To change rules or accounts, read `rule show` and `rule schema`, preview a patch
 - An ended outside Claude Code or Codex session: `task continue <task> --reason "<why>"` hosts it in Pnyx, and `--check` reads eligibility first.
 - A lost worker (presence `gone`, or a session that cannot be continued) whose folder holds its work: relaunch it there without asking the owner, `task start <task> --via pnyx --replace-session <session> --folder <its folder> --reason "<why>"`. After two failed relaunches, tell the owner what failed and what the folder keeps.
 - A worker still marked interrupted after a restart continues only when you `reply` to it; send one unless its task says otherwise.
-- `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, then follow its help or tell the owner. Read the task only when a start's outcome is unknown.
 
 ## Queues
 

@@ -1475,7 +1475,7 @@ test(
 )
 
 test(
-  'hydra check points only a Hydra that Pnyx does not run at the wait, which a Hydra Pnyx runs is refused',
+  'hydra check never points a Hydra that Pnyx runs at the wait it refuses',
   async () => {
     const hydra = await pnyx.hydra()
     const session = await hydra.chat({ text: 'hello' })

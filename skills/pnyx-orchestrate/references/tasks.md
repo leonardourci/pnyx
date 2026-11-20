@@ -1,7 +1,5 @@
 # Task records
 
-Read this for a reminder, a hide, a batch edit, an Intent change, a recurring worker snag or a finished worker to free.
-
 - Intent is the card's goal in the owner's terms, with one bullet per decision and who made it. Rewrite it whole with `task brief <task> --intent "<the whole new Intent>" --reason "<what changed>"` only when the goal itself changes, never for progress.
 - Edits that must succeed together go in one `apply --file <path> --event-id <id>` document; `apply --help` and the `pnyx-cli` skill describe it.
 - Reminders: `task remind <task> "<the owner's time>" --reason "<why>"`, with `--every` and `--until` for "keep reminding me". Ask for a time when the owner gives none. A reminder never starts work.

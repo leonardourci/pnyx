@@ -1,7 +1,5 @@
 # Questions and decisions
 
-Read this when a worker asks something, a decision is unsettled, or the owner answers, defers or holds.
-
 ## A worker's question
 
 Read it with `task show <task>` first; an answered or escalated one needs nothing. Answer what the owner's accepted ask, their later answers or the design they approved already settle: `pnyx-axi task answer <task> <id> --choice <n> | --text "<answer>" --reason "<why>" --hydra <hydra>`. Escalate a choice they leave open with `task escalate <task> <id> --question "<decision?>" --context "<what changes, next action and [card](pnyx-task:<task-id>)>" --choice "<recommended>" --choice "<alternative>" --recommend 1 --reason "<why>"`.
