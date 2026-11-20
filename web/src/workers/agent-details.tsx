@@ -55,14 +55,6 @@ export function AgentDetails({
       'Agent id',
       agent.agentId,
     ],
-    [
-      'Paseo agent',
-      agent.paseoAgentId,
-    ],
-    [
-      'Paseo address',
-      agent.paseoUrl,
-    ],
     ...Object.entries(card.terminal ?? {}),
   ]
 

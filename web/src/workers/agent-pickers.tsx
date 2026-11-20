@@ -47,7 +47,6 @@ export function AgentPickers({
   connected: boolean
   // Locks the pickers while still reading the catalogs, so the model keeps its display name.
   disabled?: boolean
-  // Whether to read the harness catalogs; a Firstmate Hydra has none.
   load?: boolean
   label: string
   onChange({ next }: { next: AgentConfig }): void | Promise<unknown>
