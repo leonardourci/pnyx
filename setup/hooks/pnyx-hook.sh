@@ -57,8 +57,9 @@ esac
 fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 [ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
-# shellcheck disable=SC2046
-set -- $(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
+hook_clock=$(node -e 'const now = new Date(); console.log(Math.floor(now.getTime() / 1000), now.toISOString())') || hook_clock=$(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
+# shellcheck disable=SC2086
+set -- $hook_clock
 id="hook-$1-$$"
 hydra_dir=$home/hydras/$hydra_name
 # A Hydra is a folder in hydras/, or in boards/ until an older one moves. An unknown id is dropped

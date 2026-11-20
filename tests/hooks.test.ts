@@ -303,8 +303,58 @@ test(
         return facts?.activity === 'working' && facts
       },
     })
+    const legacyAt = running.lastSeen.replace(
+      /\.\d{3}Z$/,
+      'Z',
+    )
+    const legacyTranscript = join(
+      cwd,
+      'legacy-clock.jsonl',
+    )
+    writeFileSync(
+      join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        'default',
+        'spool',
+        'legacy-clock.json',
+      ),
+      JSON.stringify({
+        v: 1,
+        id: 'legacy-clock',
+        at: legacyAt,
+        harness: 'claude',
+        event: 'UserPromptSubmit',
+        payload: {
+          session_id: 'legacy-clock',
+          cwd,
+          prompt: 'Legacy clock',
+          transcript_path: legacyTranscript,
+        },
+      }),
+    )
+    await until({
+      what: 'legacy hook clock to be observed',
+      check: async () => (await sessionFacts({ session: 'legacy-clock' }))?.activity === 'working',
+    })
     await pnyx.restart({
       whileStopped: () => {
+        writeFileSync(
+          legacyTranscript,
+          `${JSON.stringify({
+            type: 'assistant',
+            timestamp: new Date(Date.parse(legacyAt) + 1).toISOString(),
+            message: {
+              stop_reason: 'end_turn',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Legacy turn ended',
+                },
+              ],
+            },
+          })}\n`,
+        )
         writeFileSync(
           base.transcript_path,
           `${JSON.stringify({
@@ -324,6 +374,7 @@ test(
       },
     })
     expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({ activity: 'finished' })
+    expect(await sessionFacts({ session: 'legacy-clock' })).toMatchObject({ activity: 'finished' })
     await hook({
       event: 'SessionEnd',
       payload: base,
