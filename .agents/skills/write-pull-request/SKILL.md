@@ -14,7 +14,7 @@ Use the [PR template](../../../.github/pull_request_template.md) and the checks 
 - [ ] **Review:** record findings and fixes, or no findings, from each required checklist in order, covering bugs, tests and simpler. Use the final commit's deslop note and status as review evidence.
 - [ ] Remove the template placeholders. Keep all five headings, each with substantive text; hidden comments and examples do not count. Verification records the checks and fresh review for the exact commit.
 - [ ] After every push, compare the description with the final diff and current validation. Rewrite stale claims, changed scope and validation gaps. The proof lives on the commit, so editing the PR body does not invalidate it. Run deslop again after code changes.
-- [ ] Read the final title, body and changed code comments with `pnpm deslop`, which applies deslop's shipped `kill-ai-slop` skill. Use plain English, keep enough context to assess the change and remove session history.
+- [ ] Read the final title and body against deslop's shipped `kill-ai-slop` skill yourself: `pnpm deslop` reads the body as the review's intent and reviews only committed files. Use plain English, keep enough context to assess the change and remove session history.
 
 ## File structure changes
 
