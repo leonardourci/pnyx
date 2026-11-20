@@ -76,10 +76,25 @@ export function foldWorkerLog({
     const off = previous?.identity === identity ? previous.off : 0
 
     if (stat.size < off) {
-      throw new HydraError({
-        code: 'WORKER_LOG_TRUNCATED',
-        message: `worker log was truncated: ${path}`,
+      writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: `worker:${task}:${identity}:truncated:${off}:${stat.size}`,
+          at: new Date().toISOString(),
+          cardId: task,
+          actor: `worker:${task}`,
+          type: 'task.worker-line',
+          data: {
+            identity,
+            off,
+            code: 'invalid',
+            text: 'worker.log was truncated; restore its appended history or replace the file to resume updates',
+          },
+        },
       })
+
+      return
     }
 
     const bytes = Buffer.alloc(stat.size - off)
@@ -239,6 +254,7 @@ export function followWorkerLogs({
         watchPath({
           path: dir,
           changed: read,
+          poll: true,
         }),
       )
       read()

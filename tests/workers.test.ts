@@ -1,6 +1,7 @@
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, writeFileSync } from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
@@ -1876,6 +1877,30 @@ test(
   'worker log status and complete lines survive restarts',
   async () => {
     const hydra = await pnyx.hydra()
+    const nativeWatch = fs.watch
+    const taskRoot = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+    )
+    onTestFinished(() => {
+      fs.watch = nativeWatch
+      syncBuiltinESMExports()
+    })
+    // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+    fs.watch = ((...args: unknown[]) => {
+      if (String(args[0]).startsWith(taskRoot)) {
+        args[args.length - 1] = () => {}
+      }
+
+      return Reflect.apply(
+        nativeWatch,
+        fs,
+        args,
+      )
+    }) as typeof fs.watch
+    syncBuiltinESMExports()
     const { worker } = await hydra.startTask({ key: 'facts' })
     await until({
       what: 'idle worker status',
@@ -2080,6 +2105,34 @@ test(
     expect(await hydra.task({ key: 'completed-worker' })).toMatchObject({
       status: 'done',
       latest: 'recorded while hidden',
+    })
+    writeFileSync(
+      path,
+      'note: truncated\n',
+    )
+    await until({
+      what: 'a visible truncation warning while commands keep working',
+      check: async () => (await hydra.task({ key: 'facts' })).latest?.includes('worker.log was truncated'),
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })).task.workerLog.status.code).toBe('done')
+    renameSync(
+      path,
+      `${path}.old`,
+    )
+    writeFileSync(
+      path,
+      'note: restored append stream\n',
+    )
+    await until({
+      what: 'the replacement log to resume updates',
+      check: async () => (await hydra.task({ key: 'facts' })).latest === 'restored append stream',
     })
     await hydra.owner({
       args: [
