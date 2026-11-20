@@ -183,8 +183,8 @@ export function Chat({
             older={older}
             loadingEarlier={loadingEarlier}
           />
-          {error && <ChatError text={error} />}
           {children}
+          {error && <ChatError text={error} />}
         </div>
       </div>
       {status}

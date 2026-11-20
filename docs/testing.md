@@ -98,4 +98,4 @@ Rules:
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
-- `browser/chat.test.ts`: Hydra's chat and a task's chat open on their latest row and hold still, older rows load without moving the ones being read, and Focus mode keeps tool names out of the working line.
+- `browser/chat.test.ts`: Hydra's chat and a task's chat open on their latest row and hold still, older rows load without moving the ones being read and a failed load offers Retry, and Focus mode keeps tool names out of the working line.

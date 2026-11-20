@@ -422,10 +422,12 @@ test(
 )
 
 test(
-  'reading back, older messages load above the ones on screen without moving them, and Jump returns to the latest',
+  'reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest',
   async () => {
     const hydra = await seededHydra()
-    // The answer to an older-page read waits here, so the reading position paints before the rows arrive.
+    // The first older-page read is refused. The answer to the next waits here, so the reading position paints before
+    // the rows arrive.
+    let refused = false
     const olderReads = new Set<string>()
     const heldAnswers: (() => void)[] = []
     const page = await openHydra({
@@ -440,12 +442,27 @@ test(
             const server = socket.connectToServer()
             socket.onMessage(message => {
               const sent = JSON.parse(String(message)) as {
+                scope?: string
                 id?: string
                 name?: string
                 args?: string[]
               }
+              const olderRead = sent.name === 'thread' && sent.args?.length === 2 && !sent.args[1]!.startsWith('--')
 
-              if (sent.name === 'thread' && sent.args?.length === 2 && !sent.args[1]!.startsWith('--')) {
+              if (olderRead && !refused) {
+                refused = true
+                socket.send(JSON.stringify({
+                  type: 'error',
+                  scope: sent.scope,
+                  id: sent.id,
+                  code: 'THREAD_UNAVAILABLE',
+                  error: 'The transcript is unavailable',
+                }))
+
+                return
+              }
+
+              if (olderRead) {
                 olderReads.add(sent.id!)
               }
 
@@ -486,8 +503,15 @@ test(
       0,
       -distance,
     )
+    await conversation.getByRole('alert')
+      .filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
+      .getByRole(
+        'button',
+        { name: 'Retry' },
+      )
+      .click()
     await until({
-      what: 'the older page to be read',
+      what: 'the older page to be read again',
       check: () => heldAnswers.length > 0,
     })
     await until({

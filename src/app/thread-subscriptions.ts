@@ -366,22 +366,29 @@ export function createThreadSubscriptions({
         latest: page,
       })
 
-      const selected = traces({
-        view: effectiveView({ state: state() }),
-        card: HYDRA_CARD,
-      })
-      sub.base = {
-        signature,
-        // Hydra's view merges the latest page into its loaded history itself; a task's page is that history.
-        page: card.id === HYDRA_CARD ? page : shownRows({
-          card,
-          page: sub.history,
-        }),
-        project: card.id === HYDRA_CARD ? createHydraThreadView({
-          state: state(),
-          page: sub.history,
-          ...selected,
-        }) : undefined,
+      if (card.id === HYDRA_CARD) {
+        const selected = traces({
+          view: effectiveView({ state: state() }),
+          card: HYDRA_CARD,
+        })
+        // Hydra's view merges the latest page into its loaded history itself.
+        sub.base = {
+          signature,
+          page,
+          project: createHydraThreadView({
+            state: state(),
+            page: sub.history,
+            ...selected,
+          }),
+        }
+      } else {
+        sub.base = {
+          signature,
+          page: shownRows({
+            card,
+            page: sub.history,
+          }),
+        }
       }
     }
 
