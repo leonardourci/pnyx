@@ -18,7 +18,6 @@ const LEGACY_SKILLS = [
   'pnyx-hydra',
   'pnyx-hydra-workers',
   'pnyx-hydra-columns',
-  'pnyx-hydra-firstmate',
   'pnyx-setup',
   'pnyx-worker',
   'pnyx-inscribe',
