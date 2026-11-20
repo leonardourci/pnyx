@@ -1585,7 +1585,7 @@ test(
 )
 
 test(
-  'Send now ends a running compaction and delivers the message held behind it at once, and only once',
+  'cancelling compaction delivers held input once',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'compactable' })
@@ -1629,10 +1629,7 @@ test(
     const page = await hydra.page()
     expect(await page.send({
       name: 'compact',
-      args: [
-        id,
-        held.reply.reply,
-      ],
+      args: [id],
     })).toMatchObject({ stopped: 'compaction' })
     page.close()
 

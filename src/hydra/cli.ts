@@ -561,7 +561,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     positionals: 2,
   })
 
-  if (positionals[0] === 'send-now' || positionals[0] === 'cancel') {
+  if (positionals[0] === 'cancel') {
     requireStopAuthority({ meta: meta({ values }) })
 
     return askHost({

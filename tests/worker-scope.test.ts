@@ -661,7 +661,7 @@ test(
 )
 
 test(
-  'a worker\'s refusal of a Stop or Send now keeps the owner-only error, for the task and for the Hydra',
+  'a worker\'s refusal of a Stop keeps the owner-only error, for the task and for the Hydra',
   async () => {
     for (const args of [
       [
@@ -670,19 +670,8 @@ test(
         'other',
       ],
       [
-        'task',
-        'send-now',
-        'other',
-        'message-1',
-      ],
-      [
         'hydra',
         'stop',
-      ],
-      [
-        'hydra',
-        'send-now',
-        'message-1',
       ],
       [
         'hydra',

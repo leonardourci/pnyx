@@ -1394,12 +1394,7 @@ export function createHost({
 
     compact: async ({
       card: ref,
-      sendNow,
     }) => {
-      if (sendNow && upgrades.sendNow({ id: sendNow })) {
-        return { sent: 'upgrade' }
-      }
-
       const card = findCard({
         state: loadHydra({ hydraId }).state,
         ref,
@@ -1408,23 +1403,6 @@ export function createHost({
 
       if (!operation) {
         return { stopped: 'none: no compaction is running' }
-      }
-
-      if (sendNow) {
-        if (!card.compaction?.inputs.some(input => input.id === sendNow)) {
-          throw new HydraError({
-            code: 'VALIDATION_ERROR',
-            message: 'That message is no longer queued',
-          })
-        }
-
-        compactChange({
-          card: card.id,
-          change: {
-            kind: 'priority',
-            id: sendNow,
-          },
-        })
       }
 
       const entry = card.agent && live.get(sessionId({ agent: card.agent }))
@@ -1454,7 +1432,6 @@ export function createHost({
     },
     stop: async ({
       card: ref = HYDRA_CARD,
-      sendNow,
       cancel,
     } = {}) => {
       if (cancel) {
@@ -1482,40 +1459,6 @@ export function createHost({
         }
 
         return { cancelled: cancel }
-      }
-
-      if (sendNow) {
-        const state = loadHydra({ hydraId }).state
-        const card = findCard({
-          state,
-          ref,
-        })
-        const entry = card.agent && live.get(sessionId({ agent: card.agent }))
-        const hydraMessage = state.hydraMessages?.find(message =>
-          message.id === sendNow && !message.stopped)
-        const message = ref === HYDRA_CARD ? hydraMessage : undefined
-        const steering = card.steering?.find(message => {
-          const matchesId = message.id === sendNow || message.reply === sendNow
-
-          return matchesId && !message.stopped && !message.ack
-        })
-        const pending = entry?.session?.snapshot().work.unsettledInputs.includes(sendNow)
-
-        const queued = pending || message && !message.received || steering
-
-        if (!entry?.session || entry.stopping || !queued) {
-          throw new HydraError({
-            code: 'NO_ROUTE',
-            message: 'This message is no longer queued in a running session',
-          })
-        }
-
-        // With no turn running the message already opens the next one.
-        if (turnRunning({ entry })) {
-          await entry.session.interrupt({ cancelQueued: false })
-        }
-
-        return { sentNow: sendNow }
       }
 
       return ref === HYDRA_CARD ? stopHydra() : stopWorker({ ref })

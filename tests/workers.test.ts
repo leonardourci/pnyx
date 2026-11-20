@@ -1099,12 +1099,6 @@ test(
         'stoppable',
       ],
       [
-        'task',
-        'send-now',
-        'stoppable',
-        'anything',
-      ],
-      [
         'hydra',
         'stop',
       ],

@@ -449,30 +449,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     return paseoStatus({ url })
   }
 
-  if (action === 'send-now') {
-    requireStopAuthority({ meta: m })
-    const card = findCard({
-      state: loadHydra({ hydraId }).state,
-      ref: required({
-        value: positionals[1],
-        what: 'task id',
-      }),
-    })
-
-    return askHost({
-      hydraId,
-      body: {
-        action: 'send-now',
-        card: card.id,
-        message: required({
-          value: positionals[2],
-          what: 'message id',
-        }),
-        actor: m.actor,
-      },
-    })
-  }
-
   if (action === 'send') {
     if (values.mode !== undefined || values.fast !== undefined) {
       throw new HydraError({
