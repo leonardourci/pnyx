@@ -341,7 +341,6 @@ function* documentChunks({
 }
 
 function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
-  // Current memory is searched separately; chats and reviews stay out of the event index.
   if (event.type === 'chat.message' || event.type === 'hydra.memory' || event.type === 'hydra.review') {
     return
   }

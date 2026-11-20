@@ -16,8 +16,7 @@ function trigrams({ word }: { word: string }): Set<string> {
   return found
 }
 
-// Trigram similarity of two words, padded so their first and last letters weigh in.
-function similarity({
+function paddedTrigramSimilarity({
   a,
   b,
 }: {
@@ -283,7 +282,7 @@ export function matches({
     }
 
     const contains = alternative.length >= 4 && word.includes(alternative)
-    const similar = similarity({
+    const similar = paddedTrigramSimilarity({
       a: word,
       b: alternative,
     }) >= FUZZY_SIMILARITY

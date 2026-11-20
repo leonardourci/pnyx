@@ -244,18 +244,14 @@ export function search({
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
 
-    const memoryEntries: Document[] = [
-      ...ownerDocuments,
-      ...projectDocuments,
-      ...hydraDocuments,
-    ]
-
     const documents = [
       ...index.documents({
         terms,
         fuzzy,
       }),
-      ...memoryEntries,
+      ...ownerDocuments,
+      ...projectDocuments,
+      ...hydraDocuments,
     ]
 
     for (const document of documents) {
