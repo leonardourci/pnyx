@@ -89,8 +89,7 @@ export function sourceTask({
     ref,
   })
 
-  if (isManagedTask({ card }) || card.mirror
-    || card.sourceRefs.some(source => source.adapter === 'firstmate')) {
+  if (isManagedTask({ card })) {
     invalidSource({ message: 'Choose a native task for external sources' })
   }
 
