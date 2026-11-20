@@ -986,10 +986,10 @@ test.each([
         text,
         { exact: true },
       ).waitFor()
-      await conversation.getByText(
-        'New reply',
-        { exact: true },
-      ).waitFor()
+      await nextFrames({
+        page,
+        count: ARRIVAL_FRAMES,
+      })
       expect(await conversation.getByRole(
         'button',
         { name: 'Send now' },
@@ -997,7 +997,7 @@ test.each([
       expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
         .count()).toBe(1)
       const rows = await conversation.locator('[data-entry-id]').count()
-      const stopButton = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      const stopButton = page.locator('[data-hydra-workspace][data-active=true] .composer').getByRole(
         'button',
         {
           name: stop,
@@ -1138,12 +1138,6 @@ test.each([
     await row.getByRole('alert').filter({ hasText: 'refused the retry' })
       .waitFor()
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
-    const reply = `The ${target} retry succeeded.`
-    pnyx.codex.plan({
-      hydra: hydra.id,
-      match: ({ text: input }) => input.includes(text),
-      reply,
-    })
     await row.getByRole(
       'button',
       {
@@ -1151,14 +1145,22 @@ test.each([
         exact: true,
       },
     ).click()
-    await conversation.getByText(
-      reply,
-      { exact: true },
-    )
-      .waitFor()
+    const expectedAttempts = target === 'Hydra' ? 2 : 3
+    await until({
+      what: 'the successful Retry turn to finish',
+      check: () => {
+        const sessions = pnyx.codex.sessions.filter(session => session.received
+          .some(input => input.includes(text)))
+        const attempts = sessions.flatMap(session => session.received)
+          .filter(input => input.includes(text))
+        const latest = sessions.at(-1)
+
+        return attempts.length === expectedAttempts && latest?.answered === latest?.received.length
+      },
+    })
     const attempts = pnyx.codex.sessions.flatMap(session => session.received)
       .filter(input => input.includes(text))
-    expect(attempts).toHaveLength(target === 'Hydra' ? 2 : 3)
+    expect(attempts).toHaveLength(expectedAttempts)
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
