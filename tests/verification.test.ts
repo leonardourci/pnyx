@@ -19,6 +19,38 @@ test(
     const linter = new ESLint()
     const cases = [
       {
+        source: 'classList.add("w-[317px]")',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'element.classList.add("w-[317px]")',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'element.classList.add("text-ink flex")',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+      {
+        source: 'element.style.width = `${measuredWidth}px`',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'element["style"].width = "317px"',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, values: { left: 317 } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, values: { left: -317 } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, values: { left: `317px` } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
         source: '<div className="text-sm/[17px]" />',
         rule: 'better-tailwindcss/no-restricted-classes',
       },
@@ -123,7 +155,7 @@ test(
       ).toContain(rule)
     }
 
-    const valid = 'const width = window.innerWidth; <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width, left: -width, top: +width, fontSize: `${width}px` })} />'
+    const valid = 'const width = window.innerWidth; const element = document.createElement("div"); applyRuntimeStyle({ element, values: { width, maxHeight: width } }); element.classList.add("flex text-ink"); <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width, left: -width, top: +width, fontSize: `${width}px` })} />'
     const reports = await linter.lintText(
       valid,
       { filePath: 'web/src/shared/ui/lint-policy.tsx' },

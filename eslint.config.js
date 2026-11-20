@@ -29,6 +29,18 @@ const CHAT_STYLES = [
   'web/src/tasks/worker-chat.tsx',
 ]
 
+const FIXED_STYLE_VALUE = ':matches([value.type="Literal"], [value.type="UnaryExpression"][value.argument.type="Literal"], [value.type="TemplateLiteral"][value.expressions.length=0])'
+const STYLE_RESTRICTIONS = [
+  {
+    selector: 'JSXAttribute[name.name="style"] > JSXExpressionContainer > :not(CallExpression[callee.name="runtimeStyle"])',
+    message: 'Use theme classes for fixed styles and runtimeStyle for measured geometry or owner-selected sizes.',
+  },
+  {
+    selector: `CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property${FIXED_STYLE_VALUE}, CallExpression[callee.name="applyRuntimeStyle"] > ObjectExpression > Property[key.name="values"] > ObjectExpression > Property${FIXED_STYLE_VALUE}`,
+    message: 'Fixed values belong in the theme or a shared component; runtimeStyle accepts computed values only.',
+  },
+]
+
 export default tseslint.config(
   {
     ignores: [
@@ -65,6 +77,11 @@ export default tseslint.config(
         entryPoint: './web/src/index.css',
         selectors: {
           extends: [
+            {
+              kind: 'callee',
+              path: '^(?:.*\\.)?classList\\.(?:add|remove|toggle|replace|contains)$',
+              match: [{ type: 'strings' }],
+            },
             {
               kind: 'attribute',
               name: '^(?:class|.*ClassName)$',
@@ -374,13 +391,24 @@ export default tseslint.config(
       'no-restricted-syntax': [
         'error',
         ...IMPORT_RESTRICTIONS,
+        ...STYLE_RESTRICTIONS,
+      ],
+    },
+  },
+  {
+    files: STYLED_WEB,
+    ignores: [
+      ...CHAT_STYLES,
+      'web/src/shared/ui/runtime-style.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...IMPORT_RESTRICTIONS,
+        ...STYLE_RESTRICTIONS,
         {
-          selector: 'JSXAttribute[name.name="style"] > JSXExpressionContainer > :not(CallExpression[callee.name="runtimeStyle"])',
-          message: 'Use theme classes for fixed styles and runtimeStyle for measured geometry or owner-selected sizes.',
-        },
-        {
-          selector: 'CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property:matches([value.type="Literal"], [value.type="UnaryExpression"][value.argument.type="Literal"], [value.type="TemplateLiteral"][value.expressions.length=0])',
-          message: 'Fixed values belong in the theme or a shared component; runtimeStyle accepts computed values only.',
+          selector: 'MemberExpression:matches([property.name="style"], [computed=true][property.value="style"])',
+          message: 'Use classes for fixed values and applyRuntimeStyle for computed DOM geometry.',
         },
       ],
     },
