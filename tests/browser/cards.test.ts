@@ -194,7 +194,15 @@ test(
           }
         }
 
-        const observer = new MutationObserver(sample)
+        const observer = new MutationObserver(records => {
+          for (const record of records) {
+            for (const removed of record.removedNodes) {
+              if (original.some(node => removed.contains(node))) {
+                failures.push('A column or card was detached during scrolling')
+              }
+            }
+          }
+        })
         observer.observe(
           workspace,
           {
@@ -585,6 +593,7 @@ test(
       },
     )
     await region.getByRole('alert').waitFor()
+    expect(await region.getAttribute('aria-busy')).toBe('false')
     expect(await updates.count()).toBe(50)
     const beforeRetry = await updates.elementHandles()
     await region.getByRole(
@@ -667,7 +676,8 @@ test(
     ).click()
     await until({
       what: 'every burst update without replacing history',
-      check: async () => await updates.count() === 197,
+      check: async () => await updates.count() === 197
+        && await region.getAttribute('aria-busy') === 'false',
     })
     const updateIds = await region.evaluate(element => [...element.querySelectorAll('.update-row')]
       .map(row => row.getAttribute('data-update')))
