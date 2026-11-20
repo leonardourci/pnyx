@@ -38,7 +38,7 @@ export function UsageSection({
   className = '',
   ...props
 }: ComponentProps<typeof TooltipSection> & { divided?: boolean }) {
-  const variant = divided ? 'border-t border-usage-line pt-2.5 gap-1.25 text-usage-heading' : 'gap-1.75'
+  const variant = divided ? 'gap-1.25 border-t border-usage-line pt-2.5 text-usage-heading' : 'gap-1.75'
 
   return <TooltipSection {...props} className={`${variant} ${className}`} />
 }

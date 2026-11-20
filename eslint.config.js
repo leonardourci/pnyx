@@ -24,6 +24,9 @@ const IMPORT_RESTRICTIONS = [
 const STYLED_WEB = [
   'web/src/shared/**/*.{ts,tsx}',
   'web/src/tasks/**/*.{ts,tsx}',
+  'web/src/settings/**/*.{ts,tsx}',
+  'web/src/workers/**/*.{ts,tsx}',
+  'web/src/preferences/**/*.{ts,tsx}',
 ]
 
 // Chat rebuild removes this temporary styling exception and its scoped file list.
