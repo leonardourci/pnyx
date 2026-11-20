@@ -16,7 +16,7 @@ export type CardUpdates = {
 }
 
 // A card's Updates, read from the server a page at a time: the newest page when the card opens and whenever the Hydra
-// moves on, older pages as the list reaches its end.
+// moves on, older pages when asked.
 export function useCardUpdates({
   task,
   command,

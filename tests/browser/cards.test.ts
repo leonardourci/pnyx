@@ -3,6 +3,8 @@ import { openHydra } from './page.ts'
 import { rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
+const PROJECTS = 8
+const HISTORY_EDITS = 65
 
 let pnyx: Pnyx
 
@@ -11,7 +13,7 @@ beforeAll(async () => {
 })
 
 test(
-  'scrolling a full column keeps every task mounted once in the same place',
+  'scrolling across projects and a full column keeps every column and task mounted without gaps',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -35,11 +37,35 @@ test(
         ),
       }),
     })
+
+    for (let project = 0; project < PROJECTS; project++) {
+      const folder = hydra.folder({ name: `Project-${project}` })
+      await hydra.owner({
+        args: [
+          'project',
+          'add',
+          folder,
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--title',
+          `Project task ${project}`,
+          '--folder',
+          folder,
+        ],
+      })
+    }
+
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
     })
-    const column = page.locator('[data-column="ideas"] .column-cards')
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const column = workspace.locator('[data-column="ideas"] .column-cards')
     await column.getByRole(
       'button',
       {
@@ -49,14 +75,253 @@ test(
     ).waitFor()
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
 
-    const stability = await column.evaluate(async element => {
-      const tasks = [...element.querySelectorAll<HTMLElement>('[data-task]')]
-      const positions = new Map(tasks.map(task => [
-        task,
-        task.getBoundingClientRect().top + element.scrollTop,
-      ]))
+    for (const width of [
+      1440,
+      390,
+    ]) {
+      await page.setViewportSize({
+        width,
+        height: 900,
+      })
+      const stability = await workspace.evaluate(async workspace => {
+        const axis = workspace.closest<HTMLElement>('.workspace-axis')!
+        const column = workspace.querySelector<HTMLElement>('[data-column="ideas"] .column-cards')!
+        const columns = [...workspace.querySelectorAll<HTMLElement>('[data-column]')]
+        const cards = [...workspace.querySelectorAll<HTMLElement>('[data-task]')]
+        const original = [
+          ...columns,
+          ...cards,
+        ]
+        const failures: string[] = []
+        let frames = 0
 
-      const scroll = async ({ top }: { top: number }) => {
+        const sample = () => {
+          frames++
+          const current = [...workspace.querySelectorAll('[data-column], [data-task]')]
+
+          const replaced = original.some(node => !node.isConnected || !current.includes(node))
+
+          if (current.length !== original.length || replaced) {
+            failures.push('A column or card was removed or replaced')
+          }
+
+          for (const element of [
+            ...columns,
+            ...cards,
+          ]) {
+            const box = element.getBoundingClientRect()
+            const parent = element.closest('.column-cards')?.getBoundingClientRect()
+            const top = Math.max(
+              box.top,
+              parent?.top ?? 0,
+              0,
+            )
+            const bottom = Math.min(
+              box.bottom,
+              parent?.bottom ?? innerHeight,
+              innerHeight,
+            )
+            const left = Math.max(
+              box.left,
+              0,
+            )
+            const right = Math.min(
+              box.right,
+              innerWidth,
+            )
+
+            if (bottom - top < 4 || right - left < 4) {
+              continue
+            }
+
+            const painted = document.elementsFromPoint(
+              (left + right) / 2,
+              (top + bottom) / 2,
+            )
+
+            if (!painted.some(node => element === node || element.contains(node))) {
+              failures.push(`Missing visible content: ${element.dataset.task ?? element.dataset.column}`)
+            }
+          }
+        }
+
+        const observer = new MutationObserver(sample)
+        observer.observe(
+          axis,
+          {
+            childList: true,
+            subtree: true,
+          },
+        )
+        const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => {
+          sample()
+          resolve()
+        }))
+
+        const travel = async ({
+          element,
+          horizontal,
+        }: {
+          element: HTMLElement
+          horizontal: boolean
+        }) => {
+          const maximum = horizontal ? element.scrollWidth - element.clientWidth
+            : element.scrollHeight - element.clientHeight
+          const step = (horizontal ? element.clientWidth : element.clientHeight) / 2
+
+          for (const direction of [
+            1,
+            -1,
+          ]) {
+            for (let distance = 0; distance <= maximum + step; distance += step) {
+              const offset = Math.min(
+                distance,
+                maximum,
+              )
+              const position = direction === 1 ? offset : maximum - offset
+              element.scrollTo({
+                left: horizontal ? position : element.scrollLeft,
+                top: horizontal ? element.scrollTop : position,
+                behavior: 'instant',
+              })
+              await frame()
+            }
+          }
+
+          return maximum
+        }
+
+        const sideways = await travel({
+          element: axis,
+          horizontal: true,
+        })
+        column.closest<HTMLElement>('[data-column]')!.scrollIntoView({
+          inline: 'start',
+          behavior: 'instant',
+        })
+        await frame()
+        const down = await travel({
+          element: column,
+          horizontal: false,
+        })
+        observer.disconnect()
+
+        return {
+          failures: [...new Set(failures)],
+          frames,
+          columns: columns.length,
+          cards: cards.length,
+          sideways,
+          down,
+        }
+      })
+      expect(stability.columns).toBe(9)
+      expect(stability.cards).toBe(69)
+      expect(stability.failures).toEqual([])
+      expect(stability.frames).toBeGreaterThan(10)
+      expect(stability.sideways).toBeGreaterThan(width)
+      expect(stability.down).toBeGreaterThan(0)
+    }
+
+    await page.getByRole(
+      'button',
+      {
+        name: 'Project-7',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the requested project to be in view',
+      check: () => workspace.locator('[data-column]').last()
+        .evaluate(element => {
+          const box = element.getBoundingClientRect()
+
+          return box.left >= 0 && box.right <= innerWidth
+        }),
+    })
+  },
+)
+
+test(
+  'Activity loads every update before scrolling and retains its rows while scrolling and receiving changes',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { card } = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'history',
+        '--title',
+        'Persistent history',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: Array.from(
+          { length: HISTORY_EDITS },
+          (
+            _,
+            index,
+          ) => ({
+            op: 'task.brief',
+            task: 'history',
+            brief: `History revision ${index}`,
+          }),
+        ),
+      }),
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    await page.getByRole(
+      'button',
+      {
+        name: 'Persistent history',
+        exact: true,
+      },
+    ).click()
+    await page.getByRole(
+      'tab',
+      {
+        name: 'Activity',
+        exact: true,
+      },
+    ).click()
+    const updates = page.locator(`[data-task="${card.id}"] .update-row`)
+    await until({
+      what: 'every update loaded without scrolling',
+      check: async () => await updates.count() === 66,
+    })
+    const originals = await updates.elementHandles()
+    const retained = await page.locator(`[data-task="${card.id}"] [role="tabpanel"]:visible`).evaluate(async element => {
+      const rows = [...element.querySelectorAll('.update-row')]
+      const removed: Node[] = []
+      const observer = new MutationObserver(records => {
+        for (const record of records) {
+          removed.push(...record.removedNodes)
+        }
+      })
+      observer.observe(
+        element,
+        {
+          subtree: true,
+          childList: true,
+        },
+      )
+
+      for (const top of [
+        element.scrollHeight,
+        0,
+      ]) {
         element.scrollTo({
           top,
           behavior: 'instant',
@@ -64,57 +329,28 @@ test(
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
-      const sample = () => {
-        const current = [...element.querySelectorAll<HTMLElement>('[data-task]')]
+      observer.disconnect()
 
-        return {
-          count: current.length,
-          retained: current.every((
-            task,
-            index,
-          ) => task === tasks[index])
-            && tasks.every(task => task.isConnected),
-          shifts: current.flatMap(task => {
-            const position = positions.get(task)
-            const shift = task.getBoundingClientRect().top + element.scrollTop - (position ?? 0)
-
-            return position !== undefined && Math.abs(shift) > 1 ? [
-              {
-                task: task.dataset.task,
-                shift,
-              },
-            ] : []
-          }),
-          unique: new Set(current.map(task => task.dataset.task)).size,
-        }
-      }
-
-      await scroll({ top: element.scrollHeight - element.clientHeight })
-      const bottom = sample()
-      const bottomOffset = element.scrollTop
-      await scroll({ top: 0 })
-
-      return {
-        bottom,
-        bottomOffset,
-        top: sample(),
-      }
+      return rows.every(row => row.isConnected) && !rows.some(row => removed.includes(row))
     })
-    expect(stability.bottomOffset).toBeGreaterThan(0)
-    expect(stability).toMatchObject({
-      bottom: {
-        count: COLUMN_TASKS,
-        retained: true,
-        shifts: [],
-        unique: COLUMN_TASKS,
-      },
-      top: {
-        count: COLUMN_TASKS,
-        retained: true,
-        shifts: [],
-        unique: COLUMN_TASKS,
-      },
+    expect(retained).toBe(true)
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'history',
+        '--brief',
+        'History updated live',
+      ],
     })
+    await until({
+      what: 'the live update',
+      check: async () => await updates.count() === 67,
+    })
+    expect(await page.evaluate(
+      nodes => nodes.every(node => node.isConnected),
+      originals,
+    )).toBe(true)
   },
 )
 

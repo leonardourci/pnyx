@@ -1,9 +1,9 @@
 import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { MOTION_EASING } from '#web-shared/motion.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
-import { useWorkspaceWindow } from './workspace-window.ts'
+import { useWorkspaceFrame } from './workspace-frame.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
-import { WindowedStrip } from '#web-shared/ui/windowed-strip.tsx'
+import { layoutOffset } from '#web-shared/ui/layout-box.ts'
 import { WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
 import { ProjectTasks } from '#web-tasks/project-tasks.tsx'
 import { ProfileSurface } from './profile-surface.tsx'
@@ -59,7 +59,7 @@ import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
-import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from 'react'
+import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
@@ -550,10 +550,6 @@ export function HydraView({
     } : null)
 
   const columnWidth = ({ item }: { item: ProjectColumnData }) => {
-    if (item.id === 'create-project') {
-      return WORKSPACE_SIZING.createColumn
-    }
-
     if (view.workspace.foldedProjects.includes(item.id)) {
       return WORKSPACE_SIZING.foldedColumn
     }
@@ -578,19 +574,6 @@ export function HydraView({
   const phone = viewport.width <= WORKSPACE_SIZING.phone
   const chatWidth = view.workspace.chatCollapsed ? WORKSPACE_SIZING.foldedChat
     : phone ? viewport.width - WORKSPACE_SIZING.phoneChatInset : view.hydraWidth
-  const modelWidth = Math.max(
-    viewport.width - (phone ? WORKSPACE_SIZING.phoneFrameMargin : WORKSPACE_SIZING.frameMargin),
-    (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset)
-      + chatWidth + WORKSPACE_SIZING.columnGap
-      + columns.reduce(
-        (
-          total,
-          column,
-        ) => total + columnWidth({ item: column })
-        + WORKSPACE_SIZING.columnGap,
-        WORKSPACE_SIZING.createColumn,
-      ),
-  )
   let projectLeft = (phone ? WORKSPACE_SIZING.phoneInset : WORKSPACE_SIZING.inset) / 2
     + chatWidth + WORKSPACE_SIZING.columnGap
   const projectSnaps = columns.map(column => {
@@ -599,41 +582,62 @@ export function HydraView({
 
     return left
   })
-  const workspaceWindow = useWorkspaceWindow({
+  const [
+    kanban,
+    setKanban,
+  ] = useState<HTMLDivElement | null>(null)
+  const workspaceFrame = useWorkspaceFrame({
     element: layer,
-    hydra: navigation.hydraId,
-    width: modelWidth,
     collapsed: view.workspace.collapsed,
     loaded,
   })
   const projectSettings = useSharedSettings()
   const { projects: polisProjects } = useProjectsResource({
     command,
-    connected: connected && workspaceWindow.mounted,
+    connected,
     revision: `${state.projectsRevision}:${JSON.stringify(projectSettings?.projectPoleis)}:${JSON.stringify(projectSettings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}`,
   })
   const projectPolisByPath = new Map(polisProjects.map(project => [
     project.path,
     project.polis,
   ]))
-  const protectedColumns = new Set(columns.filter(column =>
-    viewport.protectsColumn({
-      hydra: navigation.hydraId,
-      id: column.id,
-    })
-    || [...(viewport.tasks.get(navigation.hydraId) ?? [])].some(id => {
-      const card = state.cards[id]
-
-      return card && taskProjectGroup({
-        state,
-        card,
-      }) === column.id
-    })).map(column => column.id))
   const revealingColumn = revealing && state.cards[revealing]
     ? taskProjectGroup({
       state,
       card: state.cards[revealing]!,
     }) : columnRequest?.id
+  const revealIndex = columns.findIndex(column => column.id === revealingColumn)
+  // From the model, so a column that is still animating its width lands where it ends up.
+  const revealLeft = revealIndex < 0 ? undefined : projectSnaps[revealIndex]! - projectSnaps[0]!
+  const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
+    : WORKSPACE_SIZING.frameMargin) / 2
+  useLayoutEffect(
+    () => {
+      const scroller = viewport.axis.current
+
+      if (revealLeft === undefined || !kanban || !scroller) {
+        return
+      }
+
+      scroller.scrollTo({
+        left: layoutOffset({
+          element: kanban,
+          horizontal: true,
+        }) - layoutOffset({
+          element: scroller,
+          horizontal: true,
+        }) + revealLeft - revealPadding,
+        behavior: 'instant',
+      })
+    },
+    [
+      kanban,
+      revealingColumn,
+      columnRequest?.key,
+      revealLeft,
+      revealPadding,
+    ],
+  )
 
   const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
@@ -1033,7 +1037,7 @@ export function HydraView({
     )
   }
 
-  const showWorkspace = workspaceWindow.mounted && (loaded || hydra.creating) && page === 'hydra'
+  const showWorkspace = (loaded || hydra.creating) && page === 'hydra'
   const fontSizes = {
     uiFont: `${view.fontSize}px`,
     chatFont: `${view.chatFontSize}px`,
@@ -1052,7 +1056,7 @@ export function HydraView({
       <HydraComposerSources
         state={state}
         command={command}
-        connected={connected && workspaceWindow.mounted}
+        connected={connected}
         references={references}
         openTask={revealTask}
         notify={notify}
@@ -1060,10 +1064,10 @@ export function HydraView({
       >
         <motion.div
           layout="position"
-          initial={{minWidth: workspaceWindow.minimum}}
+          initial={{minWidth: workspaceFrame.minimum}}
           transition={{
             layout: {
-              duration: hydraLayout ? workspaceWindow.duration / 1000 : 0,
+              duration: hydraLayout ? workspaceFrame.duration / 1000 : 0,
               ease: MOTION_EASING,
             },
           }}
@@ -1077,10 +1081,7 @@ export function HydraView({
           data-collapsed={view.workspace.collapsed}
           data-seq={state.seq}
           data-connected={connected}
-          style={runtimeStyle({
-            width: workspaceWindow.width,
-            ...fontSizes,
-          })}
+          style={runtimeStyle(fontSizes)}
         >
           <Panel
             shown={active}
@@ -1294,142 +1295,124 @@ export function HydraView({
                   <div className="hydra-main flex min-h-0 w-max flex-none flex-col">
                     <div className="work-area relative inline h-full min-h-0 min-w-0 flex-1 overflow-visible">
                       <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
-                        <div data-sort-surface={`project-columns:${navigation.hydraId}`} className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0" aria-label="Work columns">
+                        <div
+                          ref={setKanban}
+                          data-sort-surface={`project-columns:${navigation.hydraId}`}
+                          className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0"
+                          aria-label="Work columns"
+                        >
                           <SortGroup id={`project-columns:${navigation.hydraId}`} items={columns.map(column => column.id)}>
-                            <WindowedStrip
-                              items={[
-                                ...columns,
-                                {
-                                  id: 'create-project',
-                                  title: '',
-                                  cards: [],
-                                  repositories: [],
-                                },
-                              ]}
-                              itemKey={({ item }) => item.id}
-                              scroll={viewport.axis.current}
-                              gap={WORKSPACE_SIZING.columnGap}
-                              protectedItems={protectedColumns}
-                              reveal={revealingColumn}
-                              revealKey={columnRequest?.key}
-                              padding={(phone ? WORKSPACE_SIZING.phoneFrameMargin
-                                : WORKSPACE_SIZING.frameMargin) / 2}
-                              size={columnWidth}
-                              render={({ item: c }) => {
-                                if (c.id === 'create-project') {
-                                  return <div className="add-column w-57.5 flex-none p-2"><Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button></div>
-                                }
+                            {columns.map(c => {
+                              const items = c.cards
+                              const openIds = expandedIds.filter(id => {
+                                const card = state.cards[id]
 
-                                const items = c.cards
-                                const openIds = expandedIds.filter(id => {
-                                  const card = state.cards[id]
+                                return card && taskProjectGroup({
+                                  state,
+                                  card,
+                                }) === c.id
+                              })
 
-                                  return card && taskProjectGroup({
-                                    state,
-                                    card,
-                                  }) === c.id
-                                })
+                              const openedWidths = openIds.map(id => expandedTaskWidth({
+                                card: state.cards[id]!,
+                              }))
+                              const expandedWidth = Math.max(
+                                0,
+                                ...openedWidths,
+                              )
 
-                                const openedWidths = openIds.map(id => expandedTaskWidth({
-                                  card: state.cards[id]!,
-                                }))
-                                const expandedWidth = Math.max(
-                                  0,
-                                  ...openedWidths,
-                                )
+                              return (
+                                <ProjectColumn
+                                  key={c.id}
+                                  column={c}
+                                  poleis={[
+                                    ...new Set(c.repositories.flatMap(path => {
+                                      const polis = projectPolisByPath.get(path)
 
-                                return (
-                                  <ProjectColumn
-                                    key={c.id}
-                                    column={c}
-                                    poleis={[
-                                      ...new Set(c.repositories.flatMap(path => {
-                                        const polis = projectPolisByPath.get(path)
-
-                                        return polis ? [polis] : []
-                                      })),
-                                    ]}
-                                    hydraId={navigation.hydraId}
-                                    view={view}
-                                    save={save}
-                                    expandedWidth={expandedWidth}
-                                    create={() => createTask({
-                                      column: queuedColumn,
-                                      project: c.repositories.length === 1
-                                        ? c.repositories[0] : undefined,
-                                      group: c.id,
-                                    })}
-                                  >{() => (
-                                      <>
-                                        {creatingTask?.group === c.id && (
-                                          <TaskCreate
-                                            hydraId={navigation.hydraId}
-                                            storageIdentity={hydra.storageHydra}
-                                            key={`${c.id}:${creatingTask.parent ?? ''}`}
-                                            {...creatingTask}
-                                            repositories={c.repositories.length
-                                              ? repositoryOptions.filter(option =>
-                                                c.repositories.includes(option.value))
-                                              : repositoryOptions}
-                                            before={items.find(item =>
-                                              item.column === queuedColumn)?.id}
-                                            command={command}
-                                            connected={connected}
-                                            notify={notify}
-                                            cancel={() => setCreatingTask(null)}
-                                            recover={({ draft }) => {
-                                              const current = taskFormVersion.current
+                                      return polis ? [polis] : []
+                                    })),
+                                  ]}
+                                  hydraId={navigation.hydraId}
+                                  view={view}
+                                  save={save}
+                                  expandedWidth={expandedWidth}
+                                  create={() => createTask({
+                                    column: queuedColumn,
+                                    project: c.repositories.length === 1
+                                      ? c.repositories[0] : undefined,
+                                    group: c.id,
+                                  })}
+                                >{() => (
+                                    <>
+                                      {creatingTask?.group === c.id && (
+                                        <TaskCreate
+                                          hydraId={navigation.hydraId}
+                                          storageIdentity={hydra.storageHydra}
+                                          key={`${c.id}:${creatingTask.parent ?? ''}`}
+                                          {...creatingTask}
+                                          repositories={c.repositories.length
+                                            ? repositoryOptions.filter(option =>
+                                              c.repositories.includes(option.value))
+                                            : repositoryOptions}
+                                          before={items.find(item =>
+                                            item.column === queuedColumn)?.id}
+                                          command={command}
+                                          connected={connected}
+                                          notify={notify}
+                                          cancel={() => setCreatingTask(null)}
+                                          recover={({ draft }) => {
+                                            const current = taskFormVersion.current
                                                 === creatingTask.version
 
-                                              if (current) {
-                                                setCreatingTask({
-                                                  ...creatingTask,
-                                                  draft,
-                                                })
-                                              }
-
-                                              const key = `task:${draft.attempt}`
-                                              setPageView(view => ({
-                                                ...view,
-                                                selected: view.selected === key
-                                                  ? null : view.selected,
-                                                expanded: view.expanded.filter(id => id !== key),
-                                              }))
-                                            }}
-                                            submitted={({ id }) => {
-                                              setCreatingTask(null); expand({
-                                                id,
-                                                column: c.id,
+                                            if (current) {
+                                              setCreatingTask({
+                                                ...creatingTask,
+                                                draft,
                                               })
-                                            }}
-                                          />
-                                        )}
-                                        <SortGroup namespace={`tasks:${navigation.hydraId}`} id={`tasks:${navigation.hydraId}:${c.id}`} items={items.map(item => item.id)}>
-                                          <ProjectTasks
-                                            items={items}
-                                            render={({ card: item }) => (
-                                              <TaskFamily
-                                                card={item}
-                                                hydraId={navigation.hydraId}
-                                                state={state}
-                                                actions={actions}
-                                                selected={expandedIds}
-                                                preview={preview}
-                                                // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
-                                                renderCard={family => renderCard({
-                                                  ...family,
-                                                  column: c,
-                                                })}
-                                              />
-                                            )}
-                                          />
-                                        </SortGroup>
-                                      </>
-                                    )}
-                                  </ProjectColumn>
-                                )
-                              }}
-                            />
+                                            }
+
+                                            const key = `task:${draft.attempt}`
+                                            setPageView(view => ({
+                                              ...view,
+                                              selected: view.selected === key
+                                                ? null : view.selected,
+                                              expanded: view.expanded.filter(id => id !== key),
+                                            }))
+                                          }}
+                                          submitted={({ id }) => {
+                                            setCreatingTask(null); expand({
+                                              id,
+                                              column: c.id,
+                                            })
+                                          }}
+                                        />
+                                      )}
+                                      <SortGroup namespace={`tasks:${navigation.hydraId}`} id={`tasks:${navigation.hydraId}:${c.id}`} items={items.map(item => item.id)}>
+                                        <ProjectTasks
+                                          items={items}
+                                          render={({ card: item }) => (
+                                            <TaskFamily
+                                              card={item}
+                                              hydraId={navigation.hydraId}
+                                              state={state}
+                                              actions={actions}
+                                              selected={expandedIds}
+                                              preview={preview}
+                                              // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
+                                              renderCard={family => renderCard({
+                                                ...family,
+                                                column: c,
+                                              })}
+                                            />
+                                          )}
+                                        />
+                                      </SortGroup>
+                                    </>
+                                  )}
+                                </ProjectColumn>
+                              )
+                            })}
+                            <div className="add-column w-57.5 flex-none p-2"><Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button></div>
                           </SortGroup>
                         </div>
                       </div>

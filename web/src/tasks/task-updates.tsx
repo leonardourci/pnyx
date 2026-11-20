@@ -1,16 +1,13 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { MeasuredList } from '#web-shared/ui/measured-list.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { hasTaskQuestion } from './task-question.ts'
 import { UpdateRow } from './update-rows.tsx'
 import { useCardUpdates } from './use-card-updates.ts'
 
-// The card's Updates, a page of them at a time as the list reaches its end, and only the rows near the viewport on the
-// page.
 export function TaskUpdates({
   card,
   columns,
@@ -35,6 +32,18 @@ export function TaskUpdates({
     through: card.revision,
   })
   const events = list?.events ?? []
+  useEffect(
+    () => {
+      if (connected && list?.older !== undefined && !error) {
+        void older()
+      }
+    },
+    [
+      list?.older,
+      error,
+      connected,
+    ],
+  )
   const [
     oldestFirst,
     setOldestFirst,
@@ -92,7 +101,7 @@ export function TaskUpdates({
 
   return (
     <div
-      className="task-updates min-h-0 flex-1 overflow-visible py-2 wrap-anywhere [&>div[role=list]]:m-0 [&>div[role=list]]:list-none [&>div[role=list]]:p-0"
+      className="task-updates min-h-0 flex-1 overflow-visible py-2 wrap-anywhere [&>ul]:m-0 [&>ul]:list-none [&>ul]:p-0"
       role="region"
       aria-label="Task updates"
       aria-busy={loading}
@@ -108,19 +117,8 @@ export function TaskUpdates({
         </Button>
       </div>
       {shown.length > 0 && (
-        <MeasuredList
-          identity={`task:${card.key}:updates`}
-          items={rows}
-          itemKey={({ item }) => item.update.id}
-          stayAtTop={!oldestFirst}
-          onEdge={async ({ edge }) => {
-            if (edge === (oldestFirst ? 'start' : 'end')) {
-              await older()
-            }
-          }}
-          render={({
-            item,
-          }) => (
+        <ul>
+          {rows.map(item => (
             <UpdateRow
               key={item.update.id}
               update={item.update}
@@ -130,8 +128,8 @@ export function TaskUpdates({
               open={nextLayout.open.has(item.group.updates[0]!.id)}
               toggle={() => toggle({ id: item.group.updates[0]!.id })}
             />
-          )}
-        />
+          ))}
+        </ul>
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
       {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
