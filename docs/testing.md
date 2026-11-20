@@ -21,7 +21,7 @@ pnpm exec vitest run tests/chat.test.ts     # one file, after a build
 pnpm exec vitest run --project integration  # the integration suite
 pnpm exec vitest run --project browser      # targeted browser checks
 pnpm exec vitest run tests/browser/status.test.ts # shared status across the page and CLI
-pnpm exec vitest run -t "Stop ends"         # tests whose name matches
+pnpm exec vitest run -t "outside hooks"         # tests whose name matches
 ```
 
 The tests run the built CLI and serve the built page, so run `pnpm run build` after changing code under `src/` or `web/` before a focused run. CI builds first.
