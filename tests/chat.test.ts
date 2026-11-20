@@ -2986,9 +2986,21 @@ test.each([
       })).type).toBe('receipt')
     }
 
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'new-overflow-card',
+        '--title',
+        'New overflow card',
+        '--no-start',
+      ],
+    })
+    const overflowCard = await hydra.task({ key: 'new-overflow-card' })
     await hydra.chat({ text: 'Read the capped changes' })
     const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
-    expect(capped).toContain('1 more changed cards')
+    expect(capped).toContain('2 more changed cards')
     expect(capped).toContain('pnyx-axi task list')
     expect(capped).toContain('Changed snapshot card 39')
     expect(capped).not.toContain('Changed snapshot card 40')
@@ -2996,10 +3008,18 @@ test.each([
       what: 'the capped turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'new-overflow-card',
+      ],
+    })
     await hydra.chat({ text: 'Read the remaining change' })
     const remainder = session.received.find(text => text.endsWith('Read the remaining change'))!
     expect(remainder).toContain('Changed snapshot card 40')
     expect(remainder).not.toContain('Changed snapshot card 39')
+    expect(remainder).toContain(`${overflowCard.id} is no longer listed`)
     await until({
       what: 'the remaining-change turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,

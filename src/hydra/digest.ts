@@ -23,6 +23,7 @@ export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules
 const TASK_LIMIT = 40
 const DIGEST_HASH_CHARS = 12
 const DIGEST_CHECKPOINT_VERSION = 1
+const PENDING_CARD = '-'.repeat(DIGEST_HASH_CHARS)
 
 export const clip = ({
   text,
@@ -589,20 +590,15 @@ export function hydraDigest({
     key,
     text,
   ] of parts) {
-    let identity = key
-
-    if (key.startsWith('task:')) {
-      identity = `task:${digestHash({ text: key.slice('task:'.length) })}`
-    }
-
+    const card = key.startsWith('task:') ? state.cards[key.slice('task:'.length)] : undefined
+    const identity = card ? `task:${digestHash({ text: card.id })}` : key
     let fingerprint = text
 
     if (key === 'owner') {
       fingerprint += JSON.stringify(owner)
     }
 
-    if (key.startsWith('task:')) {
-      const card = state.cards[key.slice('task:'.length)]
+    if (card) {
       const ownerMessage = latestOwnerMessage({ card })
 
       if (ownerMessage) {
@@ -613,9 +609,7 @@ export function hydraDigest({
     const hash = digestHash({ text: fingerprint })
     const previousHash = before?.parts[identity]
 
-    if (key.startsWith('task:')) {
-      const card = state.cards[key.slice('task:'.length)]
-
+    if (card) {
       if (!previousHash && taskDone({
         state,
         card,
@@ -624,10 +618,7 @@ export function hydraDigest({
       }
 
       if (before && hash !== previousHash && cards.length >= TASK_LIMIT) {
-        if (previousHash) {
-          hashes[identity] = previousHash
-        }
-
+        hashes[identity] = previousHash ?? PENDING_CARD
         omitted++
         continue
       }
