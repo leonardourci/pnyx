@@ -39,7 +39,7 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 
 - Write a rule the code checks in more than one place once, as a named helper every site imports.
 - Throw a `HydraError` with its code at the failure site; `guard()` turns it into the CLI's structured error. A `catch` that doesn't recognize an error rethrows it.
-- Never drop an error to make code tidy. A deliberate fire-and-forget says in a short comment why losing the failure is safe.
+- Never drop an error to make code tidy. Name a deliberate fire-and-forget so the code says losing its failure is safe: with a helper or named step.
 - A derived cache that several processes read, such as the Oracle's `oracle.db` read by the server and its search workers, resolves corrections and deletions against the saved event log and cursors, never against one process's memory.
 
 ## Provider boundaries
@@ -50,7 +50,6 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 
 - A refactor changes form, never outcomes: every input path keeps its result, guard order, side effects and error. Run `pnpm run lint` after each structural edit.
 - Write library and Node calls from the installed version's types, not from memory, and avoid deprecated APIs. Node 22.13 is the floor.
-- Comment only for a non-obvious reason or constraint that no name can carry; rename instead of explaining.
 - A change to behavior, CLI output or setup updates its docs, CLI help and shipped skills in the same change.
 - Keep each Markdown prose paragraph on one source line.
 - In tests, never expect an event's `seq` from a `seq` read in a separate operation, since another writer can append between the reads. Find the event by the ID the command returned, in one snapshot.
