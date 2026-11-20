@@ -285,7 +285,7 @@ export const approval = guard({
 
       const code = /^code: ([A-Z_]+)$/m.exec(stdout)?.[1]
 
-      if (removesHydra) {
+      if (removesHydra || code) {
         if (error instanceof HydraError) {
           throw error
         }
