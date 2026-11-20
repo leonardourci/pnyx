@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
@@ -844,5 +844,233 @@ test(
       ],
     })
     expect(history.events.find((event: { id: string }) => event.id === layout.event.id).data.before).toHaveProperty('keyboard')
+    const configuration = (await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra
+    const legacyId = `${hydra.id}-legacy-reports`
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      legacyId,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const records = [
+      {
+        type: 'board.configured',
+        cardId: '$board',
+        data: {
+          ...configuration,
+          id: legacyId,
+          readPoleis: [],
+          columns: [
+            {
+              id: 'custom:retired-rule',
+              title: 'Research',
+              rule: [['kind:investigation']],
+            },
+            {
+              id: 'custom:old-builds',
+              title: 'Builds',
+              rule: [['kind:build']],
+            },
+            ...configuration.columns,
+          ],
+        },
+      },
+      {
+        type: 'task.created',
+        cardId: 'legacy-task',
+        data: {
+          key: 'legacy',
+          title: 'Imported findings',
+          kind: 'investigation',
+          column: 'custom:retired-rule',
+        },
+      },
+      {
+        type: 'task.report',
+        cardId: 'legacy-task',
+        data: { text: 'Historical findings stay in history' },
+      },
+      {
+        type: 'task.report-reviewed',
+        cardId: 'legacy-task',
+        data: {
+          report: 'legacy-event-3',
+          calls: [],
+        },
+      },
+      {
+        type: 'task.declared',
+        cardId: 'legacy-task',
+        data: {
+          state: 'done',
+          note: 'Investigation finished',
+        },
+      },
+      {
+        type: 'task.kind',
+        cardId: 'legacy-task',
+        data: {
+          before: 'investigation',
+          after: 'build',
+        },
+      },
+      {
+        type: 'task.asked',
+        cardId: 'legacy-task',
+        data: {
+          id: 'legacy-question',
+          audience: 'owner',
+          question: 'Keep this decision?',
+          context: 'Imported owner choice',
+          origin: {
+            task: 'legacy-task',
+            report: 'legacy-event-3',
+          },
+        },
+      },
+      {
+        type: 'task.moved-in',
+        cardId: 'moved-task',
+        data: {
+          from: hydra.id,
+          column: 'custom:retired-rule',
+          sessions: [],
+          card: {
+            ...stored,
+            id: 'moved-task',
+            key: 'moved-legacy',
+            title: 'Moved historical task',
+            kind: 'investigation',
+            report: {
+              id: 'old-report',
+              chars: 8,
+            },
+            asks: [
+              {
+                id: 'moved-question',
+                audience: 'owner',
+                question: 'Keep moved decision?',
+                context: 'Moved owner choice',
+                at: '2026-01-01T00:00:00.000Z',
+                actor: 'cli',
+                origin: {
+                  task: 'legacy-task',
+                  report: 'legacy-event-3',
+                },
+              },
+            ],
+          },
+        },
+      },
+    ]
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      records.map((
+        event,
+        index,
+      ) => `${JSON.stringify({
+        v: 1,
+        id: `legacy-event-${index + 1}`,
+        seq: index + 1,
+        at: '2026-01-01T00:00:00.000Z',
+        actor: 'cli',
+        ...event,
+      })}\n`).join(''),
+    )
+    const imported = await pnyx.hydra({
+      id: legacyId,
+      create: false,
+    })
+    await imported.owner({
+      args: [
+        'column',
+        'describe',
+        'custom:retired-rule',
+        '--description',
+        'Ordinary research tasks',
+      ],
+    })
+    const columns = (await imported.owner({
+      args: [
+        'column',
+        'list',
+      ],
+    })).columns
+    expect(columns.find((column: { id: string }) => column.id === 'custom:retired-rule').rule).toEqual([])
+    expect(columns.find((column: { id: string }) => column.id === 'custom:old-builds').rule).toEqual([])
+    const ordinary = (await imported.owner({
+      args: [
+        'task',
+        'show',
+        'legacy',
+        '--full',
+      ],
+    })).task
+    expect(ordinary.column).toBe('custom:retired-rule')
+    expect(ordinary.status).toBeUndefined()
+    expect(ordinary.asks).toContainEqual(expect.objectContaining({
+      id: 'legacy-question',
+      question: 'Keep this decision?',
+    }))
+    const moved = (await imported.owner({
+      args: [
+        'task',
+        'show',
+        'moved-legacy',
+        '--full',
+      ],
+    })).task
+    expect(moved.asks).toContainEqual(expect.objectContaining({
+      id: 'moved-question',
+      question: 'Keep moved decision?',
+    }))
+    expect(ordinary).not.toHaveProperty('kind')
+    expect(ordinary).not.toHaveProperty('report')
+    expect(ordinary.asks[0]).not.toHaveProperty('origin')
+    expect(moved).not.toHaveProperty('kind')
+    expect(moved).not.toHaveProperty('report')
+    expect(moved.asks[0]).not.toHaveProperty('origin')
+    const importedHistory = await imported.owner({
+      args: [
+        'history',
+        '--kind',
+        'task.report',
+        '--full',
+      ],
+    })
+    expect(importedHistory.events[0].data.text).toBe('Historical findings stay in history')
+    await imported.owner({
+      args: [
+        'task',
+        'close-question',
+        'legacy',
+        'legacy-question',
+        '--evidence',
+        'Historical decision completed',
+        '--reason',
+        'Imported decision retained',
+      ],
+    })
+    await imported.owner({
+      args: [
+        'outcome',
+        'legacy',
+        'done',
+        '--note',
+        'Completed as ordinary work',
+      ],
+    })
+    expect((await imported.task({ key: 'legacy' })).status).toBe('done')
   },
 )
