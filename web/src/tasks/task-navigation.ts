@@ -19,6 +19,7 @@ export function useTaskNavigation({
   command,
   connected,
   notify,
+  opening,
   view,
   setView,
 }: {
@@ -27,6 +28,7 @@ export function useTaskNavigation({
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
+  opening(): void
   view: PageView
   setView: Dispatch<SetStateAction<PageView>>
 }) {
@@ -438,6 +440,7 @@ export function useTaskNavigation({
     focusPanel?: boolean
     modal?: boolean
   }): Promise<boolean> => {
+    opening()
     cancelOpen(); pendingFocus.current = null
 
     if (id === '$board') {
@@ -514,7 +517,7 @@ export function useTaskNavigation({
         } else {
           expand({
             id,
-            focus: focusPanel,
+            focus: false,
           })
         }
       }
@@ -636,7 +639,6 @@ export function useTaskNavigation({
   }
 
   return {
-    revealing,
     selected,
     expandedIds,
     cards,

@@ -3,7 +3,7 @@ import { MOTION_EASING } from '#web-shared/motion.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceFrame } from './workspace-frame.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
-import { layoutOffset } from '#web-shared/ui/layout-box.ts'
+import { afterTaskLayout, afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
 import { ProjectTasks } from '#web-tasks/project-tasks.tsx'
 import { ProfileSurface } from './profile-surface.tsx'
@@ -331,9 +331,26 @@ export function HydraView({
   )
   useScrollingClass()
   const modalTask = useModalTask({ hydraId: navigation.hydraId })
+  const [
+    columnRequest,
+    setColumnRequest,
+  ] = useState<{
+    id: string
+    key: string
+  } | null>(creatingTask?.group
+    ? {
+      id: creatingTask.group,
+      key: creatingTask.identity,
+    } : null)
+  const projectReveal = useRef<AbortController | null>(null)
+
+  const cancelProjectReveal = () => {
+    projectReveal.current?.abort()
+    setColumnRequest(null)
+  }
+
   const {
     selected,
-    revealing,
     expandedIds,
     cards,
     columns: statusColumns,
@@ -349,6 +366,7 @@ export function HydraView({
     command,
     connected,
     notify,
+    opening: cancelProjectReveal,
     view: {
       ...pageView,
       page: 'hydra',
@@ -537,18 +555,6 @@ export function HydraView({
       }),
     })) : orderedColumns
   const viewport = useWorkspaceViewport()
-  const [
-    columnRequest,
-    setColumnRequest,
-  ] = useState<{
-    id: string
-    key: string
-  } | null>(creatingTask?.group
-    ? {
-      id: creatingTask.group,
-      key: creatingTask.identity,
-    } : null)
-
   const expandedProjectWidths = new Map<string, number>()
 
   for (const id of expandedIds) {
@@ -616,102 +622,62 @@ export function HydraView({
     project.path,
     project.polis,
   ]))
-  const revealingColumn = revealing && state.cards[revealing]
-    ? taskProjectGroup({
-      state,
-      card: state.cards[revealing]!,
-    }) : columnRequest?.id
-  const revealIndex = columns.findIndex(column => column.id === revealingColumn)
-  const revealTarget = columns[revealIndex]
-  const projectStart = projectSnaps[0] ?? 0
-  const targetStart = projectSnaps[revealIndex]
-  const finalColumnOffset = targetStart === undefined ? undefined : targetStart - projectStart
-  const finalColumnWidth = revealTarget ? columnWidth({ item: revealTarget }) : 0
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
-  const revealRequestKey = columnRequest && columnRequest.id === revealingColumn
-    ? columnRequest.key : undefined
   useLayoutEffect(
     () => {
       const scroller = viewport.axis.current
 
-      if (finalColumnOffset === undefined || !kanban || !scroller || !revealingColumn) {
+      if (!columnRequest || !kanban || !scroller) {
         return
       }
 
-      const target = kanban.querySelector<HTMLElement>(`[data-column="${CSS.escape(revealingColumn)}"]`)
+      const target = kanban.querySelector<HTMLElement>(`[data-column="${CSS.escape(columnRequest.id)}"]`)
 
       if (!target) {
         return
       }
 
-      const reveal = () => {
-        const scrollerOffset = layoutOffset({
-          element: scroller,
-          horizontal: true,
-        })
-        const projectsOffset = layoutOffset({
-          element: kanban,
-          horizontal: true,
-        }) - scrollerOffset
-        const expectedTargetLeft = projectsOffset + finalColumnOffset
+      const controller = new AbortController()
+      const { signal } = controller
+      projectReveal.current = controller
+
+      const reveal = async () => {
+        if (!await afterTaskLayout({ signal }) || !await afterSteadyLayout({
+          element: target,
+          signal,
+        })) {
+          return
+        }
+
+        const viewport = scroller.getBoundingClientRect()
+        const bounds = target.getBoundingClientRect()
         const availablePadding = Math.max(
           0,
-          scroller.clientWidth - finalColumnWidth,
+          scroller.clientWidth - bounds.width,
         )
-        const left = expectedTargetLeft - Math.min(
+        const padding = Math.min(
           revealPadding,
           availablePadding,
         )
+        const viewportLeft = viewport.left + scroller.clientLeft
+        const left = scroller.scrollLeft + bounds.left - viewportLeft - padding
         scroller.scrollTo({
           left,
           behavior: 'instant',
         })
 
-        const targetLeft = layoutOffset({
-          element: target,
-          horizontal: true,
-        }) - scrollerOffset
-        const targetRight = targetLeft + target.offsetWidth
-        const settledPosition = Math.abs(targetLeft - expectedTargetLeft) <= 1
-        const settledWidth = Math.abs(target.offsetWidth - finalColumnWidth) <= 1
-        const fits = targetLeft >= scroller.scrollLeft - 1
-          && targetRight <= scroller.scrollLeft + scroller.clientWidth + 1
-        const wideAtStart = target.offsetWidth > scroller.clientWidth
-          && Math.abs(scroller.scrollLeft - left) <= 1
-
-        if (settledPosition && settledWidth && (fits || wideAtStart)) {
-          observer.disconnect()
-
-          if (revealRequestKey) {
-            setColumnRequest(current => current?.key === revealRequestKey ? null : current)
-          }
-        }
-      }
-
-      const observer = new ResizeObserver(reveal)
-      observer.observe(kanban)
-
-      for (let column: Element | null = target; column; column = column.previousElementSibling) {
-        observer.observe(column)
-      }
-
-      if (layer) {
-        observer.observe(layer)
+        setColumnRequest(current => current?.key === columnRequest.key ? null : current)
       }
 
       reveal()
 
-      return () => observer.disconnect()
+      return () => controller.abort()
     },
     [
       kanban,
-      layer,
-      revealingColumn,
-      revealRequestKey,
-      finalColumnOffset,
+      columnRequest,
       revealPadding,
-      finalColumnWidth,
     ],
   )
 
@@ -827,6 +793,7 @@ export function HydraView({
   }
 
   const selectProject = ({ path }: { path: string }) => {
+    cancelOpen()
     setPage({ page: 'hydra' })
     const project = state.projects?.find(project => project.path === path || project.name === path)
     const id = project?.group?.id ?? project?.path ?? path
@@ -990,6 +957,7 @@ export function HydraView({
   })))
 
   const revealProject = ({ id }: { id: string }) => {
+    cancelOpen()
     setColumnRequest({
       id,
       key: crypto.randomUUID(),
