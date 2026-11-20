@@ -1,10 +1,11 @@
 import { CARET_HOST } from '#web-hydra/caret.ts'
 
-// The caret host is editable only to draw a caret, so its keys are not typing.
 export const isEditing = ({ target }: { target: Element }) => {
   const field = target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')
 
-  return !!field && !field.hasAttribute(CARET_HOST)
+  const isMessageCaret = field?.hasAttribute(CARET_HOST)
+
+  return !!field && !isMessageCaret
 }
 
 export function focusElement({ selector }: { selector: string }) {

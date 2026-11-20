@@ -60,7 +60,6 @@ export function changedIds({
   return ids
 }
 
-// Column overrides reset only for the visible Hydra.
 export function resetPatch({
   id,
   view,

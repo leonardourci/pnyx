@@ -347,7 +347,6 @@ export function Oracle({
 
     origin.current = target
     attempt.current = null
-    // Render before focusing so typed keys reach the input.
     flushSync(() => {
       setOpen(true)
       setAsk(null)

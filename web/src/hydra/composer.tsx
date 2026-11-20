@@ -280,7 +280,6 @@ export function Composer({
     [],
   )
 
-  // Up from the start of the draft leaves for what sits above the composer: an open question, then the last reply.
   const draftKey = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
       e.preventDefault()

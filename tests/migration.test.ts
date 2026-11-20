@@ -1050,6 +1050,15 @@ test(
       ],
     })
     expect(importedHistory.events[0].data.text).toBe('Historical findings stay in history')
+    const reportMatches = await imported.owner({
+      args: [
+        'oracle',
+        'Historical findings stay in history',
+        '--card',
+        'legacy',
+      ],
+    })
+    expect(JSON.stringify(reportMatches.results)).toContain('findings')
     await imported.owner({
       args: [
         'task',

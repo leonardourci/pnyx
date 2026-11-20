@@ -122,7 +122,7 @@ const history = guard({
         ...selection,
         descending: true,
       })) {
-        if ((values.updates && !showsUpdate({ event }))) {
+        if (values.updates && !showsUpdate({ event })) {
           continue
         }
 

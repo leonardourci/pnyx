@@ -231,7 +231,7 @@ export function reconcileAsks({
     card,
     audience: 'owner',
   })) {
-    if ((ask.kind === 'go' && ask.hold?.id === card.hold?.id)) {
+    if (ask.kind === 'go' && ask.hold?.id === card.hold?.id) {
       continue
     }
 

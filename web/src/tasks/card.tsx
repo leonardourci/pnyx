@@ -457,7 +457,6 @@ export const HydraCard = memo(function HydraCard({
     hidden: tab !== id,
     tabIndex: 0,
   })
-  // Activity mounts only while it shows, so a hidden one reads no history; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
 
   const click = ({

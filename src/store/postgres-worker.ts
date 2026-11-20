@@ -89,11 +89,16 @@ const REMOVE_RETIRED_FEATURES = `alter table cards drop column if exists kind;
     where data::jsonb ?| array['kind', 'report'];
   update card_references set data = (data::jsonb - 'kind' - 'report')::json
     where data::jsonb ?| array['kind', 'report'];
+  update card_references set data = jsonb_set(data::jsonb, '{asks}', (
+    select jsonb_agg(question - 'origin' order by position)
+    from jsonb_array_elements(data::jsonb->'asks') with ordinality as asks(question, position)
+  ))::json where data::jsonb->'asks' @? '$[*].origin';
   update questions set data = (data::jsonb - 'origin')::json where data::jsonb ? 'origin';
   update hydras set config = (config::jsonb - 'readPoleis')::json where config::jsonb ? 'readPoleis';
   update hydra_values set value = (value::jsonb - 'keyboard')::json
     where key = 'view' and value::jsonb ? 'keyboard';
-  update settings set value = (value::jsonb - 'keyboard' - 'poleis' - 'projectPoleis')::json`
+  update settings set value = (value::jsonb - 'keyboard' - 'poleis' - 'projectPoleis')::json
+    where value::jsonb ?| array['keyboard', 'poleis', 'projectPoleis']`
 
 // A database another build's schema made would fail writes this build's statements make, so it is refused by name.
 async function requireSchema({
