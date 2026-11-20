@@ -1888,23 +1888,26 @@ test(
       fs.watch = nativeWatch
       syncBuiltinESMExports()
     })
-    fs.watch = new Proxy(nativeWatch, {
-      apply(...[
-        watch,
-        receiver,
-        args,
-      ]: Parameters<NonNullable<ProxyHandler<typeof nativeWatch>['apply']>>) {
-        if (String(args[0]).startsWith(`${taskRoot}/`) && typeof args.at(-1) === 'function') {
-          args[args.length - 1] = () => {}
-        }
-
-        return Reflect.apply(
+    fs.watch = new Proxy(
+      nativeWatch,
+      {
+        apply(...[
           watch,
           receiver,
           args,
-        )
+        ]: Parameters<NonNullable<ProxyHandler<typeof nativeWatch>['apply']>>) {
+          if (String(args[0]).startsWith(`${taskRoot}/`) && typeof args.at(-1) === 'function') {
+            args[args.length - 1] = () => {}
+          }
+
+          return Reflect.apply(
+            watch,
+            receiver,
+            args,
+          )
+        },
       },
-    })
+    )
     syncBuiltinESMExports()
     const { worker } = await hydra.startTask({ key: 'facts' })
     await until({
@@ -2025,10 +2028,13 @@ test(
     )
     await pnyx.restart({
       whileStopped: () => {
-        rmSync(unavailableDir, {
-          recursive: true,
-          force: true,
-        })
+        rmSync(
+          unavailableDir,
+          {
+            recursive: true,
+            force: true,
+          },
+        )
         writeFileSync(
           unavailableDir,
           'A file occupies the task directory',

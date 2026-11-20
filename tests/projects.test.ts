@@ -4691,6 +4691,7 @@ test(
     } finally {
       unlinkSync(malformed)
     }
+
     await pnyx.restart()
     const restored = await hydra.owner({
       args: [
