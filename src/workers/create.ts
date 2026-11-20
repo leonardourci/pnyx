@@ -354,8 +354,13 @@ export async function createCommand({
   }))!
   const task = (created.card as { id: string }).id
   const operation = meta.id ?? task
-  const notQueued = chosen === 'queue' ? queueGap({
-    state: loadHydra({ hydraId }).state,
+  const filed = loadHydra({ hydraId }).state
+  const queuedBefore = Object.hasOwn(
+    filed.eventIds,
+    `${operation}:queue`,
+  )
+  const notQueued = chosen === 'queue' && !queuedBefore ? queueGap({
+    state: filed,
     task,
     behind: values.behind as string,
   }) : undefined
