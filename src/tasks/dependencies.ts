@@ -1,5 +1,3 @@
-import { inform } from '#app/command-notices.ts'
-import { reportReviewGaps } from '#investigations/inventory.ts'
 import { openAsks } from './ask-state.ts'
 import { holdBlocker, ownerGates, questionBlockers, type Blocker } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -105,23 +103,12 @@ export function completionGaps({
     gaps.push(declared ?? 'not completed')
   }
 
-  if (card.kind === 'investigation') {
-    if (!card.report) {
-      gaps.push('no stored investigation report')
-    } else {
-      gaps.push(...reportReviewGaps({
-        state,
-        card,
-      }))
-    }
-  }
-
   const branchLanding = cardLanding({
     card,
     projects: state.projects ?? [],
   })?.landing === 'branch'
 
-  if (card.kind !== 'investigation' && !branchLanding && pullRequests.some(link => link.state !== 'merged')) {
+  if (!branchLanding && pullRequests.some(link => link.state !== 'merged')) {
     gaps.push('pull request not merged')
   }
 
@@ -277,25 +264,4 @@ export function startBlockers({
       card,
     }),
   })
-}
-
-export function requireReady({
-  state,
-  card,
-}: {
-  state: HydraState
-  card: Card
-}): void {
-  const blockers = startBlockers({
-    state,
-    card,
-  })
-
-  for (const blocker of blockers) {
-    inform({
-      task: card.id,
-      reason: blocker.reason,
-      clear: blocker.clear,
-    })
-  }
 }

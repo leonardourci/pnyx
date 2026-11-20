@@ -2,7 +2,7 @@ import { type ReadonlyJSONValue, boolean, createBuilder, createSchema, defineQue
 import type { HydraConfig, HydraMessage } from '#hydra/model.ts'
 import { OWNER_ACTORS } from '#app/actors.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
-import type { Ask, Card, NoteKind, TaskDeclaration, TaskKind, TaskStatus } from '#tasks/model.ts'
+import type { Ask, Card, NoteKind, TaskDeclaration, TaskStatus } from '#tasks/model.ts'
 import type { Link, LinkKind, LinkState } from '#tasks/delivery/model.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
@@ -78,7 +78,6 @@ const cards = table('cards')
     rank: number().optional(),
     parent_id: string().optional(),
     project: string().optional(),
-    kind: enumeration<TaskKind>().optional(),
     status: enumeration<TaskStatus>().optional(),
     hidden: boolean(),
     done_at: string().optional(),

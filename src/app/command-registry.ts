@@ -82,8 +82,6 @@ const COMMAND_REGISTRY = {
       ],
       own: [
         'ask',
-        'report',
-        'report-review',
         'refresh-links',
         'inbox',
         'source',

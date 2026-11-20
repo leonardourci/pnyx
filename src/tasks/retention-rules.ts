@@ -1,6 +1,5 @@
 import { ownerGates } from './owner-gates.ts'
 import { openAsks } from './ask-state.ts'
-import { reportReviewGaps } from '#investigations/inventory.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
@@ -137,13 +136,6 @@ export function doneDeadline({
   let next: number | undefined
 
   for (const card of Object.values(state.cards)) {
-    if (reportReviewGaps({
-      state,
-      card,
-    }).length) {
-      continue
-    }
-
     const deadline = cardDoneDeadline({
       card,
       hours,

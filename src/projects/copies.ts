@@ -6,9 +6,8 @@ import { settleCopy } from './copy-settle.ts'
 import { trimPool } from './copy-pool.ts'
 
 // A task in Done whose agent is still working keeps its copy until the agent stops.
-// An investigation keeps its copy, so the worker that becomes its build resumes in the same folder.
 export const settles = ({ card }: { card: Card }) => Boolean(card.doneAt) && card.copy?.state === 'active'
-  && card.activity !== 'working' && card.kind !== 'investigation'
+  && card.activity !== 'working'
 
 export async function settleDone({
   hydraId,

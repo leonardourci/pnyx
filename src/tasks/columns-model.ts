@@ -44,8 +44,6 @@ export const CARD_FACTS = [
   'pr:red',
   'pr:merged',
   'pr:closed',
-  'kind:build',
-  'kind:investigation',
   'done',
   'reminder-due',
   'queued',

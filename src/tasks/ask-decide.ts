@@ -233,7 +233,6 @@ export function decideAsk({
   ref,
   id,
   audience,
-  fromReport,
   kind,
   question,
   context,
@@ -247,7 +246,6 @@ export function decideAsk({
   id: string
   kind?: string
   audience: AskAudience
-  fromReport?: string
   question: string
   context?: string
   details?: string
@@ -260,8 +258,6 @@ export function decideAsk({
     ref,
   })
 
-  let origin: Ask['origin']
-
   if (card.id === HYDRA_CARD && audience !== 'owner') {
     audience = 'owner'
     inform({
@@ -269,26 +265,6 @@ export function decideAsk({
       reason: 'Hydra-wide question routed to the owner',
       clear: 'Use pnyx-axi task ask <task> --to hydra for a worker question',
     })
-  }
-
-  if (fromReport !== undefined) {
-    if (audience !== 'owner') {
-      throw invalid({ message: '--from-report links an owner question; ask Hydra to file it on separate gated work' })
-    }
-
-    const source = askableTask({
-      state,
-      ref: fromReport,
-    })
-
-    if (source.id === card.id || !source.report) {
-      throw invalid({ message: '--from-report must name a different task with a stored report' })
-    }
-
-    origin = {
-      task: source.id,
-      report: source.report.id,
-    }
   }
 
   if (audience === 'owner' && meta.actor !== HYDRA_ACTOR) {
@@ -393,7 +369,6 @@ export function decideAsk({
       data: {
         id,
         audience,
-        ...(origin ? { origin } : {}),
         ...(kind === 'go' ? {
           kind,
           hold: structuredClone(card.hold),
@@ -813,7 +788,7 @@ export function decideAskClosure({
     ask,
   })
 
-  if (ask.audience === 'owner' && !ask.origin && !ask.kind) {
+  if (ask.audience === 'owner' && !ask.kind) {
     inform({
       task: card.id,
       reason: 'Owner question closed explicitly without an answer',

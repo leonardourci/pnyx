@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { LANDINGS, MERGERS, cardLanding, type Landing, type LandingRule, type Merger } from './model.ts'
-import { investigationLine, reportLine } from '#investigations/report.ts'
 import { projectsFor } from '#projects/read.ts'
 
 export function landingWording({ rule }: { rule: LandingRule }): string {
@@ -62,7 +61,7 @@ export function parseMerger({ value }: { value: string }): Merger {
 }
 
 // The worker header's landing line, so a worker knows exactly where its job stops.
-export function landingLine({
+function landingLine({
   rule,
 }: {
   rule: LandingRule
@@ -78,37 +77,19 @@ export function landingLine({
   return `Landing: commit on your branch, push with \`git push -u origin HEAD:refs/heads/<your-branch>\` to track its own remote branch, open a pull request as a draft if the readiness requirements above are not yet met, and mark it ready after meeting those requirements. Pnyx discovers it from this task's branch; ${merger}. Never merge it yourself. Pnyx sends you failed checks and new review comments to fix.`
 }
 
-// Where this task's worker stops: an investigation at its stored report, anything else at its landing rule.
+// Where this task's worker stops, from its task or project landing rule.
 export function taskStops({
   state,
-  hydraId,
   card,
 }: {
   state: HydraState
-  hydraId: string
   card: Card
 }): string[] {
-  if (card.kind === 'investigation') {
-    return [
-      investigationLine({
-        hydraId,
-        id: card.id,
-      }),
-    ]
-  }
-
   const stops: string[] = []
   const rule = taskLanding({
     state,
     card,
   })
-
-  if (card.report) {
-    stops.push(reportLine({
-      hydraId,
-      id: card.id,
-    }))
-  }
 
   if (rule) {
     stops.push(landingLine({

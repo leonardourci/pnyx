@@ -130,10 +130,15 @@ export function applyAsk({
 
   if (event.type === 'task.asked') {
     if (!card.asks?.some(a => a.id === event.data.id)) {
+      const question = structuredClone(event.data)
+      Reflect.deleteProperty(
+        question,
+        'origin',
+      )
       card.asks = [
         ...(card.asks ?? []),
         {
-          ...structuredClone(event.data),
+          ...question,
           at: event.at,
           actor: event.actor,
         },

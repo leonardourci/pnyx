@@ -220,10 +220,10 @@ export function reconcileAsks({
 
   const changes: HydraEvent[] = []
   const declaredDone = event.type === 'task.declared' && event.data.state === 'done'
-    && card.kind !== 'investigation' && card.status?.actor !== 'pnyx'
+    && card.status?.actor !== 'pnyx'
   const cancelled = event.type === 'card.outcome' && event.data.after?.closed === true
   const movedDone = event.type === 'card.moved' && event.actor !== 'pnyx'
-    && card.kind !== 'investigation' && event.data.before !== event.data.after && state.config?.columns
+    && event.data.before !== event.data.after && state.config?.columns
     .some(column => column.id === card.column && column.role === 'done')
   const ended = declaredDone || cancelled || movedDone
 
@@ -231,7 +231,7 @@ export function reconcileAsks({
     card,
     audience: 'owner',
   })) {
-    if (ask.origin || (ask.kind === 'go' && ask.hold?.id === card.hold?.id)) {
+    if ((ask.kind === 'go' && ask.hold?.id === card.hold?.id)) {
       continue
     }
 

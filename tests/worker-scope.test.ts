@@ -1,6 +1,4 @@
 import { workerLine } from './setup/worker-log.ts'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { rows, pnyxAxi, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
@@ -531,7 +529,7 @@ test(
 )
 
 test(
-  'a worker\'s own question, link, progress message, report, report review and sources work, and it reads any task, Hydra and setting',
+  'a worker\'s own question, link, progress message and sources work, and it reads any task, Hydra and setting',
   async () => {
     await workerLine({
       hydra,
@@ -574,40 +572,6 @@ test(
         'Halfway',
       ],
     })
-    const file = join(
-      hydra.folder({ name: 'mine' }),
-      'report.md',
-    )
-    writeFileSync(
-      file,
-      '# Findings\n\nNothing to fix.\n',
-    )
-    await asWorker.run({
-      args: [
-        'task',
-        'report',
-        'mine',
-        '--file',
-        file,
-      ],
-    })
-    const stored = await asWorker.run({
-      args: [
-        'task',
-        'report',
-        'mine',
-      ],
-    })
-    await asWorker.run({
-      args: [
-        'task',
-        'report-review',
-        'mine',
-        '--report',
-        stored.id,
-        '--none',
-      ],
-    })
     await asWorker.run({
       args: [
         'task',
@@ -636,11 +600,6 @@ test(
       [
         'task',
         'show',
-        'other',
-      ],
-      [
-        'task',
-        'report',
         'other',
       ],
       [

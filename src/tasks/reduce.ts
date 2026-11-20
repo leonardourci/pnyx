@@ -199,7 +199,6 @@ export function applyTask({
       parentId,
       column,
       folder,
-      kind,
     } = event.data
     const columns = hydraConfig({ state }).columns
     const held = Boolean(event.data.hold)
@@ -252,10 +251,6 @@ export function applyTask({
       state.cards[event.cardId]!.unstarted = event.data.unstarted
     }
 
-    if (kind === 'investigation') {
-      state.cards[event.cardId]!.kind = kind
-    }
-
     if (event.data.intent) {
       state.cards[event.cardId]!.intent = event.data.intent
     }
@@ -287,26 +282,6 @@ export function applyTask({
         if (card.status?.state === 'done') {
           delete card.status
         }
-      }
-
-      card.kind = event.data.after
-    }
-
-    if (event.type === 'task.report') {
-      card.report = {
-        id: event.id,
-        at: event.at,
-        actor: event.actor,
-        chars: event.data.text.length,
-      }
-    }
-
-    if (event.type === 'task.report-reviewed' && card.report?.id === event.data.report) {
-      card.report.review = {
-        id: event.id,
-        at: event.at,
-        actor: event.actor,
-        calls: structuredClone(event.data.calls),
       }
     }
 

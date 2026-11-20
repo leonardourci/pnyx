@@ -153,7 +153,6 @@ export async function taskPrompt({
         hydraNotes: state.hydraMemory?.workers?.text,
         projectNotes,
         stops: taskStops({
-          hydraId,
           state,
           card,
         }),

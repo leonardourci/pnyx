@@ -139,11 +139,6 @@ export function applyContextNotes({
         text: event.data.note ? `declared ${event.data.state}: ${event.data.note}` : `declared ${event.data.state}`,
         report: true,
       })
-    } else if (event.type === 'task.report') {
-      add({
-        text: `result: ${event.data.text}`,
-        report: true,
-      })
     }
   }
 

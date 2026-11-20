@@ -3,7 +3,6 @@ import { projectedAttention, sessionTask } from '#workers/session-attachments.ts
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
-import { reportReviewGaps } from '#investigations/inventory.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'
 import { agentActor, hostedHydra, pnyxRunsHydra, reportActor } from './hydra.ts'
@@ -172,18 +171,11 @@ function linkReasons({
   }
 
   if (after.state === 'merged') {
-    // Pnyx does not declare the task done while its report waits for review, so Hydra hears what is missing.
     return before?.state === 'merged' ? [] : [
       {
         kind: 'merged',
         card: card.id,
-        detail: [
-          after.url,
-          ...reportReviewGaps({
-            state,
-            card,
-          }),
-        ].join('; '),
+        detail: after.url,
       },
     ]
   }
@@ -350,17 +342,6 @@ function ordinaryReasons({
         kind: 'not confirmed',
         card: card.id,
         detail: event.data.detail,
-      },
-    ]
-  }
-
-  if (event.type === 'task.report' && card && card.id !== HYDRA_CARD
-    && reportActor({ actor: event.actor }) && pnyxRunsHydra({ state })) {
-    return [
-      {
-        kind: 'report',
-        card: card.id,
-        detail: `stored result at seq ${event.seq}. Read it with task history ${card.id} --full`,
       },
     ]
   }

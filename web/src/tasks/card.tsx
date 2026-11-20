@@ -1,4 +1,3 @@
-import { TaskReport } from '#web-investigations/task-report.tsx'
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { forgetSessionView, useSessionView } from '#web-app/session-view.ts'
 import { taskViewKey } from './task-view.ts'
@@ -885,11 +884,6 @@ export const HydraCard = memo(function HydraCard({
                         ))}
                       </CardSection>
                     )}
-                    <TaskReport
-                      card={card}
-                      command={command}
-                      connected={connected}
-                    />
                     {card.launch?.dispatch && <div className="muted small"><RichText text={card.launch.dispatch} /></div>}
                     {children}
                   </>
