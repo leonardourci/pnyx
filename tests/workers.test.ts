@@ -2307,6 +2307,11 @@ test(
       'utf8',
     ).trim()).toBe(commandTask.id)
 
+    rmSync(
+      commandFolder,
+      { recursive: true },
+    )
+
     for (const route of [
       'firstmate',
       'paseo',
@@ -2641,12 +2646,6 @@ test(
       [
         'hydra',
         'homes',
-      ],
-      [
-        'setup',
-        'hydra',
-        '--home',
-        '/unused',
       ],
       [
         'firstmate',
