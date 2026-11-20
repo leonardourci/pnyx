@@ -480,8 +480,8 @@ test(
       box.x + box.width / 2,
       box.y + box.height / 2,
     )
-    // Up to half a screen below the first loaded row, within reach of the older rows' loading point.
-    const distance = await conversation.evaluate(chat => chat.scrollTop - chat.clientHeight / 2)
+    // Up to the very top, where the browser's own scroll anchoring does not hold the rows on screen.
+    const distance = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
     await page.mouse.wheel(
       0,
       -distance,

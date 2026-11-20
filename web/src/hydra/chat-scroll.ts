@@ -2,9 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 
+const OPENING_KEYS = new Set([
+  'Enter',
+  ' ',
+])
+
 // The one owner of a chat's scrollTop. In bottom mode, the default on open, after a send and on Jump, any growth keeps
-// the end in view. Only the owner's input moving up enters reading mode, where native scroll anchoring keeps the rows
-// they read still while rows load above or grow.
+// the end in view. Only the owner's input moving up enters reading mode, where the rows they read stay still while rows
+// load above or grow.
 export function useChatScroll() {
   const scroller = useRef<HTMLDivElement>(null)
   const content = useRef<HTMLDivElement>(null)
@@ -12,7 +17,43 @@ export function useChatScroll() {
     reading,
     setReading,
   ] = useState(false)
-  const [follow] = useState(() => createChatFollow({ changed: ({ away }) => setReading(away) }))
+  // The first row the owner sees while reading at the very top, and how far below the chat's top it sits. Native scroll
+  // anchoring holds the rows on screen everywhere else, but not at offset 0, where a prepend would push them down.
+  const reader = useRef<{
+    id: string
+    top: number
+  }>(undefined)
+
+  const rememberReading = () => {
+    const element = scroller.current
+
+    if (element?.scrollTop !== 0) {
+      reader.current = undefined
+
+      return
+    }
+
+    const top = element.getBoundingClientRect().top
+    const rows = element.querySelectorAll<HTMLElement>('[data-entry-id]')
+    const first = [...rows].find(row => row.getBoundingClientRect().bottom > top)
+    reader.current = first ? {
+      id: first.dataset.entryId!,
+      top: first.getBoundingClientRect().top - top,
+    } : undefined
+  }
+
+  const [follow] = useState(() => createChatFollow({
+    changed: ({ away }) => {
+      setReading(away)
+
+      // Reading starts where the owner is; the end forgets it.
+      if (!away) {
+        reader.current = undefined
+      } else if (!reader.current) {
+        rememberReading()
+      }
+    },
+  }))
   // A selection or focus inside the messages would scroll away under the owner, so the end is not kept meanwhile.
   const selecting = useRef(false)
 
@@ -24,14 +65,33 @@ export function useChatScroll() {
     }
   }
 
-  const keepEnd = () => {
-    if (follow.following() && !selecting.current) {
+  const holdReading = () => {
+    const element = scroller.current
+    const held = reader.current
+    const row = held && element?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(held.id)}"]`)
+
+    if (!element || !held || !row || element.scrollTop !== 0) {
+      return
+    }
+
+    const moved = row.getBoundingClientRect().top - element.getBoundingClientRect().top - held.top
+
+    if (Math.abs(moved) >= 1) {
+      element.scrollTop += moved
+    }
+  }
+
+  const keepPlace = () => {
+    if (!follow.following()) {
+      holdReading()
+    } else if (!selecting.current) {
       scrollToEnd()
     }
   }
 
-  // After every render, before the browser paints or runs a frame, so rows that just arrived never show off the end.
-  useLayoutEffect(keepEnd)
+  // After every render, before the browser paints or runs a frame, so rows that just arrived never show off the end
+  // or push the rows being read.
+  useLayoutEffect(keepPlace)
   // Rows settle their size as they come into view, and the chat changes size with its panel.
   useLayoutEffect(
     () => {
@@ -54,7 +114,7 @@ export function useChatScroll() {
           )
         }
 
-        keepEnd()
+        keepPlace()
       })
       sizes.observe(element)
       sizes.observe(rows)
@@ -80,7 +140,7 @@ export function useChatScroll() {
         selecting.current = selected
 
         if (!selected) {
-          keepEnd()
+          keepPlace()
         }
       },
     }),
@@ -98,9 +158,16 @@ export function useChatScroll() {
 
   const handlers = {
     onWheel: ownerInput,
-    onKeyDown: ({ target }: KeyboardEvent) => {
+    onKeyDown: ({
+      target,
+      key,
+    }: KeyboardEvent) => {
       ownerInput()
-      expandRow({ target })
+
+      // Only the keys that open a summary expand its row; Tab passes over it.
+      if (OPENING_KEYS.has(key)) {
+        expandRow({ target })
+      }
     },
     onTouchStart: ownerInput,
     onTouchMove: ownerInput,
@@ -131,6 +198,10 @@ export function useChatScroll() {
         top: scrollTop,
         remaining: scrollHeight - scrollTop - clientHeight,
       })
+
+      if (!follow.following()) {
+        rememberReading()
+      }
     },
   }
 
