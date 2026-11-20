@@ -88,7 +88,7 @@ Rules:
 
 ## What each file covers
 
-- `access.test.ts`: a worker's and Hydra's limits, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
+- `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
 - `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.
@@ -97,9 +97,9 @@ Rules:
 - `settings.test.ts`: the settings every Hydra shares.
 - `migration.test.ts`: the migration from #378's schema at live size, and the upgrade's data check on a copy of an older schema.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
-- `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
+- `upgrade.test.ts`: `/upgrade`, its checkout notices, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
-- `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
+- `worker-scope.test.ts`: workers can change other tasks and settings with scope notices, whichever way they were started, and retain their own reporting and read access.
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.

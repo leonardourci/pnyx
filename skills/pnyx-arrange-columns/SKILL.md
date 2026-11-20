@@ -16,7 +16,7 @@ The page groups tasks by project. Ideas is first and contains tasks without an a
 - `task arrange <task> [--before <task>]` sets visual order within a project and parent. State groups stay needs you, running, waiting/queued/paused, then done. `task reorder --behind` still changes a worker queue, not visual order.
 - `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":{"<project-id>":true}}}'` saves project layout. Project ids are repository paths or the group's id. Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed` fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
 
-Duplicate repository attachments proceed with a notice naming their Hydras. Setup and Settings suggest a keeper. Use `project keep <repo-path> --hydra <keeper>`. It moves every task and records each move, or lists all blockers and moves nothing. Never choose the keeper for the owner.
+Duplicate repository attachments proceed with a notice naming their Hydras. Setup and Settings suggest a keeper. Use `project keep <repo-path> --hydra <keeper>`. It moves every task and records each move, reporting the relationships it adjusts and the commands that restore them. Choose the keeper from the owner’s instructions and the work recorded in each Hydra.
 
 ## Lifecycle compatibility
 

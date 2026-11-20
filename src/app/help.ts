@@ -422,7 +422,7 @@ Puts the card in the column just above the --before card, or at the end of the c
 Runs directly and returns its result; confirmation is not needed.
 Pnyx applies column rules on phase changes; a manual move lasts until the next rule result changes.
 Hydra uses manual placement for an exceptional correction with a reason. Read rules with \`pnyx-axi column list\`.
-Hydra's moves need --reason, kept on the event and shown in the task's Updates. The owner's moves need none.
+Hydra's moves should carry --reason, kept on the event and shown in the task's Updates; a missing reason produces a notice.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
 GitHub pull request URLs get kind and number filled in. A link never moves the card.
