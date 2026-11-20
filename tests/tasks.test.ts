@@ -1,4 +1,4 @@
-import { DEFAULT_COLUMNS, migrateDefaultRule } from '#tasks/column-defaults.ts'
+import { migrateDefaultRule } from '#tasks/column-defaults.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
@@ -2890,9 +2890,33 @@ test(
 test(
   'the preceding default working rule is removed without changing custom placement rules',
   () => {
-    const current = DEFAULT_COLUMNS.find(column => column.role === 'in_progress')!
+    const expected = [
+      [
+        '!owner-question',
+        '!done',
+        '!held',
+        '!queued',
+        'worker:checks',
+      ],
+      [
+        '!owner-question',
+        '!done',
+        '!held',
+        '!queued',
+        'worker:blocked',
+      ],
+      [
+        '!owner-question',
+        '!done',
+        '!held',
+        '!queued',
+        'worker:hydra',
+      ],
+    ]
     const previous = {
-      ...current,
+      id: 'in_progress',
+      title: 'In progress',
+      role: 'in_progress' as const,
       rule: [
         [
           '!owner-question',
@@ -2901,14 +2925,168 @@ test(
           '!queued',
           'worker:working',
         ],
-        ...current.rule,
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:checks',
+        ],
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:blocked',
+        ],
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:hydra',
+        ],
       ],
-    } as typeof current
-    expect(migrateDefaultRule({ column: previous }).rule).toEqual(current.rule)
+    } satisfies import('#tasks/columns-model.ts').HydraColumn
+    expect(migrateDefaultRule({ column: previous }).rule).toEqual(expected)
+    const reminderExcluded = {
+      ...previous,
+      rule: [
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:working',
+        ],
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:checks',
+        ],
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:blocked',
+        ],
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:hydra',
+        ],
+      ],
+    } satisfies import('#tasks/columns-model.ts').HydraColumn
+    expect(migrateDefaultRule({ column: reminderExcluded }).rule).toEqual(expected)
     const custom = {
       ...previous,
       rule: [['worker:working']],
-    } as typeof current
+    } satisfies import('#tasks/columns-model.ts').HydraColumn
     expect(migrateDefaultRule({ column: custom }).rule).toEqual([['worker:working']])
+  },
+)
+
+test(
+  'a push updates task fields while observing an attached session',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'parent',
+        '--title',
+        'Parent',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'observed',
+        '--title',
+        'Before',
+      ],
+    })
+    const folder = hydra.folder({ name: 'observed' })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'After',
+        parent: 'parent',
+        project: 'shop',
+        workspace: 'work',
+        tags: ['review'],
+        folder,
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+        activity: 'working',
+      }),
+    })
+    const result = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'observed',
+        '--full',
+      ],
+    })
+    expect(result.task).toMatchObject({
+      title: 'After',
+      parentId: (await hydra.task({ key: 'parent' })).id,
+      project: 'shop',
+      workspace: 'work',
+      tags: ['review'],
+      folder,
+      activity: 'working',
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        parent: null,
+        project: null,
+        folder: null,
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    const cleared = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'observed',
+        '--full',
+      ],
+    })
+    expect(cleared.task.parentId).toBeUndefined()
+    expect(cleared.task.project).toBeUndefined()
+    expect(cleared.task.folder).toBeUndefined()
   },
 )

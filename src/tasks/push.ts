@@ -162,6 +162,36 @@ export function decidePush({
 
   const agent = fields.agent ?? session?.agent
 
+  if (!(sessionSource && agent) || card) {
+    if (input.parent === null) {
+      fields.parentId = null
+    } else if (input.parent !== undefined) {
+      const parent = findCard({
+        state,
+        ref: text({
+          value: input.parent,
+          what: 'parent',
+        }),
+      })
+
+      if (wouldCycle({
+        cards: state.cards,
+        cardId,
+        parentId: parent.id,
+      })) {
+        throw invalid({ message: `parent ${parent.id} would make a cycle` })
+      }
+
+      const hasChildren = Object.values(state.cards).some(c => c.parentId === cardId)
+
+      if (parent.parentId || hasChildren) {
+        throw invalid({ message: 'subtasks have one level; a subtask cannot have children' })
+      }
+
+      fields.parentId = parent.id
+    }
+  }
+
   if (sessionSource && agent) {
     return decideSessionFacts({
       state,
@@ -174,34 +204,6 @@ export function decidePush({
       task: card,
       session,
     })
-  }
-
-  if (input.parent === null) {
-    fields.parentId = null
-  } else if (input.parent !== undefined) {
-    const parent = findCard({
-      state,
-      ref: text({
-        value: input.parent,
-        what: 'parent',
-      }),
-    })
-
-    if (wouldCycle({
-      cards: state.cards,
-      cardId,
-      parentId: parent.id,
-    })) {
-      throw invalid({ message: `parent ${parent.id} would make a cycle` })
-    }
-
-    const hasChildren = Object.values(state.cards).some(c => c.parentId === cardId)
-
-    if (parent.parentId || hasChildren) {
-      throw invalid({ message: 'subtasks have one level; a subtask cannot have children' })
-    }
-
-    fields.parentId = parent.id
   }
 
   if (source && isStaleSource({

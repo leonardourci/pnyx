@@ -230,6 +230,50 @@ export function applySessionFacts({
   })
 
   if (task) {
+    if (event.data.task) {
+      const {
+        title,
+        project,
+        workspace,
+        tags,
+        folder,
+        parentId,
+        rank,
+      } = fields
+
+      if (title !== undefined) {
+        task.title = title ?? task.autoTitle?.text ?? task.key
+        task.titleSet = title !== null
+      }
+
+      if (workspace !== undefined) {
+        task.workspace = workspace
+      }
+
+      if (tags !== undefined) {
+        task.tags = [...tags]
+      }
+
+      for (const [
+        field,
+        value,
+      ] of Object.entries({
+          project,
+          folder,
+          parentId,
+          rank,
+        })) {
+        if (value === null) {
+          delete task[field as 'project' | 'folder' | 'parentId' | 'rank']
+        } else if (value !== undefined) {
+          Object.assign(
+            task,
+            { [field]: value },
+          )
+        }
+      }
+    }
+
     touch({
       card: task,
       event,
