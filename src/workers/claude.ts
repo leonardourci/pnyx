@@ -359,7 +359,6 @@ export function claudeProvider({
       let closed = false, interrupted = false, active = false
       let inputGeneration = 0
       const nativeInputs = new Map<string, string>()
-      // Claude Code writes a uuid once per transcript and links what follows a repeat to the first record.
       const sentUuids = new Set<string>()
       let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
@@ -428,7 +427,7 @@ export function claudeProvider({
                 fresh = false
               }
 
-              const uuid = inputUuid({
+              const uuid = unsentUuid({
                 owner: compact ? undefined : item.ownerMessageId,
                 sent: sentUuids,
               })
@@ -1293,16 +1292,16 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
   }
 }
 
-function inputUuid({
+function unsentUuid({
   owner,
   sent,
 }: {
   owner?: string
   sent: Set<string>
 }): UUID {
-  const fresh = owner !== undefined && UUID_PATTERN.test(owner) && !sent.has(owner)
+  const reusable = owner !== undefined && UUID_PATTERN.test(owner) && !sent.has(owner)
 
-  return fresh ? owner as UUID : randomUUID()
+  return reusable ? owner as UUID : randomUUID()
 }
 
 export const readClaudeTranscript: TranscriptReader = ({

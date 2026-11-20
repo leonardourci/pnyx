@@ -12,10 +12,6 @@ export interface TypedWords {
   text: string
 }
 
-// The owner's words typed straight into a worker's session, in its terminal or the Paseo app: the user messages of the
-// task's transcript that echo no reply Pnyx queued and are none of Pnyx's own inputs (start prompts, steering notices)
-// or the harness's injected instructions. Only words written from `from` and before `to` count. A worker Pnyx runs has
-// no terminal, so its transcript is not read.
 export function typedWords({
   state,
   replies,
@@ -56,8 +52,7 @@ export function typedWords({
         card: card.id,
         events: replies,
       }),
-      hosted: false,
-      provider: card.agent?.provider,
+      agent: card.agent,
     })
 
     const typed = entries.filter(entry => {

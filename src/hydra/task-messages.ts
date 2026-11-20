@@ -1,5 +1,6 @@
 import { steeringText } from '#workers/inbox-notice.ts'
 import type { HydraEvent } from '#app/model.ts'
+import type { AgentRef } from '#workers/model.ts'
 import { injectedInstructions, ownMessage } from './chat-messages.ts'
 import { joinMessageParts } from './history.ts'
 import { splitEntry, type ThreadEntry } from './transcripts-read.ts'
@@ -79,17 +80,17 @@ const messageOf = ({ entry }: { entry: ThreadEntry }) => entry.messageId ?? entr
 export function deliveredInputs({
   entries,
   echoes,
-  hosted,
-  provider,
+  agent,
 }: {
   entries: ThreadEntry[]
   echoes: ReturnType<typeof replyEchoes>
-  hosted: boolean
-  provider?: string
+  agent?: AgentRef
 }): Set<ThreadEntry> {
   const inputs = entries.filter(entry => ownMessage({ entry }))
+  const adoptedFromTerminal = agent?.resume === true
+  const startedByPnyx = agent?.host === 'pnyx' && !adoptedFromTerminal
 
-  if (hosted) {
+  if (startedByPnyx) {
     return new Set(inputs)
   }
 
@@ -97,7 +98,7 @@ export function deliveredInputs({
   const pnyxWords = ({ message }: { message: ThreadEntry }) => steeringText({ text: message.text })
     || injectedInstructions({
       entry: message,
-      provider,
+      provider: agent?.provider,
     })
   const injected = messages.filter(message => pnyxWords({ message }))
   const injectedMessages = new Set(injected.map(message => messageOf({ entry: message })))

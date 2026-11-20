@@ -999,8 +999,7 @@ function readThreadPage(
       const delivered = deliveredInputs({
         entries: read.found.map(candidate => candidate.item),
         echoes,
-        hosted: source.agent?.host === 'pnyx',
-        provider: source.agent?.provider,
+        agent: source.agent,
       })
       kept = read.found.filter(candidate => !delivered.has(candidate.item))
     }
