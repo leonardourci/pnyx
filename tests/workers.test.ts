@@ -38,54 +38,57 @@ beforeAll(async () => {
   })
 })
 
-test('replaying an attachment to a missing task leaves the session available and the undo unrecorded', () => {
-  const session = 'codex:worker'
-  const state: HydraState = {
-    v: EVENT_VERSION,
-    seq: 0,
-    cards: {},
-    keys: {},
-    eventIds: {},
-    undone: {},
-    sessions: {
-      [session]: {
-        id: session,
-        agent: {
-          provider: 'codex',
-          sessionId: 'worker',
+test(
+  'replaying an attachment to a missing task leaves the session available and the undo unrecorded',
+  () => {
+    const session = 'codex:worker'
+    const state: HydraState = {
+      v: EVENT_VERSION,
+      seq: 0,
+      cards: {},
+      keys: {},
+      eventIds: {},
+      undone: {},
+      sessions: {
+        [session]: {
+          id: session,
+          agent: {
+            provider: 'codex',
+            sessionId: 'worker',
+          },
+          originCardId: 'original',
+          taskId: null,
+          attention: [],
+          sourceRefs: [],
         },
-        originCardId: 'original',
-        taskId: null,
-        attention: [],
-        sourceRefs: [],
       },
-    },
-  }
-  applySessionMove({
-    state,
-    event: {
-      ...base({
-        state,
-        cardId: 'missing',
-        meta: {
-          at: '2026-01-01T00:00:00.000Z',
-          actor: 'owner',
-          id: 'undo-detach',
+    }
+    applySessionMove({
+      state,
+      event: {
+        ...base({
+          state,
+          cardId: 'missing',
+          meta: {
+            at: '2026-01-01T00:00:00.000Z',
+            actor: 'owner',
+            id: 'undo-detach',
+          },
+        }),
+        type: 'task.session',
+        undoes: 'detach',
+        data: {
+          session,
+          before: null,
+          after: 'missing',
         },
-      }),
-      type: 'task.session',
-      undoes: 'detach',
-      data: {
-        session,
-        before: null,
-        after: 'missing',
       },
-    },
-  })
+    })
 
-  expect(state.sessions?.[session]?.taskId).toBeNull()
-  expect(state.undone).toEqual({})
-})
+    expect(state.sessions?.[session]?.taskId).toBeNull()
+    expect(state.undone).toEqual({})
+  },
+)
 
 test(
   'a reused provider session keeps its current worker and a retry starts the requested task',
