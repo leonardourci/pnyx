@@ -53,16 +53,11 @@ test(
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
     const stability = await column.evaluate(async element => {
       const tasks = [...element.querySelectorAll<HTMLElement>('[data-task]')]
-      const positions = tasks.map(task => task.getBoundingClientRect().top + element.scrollTop)
+      const positions = new Map(tasks.map(task => [task, task.getBoundingClientRect().top + element.scrollTop]))
 
       const scroll = async ({ top }: { top: number }) => {
-        const scrolled = new Promise<void>(resolve => element.addEventListener(
-          'scroll',
-          () => resolve(),
-          { once: true },
-        ))
-        element.scrollTop = top
-        await scrolled
+        element.scrollTo({ top, behavior: 'instant' })
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
       const sample = () => {
@@ -75,13 +70,11 @@ test(
             index,
           ) => task === tasks[index])
             && tasks.every(task => task.isConnected),
-          shifts: current.flatMap((
-            task,
-            index,
-          ) => {
-            const shift = task.getBoundingClientRect().top + element.scrollTop - positions[index]!
+          shifts: current.flatMap(task => {
+            const position = positions.get(task)
+            const shift = task.getBoundingClientRect().top + element.scrollTop - (position ?? 0)
 
-            return Math.abs(shift) > 1 ? [
+            return position !== undefined && Math.abs(shift) > 1 ? [
               {
                 task: task.dataset.task,
                 shift,
@@ -94,14 +87,17 @@ test(
 
       await scroll({ top: element.scrollHeight - element.clientHeight })
       const bottom = sample()
+      const bottomOffset = element.scrollTop
       await scroll({ top: 0 })
 
       return {
         bottom,
+        bottomOffset,
         top: sample(),
       }
     })
-    expect(stability).toEqual({
+    expect(stability.bottomOffset).toBeGreaterThan(0)
+    expect(stability).toMatchObject({
       bottom: {
         count: COLUMN_TASKS,
         retained: true,

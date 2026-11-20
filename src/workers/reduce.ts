@@ -255,7 +255,7 @@ export function applyReplyReceipt({
 
     const id = cardSessionId({ card })
     const session = id ? state.sessions?.[id] : undefined
-    const origin = session && state.cards[session.originCardId]
+    const origin = session && !session.launchId ? state.cards[session.originCardId] : undefined
     const task = session?.taskId ? state.cards[session.taskId] : undefined
 
     for (const holder of new Set([
