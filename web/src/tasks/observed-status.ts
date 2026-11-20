@@ -55,17 +55,10 @@ export function observedStatus({
   const startingSession = active && status.kind === 'not-started'
 
   if (status.kind === 'working' || startingSession) {
-    let tools = false
-
-    // Native work remains authoritative while transcript timestamps catch up.
-    if (action?.work) {
-      tools = action.work.runningTools.length > 0
-    } else if (action && !action.done) {
-      const earlierTurn = action.at !== undefined && card.workingSince !== undefined
-        && Date.parse(action.at) < Date.parse(card.workingSince)
-      tools = !earlierTurn && action.calls.length > 0
-    }
-
+    const tools = hasRunningTools({
+      action,
+      workingSince: card.workingSince,
+    })
     const text = tools ? 'working' : 'thinking'
 
     return {
@@ -81,4 +74,25 @@ export function observedStatus({
     ...status,
     details: status.text,
   }
+}
+
+function hasRunningTools({
+  action,
+  workingSince,
+}: {
+  action?: CurrentAction
+  workingSince?: string
+}): boolean {
+  if (action?.work) {
+    return action.work.runningTools.length > 0
+  }
+
+  if (!action || action.done || !action.calls.length) {
+    return false
+  }
+
+  const transcriptPredatesTurn = action.at !== undefined && workingSince !== undefined
+    && Date.parse(action.at) < Date.parse(workingSince)
+
+  return !transcriptPredatesTurn
 }

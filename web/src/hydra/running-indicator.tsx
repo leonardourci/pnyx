@@ -67,7 +67,7 @@ export function Running({
       })}` : undefined}
     >
       <span
-        className="chat-running-status inline-flex items-center gap-2 min-w-0 max-w-full [&>:not(.action-bubble)]:shrink-0 [&>:not(.action-bubble)]:whitespace-nowrap"
+        className="chat-running-status inline-flex items-center gap-2 min-w-0 max-w-full [&>:not(.action-bubble,.chat-status-label)]:shrink-0 [&>:not(.action-bubble,.chat-status-label)]:whitespace-nowrap"
         role="status"
         aria-label={statusName({
           running,
@@ -85,7 +85,7 @@ export function Running({
           })}
           </span>
         )}
-        <span role={labelName ? 'status' : undefined} aria-label={labelName} data-status={label}>{label}</span>
+        <span className="chat-status-label min-w-0 break-words" role={labelName ? 'status' : undefined} aria-label={labelName} data-status={label}>{label}</span>
         {children}
         {words && (
           <Tooltip
