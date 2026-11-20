@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one. The browser journeys also need Google Chrome.
+Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one.
 
 ```sh
 pnpm install
@@ -23,7 +23,7 @@ Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type l
 
 Imports across folders use the `package.json` aliases: `#<folder>/<file>.ts` resolves to `src/` and `#web-<folder>/<file>` to `web/src/`. Built code resolves `#…` to `dist/`, so anything that runs TypeScript from `src/` passes `--conditions=source`, or its `#` imports load the built files. Vitest (`vitest.config.ts`), `pnpm dev:server` and the Vite scripts pass it. A child the server starts with `execFile` and a login service installed from source take it from `SOURCE_CONDITIONS` in `src/app/source-conditions.ts`. The session-start hook adds it when its CLI is a `.ts` file.
 
-See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conventions](../.agents/skills/follow-conventions/SKILL.md#files-and-concerns) for when to split a file. `pnpm run lint` and `pnpm test` give deterministic verification. Each test file runs in its own process with a scratch home, its own copy of a migrated database and no inherited agent identity; see [Testing](testing.md) for the layout and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The browser journeys cover the chat and the board; check any other page change in the local preview and show it in the pull request's screenshots.
+See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conventions](../.agents/skills/follow-conventions/SKILL.md#files-and-concerns) for when to split a file. `pnpm run lint` and `pnpm test` give deterministic verification. Each test file runs in its own process with a scratch home, its own copy of a migrated database and no inherited agent identity; see [Testing](testing.md) for the layout and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. Check page changes in an isolated local preview and show them in the pull request's screenshots.
 
 Owner actions in the app run in the server, which holds each Hydra in memory and is its only writer, so no command waits on another writer's lock. A validation or permission refusal returns its reason at once. The writer applies a command's events to its loaded state, retains changed properties for the lifecycle rules' before-state and records which cards they touched. It then commits the events, those cards' rows and the small rows that read across cards in one Postgres transaction, which updates the Hydra's `seq` only from the value it read. A command that throws or loses that race commits nothing, and the Hydra is read back from its rows. Rows reloaded from Postgres must match a cold replay of the events.
 
@@ -138,7 +138,7 @@ The page's metrics use the existing fire-and-forget log path: `web/src/app/ui-me
 
 The single runtime switch is the existing Logs setting. `pnyx-axi settings set --json '{"logs":"off"}'` disconnects the performance observers, input capture listeners and metrics timer, cancels drag sampling, and drops pending metric aggregates. Ordinary warning/error logging keeps its existing behavior. Logs On resumes collection. No owner text, field values, task titles, DOM paths or keystrokes enter these metrics; action names are static tokens.
 
-The required CI job runs the ordinary suite with the normal renderer, then runs the dedicated performance journey alone with `PNYX_PERFORMANCE=1` for its 50ms drag/scroll budget. It rebuilds with `VITE_PNYX_PROFILE=1` and repeats that journey for local task redraws and DOM bounds; every other journey keeps the normal build. The normal build uses the ordinary React renderer. For React measurements, run `VITE_PNYX_PROFILE=1 pnpm run build` (or the same flag with `pnpm run web:dev`). That one build flag aliases `react-dom/client` to `react-dom/profiling`, emits source maps for Chrome stack attribution and enables `ProfileSurface` in `web/src/app/profile-surface.tsx`. Rebuild without the flag after diagnosis. Normal builds bypass the profiler boundaries and collect only browser measurements.
+The normal build uses the ordinary React renderer. For React measurements, run `VITE_PNYX_PROFILE=1 pnpm run build` (or the same flag with `pnpm run web:dev`). That one build flag aliases `react-dom/client` to `react-dom/profiling`, emits source maps for Chrome stack attribution and enables `ProfileSurface` in `web/src/app/profile-surface.tsx`. Rebuild without the flag after diagnosis. Normal builds bypass the profiler boundaries and collect only browser measurements.
 
 Components and flows use the same API:
 

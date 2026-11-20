@@ -23,8 +23,6 @@ Run `pnpm deslop` before marking the pull request ready; see [Verification](docs
 
 Both required checks, `deslop` and `Lint, build and tests`, must pass. The owner reviews and merges with a merge commit.
 
-The test job also builds the opt-in profiling variant for the separate performance journey; the ordinary journeys keep the normal renderer. See [Testing](docs/testing.md#performance-journey).
-
 ## CodeRabbit challenger review
 
 After `pnpm deslop` passes and CI is green on a PR that is ready for review, the owner or Hydra may request the challenger review with a PR comment: `@coderabbitai review`. Contributors and workers leave that request to them. CodeRabbit replaces the separate agent challenger before merge; the configured review skills still apply. Resolve each finding or answer it with a reason, then update the description and rerun verification after any fixes. A later review is requested explicitly again. `pnpm deslop` neither requests nor requires CodeRabbit.

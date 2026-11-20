@@ -1,23 +1,20 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx-axi`, the page through its WebSocket and its Zero reads. A few journeys open the real page in Chrome.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx-axi`, the page through its WebSocket and its Zero reads.
 
 ```text
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
-├── e2e/
-│   └── <journey>.test.ts   a few journeys through the real page in Chrome
-└── setup/              the shared setup: Postgres, the server, fake agents, the browser, fixtures
+└── setup/              the shared setup: Postgres, the server, fake agents, fixtures
 ```
 
 ## Running
 
-Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`) and Google Chrome. Then:
+Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`). Then:
 
 ```sh
 pnpm test                                   # builds, then runs everything
 pnpm exec vitest run tests/chat.test.ts     # one file, after a build
-pnpm exec vitest run --project integration  # everything but the browser journeys
 pnpm exec vitest run -t "Stop ends"         # tests whose name matches
 ```
 
@@ -25,23 +22,7 @@ The tests run the built CLI and serve the built page, so run `pnpm run build` af
 
 Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Postgres log there before they are deleted; CI does this and uploads the folder when a run fails.
 
-A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts, so zero-cache, which sizes its buffers from the heap limit, stays small. The integration files run on half the cores, longest first, and the browser journeys run after them on a quarter of the cores (one at a time on a 4-core CI runner), so no file is starved of CPU or memory. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
-
-### Performance journey
-
-Normal builds run the integration and ordinary browser projects. The separate `performance` project runs the same large-workspace journey in both renderers, after the ordinary suite has stopped:
-
-```sh
-pnpm run build
-PNYX_PERFORMANCE=1 pnpm exec vitest run --project performance
-VITE_PNYX_PROFILE=1 pnpm run build
-VITE_PNYX_PROFILE=1 pnpm exec vitest run --project performance
-pnpm run build
-```
-
-The fixture has 628 tasks, 12 project columns and six Hydras. Both variants permit at most 70 mounted cards in the visible Hydra, four mounted project columns and 6,000 total DOM elements, with no off-screen Hydra bodies. Initial discovery commands stay bounded. The normal renderer enforces the strict 50ms wheel-scroll long-task budget. Drag/Escape long tasks keep the same threshold and print measurements as report-only until `task-c266753d` restores the blocking gate. The profiling renderer checks at most four task commits for an isolated rename, with none in another Hydra. Both check a late Hydra address, streaming and keyboard pickup, ArrowDown and Escape. Profiling timing is excluded from latency checks because React's instrumentation adds work. Neither run retries a budget miss.
-
-CI runs the normal suite first, then the isolated normal performance journey, then builds the profiling variant for the same journey. Keeping the latency journey separate prevents unrelated tests from distorting its measurement. The ordinary stationary-pointer drag/scroll journey also reports its 50ms responsiveness measurements under `task-c266753d`; its drop-target and persisted-order assertions remain blocking. Rebuild normally after local profiling; the default build bypasses all Profiler boundaries.
+A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts, so zero-cache, which sizes its buffers from the heap limit, stays small. The files run on half the cores, longest first, leaving CPU and memory for their child processes. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
 ## Writing a test
 
@@ -76,7 +57,7 @@ test('a reply reaches the worker once', async () => {
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
 - `rows({ text, values })` reads this file's database, for facts the page reads through Zero or a write must have saved.
 - `pnyx.restart({ whileStopped })` stops the server and starts it again on the same home and port.
-- `startPnyx({ zeroCache: true })` also runs zero-cache, for the page's Zero reads (`setup/zero.ts`) and the browser journeys (`setup/browser.ts`).
+- `startPnyx({ zeroCache: true })` also runs zero-cache for the page's Zero reads (`setup/zero.ts`).
 
 Rules:
 
@@ -85,9 +66,8 @@ Rules:
 - Wait with `until` on an observable condition. No fixed sleeps and no retries: a test that fails now and then is a bug.
 - Use the IDs a command returned. Expected values are written out, not computed.
 - Edge cases of tricky logic go in the same area file, calling the function directly only when the server cannot reach the case cheaply.
-- A browser journey earns its place only for what needs a real page: rendering, scrolling, live updates. It never re-checks what an integration test already pins.
 - No duplicate, cosmetic or snapshot tests, and none that break on a rename that keeps behaviour. A new case that fits an existing test becomes assertions in it, and a flow that differs only in its input runs once with an assertion per input.
-- A file starts one server, and its journeys share one browser. A test starts a server of its own only when starting or stopping that server is what it proves.
+- A file starts one server. A test starts a server of its own only when starting or stopping that server is what it proves.
 - A wait on one of the server's intervals shortens that interval through the server's option (`followDelay`, `queueDelay`), never by raising the wait's bound.
 - Nothing outside the test's scratch folders: never a real home, agent, terminal or GitHub.
 - A test that pins a known bug is wrong; skip it with a note naming the task that fixes the bug. `tests/hooks.test.ts` holds one such skipped case.
@@ -108,7 +88,6 @@ Rules:
 - `paging.test.ts`: chat pages and a card's Activity pages.
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
 - `settings.test.ts`: the settings every Hydra shares.
-- `storage.test.ts`: atomic writes, the seq race, restart, the legacy `events.jsonl` import and the real `serve` entry.
 - `migration.test.ts`: the migration from #378's schema at live size, and the upgrade's data check on a copy of an older schema.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its refusals, its rollback and its restart.
@@ -117,11 +96,3 @@ Rules:
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
-- `e2e/board.test.ts`: the project workspace in Chrome: project columns, folding, dragging and Shift nesting, open cards, resizing, recovery after reconnects, loading shared settings an older build stored and taking their rewrite at the same revision, keyboard shortcuts and the phone layout.
-- `e2e/card-input.test.ts`: creating and starting tasks from card composers, outside-session controls and the task modal.
-- `e2e/chat.test.ts`: sending, streaming, Stop, reload, scrolling back through a long chat, loading without covering rows or pulling old decisions ahead of their pages at desktop and phone widths, and resting at its bottom in Chrome.
-- `e2e/controls.test.ts`: disclosure chevrons pointing toward their next action.
-- `e2e/motion.test.ts`: the motion off switch and reduced motion.
-- `e2e/performance.test.ts`: the large-workspace journey (see Performance journey).
-- `e2e/slow-link.test.ts`: a Hydra's large first sync loading over a slow link, on a server of its own.
-- `e2e/ui-metrics.test.ts`: page metrics written to the log files, never to Hydra events.
