@@ -655,8 +655,14 @@ export function HydraView({
           horizontal: true,
         }) - scrollerOffset
         const expectedTargetLeft = projectsOffset + finalColumnOffset
-        const availablePadding = Math.max(0, scroller.clientWidth - finalColumnWidth)
-        const left = expectedTargetLeft - Math.min(revealPadding, availablePadding)
+        const availablePadding = Math.max(
+          0,
+          scroller.clientWidth - finalColumnWidth,
+        )
+        const left = expectedTargetLeft - Math.min(
+          revealPadding,
+          availablePadding,
+        )
         scroller.scrollTo({
           left,
           behavior: 'instant',
