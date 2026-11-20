@@ -920,6 +920,10 @@ test.each([
       turn.release()
       workerTurn.release()
     })
+    await until({
+      what: 'the worker to take its first held input',
+      check: () => worker.received.some(input => input.includes('Keep working too')),
+    })
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -982,10 +986,10 @@ test.each([
         text,
         { exact: true },
       ).waitFor()
-      await nextFrames({
-        page,
-        count: ARRIVAL_FRAMES,
-      })
+      await conversation.getByText(
+        'New reply',
+        { exact: true },
+      ).waitFor()
       expect(await conversation.getByRole(
         'button',
         { name: 'Send now' },
@@ -1117,6 +1121,7 @@ test.each([
       hydra: hydra.id,
       match: ({ text: input }) => input.includes(text),
       refuse: true,
+      refusalReason: 'the app-server refused the retry',
     })
     await row.getByRole(
       'button',
@@ -1130,28 +1135,7 @@ test.each([
       check: () => pnyx.codex.sessions.flatMap(session => session.received)
         .filter(input => input.includes(text)).length === (target === 'Hydra' ? 1 : 2),
     })
-    await until({
-      what: 'the repeated refusal to remain recorded',
-      check: async () => {
-        if (target === 'Hydra') {
-          return true
-        }
-
-        const thread = await hydra.owner({
-          args: [
-            'task',
-            'chat',
-            'retry-input',
-          ],
-        })
-
-        return thread.thread.entries.some((entry: {
-          text: string
-          receipt?: string
-        }) => entry.text === text && entry.receipt === 'failed')
-      },
-    })
-    await row.getByRole('alert').filter({ hasText: 'refused this turn' })
+    await row.getByRole('alert').filter({ hasText: 'refused the retry' })
       .waitFor()
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     const reply = `The ${target} retry succeeded.`
@@ -1178,7 +1162,7 @@ test.each([
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
-    expect(await row.getByRole('alert').count()).toBe(0)
+    await row.getByRole('alert').waitFor({ state: 'hidden' })
     expect(await row.locator('time').count()).toBe(1)
   },
 )

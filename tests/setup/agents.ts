@@ -71,6 +71,7 @@ export interface TurnPlan {
   partial?: string
   hold?: boolean
   acknowledgeStartAfter?: Promise<void>
+  refusalReason?: string
   // Claude reports a compaction that lasts until the turn's release, as /compact does; with compactTo it finishes at once.
   compacting?: boolean
   // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does once released or stopped; Codex compacts just before the turn ends.
@@ -854,7 +855,9 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
               id: message.id,
               error: {
                 code: -32000,
-                message: rejectedInterrupt ? 'the app-server refused this interruption' : 'the app-server refused this turn',
+                message: rejectedInterrupt
+                  ? 'the app-server refused this interruption'
+                  : plan?.refusalReason ?? 'the app-server refused this turn',
               },
             },
           })
