@@ -164,7 +164,10 @@ test(
     const columnHeight = await until({
       what: 'the open card to fill its column',
       check: async () => {
-        const { available, height } = await fillsColumn()
+        const {
+          available,
+          height,
+        } = await fillsColumn()
 
         return Math.abs(height - available) <= 1 ? available : false
       },
@@ -176,7 +179,10 @@ test(
     await until({
       what: 'the open card to fill the resized column',
       check: async () => {
-        const { available, height } = await fillsColumn()
+        const {
+          available,
+          height,
+        } = await fillsColumn()
 
         return available > columnHeight && Math.abs(height - available) <= 1
       },
