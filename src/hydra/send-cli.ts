@@ -2,7 +2,7 @@ import { meta, required, commit, integer, HISTORY_LIMIT, HISTORY_MAX, type Outpu
 import { loadHydra } from '#app/store.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { readServer, askHost } from '#app/server-state.ts'
-import { HYDRA_ACTOR } from '#app/actors.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { liveTask } from '#tasks/select.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -150,7 +150,7 @@ export async function hydraSend({
     return result
   }
 
-  if (result.duplicate && !message.failure) {
+  if (result.duplicate && (!message.failure || !ownerActor({ actor: m.actor }))) {
     return result
   }
 
@@ -164,7 +164,7 @@ export async function hydraSend({
       fn: ({ writer }) => {
         const current = writer.state.hydraMessages?.find(input => input.id === message.id)
 
-        if (!current?.failure) {
+        if (!current?.failure || current.stopped) {
           return false
         }
 

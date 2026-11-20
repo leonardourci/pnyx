@@ -14,7 +14,6 @@ export function useChatScroll() {
     reading,
     setReading,
   ] = useState(false)
-  const scrollRemainder = useRef(0)
   const anchor = useRef<{
     id: string
     offset: number
@@ -44,7 +43,6 @@ export function useChatScroll() {
 
       if (!away && !selectionOrFocusInside.current) {
         anchor.current = undefined
-        scrollRemainder.current = 0
       } else if (!anchor.current) {
         rememberAnchor()
       }
@@ -74,10 +72,7 @@ export function useChatScroll() {
     const moved = row.getBoundingClientRect().top - top - held.offset
 
     if (Math.abs(moved) >= 1) {
-      const requestedTop = element.scrollTop + moved + scrollRemainder.current
-      element.scrollTop = requestedTop
-      const rounding = requestedTop - element.scrollTop
-      scrollRemainder.current = Math.abs(rounding) < 1 ? rounding : 0
+      element.scrollTop += moved
       writtenTop.current = element.scrollTop
     }
   }
@@ -201,7 +196,7 @@ export function useChatScroll() {
         programmatic,
       })
 
-      if (!programmatic && !follow.following()) {
+      if (!programmatic && (!follow.following() || selectionOrFocusInside.current)) {
         rememberAnchor()
       }
     },

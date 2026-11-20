@@ -327,9 +327,9 @@ export function createCompactionControl({
                 message: message ?? { id: input.id },
                 release: input.accepted,
               })
-              const cancelled = message?.stopped
+              const settled = message?.stopped || message?.failure
               const noOp = reportActor({ actor: input.actor })
-                || (input.id.startsWith('helper-outcomes:') && !helperPending()) || cancelled
+                || (input.id.startsWith('helper-outcomes:') && !helperPending()) || settled
 
               if (closing() || (!noOp && !(marker in state.eventIds))) {
                 return

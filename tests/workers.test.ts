@@ -2960,7 +2960,7 @@ test.each([
     const first = codex.plan({
       text: 'first owner input',
       hold: true,
-      start: starting,
+      acknowledgeStartAfter: starting,
     })
     const second = codex.plan({
       text: 'second owner input',

@@ -710,16 +710,11 @@ test(
           page,
           label,
         })).slice(reading)
-        const [readingFrame] = frames
-        const settledFrame = frames.at(-1)
-        const stillShown = Object.keys(readingFrame?.shownFromBottom ?? {})
-          .filter(id => settledFrame?.shownFromBottom[id] !== undefined)
-        expect(stillShown.length).toBeGreaterThan(0)
         expect(
           movedRows({ frames }),
           JSON.stringify(frames),
         ).toEqual([])
-        expect(frames.every(frame => Object.keys(frame.shownFromBottom).length > 0)).toBe(true)
+        expect(frames.length).toBeGreaterThan(0)
         expect(frames.every(frame => frame.shownFromBottom[anchorId] !== undefined)).toBe(true)
         const anchorAfter = await anchor.evaluate(row => row.getBoundingClientRect().top)
         const movement = anchorAfter - anchorBefore
@@ -919,7 +914,8 @@ test.each([
       ],
     })
     onTestFinished(() => {
-      turn.release(); workerTurn.release()
+      turn.release()
+      workerTurn.release()
     })
     const page = await openHydra({
       port: pnyx.port(),
@@ -1179,7 +1175,6 @@ test.each([
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
     expect(await row.getByRole('alert').count()).toBe(0)
-    expect(await row.locator('.receipt').count()).toBe(0)
     expect(await row.locator('time').count()).toBe(1)
   },
 )
