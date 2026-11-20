@@ -349,29 +349,33 @@ function leaveQueue({
   card: Card
   meta: Meta
 }): string | undefined {
-  const session = card.queue?.session
-
-  if (!session) {
-    return undefined
-  }
-
-  withWriter({
+  const session = withWriter({
     hydraId,
-    fn: ({ writer }) => applyDecision({
-      writer,
-      decision: decideQueue({
-        state: writer.state,
-        task: card.id,
-        meta: {
-          ...meta,
-          id: meta.id ? `${meta.id}:unqueue` : undefined,
-          ifRevision: undefined,
-        },
-      }),
-    }),
+    fn: ({ writer }) => {
+      const queued = writer.state.cards[card.id]?.queue?.session
+
+      if (!queued) {
+        return undefined
+      }
+
+      applyDecision({
+        writer,
+        decision: decideQueue({
+          state: writer.state,
+          task: card.id,
+          meta: {
+            ...meta,
+            id: meta.id ? `${meta.id}:unqueue` : undefined,
+            ifRevision: undefined,
+          },
+        }),
+      })
+
+      return queued
+    },
   })
 
-  return `was queued behind worker ${session}; it now gets its own worker`
+  return session && `was queued behind worker ${session}; it now gets its own worker`
 }
 
 function noteOpen({
@@ -484,6 +488,11 @@ export async function startTask({
   const worker = card.sessionIds?.[0]
 
   if (worker && !replacement) {
+    checkRevision({
+      card,
+      ifRevision: meta.ifRevision,
+    })
+
     return steerAttached({
       hydraId,
       card,
@@ -506,10 +515,6 @@ export async function startTask({
     })
   }
 
-  const open = startBlockers({
-    state,
-    card,
-  })
   const leased = leaseOrWait({
     hydraId,
     task: card.id,
@@ -534,16 +539,29 @@ export async function startTask({
     const guided = ({
       started,
       unqueued,
+      launched = true,
     }: {
       started: Output
       unqueued?: string
+      launched?: boolean
     }): Output => {
-      noteOpen({
-        hydraId,
-        task: card.id,
-        open,
-        meta,
+      const current = loadHydra({ hydraId }).state
+      const open = startBlockers({
+        state: current,
+        card: findCard({
+          state: current,
+          ref: card.id,
+        }),
       })
+
+      if (launched) {
+        noteOpen({
+          hydraId,
+          task: card.id,
+          open,
+          meta,
+        })
+      }
 
       return {
         ...started,
@@ -559,14 +577,17 @@ export async function startTask({
         meta,
       })
 
+      const requested = await askFirstmate({
+        hydraId,
+        task,
+        prompt,
+        meta,
+      })
+
       return guided({
-        started: await askFirstmate({
-          hydraId,
-          task,
-          prompt,
-          meta,
-        }),
+        started: requested,
         unqueued,
+        launched: requested.sent !== 'failed',
       })
     }
 
