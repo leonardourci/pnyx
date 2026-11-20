@@ -77,7 +77,6 @@ function landingLine({
   return `Landing: commit on your branch, push with \`git push -u origin HEAD:refs/heads/<your-branch>\` to track its own remote branch, open a pull request as a draft if the readiness requirements above are not yet met, and mark it ready after meeting those requirements. Pnyx discovers it from this task's branch; ${merger}. Never merge it yourself. Pnyx sends you failed checks and new review comments to fix.`
 }
 
-// Where this task's worker stops, from its task or project landing rule.
 export function taskStops({
   state,
   card,
