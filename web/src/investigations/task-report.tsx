@@ -104,7 +104,7 @@ export function TaskReport({
       })}
       </span>
       {error && <span className="muted small">{error}</span>}
-      {report !== null && <div className="task-report-body self-stretch max-h-90 overflow-auto text-ui"><CollapsibleText text={report} /></div>}
+      {report !== null && <div className="task-report-body max-h-90 self-stretch overflow-auto text-ui"><CollapsibleText text={report} /></div>}
     </SummaryPanel>
   )
 }
