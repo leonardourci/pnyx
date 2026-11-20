@@ -757,6 +757,17 @@ test(
         '{"workspace":{"projectWidths":{"ideas":944}},"cardHeight":420}',
       ],
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'ask',
+        created.card.id,
+        '--to',
+        'owner',
+        '--question',
+        'Preserve the stored question?',
+      ],
+    })
     await pnyx.restart({
       whileStopped: async () => {
         await closePostgres()
@@ -766,6 +777,8 @@ test(
       update cards set kind = 'investigation';
       update card_bodies set data = (data::jsonb || '{"kind":"investigation","report":{"id":"old-report","chars":8}}'::jsonb)::json;
       update card_references set data = (data::jsonb || '{"kind":"investigation","report":{"id":"old-report","chars":8}}'::jsonb)::json;
+      update card_references set data = jsonb_set(data::jsonb, '{asks}', (select jsonb_agg(question || '{"origin":{"task":"old-task","report":"old-report"}}'::jsonb) from jsonb_array_elements(data::jsonb->'asks') question))::json where jsonb_array_length(data::jsonb->'asks') > 0;
+      update questions set data = (data::jsonb || '{"origin":{"task":"old-task","report":"old-report"}}'::jsonb)::json;
       update hydras set config = (config::jsonb || '{"readPoleis":[]}'::jsonb)::json;
       update hydra_values set value = (value::jsonb || '{"keyboard":{"bindings":{}}}'::jsonb)::json where key = 'view';
       update settings set value = (value::jsonb || '{"keyboard":{"bindings":{}},"poleis":{"shared":{"readers":[]}},"projectPoleis":{}}'::jsonb)::json;
@@ -816,6 +829,38 @@ test(
         created.card.id,
       ],
     })[0]!.data
+    const storedHydra = rows<{ config: object }>({
+      text: 'select config from hydras where id = $1',
+      values: [hydra.id],
+    })[0]!.config
+    expect(storedHydra).not.toHaveProperty('readPoleis')
+    const storedView = rows<{ value: object }>({
+      text: "select value from hydra_values where hydra_id = $1 and key = 'view'",
+      values: [hydra.id],
+    })[0]!.value
+    expect(storedView).not.toHaveProperty('keyboard')
+    const storedQuestion = rows<{ data: object }>({
+      text: 'select data from questions where hydra_id = $1 and card_id = $2',
+      values: [
+        hydra.id,
+        created.card.id,
+      ],
+    })[0]!.data
+    expect(storedQuestion).toMatchObject({ question: 'Preserve the stored question?' })
+    expect(storedQuestion).not.toHaveProperty('origin')
+    const storedReferences = rows<{ data: { asks: object[] } }>({
+      text: 'select data from card_references where hydra_id = $1 and card_id = $2',
+      values: [
+        hydra.id,
+        created.card.id,
+      ],
+    })[0]!.data
+    expect(storedReferences.asks).toContainEqual(expect.objectContaining({ question: 'Preserve the stored question?' }))
+
+    for (const question of storedReferences.asks) {
+      expect(question).not.toHaveProperty('origin')
+    }
+
     expect(stored).not.toHaveProperty('kind')
     expect(stored).not.toHaveProperty('report')
     expect(rows({ text: "select column_name from information_schema.columns where table_name = 'cards' and column_name = 'kind'" })).toEqual([])
@@ -1065,12 +1110,15 @@ test(
     const reportMatches = await imported.owner({
       args: [
         'oracle',
-        'Historical findings stay in history',
+        'Historical',
         '--card',
         'legacy',
       ],
     })
-    expect(JSON.stringify(reportMatches.results)).toContain('findings')
+    expect(reportMatches.results).toContainEqual(expect.objectContaining({
+      card: 'legacy-task',
+      snippets: expect.arrayContaining([expect.objectContaining({ snippet: expect.stringContaining('stay in history') })]),
+    }))
     await imported.owner({
       args: [
         'task',

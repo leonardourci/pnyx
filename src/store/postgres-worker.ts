@@ -182,6 +182,8 @@ async function requireSchema({
     await client.query('begin')
 
     try {
+      await client.query('set local statement_timeout = 0; set local lock_timeout = 0')
+
       await client.query(ADD_HYDRA_REMOVAL)
 
       await client.query(PAGE_PUBLICATION.replace(
