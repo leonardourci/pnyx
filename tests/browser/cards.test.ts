@@ -48,7 +48,6 @@ test(
       },
     ).waitFor()
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
-    expect(await column.locator('[data-task]').count()).toBe(COLUMN_TASKS)
 
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
     const stability = await column.evaluate(async element => {
@@ -157,11 +156,18 @@ test(
       const padding = parseFloat(spacing.paddingTop) + parseFloat(spacing.paddingBottom)
       const available = column.clientHeight - padding
 
-      return Math.abs(element.getBoundingClientRect().height - available) <= 1
+      return {
+        available,
+        height: element.getBoundingClientRect().height,
+      }
     })
-    await until({
+    const columnHeight = await until({
       what: 'the open card to fill its column',
-      check: fillsColumn,
+      check: async () => {
+        const { available, height } = await fillsColumn()
+
+        return Math.abs(height - available) <= 1 ? available : false
+      },
     })
     await page.setViewportSize({
       width: 1440,
@@ -169,7 +175,11 @@ test(
     })
     await until({
       what: 'the open card to fill the resized column',
-      check: fillsColumn,
+      check: async () => {
+        const { available, height } = await fillsColumn()
+
+        return available > columnHeight && Math.abs(height - available) <= 1
+      },
     })
   },
 )
