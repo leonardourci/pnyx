@@ -35,6 +35,58 @@ beforeAll(async () => {
 })
 
 test(
+  'a reused provider session keeps its current worker and a retry starts the requested task',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({
+      key: 'original-worker',
+      harness: 'codex',
+    })
+    const folder = hydra.folder({ name: 'next-worker' })
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Next worker',
+        '--folder',
+        folder,
+      ],
+    })
+    const task = created.card.id as string
+    const args = [
+      'task',
+      'start',
+      task,
+      '--harness',
+      'codex',
+      '--event-id',
+      'reused-provider',
+    ]
+    pnyx.codex.reuseNextSession({ id: worker.id })
+    const pending = await hydra.owner({ args })
+    expect(pending).toMatchObject({
+      task,
+      launch: 'pending',
+      session: `codex:${worker.id}`,
+    })
+    expect(pending.information).toContain('existing session')
+    expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
+    expect((await hydra.task({ key: task })).worker).toBe('none')
+    expect(worker.closed).toBe(false)
+    await hydra.owner({ args })
+    const next = await until({
+      what: 'the retry to start a fresh worker',
+      check: () => pnyx.codex.sessions.find(session =>
+        session.cwd === folder && !session.closed && session.answered === 1),
+    })
+    expect(next.id).not.toBe(worker.id)
+    expect((await hydra.task({ key: task })).worker).toBe(`codex:${next.id}`)
+    expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
+  },
+)
+
+test(
   'a detached hosted worker finishes without changing its old task and keeps its activity after restart',
   async () => {
     const hydra = await pnyx.hydra()

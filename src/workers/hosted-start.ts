@@ -386,10 +386,11 @@ export function createWorkerStarts({
         const sessionKey = sessionId({ agent })
 
         if (writer.state.sessions?.[sessionKey]) {
-          throw new HydraError({
-            message: 'the provider returned a session that already exists',
-            code: 'SESSION_CONFLICT',
-          })
+          return {
+            task: card.id,
+            duplicate: true,
+            existing: sessionKey,
+          }
         }
 
         if (replacement) {
@@ -560,6 +561,16 @@ export function createWorkerStarts({
 
       if (claimed.duplicate) {
         session.close()
+
+        if ('existing' in claimed && claimed.existing) {
+          return {
+            task: claimed.task,
+            launch: 'pending',
+            session: claimed.existing,
+            information: 'The provider returned an existing session. Pnyx kept its current worker unchanged.',
+            help: ['Retry the same start request to open a fresh worker, or use `pnyx-axi task sessions` to see the existing session'],
+          }
+        }
 
         return {
           task: claimed.task,
