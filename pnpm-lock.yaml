@@ -82,8 +82,8 @@ importers:
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1))
       deslop:
-        specifier: github:leonardourci/deslop#f8b66445e4ee690f564d59552898b779bd4a96cb
-        version: https://codeload.github.com/leonardourci/deslop/tar.gz/f8b66445e4ee690f564d59552898b779bd4a96cb
+        specifier: https://github.com/leonardourci/deslop/releases/download/v0.1.0-1ed786e059f5829e57870ead441eb134cd3cc44b/deslop.tgz
+        version: https://github.com/leonardourci/deslop/releases/download/v0.1.0-1ed786e059f5829e57870ead441eb134cd3cc44b/deslop.tgz
       eslint:
         specifier: ^10.12.0
         version: 10.12.0(jiti@2.7.0)
@@ -1872,8 +1872,8 @@ packages:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
 
-  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/f8b66445e4ee690f564d59552898b779bd4a96cb:
-    resolution: {gitHosted: true, integrity: sha512-AHZEVicK/oRfOoyqsTMtB1gVkfUhQUDkcdoRLlVCzO3YGIfKT84I9AEsUJHcBY0VBA2DWC8zYvS99zI0Rqeylg==, tarball: https://codeload.github.com/leonardourci/deslop/tar.gz/f8b66445e4ee690f564d59552898b779bd4a96cb}
+  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.0-1ed786e059f5829e57870ead441eb134cd3cc44b/deslop.tgz:
+    resolution: {integrity: sha512-6NzLB/AaFkFpLSLo6VTXkR9uyJSjaEWpKueiP4Jl0DNv8aA6UyxR1OgBKTjBEPo6cn/V8QA+vQep/nzYrphZ0A==, tarball: https://github.com/leonardourci/deslop/releases/download/v0.1.0-1ed786e059f5829e57870ead441eb134cd3cc44b/deslop.tgz}
     version: 0.1.0
     engines: {node: '>=22.18'}
     hasBin: true
@@ -5441,7 +5441,7 @@ snapshots:
 
   dequal@2.0.3: {}
 
-  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/f8b66445e4ee690f564d59552898b779bd4a96cb:
+  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.0-1ed786e059f5829e57870ead441eb134cd3cc44b/deslop.tgz:
     dependencies:
       '@eslint/eslintrc': 3.3.7
       '@eslint/js': 10.0.1(eslint@10.15.0(jiti@2.7.0))
