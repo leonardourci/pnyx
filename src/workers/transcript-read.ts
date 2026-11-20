@@ -1,6 +1,7 @@
 import { openSync, fstatSync, readSync, closeSync } from 'node:fs'
 
 export interface TranscriptRead {
+  size: number
   identity: string
   // A replaced or truncated file restarts the cursor.
   reset: boolean
@@ -108,6 +109,7 @@ export function readTranscript({
     }
 
     return {
+      size: stat.size,
       identity,
       reset,
       lines,

@@ -154,7 +154,8 @@ function ingest({
       at: entry.at,
       actor: `hook:${entry.harness}`,
     }
-    const current = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
+    const taskAttention = writer.state.cards[writer.state.keys[key] ?? '']?.attention ?? []
+    const current = session?.attention ?? taskAttention.filter(item => item.key.startsWith('hook:'))
     const attention = o.attend && attend({
       current,
       change: o.attend,
@@ -247,7 +248,7 @@ function ingest({
       })
     }
 
-    if (o.link) {
+    if (o.link && target) {
       applyDecision({
         writer,
         decision: decideLink({

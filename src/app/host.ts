@@ -1,3 +1,4 @@
+import { workerTaskDir } from '#workers/worker-log.ts'
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
 import { stopHydraInputs } from '#hydra/stop-inputs.ts'
 import { heldOwnerMessages, hydraChatQueue } from '#hydra/chat-queue.ts'
@@ -533,6 +534,10 @@ export function createHost({
       PNYX_HOSTED: 'hydra',
     } : task ? {
       PNYX_ACTOR: `worker:${task}`,
+      PNYX_TASK_DIR: workerTaskDir({
+        hydraId,
+        task,
+      }),
       PNYX_WORKER_HOME: pnyxHome(),
       PNYX_STEERING_WORKER: steeringWorker,
       ...untrackedBranches({ env: process.env }),

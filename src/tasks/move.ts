@@ -1,3 +1,5 @@
+import { join } from 'node:path'
+import { foldWorkerLog } from '#workers/worker-log.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -257,7 +259,7 @@ export function moveRefusal({
   if (card.wait) {
     return refuse({
       message: `${card.id} waits for ${card.wait.task}, which stays on Hydra ${hydraId}`,
-      help: `Run \`pnyx-axi task status ${card.id} paused --hold --note "<why>" --hydra ${hydraId}\` to end the wait, then \`${rerun}\``,
+      help: `Resolve the recorded dependency wait before running \`${rerun}\``,
     })
   }
 
@@ -266,7 +268,7 @@ export function moveRefusal({
   if (waiting) {
     return refuse({
       message: `${waiting.id} waits for ${card.id}`,
-      help: `Run \`pnyx-axi task status ${waiting.id} paused --hold --note "<why>" --hydra ${hydraId}\` to end its wait, then \`${rerun}\``,
+      help: `Resolve the dependent task’s recorded wait before running \`${rerun}\``,
     })
   }
 
@@ -492,6 +494,10 @@ export function stageTaskMove({
       card: cardId,
     }),
   })
+  foldWorkerLog({
+    writer: source,
+    task: cardId,
+  })
   const current = source.state.cards[cardId]
 
   if (!current) {
@@ -530,7 +536,14 @@ export function stageTaskMove({
         target: target.state,
         card: current,
       }),
-      card: structuredClone(current),
+      card: {
+        ...structuredClone(current),
+        workerLogDir: current.workerLogDir ?? join(
+          source.dir,
+          'tasks',
+          cardId,
+        ),
+      },
       ...carried({
         hydraId,
         state: source.state,

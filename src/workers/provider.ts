@@ -403,6 +403,7 @@ export type FoundSettings = Record<string, string | null>
 
 export interface TranscriptRecord {
   inputUuid?: string
+  activity?: 'working' | 'finished'
   final?: boolean
   digest?: string
   contextReset?: true

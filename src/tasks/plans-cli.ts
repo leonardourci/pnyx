@@ -1,5 +1,4 @@
 import { HydraError } from '#store/errors.ts'
-import { landingGaps } from '#tasks/delivery/done.ts'
 import { randomUUID } from 'node:crypto'
 import type { EventType } from '#app/model.ts'
 import { commit, required, withHelp, type Output } from '#app/cli-support.ts'
@@ -35,13 +34,6 @@ const ACTION_FLAGS: Record<string, string[]> = {
   ],
   depend: ['on'],
   undepend: ['on'],
-  status: [
-    'wait-for',
-    'ready-when',
-    'note',
-    'until',
-    'hold',
-  ],
   hold: [],
   release: ['from-message'],
   parent: ['before'],
@@ -57,7 +49,6 @@ const EVENT_TYPES: Record<TaskOperation['op'], EventType> = {
   'task.owner-ask': 'task.owner-ask',
   'task.depend': 'task.dependencies',
   'task.undepend': 'task.dependencies',
-  'task.status': 'task.declared',
   'task.hold': 'task.held',
   'task.release': 'task.released',
 }
@@ -151,7 +142,7 @@ export function validateLocalTaskFlags({
     })
   }
 
-  const count = action === 'create' ? 1 : (action === 'status' || action === 'parent') ? 3 : 2
+  const count = action === 'create' ? 1 : action === 'parent' ? 3 : 2
 
   if (positionals.length > count) {
     throw new HydraError({
@@ -202,13 +193,6 @@ export async function localTaskCommand({
     })
   }
 
-  if (action === 'status') {
-    input.status = required({
-      value: positionals[2],
-      what: 'status',
-    })
-  }
-
   let operation: Operation
 
   try {
@@ -234,10 +218,6 @@ export async function localTaskCommand({
   }
 
   const card = operation.op === 'task.create' ? operation.key! : operation.task
-  const landing = await landingGaps({
-    hydraId,
-    refs: operation.op === 'task.status' && operation.status === 'done' ? [operation.task] : [],
-  })
   const output = commit({
     hydraId,
     meta,
@@ -253,7 +233,6 @@ export async function localTaskCommand({
       operation,
       meta: current,
       hydraId,
-      landing,
     }),
   })
 

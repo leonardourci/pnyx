@@ -85,37 +85,6 @@ export function applySessionMove({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  if (event.type === 'session.observed') {
-    const session = state.sessions?.[event.data.session]
-
-    if (!session) {
-      return true
-    }
-
-    const {
-      activity,
-      attention,
-    } = event.data
-
-    if (activity !== undefined) {
-      const working = session.sessionActivity === 'working'
-      session.activity = activity
-      session.sessionActivity = activity
-
-      if (activity !== 'working') {
-        delete session.workingSince
-      } else if (!working || !session.workingSince) {
-        session.workingSince = event.at
-      }
-    }
-
-    if (attention !== undefined) {
-      session.attention = structuredClone(attention)
-    }
-
-    return true
-  }
-
   const card = state.cards[event.cardId]
 
   if (event.type === 'task.session') {

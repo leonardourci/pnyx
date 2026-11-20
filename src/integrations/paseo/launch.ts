@@ -1,3 +1,4 @@
+import { workerTaskDir } from '#workers/worker-log.ts'
 import { PROVIDERS, providerIdOf, type Harness } from '#workers/providers.ts'
 import { accountEnvironment, type DispatchChoice } from '#workers/dispatch.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -140,6 +141,14 @@ export async function startAgent({
     }
   }
 
+  const taskEnvironment = {
+    PNYX_HOME: pnyxHome(),
+    PNYX_HYDRA: hydraId,
+    PNYX_TASK_DIR: workerTaskDir({
+      hydraId,
+      task: claimed.card.id,
+    }),
+  }
   const {
     agent,
     ref,
@@ -157,14 +166,8 @@ export async function startAgent({
         provider: dispatch.provider,
         folder: dispatch.folder,
       },
-      env: {
-        PNYX_HOME: pnyxHome(),
-        PNYX_HYDRA: hydraId,
-      },
-    }) as Record<string, string> : {
-      PNYX_HOME: pnyxHome(),
-      PNYX_HYDRA: hydraId,
-    },
+      env: taskEnvironment,
+    }) as Record<string, string> : taskEnvironment,
     beforeCreate: () => withWriter({
       hydraId,
       fn: ({ writer }) => {

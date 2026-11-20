@@ -1,3 +1,4 @@
+import { restoreOutsideSessions } from '#workers/session-recovery.ts'
 import { handoffPending, recoverHandoffs } from '#workers/handoff-checkout.ts'
 import { applyDecision } from './decision.ts'
 import { background } from './background.ts'
@@ -78,6 +79,7 @@ export function createHostRecovery({
   let fenced = true
 
   const recover: Host['recover'] = async () => {
+    restoreOutsideSessions({ hydraId })
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
     fenced = false
     fenced = await children.sweep()

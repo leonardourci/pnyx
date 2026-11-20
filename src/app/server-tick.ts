@@ -1,3 +1,4 @@
+import { discoverPullRequests, discoverableTasks } from '#tasks/delivery/discover.ts'
 import type { startReviewTimer } from '#hydra/review-timer.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import { settleDone, settles } from '#projects/copies.ts'
@@ -23,6 +24,7 @@ import type { createServerWorkers } from './server-workers.ts'
 
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
+const DISCOVERY_POLL_MS = 60_000
 export const SPOOL_RETRY_MS = 1000
 
 type ServerWorkers = ReturnType<typeof createServerWorkers>
@@ -59,12 +61,17 @@ export function createServerTick({
   review(): ReturnType<typeof startReviewTimer>
   recover(): void
 }) {
+  const discoveredAt = new Map<string, number>()
+  const followingTasks = () => needsPullRequestFollow({ state: state() })
+  const discoveringTasks = () => discoverableTasks({ state: state() }).length > 0
   const followChecks = followSchedule({ interval: followDelay })
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
   let queueRun: Promise<void> | undefined
   let queueCheckedAt = 0
   let queueNeedsRetry = false
+  let discoveryRun: Promise<void> | undefined
+  let discoveryCheckedAt = 0
   let followRun: Promise<void> | undefined
   let settling: Promise<void> | undefined
   let followCheckedAt = 0
@@ -136,8 +143,35 @@ export function createServerTick({
           })()
         }
 
+        const discoveryDue = Date.now() - discoveryCheckedAt >= DISCOVERY_POLL_MS
+
+        if (discoveringTasks() && !discoveryRun && discoveryDue) {
+          discoveryCheckedAt = Date.now()
+          discoveryRun = (async () => {
+            try {
+              await discoverPullRequests({
+                hydraId,
+                interval: DISCOVERY_POLL_MS,
+                checked: discoveredAt,
+                active: () => !closed(),
+              })
+            } catch (error) {
+              log({
+                level: 'error',
+                operation: 'discover pull requests',
+                error,
+                hydraId,
+                eventSeq: state().seq,
+              })
+            } finally {
+              discoveryRun = undefined
+              kick()
+            }
+          })()
+        }
+
         followChecks.prune({ links: followedLinks({ state: state() }) })
-        const following = needsPullRequestFollow({ state: state() })
+        const following = followingTasks()
 
         if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
           followCheckedAt = Date.now()
@@ -253,6 +287,8 @@ export function createServerTick({
         // One settle at a time; it reads the copies with git, off the event loop.
         if (!settling && Object.values(state().cards).some(card => settles({ card }))) {
           const settle = async () => {
+            const startingSeq = state().seq
+
             try {
               await settleDone({ hydraId })
             } catch (error) {
@@ -267,9 +303,15 @@ export function createServerTick({
               return
             } finally {
               settling = undefined
-            }
 
-            pump()
+              if (!closed()) {
+                pump()
+
+                if (state().seq > startingSeq) {
+                  kick()
+                }
+              }
+            }
           }
 
           settling = settle()
@@ -314,7 +356,11 @@ export function createServerTick({
           deadlines.push(spoolRetryAt)
         }
 
-        if (!followRun && needsPullRequestFollow({ state: state() })) {
+        if (!discoveryRun && discoveringTasks()) {
+          deadlines.push(discoveryCheckedAt + DISCOVERY_POLL_MS)
+        }
+
+        if (!followRun && followingTasks()) {
           deadlines.push(followCheckedAt + followDelay)
         }
 
@@ -355,6 +401,8 @@ export function createServerTick({
       task: string
       restart?: boolean
     }) {
+      discoveredAt.delete(task)
+      discoveryCheckedAt = 0
       followChecks.touch({
         task,
         restart,
@@ -373,6 +421,9 @@ export function createServerTick({
     },
     get replyRun() {
       return replyRun
+    },
+    get discoveryRun() {
+      return discoveryRun
     },
     get followRun() {
       return followRun

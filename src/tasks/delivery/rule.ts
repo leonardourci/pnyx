@@ -64,26 +64,18 @@ export function parseMerger({ value }: { value: string }): Merger {
 // The worker header's landing line, so a worker knows exactly where its job stops.
 export function landingLine({
   rule,
-  hydraId,
-  id,
 }: {
   rule: LandingRule
-  hydraId: string
-  id: string
 }): string {
   if (rule.landing === 'branch') {
-    return 'Landing: commit your work on your branch in this copy, then declare done. Do not push or open a pull request; the owner lands the branch.'
+    return 'Landing: commit your work on your branch in this copy, then append your completion to worker.log. Do not push or open a pull request; the owner lands the branch.'
   }
 
   const merger = rule.merge === 'hydra'
     ? 'Hydra merges it once every check is green'
     : 'the owner merges it'
 
-  const declaration = rule.merge === 'hydra'
-    ? 'then declare needs_you with its URL'
-    : 'then use needs_you with its URL only if readiness has not been recorded yet'
-
-  return `Landing: commit on your branch, push with \`git push -u origin HEAD:refs/heads/<your-branch>\` to track its own remote branch, open a pull request as a draft if the readiness requirements above are not yet met, mark any draft ready only after meeting those requirements, and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, ${declaration}: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
+  return `Landing: commit on your branch, push with \`git push -u origin HEAD:refs/heads/<your-branch>\` to track its own remote branch, open a pull request as a draft if the readiness requirements above are not yet met, and mark it ready after meeting those requirements. Pnyx discovers it from this task's branch; ${merger}. Never merge it yourself. Pnyx sends you failed checks and new review comments to fix.`
 }
 
 // Where this task's worker stops: an investigation at its stored report, anything else at its landing rule.
@@ -121,8 +113,6 @@ export function taskStops({
   if (rule) {
     stops.push(landingLine({
       rule,
-      hydraId,
-      id: card.id,
     }))
   }
 

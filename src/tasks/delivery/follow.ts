@@ -1,6 +1,5 @@
-import { refreshTarget } from '#projects/refresh-confirmed.ts'
+import { refreshConfirmedProject, refreshTarget } from '#projects/refresh-confirmed.ts'
 import { log } from '#app/diagnostics.ts'
-import { confirmedMerge } from './confirmed.ts'
 import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '#workers/reply.ts'
 import { decideLink } from './links.ts'
@@ -47,24 +46,11 @@ export function needsPullRequestFollow({ state }: { state: HydraState }): boolea
     return true
   }
 
-  return Object.values(state.cards).some(card => {
-    if (card.links.some(link => refreshTarget({
-      state,
-      card,
-      link,
-    }))) {
-      return true
-    }
-
-    if (!liveTask({ card }) || card.status?.state === 'done') {
-      return false
-    }
-
-    const links = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
-
-    return links.length > 0 && links.every(link => link.state === 'merged')
-      && links.some(link => link.mergeProof)
-  })
+  return Object.values(state.cards).some(card => card.links.some(link => refreshTarget({
+    state,
+    card,
+    link,
+  })))
 }
 
 // What the task's own worker should hear about this change, if anything. Comments count from the first read, which only sets their baseline.
@@ -87,12 +73,12 @@ export function workerNews({
   const news: string[] = []
 
   if (status.checks.failed > failedChecks({ checks: link.checks })) {
-    news.push(`Checks failed on ${link.url}: ${status.checks.summary}. Read them with \`gh-axi pr checks ${number}${repo}\`, fix them on your branch and push. If you cannot fix them, declare blocked with what you found.`)
+    news.push(`Checks failed on ${link.url}: ${status.checks.summary}. Read them with \`gh-axi pr checks ${number}${repo}\`, fix them on your branch and push. If you cannot fix them, append a blocked line to worker.log with what you found.`)
   }
 
   if (link.comments !== undefined && status.comments > link.comments) {
     const count = status.comments - link.comments
-    news.push(`${count} new review ${count === 1 ? 'comment' : 'comments'} on ${link.url}. Read them with \`gh-axi pr view ${number}${repo} --comments --reviews\`, address each one on your branch and push. Do not reply on the pull request: your replies would come back to you as new comments. Declare needs_you only for a comment that asks for something outside this task.`)
+    news.push(`${count} new review ${count === 1 ? 'comment' : 'comments'} on ${link.url}. Read them with \`gh-axi pr view ${number}${repo} --comments --reviews\`, address each one on your branch and push. Do not reply on the pull request: your replies would come back to you as new comments. For a comment that asks for something outside this task, append \`needs-you: <question>\` to \`$PNYX_TASK_DIR/worker.log\`.`)
   }
 
   const finished = link.checks !== undefined && link.checks !== status.checks.summary
@@ -184,11 +170,11 @@ export async function followPullRequests({
         link,
       })
 
-      if (!pendingRefresh && (card.status?.state === 'done' || !liveTask({ card }))) {
+      if (!pendingRefresh) {
         continue
       }
 
-      await confirmedMerge({
+      await refreshConfirmedProject({
         hydraId,
         cardId: card.id,
         url: link.url,
@@ -381,7 +367,7 @@ export async function followPullRequests({
     }
 
     if (outcome?.outcome === 'merged') {
-      await confirmedMerge({
+      await refreshConfirmedProject({
         hydraId,
         cardId: card.id,
         url: link.url,

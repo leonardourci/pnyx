@@ -141,7 +141,7 @@ export function hydraSend({
   if (progress && result.event !== 'none: duplicate') {
     return {
       ...result,
-      help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use task status blocked'],
+      help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use worker.log'],
     }
   }
 

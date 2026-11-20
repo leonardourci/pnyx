@@ -11,7 +11,7 @@ export interface LandingContext {
   reason?: string
 }
 
-function githubRepository({ url }: { url: string }): string | undefined {
+export function githubRepository({ url }: { url: string }): string | undefined {
   return /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url)?.[1]?.toLowerCase()
 }
 

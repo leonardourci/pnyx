@@ -1,10 +1,13 @@
+import { discoverPullRequests } from '#tasks/delivery/discover.ts'
+import * as processes from '#app/run-process.ts'
+import { workerLine } from './setup/worker-log.ts'
 import { readEvents } from '#app/event-log.ts'
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
@@ -189,7 +192,7 @@ test(
       hydra.id,
       'copies',
     ))).toBe(true)
-    const worker = await hydra.agent({ cwd: copy })
+    await hydra.agent({ cwd: copy })
     expect(git({
       cwd: copy,
       args: [
@@ -206,17 +209,22 @@ test(
       ),
       'cart\n',
     )
-    expect(await hydra.as({ session: worker }).refused({
+    await workerLine({
+      hydra,
+      key: 'cart',
+      line: 'done: Cart implementation ready',
+    })
+    const workerDone = await hydra.owner({
       args: [
         'task',
-        'status',
+        'show',
         'cart',
-        'done',
+        '--full',
       ],
-    })).toMatchObject({
-      code: 'NOT_LANDED',
-      error: expect.stringContaining('uncommitted'),
     })
+    expect(workerDone.task.workerLog.status.code).toBe('done')
+    expect(workerDone.task.doneAt).toBeUndefined()
+    expect(workerDone.task.outcome?.closed).not.toBe(true)
 
     git({
       cwd: copy,
@@ -265,10 +273,9 @@ test(
         'cart',
       ],
     })
-    await hydra.as({ session: worker }).run({
+    await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'cart',
         'done',
       ],
@@ -596,11 +603,10 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         hooks,
       ],
     })
-    const nextWorker = await hydra.agent({ cwd: copy })
-    await hydra.as({ session: nextWorker }).run({
+    await hydra.agent({ cwd: copy })
+    await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'next',
         'done',
       ],
@@ -693,8 +699,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
     })
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'bystander',
         'done',
       ],
@@ -942,17 +947,16 @@ test(
         'https://github.com/o/shop/pull/7',
       ],
     })
-    expect(await hydra.ownerRefused({
+    const cart = await hydra.owner({
       args: [
         'task',
-        'status',
+        'show',
         'cart',
-        'done',
+        '--full',
       ],
-    })).toMatchObject({
-      code: 'NOT_LANDED',
-      error: expect.stringContaining('pull request'),
     })
+    expect(cart.task.doneAt).toBeUndefined()
+    expect(cart.task.outcome?.closed).not.toBe(true)
     await until({
       what: 'the card to read the open pull request',
       check: async () => (await hydra.owner({
@@ -1002,11 +1006,10 @@ test(
           ],
         })
 
-        return task.status.startsWith('done') && task
+        return task.status === 'PR merged' && task
       },
     })
-    expect(done.status).toMatch(/^done:/)
-    expect(done.status).toContain('https://github.com/o/shop/pull/7')
+    expect(done.status).toBe('PR merged')
     expect(done.column).toBe(await hydra.column({ role: 'done' }))
     expect(merges({ number: 7 })).toBe(0)
 
@@ -1049,10 +1052,10 @@ test(
           ],
         })
 
-        return task.status.startsWith('done') && task
+        return task.status === 'PR merged' && task
       },
     })
-    expect(reviewed.status).toContain('https://github.com/o/shop/pull/8')
+    expect(reviewed.status).toBe('PR merged')
     expect(reviewed.column).toBe(await hydra.column({ role: 'done' }))
   },
 )
@@ -2884,8 +2887,7 @@ test(
     })
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'source',
         'done',
       ],
@@ -3220,10 +3222,9 @@ if (branch === 'iris/target') {
           'target',
         ],
       })
-      await hydra.as({ session: await hydra.agent({ cwd }) }).run({
+      await hydra.owner({
         args: [
-          'task',
-          'status',
+          'outcome',
           'target',
           'done',
         ],
@@ -3764,7 +3765,7 @@ test(
       ],
     })
     const parent = created.card.id
-    const helper = await source.owner({
+    await source.owner({
       args: [
         'push',
         '--key',
@@ -3838,12 +3839,20 @@ test(
       ],
     })
     expect((await keeper.task({ key: parent })).title).toBe('Finished work')
-    expect((await source.task({ key: helper.card.id })).id).toBe(helper.card.id)
+    expect((await source.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })).sessions).toContainEqual(expect.objectContaining({
+      id: 'claude:helper-session/helper',
+      task: 'none',
+    }))
     expect((await keeper.ownerRefused({
       args: [
         'task',
         'show',
-        helper.card.id,
+        'helper-record',
       ],
     })).code).toBe('NOT_FOUND')
     const target = await pnyx.hydra()
@@ -3861,7 +3870,7 @@ test(
         path,
       ],
     })
-    const secondHelper = await keeper.owner({
+    await keeper.owner({
       args: [
         'push',
         '--key',
@@ -3884,6 +3893,29 @@ test(
         },
       }),
     })
+    const movedTask = (await keeper.owner({
+      args: [
+        'task',
+        'show',
+        parent,
+        '--full',
+      ],
+    })).task
+    const stream = join(
+      movedTask.workerLogDir,
+      'worker.log',
+    )
+    mkdirSync(
+      join(
+        stream,
+        '..',
+      ),
+      { recursive: true },
+    )
+    appendFileSync(
+      stream,
+      'note: Immediately before the move\n',
+    )
     await keeper.owner({
       args: [
         'task',
@@ -3894,12 +3926,44 @@ test(
       ],
     })
     expect((await target.task({ key: parent })).title).toBe('Finished work')
-    expect((await keeper.task({ key: secondHelper.card.id })).id).toBe(secondHelper.card.id)
+    expect((await target.owner({
+      args: [
+        'task',
+        'show',
+        parent,
+        '--full',
+      ],
+    })).task.workerLog.latest.text).toBe('Immediately before the move')
+    appendFileSync(
+      stream,
+      'note: Written to the same stream after the move\n',
+    )
+    await until({
+      what: 'the moved worker stream to keep following',
+      check: async () => (await target.owner({
+        args: [
+          'task',
+          'show',
+          parent,
+          '--full',
+        ],
+      })).task.workerLog?.latest.text === 'Written to the same stream after the move',
+    })
+
+    expect((await keeper.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })).sessions).toContainEqual(expect.objectContaining({
+      id: 'codex:second-session/second',
+      task: 'none',
+    }))
     expect((await target.ownerRefused({
       args: [
         'task',
         'show',
-        secondHelper.card.id,
+        'second-helper',
       ],
     })).code).toBe('NOT_FOUND')
   },
@@ -4389,5 +4453,453 @@ test(
     }))
     expect(pushed.card.column).toBe(afterPush.task.column)
     expect(pushed.card.revision).toBe(afterPush.task.revision)
+  },
+)
+
+test(
+  'a task discovers pull requests from its branch and keeps worker links deduplicated',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = await createProject({
+      hydra,
+      landing: 'pr',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'discovered',
+        '--title',
+        'Discover a branch PR',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'discovered',
+      ],
+    })
+    const full = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'discovered',
+        '--full',
+      ],
+    })
+    const branch = full.task.copy.branch
+    const originalOrigin = git({
+      cwd: project,
+      args: [
+        'remote',
+        'get-url',
+        'origin',
+      ],
+    }).trim()
+    git({
+      cwd: project,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        'https://github.com/o/shop.git',
+      ],
+    })
+    writeFileSync(
+      join(
+        github,
+        'o',
+        'shop',
+        '901.json',
+      ),
+      JSON.stringify({
+        branch,
+        state: 'open',
+        draft: true,
+      }),
+    )
+    writeFileSync(
+      join(
+        github,
+        'o',
+        'shop',
+        '902.json',
+      ),
+      JSON.stringify({
+        branch: 'someone-else',
+        state: 'open',
+      }),
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'refresh-links',
+        'discovered',
+      ],
+    })
+    await until({
+      what: 'the branch pull request to be discovered',
+      check: async () => {
+        const shown = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'discovered',
+            '--full',
+          ],
+        })
+
+        return shown.task.links.some((link: {
+          url: string
+          state: string
+        }) => link.url === 'https://github.com/o/shop/pull/901' && link.state === 'open')
+      },
+    })
+    await workerLine({
+      hydra,
+      key: 'discovered',
+      line: 'link: https://github.com/o/shop/pull/901 Branch review',
+    })
+    const linked = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'discovered',
+        '--full',
+      ],
+    })
+    expect(linked.task.links).toHaveLength(1)
+    expect(linked.task.links[0].src).toBe('branch')
+    await pnyx.restart({
+      whileStopped: async () => {
+        let active = true
+        const lookups: string[][] = []
+        const nativeRun = processes.runProcess
+        const spy = vi.spyOn(
+          processes,
+          'runProcess',
+        ).mockImplementation(async ({
+          command,
+          args,
+          ...options
+        }) => {
+          if (command === process.env.PNYX_GH_AXI) {
+            lookups.push(args)
+          }
+
+          const result = await nativeRun({
+            command,
+            args,
+            ...options,
+          })
+
+          if (command === 'git' && args.includes(full.task.copy.path)
+            && args.includes('symbolic-ref')) {
+            active = false
+          }
+
+          return result
+        })
+
+        try {
+          await discoverPullRequests({
+            hydraId: hydra.id,
+            interval: 0,
+            checked: new Map(),
+            active: () => active,
+          })
+          expect(active).toBe(false)
+          expect(lookups).toEqual([])
+        } finally {
+          spy.mockRestore()
+        }
+      },
+    })
+    const gate = join(
+      github,
+      'discovery-gate.json',
+    )
+    writeFileSync(
+      gate,
+      JSON.stringify({ branch }),
+    )
+
+    try {
+      await hydra.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'discovered',
+        ],
+      })
+      await until({
+        what: 'branch discovery to be pending',
+        check: () => existsSync(`${gate}.ready`),
+      })
+      writeFileSync(
+        join(
+          github,
+          'o',
+          'shop',
+          '901.json',
+        ),
+        JSON.stringify({
+          branch,
+          state: 'open',
+          draft: true,
+          title: 'Updated while discovery is pending',
+        }),
+      )
+      await hydra.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'discovered',
+        ],
+      })
+      await until({
+        what: 'the known pull request to refresh while discovery waits',
+        check: async () => (await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'discovered',
+            '--full',
+          ],
+        })).task.links[0]?.title === 'Updated while discovery is pending',
+      })
+      expect(existsSync(`${gate}.ready`)).toBe(true)
+    } finally {
+      unlinkSync(gate)
+    }
+
+    expect(linked.task.branches).toEqual([
+      {
+        repository: 'o/shop',
+        branch,
+      },
+    ])
+    await hydra.owner({
+      args: [
+        'link',
+        'discovered',
+        '--url',
+        'https://github.com/o/shop/pull/900',
+        '--state',
+        'merged',
+      ],
+    })
+    expect((await hydra.task({ key: 'discovered' })).status).toBe('PR open')
+    const followup = `${branch}-followup`
+    const malformed = join(
+      github,
+      'malformed-discovery',
+    )
+    writeFileSync(
+      malformed,
+      JSON.stringify({ branch }),
+    )
+
+    try {
+      git({
+        cwd: full.task.copy.path,
+        args: [
+          'checkout',
+          '-q',
+          '-b',
+          followup,
+        ],
+      })
+      writeFileSync(
+        join(
+          github,
+          'o',
+          'shop',
+          '903.json',
+        ),
+        JSON.stringify({
+          branch: followup,
+          state: 'open',
+          draft: true,
+        }),
+      )
+
+      await workerLine({
+        hydra,
+        key: 'discovered',
+        line: 'note: Follow-up branch ready',
+      })
+      await until({
+        what: 'the new branch pull request despite an unreadable response for the earlier branch',
+        check: async () => existsSync(`${malformed}.read`) && (await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'discovered',
+            '--full',
+          ],
+        })).task.links.some((link: { url: string }) => link.url.endsWith('/903')),
+      })
+    } finally {
+      unlinkSync(malformed)
+
+      if (existsSync(`${malformed}.read`)) {
+        unlinkSync(`${malformed}.read`)
+      }
+    }
+
+    await pnyx.restart()
+    const restored = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'discovered',
+        '--full',
+      ],
+    })
+    expect(restored.task.links.filter((link: { url: string }) => link.url.endsWith('/901'))).toHaveLength(1)
+    expect(restored.task.branches).toEqual([
+      {
+        repository: 'o/shop',
+        branch,
+      },
+      {
+        repository: 'o/shop',
+        branch: followup,
+      },
+    ])
+    git({
+      cwd: project,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        originalOrigin,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'copy',
+        'discovered',
+        'remove',
+        '--safe',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'discovered',
+        '--full',
+      ],
+    })).task.copy.state)
+      .toBe('removed')
+    git({
+      cwd: project,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        'https://github.com/o/shop.git',
+      ],
+    })
+    const outside = join(
+      process.env.TMPDIR!,
+      `outside-copy-${hydra.id}`,
+    )
+    git({
+      cwd: project,
+      args: [
+        'clone',
+        '-q',
+        '--local',
+        project,
+        outside,
+      ],
+    })
+    const outsideBranch = 'outside-worker-branch'
+    git({
+      cwd: outside,
+      args: [
+        'checkout',
+        '-q',
+        '-b',
+        outsideBranch,
+      ],
+    })
+    git({
+      cwd: outside,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        'https://github.com/o/shop.git',
+      ],
+    })
+    writeFileSync(
+      join(
+        github,
+        'o',
+        'shop',
+        '904.json',
+      ),
+      JSON.stringify({
+        branch: outsideBranch,
+        state: 'open',
+        draft: true,
+      }),
+    )
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-discovery',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'outside-discovery',
+          cwd: outside,
+        },
+        terminal: { tty: '/dev/ttys99999' },
+        activity: 'finished',
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'discovered',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'attach',
+        'discovered',
+        '--session',
+        'claude:outside-discovery',
+      ],
+    })
+    await until({
+      what: 'a PR from the new worker clone despite the removed copy record',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'discovered',
+          '--full',
+        ],
+      }))
+        .task.links.some((link: { url: string }) => link.url.endsWith('/904')),
+    })
   },
 )

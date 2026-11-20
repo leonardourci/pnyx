@@ -1,3 +1,4 @@
+import { cardStatus, statusLabel } from '#tasks/card-status.ts'
 import { kept } from '#web-shared/stable.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
@@ -717,7 +718,12 @@ export function HydraChat({
       <Running
         since={since}
         running={running}
-        label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
+        label={card ? statusLabel({
+          status: cardStatus({
+            card,
+            cards: state.cards,
+          }),
+        }) : 'Starting Hydra'}
         reading={queue.reading}
         waiting={queue.waiting}
         state={state}

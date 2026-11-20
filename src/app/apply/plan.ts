@@ -8,7 +8,6 @@ import { HydraError } from '#store/errors.ts'
 import { findCard, checkRevision } from '#tasks/push-rules.ts'
 import { planTaskChange } from '#tasks/plans.ts'
 import { planDeliveryChange } from '#tasks/delivery/plans.ts'
-import { refuseEarlyDone } from '#tasks/delivery/done.ts'
 import { ApplyError, type ApplyDocument, type ApplyIssue, type Operation } from './schema.ts'
 
 const RECEIPT_HINT_LIMIT = 5
@@ -23,7 +22,6 @@ const OPERATION_FIELDS: Record<Operation['op'], string> = {
   'task.owner-ask': 'text',
   'task.depend': 'on',
   'task.undepend': 'on',
-  'task.status': 'status',
   'task.hold': 'reason',
   'task.release': 'message',
   link: 'url',
@@ -38,7 +36,6 @@ export function planDocument({
   meta,
   id,
   full = false,
-  landing,
 }: {
   document: ApplyDocument
   state: HydraState
@@ -47,8 +44,6 @@ export function planDocument({
   meta: Meta
   id: string
   full?: boolean
-  // landingGaps for its done declarations, read before the write.
-  landing: ReadonlyMap<string, string[]>
 }): {
   events: HydraEvent[]
   receipt: ApplyReceipt
@@ -183,13 +178,6 @@ export function planDocument({
         }))
       }
 
-      if (operation.op === 'task.status' && operation.waitFor) {
-        operation.waitFor = resolve({
-          reference: operation.waitFor,
-          path: 'waitFor',
-        })
-      }
-
       const operationId = `${id}:op:${index}`
       const operationMeta: Meta = {
         ...meta,
@@ -227,7 +215,6 @@ export function planDocument({
           meta: operationMeta,
           hydraId,
           cardId,
-          landing,
         })
 
       if ('event' in decision) {
@@ -270,44 +257,6 @@ export function planDocument({
         code: error.code,
         reason: error.message,
       })
-    }
-  })
-
-  document.changes.forEach((
-    operation,
-    index,
-  ) => {
-    if (operation.op !== 'task.status' || operation.status !== 'done') {
-      return
-    }
-
-    try {
-      const ref = operation.task.startsWith('$') ? aliases[operation.task.slice(1)] : operation.task
-
-      if (ref) {
-        refuseEarlyDone({
-          state: current,
-          card: findCard({
-            state: current,
-            ref,
-          }),
-          hydraId,
-          landing,
-        })
-      }
-    } catch (error) {
-      if (!(error instanceof HydraError)) {
-        throw error
-      }
-
-      if (!errors.some(issue => issue.operation === index)) {
-        errors.push({
-          operation: index,
-          path: `/changes/${index}/status`,
-          code: error.code,
-          reason: error.message,
-        })
-      }
     }
   })
 

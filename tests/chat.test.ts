@@ -1,3 +1,4 @@
+import { workerLine } from './setup/worker-log.ts'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,7 +30,10 @@ beforeAll(async () => {
 // What the page's queue box reads for this Hydra: updates waiting for it, and its chat.
 const queueBox = ({ hydraId }: { hydraId: string }) => rows<{
   value: {
-    waiting: { kind: string }[]
+    waiting: {
+      seq: number
+      kind: string
+    }[]
     chat: {
       working: boolean
       compactInputs: { text: string }[]
@@ -354,15 +358,10 @@ test(
         'Invoices ready to upload',
       ],
     })
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'export',
-        'working',
-        '--note',
-        'Upload started',
-      ],
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'note: Upload started',
     })
     await hydra.as({ session: worker }).run({
       args: [
@@ -382,7 +381,7 @@ test(
       reportFile,
       'Stored findings: invoices have been verified.\n',
     )
-    await hydra.as({ session: worker }).run({
+    const storedReport = await hydra.as({ session: worker }).run({
       args: [
         'task',
         'report',
@@ -391,24 +390,46 @@ test(
         reportFile,
       ],
     })
-    await hydra.as({ session: worker }).run({
+    await until({
+      what: 'the stored report to reach the queue',
+      check: () => queueBox({ hydraId: hydra.id })?.waiting
+        .some(update => update.seq === storedReport.event.seq),
+    })
+    const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'note: Quiet latest line',
+    })
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'blocked: Need the SFTP password',
+    })
+    const taskHistory = await hydra.owner({
       args: [
         'task',
-        'status',
+        'history',
         'export',
-        'blocked',
-        '--note',
-        'Need the SFTP password',
+        '--full',
       ],
     })
+    const statusEvent = taskHistory.events.find((event: {
+      type: string
+      data?: { text?: string }
+    }) =>
+      event.type === 'task.worker-line' && event.data?.text === 'Need the SFTP password')
     const waiting = await until({
       what: 'the report and the status to wait for Hydra',
       check: () => {
-        const kinds = queueBox({ hydraId: hydra.id })?.waiting.map(update => update.kind)
+        const updates = queueBox({ hydraId: hydra.id })?.waiting
 
-        return kinds?.includes('declared') && kinds
+        const processed = updates?.some(update => update.seq === statusEvent.seq)
+
+        return processed && updates.map(update => update.kind)
       },
     })
+    expect(waiting).toHaveLength((beforeNote ?? 0) + 1)
     expect(waiting).toContain('report')
     expect(waiting).not.toContain('progress')
     expect(session.received).toHaveLength(1)
@@ -451,8 +472,24 @@ test(
       progressCount: 2,
       summary: 'Invoices ready to upload',
     }))
-    expect(wake).toContain('Upload started')
+    expect(wake).not.toContain('Upload started')
+    expect(wake).not.toContain('Quiet latest line')
     expect(wake).toContain('Need the SFTP password')
+    const blockedSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: blocked: Need the SFTP password/)?.[1]
+    expect(blockedSeq).toBeDefined()
+    const workerStatusPage = await hydra.as({ session }).run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(blockedSeq) - 1),
+      ],
+    })
+    expect(workerStatusPage.changes).toContainEqual(expect.objectContaining({
+      type: 'task.worker-line',
+      reportStatus: 'unhandled',
+      summary: 'blocked: Need the SFTP password',
+    }))
     expect(wake).toContain('result: Stored findings: invoices have been verified.')
     const storedResultSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: result: Stored findings/)?.[1]
 
@@ -723,6 +760,8 @@ test(
           'attachment-probe',
           '--title',
           'Attachment probe',
+          '--column',
+          await hydra.column({ role: 'parked' }),
         ],
       })
       await hydra.owner({
@@ -1028,6 +1067,11 @@ test(
       ],
     })
     await hydra.agent({ cwd: folder })
+    await workerLine({
+      hydra,
+      key: 'invoices',
+      line: 'blocked: Retry the export',
+    })
     const helper = await until({
       what: 'the routine helper to take the worker\'s update',
       check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === hydra.id

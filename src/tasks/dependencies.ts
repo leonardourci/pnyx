@@ -211,7 +211,7 @@ function readinessBlockers({
     if (!wait.ready) {
       blockers.push({
         reason: `waiting for ${wait.title} (${card.wait.task}): ${card.wait.condition}`,
-        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; run \`pnyx-axi task status ${card.id} paused --reason "<why>"\` to drop the wait`,
+        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; inspect the dependency with \`pnyx-axi task show ${card.wait.task}\``,
       })
     }
   }
@@ -228,7 +228,7 @@ function readinessBlockers({
 
     blockers.push({
       reason: `its worker declared a paused hold${detail}`,
-      clear: `Once the owner gives the go, run \`pnyx-axi task status ${card.id} paused --reason "<the owner's go>"\` to clear the hold`,
+      clear: `Once the owner gives the go, \`pnyx-axi task start ${card.id}\` proceeds while preserving this saved worker hold`,
     })
   }
 

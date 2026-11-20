@@ -32,6 +32,28 @@ export interface SourceRef {
 
 export type HydraChange = EventBase & (
   | {
+    type: 'session.observed'
+    data: {
+      key?: string
+      cursor?: NonNullable<AgentSession['activityCursor']>
+      fields: import('#tasks/model.ts').PushFields & { agent: import('#workers/model.ts').AgentRef }
+      before?: import('#tasks/model.ts').PushFields
+      source?: SourceRef
+      task?: string
+    }
+  }
+  | {
+    type: 'task.branch'
+    data: {
+      repository: string
+      branch: string
+    }
+  }
+  | {
+    type: 'task.worker-line'
+    data: Omit<import('#tasks/model.ts').WorkerLine, 'at'>
+  }
+  | {
     type: 'task.tools-applied'
     data: { revision: string }
   }
@@ -432,6 +454,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.retention',
   'hydra.memory',
   'task.declared',
+  'task.worker-line',
+  'task.branch',
   'task.tools',
   'task.tools-applied',
   'task.asked',

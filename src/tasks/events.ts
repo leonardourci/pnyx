@@ -11,7 +11,7 @@ export function offerTitle({
   card,
   next,
 }: {
-  card: Card
+  card: Pick<Card, 'autoTitle' | 'titleSet'> & { title?: string }
   next: AutoTitle
 }): void {
   const current = card.autoTitle
@@ -45,7 +45,7 @@ export function isStaleSource({
   card,
   source,
 }: {
-  card: Card | undefined
+  card: Pick<Card, 'sourceRefs'> | undefined
   source: SourceRef
 }): boolean {
   const known = card?.sourceRefs.find(r => sameSource({
@@ -64,10 +64,18 @@ export function isStaleSource({
     return gen < knownGen
   }
 
-  // ISO-8601 UTC timestamps compare correctly as strings.
-  return known.observedAt !== undefined
-    && source.observedAt !== undefined
-    && source.observedAt < known.observedAt
+  if (known.observedAt === undefined || source.observedAt === undefined) {
+    return false
+  }
+
+  const knownAt = Date.parse(known.observedAt)
+  const observedAt = Date.parse(source.observedAt)
+
+  if (Number.isFinite(knownAt) && Number.isFinite(observedAt)) {
+    return observedAt < knownAt
+  }
+
+  return source.observedAt < known.observedAt
 }
 
 export function wouldCycle({

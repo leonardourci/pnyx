@@ -29,6 +29,7 @@ export const OUTCOME_STATES = [
 export type OutcomeState = (typeof OUTCOME_STATES)[number] | 'ended'
 
 export interface Link {
+  src?: 'branch' | 'worker' | 'owner'
   kind: LinkKind
   url: string
   number?: number

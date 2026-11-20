@@ -4,7 +4,7 @@ import { HydraError } from '#store/errors.ts'
 import { CARD_FACTS, LEGACY_IN_PROGRESS, type CardFact, type ColumnCondition, type ColumnRule, type HydraColumn } from './columns-model.ts'
 import type { Card } from './model.ts'
 import { failedChecks, pendingChecks, ranChecks } from '#tasks/delivery/model.ts'
-import { cardSessionId, assignDefined } from '#workers/session-attachments.ts'
+import { cardSessionId, assignDefined, sessionAttention } from '#workers/session-attachments.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { permissionAttention } from '#workers/permission-rules.ts'
@@ -33,7 +33,7 @@ export function cardFacts({
   const session = state.sessions?.[cardSessionId({ card }) ?? '']
   const observedActivity = session?.sessionActivity ?? session?.activity
   const activity = observedActivity ?? card.sessionActivity ?? card.activity
-  const status = card.status?.state
+  const status = card.workerLog?.status?.code === 'blocked' ? 'blocked' : card.status?.state
   let worker: CardFact = 'worker:none'
 
   if (activity === 'ended' || (!activity && card.stoppedAt)) {
@@ -45,8 +45,6 @@ export function cardFacts({
   } else if ((card.asks ?? []).some(ask => ask.audience === 'hydra' && !ask.answered && !ask.closed)
     || status === 'needs_you') {
     worker = 'worker:hydra'
-  } else if (status === 'working' || card.agent || card.sessionIds?.length) {
-    worker = 'worker:working'
   }
 
   facts.push(
@@ -222,20 +220,28 @@ export function refreshTasks({
       values: {
         agent: session && { ...session.agent },
         terminal: session?.terminal && { ...session.terminal },
-        ...(session?.agent.host === 'pnyx' ? {
+        ...(session ? {
           settings: session.settings && { ...session.settings },
           activity: session.activity,
           sessionActivity: session.sessionActivity ?? session.activity,
           workingSince: session.workingSince,
+          turnStartedAt: session.turnStartedAt,
+          turnEndedSeq: session.turnEndedSeq,
         } : {}),
       },
     })
     hydra.attention = session?.agent.host === 'pnyx'
       ? [
         ...hydra.attention.filter(a => !a.key.startsWith('hook:')),
-        ...session.attention,
+        ...sessionAttention({
+          state,
+          session,
+        }),
       ]
-      : session ? [...session.attention] : []
+      : session ? sessionAttention({
+        state,
+        session,
+      }) : []
     hydra.hidden = true
   }
 }

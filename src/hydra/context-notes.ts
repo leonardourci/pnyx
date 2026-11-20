@@ -127,6 +127,13 @@ export function applyContextNotes({
         report: true,
         progress: event.data.kind === 'progress',
       })
+    } else if (event.type === 'task.worker-line' && (
+      event.data.code === 'needs-you' || event.data.code === 'blocked' || event.data.code === 'done'
+    )) {
+      add({
+        text: `${event.data.code}: ${event.data.text}`,
+        report: true,
+      })
     } else if (event.type === 'task.declared') {
       add({
         text: event.data.note ? `declared ${event.data.state}: ${event.data.note}` : `declared ${event.data.state}`,

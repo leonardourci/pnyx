@@ -463,6 +463,11 @@ function updateRow({
 
       return undefined
     }
+    case 'task.worker-line': return {
+      kind: data.code === 'done' ? 'done' : 'status',
+      state: String(data.code),
+      note: String(data.text),
+    }
     case 'task.declared': return typeof data.state === 'string' ? {
       kind: data.state === 'done' ? 'done' : 'status',
       state: data.state,

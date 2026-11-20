@@ -1,3 +1,4 @@
+import { workerTaskDir } from './worker-log.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
@@ -163,6 +164,10 @@ export async function startCommand({
       PNYX_HYDRA: hydraId,
       PNYX_WORKER_HOME: pnyxHome(),
       PNYX_TASK: target,
+      PNYX_TASK_DIR: workerTaskDir({
+        hydraId,
+        task: target,
+      }),
       PNYX_ROLE: role,
       PNYX_TASK_TITLE: claimed.card?.title ?? 'Hydra',
       PNYX_PROMPT: claimed.card

@@ -163,7 +163,28 @@ export interface CardFacts {
   } | undefined>
 }
 
+export type WorkerCode = 'needs-you' | 'blocked' | 'done' | 'link' | 'note' | 'invalid'
+
+export interface WorkerLine {
+  identity: string
+  off: number
+  code: WorkerCode
+  text: string
+  at: string
+}
+
+export interface WorkerLog {
+  latest: WorkerLine
+  status?: WorkerLine
+}
+
 export interface Card {
+  branches?: {
+    repository: string
+    branch: string
+  }[]
+  workerLogDir?: string
+  workerLog?: WorkerLog
   tools?: string[]
   toolsRevision?: string
   toolsApplied?: string

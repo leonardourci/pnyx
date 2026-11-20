@@ -11,7 +11,7 @@ import { MergeRejectedError, mergePullRequest, pullRequestStatus, type PullReque
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { mergeObservation } from './merge-observation.ts'
-import { confirmedMerge } from './confirmed.ts'
+import { refreshConfirmedProject } from '#projects/refresh-confirmed.ts'
 import { taskLanding } from './rule.ts'
 
 // gh-axi's last lines say why a merge failed; the rest is its usage noise.
@@ -300,7 +300,7 @@ export async function mergeCommand({
   })
 
   if (outcome.outcome === 'merged') {
-    await confirmedMerge({
+    await refreshConfirmedProject({
       hydraId,
       cardId: card.id,
       url: link.url,

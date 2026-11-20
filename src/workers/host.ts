@@ -1,3 +1,4 @@
+import { sessionFields } from './session-facts.ts'
 import { sessionId } from './session-attachments.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -117,30 +118,49 @@ export function findWorkerTurnToResume({
     return undefined
   }
 
-  let lastTurn = scanEvents({
-    cardId: session?.launchId ? undefined : cardId,
+  const observations = scanEvents({
     hydraId,
+    cardId: session?.launchId ? undefined : cardId,
     types: [
       'card.pushed',
       'session.observed',
     ],
     descending: true,
-  }).find(event => {
-    if (event.type === 'session.observed') {
-      return event.data.session === workerSession && event.data.activity === 'working'
-    }
-
-    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
-      return false
-    }
-
-    const observedAgent = event.data.agent
-
-    return observedAgent !== undefined && sessionId({ agent: observedAgent }) === workerSession
   })
+    .filter(event => {
+      const fields = sessionFields({
+        event,
+        state,
+      })
+
+      return fields?.agent !== undefined
+        && sessionId({ agent: fields.agent }) === sessionId({ agent })
+    })
+  const currentTurn: HydraEvent[] = []
+  let boundary: number | undefined
+
+  for (const event of observations) {
+    const activity = sessionFields({
+      event,
+      state,
+    })?.activity
+
+    if (activity === 'finished' || activity === 'ended' || activity === 'interrupted') {
+      boundary = event.seq
+      break
+    }
+
+    if (activity === 'working') {
+      currentTurn.push(event)
+    }
+  }
+
+  let lastTurn = currentTurn.find(event => event.id.startsWith('resume:')) ?? currentTurn[0]
+
   const launchSeq = session?.launchId ? state.eventIds[session.launchId] : undefined
 
-  if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)) {
+  if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)
+    && (boundary === undefined || launchSeq > boundary)) {
     lastTurn = readEvents({
       hydraId,
       seqs: [launchSeq],

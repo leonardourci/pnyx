@@ -2096,6 +2096,14 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
     settings: codexSettings({ record: entry }),
   }
 
+  if (entry.type === 'event_msg') {
+    if (payload.type === 'task_started') {
+      parsed.activity = 'working'
+    } else if (payload.type === 'task_complete' || payload.type === 'turn_aborted') {
+      parsed.activity = 'finished'
+    }
+  }
+
   // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
   if (entry.type === 'compacted') {
     parsed.contextReset = true

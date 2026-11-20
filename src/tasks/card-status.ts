@@ -1,34 +1,12 @@
 import type { Card, TaskStatus } from './model.ts'
 import { ownerQuestions, type OwnerQuestion } from './questions.ts'
-import { openAsks } from './ask-state.ts'
 import { reportActor } from '#hydra/hydra.ts'
-import type { ReplyState } from '#workers/model.ts'
+import type { AgentSession } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { readyForReview } from '#tasks/delivery/model.ts'
 
-const ACTIVITY_TEXT: Record<string, string> = {
-  working: 'working',
-  finished: 'finished its turn',
-}
-
-const ANSWER_STATES: Partial<Record<ReplyState, string>> = {
-  queued: 'answer sending',
-  delivery_unknown: 'answer delivery uncertain',
-}
-
-const WAITS: Partial<Record<TaskStatus, Omit<CardStatus, 'at'>>> = {
-  blocked: {
-    kind: 'blocked',
-    text: 'blocked',
-  },
-  paused: {
-    kind: 'waiting',
-    text: 'paused',
-  },
-}
-
 export interface CardStatus {
+  state?: TaskStatus
   kind: string
   text: string
   at?: string
@@ -38,7 +16,7 @@ export interface CardStatus {
 
 // An answer on its way leaves its question with the worker; a failed one comes back to the owner.
 const inFlight = ({ question }: { question: OwnerQuestion }) =>
-  !!question.delivery && question.delivery.state in ANSWER_STATES
+  question.delivery?.state === 'queued' || question.delivery?.state === 'delivery_unknown'
 
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
 export const waitingQuestions = ({
@@ -58,119 +36,124 @@ export const waitingQuestions = ({
 export function cardStatus({
   card,
   cards,
+  sessions,
 }: {
   card: Card
   cards?: Record<string, Card>
+  sessions?: Record<string, AgentSession>
 }): CardStatus {
-  if (card.doneAt) {
-    return {
-      kind: 'done',
-      text: 'done',
-      at: card.doneAt,
-    }
-  }
-
   const waiting = waitingQuestions({
     card,
     cards,
   })
-  const unsent = waiting.filter(question => question.delivery?.state === 'failed')
-  const reviewOnly = waiting.length > 0 && waiting.every(question => question.ask?.kind === 'merge')
-  const readyReviews = reviewOnly && waiting.every(question => card.links.some(link =>
-    link.url === question.ask?.url && readyForReview({ link })))
+  const worker = card.workerLog?.status
 
-  if (readyReviews && !unsent.length) {
+  if (waiting.length || worker?.code === 'needs-you') {
     return {
       kind: 'asks',
-      text: 'ready for review',
+      state: 'needs_you',
+      text: 'needs you',
       count: waiting.length > 1 ? waiting.length : undefined,
+      at: worker?.at,
     }
   }
 
-  if (waiting.length) {
+  if (worker?.code === 'blocked') {
     return {
-      kind: 'asks',
-      text: unsent.length && unsent.length === waiting.length ? 'answer not sent' : 'needs you',
-      count: waiting.length > 1 ? waiting.length : undefined,
+      kind: 'blocked',
+      state: 'blocked',
+      text: 'blocked',
+      at: worker.at,
     }
-  }
-
-  const states = ownerQuestions({
-    card,
-    cards,
-  }).map(question => question.delivery?.state)
-  // Delivery that may have failed says more than delivery still on its way.
-  const sending = ([
-    'delivery_unknown',
-    'queued',
-  ] as const).find(state => states.includes(state))
-
-  if (sending) {
-    return {
-      kind: 'answering',
-      text: ANSWER_STATES[sending]!,
-    }
-  }
-
-  if (card.hold) {
-    return {
-      kind: 'paused',
-      text: 'talking',
-      at: card.hold.at,
-    }
-  }
-
-  const explicitWait = card.wait && waitStatus({
-    card,
-    cards,
-  })
-
-  if (explicitWait) {
-    return explicitWait
   }
 
   const activity = agentActivity({
     card,
     cards,
+    sessions,
   })
 
-  if (activity === 'stopped') {
+  if (activity === 'working') {
     return {
-      kind: 'stopped',
-      text: 'stopped',
-      at: card.stoppedAt ?? card.updatedAt,
+      kind: 'working',
+      state: 'working',
+      text: 'running',
+      at: card.workingSince,
     }
   }
 
-  const declared = waitingDeclaration({ card })
-
-  if (declared) {
-    return waitStatus({
-      card,
-      cards,
-    }) ?? declared
-  }
-
-  if (activity !== 'working' && openAsks({
-    card,
-    audience: 'hydra',
-  }).length) {
-    return {
-      kind: 'asks-hydra',
-      text: 'asks Hydra',
-    }
-  }
-
-  if (!card.agent && card.queue) {
+  if (card.queue) {
     return {
       kind: 'queued',
       text: 'queued',
     }
   }
 
+  if (card.hold) {
+    return {
+      kind: 'paused',
+      state: 'paused',
+      text: 'on hold',
+      at: card.hold.at,
+    }
+  }
+
+  if (card.wait) {
+    const title = cards?.[card.wait.task]?.title ?? card.facts?.waitTitle ?? card.wait.task
+
+    return {
+      kind: 'waiting',
+      state: 'paused',
+      text: `waiting: ${title}`,
+      at: card.wait.at,
+    }
+  }
+
+  const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
+
+  if (requests.length && requests.every(link => link.state === 'merged')) {
+    return {
+      kind: 'merged',
+      text: 'PR merged',
+    }
+  }
+
+  if (requests.some(link => link.state === 'open')) {
+    return {
+      kind: 'review',
+      text: 'PR open',
+    }
+  }
+
+  if (activity === 'finished' && !card.doneAt && !card.outcome?.closed) {
+    return {
+      kind: 'finished',
+      text: 'idle',
+    }
+  }
+
+  if (worker?.code === 'done' || card.doneAt || card.outcome?.closed) {
+    return {
+      kind: 'done',
+      state: 'done',
+      text: 'done',
+      at: worker?.at ?? card.doneAt,
+    }
+  }
+
+  if (activity === 'stopped') {
+    return {
+      kind: 'stopped',
+      text: 'ended',
+      at: card.stoppedAt,
+    }
+  }
+
+  const unassigned = card.mirror ? 'not started' : noWorkerText({ card })
+
   return {
-    kind: activity ?? 'not-started',
-    text: ACTIVITY_TEXT[activity ?? ''] ?? (card.agent ? 'activity unknown' : card.mirror ? 'not started' : noWorkerText({ card })),
+    kind: card.agent ? 'unknown' : 'not-started',
+    text: card.agent ? 'activity unknown' : unassigned,
   }
 }
 
@@ -190,56 +173,6 @@ export function workerGap({ card }: { card: Card }): string {
   return neverStarted({ card }) && !waitShown ? `none: ${noWorkerText({ card })}` : 'none'
 }
 
-// A later worker turn, a new question for Hydra or an owner answer makes an earlier wait note stale.
-function waitingDeclaration({ card }: { card: Card }) {
-  const declared = card.status
-  const wait = declared && WAITS[declared.state]
-  const requestedPause = declared?.state === 'paused'
-    && (declared.actor === HYDRA_ACTOR || ownerActor({ actor: declared.actor }))
-
-  // Pnyx's own declarations (a column's default, a fired reminder, a detached worker) say nothing about the work.
-  if (!declared || !wait || !declared.note.trim()
-    || (!reportActor({ actor: declared.actor }) && !requestedPause)) {
-    return undefined
-  }
-
-  const resumed = (card.turnStartedAt ?? '') > declared.at
-  const askedLater = (card.asks ?? []).some(ask => ask.audience === 'hydra' && (ask.escalated?.at ?? ask.at) > declared.at)
-  const answered = (card.asks ?? []).some(ask => ask.audience === 'owner' && (ask.answeredAt ?? '') > declared.at)
-
-  return resumed || askedLater || answered ? undefined : {
-    ...wait,
-    at: declared.at,
-  }
-}
-
-export function waitStatus({
-  card,
-  cards,
-}: {
-  card: Card
-  cards?: Record<string, Card>
-}): CardStatus | undefined {
-  if (card.wait) {
-    const title = cards?.[card.wait.task]?.title ?? card.facts?.waitTitle
-
-    return {
-      kind: 'waiting',
-      text: `waiting: ${title ?? card.wait.task}`,
-      at: card.wait.at,
-    }
-  }
-
-  const declaration = waitingDeclaration({ card })
-
-  if (card.status?.state === 'paused' && declaration) {
-    return {
-      ...declaration,
-      text: `waiting: ${card.status.note}`,
-    }
-  }
-}
-
 export const statusLabel = ({ status }: { status: CardStatus }) => {
   const label = status.kind === 'working' ? 'running' : status.text
   const text = label.replace(
@@ -255,6 +188,16 @@ export function currentState({ card }: { card: Card }): {
   at: string
   source: 'note' | 'progress' | 'reminder' | 'review'
 } | undefined {
+  if (card.workerLog) {
+    const line = card.workerLog.latest
+
+    return {
+      text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
+      at: line.at,
+      source: 'note',
+    }
+  }
+
   const note = (card.statusLog ?? [])
     .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
     .at(-1)

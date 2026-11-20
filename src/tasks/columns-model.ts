@@ -27,8 +27,8 @@ export interface HydraColumn {
 }
 
 export const CARD_FACTS = [
-  'worker:none',
   'worker:working',
+  'worker:none',
   'worker:checks',
   'worker:blocked',
   'worker:hydra',

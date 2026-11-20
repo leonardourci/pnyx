@@ -375,6 +375,7 @@ function receipt({
 
 interface Intent {
   type: EventType
+  accepts?: EventType[]
   card: string
 }
 
@@ -444,11 +445,17 @@ function originalReceipt(
   },
 ): Output {
   // The key a card had when it moved to another Hydra still names it in a retry.
-  const sameCard = original.cardId === intent.card
+  const sessionObservation = original.type === 'session.observed' ? original.data : undefined
+  const pushKey = sessionObservation && 'key' in sessionObservation ? sessionObservation.key : undefined
+  const sameCard = original.cardId !== '$sessions' && (original.cardId === intent.card
     || state.keys[intent.card] === original.cardId
-    || state.movedOut?.[original.cardId]?.key === intent.card
+    || state.movedOut?.[original.cardId]?.key === intent.card)
+  const samePushKey = pushKey === intent.card
 
-  if (original.type !== intent.type || !sameCard) {
+  const sameType = original.type === intent.type
+    || (pushKey !== undefined && intent.accepts?.includes(original.type))
+
+  if (!sameType || (!sameCard && !samePushKey)) {
     throw new AxiError(
       `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       'IDEMPOTENCY_CONFLICT',
@@ -696,7 +703,9 @@ export function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
-    case 'session.observed': return `Session ${event.data.session} activity updated`
+    case 'task.branch': return `Branch ${event.data.repository}:${event.data.branch}`
+    case 'session.observed': return 'fields' in event.data ? `Session ${event.data.fields.agent.sessionId}: ${event.data.fields.activity ?? 'updated'}` : `Session ${event.data.session} activity updated`
+    case 'task.worker-line': return `${event.data.code}: ${event.data.text}`
     case 'task.wait-resumed': return event.data.message.text
     case 'hydra.context-delivered': return 'Context notes delivered to Hydra'
     case 'diagnostic.retry': return `Message recovery attempt ${event.data.number}: ${event.data.status}`

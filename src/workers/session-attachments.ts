@@ -1,3 +1,4 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { cloneValue } from '#app/preimage.ts'
 import type { AgentRef, AgentSession, Attention, TerminalFacts } from './model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -118,6 +119,76 @@ export function assignDefined<T extends object>({
   }
 }
 
+export function sessionTask({
+  state,
+  agent,
+}: {
+  state: HydraState
+  agent: AgentRef
+}): Card | undefined {
+  const id = sessionId({ agent })
+  const parent = sessionId({
+    agent: {
+      provider: agent.provider,
+      sessionId: agent.sessionId,
+    },
+  })
+  const root = state.sessions?.[parent]
+  const task = agent.agentId ? root?.taskId : state.sessions?.[id]?.taskId
+
+  if (task) {
+    return state.cards[task]
+  }
+
+  return state.config?.hydra.session === parent ? state.cards[HYDRA_CARD] : undefined
+}
+
+export function projectedAttention({
+  agent,
+  attention,
+}: {
+  agent: AgentRef
+  attention: Attention[]
+}): Attention[] {
+  return attention.map(item => ({
+    ...item,
+    key: agent.agentId ? `hook:child:${sessionId({ agent })}:${item.key}` : item.key,
+  }))
+}
+
+export function observedQuestions({ event }: { event: HydraEvent }): Attention[] {
+  let attention: Attention[] | undefined
+
+  if (event.type === 'session.observed') {
+    attention = 'fields' in event.data ? event.data.fields.attention : event.data.attention
+  } else if (event.type === 'card.pushed') {
+    attention = event.data.attention
+  }
+
+  return attention?.filter(item => item.blocking && !item.answered) ?? []
+}
+
+export function sessionAttention({
+  state,
+  session,
+}: {
+  state: HydraState
+  session: AgentSession
+}): Attention[] {
+  const children = Object.values(state.sessions ?? {}).filter(child => child.agent.agentId
+    && child.agent.provider === session.agent.provider
+    && child.agent.sessionId === session.agent.sessionId
+    && (child.sessionActivity ?? child.activity) !== 'ended')
+
+  return [
+    ...session.attention,
+    ...children.flatMap(child => projectedAttention({
+      agent: child.agent,
+      attention: child.attention,
+    })),
+  ]
+}
+
 // Membership projection preserves task-owned fields when the session changes.
 export function projectSession({
   state,
@@ -126,7 +197,28 @@ export function projectSession({
   state: HydraState
   session: AgentSession
 }): void {
-  const task = session.taskId && state.cards[session.taskId]
+  if (session.agent.agentId) {
+    const parent = state.sessions?.[sessionId({
+      agent: {
+        provider: session.agent.provider,
+        sessionId: session.agent.sessionId,
+      },
+    })]
+
+    if (parent) {
+      projectSession({
+        state,
+        session: parent,
+      })
+    }
+
+    return
+  }
+
+  const task = sessionTask({
+    state,
+    agent: session.agent,
+  })
 
   if (!task) {
     return
@@ -148,12 +240,17 @@ export function projectSession({
       activity: session.activity,
       sessionActivity: session.sessionActivity,
       workingSince: session.workingSince,
+      turnStartedAt: session.turnStartedAt,
+      turnEndedSeq: session.turnEndedSeq,
       stoppedAt: session.stoppedAt,
     },
   })
   task.attention = [
     ...task.attention.filter(a => !a.key.startsWith('hook:')),
-    ...session.attention,
+    ...sessionAttention({
+      state,
+      session,
+    }),
   ]
 
   if (!task.outcome || task.outcome.source === 'hooks') {
@@ -231,6 +328,8 @@ export function applyAttachment({
     delete old.terminal
     delete old.activity
     delete old.sessionActivity
+    delete old.turnStartedAt
+    delete old.turnEndedSeq
     delete old.workingSince
     delete old.stoppedAt
     old.attention = old.attention.filter(a => !a.key.startsWith('hook:') && a.key !== INTERRUPTED)
@@ -303,7 +402,8 @@ export function observeSession({
     id,
     agent: cloneValue({ value: card.agent }),
     originCardId: card.id,
-    taskId: card.sessionIds?.length && !card.sessionIds.includes(id) ? null : card.id,
+    taskId: card.agent.agentId || (card.sessionIds?.length && !card.sessionIds.includes(id))
+      ? null : card.id,
     attention: [],
     sourceRefs: [],
   }
@@ -335,6 +435,10 @@ export function observeSession({
       lastSeen: session.lastSeen,
     })) {
       session.lastSeen = event.at
+    }
+
+    if (event.type === 'card.pushed' && typeof event.data.activity === 'string') {
+      session.activityObservedAt = event.data.source?.observedAt ?? event.at
     }
 
     session.agent = {

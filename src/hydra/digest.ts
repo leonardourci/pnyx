@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto'
 import { OWNER_CONTEXT_TOKENS } from './context-limits.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { declaredState } from '#tasks/declarations.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { openAsks, askWording } from '#tasks/ask-state.ts'
@@ -13,7 +12,7 @@ import { hydraConfig } from './config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import { projectGroup } from '#projects/groups.ts'
-import { cardStatus } from '#tasks/card-status.ts'
+import { cardStatus, currentState } from '#tasks/card-status.ts'
 import { liveTask, rankOf, taskDone } from '#tasks/select.ts'
 import { helperLeases } from '#routine-helper/state.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
@@ -53,10 +52,12 @@ function taskLine({
   card: Card
   column: string
 }): string {
-  const status = card.status ? `${declaredState({ declaration: card.status })}${card.status.note ? `: ${clip({
-    text: card.status.note,
-    size: 100,
-  })}` : ''}` : 'no declaration'
+  const status = cardStatus({
+    card,
+    cards: state.cards,
+    sessions: state.sessions,
+  }).text
+  const latest = currentState({ card })
   const session = card.sessionIds?.[0] ? state.sessions?.[card.sessionIds[0]] : undefined
   const activity = card.sessionActivity ?? card.activity
   const worker = card.agent
@@ -101,6 +102,13 @@ function taskLine({
     ...(card.queueNote ? [`  handoff: ${card.queueNote}`] : []),
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
   ]
+
+  if (latest) {
+    lines.push(`  latest: ${clip({
+      text: latest.text,
+      size: 160,
+    })}`)
+  }
 
   if (unwatched.length) {
     lines.push(`  unwatched pull request: ${unwatched.map(l => l.url).join(', ')} (no worker to wake with its news)`)
@@ -308,6 +316,7 @@ function digestParts({
           const status = cardStatus({
             card,
             cards: state.cards,
+            sessions: state.sessions,
           }).kind
 
           if (status === 'asks') {
@@ -335,7 +344,7 @@ function digestParts({
   )
   parts.set(
     'tasks',
-    'Open tasks (id · title · project · declared status · worker):',
+    'Open tasks (id · title · project · status · worker):',
   )
 
   for (const card of open.slice(

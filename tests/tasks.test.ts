@@ -1,3 +1,6 @@
+import { git } from './setup/upgrade.ts'
+import { migrateDefaultRule } from '#tasks/column-defaults.ts'
+import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -81,7 +84,7 @@ test(
     const worker = await hydra.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('Write the CSV export')
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
 
     expect((await hydra.ownerRefused({
       args: [
@@ -157,12 +160,11 @@ test(
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
 
-    await hydra.as({ session: worker }).run({
+    await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'build',
         'done',
         '--note',
@@ -171,7 +173,7 @@ test(
     })
     expect(await hydra.task({ key: 'build' })).toMatchObject({
       column: board.done,
-      status: 'done: Export written',
+      status: 'done',
     })
     expect((await hydra.task({ key: 'ship' })).readiness).toEqual({
       ready: true,
@@ -1153,8 +1155,7 @@ test(
     })
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'family',
         'done',
         '--note',
@@ -1175,8 +1176,7 @@ test(
     ])
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'part',
         'done',
         '--note',
@@ -1197,8 +1197,7 @@ test(
     ])
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'second-part',
         'done',
         '--note',
@@ -1214,12 +1213,9 @@ test(
     })[0]?.done_at).toBeTypeOf('string')
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'part',
-        'working',
-        '--note',
-        'Child resumed',
+        '--clear',
       ],
     })
     expect(rows({
@@ -1251,7 +1247,7 @@ test(
 )
 
 test(
-  'a retried write answers for its own declaration from the task as it is now, and with the task id alone once the task moved to another Hydra',
+  'a retried rename answers for its own operation from the task as it is now, and with the task id alone once the task moved to another Hydra',
   async () => {
     const hydra = await pnyx.hydra()
     const other = await pnyx.hydra()
@@ -1269,33 +1265,28 @@ test(
     const taskId = created.card.id as string
     const declare = [
       'task',
-      'status',
+      'rename',
       'retried',
-      'working',
-      '--note',
+      '--title',
       'First pass',
       '--event-id',
       'retried-declaration',
     ]
     const first = await hydra.owner({ args: declare })
-    expect(first.notification).toContain('No Hydra wake')
     const later = await hydra.owner({
       args: [
         'task',
-        'status',
+        'rename',
         taskId,
-        'blocked',
-        '--note',
+        '--title',
         'Waiting on access',
       ],
     })
-    expect(later.notification).toContain('Hydra wake eligible')
     expect(later.card.revision).toBeGreaterThan(first.card.revision)
 
     const retried = await hydra.owner({ args: declare })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
-    expect(retried.notification).toBe(first.notification)
     expect(retried.card).toEqual(later.card)
 
     await hydra.owner({
@@ -1381,7 +1372,7 @@ test(
 )
 
 test(
-  'untracked and hook pushes refuse grandchildren before persisting them',
+  'untracked pushes refuse grandchildren and hook observations remain separate sessions',
   async () => {
     const id = 'unconfigured-depth'
     const folder = join(
@@ -1444,7 +1435,7 @@ test(
         parent: 'untracked-child',
       }),
     })).code).toBe('VALIDATION_ERROR')
-    expect((await hydra.ownerRefused({
+    await hydra.owner({
       args: [
         'push',
         '--key',
@@ -1465,7 +1456,7 @@ test(
           observedAt: '2026-11-17T00:00:00Z',
         },
       }),
-    })).code).toBe('VALIDATION_ERROR')
+    })
     expect((await hydra.ownerRefused({
       args: [
         'task',
@@ -2006,17 +1997,12 @@ test(
       })).code).toBe('VALIDATION_ERROR')
     }
 
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'questions',
-        'needs_you',
-        '--note',
-        'Ready for review',
-      ],
+    await workerLine({
+      hydra,
+      key: 'questions',
+      line: 'needs-you: Ready for review',
     })
-    const inProgress = await hydra.column({ role: 'in_progress' })
+    const inProgress = await hydra.column({ role: 'queued' })
     expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
     const beforeReminder = await hydra.owner({
       args: [
@@ -2026,7 +2012,7 @@ test(
         '--full',
       ],
     })
-    expect(beforeReminder.task.status).toMatchObject({ state: 'needs_you' })
+    expect(beforeReminder.task.workerLog.status).toMatchObject({ code: 'needs-you' })
 
     const confirmColumnChange = async ({ args }: { args: string[] }) => {
       const preview = await hydra.owner({ args })
@@ -2106,7 +2092,7 @@ test(
         '--full',
       ],
     })
-    expect(afterReminder.task.status).toEqual(beforeReminder.task.status)
+    expect(afterReminder.task.workerLog).toEqual(beforeReminder.task.workerLog)
     const updates = await hydra.owner({
       args: [
         'task',
@@ -2899,5 +2885,586 @@ test(
         'questions',
       ],
     })).count).toBe(0)
+  },
+)
+
+test(
+  'the preceding default working rule is removed without changing custom placement rules',
+  () => {
+    const expected = [
+      [
+        '!owner-question',
+        '!done',
+        '!held',
+        '!queued',
+        'worker:checks',
+      ],
+      [
+        '!owner-question',
+        '!done',
+        '!held',
+        '!queued',
+        'worker:blocked',
+      ],
+      [
+        '!owner-question',
+        '!done',
+        '!held',
+        '!queued',
+        'worker:hydra',
+      ],
+    ]
+    const previous = {
+      id: 'in_progress',
+      title: 'In progress',
+      role: 'in_progress' as const,
+      rule: [
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:working',
+        ],
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:checks',
+        ],
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:blocked',
+        ],
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:hydra',
+        ],
+      ],
+    } satisfies import('#tasks/columns-model.ts').HydraColumn
+    expect(migrateDefaultRule({ column: previous }).rule).toEqual(expected)
+    const reminderExcluded = {
+      ...previous,
+      rule: [
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:working',
+        ],
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:checks',
+        ],
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:blocked',
+        ],
+        [
+          '!owner-question',
+          '!reminder-due',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:hydra',
+        ],
+      ],
+    } satisfies import('#tasks/columns-model.ts').HydraColumn
+    expect(migrateDefaultRule({ column: reminderExcluded }).rule).toEqual(expected)
+    const custom = {
+      ...previous,
+      rule: [['worker:working']],
+    } satisfies import('#tasks/columns-model.ts').HydraColumn
+    expect(migrateDefaultRule({ column: custom }).rule).toEqual([['worker:working']])
+  },
+)
+
+test(
+  'a push updates task fields while observing an attached session',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'parent',
+        '--title',
+        'Parent',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'observed',
+        '--title',
+        'Before',
+      ],
+    })
+    const folder = hydra.folder({ name: 'observed' })
+    const firstObservation = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--event-id',
+        'first-session-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'After',
+        parent: 'parent',
+        project: 'shop',
+        workspace: 'work',
+        tags: ['review'],
+        folder,
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+        activity: 'working',
+      }),
+    })
+    const retried = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--event-id',
+        'first-session-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    expect(retried.event).toEqual(firstObservation.event)
+    expect(retried.duplicate).toContain('nothing appended')
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'parent',
+        '--event-id',
+        'first-session-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Unrelated write' }),
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
+    const outside = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-receipt',
+        '--event-id',
+        'outside-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'receipt-only',
+        },
+      }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-receipt',
+        '--event-id',
+        'outside-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'receipt-only',
+        },
+      }),
+    })).event).toEqual(outside.event)
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        '$sessions',
+        '--event-id',
+        'outside-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Unrelated write' }),
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
+    const result = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'observed',
+        '--full',
+      ],
+    })
+    expect(result.task).toMatchObject({
+      title: 'After',
+      parentId: (await hydra.task({ key: 'parent' })).id,
+      project: 'shop',
+      workspace: 'work',
+      tags: ['review'],
+      folder,
+      activity: 'working',
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        parent: null,
+        project: null,
+        folder: null,
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    const cleared = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'observed',
+        '--full',
+      ],
+    })
+    expect(cleared.task.parentId).toBeUndefined()
+    expect(cleared.task.project).toBeUndefined()
+    expect(cleared.task.folder).toBeUndefined()
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'parent',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Parent updated',
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    expect((await hydra.task({ key: 'observed' })).title).toBe('After')
+    const parent = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'parent',
+        '--full',
+      ],
+    })).task
+    expect(parent.title).toBe('Parent updated')
+    expect(parent.sessionIds ?? []).toEqual([])
+    const stillAssigned = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'observed',
+        '--full',
+      ],
+    })).task
+    expect(stillAssigned.agent.sessionId).toBe('observed')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'unassigned-observation',
+        },
+        activity: 'ended',
+      }),
+    })
+    expect((await hydra.task({ key: 'observed' })).status).toBe('running')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })).sessions).toContainEqual(expect.objectContaining({
+      id: 'claude:unassigned-observation',
+      task: 'none',
+    }))
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: null,
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })).sessions).toContainEqual(expect.objectContaining({
+      id: 'claude:observed',
+      title: 'none',
+    }))
+    expect((await hydra.task({ key: 'observed' })).title).toBe('observed')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+        autoTitle: {
+          from: 'prompt',
+          text: 'Read the export settings',
+        },
+      }),
+    })
+    expect((await hydra.task({ key: 'observed' })).title).toBe('Read the export settings')
+  },
+)
+
+test(
+  'building a completed investigation reopens its task before its existing worker receives the build',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'investigation-build' })
+    git({
+      cwd: project,
+      args: [
+        'init',
+        '-q',
+        '--initial-branch=main',
+      ],
+    })
+    writeFileSync(
+      join(
+        project,
+        'README.md',
+      ),
+      'Investigation fixture\n',
+    )
+    git({
+      cwd: project,
+      args: [
+        'add',
+        'README.md',
+      ],
+    })
+    git({
+      cwd: project,
+      args: [
+        'commit',
+        '-qm',
+        'Initial project',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'research',
+        '--title',
+        'Research',
+        '--kind',
+        'investigation',
+        '--project',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'research',
+      ],
+    })
+    const initial = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'research',
+        '--full',
+      ],
+    })).task
+    const worker = await hydra.agent({ cwd: initial.copy.path })
+    await until({
+      what: 'the investigation turn to finish',
+      check: async () => (await hydra.task({ key: 'research' })).status === 'idle',
+    })
+    const report = join(
+      process.env.TMPDIR!,
+      `investigation-report-${hydra.id}.md`,
+    )
+    writeFileSync(
+      report,
+      'The existing approach meets the requirements. Build it with the same API.',
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'report',
+        'research',
+        '--file',
+        report,
+      ],
+    })
+    const stored = await hydra.owner({
+      args: [
+        'task',
+        'report',
+        'research',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'report-review',
+        'research',
+        '--report',
+        stored.id,
+        '--none',
+      ],
+    })
+    await workerLine({
+      hydra,
+      key: 'research',
+      line: 'done: Investigation complete',
+    })
+    await hydra.owner({
+      args: [
+        'outcome',
+        'research',
+        'done',
+        '--note',
+        'Investigation complete',
+      ],
+    })
+    expect((await hydra.task({ key: 'research' })).column).toBe(await hydra.column({ role: 'done' }))
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'dependent',
+        '--title',
+        'Dependent build',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'depend',
+        'dependent',
+        '--on',
+        'research',
+      ],
+    })
+    expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(true)
+    await hydra.owner({
+      args: [
+        'task',
+        'build',
+        'research',
+      ],
+    })
+    expect((await hydra.task({ key: 'research' })).column).toBe(await hydra.column({ role: 'in_progress' }))
+    const reopened = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'research',
+        '--full',
+      ],
+    })).task
+    expect(reopened.agent.sessionId).toBe(worker.id)
+    expect(reopened.copy.path).toBe(initial.copy.path)
+    expect(reopened.copy.state).toBe('active')
+    expect(existsSync(reopened.copy.path)).toBe(true)
+    expect(reopened.workerLog.status).toBeUndefined()
+    expect(reopened.report.id).toBe(stored.id)
+    expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(false)
+    await until({
+      what: 'the existing session to receive the build',
+      check: () => pnyx.claude.sessions.some(session => session.id === worker.id
+        && session.received.some(text => text.includes('The owner approved building this.'))),
+    })
+    await hydra.owner({
+      args: [
+        'outcome',
+        'research',
+        'done',
+        '--note',
+        'Build complete',
+      ],
+    })
+    expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(true)
   },
 )

@@ -1,3 +1,4 @@
+import { workerTaskDir } from './worker-log.ts'
 import { requireHydraCapability } from '#memory/command-access.ts'
 import { runForClient, requestEnv, requestCwd } from '#app/request-context.ts'
 import { readMemoryContext } from '#memory/context.ts'
@@ -11,7 +12,7 @@ import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
 import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
 import { dirname, join } from 'node:path'
-import { declaredState } from '#tasks/declarations.ts'
+import { currentState } from '#tasks/card-status.ts'
 import type { Card } from '#tasks/model.ts'
 import { loadHydra } from '#app/store.ts'
 
@@ -36,7 +37,10 @@ function workerPrompt({
   return [
     `You are the Pnyx worker for task ${id} "${title}" on Hydra ${hydraId}. Follow the ${REPORT_PROGRESS_SKILL} skill when it is installed.`,
     `Start with \`pnyx-axi task show ${id} --hydra ${hydraId}\` and \`pnyx-axi task history ${id} --hydra ${hydraId}\`.`,
-    `Successful start already records working. Declare meaningful progress with \`pnyx-axi task status ${id} working|needs_you|paused|blocked|done --note <text> --hydra ${hydraId}\`; silence changes nothing.`,
+    `Append one line to "${workerTaskDir({
+      hydraId,
+      task: id,
+    })}/worker.log" using needs-you: <question>, blocked: <why>, done: <summary>, link: <url> <label>, or note: <progress>. Pnyx observes running and idle automatically.`,
   ].join(' ')
 }
 
@@ -68,7 +72,7 @@ function workerHeader({
 
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
-    `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report only through pnyx-axi on this task; Hydra reads your declarations and answers your questions.`,
+    `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report through this task’s worker.log; ask Hydra questions through pnyx-axi task ask.`,
     "Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under .agents/skills, .claude/skills and skills/. Follow them over generic habits, and use the project's skills for the jobs they cover.",
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking. Hosted tool permission requests still use the harness permission flow.',
@@ -90,9 +94,10 @@ function replacingNote({
 }): string {
   const lines = [`This start continues from session ${replacing} in the existing folder; keep its work and pick up where it stopped.`]
 
-  if (card.status) {
-    const note = card.status.note ? `: ${card.status.note}` : ''
-    lines.push(`Its last declaration was ${declaredState({ declaration: card.status })}${note}.`)
+  const latest = currentState({ card })
+
+  if (latest) {
+    lines.push(`Latest worker update: ${latest.text}`)
   }
 
   return lines.join(' ')

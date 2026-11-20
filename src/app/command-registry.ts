@@ -142,7 +142,6 @@ export const COMMAND_REGISTRY = {
         'send-now',
       ],
       own: [
-        'status',
         'ask',
         'report',
         'report-review',
@@ -156,7 +155,6 @@ export const COMMAND_REGISTRY = {
       'tools',
       'refresh-links',
       'history',
-      'status',
       'chat',
       'messages',
       'inbox read',

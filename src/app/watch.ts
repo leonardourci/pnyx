@@ -11,7 +11,10 @@ type SharedWatch = {
   users: Map<symbol, Changed>
   close(): void
 }
-const shared = new Map<string, SharedWatch>()
+const shared = new Map<string, SharedWatch & {
+  poll(): void
+  notify(): void
+}>()
 const polls = new Map<string, SharedWatch>()
 
 export interface PathWatch {
@@ -94,12 +97,16 @@ function follow({
 }: {
   path: string
   interval: number
-}): SharedWatch {
+}): SharedWatch & {
+  poll(): void
+  notify(): void
+} {
   const users = new Map<symbol, Changed>()
   let closed = false
   let file: FSWatcher | undefined
   let polling: ReturnType<typeof setInterval> | undefined
   let previous: string | undefined
+  let notificationFailed = false
 
   const notify = ({ filename }: { filename?: string } = {}) => {
     if (!closed) {
@@ -111,6 +118,10 @@ function follow({
           background({
             name: `watch ${path}`,
             run: () => changed({ filename }),
+            retry: () => {
+              notificationFailed = true
+              poll()
+            },
           })
         }
       }
@@ -164,7 +175,8 @@ function follow({
       }
     }
 
-    const changed = previous !== undefined && current !== previous
+    const changed = notificationFailed || (previous !== undefined && current !== previous)
+    notificationFailed = false
     previous = current
 
     if (changed) {
@@ -244,6 +256,8 @@ function follow({
 
   return {
     users,
+    poll,
+    notify,
     close() {
       closed = true
       release()
@@ -256,11 +270,13 @@ export function watchPath({
   path,
   changed,
   interval = 500,
+  poll = false,
 }: {
   path: string
   changed: Changed
   interval?: number
-}): PathWatch {
+  poll?: boolean
+}): PathWatch & { reconcile(): void } {
   path = resolve(path)
   let record = shared.get(path)
 
@@ -275,6 +291,13 @@ export function watchPath({
     )
   }
 
+  if (poll) {
+    background({
+      name: `watch polling ${path}`,
+      run: record.poll,
+    })
+  }
+
   const id = Symbol()
   record.users.set(
     id,
@@ -282,6 +305,7 @@ export function watchPath({
   )
 
   return {
+    reconcile: record.notify,
     close() {
       if (!record.users.delete(id)) {
         return

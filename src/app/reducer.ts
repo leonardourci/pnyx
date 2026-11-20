@@ -1,3 +1,4 @@
+import { applySessionFacts } from '#workers/session-facts.ts'
 import { recordEventId } from './command-meta.ts'
 import { draft } from './draft.ts'
 import { applyHistory } from '#hydra/history.ts'
@@ -144,6 +145,15 @@ function apply({
     if (event.undoes) {
       state.undone[event.undoes] = event.id
     }
+
+    return true
+  }
+
+  if (event.type === 'session.observed') {
+    applySessionFacts({
+      state,
+      event,
+    })
 
     return true
   }

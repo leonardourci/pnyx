@@ -1,3 +1,5 @@
+import { statusLabel } from '#tasks/card-status.ts'
+import { observedStatus } from './observed-status.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
@@ -341,18 +343,25 @@ export function TaskChat({
     card: card.id,
   }).tools
   const since = card.workingSince ?? null
-  const statusLine = working ? (
+  const status = statusLabel({
+    status: observedStatus({
+      card,
+      state,
+    }),
+  })
+  const statusLine = (
     <Running
       since={since}
-      running
-      label="Worker is working"
+      running={working}
+      label={status}
       reading={NO_WAKE_QUEUE}
       waiting={NO_WAKE_QUEUE}
       state={state}
     >
-      {showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
+      <span role="status" aria-label="Worker status" data-status={status}>{status}</span>
+      {working && showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
     </Running>
-  ) : null
+  )
 
   return (
     <section className={`task-chat flex min-h-0 min-w-0 flex-col border-l border-line ${CHAT_FRAME}`} aria-label={`Worker chat for ${card.title}`}>

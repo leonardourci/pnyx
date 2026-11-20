@@ -21,7 +21,7 @@ import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideSession } from '#workers/sessions.ts'
-import { declaredState } from '#tasks/declarations.ts'
+import { cardStatus, currentState } from '#tasks/card-status.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
@@ -596,10 +596,16 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
   }
 
+  if (action === 'sessions' && values.full) {
+    return { sessions: Object.values(loadHydra({ hydraId }).state.sessions ?? {}) }
+  }
+
   if (action === 'sessions') {
     const sessions = Object.values(loadHydra({ hydraId }).state.sessions ?? {}).map(s => ({
       id: s.id,
       provider: s.agent.provider,
+      title: s.title ?? 'none',
+      activity: s.sessionActivity ?? s.activity ?? 'unknown',
       task: s.taskId ?? 'none',
       interactive: interactive({ session: s }),
     }))
@@ -678,7 +684,11 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         const extra: Record<TaskField, string> = {
           attention: attentionLabel({ card: c }),
           parent: c.parentId ?? 'none',
-          status: c.status?.state ?? 'paused',
+          status: cardStatus({
+            card: c,
+            cards: state.cards,
+            sessions: state.sessions,
+          }).text,
           worker: c.sessionIds?.[0] ?? 'none',
           hold: c.hold?.reason ?? 'none',
           queue: c.queue ? String(queuePosition({
@@ -833,7 +843,12 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         intent: task.intent === undefined ? 'none' : clip({ text: task.intent }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
-        status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${clip({ text: task.status.note })}` : ''}` : 'none: no declaration yet',
+        latest: clip({ text: currentState({ card: task })?.text ?? 'none' }),
+        status: cardStatus({
+          card: task,
+          cards: state.cards,
+          sessions: state.sessions,
+        }).text,
         worker: task.sessionIds?.[0] ?? workerGap({ card: task }),
         ...(task.queue ? {
           queue: queuePosition({
@@ -1255,7 +1270,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

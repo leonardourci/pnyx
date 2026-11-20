@@ -1,3 +1,5 @@
+import { applyDecision } from '#app/decision.ts'
+import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import { sendReply } from '#workers/reply.ts'
@@ -5,7 +7,6 @@ import type { Meta } from '#app/command-meta.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
-import { declareTask } from '#tasks/declarations.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import type { LandingRule } from '#tasks/delivery/model.ts'
@@ -91,11 +92,7 @@ function buildMessage({
   ]
 
   if (rule) {
-    lines.push(landingLine({
-      rule,
-      hydraId,
-      id,
-    }))
+    lines.push(landingLine({ rule }))
   }
 
   return lines.join(' ')
@@ -119,6 +116,20 @@ function reopen({
     actor: 'pnyx',
     at: new Date().toISOString(),
   }
+
+  if (card.outcome) {
+    applyDecision({
+      writer,
+      decision: decideOutcome({
+        state: writer.state,
+        ref: card.id,
+        outcome: null,
+        source: card.outcome.source,
+        meta,
+      }),
+    })
+  }
+
   const queued = roleColumn({
     columns: hydraConfig({
       state: writer.state,
@@ -126,20 +137,21 @@ function reopen({
     }).columns,
     role: 'queued',
   })
-  const decision = card.sessionIds?.length
-    ? declareTask({
+
+  const running = roleColumn({
+    columns: hydraConfig({
       state: writer.state,
-      ref: card.id,
-      status: 'working',
-      note: 'Building from its investigation',
-      meta,
-    })
-    : decideMove({
-      state: writer.state,
-      ref: card.id,
-      column: queued ?? card.column,
-      meta,
-    })
+      id: hydraId,
+    }).columns,
+    role: 'in_progress',
+  })
+
+  const decision = decideMove({
+    state: writer.state,
+    ref: card.id,
+    column: (card.sessionIds?.length ? running : queued) ?? card.column,
+    meta,
+  })
 
   if ('event' in decision) {
     writer.append({ event: decision.event })

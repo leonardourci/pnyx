@@ -219,6 +219,12 @@ export function eventText({ event }: { event: HydraEvent }): string {
     case 'task.report':
       parts.push(event.data.text)
       break
+    case 'task.worker-line':
+      parts.push(
+        event.data.code,
+        event.data.text,
+      )
+      break
     case 'task.declared':
       parts.push(
         event.data.state,
