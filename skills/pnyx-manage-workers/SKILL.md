@@ -10,6 +10,8 @@ metadata:
 
 `task create` starts a task's worker through the dispatch rules. This skill covers the starts and moves that need more; `pnyx-axi task --help` lists every flag. A start that returns `NOT_RUNNING` sent nothing: retry once with the same `--event-id`, then follow its help or tell the owner. Read the task only when a start's outcome is unknown.
 
+Running and idle come from hosted turns and installed hooks. Workers append status and links to their task's `worker.log`; a `note` changes only the latest line.
+
 ## Owner choices and dispatch rules
 
 Pass the owner's explicit `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly on `task create` or `task start`; never start on the rule's settings and change them afterwards. `rule now` shows which candidate each rule would start. When a start reports no usable candidate or a signed-out account, tell the owner what stopped it rather than switching to a weaker rule, and ask them to sign in when that is the fix.

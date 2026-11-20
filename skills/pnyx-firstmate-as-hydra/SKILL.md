@@ -15,6 +15,6 @@ pnyx-axi task list --hydra <hydra>          # find the mirrored task and its key
 printf '{"parent":"<Hydra task>"}' | pnyx-axi push --key <mirrored key> --file - --hydra <hydra>
 ```
 
-Keep both statuses honest: your Firstmate status feeds the mirrored task, and the Hydra task gets your own `task status` declarations.
+Your Firstmate status feeds the mirrored task. A Pnyx worker reports through its task's `worker.log` as described in `pnyx-report-progress`.
 
 Pnyx moves cards between the five default columns from Firstmate's records, so leave those moves to it. Keep your own memory in Firstmate's files; owner memory keeps the owner's Pnyx-wide preferences and learnings, and Hydra memory only what this Hydra needs.

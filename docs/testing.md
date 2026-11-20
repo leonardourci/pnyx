@@ -5,19 +5,22 @@ The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx se
 ```text
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
-├── browser/            small checks of what only a real page shows, and the headless Chrome they open
+├── browser/            targeted checks in an isolated headless Chrome through chrome-devtools-axi
 └── setup/              the shared setup: Postgres, the server, fake agents, fixtures
 ```
 
 ## Running
 
-Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`) and Google Chrome. Then:
+The targeted browser checks require an installed Chrome; they launch their own headless session with a scratch profile and never attach to an existing browser. The CLI and its bridge are pinned development dependencies.
+
+Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`). Then:
 
 ```sh
 pnpm test                                   # builds, then runs everything
 pnpm exec vitest run tests/chat.test.ts     # one file, after a build
 pnpm exec vitest run --project integration  # the integration suite
 pnpm exec vitest run --project browser      # targeted browser checks
+pnpm exec vitest run tests/browser/status.test.ts # shared status across the page and CLI
 pnpm exec vitest run -t "Stop ends"         # tests whose name matches
 ```
 
