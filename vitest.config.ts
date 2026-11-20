@@ -12,10 +12,6 @@ export default defineConfig({
     },
   },
   test: {
-    include: [
-      'tests/*.test.ts',
-      'tests/browser/*.test.ts',
-    ],
     maxWorkers: '50%',
     pool: 'forks',
     execArgv: [
