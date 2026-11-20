@@ -1,10 +1,11 @@
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
-import { requireCopyAvailable } from '#projects/copy-lease.ts'
+import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
-import { requireReady } from '#tasks/dependencies.ts'
-import { requireUnheld } from '#tasks/holds.ts'
+import { startBlockers } from '#tasks/dependencies.ts'
+import { decideNote, noteId } from '#tasks/notes.ts'
+import type { Blocker } from '#tasks/owner-gates.ts'
 import { dispatchTask, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
 import { modelIds, type ModelOption } from './provider.ts'
 import { effectiveDispatch } from './dispatch-config.ts'
@@ -36,6 +37,8 @@ import { requireOwnerToRaise } from './permission-level.ts'
 import { applyDecision } from '#app/decision.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { namedProjectCommand, startCommand } from './start-command.ts'
+import { decideQueue } from './queue-decisions.ts'
+import { sendReply } from './reply.ts'
 
 const VIAS = [
   'pnyx',
@@ -99,12 +102,6 @@ export function freeTask({
     })
   }
 
-  requireUnheld({ card })
-  requireReady({
-    state,
-    card,
-  })
-
   if (card.queue) {
     throw queuedRefusal({
       task: card.id,
@@ -151,6 +148,209 @@ async function hostedOffers({
   }))
 
   return offers
+}
+
+const START_FLAG_NAMES = {
+  via: '--via',
+  rule: '--rule',
+  harness: '--harness',
+  override: '--account, --model, --effort, --mode or --fast',
+  tools: '--tool',
+  folder: '--folder',
+  inPlace: '--in-place',
+  commandName: '--command',
+  url: '--paseo-url',
+}
+
+type StartFlag = keyof typeof START_FLAG_NAMES
+
+function unappliedFlags({ given }: { given: Record<StartFlag, unknown> }): string[] {
+  return Object.entries(START_FLAG_NAMES)
+    .filter(([name]) => {
+      const value = given[name as StartFlag]
+
+      return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== false
+    })
+    .map(([
+      , flag,
+    ]) => flag)
+}
+
+// A task has one worker, so a start on a task that has one sends the prompt to that worker.
+async function steerAttached({
+  hydraId,
+  card,
+  worker,
+  prompt,
+  unapplied,
+  meta,
+}: {
+  hydraId: string
+  card: Card
+  worker: string
+  prompt?: string
+  unapplied: string[]
+  meta: Meta
+}): Promise<Output> {
+  const receipt = {
+    task: card.id,
+    worker,
+    ...(unapplied.length ? {
+      unapplied,
+      reason: `worker ${worker} is already attached, so its start flags were not applied`,
+    } : {}),
+  }
+  const help = [
+    `Reply to it with \`pnyx-axi reply ${card.id} --text "<message>"\``,
+    `Run \`pnyx-axi task detach ${card.id}\` first to start a new worker instead`,
+  ]
+
+  if (!prompt) {
+    return {
+      ...receipt,
+      launch: 'running',
+      help,
+    }
+  }
+
+  const home = loadHydra({ hydraId }).state.config?.hydra.home
+  const sent = await sendReply({
+    hydraId,
+    request: {
+      card: card.id,
+      text: prompt,
+      homes: home ? [home] : [],
+      actor: meta.actor,
+      reason: meta.reason,
+      id: meta.id ? `${meta.id}:steer` : randomUUID(),
+    },
+  })
+
+  return {
+    ...receipt,
+    launch: 'steered',
+    delivery: sent.state,
+    help,
+  }
+}
+
+// Another actor's turn on the task is a wait, not a refusal; a copy being settled stays refused, since starting in it
+// could lose work that has not landed.
+function leaseOrWait({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): { release: () => void } | { waiting: Output } {
+  try {
+    return {
+      release: taskLease({
+        hydraId,
+        task,
+        actor: 'main',
+      }),
+    }
+  } catch (error) {
+    const otherTurn = error instanceof HydraError && error.code === 'TASK_LEASED' && !copySettling({
+      hydraId,
+      task,
+    })
+
+    if (!otherTurn) {
+      throw error
+    }
+
+    return {
+      waiting: {
+        task,
+        launch: 'waiting',
+        blocker: error.message,
+        help: error.help,
+      },
+    }
+  }
+}
+
+function unqueue({
+  hydraId,
+  card,
+  meta,
+}: {
+  hydraId: string
+  card: Card
+  meta: Meta
+}): string {
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => applyDecision({
+      writer,
+      decision: decideQueue({
+        state: writer.state,
+        task: card.id,
+        meta: {
+          ...meta,
+          id: meta.id ? `${meta.id}:unqueue` : undefined,
+        },
+      }),
+    }),
+  })
+
+  return `was queued behind worker ${card.queue!.session}; it now gets its own worker`
+}
+
+// What is still open on the task goes on its card once, with the command that clears each item.
+function noteOpen({
+  hydraId,
+  card,
+  meta,
+}: {
+  hydraId: string
+  card: Card
+  meta: Meta
+}): Blocker[] {
+  return withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const open = startBlockers({
+        state: writer.state,
+        card: findCard({
+          state: writer.state,
+          ref: card.id,
+        }),
+      })
+
+      if (!open.length) {
+        return open
+      }
+
+      const text = [
+        'Started with these still open:',
+        ...open.map(item => `- ${item.reason}. ${item.clear}`),
+      ].join('\n')
+      applyDecision({
+        writer,
+        decision: decideNote({
+          state: writer.state,
+          ref: card.id,
+          note: {
+            kind: 'context',
+            source: 'pnyx:start',
+            text,
+          },
+          meta: {
+            ...meta,
+            id: noteId({
+              cardKey: card.id,
+              ref: text,
+            }),
+          },
+        }),
+      })
+
+      return open
+    },
+  })
 }
 
 export async function startTask({
@@ -203,24 +403,57 @@ export async function startTask({
     hydraId,
     task: card.id,
   })
-  const release = taskLease({
+
+  const worker = card.sessionIds?.[0]
+
+  if (worker && !replacement) {
+    return steerAttached({
+      hydraId,
+      card,
+      worker,
+      prompt,
+      unapplied: unappliedFlags({
+        given: {
+          via,
+          rule,
+          harness,
+          override,
+          tools,
+          folder: given,
+          inPlace,
+          commandName,
+          url,
+        },
+      }),
+      meta,
+    })
+  }
+
+  const leased = leaseOrWait({
     hydraId,
     task: card.id,
-    actor: 'main',
   })
 
-  try {
-    requireUnheld({ card })
-    requireReady({
-      state,
-      card,
-    })
+  if ('waiting' in leased) {
+    return leased.waiting
+  }
 
-    if (card.queue) {
-      throw queuedRefusal({
-        task: card.id,
-        session: card.queue.session,
-      })
+  const release = leased.release
+
+  try {
+    const unqueued = card.queue ? unqueue({
+      hydraId,
+      card,
+      meta,
+    }) : undefined
+    const open = noteOpen({
+      hydraId,
+      card,
+      meta,
+    })
+    const guidance = {
+      ...(open.length ? { open } : {}),
+      ...(unqueued ? { unqueued } : {}),
     }
 
     const how = chooseVia({
@@ -258,12 +491,15 @@ export async function startTask({
     }
 
     if (how === 'firstmate') {
-      return await askFirstmate({
-        hydraId,
-        task,
-        prompt,
-        meta,
-      })
+      return {
+        ...await askFirstmate({
+          hydraId,
+          task,
+          prompt,
+          meta,
+        }),
+        ...guidance,
+      }
     }
 
     if (meta.id && (how === 'pnyx' || how === 'paseo') && `${meta.id}:attach` in state.eventIds) {
@@ -368,16 +604,6 @@ export async function startTask({
     const ownsFolder = commandName
       ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
     const ownFolder = command && ownsFolder
-    const currentState = loadHydra({ hydraId }).state
-    const currentCard = findCard({
-      state: currentState,
-      ref: task,
-    })
-    requireUnheld({ card: currentCard })
-    requireReady({
-      state: currentState,
-      card: currentCard,
-    })
 
     const folder = replacement ? given
       : await taskFolder({
@@ -390,16 +616,19 @@ export async function startTask({
       })
 
     if (command) {
-      return await startCommand({
-        hydraId,
-        role: 'worker',
-        task,
-        prompt,
-        folder,
-        harness,
-        commandName,
-        meta,
-      })
+      return {
+        ...await startCommand({
+          hydraId,
+          role: 'worker',
+          task,
+          prompt,
+          folder,
+          harness,
+          commandName,
+          meta,
+        }),
+        ...guidance,
+      }
     }
 
     const started = how === 'pnyx'
@@ -447,7 +676,18 @@ export async function startTask({
     return {
       ...started,
       rule: dispatch?.rule,
+      ...guidance,
     }
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'TASK_STARTING') {
+      return {
+        task: card.id,
+        launch: 'pending',
+        help: error.help,
+      }
+    }
+
+    throw error
   } finally {
     release()
   }
@@ -491,12 +731,6 @@ async function askFirstmate({
           code: 'REVISION_CONFLICT',
         })
       }
-
-      requireUnheld({ card })
-      requireReady({
-        state: writer.state,
-        card,
-      })
 
       if (!liveTask({ card }) || card.id === HYDRA_CARD) {
         throw new HydraError({

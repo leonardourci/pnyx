@@ -19,7 +19,6 @@ import { freeTask } from './start.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
-import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -158,11 +157,6 @@ export function createWorkerStarts({
     const card = findCard({
       state: writer.state,
       ref,
-    })
-    requireUnheld({ card })
-    requireReady({
-      state: writer.state,
-      card,
     })
 
     if (inputId && card.agent?.host === 'pnyx') {

@@ -1,6 +1,4 @@
-import { requireReady } from '#tasks/dependencies.ts'
 import { PROVIDERS, providerIdOf, type Harness } from '#workers/providers.ts'
-import { requireUnheld } from '#tasks/holds.ts'
 import { accountEnvironment, type DispatchChoice } from '#workers/dispatch.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { randomUUID } from 'node:crypto'
@@ -83,12 +81,6 @@ export async function startAgent({
           duplicate: true,
         }
       }
-
-      requireUnheld({ card })
-      requireReady({
-        state: writer.state,
-        card,
-      })
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== card.revision) {
         throw new HydraError({
@@ -177,14 +169,9 @@ export async function startAgent({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        const card = findCard({
+        findCard({
           state: writer.state,
           ref: task,
-        })
-        requireUnheld({ card })
-        requireReady({
-          state: writer.state,
-          card,
         })
       },
     }),
@@ -198,15 +185,6 @@ export async function startAgent({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        const card = findCard({
-          state: writer.state,
-          ref: task,
-        })
-        requireUnheld({ card })
-        requireReady({
-          state: writer.state,
-          card,
-        })
         const pushed = decidePush({
           state: writer.state,
           key: `paseo:${agent.id}`,
