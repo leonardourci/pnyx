@@ -2704,13 +2704,31 @@ test(
         activity: 'working',
       }),
     })
-    await workerLine({
-      hydra,
-      key: 'heartbeat-worker',
-      line: 'note: Worker started preparing the change',
+    const task = await hydra.task({ key: 'heartbeat-worker' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        task.id,
+        '--actor',
+        `worker:${task.id}`,
+        '--kind',
+        'progress',
+        '--text',
+        'Worker started preparing the change',
+      ],
     })
     expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
     let now = Date.now()
+    await hydra.owner({
+      args: [
+        'task',
+        'remind',
+        'heartbeat-worker',
+        new Date(now + 30 * 60_000).toISOString(),
+      ],
+    })
     let wakes = 0
     const timer = startReviewTimer({
       hydraId: hydra.id,
@@ -2742,7 +2760,6 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(1)
-      const task = await hydra.task({ key: 'heartbeat-worker' })
       withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
@@ -2764,6 +2781,7 @@ test(
                   state: 'open',
                   draft: false,
                   checks: '1 passed, 0 failed, 1 total',
+                  checkedAt: new Date(now).toISOString(),
                 },
               },
             },

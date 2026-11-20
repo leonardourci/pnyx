@@ -121,7 +121,10 @@ export function boardReview({
     const session = cardSessionId({ card }) ?? ''
     const recorded = state.sessions?.[session]?.lastSeen
     const observed = workerSeenAt[session] ?? 0
-    const latest = currentState({ card })
+    const latest = currentState({
+      card,
+      workerOnly: true,
+    })
     const workerTimes = [
       recorded,
       latest?.at,
