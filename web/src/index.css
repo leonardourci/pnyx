@@ -7,6 +7,7 @@
   --spacing: .25rem;
   --spacing-line: 1lh;
   --spacing-card-min: 260px;
+  --spacing-card-closed-height: 96px;
   --spacing-subtask-indent: 26px;
   --spacing-disclosure: 3lh;
   --spacing-picker-badge: 42%;

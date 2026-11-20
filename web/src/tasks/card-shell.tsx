@@ -18,7 +18,7 @@ export function CardShell({
   tint?: string
 }) {
   const border = selected || lifted ? 'border-gold-line' : 'border-line select-none hover:border-control has-[.card-open:focus-visible]:border-gold'
-  const selection = selected ? 'selected min-h-0' : 'min-h-24'
+  const selection = selected ? 'selected min-h-0' : 'min-h-card-closed-height'
 
   return (
     <article
