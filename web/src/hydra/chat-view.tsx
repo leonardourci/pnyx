@@ -160,7 +160,7 @@ export function Chat({
     <div className="chat-body relative flex-1 min-h-0 flex flex-col">
       <div className="chat-viewport relative flex min-h-0 flex-1 flex-col">
         <div
-          className="chat-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
+          className="chat-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
           ref={scroll.scroller}
           data-key-scope="thread"
           role="region"

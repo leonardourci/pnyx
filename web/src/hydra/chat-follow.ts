@@ -42,12 +42,14 @@ export function createChatFollow({ changed }: { changed({ away }: { away: boolea
       at,
       top,
       remaining,
+      programmatic = false,
     }: {
       at: number
       top: number
       remaining: number
+      programmatic?: boolean
     }) {
-      const owner = at - inputAt < OWNER_SCROLL_MS
+      const owner = !programmatic && at - inputAt < OWNER_SCROLL_MS
       const movedAway = remaining > 0 && top < lastTop
       lastTop = top
 

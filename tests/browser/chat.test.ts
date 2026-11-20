@@ -63,7 +63,7 @@ function recordPaintedChats() {
       const shown = loaded.filter(({ bounds }) => bounds.bottom > box.top
         && bounds.top < box.bottom)
 
-      if (shown.length) {
+      if (loaded.length) {
         frames.push({
           label: chat.getAttribute('aria-label'),
           fromBottom: chat.scrollHeight - chat.clientHeight - chat.scrollTop,
@@ -188,10 +188,10 @@ const exchange = async ({
   })
 }
 
-async function hydraWithLongConversation() {
+async function hydraWithLongConversation({ exchanges = EXCHANGES }: { exchanges?: number } = {}) {
   const hydra = await pnyx.hydra()
 
-  for (let number = 1; number <= EXCHANGES; number++) {
+  for (let number = 1; number <= exchanges; number++) {
     await exchange({
       hydra,
       number,
@@ -445,7 +445,15 @@ test(
 test(
   'reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest',
   async () => {
-    const hydra = await hydraWithLongConversation()
+    const hydra = await hydraWithLongConversation({ exchanges: 32 })
+    const { worker } = await hydra.startTask({ key: 'older-notes' })
+    await appendRecords({
+      session: worker,
+      records: workerNotes({
+        from: 1,
+        count: 190,
+      }),
+    })
     let refusedFirstOlderRead = false
     const olderReads = new Set<string>()
     const heldOlderAnswers: (() => void)[] = []
@@ -504,78 +512,113 @@ test(
     await shownText({
       page,
       chat: 'Hydra conversation',
-      text: `answer ${EXCHANGES}`,
+      text: 'answer 32',
     })
-    const conversation = page.getByRole(
-      'region',
-      { name: 'Hydra conversation' },
-    )
-    const loadedFirst = await conversation.locator('[data-entry-id]').first()
-      .getAttribute('data-entry-id')
-    await conversation.hover()
-    const pastTheTop = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
-    await page.mouse.wheel(
-      0,
-      -pastTheTop,
-    )
-    await conversation.getByRole('alert')
-      .filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
-      .getByRole(
-        'button',
-        { name: 'Retry' },
-      )
-      .click()
-    await until({
-      what: 'the older page to be read again',
-      check: () => heldOlderAnswers.length > 0,
-    })
-    await until({
-      what: 'the reading position to paint',
-      check: async () => (await latestFrame({
-        page,
-        label: 'Hydra conversation',
-      })).fromBottom > 1,
-    })
-    const reading = (await framesOf({
-      page,
-      label: 'Hydra conversation',
-    })).length - 1
-    heldOlderAnswers.splice(0).forEach(release => release())
-    await until({
-      what: 'older messages to load above',
-      check: async () => (await latestFrame({
-        page,
-        label: 'Hydra conversation',
-      })).firstLoaded !== loadedFirst,
-    })
-    await nextFrames({
-      page,
-      count: SETTLING_FRAMES,
-    })
-    const frames = (await framesOf({
-      page,
-      label: 'Hydra conversation',
-    })).slice(reading)
-    const [readingFrame] = frames
-    const settledFrame = frames.at(-1)
-    const stillShown = Object.keys(readingFrame?.shownFromBottom ?? {})
-      .filter(id => settledFrame?.shownFromBottom[id] !== undefined)
-    expect(stillShown.length).toBeGreaterThan(0)
-    expect(movedRows({ frames })).toEqual([])
-    expect(await page.getByText('The transcript is unavailable').count()).toBe(0)
 
-    await page.getByRole(
-      'button',
-      { name: 'Jump to latest' },
-    ).click()
-    await nextFrames({
-      page,
-      count: ARRIVAL_FRAMES,
-    })
-    expect((await latestFrame({
-      page,
-      label: 'Hydra conversation',
-    })).fromBottom).toBeLessThanOrEqual(1)
+    for (const label of [
+      'Hydra conversation',
+      'Task older-notes conversation',
+    ]) {
+      if (label === 'Task older-notes conversation') {
+        await page.locator('[data-task]').getByText(
+          'Task older-notes',
+          { exact: true },
+        )
+          .click()
+        await shownText({
+          page,
+          chat: label,
+          text: 'worker note 190',
+        })
+      }
+
+      const conversation = page.getByRole(
+        'region',
+        { name: label },
+      )
+
+      for (let olderPage = 0; olderPage < 3; olderPage++) {
+        const loadedFirst = await conversation.locator('[data-entry-id]').first()
+          .getAttribute('data-entry-id')
+        await conversation.hover()
+        const pastTheTop = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
+        await page.mouse.wheel(
+          0,
+          -pastTheTop,
+        )
+
+        if (label === 'Hydra conversation' && olderPage === 0) {
+          await conversation.getByRole('alert').filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
+            .getByRole(
+              'button',
+              { name: 'Retry' },
+            )
+            .click()
+        }
+
+        await until({
+          what: 'the older page response',
+          check: () => heldOlderAnswers.length > 0,
+        })
+        await nextFrames({
+          page,
+          count: ARRIVAL_FRAMES,
+        })
+        const reading = (await framesOf({
+          page,
+          label,
+        })).length - 1
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns this element callback.
+        const anchor = await conversation.evaluateHandle(chat => {
+          const top = chat.getBoundingClientRect().top
+
+          return [...chat.querySelectorAll('[data-entry-id]')].find(row => row.getBoundingClientRect().bottom > top)
+        })
+        heldOlderAnswers.splice(0).forEach(release => release())
+        await until({
+          what: 'older messages above the reading position',
+          check: async () => (await latestFrame({
+            page,
+            label,
+          })).firstLoaded !== loadedFirst,
+        })
+        await nextFrames({
+          page,
+          count: SETTLING_FRAMES,
+        })
+        const frames = (await framesOf({
+          page,
+          label,
+        })).slice(reading)
+        const [readingFrame] = frames
+        const settledFrame = frames.at(-1)
+        const stillShown = Object.keys(readingFrame?.shownFromBottom ?? {})
+          .filter(id => settledFrame?.shownFromBottom[id] !== undefined)
+        expect(stillShown.length).toBeGreaterThan(0)
+        expect(
+          movedRows({ frames }),
+          JSON.stringify(frames),
+        ).toEqual([])
+        expect(frames.every(frame => Object.keys(frame.shownFromBottom).length > 0)).toBe(true)
+        expect(await anchor.evaluate(row => row?.isConnected)).toBe(true)
+        await anchor.dispose()
+      }
+
+      expect(await conversation.getByText('The transcript is unavailable').count()).toBe(0)
+      await conversation.locator('..').getByRole(
+        'button',
+        { name: 'Jump to latest' },
+      )
+        .click()
+      await nextFrames({
+        page,
+        count: ARRIVAL_FRAMES,
+      })
+      expect((await latestFrame({
+        page,
+        label,
+      })).fromBottom).toBeLessThanOrEqual(1)
+    }
   },
 )
 
