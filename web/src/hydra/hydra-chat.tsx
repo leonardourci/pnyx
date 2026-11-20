@@ -207,7 +207,6 @@ export function HydraChat({
   // From the Hydra's own state, so a first send shows its working dots before the server's queue arrives.
   const hosted = hostedHydra({ state })
   const inFlight = pending.filter(item => item.failed === undefined)
-  const shownSends = pending
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
   const stop = async () => {
@@ -443,7 +442,7 @@ export function HydraChat({
         text: '',
         at: decision.at,
       })),
-      ...shownSends.map(s => ({
+      ...pending.map(s => ({
         id: s.id,
         kind: 'message' as const,
         role: 'user',
