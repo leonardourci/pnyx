@@ -529,7 +529,7 @@ test(
 )
 
 test(
-  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, a queue or reorder that cannot happen explains instead of refusing, and Hydra's own card cannot queue',
+  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, a queue or reorder that cannot happen explains instead of refusing, and the Hydra card cannot queue',
   async () => {
     const hydra = await pnyx.hydra()
     const { folder } = await hydra.startTask({ key: 'export' })
