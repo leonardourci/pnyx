@@ -367,7 +367,7 @@ async function runHere({
 export const upgrade = (args: string[]) => upgradeIn({ args })
 
 // root is the Pnyx folder an upgrade with no server pulls into; tests pass their own.
-export async function upgradeIn({
+async function upgradeIn({
   args,
   root = PNYX_ROOT,
 }: {

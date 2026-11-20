@@ -17,7 +17,7 @@ const IDLE_POLL_MS = 1000
 const underway = new Set<string>()
 
 // While one is, the server starts no index process, which would load the new build into the old server's work.
-export const upgradeUnderway = () => underway.size > 0
+const upgradeUnderway = () => underway.size > 0
 
 // The upgrade this server is pulling, installing, building or checking, for whichever Hydra asked for it.
 let building: {
