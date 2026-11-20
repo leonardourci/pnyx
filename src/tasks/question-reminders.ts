@@ -12,11 +12,13 @@ export function questionReminder({
   card,
   ask,
   now,
+  after,
 }: {
   state: HydraState
   card: Card
   ask: Ask
   now: number
+  after?: string
 }) {
   const visible = card.id === HYDRA_CARD || liveTask({ card })
 
@@ -43,8 +45,9 @@ export function questionReminder({
   const reminded = last && now - Date.parse(last) < QUESTION_REMINDER_MS
   const dueAt = card.reminder?.dueAt
   const scheduled = dueAt && now - Date.parse(dueAt) < QUESTION_REMINDER_MS
+  const unread = after && last && Date.parse(last) > Date.parse(after)
 
-  if (now - Date.parse(at) < QUESTION_REMINDER_MS || reminded || scheduled) {
+  if (!unread && (now - Date.parse(at) < QUESTION_REMINDER_MS || reminded || scheduled)) {
     return undefined
   }
 
