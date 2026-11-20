@@ -1,3 +1,6 @@
+import { hydraSend } from '#hydra/send-cli.ts'
+import { loadHydra } from '#app/store.ts'
+import { randomUUID } from 'node:crypto'
 import { workerLine } from './setup/worker-log.ts'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,7 +10,7 @@ import { runForClient } from '#app/request-context.ts'
 import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -2915,5 +2918,79 @@ test(
         undefined,
       ],
     ])
+  },
+)
+
+test(
+  'a failed Hydra input remains retryable while its host is down and concurrent retries deliver once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await page.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    page.close()
+    const text = 'retry this saved input'
+    const id = randomUUID()
+    const args = [
+      'hydra',
+      'send',
+      '--text',
+      text,
+      '--event-id',
+      id,
+    ]
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      text,
+      refuse: true,
+    })
+    await hydra.owner({ args })
+
+    const message = () => {
+      const state = loadHydra({ hydraId: hydra.id }).state
+
+      return state.hydraMessages!.find(input => input.id === id)!
+    }
+
+    await until({
+      what: 'the refusal to be saved',
+      check: () => message().failure,
+    })
+    const failure = message().failure
+    let stoppedMessage: ReturnType<typeof message> | undefined
+    await pnyx.restart({
+      whileStopped: async () => {
+        await hydraSend({
+          hydraId: hydra.id,
+          values: {
+            text,
+            'event-id': id,
+          },
+        })
+        stoppedMessage = { ...message() }
+      },
+    })
+    expect(stoppedMessage?.failure).toBe(failure)
+    expect(stoppedMessage?.attempt).toBeUndefined()
+    const turn = pnyx.codex.plan({
+      hydra: hydra.id,
+      text,
+      hold: true,
+    })
+    onTestFinished(() => turn.release())
+    await Promise.all([
+      hydra.owner({ args }),
+      hydra.owner({ args }),
+    ])
+    await until({
+      what: 'the retry to be taken',
+      check: () => message().received,
+    })
+    expect(message().attempt).toBe(1)
+    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
+      .filter(input => input.endsWith(text))
+    expect(attempts).toHaveLength(2)
   },
 )

@@ -15,14 +15,15 @@ import { resolveSkillReferences } from './skill-invocation.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { failHydraInput } from './received.ts'
 
-export function hydraSend({
+export async function hydraSend({
   values,
   hydraId,
 }: {
   values: Record<string, string | boolean | undefined>
   hydraId: string
-}): Output | Promise<Output> {
+}): Promise<Output> {
   const m = meta({ values })
 
   const ref = values.task === undefined ? undefined : required({
@@ -149,49 +150,80 @@ export function hydraSend({
     return result
   }
 
-  if (result.duplicate) {
-    if (!message.failure) {
-      return result
-    }
-
-    withWriter({
-      hydraId,
-      fn: ({ writer }) => applyDecision({
-        writer,
-        decision: hydraEvent({
-          state: writer.state,
-          cardId: HYDRA_CARD,
-          meta: {
-            actor: m.actor,
-            at: m.at,
-          },
-          change: {
-            type: 'hydra.input',
-            data: {
-              message: message.id,
-              state: 'retrying',
-            },
-          },
-        }),
-      }),
-    })
+  if (result.duplicate && !message.failure) {
+    return result
   }
 
-  const text = hydraDelivery({ message })
+  if (!await readServer({ hydraId })) {
+    return result
+  }
 
-  return readServer({ hydraId }).then(server => server ? askHost({
-    hydraId,
-    body: {
-      action: 'hydra',
-      id: message.id,
-      text,
-      actor: m.actor,
-    },
-  }).then(hosted => ({
-    ...result,
-    ...hosted,
-    help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'],
-  })) : result)
+  if (result.duplicate) {
+    const claimed = withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const current = writer.state.hydraMessages?.find(input => input.id === message.id)
+
+        if (!current?.failure) {
+          return false
+        }
+
+        applyDecision({
+          writer,
+          decision: hydraEvent({
+            state: writer.state,
+            cardId: HYDRA_CARD,
+            meta: {
+              actor: m.actor,
+              at: m.at,
+            },
+            change: {
+              type: 'hydra.input',
+              data: {
+                message: message.id,
+                state: 'retrying',
+              },
+            },
+          }),
+        })
+
+        return true
+      },
+    })
+
+    if (!claimed) {
+      return result
+    }
+  }
+
+  try {
+    const hosted = await askHost({
+      hydraId,
+      body: {
+        action: 'hydra',
+        id: message.id,
+        text: hydraDelivery({ message }),
+        actor: m.actor,
+      },
+    })
+
+    return {
+      ...result,
+      ...hosted,
+      help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'],
+    }
+  } catch (error) {
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => failHydraInput({
+        writer,
+        input: message.id,
+        error: (error as Error).message,
+        at: new Date().toISOString(),
+      }),
+    })
+    throw error
+  }
 }
 
 export function hydraMessages({
