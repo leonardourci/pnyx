@@ -45,7 +45,7 @@ export function reportReviewGaps({
   return missing.map(call => `report decision ${call.task}/${call.ask} is missing from its inventory`)
 }
 
-export function requireReportReview({
+export function informReportReviewGaps({
   state,
   card,
 }: {
@@ -57,13 +57,11 @@ export function requireReportReview({
     card,
   })
 
-  if (gaps.length) {
+  if (card.report && gaps.length) {
     inform({
       task: card.id,
       reason: gaps.join('; '),
-      clear: card.report
-        ? `Use pnyx-axi task report-review ${card.id} --report ${card.report.id} --none or --call <task>/<question>`
-        : `Use pnyx-axi task report ${card.id} --file <path> to store the report`,
+      clear: `Use pnyx-axi task report-review ${card.id} --report ${card.report.id} --none or --call <task>/<question>`,
     })
   }
 }

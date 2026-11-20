@@ -4,7 +4,7 @@ import type { HydraState, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
-import { requireReportReview } from '#investigations/inventory.ts'
+import { informReportReviewGaps } from '#investigations/inventory.ts'
 import { ownerGates } from './owner-gates.ts'
 import { isManagedTask } from './select.ts'
 
@@ -64,7 +64,7 @@ export function declareTask({
   }
 
   if (status === 'done') {
-    requireReportReview({
+    informReportReviewGaps({
       state,
       card,
     })

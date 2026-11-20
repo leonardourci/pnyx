@@ -1,6 +1,6 @@
 import { inform } from '#app/command-notices.ts'
 import { isDeepStrictEqual } from 'node:util'
-import { reportCalls, requireReportReview } from './inventory.ts'
+import { reportCalls, informReportReviewGaps } from './inventory.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { readFileSync } from 'node:fs'
@@ -168,7 +168,7 @@ export function decideBuild({
     })
   }
 
-  requireReportReview({
+  informReportReviewGaps({
     state,
     card,
   })

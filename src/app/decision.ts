@@ -4,7 +4,7 @@ import type { PushedEvent } from '#tasks/model.ts'
 import type { Meta } from './command-meta.ts'
 import type { Writer } from './writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { requireReportReview } from '#investigations/inventory.ts'
+import { informReportReviewGaps } from '#investigations/inventory.ts'
 import { checkRevision, strip } from '#tasks/push-rules.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { observationKey, sessionFacts } from '#tasks/observations.ts'
@@ -98,7 +98,7 @@ export function decided({
   const completed = event.type === 'card.outcome' && event.data.after?.state === 'done'
 
   if (card && (movedToDone || completed)) {
-    requireReportReview({
+    informReportReviewGaps({
       state,
       card,
     })
