@@ -26,7 +26,7 @@ Every change to behaviour adds or updates tests for it; instruction-only and beh
 
 ## Layout
 
-One folder per feature. Code for a feature lives in its folder. Inside a feature, split a file when it holds unrelated concerns and keep closely related code together, as [follow-conventions](.agents/skills/follow-conventions/SKILL.md#files-and-concerns) describes. The root README introduces Pnyx; usage and setup references live in `docs/`; tests and the test harness are described in `docs/testing.md`. Do not add speculative code.
+One folder per feature. Code for a feature lives in its folder. Inside a feature, split a file when it holds unrelated concerns and keep closely related code together, as [follow-conventions](.agents/skills/follow-conventions/SKILL.md#files-and-concerns) describes. The root README introduces Pnyx; usage and setup references live in `docs/`; tests and the test harness are described in `docs/testing.md`. Keep each Markdown prose paragraph on one source line. Do not add speculative code.
 
 | Folder | Holds |
 |---|---|
