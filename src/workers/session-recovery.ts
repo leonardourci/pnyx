@@ -43,21 +43,17 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
           through = tail.size
         }
 
-        withWriter({
+        const committed = withWriter({
           hydraId,
           fn: ({ writer }) => {
             const bound = writer.state.sessions?.[session.id]
 
-            if (!bound || bound.agent.transcriptPath !== path) {
-              return
+            if (!bound || bound.agent.host || bound.agent.transcriptPath !== path) {
+              return false
             }
 
             for (const line of tail.lines) {
-              const current = writer.state.sessions?.[session.id]
-
-              if (!current) {
-                return
-              }
+              const current = writer.state.sessions?.[session.id] ?? bound
 
               const parsed = readTranscriptRecord({
                 record: line.record,
@@ -116,8 +112,15 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
                 }),
               })
             }
+
+            return true
           },
         })
+
+        if (!committed) {
+          break
+        }
+
         cursor = {
           source: path,
           identity: tail.identity,

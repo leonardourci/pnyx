@@ -1079,7 +1079,7 @@ test(
 
     const nativeRead = transcriptReader.readTranscript
     let rotatedOnce = false
-    let reboundOnce = false
+    let reboundReads = 0
     const spy = vi.spyOn(
       transcriptReader,
       'readTranscript',
@@ -1105,8 +1105,11 @@ test(
         )
       }
 
-      if (cursor.source === rebound && tail && !reboundOnce) {
-        reboundOnce = true
+      if (cursor.source === rebound && tail) {
+        reboundReads++
+      }
+
+      if (cursor.source === rebound && tail && reboundReads === 1 && cursor.pos === 0) {
         withWriter({
           hydraId: hydra.id,
           fn: ({ writer }) => {
@@ -1144,7 +1147,7 @@ test(
         )
         writeFileSync(
           rebound,
-          finish,
+          finish + padding.repeat(2000),
         )
         writeFileSync(
           replacement,
@@ -1160,7 +1163,7 @@ test(
       ],
     })).sessions
     expect(rotatedOnce).toBe(true)
-    expect(reboundOnce).toBe(true)
+    expect(reboundReads).toBe(1)
     expect.soft(sessions).toContainEqual(expect.objectContaining({
       id: 'claude:rotated-recovery',
       activity: 'finished',
