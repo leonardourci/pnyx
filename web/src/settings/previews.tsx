@@ -1,4 +1,5 @@
-import type { ComponentProps, CSSProperties, ReactNode } from 'react'
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
+import type { ComponentProps, ReactNode } from 'react'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -22,18 +23,18 @@ function PreviewCard({
   ...props
 }: ComponentProps<'div'> & { variant?: 'card' | 'done' }) {
   const appearance = variant === 'done'
-    ? 'flex-row justify-between py-1.5 text-meta transition-opacity ease-ui duration-base data-hidden:opacity-35 data-hidden:border-dashed'
-    : 'flex-col py-2 border-t-3 border-t-blue text-ui'
+    ? 'flex-row justify-between py-1.5 text-meta transition-opacity duration-base ease-ui data-hidden:border-dashed data-hidden:opacity-35'
+    : 'flex-col border-t-3 border-t-blue py-2 text-ui'
 
-  return <div {...props} className={`preview-card flex gap-1.25 max-w-80 px-2.25 border border-line rounded-md bg-surface ${appearance} ${className}`} />
+  return <div {...props} className={`preview-card flex max-w-80 gap-1.25 rounded-md border border-line bg-surface px-2.25 ${appearance} ${className}`} />
 }
 
 function PreviewTitle({ ...props }: ComponentProps<'span'>) {
-  return <span {...props} className="preview-card-title font-semibold leading-preview-title" />
+  return <span {...props} className="preview-card-title leading-preview-title font-semibold" />
 }
 
 function PreviewMeta({ ...props }: ComponentProps<'span'>) {
-  return <span {...props} className="preview-card-meta flex items-center flex-wrap gap-1.5 text-muted text-meta" />
+  return <span {...props} className="preview-card-meta flex flex-wrap items-center gap-1.5 text-meta text-muted" />
 }
 
 function PreviewChip({
@@ -41,14 +42,14 @@ function PreviewChip({
   ...props
 }: ComponentProps<'span'> & { kind?: 'task' | 'skill' | 'command' | 'pr' }) {
   const appearance = {
-    task: 'text-blue border-blue/35',
-    skill: 'text-purple border-purple/35',
-    command: 'text-teal border-teal/35 font-mono',
-    pr: 'text-green border-green/35',
-    plain: 'text-ink border-line',
+    task: 'border-blue/35 text-blue',
+    skill: 'border-purple/35 text-purple',
+    command: 'border-teal/35 font-mono text-teal',
+    pr: 'border-green/35 text-green',
+    plain: 'border-line text-ink',
   }[kind ?? 'plain']
 
-  return <span {...props} data-kind={kind} className={`preview-chip inline-flex items-center gap-1 py-0 px-preview-chip rounded-full border bg-raised text-preview-chip leading-preview-chip whitespace-nowrap ${appearance}`} />
+  return <span {...props} data-kind={kind} className={`preview-chip inline-flex items-center gap-1 rounded-full border bg-raised px-preview-chip py-0 text-preview-chip leading-preview-chip whitespace-nowrap ${appearance}`} />
 }
 
 function PreviewConversation({ ...props }: ComponentProps<'div'>) {
@@ -59,13 +60,13 @@ function PreviewBubble({
   owner = false,
   ...props
 }: ComponentProps<'div'> & { owner?: boolean }) {
-  const appearance = owner ? 'ml-6 bg-gold-wash border-gold-line' : 'bg-surface border-line'
+  const appearance = owner ? 'ml-6 border-gold-line bg-gold-wash' : 'border-line bg-surface'
 
-  return <div {...props} data-from={owner ? 'owner' : undefined} className={`preview-bubble py-2 px-2.5 border rounded-lg leading-preview-bubble ${appearance}`} />
+  return <div {...props} data-from={owner ? 'owner' : undefined} className={`preview-bubble rounded-lg border px-2.5 py-2 leading-preview-bubble ${appearance}`} />
 }
 
 function PreviewTrace({ ...props }: ComponentProps<'div'>) {
-  return <div {...props} className="preview-trace flex flex-wrap items-center gap-1 py-1 px-2 border border-dashed border-line rounded-md text-muted text-meta [&>pre]:basis-full [&>pre]:mt-1 [&>pre]:mx-0 [&>pre]:mb-0 [&>pre]:whitespace-pre-wrap [&>pre]:text-ink [&>pre]:text-meta" />
+  return <div {...props} className="preview-trace flex flex-wrap items-center gap-1 rounded-md border border-dashed border-line px-2 py-1 text-meta text-muted [&>pre]:mx-0 [&>pre]:mt-1 [&>pre]:mb-0 [&>pre]:basis-full [&>pre]:text-meta [&>pre]:whitespace-pre-wrap [&>pre]:text-ink" />
 }
 
 function MiniPanel({
@@ -73,18 +74,21 @@ function MiniPanel({
   ...props
 }: ComponentProps<'div'> & { column?: boolean }) {
   const appearance = column
-    ? 'preview-board-column flex flex-col gap-0.75 p-0.75 border-subtle bg-background data-dragged:border-dashed data-dragged:border-muted [&>i]:block [&>i]:h-3.5 [&>i]:border [&>i]:border-line [&>i]:border-t-2 [&>i]:border-t-blue [&>i]:rounded-xs [&>i]:bg-surface'
+    ? 'preview-board-column flex flex-col gap-0.75 border-subtle bg-background p-0.75 data-dragged:border-dashed data-dragged:border-muted [&>i]:block [&>i]:h-3.5 [&>i]:rounded-xs [&>i]:border [&>i]:border-t-2 [&>i]:border-line [&>i]:border-t-blue [&>i]:bg-surface'
     : 'preview-board-chat border-line bg-surface'
 
-  return <div {...props} className={`relative shrink-0 rounded-preview transition-[width] ease-ui duration-base border ${appearance}`} />
+  return <div {...props} className={`relative shrink-0 rounded-preview border transition-width duration-base ease-ui ${appearance}`} />
 }
 
-function TimelineLabel({ ...props }: ComponentProps<'span'>) {
-  return <span {...props} className="preview-timeline-label absolute top-9.5 -translate-x-1/2 text-muted text-meta whitespace-nowrap first-of-type:translate-x-0 data-end:-translate-x-full" />
+function TimelineLabel({
+  className = '',
+  ...props
+}: ComponentProps<'span'>) {
+  return <span {...props} className={`preview-timeline-label absolute top-9.5 -translate-x-1/2 text-meta whitespace-nowrap text-muted first-of-type:translate-x-0 data-end:-translate-x-full ${className}`} />
 }
 
 function PreviewLane({ ...props }: ComponentProps<'div'>) {
-  return <div {...props} className="preview-lane flex flex-col gap-0.75 py-1.75 px-2.25 border border-line rounded-control bg-surface text-muted data-on:border-gold [&>b]:inline-flex [&>b]:items-center [&>b]:gap-1.25 [&>b]:text-ink [&>b]:font-semibold" />
+  return <div {...props} className="preview-lane flex flex-col gap-0.75 rounded-control border border-line bg-surface px-2.25 py-1.75 text-muted data-on:border-gold [&>b]:inline-flex [&>b]:items-center [&>b]:gap-1.25 [&>b]:font-semibold [&>b]:text-ink" />
 }
 
 function Preview({
@@ -96,8 +100,8 @@ function Preview({
 }) {
   return (
     <>
-      <div className="setting-preview-box relative min-h-22.5 p-2.5 overflow-hidden border border-subtle rounded-lg bg-background">{children}</div>
-      {caption && <p className="setting-preview-caption mt-1.5 mx-0 mb-0 text-muted text-meta">{caption}</p>}
+      <div className="setting-preview-box relative min-h-22.5 overflow-hidden rounded-lg border border-subtle bg-background p-2.5">{children}</div>
+      {caption && <p className="setting-preview-caption mx-0 mt-1.5 mb-0 text-meta text-muted">{caption}</p>}
     </>
   )
 }
@@ -134,7 +138,7 @@ export function ThemePreview({
           <button
             key={tile.value}
             type="button"
-            className="preview-theme-tile relative h-16 p-0 border border-line rounded-md cursor-pointer data-[theme-tile=system]:bg-[linear-gradient(135deg,var(--color-tile-light)_50%,var(--color-tile-dark)_50%)] data-[theme-tile=light]:bg-tile-light data-[theme-tile=dark]:bg-tile-dark aria-pressed:outline-2 aria-pressed:outline-gold aria-pressed:outline-offset-1 [&>span]:absolute [&>span]:bottom-1 [&>span]:left-1.5 [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:px-1.25 [&>span]:py-0 [&>span]:rounded-sm [&>span]:bg-surface [&>span]:text-ink [&>span]:text-meta"
+            className="preview-theme-tile relative h-16 cursor-pointer rounded-md border border-line p-0 aria-pressed:outline-2 aria-pressed:outline-offset-1 aria-pressed:outline-gold data-[theme-tile=dark]:bg-tile-dark data-[theme-tile=light]:bg-tile-light data-[theme-tile=system]:bg-preview-theme [&>span]:absolute [&>span]:bottom-1 [&>span]:left-1.5 [&>span]:inline-flex [&>span]:items-center [&>span]:gap-1 [&>span]:rounded-sm [&>span]:bg-surface [&>span]:px-1.25 [&>span]:py-0 [&>span]:text-meta [&>span]:text-ink"
             data-theme-tile={tile.value}
             aria-pressed={view.theme === tile.value}
             onClick={() => choose({ theme: tile.value })}
@@ -152,12 +156,12 @@ export function CardTextPreview({ view }: { view: ViewPreferences }) {
 
   return (
     <Preview caption={`${view.fontSize} px titles, ${detail} px details and tags`}>
-      <PreviewCard style={{ fontSize: view.fontSize }}>
+      <PreviewCard style={runtimeStyle({ fontSize: view.fontSize })}>
         <PreviewTitle >Add CSV export to reports</PreviewTitle>
-        <PreviewMeta style={{ fontSize: detail }}>
+        <PreviewMeta style={runtimeStyle({ fontSize: detail })}>
           <Icon name="in_progress" size={ICON_SIZE.badge} /> In progress · <Icon name="claude-code" size={ICON_SIZE.badge} /> Claude Code · 12 min
         </PreviewMeta>
-        <PreviewMeta style={{ fontSize: detail }}>
+        <PreviewMeta style={runtimeStyle({ fontSize: detail })}>
           <PreviewChip >build</PreviewChip>
           <PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />PR #212</PreviewChip>
           <PreviewChip >atlas</PreviewChip>
@@ -170,11 +174,11 @@ export function CardTextPreview({ view }: { view: ViewPreferences }) {
 export function ChatTextPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <PreviewConversation style={{ fontSize: view.chatFontSize }}>
+      <PreviewConversation style={runtimeStyle({ fontSize: view.chatFontSize })}>
         <PreviewBubble owner>
           Ship <PreviewChip kind="task"><Icon name="task" size={ICON_SIZE.badge} />Add CSV export</PreviewChip> behind a flag, like
           {' '}<PreviewChip kind="pr"><Icon name="github_pr" size={ICON_SIZE.badge} />#198</PreviewChip>.
-          {' '}Empty state: <span className="preview-image-chip inline-flex items-center gap-preview-image-gap h-preview-image-height pl-preview-image-left pr-preview-image-right py-0 border border-line rounded-preview-image bg-surface align-middle [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:h-attachment-icon [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-[linear-gradient(135deg,var(--color-gold-wash),var(--color-blue))] [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
+          {' '}Empty state: <span className="preview-image-chip inline-flex h-preview-image-height items-center gap-preview-image-gap rounded-preview-image border border-line bg-surface py-0 pr-preview-image-right pl-preview-image-left align-middle [&>span:first-child]:h-attachment-icon [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-preview-image [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
         </PreviewBubble>
         <PreviewBubble >
           On it with <PreviewChip kind="skill"><Icon name="skill" size={ICON_SIZE.badge} />pnyx-report-progress</PreviewChip>.
@@ -188,7 +192,7 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
 export function CodeTextPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <pre className="preview-code m-0 py-2 px-2.5 rounded-md bg-raised font-mono whitespace-pre" style={{ fontSize: view.codeFontSize }}>{'pnyx-axi task start t-41 \\\n  --rule build'}</pre>
+      <pre className="preview-code m-0 rounded-md bg-raised px-2.5 py-2 font-mono whitespace-pre" style={runtimeStyle({ fontSize: view.codeFontSize })}>{'pnyx-axi task start t-41 \\\n  --rule build'}</pre>
     </Preview>
   )
 }
@@ -254,23 +258,21 @@ function MiniBoard({
   widths: Widths
   mark: 'columns' | 'chat' | 'none'
 }) {
-  const scaled = ({ px }: { px: number }): CSSProperties => ({ width: px * BOARD_SCALE })
-
   return (
-    <div className="preview-board relative flex gap-0.75 h-23 p-0.75 overflow-hidden rounded-compact bg-raised [&_[data-marked]]:outline-2 [&_[data-marked]]:outline-gold [&_[data-marked]]:-outline-offset-1">
-      <MiniPanel data-marked={mark === 'chat' || undefined} style={scaled({ px: widths.chat })} />
+    <div className="preview-board relative flex h-23 gap-0.75 overflow-hidden rounded-compact bg-raised p-0.75 [&_[data-marked]]:outline-2 [&_[data-marked]]:-outline-offset-1 [&_[data-marked]]:outline-gold">
+      <MiniPanel data-marked={mark === 'chat' || undefined} style={runtimeStyle({ width: widths.chat * BOARD_SCALE })} />
       {widths.columns.map(column => (
         <MiniPanel
           column
           key={column.id}
           data-marked={mark === 'columns' || undefined}
           data-dragged={column.dragged || undefined}
-          style={scaled({ px: column.width })}
+          style={runtimeStyle({ width: column.width * BOARD_SCALE })}
         >
           <i /><i />
         </MiniPanel>
       ))}
-      <span className="preview-board-screen absolute top-0 bottom-0 w-0.5 bg-red opacity-70" style={{ left: SCREEN * BOARD_SCALE }} />
+      <span className="preview-board-screen absolute top-0 bottom-0 w-0.5 bg-red opacity-70" style={runtimeStyle({ left: SCREEN * BOARD_SCALE })} />
     </div>
   )
 }
@@ -307,7 +309,7 @@ export function CardUpdatesPreview({ view }: { view: ViewPreferences }) {
       <PreviewCard >
         <PreviewTitle >Fix login redirect loop</PreviewTitle>
         <PreviewMeta ><Icon name="in_progress" size={ICON_SIZE.badge} /> In progress · <Icon name="codex" size={ICON_SIZE.badge} /> Codex · 4 min</PreviewMeta>
-        {view.lastMessageOnCards && <span className="preview-card-latest pt-1 border-t border-subtle text-meta [&_b]:text-muted [&_b]:font-medium"><b>Latest:</b> Found it: the session cookie is set after the redirect. Writing the fix now.</span>}
+        {view.lastMessageOnCards && <span className="preview-card-latest border-t border-subtle pt-1 text-meta [&_b]:font-medium [&_b]:text-muted"><b>Latest:</b> Found it: the session cookie is set after the redirect. Writing the fix now.</span>}
       </PreviewCard>
     </Preview>
   )
@@ -383,7 +385,7 @@ export function DonePreview({ hours }: { hours: DoneAfterHours }) {
 
   return (
     <Preview caption={caption}>
-      <div className="preview-done flex flex-col gap-1 max-w-80">
+      <div className="preview-done flex max-w-80 flex-col gap-1">
         {DONE_CARDS.map(card => (
           <PreviewCard variant="done" key={card.title} data-hidden={hidden({ card }) || undefined}>
             <span>{card.title}</span>
@@ -416,12 +418,12 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
 
   return (
     <Preview caption={caption}>
-      <div className="preview-timeline relative h-13.5 mt-1 mx-2 mb-0">
-        <span className="preview-timeline-axis absolute top-6 left-0 right-0 h-0.5 rounded-hairline bg-line" />
-        {ticks.map(at => <span key={at} className="preview-timeline-tick absolute top-4 w-0.5 h-4.5 rounded-hairline bg-gold" style={{ left: `${at / TIMELINE_MINUTES * 100}%` }} />)}
-        <TimelineLabel style={{ left: '0%' }}>now</TimelineLabel>
-        <TimelineLabel style={{ left: '50%' }}>+1.5 h</TimelineLabel>
-        <TimelineLabel data-end style={{ left: '100%' }}>+3 h</TimelineLabel>
+      <div className="preview-timeline relative mx-2 mt-1 mb-0 h-13.5">
+        <span className="preview-timeline-axis absolute top-6 right-0 left-0 h-0.5 rounded-hairline bg-line" />
+        {ticks.map(at => <span key={at} className="preview-timeline-tick absolute top-4 h-4.5 w-0.5 rounded-hairline bg-gold" style={runtimeStyle({ left: `${at / TIMELINE_MINUTES * 100}%` })} />)}
+        <TimelineLabel className="left-0">now</TimelineLabel>
+        <TimelineLabel className="left-1/2">+1.5 h</TimelineLabel>
+        <TimelineLabel data-end className="left-full">+3 h</TimelineLabel>
       </div>
     </Preview>
   )
@@ -467,7 +469,7 @@ const LOG_CAPTIONS: Record<LogMode, string> = {
 export function LogLinesPreview({ mode }: { mode: LogMode }) {
   return (
     <Preview caption={LOG_CAPTIONS[mode]}>
-      <div className="preview-log flex flex-col gap-0.75 max-w-90 [&>code]:py-0.75 [&>code]:px-2 [&>code]:border [&>code]:border-line [&>code]:rounded-md [&>code]:bg-surface [&>code]:text-meta [&>code]:wrap-anywhere [&>code]:transition-opacity [&>code]:ease-ui [&>code]:duration-base [&>code[data-detailed]]:border-gold/50 [&>code[data-hidden]]:opacity-35 [&>code[data-hidden]]:border-dashed">
+      <div className="preview-log flex max-w-90 flex-col gap-0.75 [&>code]:rounded-md [&>code]:border [&>code]:border-line [&>code]:bg-surface [&>code]:px-2 [&>code]:py-0.75 [&>code]:text-meta [&>code]:wrap-anywhere [&>code]:transition-opacity [&>code]:duration-base [&>code]:ease-ui [&>code[data-detailed]]:border-gold/50 [&>code[data-hidden]]:border-dashed [&>code[data-hidden]]:opacity-35">
         {LOG_LINES.map(({
           text,
           line,
@@ -557,9 +559,9 @@ export function LogDaysPreview({
 
   return (
     <Preview caption={caption}>
-      <div className="preview-days grid grid-cols-5 gap-1 max-w-90">
+      <div className="preview-days grid max-w-90 grid-cols-5 gap-1">
         {files.map(file => (
-          <div key={file.name} className="preview-day flex flex-col gap-0.5 py-1 px-1.25 border border-line rounded-md bg-surface text-meta whitespace-nowrap transition-opacity ease-ui duration-base data-hidden:opacity-35 data-hidden:border-dashed" data-hidden={!file.kept || undefined}>
+          <div key={file.name} className="preview-day flex flex-col gap-0.5 rounded-md border border-line bg-surface px-1.25 py-1 text-meta whitespace-nowrap transition-opacity duration-base ease-ui data-hidden:border-dashed data-hidden:opacity-35" data-hidden={!file.kept || undefined}>
             <span>{file.name}</span>
             <PreviewMeta >{file.size} MB</PreviewMeta>
           </div>
@@ -597,20 +599,20 @@ export function LogSizePreview({
 
   return (
     <Preview caption={caption}>
-      <div className="preview-meter flex gap-0.25 h-3 mt-1.5 mx-0 mb-1 rounded-md bg-line overflow-hidden [&>span]:shrink-0 [&>span]:h-full [&>span]:bg-gold [&>span]:transition-[width] [&>span]:ease-ui [&>span]:duration-base" role="presentation">
+      <div className="preview-meter mx-0 mt-1.5 mb-1 flex h-3 gap-0.25 overflow-hidden rounded-md bg-line [&>span]:h-full [&>span]:shrink-0 [&>span]:bg-gold [&>span]:transition-width [&>span]:duration-base [&>span]:ease-ui" role="presentation">
         {kept.map(file => (
           <span
             key={file.name}
-            style={{
+            style={runtimeStyle({
               width: `${Math.min(
                 file.size / maxMB,
                 1,
               ) * 100}%`,
-            }}
+            })}
           />
         ))}
       </div>
-      <p className="preview-meter-label text-muted text-meta">{`${used} of ${maxMB} MB`}</p>
+      <p className="preview-meter-label text-meta text-muted">{`${used} of ${maxMB} MB`}</p>
     </Preview>
   )
 }
@@ -631,7 +633,7 @@ function Pill({
   label: string
   helper?: boolean
 }) {
-  return <span className="preview-pill inline-flex items-center gap-1 justify-self-start max-w-full min-w-0 wrap-anywhere py-px px-2 border border-line rounded-full bg-surface whitespace-normal data-helper:border-gold/50 data-helper:text-gold" data-helper={helper || undefined}><Icon name={icon} size={ICON_SIZE.badge} />{label}</span>
+  return <span className="preview-pill inline-flex max-w-full min-w-0 items-center gap-1 justify-self-start rounded-full border border-line bg-surface px-2 py-px wrap-anywhere whitespace-normal data-helper:border-gold/50 data-helper:text-gold" data-helper={helper || undefined}><Icon name={icon} size={ICON_SIZE.badge} />{label}</span>
 }
 
 export function HelperPreview({
@@ -671,7 +673,7 @@ export function HelperPreview({
           what,
           who,
         ]) => (
-          <div key={what} className="preview-route-row grid grid-cols-[auto_minmax(0,1fr)] gap-y-1 gap-x-1.5 items-center [&>span:first-child]:col-span-full [&>span:first-child]:text-muted [&>svg]:text-muted">
+          <div key={what} className="preview-route-row grid grid-cols-icon-content items-center gap-x-1.5 gap-y-1 [&>span:first-child]:col-span-full [&>span:first-child]:text-muted [&>svg]:text-muted">
             <span>{what}</span>
             <Icon name="arrow_right" size={ICON_SIZE.badge} />
             {who}
@@ -745,7 +747,7 @@ export function ResetPreview({
     <Preview caption={moved ? 'Dashed outlines: where Reset puts each pane.' : 'Widths match the saved settings.'}>
       <div className="preview-board-frame relative">
         <MiniBoard widths={now} mark="none" />
-        {outlines.map(outline => <span key={outline.left} className="preview-board-ghost absolute top-0.75 bottom-0.75 border border-dashed border-gold rounded-preview pointer-events-none" style={outline} />)}
+        {outlines.map(outline => <span key={outline.left} className="preview-board-ghost pointer-events-none absolute top-0.75 bottom-0.75 rounded-preview border border-dashed border-gold" style={runtimeStyle(outline)} />)}
       </div>
     </Preview>
   )
