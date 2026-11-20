@@ -219,7 +219,10 @@ export async function hydraCheck({
   })
   const state = loadHydra({ hydraId }).state
   const pendingReports = new Map(
-    (state.contextNotes ?? []).filter(note => note.report).map(note => [note.seq, note] as const),
+    (state.contextNotes ?? []).filter(note => note.report).map(note => [
+      note.seq,
+      note,
+    ] as const),
   )
   const visibleChanges = hosted ? changes.filter(event => {
     const progress = event.type === 'hydra.message' && event.data.kind === 'progress'
