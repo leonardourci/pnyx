@@ -39,7 +39,8 @@ import { findCard } from '#tasks/push-rules.ts'
 import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import type { AgentRef, AgentSession, Attention } from '#workers/model.ts'
+import type { AgentRef, AgentSession, Attention, SessionObservation } from '#workers/model.ts'
+import { base } from './command-meta.ts'
 import type { HydraAgentChange } from '#hydra/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { INTERRUPTED, sessionId } from '#workers/session-attachments.ts'
@@ -355,13 +356,41 @@ export function createHost({
   }: {
     writer: Writer
     agent: AgentRef
-    input: Record<string, unknown>
+    input: SessionObservation
     actor: string
     eventId?: string
     details?: string
   }) => {
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
+
+    if (session?.launchId && !session.taskId) {
+      applyDecision({
+        writer,
+        decision: {
+          event: {
+            ...base({
+              state: writer.state,
+              cardId: '$sessions',
+              meta: {
+                at: at(),
+                actor,
+                id: eventId,
+                details,
+              },
+            }),
+            type: 'session.observed',
+            data: {
+              session: session.id,
+              ...input,
+            },
+          },
+        },
+      })
+
+      return
+    }
+
     const card = session && writer.state.cards[session.taskId ?? session.originCardId]
     const finished = input.activity === 'finished' && card?.sessionActivity !== 'finished'
 
@@ -960,7 +989,6 @@ export function createHost({
     children,
     open,
     folderOf,
-    sessionKey,
   })
 
   const {

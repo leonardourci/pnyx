@@ -172,7 +172,37 @@ export function applyAttachment({
   state: HydraState
   event: Extract<HydraEvent, { type: 'task.session'}>
 }): void {
-  const session = state.sessions?.[event.data.session]
+  let session = state.sessions?.[event.data.session]
+  const started = event.data.started
+
+  if (!session && started && event.data.before === null) {
+    session = {
+      id: event.data.session,
+      agent: cloneValue({ value: started.agent }),
+      settings: cloneValue({ value: started.settings }),
+      originCardId: event.cardId,
+      launchId: event.id,
+      taskId: null,
+      launch: {
+        via: 'pnyx',
+        at: event.at,
+        folder: started.agent.cwd,
+        harness: started.agent.provider,
+      },
+      lastSeen: event.at,
+      activity: 'working',
+      sessionActivity: 'working',
+      workingSince: event.at,
+      attention: [],
+      sourceRefs: [],
+    }
+
+    if (!state.sessions) {
+      state.sessions = {}
+    }
+
+    state.sessions[session.id] = session
+  }
 
   if (!session || session.taskId !== event.data.before) {
     return

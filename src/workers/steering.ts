@@ -42,7 +42,13 @@ export function steeringWorkerIdentity({
   card: Card
 }): string | undefined {
   const session = cardSessionId({ card })
-  const origin = session && state.sessions?.[session]?.originCardId
+  const registered = session && state.sessions?.[session]
+
+  if (registered && registered.launchId) {
+    return registered.launchId
+  }
+
+  const origin = registered && registered.originCardId
   const createdSeq = origin && state.cards[origin]?.createdSeq
 
   return Object.entries(state.eventIds).find(([

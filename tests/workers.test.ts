@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { inbox } from '#hydra/update-queue.ts'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
@@ -10,7 +10,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -33,6 +33,69 @@ beforeAll(async () => {
     },
   })
 })
+
+test(
+  'a detached hosted worker finishes without changing its old task and keeps its activity after restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'detached-worker' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'detached-worker',
+        '--title',
+        'Detached worker',
+        '--folder',
+        folder,
+      ],
+    })
+    const held = pnyx.claude.plan({
+      hydra: hydra.id,
+      partial: 'Still checking the export',
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'detached-worker',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    const session = `claude-code:${worker.id}`
+    const activity = () => rows<{ activity: string }>({
+      text: "select data->>'sessionActivity' as activity from sessions where hydra_id = $1 and id = $2",
+      values: [
+        hydra.id,
+        session,
+      ],
+    })[0]?.activity
+    await until({
+      what: 'the held worker turn',
+      check: () => worker.received.length === 1,
+    })
+    expect(activity()).toBe('working')
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'detached-worker',
+      ],
+    })
+    held.release()
+    await until({
+      what: 'the detached session to finish',
+      check: () => activity() === 'finished',
+    })
+    expect((await hydra.task({ key: 'detached-worker' })).worker).toBe('none')
+    await pnyx.restart()
+    expect(activity()).toBe('finished')
+    expect((await hydra.task({ key: 'detached-worker' })).worker).toBe('none')
+  },
+)
 
 test(
   'registered hosted workers keep native features and connections without grants, while browser remains opt-in',

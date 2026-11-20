@@ -480,6 +480,10 @@ export function eventWriter({
         agent = event.data.agent
       }
 
+      if (event.type === 'task.session' && event.data.started) {
+        agent = event.data.started.agent
+      }
+
       let observedSession = session
       const envelope: Partial<HydraEvent> = {
         boardId: hydraId,

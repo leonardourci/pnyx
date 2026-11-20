@@ -23,6 +23,7 @@ import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
+import { taskInstructions } from '#tasks/owner-ask.ts'
 import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -46,7 +47,6 @@ export function createWorkerStarts({
   children,
   open,
   folderOf,
-  sessionKey,
 }: {
   hydraId: string
   live: Map<string, Live>
@@ -79,7 +79,6 @@ export function createWorkerStarts({
     session?: HostedSession
   }): Live
   folderOf({ card }: { card: Card & { agent: AgentRef } }): string
-  sessionKey({ agent }: { agent: AgentRef }): string
 }) {
   const starting = new Set<string>()
 
@@ -301,11 +300,11 @@ export function createWorkerStarts({
           },
           env: environment({
             task: target.id,
-            steeringWorker: `${id}:session`,
+            steeringWorker: `${id}:attach`,
           }),
         }) : environment({
           task: target.id,
-          steeringWorker: `${id}:session`,
+          steeringWorker: `${id}:attach`,
         }),
         signal: controller.signal,
         spawned: children.spawned,
@@ -423,38 +422,30 @@ export function createWorkerStarts({
         }
         applyDecision({
           writer,
-          decision: decidePush({
-            state: writer.state,
-            key: sessionKey({ agent }),
-            input: {
-              title: card.title,
-              agent,
-              ...(Object.keys(settings).length ? { settings } : {}),
-              activity: 'working',
-              source: {
-                adapter: 'pnyx',
-                objectId: agent.sessionId,
-                observedAt: at(),
+          decision: {
+            event: {
+              ...base({
+                state: writer.state,
+                cardId: card.id,
+                meta: {
+                  ...meta,
+                  id: `${id}:attach`,
+                },
+              }),
+              type: 'task.session',
+              data: {
+                session: sessionId({ agent }),
+                before: null,
+                after: card.id,
+                started: {
+                  agent,
+                  settings,
+                },
+                working: true,
+                brief: taskInstructions({ card }),
               },
             },
-            meta: {
-              ...meta,
-              id: `${id}:session`,
-            },
-          }),
-        })
-        applyDecision({
-          writer,
-          decision: decideSession({
-            state: writer.state,
-            ref: sessionId({ agent }),
-            task: card.id,
-            working: true,
-            meta: {
-              ...meta,
-              id: `${id}:attach`,
-            },
-          }),
+          },
         })
 
         if (tools) {

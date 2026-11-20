@@ -119,11 +119,24 @@ export function findWorkerTurnToResume({
   const lastTurn = scanEvents({
     cardId,
     hydraId,
-    types: ['card.pushed'],
+    types: [
+      'card.pushed',
+      'task.session',
+    ],
     descending: true,
-  }).find(event => event.type === 'card.pushed' && event.data.activity === 'working'
-      && event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider)
+  }).find(event => {
+    const pushed = event.type === 'card.pushed' && event.data.activity === 'working'
+    const started = event.type === 'task.session' && event.data.working
+    let observed: AgentRef | undefined
+
+    if (pushed) {
+      observed = event.data.agent
+    } else if (started) {
+      observed = event.data.started?.agent
+    }
+
+    return observed?.sessionId === agent.sessionId && observed.provider === agent.provider
+  })
 
   if (!lastTurn || resumesInARow({
     turn: lastTurn,

@@ -7,7 +7,7 @@ import type { ReportCall } from '#investigations/model.ts'
 import type { Column, HydraColumn } from '#tasks/columns-model.ts'
 import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
-import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
+import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, SessionObservedEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
 import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent } from '#hydra/model.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '#routine-helper/state.ts'
@@ -386,6 +386,7 @@ export type HydraEvent =
   | NotedEvent
   | ViewEvent
   | SessionEvent
+  | SessionObservedEvent
   | HydraChange
   | ChatEvent
   | PermissionEvent
@@ -420,6 +421,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'card.noted',
   'board.view',
   'task.session',
+  'session.observed',
   'board.configured',
   'board.columns',
   'task.created',
