@@ -106,6 +106,7 @@ export async function discoverPullRequests({
           repository,
           branch,
         }
+
         if (!active()) {
           return
         }
