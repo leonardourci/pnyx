@@ -836,7 +836,14 @@ export const HydraCard = memo(function HydraCard({
             <div hidden={chatOnly} className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto [&[hidden]]:hidden">
               <CardPanel ref={contextScroll.ref} {...panel({ id: 'context' })}>
                 {card.notices?.map(notice => (
-                  <div key={JSON.stringify([notice.task, notice.reason, notice.clear])} className="text-meta text-gold">
+                  <div
+                    key={JSON.stringify([
+                      notice.task,
+                      notice.reason,
+                      notice.clear,
+                    ])}
+                    className="text-meta text-gold"
+                  >
                     <RichText text={`${notice.reason}. ${notice.clear}`} />
                   </div>
                 ))}
