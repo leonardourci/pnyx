@@ -154,6 +154,7 @@ if (args[0] === 'api') {
           if (!existsSync(gate)) {
             watcher.close()
             clearTimeout(timer)
+            unlinkSync(`${gate}.ready`)
             resolve()
           }
         },

@@ -281,7 +281,18 @@ export function followWorkerLogs({
           poll: true,
         }),
       )
-      read()
+
+      try {
+        read()
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'read worker log',
+          hydraId,
+          taskId: card.id,
+          error,
+        })
+      }
     }
   }
 

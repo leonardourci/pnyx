@@ -1,6 +1,6 @@
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
-import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, writeFileSync } from 'node:fs'
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1983,13 +1983,43 @@ test(
       path,
       'utf8',
     )))
-    await pnyx.restart({
-      whileStopped: () => writeFileSync(
-        path,
-        'note: completed offline\nnote: partial',
-        { flag: 'a' },
-      ),
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'unreadable-log',
+        '--title',
+        'Unreadable worker log',
+      ],
     })
+    const unreadable = await hydra.task({ key: 'unreadable-log' })
+    const unreadableDir = join(
+      taskRoot,
+      unreadable.id,
+    )
+    mkdirSync(
+      unreadableDir,
+      { recursive: true },
+    )
+    const unreadableLog = join(
+      unreadableDir,
+      'worker.log',
+    )
+    await pnyx.restart({
+      whileStopped: () => {
+        symlinkSync(
+          'worker.log',
+          unreadableLog,
+        )
+        writeFileSync(
+          path,
+          'note: completed offline\nnote: partial',
+          { flag: 'a' },
+        )
+      },
+    })
+    rmSync(unreadableLog)
     const restored = await hydra.owner({
       args: [
         'task',

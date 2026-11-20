@@ -1,7 +1,7 @@
 import { watchPath } from '#app/watch.ts'
 import { writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { test, expect } from 'vitest'
+import { test } from 'vitest'
 import { until } from './setup/pnyx.ts'
 
 test(
@@ -40,7 +40,6 @@ test(
         what: 'the unchanged file to be reconciled',
         check: () => observed === 'one append',
       })
-      expect(observed).toBe('one append')
     } finally {
       watcher.close()
     }
