@@ -355,7 +355,11 @@ test(
         'Invoices ready to upload',
       ],
     })
-    await workerLine({ hydra, key: 'export', line: 'note: Upload started' })
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'note: Upload started',
+    })
     await hydra.as({ session: worker }).run({
       args: [
         'hydra',
@@ -445,8 +449,24 @@ test(
       progressCount: 2,
       summary: 'Invoices ready to upload',
     }))
-    expect(wake).toContain('Upload started')
+    expect(wake).not.toContain('Upload started')
+    expect(wake).not.toContain('Quiet latest line')
     expect(wake).toContain('Need the SFTP password')
+    const blockedSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: blocked: Need the SFTP password/)?.[1]
+    expect(blockedSeq).toBeDefined()
+    const workerStatusPage = await hydra.as({ session }).run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(blockedSeq) - 1),
+      ],
+    })
+    expect(workerStatusPage.changes).toContainEqual(expect.objectContaining({
+      type: 'task.worker-line',
+      reportStatus: 'unhandled',
+      summary: 'blocked: Need the SFTP password',
+    }))
     expect(wake).toContain('result: Stored findings: invoices have been verified.')
     const storedResultSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: result: Stored findings/)?.[1]
 
@@ -717,6 +737,8 @@ test(
           'attachment-probe',
           '--title',
           'Attachment probe',
+          '--column',
+          await hydra.column({ role: 'parked' }),
         ],
       })
       await hydra.owner({

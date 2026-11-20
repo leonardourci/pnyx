@@ -54,6 +54,7 @@ const TRACKED: readonly EventType[] = [
   'task.intent',
   'task.visibility',
   'task.declared',
+  'task.worker-line',
   'task.asked',
   'task.ask.escalated',
   'task.ask.closed',
@@ -179,6 +180,14 @@ export async function hydraCheck({
         const worker = task?.tracking === 'declared' && !isManagedTask({ card: task })
         const question = worker && e.type === 'card.pushed' && e.data.attention?.some(a => a.blocking && !a.answered)
         const owner = e.type === 'card.replied' && e.cardId !== '$hydra' && e.data.state === 'queued' && Boolean(e.data.text?.trim()) && !e.data.control && e.actor !== HYDRA_ACTOR
+
+        if (e.type === 'task.worker-line' && [
+          'note',
+          'link',
+        ].includes(e.data.code)) {
+          continue
+        }
+
         const listed = TRACKED.includes(e.type) && !lifecycleMove({ id: e.id })
         const tracked = listed || question || owner
 
