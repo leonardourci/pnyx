@@ -630,6 +630,12 @@ test(
       what: 'the worker to take the message',
       check: () => worker.received.some(text => text.includes('List three lakes')),
     })
+    expect(await page.getByRole(
+      'region',
+      { name: 'Task lakes conversation' },
+    ).locator('[data-entry-id][aria-label="You"]')
+      .filter({ hasText: 'List three lakes' })
+      .count()).toBe(1)
     answer.release()
     await chat.getByText('Titicaca, Baikal and Victoria.').filter({ visible: true })
       .waitFor()
