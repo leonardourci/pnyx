@@ -120,7 +120,7 @@ export function hydraMessages({
 
   const claims = new Map<HydraMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
   const pairable = messages.filter(message => message.actor !== HYDRA_ACTOR && message.actor !== 'pnyx' && !message.stopped)
-  const ids = new Set(messages.map(message => message.id))
+  const messageIds = new Set(messages.map(message => message.id))
 
   const claim = ({
     message,
@@ -168,7 +168,7 @@ export function hydraMessages({
       message,
       copy: transcript.findLast(entry => {
         const words = ownCopies.get(entry)
-        const othersCopy = entry.inputUuid !== undefined && ids.has(entry.inputUuid)
+        const othersCopy = entry.inputUuid !== undefined && messageIds.has(entry.inputUuid)
 
         return !claimed.has(entry) && !othersCopy && words !== undefined && copies.has(words)
           && (entry.at === undefined || entry.at >= message.at)

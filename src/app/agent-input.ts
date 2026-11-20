@@ -48,15 +48,10 @@ export function agentInput({
     }
   })
 
-  const input: HostedInput = {
+  return {
     id,
     text,
     images,
+    ownerMessageId,
   }
-
-  if (ownerMessageId) {
-    input.ownerMessageId = ownerMessageId
-  }
-
-  return input
 }
