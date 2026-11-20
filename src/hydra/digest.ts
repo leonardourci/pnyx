@@ -20,10 +20,10 @@ import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
 
 export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init` saves them in the Pnyx home to edit'
 
-// ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
 const DIGEST_HASH_CHARS = 12
 const DIGEST_CHECKPOINT_VERSION = 1
+const PENDING_CARD = '-'.repeat(DIGEST_HASH_CHARS)
 
 export const clip = ({
   text,
@@ -43,6 +43,9 @@ export const clip = ({
   )}…` : clean
 }
 
+const latestOwnerMessage = ({ card }: { card: Card }) =>
+  card.replies?.findLast(reply => reply.worker && reply.text?.trim())
+
 function taskLine({
   state,
   card,
@@ -57,7 +60,12 @@ function taskLine({
     cards: state.cards,
     sessions: state.sessions,
   }).text
-  const latest = currentState({ card })
+  const latest = currentState({
+    card,
+    workerOnly: true,
+  })
+  const ownerMessage = latestOwnerMessage({ card })
+  const helperOutcome = state.helper?.outcomes.findLast(outcome => outcome.task === card.id)
   const session = card.sessionIds?.[0] ? state.sessions?.[card.sessionIds[0]] : undefined
   const activity = card.sessionActivity ?? card.activity
   const worker = card.agent
@@ -103,6 +111,10 @@ function taskLine({
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
   ]
 
+  if (ownerMessage?.text) {
+    lines.push(`  owner: ${clip({ text: ownerMessage.text })}`)
+  }
+
   if (latest) {
     lines.push(`  latest: ${clip({
       text: latest.text,
@@ -110,11 +122,25 @@ function taskLine({
     })}`)
   }
 
+  if (helperOutcome) {
+    lines.push(`helper: ${clip({ text: helperOutcome.summary })}`)
+  }
+
   if (unwatched.length) {
     lines.push(`  unwatched pull request: ${unwatched.map(l => l.url).join(', ')} (no worker to wake with its news)`)
   }
 
-  return lines.join('\n')
+  for (const link of card.links) {
+    const details = [
+      link.title,
+      link.state,
+      link.draft ? 'draft' : '',
+      link.checks,
+    ].filter(Boolean).join(', ')
+    lines.push(`link: ${link.url}${details ? ` (${details})` : ''}`)
+  }
+
+  return lines.map(line => line.trim()).join(' · ')
 }
 
 function ownerDigest({
@@ -197,7 +223,6 @@ function ownerDigest({
 }
 
 function digestParts({
-  hydraId,
   state,
   owner,
   projects,
@@ -205,7 +230,6 @@ function digestParts({
   setup,
   onlyTasks,
 }: {
-  hydraId: string
   state: HydraState
   owner: string
   projects: string[]
@@ -233,7 +257,8 @@ function digestParts({
   const open = tasks.filter(card => !taskDone({
     state,
     card,
-  })).sort((
+  }))
+  const ordered = tasks.sort((
     a,
     b,
   ) => place({ card: a }) - place({ card: b }) || rankOf({ card: a }) - rankOf({ card: b }))
@@ -342,15 +367,36 @@ function digestParts({
     'helper',
     helperLeases({ state }).join('\n'),
   )
+  const totals = new Map<string, number>()
+
+  for (const card of open) {
+    const status = cardStatus({
+      card,
+      cards: state.cards,
+      sessions: state.sessions,
+    })
+    const label = status.text
+    totals.set(
+      label,
+      (totals.get(label) ?? 0) + 1,
+    )
+  }
+
+  let totalText = [...totals].map(([
+    status,
+    count,
+  ]) => `${count} ${status}`).join(', ')
+
+  if (!totals.size) {
+    totalText = 'none'
+  }
+
   parts.set(
-    'tasks',
-    'Open tasks (id · title · project · status · worker):',
+    'totals',
+    `Open cards: ${totalText}`,
   )
 
-  for (const card of open.slice(
-    0,
-    TASK_LIMIT,
-  )) {
+  for (const card of ordered) {
     parts.set(
       `task:${card.id}`,
       taskLine({
@@ -364,21 +410,6 @@ function digestParts({
     )
   }
 
-  if (!open.length) {
-    parts.set(
-      'empty',
-      'none: no open tasks',
-    )
-  }
-
-  parts.set(
-    'more',
-    open.length > TASK_LIMIT ? `${open.length - TASK_LIMIT} more open tasks: run \`pnyx-axi task list --hydra ${hydraId}\`` : 'All open tasks are listed.',
-  )
-  parts.set(
-    'done',
-    `${tasks.length - open.length} done tasks not listed`,
-  )
   parts.set(
     'owner',
     owner,
@@ -408,8 +439,6 @@ function digestParts({
       'attention',
       'setup',
       'columns',
-      'more',
-      'done',
       'memory',
       'projects',
     ]) {
@@ -543,7 +572,6 @@ export function hydraDigest({
 }): string {
   const parts = digestParts({
     onlyTasks,
-    hydraId,
     state,
     owner: ownerDigest({
       owner,
@@ -555,36 +583,62 @@ export function hydraDigest({
     readable,
     setup,
   })
-  const before = previousCheckpoint({
+  const checkpointBefore = previousCheckpoint({
     text: previousDigest,
     hydraId,
     through: state.seq,
   })
+  const before = checkpointBefore?.parts.totals ? checkpointBefore : undefined
   const hashes: Record<string, string> = {}
   const changed: string[] = []
+  const cards: string[] = []
+  let omitted = 0
 
   for (const [
     key,
     text,
   ] of parts) {
-    let identity = key
-
-    if (key.startsWith('task:')) {
-      identity = `task:${digestHash({ text: key.slice('task:'.length) })}`
-    }
-
+    const card = key.startsWith('task:') ? state.cards[key.slice('task:'.length)] : undefined
+    const identity = card ? `task:${digestHash({ text: card.id })}` : key
     let fingerprint = text
 
     if (key === 'owner') {
       fingerprint += JSON.stringify(owner)
     }
 
-    const hash = digestHash({ text: fingerprint })
-    hashes[identity] = hash
+    if (card) {
+      const ownerMessage = latestOwnerMessage({ card })
 
-    if (text && hash !== before?.parts[identity]) {
+      if (ownerMessage) {
+        fingerprint += ownerMessage.id
+      }
+    }
+
+    const hash = digestHash({ text: fingerprint })
+    const previousHash = before?.parts[identity]
+
+    if (card) {
+      if (!previousHash && taskDone({
+        state,
+        card,
+      })) {
+        continue
+      }
+
+      if (before && hash !== previousHash && cards.length >= TASK_LIMIT) {
+        hashes[identity] = previousHash ?? PENDING_CARD
+        omitted++
+        continue
+      }
+
+      if (hash !== previousHash) {
+        cards.push(text)
+      }
+    } else if (text && hash !== previousHash && key !== 'totals') {
       changed.push(text)
     }
+
+    hashes[identity] = hash
   }
 
   if (before) {
@@ -595,8 +649,13 @@ export function hydraDigest({
 
       const key = `task:${digestHash({ text: card.id })}`
 
-      if (before.parts[key] && !hashes[key]) {
-        changed.push(`- ${card.id} is no longer listed in this digest; read task show for its current state.`)
+      if (before.parts[key] && !parts.has(`task:${card.id}`)) {
+        if (cards.length >= TASK_LIMIT) {
+          hashes[key] = before.parts[key]
+          omitted++
+        } else {
+          cards.push(`- ${card.id} is no longer listed in this digest; read task show for its current state.`)
+        }
       }
     }
   }
@@ -625,6 +684,16 @@ export function hydraDigest({
 
   if (before) {
     lines.push(`Changes since event ${before.through}; unlisted context still applies.`)
+  }
+
+  lines.push(
+    before ? 'Task cards (changed since your last turn):' : 'Task cards (all open cards):',
+    ...cards,
+    parts.get('totals') ?? 'Open cards: none',
+  )
+
+  if (omitted) {
+    lines.push(`${omitted} more changed cards. Full list: \`pnyx-axi task list --hydra ${hydraId}\`; details: \`pnyx-axi task show <task> --full --hydra ${hydraId}\`.`)
   }
 
   lines.push(
