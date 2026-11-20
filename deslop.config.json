@@ -169,5 +169,5 @@
   },
   "checkFixAttempts": 1,
   "agentTimeoutMinutes": 45,
-  "tryNotes": "Run this branch's code, never the global `pnyx-axi`, which is the owner's install. Run the web app with `PNYX_DEV_HOME=<scratch dir> pnpm dev` and open the URL Vite prints; `pnpm dev` sets `PNYX_HOME` from `PNYX_DEV_HOME` and ignores a `PNYX_HOME` you pass, and its server uses port 4319 unless `PNYX_DEV_PORT` names another. For the built server, run `PNYX_HOME=<scratch dir> node dist/cli/pnyx-axi.js serve --port 0` after `pnpm build`. Never touch the live install at pnyx.localhost or `~/.pnyx`, or the owner's `~/.pnyx-dev`; open the page in a headless browser with its own profile."
+  "tryNotes": "Give each trial a fresh scratch home. Run the web app with `PNYX_DEV_HOME=<scratch dir> pnpm dev`. Its backend defaults to port 4319. If that port is in use, serve the built app on an assigned port instead. After `pnpm build`, run `PNYX_HOME=<scratch dir> node dist/cli/pnyx-axi.js serve --port 0`. Wait for the trial's server to start, then open the URL it serves (the URL Vite prints for `pnpm dev`) in a headless browser with its own profile. Stop the processes started for the trial when done. Leave the global `pnyx-axi`, pnyx.localhost, `~/.pnyx` and `~/.pnyx-dev` alone."
 }
