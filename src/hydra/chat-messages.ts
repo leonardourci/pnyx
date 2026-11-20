@@ -138,7 +138,6 @@ export function hydraMessages({
     }
   }
 
-  // The harness recorded a message under its id when Pnyx could give it one.
   for (const message of paired) {
     claim({
       message,
@@ -147,8 +146,7 @@ export function hydraMessages({
     })
   }
 
-  // Otherwise the newest message claims the newest copy of its words sent after it, so a stopped one cannot take its
-  // resend's copy, and no message takes a copy recorded under another's id.
+  // The newest message claims the newest copy sent after it, so a stopped one cannot take its resend's copy.
   for (const message of paired.toReversed()) {
     if (claims.has(message)) {
       continue
@@ -261,11 +259,25 @@ export function hydraMessages({
       a,
       b,
     ) => b.entry.at.localeCompare(a.entry.at))
+  const recordedUnderId = ({
+    message,
+    entry,
+  }: ShownCopy) => entry.inputUuid === message.id
+
+  for (const {
+    message,
+    entry,
+  } of shownCopies.filter(recordedUnderId)) {
+    copyTimes.set(
+      message,
+      entry.at,
+    )
+  }
 
   for (const {
     entry,
     copy,
-  } of shownCopies) {
+  } of shownCopies.filter(item => !recordedUnderId(item))) {
     const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy)
       && item.message.at <= entry.at)
 

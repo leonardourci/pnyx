@@ -2613,7 +2613,7 @@ test(
 )
 
 test(
-  'a message the harness recorded under its own id is paired by that id, even when its words differ or a later message has the same words',
+  'a message the harness recorded under its own id is paired by that id and delivered by it, even when its words differ or a later message has the same words',
   () => {
     const first = {
       id: '6f1c2a4e-0b7d-4c55-9a3e-1d2b3c4d5e6f',
@@ -2667,21 +2667,25 @@ test(
       row.id,
       row.reference,
       row.text,
+      row.receipt,
     ])).toEqual([
       [
         '10:m0',
         first.id,
         'yes',
+        'delivered',
       ],
       [
         '20:m0',
         redacted.id,
         'the key is hunter2',
+        'delivered',
       ],
       [
         second.id,
         second.id,
         'yes',
+        undefined,
       ],
     ])
   },

@@ -26,7 +26,7 @@ import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
 import { threadEntryOrder } from './thread-order.ts'
 import { hydraMessages } from './chat-messages.ts'
-import { deliveredInput, replyEchoes } from './task-messages.ts'
+import { deliveredInputs, replyEchoes } from './task-messages.ts'
 import { hydraConfig } from './config.ts'
 import type { HydraMessage } from './model.ts'
 
@@ -994,13 +994,18 @@ function readThreadPage(
       continue
     }
 
-    const typed = ({ item }: Candidate) => !deliveredInput({
-      entry: item,
-      echoes,
-      hosted: source.agent?.host === 'pnyx',
-      provider: source.agent?.provider,
-    })
-    const kept = card.id === HYDRA_CARD ? read.found : read.found.filter(typed)
+    let kept = read.found
+
+    if (card.id !== HYDRA_CARD) {
+      const delivered = deliveredInputs({
+        entries: read.found.map(candidate => candidate.item),
+        echoes,
+        hosted: source.agent?.host === 'pnyx',
+        provider: source.agent?.provider,
+      })
+      kept = read.found.filter(candidate => !delivered.has(candidate.item))
+    }
+
     candidates = [
       ...kept.map(candidate => ({
         ...candidate,

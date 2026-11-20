@@ -1,6 +1,7 @@
 import { steeringText } from '#workers/inbox-notice.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { injectedInstructions, ownMessage } from './chat-messages.ts'
+import { joinMessageParts } from './history.ts'
 import { splitEntry, type ThreadEntry } from './transcripts-read.ts'
 
 export function replyEchoes({
@@ -57,7 +58,7 @@ export function replyEchoes({
     }): boolean {
       const times = sentTimes.get(text) ?? []
       const writtenAt = at === undefined ? Infinity : Date.parse(at)
-      const echoed = times.findIndex(sentAt => sentAt <= writtenAt)
+      const echoed = times.findLastIndex(sentAt => sentAt <= writtenAt)
 
       if (echoed < 0) {
         return false
@@ -73,29 +74,33 @@ export function replyEchoes({
   }
 }
 
-export function deliveredInput({
-  entry,
+const messageOf = ({ entry }: { entry: ThreadEntry }) => entry.messageId ?? entry.id
+
+export function deliveredInputs({
+  entries,
   echoes,
   hosted,
   provider,
 }: {
-  entry: ThreadEntry
+  entries: ThreadEntry[]
   echoes: ReturnType<typeof replyEchoes>
   hosted: boolean
   provider?: string
-}): boolean {
-  if (!ownMessage({ entry })) {
-    return false
-  }
+}): Set<ThreadEntry> {
+  const inputs = entries.filter(entry => ownMessage({ entry }))
+  const injected = joinMessageParts({ entries: inputs }).filter(message => steeringText({ text: message.text })
+    || injectedInstructions({
+      entry: message,
+      provider,
+    }))
+  const injectedMessages = new Set(injected.map(message => messageOf({ entry: message })))
 
-  const injected = steeringText({ text: entry.text }) || injectedInstructions({
-    entry,
-    provider,
-  })
-  const pnyxInput = hosted || entry.pnyx === true || injected
+  return new Set(inputs.filter(entry => {
+    const pnyxInput = hosted || entry.pnyx === true || injectedMessages.has(messageOf({ entry }))
 
-  return pnyxInput || echoes.take({
-    text: entry.text,
-    at: entry.at,
-  })
+    return pnyxInput || echoes.take({
+      text: entry.text,
+      at: entry.at,
+    })
+  }))
 }

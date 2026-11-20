@@ -111,7 +111,7 @@ const card = async ({ session }: { session: string }) => {
 }
 
 test(
-  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s, Stop ends its turn, and every hook exits 0 at once',
+  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s and no part of a long steering notice, Stop ends its turn, and every hook exits 0 at once',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -141,21 +141,24 @@ test(
       ),
     }
 
+    const userLine = ({ content }: { content: string }) => `${JSON.stringify({
+      type: 'user',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content,
+      },
+    })}\n`
     mkdirSync(
       cwd,
       { recursive: true },
     )
     writeFileSync(
       base.transcript_path,
-      `${JSON.stringify({
-        type: 'user',
-        uuid: '9c4f5d71-3eaf-4f88-8d61-4a5b6c7d8e92',
-        timestamp: new Date().toISOString(),
-        message: {
-          role: 'user',
-          content: 'Fix the flaky login test',
-        },
-      })}\n`,
+      [
+        userLine({ content: 'Fix the flaky login test' }),
+        userLine({ content: `New instructions for task outside, in order (Pnyx inbox IDs ["earlier"]):\n\n${'Keep the retry loop bounded. '.repeat(60)}` }),
+      ].join(''),
     )
     const runs = [
       await hook({

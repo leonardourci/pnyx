@@ -22,6 +22,7 @@ import { watchIntake } from './claude-intake.ts'
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 let permissionWarningLogged = false
 
 function startQuery({
@@ -358,7 +359,6 @@ export function claudeProvider({
       let closed = false, interrupted = false, active = false
       let inputGeneration = 0
       const nativeInputs = new Map<string, string>()
-      // Claude Code writes a uuid once per transcript and links what follows a repeat to the first record.
       const sentUuids = new Set<string>()
       let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
@@ -1291,8 +1291,6 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
       return []
   }
 }
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function inputUuid({
   owner,

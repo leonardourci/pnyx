@@ -2,9 +2,8 @@ import { statSync } from 'node:fs'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { joinMessageParts } from '#hydra/history.ts'
 import { sessionEntries, threadPath } from '#hydra/transcripts-read.ts'
-import { replyEchoes } from '#hydra/task-messages.ts'
+import { deliveredInputs, replyEchoes } from '#hydra/task-messages.ts'
 import { isManagedTask } from '#tasks/select.ts'
-import { steeringText } from './inbox-notice.ts'
 import { cardSessionId } from './session-attachments.ts'
 
 export interface TypedWords {
@@ -14,8 +13,9 @@ export interface TypedWords {
 }
 
 // The owner's words typed straight into a worker's session, in its terminal or the Paseo app: the user messages of the
-// task's transcript that echo no reply Pnyx queued and are none of Pnyx's own inputs (start prompts, steering notices).
-// Only words written from `from` and before `to` count. A worker Pnyx runs has no terminal, so its transcript is not read.
+// task's transcript that echo no reply Pnyx queued and are none of Pnyx's own inputs (start prompts, steering notices)
+// or the harness's injected instructions. Only words written from `from` and before `to` count. A worker Pnyx runs has
+// no terminal, so its transcript is not read.
 export function typedWords({
   state,
   replies,
@@ -45,26 +45,23 @@ export function typedWords({
       return []
     }
 
-    const echoes = replyEchoes({
-      card: card.id,
-      events: replies,
-    })
-
-    const typed = sessionEntries({
+    const entries = sessionEntries({
       path,
       session,
       boundaries: false,
-    }).filter(entry => {
-      if (entry.role !== 'user' || entry.pnyx) {
-        return false
-      }
+    })
+    const delivered = deliveredInputs({
+      entries,
+      echoes: replyEchoes({
+        card: card.id,
+        events: replies,
+      }),
+      hosted: false,
+      provider: card.agent?.provider,
+    })
 
-      const echo = echoes.take({
-        text: entry.text,
-        at: entry.at,
-      })
-
-      if (echo) {
+    const typed = entries.filter(entry => {
+      if (entry.role !== 'user' || delivered.has(entry)) {
         return false
       }
 
@@ -73,12 +70,10 @@ export function typedWords({
       return at >= from && at < to
     })
 
-    return joinMessageParts({ entries: typed })
-      .filter(({ text }) => !steeringText({ text }))
-      .map(entry => ({
-        task: card.id,
-        at: entry.at!,
-        text: entry.text,
-      }))
+    return joinMessageParts({ entries: typed }).map(entry => ({
+      task: card.id,
+      at: entry.at!,
+      text: entry.text,
+    }))
   })
 }
