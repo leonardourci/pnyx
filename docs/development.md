@@ -111,7 +111,7 @@ Project means `AGENTS.md`; conventions means `follow-conventions`. `review-code`
 
 `Tests` runs on `pull_request` with read-only permissions, no secrets and no path filters. `Test scope` installs the selector from package.json without lifecycle hooks and reads the merge diff, including both paths of renames. It runs tests when the selection names `Lint, build and tests`. Docs-only changes skip that job, satisfying branch protection. The docs kind names `Test scope` because deslop requires a successful CI check to publish proof. A failed scope job still runs tests behind the approved `ci` environment. Description edits start no run; new pushes cancel older runs.
 
-The full CI job also runs `pnpm knip` before lint, build and tests; unused files, exports and dependencies fail the job. `knip.jsonc` names worker and test-process entry points that static imports cannot reach, with a reason beside each exception. Run `pnpm knip` locally before pushing a code change.
+The full CI job runs `pnpm knip` before lint, build and tests. Unused files, exports and dependencies fail the job. `knip.jsonc` lists workers and test processes launched at runtime.
 
 The PR controls the workflow, selector spec and config, so changes to those files need owner review. The read-only token, absence of secrets and approval-gated tests limit what untrusted code can do.
 
