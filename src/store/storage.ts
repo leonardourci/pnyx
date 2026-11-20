@@ -6,7 +6,7 @@ import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
 
-export const LOCK_TIMEOUT_MS = 5000
+const LOCK_TIMEOUT_MS = 5000
 export const nonblockingLocks = new AsyncLocalStorage<true>()
 const STALE_EMPTY_LOCK_MS = 10_000
 const LOCK_POLL_MS = 25
@@ -131,7 +131,7 @@ export function replaceFile({
   }
 }
 
-export function lockIsStale({ path }: { path: string }): boolean {
+function lockIsStale({ path }: { path: string }): boolean {
   try {
     const pid = Number(readFileSync(
       path,
