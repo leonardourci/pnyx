@@ -254,13 +254,6 @@ export function eventText({ event }: { event: HydraEvent }): string {
         event.data.context,
       )
       break
-    case 'task.mirrored':
-      parts.push(
-        event.data.status,
-        JSON.stringify(event.data.meta),
-        JSON.stringify(event.data.backlog),
-      )
-      break
     case 'hydra.message':
       parts.push(
         event.data.text,
