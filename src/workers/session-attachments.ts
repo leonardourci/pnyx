@@ -176,7 +176,8 @@ export function applyAttachment({
   const started = event.data.started
 
   if (started) {
-    if (session || event.data.before !== null || !event.data.after || !state.cards[event.data.after]) {
+    if (session || event.data.before !== null || !event.data.after
+      || !state.cards[event.data.after]) {
       return false
     }
 
