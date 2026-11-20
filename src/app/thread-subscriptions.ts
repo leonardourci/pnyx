@@ -3,7 +3,7 @@ import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
-import { mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
+import { joinLatest, mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
@@ -358,9 +358,17 @@ export function createThreadSubscriptions({
         homes: homes(),
       })
 
-      sub.history = mergeThreadPages({
-        before: sub.history ?? null,
+      sub.history = joinLatest({
+        history: sub.history,
         latest: page,
+        read: ({ before }) => readThread({
+          hydraId,
+          allTraces: true,
+          state: state(),
+          card,
+          homes: homes(),
+          before,
+        }),
       })
 
       if (card.id === HYDRA_CARD) {

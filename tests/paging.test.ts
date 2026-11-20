@@ -40,6 +40,7 @@ interface UpdatesReceipt {
 }
 
 const EXCHANGES = 30
+const BURST = 130
 const NOTES_PAST_FIRST_PAGE = 70
 // A reply larger than one transport part, which the page must still read whole.
 const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End of notes.`
@@ -240,6 +241,28 @@ test(
         check: () => notes().includes('note after reading back'),
       })
       expect(toolRows()).toEqual([])
+
+      await appendRecords({
+        session: worker,
+        records: Array.from(
+          { length: BURST },
+          (
+            _,
+            index,
+          ) => ({
+            type: 'assistant' as const,
+            content: `burst ${index + 1}`,
+          }),
+        ),
+      })
+      const burst = () => loaded().map(entry => entry.text)
+        .filter(text => text.startsWith('burst '))
+      await until({
+        what: 'the last line of the burst',
+        check: () => burst().includes(`burst ${BURST}`),
+      })
+      expect(burst()).toHaveLength(BURST)
+      expect(burst()[0]).toBe('burst 1')
 
       await focusMode({ on: false })
       await until({

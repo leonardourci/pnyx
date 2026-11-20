@@ -79,6 +79,47 @@ export function mergeThreadPages({
   }
 }
 
+export function joinLatest({
+  history,
+  latest,
+  read,
+}: {
+  history?: ThreadPage
+  latest: ThreadPage
+  read({ before }: { before: string }): ThreadPage
+}): ThreadPage {
+  const sameSession = history !== undefined && history.session === latest.session
+  const held = sameSession ? history.entries.filter(entry => !entry.id.startsWith('live:')) : []
+
+  if (!history || !held.length) {
+    return mergeThreadPages({
+      before: history ?? null,
+      latest,
+    })
+  }
+
+  const known = new Set(held.map(entry => entry.id))
+  const seen = new Set<string>()
+  let joined = latest
+
+  const reachesHeld = ({ page }: { page: ThreadPage }) => page.entries
+    .some(entry => known.has(entry.id))
+
+  while (joined.older && !seen.has(joined.older) && !reachesHeld({ page: joined })) {
+    seen.add(joined.older)
+    joined = mergeThreadPages({
+      before: joined,
+      latest: read({ before: joined.older }),
+      olderPage: true,
+    })
+  }
+
+  return mergeThreadPages({
+    before: history,
+    latest: joined,
+  })
+}
+
 export interface ThreadBoundary {
   session?: string
   oldest: string
