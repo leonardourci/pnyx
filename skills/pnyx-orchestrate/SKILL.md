@@ -43,6 +43,5 @@ The receipt shows the started worker, or why it did not start, and lists anythin
 | a reminder, hide, batch edit, Intent change, recurring worker snag or finished worker to free | [task records](references/tasks.md) |
 | an owner override, a dispatch rule change, another route, a lost, ended or moved worker, a queue, a browser grant, a task copy or a permission request | `pnyx-manage-workers` |
 | arranging projects, cards or columns | `pnyx-arrange-columns` |
-| acting as Hydra from a Firstmate home | `pnyx-firstmate-as-hydra` |
 | the owner asks to save memory, a context reset, or memory nears its budget | `inscribe` |
 | fixing a Setup needed row | `pnyx-set-up` |

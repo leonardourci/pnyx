@@ -34,7 +34,7 @@ Direct worker starts and switches (task `task-9115947a`, included here by owner 
 - Sending from a task without a worker starts it directly in its normal repository copy; a new task can be created and started from the same composer. Hydra learns through its normal since-last-turn notes, without a coordination turn.
 - The shared composer has harness, model and effort controls. Same-harness changes retain the session. A different harness starts a fresh session carrying a command to read the recorded prior conversation. Card chat retains earlier assistant replies; explicitly selecting a session reads that session alone.
 - A send during a live turn that changes the agent queues the message and target harness/model/effort until that turn ends. It never cuts off work silently; Stop then Send is the immediate path (ask-209958). A queued change survives restart; Stop cancels it.
-- An outside terminal, Firstmate or Paseo session keeps its existing reply route. Harness/model controls stay disabled, without hint text, until Continue in Pnyx succeeds (ask-210044).
+- An outside terminal session keeps its existing reply route. Harness/model controls stay disabled, without hint text, until Continue in Pnyx succeeds (ask-210044).
 - The shared Repository picker preselects project-column repositories and offers every attached repository in Ideas or an unassigned card. Picking assigns an existing card. Send stays disabled until assignment is confirmed when starting a worker. Save task works without a repository (ask-210177).
 - A legacy card with a worker and no repository keeps sending into its existing folder. It offers the same picker; assignment affects later starts and never moves its running worker (ask-210263).
 - A provisional task stays in its chosen project and retains its selected DOM node through confirmation. Its composer waits for creation confirmation before starting work; conversation reads use the existing command dependency queue. An unsent draft survives moving its card to a project, including when browser storage is full.
@@ -53,7 +53,6 @@ Remaining: integrate the parallel Tailwind commits, then run one deslop pass and
 | Custom status columns and rules | Continue applying their rules internally; no visible status columns | Preserved. The column CLI remains a lifecycle control |
 | Done timestamps and hide overrides | Keep existing retention; parents finish only after their children | Implemented. Default is 1 hour |
 | Queued-role column and worker queues | Keep queue placement and handoff guards | Preserved. `task reorder --behind` stays a queue operation |
-| Firstmate locked status columns | Keep mirror placement guards; group the view by project | Preserved. Keeper selection lists Firstmate blockers |
 | Manual placement overrides | Keep lifecycle override events; project edits choose visible position | Preserved. `task arrange` changes visual rank |
 | Column widths/order and CLI | Preserve old values for old clients; workspace view fields own project layout | Implemented through `view set`, not legacy `column resize` |
 | Column skills and digest | Describe project arrangement and per-project state counts; explain legacy controls | Updated |
@@ -72,7 +71,7 @@ Remaining: integrate the parallel Tailwind commits, then run one deslop pass and
 
 Existing duplicate repository attachments keep working after upgrade and no task moves automatically. Setup and Settings name each duplicated repository and its Hydras. An explicit keeper choice moves all affected tasks and records each move. New duplicate attachments are refused deterministically (ask-203840).
 
-Keeper selection is all or nothing. If any task cannot move, refuse with every blocking task and reason. Blockers include live workers, PRs in flight, parent/dependency links, Firstmate mirrors and active sources. Move nothing and defer nothing; the owner retries after clearing the blockers (ask-203909).
+Keeper selection is all or nothing. If any task cannot move, refuse with every blocking task and reason. Blockers include live workers, PRs in flight, parent/dependency links and active sources. Move nothing and defer nothing; the owner retries after clearing the blockers (ask-203909).
 
 A free-text project with no attached repository stays stored, appears as a plain tag and places its task in Ideas. There are no temporary columns. Assigning a real repository moves the task into its project column (ask-204158).
 
