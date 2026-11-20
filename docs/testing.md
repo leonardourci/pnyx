@@ -5,13 +5,13 @@ The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx se
 ```text
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
-├── browser/            targeted checks in an isolated headless Chrome through chrome-devtools-axi
+├── browser/            targeted checks in isolated headless Chrome
 └── setup/              the shared setup: Postgres, the server, fake agents, fixtures
 ```
 
 ## Running
 
-The targeted browser checks require an installed Chrome; they launch their own headless session with a scratch profile and never attach to an existing browser. The CLI and its bridge are pinned development dependencies.
+The targeted browser checks require an installed Chrome; they launch their own headless session with a scratch profile and never attach to an existing browser. The harnesses use pinned `playwright-core` and `chrome-devtools-axi` development dependencies.
 
 Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`). Then:
 
