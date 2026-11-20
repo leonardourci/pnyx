@@ -244,6 +244,7 @@ export const push = guard({
       meta: m,
       intent: {
         type: 'card.pushed',
+        accepts: ['session.observed'],
         card: key,
       },
       decide: ({ state }) => decidePush({

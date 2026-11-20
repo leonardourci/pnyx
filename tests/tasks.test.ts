@@ -3020,11 +3020,13 @@ test(
       ],
     })
     const folder = hydra.folder({ name: 'observed' })
-    await hydra.owner({
+    const firstObservation = await hydra.owner({
       args: [
         'push',
         '--key',
         'observed',
+        '--event-id',
+        'first-session-observation',
         '--file',
         '-',
       ],
@@ -3042,6 +3044,71 @@ test(
         activity: 'working',
       }),
     })
+    const retried = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--event-id',
+        'first-session-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    expect(retried.event).toEqual(firstObservation.event)
+    expect(retried.duplicate).toContain('nothing appended')
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'parent',
+        '--event-id',
+        'first-session-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Unrelated write' }),
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
+    const outside = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-receipt',
+        '--event-id',
+        'outside-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'receipt-only',
+        },
+      }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-receipt',
+        '--event-id',
+        'outside-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'receipt-only',
+        },
+      }),
+    })).event).toEqual(outside.event)
     const result = await hydra.owner({
       args: [
         'task',

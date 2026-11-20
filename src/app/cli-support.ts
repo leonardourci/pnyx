@@ -375,6 +375,7 @@ function receipt({
 
 interface Intent {
   type: EventType
+  accepts?: EventType[]
   card: string
 }
 
@@ -444,11 +445,14 @@ function originalReceipt(
   },
 ): Output {
   // The key a card had when it moved to another Hydra still names it in a retry.
-  const sameCard = original.cardId === intent.card
+  const sameCard = (original.type === 'session.observed' && original.data.key === intent.card)
+    || original.cardId === intent.card
     || state.keys[intent.card] === original.cardId
     || state.movedOut?.[original.cardId]?.key === intent.card
 
-  if (original.type !== intent.type || !sameCard) {
+  const sameType = original.type === intent.type || intent.accepts?.includes(original.type)
+
+  if (!sameType || !sameCard) {
     throw new AxiError(
       `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       'IDEMPOTENCY_CONFLICT',
