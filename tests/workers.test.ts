@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { base } from '#app/command-meta.ts'
 import type { HydraState } from '#app/model.ts'
+import { replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -39,7 +40,7 @@ beforeAll(async () => {
 })
 
 test(
-  'replaying an attachment to a missing task leaves the session available and the undo unrecorded',
+  'replaying an attachment to a missing or occupied task preserves its sessions and undo state',
   () => {
     const session = 'codex:worker'
     const state: HydraState = {
@@ -85,6 +86,83 @@ test(
       },
     })
 
+    expect(state.sessions?.[session]?.taskId).toBeNull()
+    expect(state.undone).toEqual({})
+
+    const task = 'occupied'
+    const current = 'codex:current'
+    const meta = {
+      at: '2026-01-01T00:00:00.000Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [{
+        ...base({
+          state,
+          cardId: task,
+          meta: {
+            ...meta,
+            id: 'create-occupied-task',
+          },
+        }),
+        type: 'task.created',
+        data: {
+          key: task,
+          title: 'Occupied task',
+        },
+      }],
+    })
+    applySessionMove({
+      state,
+      event: {
+        ...base({
+          state,
+          cardId: task,
+          meta: {
+            ...meta,
+            id: 'start-current-worker',
+          },
+        }),
+        type: 'task.session',
+        data: {
+          session: current,
+          before: null,
+          after: task,
+          started: {
+            agent: {
+              provider: 'codex',
+              sessionId: 'current',
+              host: 'pnyx',
+            },
+            settings: {},
+          },
+        },
+      },
+    })
+    applySessionMove({
+      state,
+      event: {
+        ...base({
+          state,
+          cardId: task,
+          meta: {
+            ...meta,
+            id: 'undo-detach-into-occupied-task',
+          },
+        }),
+        type: 'task.session',
+        undoes: 'detach',
+        data: {
+          session,
+          before: null,
+          after: task,
+        },
+      },
+    })
+
+    expect(state.cards[task]?.agent?.sessionId).toBe('current')
+    expect(state.sessions?.[current]?.taskId).toBe(task)
     expect(state.sessions?.[session]?.taskId).toBeNull()
     expect(state.undone).toEqual({})
   },

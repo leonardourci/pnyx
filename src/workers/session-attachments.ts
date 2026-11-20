@@ -181,6 +181,10 @@ export function applyAttachment({
     return false
   }
 
+  if (target && target.id !== event.data.before && cardSessionId({ card: target })) {
+    return false
+  }
+
   if (started) {
     if (session || event.data.before !== null || !target) {
       return false
