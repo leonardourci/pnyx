@@ -1307,6 +1307,7 @@ export function codexProvider({
             // One read of the next message is always open, so a message that arrives mid-turn joins the running turn.
             let incoming = messages.next()
             let inputDone = false
+            const carriedContext = new Map<string, string>()
             const turnInput = ({
               text,
               message,
@@ -1372,7 +1373,11 @@ export function codexProvider({
                 compacted = rpc.compacted()
               }
 
-              const text = context && !manualCompact ? `${await context({ compacted })}\n\n${said}` : said
+              const previousContext = carriedContext.get(message.id)
+              carriedContext.delete(message.id)
+              const currentContext = context && !manualCompact ? await context({ compacted }) : undefined
+              const text = [compacted ? undefined : previousContext, currentContext, said]
+                .filter(part => part !== undefined).join('\n\n')
 
               if (manualCompact && said.trim() !== '/compact') {
                 yield 'working'
@@ -1580,13 +1585,10 @@ export function codexProvider({
                     continue
                   }
 
-                  let text = message.text
+                  const rendered = context ? await context({}) : undefined
+                  const text = rendered ? `${rendered}\n\n${message.text}` : message.text
 
                   try {
-                    if (context) {
-                      text = `${await context({})}\n\n${message.text}`
-                    }
-
                     await rpc.request({
                       method: 'turn/steer',
                       params: {
@@ -1618,10 +1620,11 @@ export function codexProvider({
                       correlationId: message.id,
                       error,
                     })
-                    carried.push({
-                      ...message,
-                      text,
-                    })
+                    if (rendered) {
+                      carriedContext.set(message.id, rendered)
+                    }
+
+                    carried.push(message)
                     emit({
                       event: {
                         type: 'input',

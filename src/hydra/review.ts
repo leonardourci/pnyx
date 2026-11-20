@@ -125,7 +125,8 @@ export function boardReview({
     const seen = Math.max(
       observed,
       Date.parse(recorded),
-      Date.parse(latest?.at ?? card.workingSince ?? recorded),
+      Date.parse(latest?.at ?? recorded),
+      Date.parse(card.workingSince ?? recorded),
     )
     const quietAt = new Date(seen).toISOString()
     const activity = card.sessionActivity ?? card.activity ?? 'unknown'
@@ -234,7 +235,7 @@ export function boardReview({
     for (const ask of openAsks({ card })) {
       const at = ask.escalated?.at ?? ask.at
       const wording = askWording({ ask }).question
-      lines.push(`  Question ${ask.id} to ${ask.audience}: ${wording} (${elapsed({
+      lines.push(`- ${mention({ card })} Question ${ask.id} to ${ask.audience}: ${wording} (${elapsed({
         at,
         now,
       })})`)

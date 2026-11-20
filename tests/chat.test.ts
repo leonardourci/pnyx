@@ -3014,6 +3014,15 @@ test.each([
           refuse: true,
         })
         await hydra.chat({ text: 'Read the carried update' })
+        await until({
+          what: 'Codex to receive the steering attempt',
+          check: () => session.received.some(text => text.endsWith('Read the carried update')),
+        })
+        await workerLine({
+          hydra,
+          key: 'review-page',
+          line: 'note: Review page was updated after steering',
+        })
       }
     } finally {
       held.release()
@@ -3031,6 +3040,9 @@ test.each([
       })
       const carried = session.received.filter(text => text.endsWith('Read the carried update')).at(-1)
       expect(carried).toContain('https://example.com/carried-review')
+      expect(carried?.indexOf('Review page was updated after steering')).toBeGreaterThan(
+        carried?.indexOf('https://example.com/carried-review') ?? -1,
+      )
       await until({
         what: 'the carried turn to finish',
         check: () => !queue({ hydraId: hydra.id })?.working,

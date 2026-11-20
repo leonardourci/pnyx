@@ -63,7 +63,7 @@ function timedReview({
     .map(flag => JSON.stringify([
       flag.kind,
       flag.task,
-      flag.detail,
+      flag.reminder ?? flag.detail,
     ]))
   const previousFlags = new Set(state.hydraReview?.flags ?? [])
   // An idle Hydra whose flags are unchanged, such as a stale `left-off`, has nothing to record.
@@ -171,7 +171,7 @@ export function startReviewTimer({
 
           const unavailable = running({ state: current }) || !pnyxRunsHydra({ state: current })
 
-          if (!cadence || time < deadline || unavailable) {
+          if (!cadence || time < deadline || unavailable || busy()) {
             return false
           }
 
