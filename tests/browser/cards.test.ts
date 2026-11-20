@@ -434,8 +434,14 @@ test(
           frames.push({
             left: bounds.left,
             right: bounds.right,
-            visibleLeft: Math.max(0, scrollerLeft),
-            visibleRight: Math.min(innerWidth, scrollerLeft + axis.clientWidth),
+            visibleLeft: Math.max(
+              0,
+              scrollerLeft,
+            ),
+            visibleRight: Math.min(
+              innerWidth,
+              scrollerLeft + axis.clientWidth,
+            ),
           })
         }
 
