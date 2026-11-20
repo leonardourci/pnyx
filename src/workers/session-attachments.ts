@@ -171,7 +171,7 @@ export function applyAttachment({
 }: {
   state: HydraState
   event: Extract<HydraEvent, { type: 'task.session'}>
-}): void {
+}): boolean {
   let session = state.sessions?.[event.data.session]
   const started = event.data.started
 
@@ -205,7 +205,7 @@ export function applyAttachment({
   }
 
   if (!session || session.taskId !== event.data.before) {
-    return
+    return false
   }
 
   const old = session.taskId && state.cards[session.taskId]
@@ -267,6 +267,8 @@ export function applyAttachment({
     state,
     session,
   })
+
+  return true
 }
 
 // Replay migrates legacy observations without changing event bytes or ids.

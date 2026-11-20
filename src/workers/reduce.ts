@@ -119,9 +119,7 @@ export function applySessionMove({
   const card = state.cards[event.cardId]
 
   if (event.type === 'task.session') {
-    const attached = state.sessions?.[event.data.session]?.taskId === event.data.before
-      || Boolean(event.data.started && event.data.before === null)
-    applyAttachment({
+    const attached = applyAttachment({
       state,
       event,
     })

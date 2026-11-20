@@ -85,6 +85,19 @@ test(
     expect(next.id).not.toBe(worker.id)
     expect((await hydra.task({ key: task })).worker).toBe(`codex:${next.id}`)
     expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
+    const followUp = 'Continue on the original worker.'
+    await hydra.owner({
+      args: [
+        'reply',
+        'original-worker',
+        '--text',
+        followUp,
+      ],
+    })
+    await until({
+      what: 'the original worker to receive its follow-up',
+      check: () => worker.received.some(text => text.includes(followUp)),
+    })
   },
 )
 
