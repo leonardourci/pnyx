@@ -145,7 +145,10 @@ export function foldWorkerLog({
       const kind = match?.[1]
       const content = match?.[2]
       let code: WorkerCode = 'invalid'
-      let text = containsNullByte ? raw.replaceAll('\0', '\\0') : raw
+      let text = containsNullByte ? raw.replaceAll(
+        '\0',
+        '\\0',
+      ) : raw
 
       if (kind && content?.trim() && CODES.has(kind as WorkerCode)) {
         code = kind as WorkerCode
