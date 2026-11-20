@@ -16,7 +16,7 @@ Make an owner question readable on its own. Its context gives the owner's requir
 
 ## The owner's answer
 
-The owner answers on the card. To record an answer they wrote in chat, run `task answer <task> <id> --from-message <message-id> --reason "<why>"`, adding `--choice Go|Hold` or `--choice Merge|Hold` for those questions; `reply <task> --question <id> --from-message <message-id> --text "<relay>"` also passes it to the worker. Record only a message that answers that question: a clarification such as "why?" continues the conversation. "Later, until <date>" is `task defer-question <task> <id> --until "<date>" --from-message <message-id>`. Keep one open question per decision, and reuse a pull request's existing merge question.
+The owner answers on the card. To record an answer they wrote in chat, run `task answer <task> <id> --from-message <message-id> --reason "<why>"`, adding `--choice Go|Hold` or `--choice Merge|Hold` for those questions; `reply <task> --question <id> --from-message <message-id> --text "<relay>"`, with the same `--choice`, records it and passes it to the worker in one call. Record only a message that answers that question: a clarification such as "why?" continues the conversation. "Later, until <date>" is `task defer-question <task> <id> --until "<date>" --from-message <message-id>`. Keep one open question per decision, and reuse a pull request's existing merge question.
 
 ## Talking it over first
 
