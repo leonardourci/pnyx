@@ -116,7 +116,7 @@ export function AddProject({
   }
 
   return (
-    <section className="add-project-box min-w-0 [&_h2]:text-chat [&_h2]:mt-0 [&_h2]:mx-0 [&_h2]:mb-2 [&>p]:leading-normal" aria-label="Add a project">
+    <section className="add-project-box min-w-0 [&_h2]:mx-0 [&_h2]:mt-0 [&_h2]:mb-2 [&_h2]:text-chat [&>p]:leading-normal" aria-label="Add a project">
       <h2 ref={heading} tabIndex={-1}>Give Hydra a project</h2>
       <p className="small muted">Attach a folder on this laptop, or clone a repository here.</p>
       <ProjectActions>
@@ -187,13 +187,13 @@ export function AddProject({
             onChange={({ path }) => setPath(path)}
           />
           {listing?.selected && path.trim() && (
-            <div className="picked-folder p-2 border border-line rounded-md">
+            <div className="picked-folder rounded-md border border-line p-2">
               <strong>{listing.selected.name}</strong>
               <FolderDescription>{listing.selected.path}</FolderDescription>
             </div>
           )}
           {result?.error && <p className="small" role="status">{result.error}</p>}
-          {mode === 'clone' && listing?.cloneInto && <p className="clone-preview text-meta wrap-anywhere leading-normal">Code will land in <strong>{listing.cloneInto}</strong></p>}
+          {mode === 'clone' && listing?.cloneInto && <p className="clone-preview text-meta leading-normal wrap-anywhere">Code will land in <strong>{listing.cloneInto}</strong></p>}
           <LandingFields
             name="this project"
             choice={landing}

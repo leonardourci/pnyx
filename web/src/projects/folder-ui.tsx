@@ -5,15 +5,15 @@ export function ProjectForm({
   submit,
   ...props
 }: Omit<ComponentProps<'form'>, 'onSubmit'> & { submit({ event }: { event: SubmitEvent<HTMLFormElement> }): void }) {
-  return <form {...props} onSubmit={event => submit({ event })} className="project-form grid gap-2 mt-4 [&_fieldset]:border-0 [&_fieldset]:p-0 [&_fieldset]:m-0 [&_fieldset]:grid [&_fieldset]:gap-2 [&_fieldset]:min-w-0 [&_fieldset_label]:grid [&_fieldset_label]:gap-1 [&>label]:grid [&>label]:gap-1.5 [&>label]:text-meta" />
+  return <form {...props} onSubmit={event => submit({ event })} className="project-form mt-4 grid gap-2 [&_fieldset]:m-0 [&_fieldset]:grid [&_fieldset]:min-w-0 [&_fieldset]:gap-2 [&_fieldset]:border-0 [&_fieldset]:p-0 [&_fieldset_label]:grid [&_fieldset_label]:gap-1 [&>label]:grid [&>label]:gap-1.5 [&>label]:text-meta" />
 }
 
 export function ProjectList({ ...props }: ComponentProps<'ul'>) {
-  return <ul {...props} className="project-list list-none p-0 m-0" />
+  return <ul {...props} className="project-list m-0 list-none p-0" />
 }
 
 export function ProjectActions({ ...props }: ComponentProps<'div'>) {
-  return <div {...props} className="project-actions flex items-center flex-wrap gap-1.5" />
+  return <div {...props} className="project-actions flex flex-wrap items-center gap-1.5" />
 }
 
 export function FolderChoice({
@@ -29,11 +29,11 @@ export function FolderChoice({
           event.preventDefault()
         }
       }}
-      className={`w-full flex flex-col items-start gap-0.75 text-left ${className}`}
+      className={`flex w-full flex-col items-start gap-0.75 text-left ${className}`}
     />
   )
 }
 
 export function FolderDescription({ ...props }: ComponentProps<'small'>) {
-  return <small {...props} className="block max-w-full text-muted text-meta wrap-anywhere" />
+  return <small {...props} className="block max-w-full text-meta wrap-anywhere text-muted" />
 }

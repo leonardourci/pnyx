@@ -184,9 +184,9 @@ export function Projects({
   }
 
   const row = ({ project: p }: { project: ProjectRow }) => (
-    <li key={p.path} className={`project-row flex items-center justify-between gap-3 py-2 px-0 [&>div]:min-w-0 [&.detached_strong]:text-muted ${p.state === 'detached' ? 'detached' : ''}`}>
+    <li key={p.path} className={`project-row flex items-center justify-between gap-3 px-0 py-2 [&.detached_strong]:text-muted [&>div]:min-w-0 ${p.state === 'detached' ? 'detached' : ''}`}>
       <div className="project-details flex-1">
-        <strong>{p.name}</strong><span className="project-path block text-muted text-ui wrap-anywhere">{p.path}</span>
+        <strong>{p.name}</strong><span className="project-path block text-ui wrap-anywhere text-muted">{p.path}</span>
         {!readonly && p.state === 'attached' && (
           <label>Polis<Select
             label={`Polis for ${p.name}`}
