@@ -139,7 +139,8 @@ export function hydraMessages({
   }
 
   for (const message of pairable) {
-    const recordedLines = transcript.filter(entry => entry.inputUuid === message.id && ownCopies.has(entry))
+    const recordedLines = transcript.filter(entry => entry.inputUuid === message.id
+      && ownCopies.has(entry))
     const [
       copy,
       ...otherParts

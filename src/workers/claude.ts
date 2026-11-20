@@ -359,6 +359,7 @@ export function claudeProvider({
       let closed = false, interrupted = false, active = false
       let inputGeneration = 0
       const nativeInputs = new Map<string, string>()
+      // Claude Code writes a uuid once per transcript and links what follows a repeat to the first record.
       const sentUuids = new Set<string>()
       let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
