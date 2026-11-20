@@ -760,6 +760,7 @@ test(
     await applyHistory({ label: 'Initial history' })
     await applyHistory({ label: 'Recent history' })
     let refuseOlder = true
+    let failOlder: (() => void) | undefined
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -775,7 +776,7 @@ test(
 
               if (older && refuseOlder) {
                 refuseOlder = false
-                socket.send(JSON.stringify({
+                failOlder = () => socket.send(JSON.stringify({
                   type: 'error',
                   scope: sent.scope,
                   id: sent.id,
@@ -814,6 +815,19 @@ test(
         exact: true,
       },
     )
+
+    const failPendingRead = async () => {
+      const fail = await until({
+        what: 'the older-page response to be pending',
+        check: () => failOlder,
+      })
+      expect(await region.getAttribute('aria-busy')).toBe('true')
+      await region.getByRole('status').waitFor()
+      failOlder = undefined
+      fail()
+    }
+
+    await failPendingRead()
     await region.getByRole('alert').waitFor()
     expect(await region.getAttribute('aria-busy')).toBe('false')
     expect(await updates.count()).toBe(50)
@@ -864,7 +878,8 @@ test(
       observer.disconnect()
 
       return {
-        retained: rows.every(row => row.isConnected) && !rows.some(row => removed.includes(row)),
+        retained: rows.every(row => row.isConnected)
+          && !rows.some(row => removed.some(node => node.contains(row))),
         bottom,
         top: element.scrollTop,
       }
@@ -887,6 +902,7 @@ test(
     })
     refuseOlder = true
     await applyHistory({ label: 'Live burst' })
+    await failPendingRead()
     await region.getByRole('alert').waitFor()
     expect(await updates.count()).toBe(132)
     await region.getByRole(
