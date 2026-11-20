@@ -2,7 +2,7 @@ import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { useState } from 'react'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { Command } from '#web-app/connection.ts'
-import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
 import { HydraLabel } from '#web-hydra/hydra-title.tsx'
 
 export function RepositoryOwnership({
@@ -59,13 +59,10 @@ export function RepositoryOwnership({
             {repository.hydras.map(hydra => (
               <div key={hydra.id} className="flex items-center gap-2">
                 <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
-                <InlineConfirm
-                  label={`Keep ${repository.name} in ${hydra.name || hydra.id}`}
-                  trigger="Keep here"
-                  action="Move tasks"
-                  message={`Move this repository's tasks to ${hydra.name || hydra.id}?`}
+                <Button
+                  aria-label={`Keep ${repository.name} in ${hydra.name || hydra.id}`}
                   disabled={!connected}
-                  confirm={async () => {
+                  onClick={async () => {
                     try {
                       await commandFor({ id: hydra.id })({
                         name: 'project',
@@ -85,7 +82,8 @@ export function RepositoryOwnership({
                       return false
                     }
                   }}
-                />
+                >Keep here
+                </Button>
               </div>
             ))}
           </div>

@@ -200,7 +200,7 @@ test(
 )
 
 test(
-  'starting a task attaches its worker without creating a second card',
+  'a task keeps one card through worker attachment and displays persisted command notices',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'single-task' })
@@ -252,5 +252,49 @@ test(
       ) => element === original,
       card,
     )).toBe(true)
+    await taskCard.locator('.card-open').click()
+    const held = await hydra.owner({
+      args: [
+        'task',
+        'hold',
+        task,
+        '--actor',
+        `worker:${task}`,
+      ],
+    })
+    expect(held.notices).toBeDefined()
+    const notice = 'Discussion hold changed by an agent'
+    await taskCard.getByText(
+      notice,
+      { exact: false },
+    ).waitFor()
+    await page.reload()
+    await page.locator(`[data-task="${task}"]`).getByText(
+      notice,
+      { exact: false },
+    )
+      .waitFor()
+    await hydra.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.brief',
+            task,
+            brief: 'Updated instructions',
+          },
+        ],
+      }),
+    })
+    await page.locator(`[data-task="${task}"]`).getByText(
+      notice,
+      { exact: false },
+    )
+      .waitFor({ state: 'detached' })
   },
 )

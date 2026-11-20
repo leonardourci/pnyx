@@ -114,11 +114,12 @@ export function UpgradeRow({
       <div className="upgrade-body grid min-w-0 flex-1 gap-1.5">
         <span className="upgrade-title font-medium">{title}</span>
         {detail && <span className="upgrade-detail -mt-1 text-muted">{detail}</span>}
-        {operation.state === 'refused' ? (
+        {operation.reasons?.length ? (
           <ul className="upgrade-reasons m-0 grid list-disc gap-0.5 pl-4 text-muted">
             {operation.reasons?.map(reason => <li key={reason}>{reason}</li>)}
           </ul>
-        ) : operation.steps.length > 0 && operation.state !== 'current' && <Steps operation={operation} />}
+        ) : null}
+        {operation.steps.length > 0 && operation.state !== 'current' && <Steps operation={operation} />}
         {operation.state === 'running' && (
           <UpgradeAction onClick={stop}>
             <Icon name="stop" size={ICON_SIZE.badge} />Stop

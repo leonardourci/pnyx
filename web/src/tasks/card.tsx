@@ -835,6 +835,7 @@ export const HydraCard = memo(function HydraCard({
           <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${openLayout}`}>
             <div hidden={chatOnly} className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto [&[hidden]]:hidden">
               <CardPanel ref={contextScroll.ref} {...panel({ id: 'context' })}>
+                {card.notices?.map(notice => <div key={notice.reason} className="text-meta text-gold"><RichText text={`${notice.reason}. ${notice.clear}`} /></div>)}
                 {card.copy?.state === 'flagged' && <div className="copy-warning text-meta text-gold"><RichText text={card.copy.reason ?? ''} /></div>}
                 {waiting.length > 0 && (card.intent || factual) && (
                   <ContextIndex
