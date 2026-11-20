@@ -163,7 +163,7 @@ Streaming DOM growth is attributed to reused provider message ids retaining the 
 
 Open: the fresh stress rerun, final trace comparison and final visible media. Hydra's stress-complete signal still gates the single deslop and CI approval.
 
-On-screen windows reconcile cached scroll margins in the same observer pass. Whole-Hydra layout animation runs for explicit folding and Hydra dragging; background width changes keep the viewport anchor without a second translation. Opening a card focuses its panel before scrolling, so its row stays protected. A modal card has no sortable registration while its inline card returns, preserving the reverse animation and focus.
+On-screen windows reconcile cached scroll margins in the same observer pass. Whole-Hydra layout animation runs for explicit folding and Hydra dragging; background width changes keep the viewport anchor without a second translation. Keyboard and reference navigation scroll the mounted card after layout settles, then focus its panel when requested. A modal card has no sortable registration while its inline card returns, preserving the reverse animation and focus.
 
 The independent anchoring investigation separated two failures. Scroll compensation runs before Motion measures the horizontal axis; the axis uses viewport coordinates, so widening an earlier Hydra does not animate the selected Hydra’s cards. The chat surface paints above sliding project columns.
 
@@ -183,7 +183,7 @@ Folding also keeps the selected Hydra anchored while wheel packets continue arri
 
 The owner accepted the remaining open-card latency as a follow-up after merge.
 
-Pointer title activation uses the same opening route as the card surface; only keyboard and reference navigation align a virtual row to its start. Opening an already-visible card retains its scroll position, scrolling only enough to reveal a clipped edge after layout settles. The card shell clips its contents during shared layout, so new details cannot paint outside the expanding surface. Modal pointer resizing changes real dimensions without shared-layout scaling, and its header actions stay top-aligned when the title wraps. Frame captures cover short/long titles, parents/leaves, inline/modal, narrow/wide projects and both themes.
+Pointer title activation uses the same opening route as the card surface; keyboard and reference navigation align the mounted card after layout settles. Opening an already-visible card retains its scroll position, scrolling only enough to reveal a clipped edge after layout settles. The card shell clips its contents during shared layout, so new details cannot paint outside the expanding surface. Modal pointer resizing changes real dimensions without shared-layout scaling, and its header actions stay top-aligned when the title wraps. Frame captures cover short/long titles, parents/leaves, inline/modal, narrow/wide projects and both themes.
 
 ## Current owner round
 
