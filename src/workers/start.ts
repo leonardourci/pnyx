@@ -1,6 +1,5 @@
 import { inform } from '#app/command-notices.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
-import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { startBlockers } from '#tasks/dependencies.ts'
@@ -545,10 +544,6 @@ export async function startTask({
         ...(open.length ? { open } : {}),
         ...(unqueued ? { unqueued } : {}),
       }
-    }
-
-    if (tools?.length) {
-      requireToolAuthority({ meta })
     }
 
     checkRevision({

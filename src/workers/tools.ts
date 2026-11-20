@@ -50,15 +50,6 @@ export function recordTools({
   })
 }
 
-export function requireToolAuthority({ meta }: { meta: Meta }): void {
-  if (workerIdentity({ actor: meta.actor })) {
-    inform({
-      reason: 'Tool grant changed by a worker',
-      clear: 'pnyx-axi task tools <task> --revoke browser',
-    })
-  }
-}
-
 export function writeTools({
   writer,
   task,
@@ -72,7 +63,6 @@ export function writeTools({
   revoke?: string[]
   meta: Meta
 }) {
-  requireToolAuthority({ meta })
   const additions = toolNames({ names: grant })
   const removals = toolNames({ names: revoke })
 

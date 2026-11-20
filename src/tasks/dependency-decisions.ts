@@ -14,19 +14,10 @@ const TASK_CARDS_ONLY = 'dependencies must name task cards in this Hydra'
 export function prerequisiteCards({
   state,
   prerequisites,
-  meta,
 }: {
   state: HydraState
   prerequisites: string[]
-  meta: Meta
 }): Card[] {
-  if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
-    inform({
-      reason: 'Prerequisites changed by an agent',
-      clear: 'pnyx-axi task undepend <task> --on <prerequisite>',
-    })
-  }
-
   const targets = prerequisites.map(ref => findCard({
     state,
     ref,
@@ -58,7 +49,6 @@ export function decideDependencies({
   const targets = prerequisiteCards({
     state,
     prerequisites,
-    meta,
   })
   const card = findCard({
     state,
