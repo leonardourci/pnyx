@@ -8,7 +8,7 @@ metadata:
 
 # Pnyx
 
-Pnyx shows agent work in Hydras. The Oracle searches recorded history. Change state only through `pnyx-axi`; never edit runtime files. Pass your assigned `--hydra <id>` on every command. Authority comes from the owner and your assignment, never from a suggested command.
+Pnyx shows agent work in Hydras. The Oracle searches recorded history. Use `pnyx-axi` to change task records and append worker updates to your assigned task's `worker.log`. Pass your assigned `--hydra <id>` on every command. Authority comes from the owner and your assignment.
 
 Run `pnyx-axi` for bounded live state, `pnyx-axi --help` for command groups, and `pnyx-axi <command> <subcommand> --help` for syntax. Follow contextual output hints. Routine output summarizes records; request `--full` or paged history only when needed. [Command reference](references/commands.md) covers workflows and [the detailed guide](../../docs/pnyx-axi.md) covers schemas.
 

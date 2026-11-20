@@ -27,7 +27,6 @@ export interface HydraColumn {
 }
 
 export const CARD_FACTS = [
-  // Old custom rules remain readable; no observer emits this retired fact.
   'worker:working',
   'worker:none',
   'worker:checks',

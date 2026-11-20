@@ -352,7 +352,7 @@ export function TaskChat({
       waiting={NO_WAKE_QUEUE}
       state={state}
     >
-      <span role="status" aria-label="Worker status">{status}</span>
+      <span role="status" aria-label="Worker status" data-status={status}>{status}</span>
       {working && showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
     </Running>
   )

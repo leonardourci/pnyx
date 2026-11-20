@@ -1,6 +1,5 @@
-import { refreshTarget } from '#projects/refresh-confirmed.ts'
+import { refreshConfirmedProject, refreshTarget } from '#projects/refresh-confirmed.ts'
 import { log } from '#app/diagnostics.ts'
-import { refreshConfirmedProject } from '#projects/refresh-confirmed.ts'
 import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '#workers/reply.ts'
 import { decideLink } from './links.ts'

@@ -30,6 +30,8 @@ test(
       const result = await chrome({
         script: `
         await page.wait(${JSON.stringify(`${selector} .agent-activity[aria-label="${label}"]`)}, 5000);
+        const chat = ${JSON.stringify(`${selector} [aria-label="Worker status"][data-status="${label}"]`)};
+        await page.wait(chat, 5000);
         console.log(await page.eval(() => document.querySelector(${JSON.stringify(`${selector} [aria-label="Worker status"]`)})?.textContent));
       `,
       })

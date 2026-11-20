@@ -1,5 +1,4 @@
 import { discoverableTasks } from '#tasks/delivery/discover.ts'
-import { sessionId } from '#workers/session-attachments.ts'
 import { followWorkerLogs } from '#workers/worker-log.ts'
 import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
 import { followGit } from '#tasks/delivery/follow-git.ts'
@@ -280,7 +279,7 @@ export async function mountOwnedHydra({
       }
 
       const linkedByOthers = event.type === 'card.linked' && event.actor !== 'pnyx'
-      const changedTask = event.type === 'session.observed' ? state.sessions?.[sessionId({ agent: event.data.fields.agent })]?.taskId ?? event.cardId : event.cardId
+      const changedTask = event.cardId
       const activityChanged = workChanged({ task: changedTask })
 
       const discoveryChanged = [

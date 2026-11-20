@@ -5,6 +5,7 @@ import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
 import { refreshTasks } from '#tasks/columns.ts'
 import { touch } from '#tasks/touch.ts'
+import { checkRevision } from '#tasks/push-rules.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 
@@ -63,6 +64,13 @@ export function decideSessionFacts({
     state,
     agent,
   })
+
+  if (owner) {
+    checkRevision({
+      card: owner,
+      ifRevision: meta.ifRevision,
+    })
+  }
 
   if (source && isStaleSource({
     card: session,

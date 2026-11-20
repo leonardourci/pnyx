@@ -53,7 +53,8 @@ export async function discoverPullRequests({
       Date.now(),
     )
     const copy = card.copy?.state === 'active' ? { ...card.copy } : undefined
-    const cwd = copy?.path ?? card.agent?.cwd ?? (card.launch ? card.folder : undefined)
+    const workerFolder = card.agent?.cwd ?? (card.launch ? card.folder : undefined)
+    const cwd = copy?.path ?? (card.copy ? undefined : workerFolder)
     const branches = [...card.branches ?? []]
 
     if (cwd) {
@@ -105,19 +106,22 @@ export async function discoverPullRequests({
           repository,
           branch,
         }
-        branches.push(found)
-
         if (!active()) {
           return
         }
 
-        withWriter({
+        const kept = withWriter({
           hydraId,
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
 
             if (!current || !liveTask({ card: current }) || current.doneAt) {
-              return
+              return false
+            }
+
+            if (copy && (current.copy?.state !== 'active' || current.copy.path !== copy.path
+              || current.copy.branch !== copy.branch)) {
+              return false
             }
 
             writer.append({
@@ -132,8 +136,14 @@ export async function discoverPullRequests({
                 data: found,
               },
             })
+
+            return true
           },
         })
+
+        if (kept) {
+          branches.push(found)
+        }
       }
     }
 
