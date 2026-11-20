@@ -19,6 +19,10 @@ test(
     const linter = new ESLint()
     const cases = [
       {
+        source: 'const itemClassName = "text-ink flex"; <div className={itemClassName} />',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+      {
         source: '<Tooltip anchorClassName="w-[317px]" />',
         rule: 'better-tailwindcss/no-restricted-classes',
       },

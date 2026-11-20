@@ -5,7 +5,7 @@ export function StatusMessage({
   className = '',
   ...props
 }: ComponentProps<'p'> & { pending?: boolean }) {
-  const position = pending ? 'pending-status fixed right-4 bottom-4 max-w-status pointer-events-none' : 'loading-status absolute top-2 left-1/2'
+  const position = pending ? 'pending-status pointer-events-none fixed right-4 bottom-4 max-w-status' : 'loading-status absolute top-2 left-1/2'
 
   return <p {...props} className={`z-70 rounded-lg bg-surface px-4 py-2 text-muted shadow-status ${position} ${className}`} />
 }

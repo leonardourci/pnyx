@@ -71,7 +71,7 @@ export default tseslint.config(
             },
             {
               kind: 'variable',
-              name: '^(?:.*CLASSES|.*_CLASS|.*_TONE|VARIANTS|SIZES|ROWS|BADGE_COLORS|DATE_EDITOR|SETTING_STACK|appearance|tone|border|selection|layout|fill|button|color|vertical|classes|className)$',
+              name: '^(?:.*CLASSES|.*_CLASS|.*_TONE|.*ClassName|.*Classes|QUESTION_HEADLINE|QUESTION_SOURCE|VARIANTS|SIZES|ROWS|BADGE_COLORS|DATE_EDITOR|SETTING_STACK|appearance|tone|border|selection|layout|fill|button|color|vertical|variant|tones|wrapping|size|position|classes|className)$',
               match: [
                 { type: 'strings' },
                 { type: 'objectValues' },
