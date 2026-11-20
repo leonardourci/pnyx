@@ -2883,7 +2883,7 @@ test.each([
       page,
       agent: { harness },
     })
-    await hydra.startTask({ key: 'review-page' })
+    const { worker: reviewWorker } = await hydra.startTask({ key: 'review-page' })
     await hydra.startTask({ key: 'unchanged-card' })
 
     for (let index = 0; index < 41; index++) {
@@ -2916,6 +2916,25 @@ test.each([
       key: 'review-page',
       line: 'link: https://example.com/preview App preview',
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'review-page',
+        '--text',
+        'Use the blue layout on the review page',
+        '--harness',
+        'claude',
+      ],
+    })
+    await until({
+      what: 'the owner message to reach the worker',
+      check: () => reviewWorker.received.some(text => text.includes('Use the blue layout on the review page')) && reviewWorker.answered === 2,
+    })
+    await until({
+      what: 'the worker to finish its reply',
+      check: async () => (await hydra.task({ key: 'review-page' })).status === 'idle',
+    })
     await workerLine({
       hydra,
       key: 'review-page',
@@ -2929,6 +2948,8 @@ test.each([
     )
     expect(digest).toContain('Task cards (changed since your last turn):')
     expect(digest).toContain('Review page is ready')
+    expect(digest).toContain('owner: Use the blue layout on the review page')
+    expect(digest.indexOf('owner: Use the blue layout')).toBeLessThan(digest.indexOf('latest: Review page is ready'))
     expect(digest).toContain('https://example.com/lavish')
     expect(digest).toContain('https://example.com/preview')
     expect(digest).not.toContain('unchanged-card')
@@ -2944,6 +2965,7 @@ test.each([
       unchanged.indexOf('</pnyx-digest>'),
     )
     expect(nextDigest).not.toContain('Review page is ready')
+    expect(nextDigest).not.toContain('Use the blue layout on the review page')
     expect(nextDigest).not.toContain('https://example.com/lavish')
     expect(nextDigest).not.toContain('more changed cards')
     expect(nextDigest).toContain('Open cards: 2 idle, 41 not started, no reason given')

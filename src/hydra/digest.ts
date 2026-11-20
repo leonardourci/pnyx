@@ -42,6 +42,9 @@ export const clip = ({
   )}…` : clean
 }
 
+const latestOwnerMessage = ({ card }: { card: Card }) =>
+  card.replies?.findLast(reply => reply.worker && reply.text?.trim())
+
 function taskLine({
   state,
   card,
@@ -57,6 +60,7 @@ function taskLine({
     sessions: state.sessions,
   }).text
   const latest = currentState({ card })
+  const ownerMessage = latestOwnerMessage({ card })
   const session = card.sessionIds?.[0] ? state.sessions?.[card.sessionIds[0]] : undefined
   const activity = card.sessionActivity ?? card.activity
   const worker = card.agent
@@ -101,6 +105,10 @@ function taskLine({
     ...(card.queueNote ? [`  handoff: ${card.queueNote}`] : []),
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
   ]
+
+  if (ownerMessage?.text) {
+    lines.push(`  owner: ${clip({ text: ownerMessage.text })}`)
+  }
 
   if (latest) {
     lines.push(`  latest: ${clip({
@@ -591,6 +599,15 @@ export function hydraDigest({
 
     if (key === 'owner') {
       fingerprint += JSON.stringify(owner)
+    }
+
+    if (key.startsWith('task:')) {
+      const card = state.cards[key.slice('task:'.length)]
+      const ownerMessage = latestOwnerMessage({ card })
+
+      if (ownerMessage) {
+        fingerprint += ownerMessage.id
+      }
     }
 
     const hash = digestHash({ text: fingerprint })
