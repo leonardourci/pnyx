@@ -25,8 +25,7 @@ if (!tryFastPath(
     },
   },
 )) {
-  // `setup hydra` writes Hydra events, so it goes to the server like any other write.
-  const own = LOCAL.has(argv[0] ?? '') && !(argv[0] === 'setup' && argv[1] === 'hydra') && !upgradeStop
+  const own = LOCAL.has(argv[0] ?? '') && !upgradeStop
   const local = own || argv.includes('--help') || argv[0]?.startsWith('-')
   const client = local ? undefined : await import('./client.ts')
 

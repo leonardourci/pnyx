@@ -2752,5 +2752,21 @@ test(
       env: process.env,
     }))
     expect(listed.sessions).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'codex:outside-session' })]))
+    await pnyx.restart({
+      whileStopped: async () => {
+        const retiredSetup = await pnyxAxi({
+          args: [
+            'setup',
+            'hydra',
+          ],
+          env: process.env,
+        })
+        expect(retiredSetup.status).toBe(2)
+        expect(parsed(retiredSetup)).toMatchObject({
+          code: 'VALIDATION_ERROR',
+          error: 'unknown setup target: hydra',
+        })
+      },
+    })
   },
 )
