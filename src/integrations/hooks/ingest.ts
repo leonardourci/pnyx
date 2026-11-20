@@ -103,8 +103,7 @@ function ingest({
   const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
   const terminal = terminalFacts({ value: entry.terminal })
   const probed = TERMINAL_EVENTS.includes(entry.event)
-  // A session (never a subagent, whose key has a /) started in a folder a source
-  // assigned, such as a Firstmate task's worktree, reports to that card.
+  // Subagents keep their own session key instead of joining the parent's task folder.
   const task = typeof entry.task === 'string' ? entry.task : undefined
   const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({
     state: writer.state,
@@ -179,21 +178,15 @@ function ingest({
     })
 
     if ('event' in pushed && o.card.agent) {
-      const existing = Object.values(writer.state.sessions ?? {}).find(s => s.sourceRefs.some(r =>
-        r.adapter === 'hooks' && `${r.instanceId}:${r.objectId}` === o.key))
-      const previous = existing?.taskId ? writer.state.cards[existing.taskId] : undefined
       const target = writer.state.cards[writer.state.keys[key] ?? '']
       const replaced = target?.sessionIds?.[0]
-      const moving = previous && previous.key !== key
-        && previous.sourceRefs.some(r => r.adapter === 'firstmate')
       const incoming = sessionId({ agent: o.card.agent as AgentRef })
-      const replacing = key !== o.key && replaced && replaced !== incoming
 
-      if (moving || replacing) {
-        const ref = moving ? existing!.id : replaced!
+      if (key !== o.key && replaced && replaced !== incoming) {
+        const ref = replaced
         harvestTranscripts({
           writer,
-          cardIds: [(moving ? previous : target)!.id],
+          cardIds: [target.id],
           at: m.at,
         })
         applyDecision({
@@ -224,12 +217,10 @@ function ingest({
       writer,
       decision: pushed,
     })
-    // Hooks own only the outcome they recorded on the session's own card: a joined
-    // Firstmate task, or a Firstmate or manual outcome, keeps its own rule.
+    // Hook observations preserve outcomes set manually.
     const target = writer.state.cards[writer.state.keys[key] ?? '']
     const stale = 'skipped' in pushed && pushed.skipped === 'stale'
-    const owned = !target?.sourceRefs.some(r => r.adapter === 'firstmate')
-      && (!target?.outcome || target.outcome.source === HOOKS)
+    const owned = !target?.outcome || target.outcome.source === HOOKS
 
     if (o.outcome !== undefined && target && !stale && owned) {
       const outcome = o.outcome && { state: o.outcome }
