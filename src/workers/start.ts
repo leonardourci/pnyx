@@ -352,7 +352,9 @@ function leaveQueue({
   card: Card
   meta: Meta
 }): string | undefined {
-  if (!card.queue) {
+  const session = card.queue?.session
+
+  if (!session) {
     return undefined
   }
 
@@ -372,7 +374,7 @@ function leaveQueue({
     }),
   })
 
-  return `was queued behind worker ${card.queue.session}; it now gets its own worker`
+  return `was queued behind worker ${session}; it now gets its own worker`
 }
 
 function noteOpen({
