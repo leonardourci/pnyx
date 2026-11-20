@@ -3090,3 +3090,103 @@ test(
     expect(cleared.task.folder).toBeUndefined()
   },
 )
+
+test(
+  'building a completed investigation reopens its task before its existing worker receives the build',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'investigation-build' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'research',
+        '--title',
+        'Research',
+        '--kind',
+        'investigation',
+        '--folder',
+        folder,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'research',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    await until({
+      what: 'the investigation turn to finish',
+      check: async () => (await hydra.task({ key: 'research' })).status === 'idle',
+    })
+    const report = join(
+      folder,
+      'report.md',
+    )
+    writeFileSync(
+      report,
+      'The existing approach meets the requirements. Build it with the same API.',
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'report',
+        'research',
+        '--file',
+        report,
+      ],
+    })
+    const stored = await hydra.owner({
+      args: [
+        'task',
+        'report',
+        'research',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'report-review',
+        'research',
+        '--report',
+        stored.id,
+        '--none',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'outcome',
+        'research',
+        'done',
+        '--note',
+        'Investigation complete',
+      ],
+    })
+    expect((await hydra.task({ key: 'research' })).column).toBe(await hydra.column({ role: 'done' }))
+    await hydra.owner({
+      args: [
+        'task',
+        'build',
+        'research',
+      ],
+    })
+    expect((await hydra.task({ key: 'research' })).column).toBe(await hydra.column({ role: 'in_progress' }))
+    const reopened = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'research',
+        '--full',
+      ],
+    })).task
+    expect(reopened.agent.sessionId).toBe(worker.id)
+    await until({
+      what: 'the existing session to receive the build',
+      check: () => pnyx.claude.sessions.some(session => session.id === worker.id
+        && session.received.some(text => text.includes('The owner approved building this.'))),
+    })
+  },
+)

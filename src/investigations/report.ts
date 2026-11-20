@@ -22,7 +22,7 @@ export function investigationLine({
   hydraId: string
   id: string
 }): string {
-  return `Investigation: answer the brief with a report that stands alone (what was asked, what you found, the evidence, and what you recommend). Store it with \`pnyx-axi task report ${id} --file <path> --hydra ${hydraId}\`, review the whole report for owner choices with \`pnyx-axi task report-review ${id} --report <report-id> --none --hydra ${hydraId}\` or \`--call <task>/<ask>\` for every durable owner question on a separate gated task, then declare done. A report does not authorize building: change nothing beyond what the investigation needs, and leave nothing in your copy that the report depends on.`
+  return `Investigation: answer the brief with a report that stands alone (what was asked, what you found, the evidence, and what you recommend). Store it with \`pnyx-axi task report ${id} --file <path> --hydra ${hydraId}\`, review the whole report for owner choices with \`pnyx-axi task report-review ${id} --report <report-id> --none --hydra ${hydraId}\` or \`--call <task>/<ask>\` for every durable owner question on a separate gated task, then append a done line to worker.log. A report does not authorize building: change nothing beyond what the investigation needs, and leave nothing in your copy that the report depends on.`
 }
 
 export function reportLine({

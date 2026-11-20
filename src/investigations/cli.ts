@@ -122,14 +122,18 @@ function reopen({
     role: 'queued',
   })
 
-  if (card.sessionIds?.length) {
-    return
-  }
+  const running = roleColumn({
+    columns: hydraConfig({
+      state: writer.state,
+      id: hydraId,
+    }).columns,
+    role: 'in_progress',
+  })
 
   const decision = decideMove({
     state: writer.state,
     ref: card.id,
-    column: queued ?? card.column,
+    column: (card.sessionIds?.length ? running : queued) ?? card.column,
     meta,
   })
 
