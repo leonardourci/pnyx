@@ -656,7 +656,8 @@ test(
       what: 'every burst update without replacing history',
       check: async () => await updates.count() === 197,
     })
-    const updateIds = await updates.evaluateAll(elements => elements.map(element => element.getAttribute('data-update')))
+    const updateIds = await region.evaluate(element => [...element.querySelectorAll('.update-row')]
+      .map(row => row.getAttribute('data-update')))
     expect(updateIds).not.toContain(null)
     expect(new Set(updateIds).size).toBe(197)
     expect(await page.evaluate(
