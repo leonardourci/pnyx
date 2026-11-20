@@ -89,7 +89,7 @@ Choose a unique `<name>.pnyx` for each trial and share the stable URL portless p
 
 Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull request: `Tests` runs only on pull requests, and deslop waits for its checks. The review reads the PR description as the intent, including its folded Intentional slop section, and lists the code comments the diff adds (every comment in JavaScript and TypeScript; elsewhere only comments that start a line, not trailing ones); see [deslop's README](https://github.com/leonardourci/deslop#readme) for tool usage and proof details.
 
-`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full test suite runs in CI. `checkFixAttempts` is 0: check failures return to the caller for a fix and a new run. `agentTimeoutMinutes` is 45 here: a reviewer call that runs longer fails the run, unless `--agent-timeout` or the machine's `~/.deslop/settings.json` overrides it.
+`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full test suite runs in CI. `checkFixAttempts` is 1: deslop gets one attempt to repair a failing check, such as its own edit that broke the build, before the failure returns to the caller. `agentTimeoutMinutes` is 45 here: a reviewer call that runs longer fails the run, unless `--agent-timeout` or the machine's `~/.deslop/settings.json` overrides it.
 
 | Kind | Local commands | CI check | Review instructions |
 |---|---|---|---|
