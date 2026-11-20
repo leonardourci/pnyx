@@ -1,5 +1,5 @@
+import { withCommandNotices, inform } from './command-notices.ts'
 import { parseArgs, type ParseArgsConfig } from 'node:util'
-import { createHash } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
 import type { EventType, HydraState, HydraEvent, Decision } from './model.ts'
 import { helpFlags } from '#cli/help.ts'
@@ -9,8 +9,6 @@ import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { declaredState } from '#tasks/declarations.ts'
 import { briefChange } from '#tasks/updates.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { columnRule } from '#tasks/column-defaults.ts'
 import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -28,7 +26,6 @@ export const HOME_LIMIT = 50
 
 export const TEXT_CUT = 1000
 
-// Hydra's own changes to tasks carry one short why; the owner's direct actions need none.
 const EXPLAINED: readonly EventType[] = [
   'card.moved',
   'task.created',
@@ -238,10 +235,9 @@ export function explained({ meta }: { meta: Meta }): string {
   const reason = meta.reason?.trim() ?? ''
 
   if (meta.actor === HYDRA_ACTOR && !reason) {
-    throw new HydraError({
-      message: 'Hydra changes need --reason <why>',
-      code: 'VALIDATION_ERROR',
-      help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event'],
+    inform({
+      reason: 'No reason was supplied for this change',
+      clear: 'Use pnyx-axi with --reason "<why>" to record the reason',
     })
   }
 
@@ -379,57 +375,6 @@ interface Intent {
   card: string
 }
 
-function confirmationPreview({
-  state,
-  event,
-}: {
-  state: HydraState
-  event: HydraEvent
-}): Output {
-  if (event.type === 'hydra.project') {
-    return {
-      project: event.data.after,
-      hydras: event.data.sharedWith,
-    }
-  }
-
-  if (event.type === 'card.moved') {
-    return {
-      task: event.cardId,
-      title: state.cards[event.cardId]?.title,
-      from: event.data.before,
-      to: event.data.after,
-      rank: event.data.rank,
-    }
-  }
-
-  if (event.type === 'board.columns') {
-    const {
-      columns,
-      placements,
-      fallback,
-    } = event.data
-    const before = hydraConfig({ state }).columns
-
-    return {
-      from: before.map(c => c.id),
-      to: columns.map(c => c.id),
-      removed: before.filter(c => !columns.some(next => next.id === c.id)).map(c => c.id),
-      rules: columns.map(column => ({
-        id: column.id,
-        rule: columnRule({ column }),
-      })),
-      affectedCards: Object.keys(placements ?? {}).length,
-      ...(fallback ? { fallback } : {}),
-    }
-  }
-
-  return {
-    type: event.type,
-    target: event.cardId,
-  }
-}
-
 // A retried event id's receipt, from its event and the current state, since rebuilding the state at append time would replay the log. An id already used for another card or event type is a conflict, not a retry.
 function originalReceipt(
   {
@@ -468,6 +413,7 @@ function originalReceipt(
       state,
       event: original,
     }),
+    ...(original.notices?.length ? { notices: original.notices } : {}),
     duplicate: 'event id already applied; nothing appended',
   }
 }
@@ -480,7 +426,6 @@ export function commit(
     meta,
     intent,
     decide,
-    confirmation,
     create,
     prepare,
   }: {
@@ -497,10 +442,7 @@ export function commit(
       state: HydraState
       meta: Meta
     }) => Decision
-    confirmation?: {
-      token?: string
-      when?({ event }: { event: HydraEvent }): boolean
-    }
+
   },
 ): Output {
   if (EXPLAINED.includes(intent.type)) {
@@ -571,45 +513,6 @@ export function commit(
         }
 
         if ('event' in decision) {
-          const needsConfirmation = confirmation
-            && (!confirmation.when || confirmation.when({ event: decision.event }))
-
-          if (needsConfirmation) {
-            const {
-              type,
-              cardId,
-              data,
-            } = decision.event
-            const revision = cardId === '$projects' ? writer.state.projectsRevision ?? 0
-              : cardId === '$board' ? writer.state.configRevision ?? 0 : writer.state.cards[cardId]?.revision ?? 0
-            const token = createHash('sha256').update(JSON.stringify({
-              hydraId,
-              actor: meta.actor,
-              type,
-              cardId,
-              data,
-              revision,
-            }))
-              .digest('hex')
-              .slice(
-                0,
-                24,
-              )
-
-            if (confirmation.token !== token) {
-              return {
-                confirmation: 'needed',
-                token,
-                action: summarize({ event: decision.event }),
-                preview: confirmationPreview({
-                  state: writer.state,
-                  event: decision.event,
-                }),
-                help: ['Repeat the same command with --confirm <token>; a changed target needs a new confirmation'],
-              }
-            }
-          }
-
           writer.append({ event: decision.event })
           const { event } = decision
 
@@ -662,7 +565,7 @@ export function guard<T = Output>({ handler }: { handler: ({ args }: { args: str
 
   return (args: string[]): T => {
     try {
-      const result = handler({ args })
+      const result = withCommandNotices({ run: () => handler({ args }) })
 
       return result instanceof Promise ? result.catch(error => mapped({ error })) as T : result
     } catch (error) {

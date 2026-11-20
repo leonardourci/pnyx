@@ -301,6 +301,7 @@ export type SessionEvent = EventBase & {
   type: 'task.session'
   data: {
     session: string
+    replaces?: string
     before: string | null
     after: string | null
     brief?: string
