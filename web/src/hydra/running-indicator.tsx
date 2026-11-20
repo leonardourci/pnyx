@@ -45,7 +45,10 @@ export function Running({
 
       return () => clearInterval(timer)
     },
-    [running, since],
+    [
+      running,
+      since,
+    ],
   )
 
   const words = queueWords({
@@ -73,7 +76,15 @@ export function Running({
         })}
       >
         {running && <WorkingDots />}
-        {running && since && <span aria-hidden="true">{duration({ ms: Math.max(0, now - Date.parse(since)) })}</span>}
+        {running && since && (
+          <span aria-hidden="true">{duration({
+            ms: Math.max(
+              0,
+              now - Date.parse(since),
+            ),
+          })}
+          </span>
+        )}
         <span role={labelName ? 'status' : undefined} aria-label={labelName} data-status={label}>{label}</span>
         {children}
         {words && (
