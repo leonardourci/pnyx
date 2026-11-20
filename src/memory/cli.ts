@@ -209,12 +209,12 @@ export const owner = guard({
           return {
             ...memoryList({
               memory,
-              budgetMemory: writable?.memory ?? {},
+              budgetMemory: writable.memory,
               budget: OWNER_MEMORY_BUDGET,
               empty: 'none: no owner memory yet',
             }),
-            revision: writable?.revision,
-            writable: writable?.memory,
+            revision: writable.revision,
+            writable: writable.memory,
             archived: ownerArchive({logs}),
           }
         },
@@ -339,7 +339,7 @@ export const owner = guard({
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
       revision: entry.revision,
-      used: `${memorySize({ memory: writableOwnerMemory({ hydraId })?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
+      used: `${memorySize({ memory: writableOwnerMemory({ hydraId }).memory })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
       skipped: 'unchanged',

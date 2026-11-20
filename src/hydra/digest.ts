@@ -226,14 +226,12 @@ function digestParts({
   state,
   owner,
   projects,
-  readable,
   setup,
   onlyTasks,
 }: {
   state: HydraState
   owner: string
   projects: string[]
-  readable?: string[]
   setup: string[]
   onlyTasks?: string[]
 }): Map<string, string> {
@@ -294,9 +292,8 @@ function digestParts({
 
   for (const project of state.projects ?? []) {
     const group = projectGroup({ project })
-    const hidden = !!readable && !readable.includes(project.path)
 
-    if (!hidden && (!project.detached || tasks.some(card => card.project === project.path))) {
+    if (!project.detached || tasks.some(card => card.project === project.path)) {
       groups.set(
         group.id,
         group.name,
@@ -548,7 +545,6 @@ export function hydraDigest({
   owner,
   ownerWrite = owner,
   projects = [],
-  readable,
   setup = [],
   previousDigest,
   checkpointed = false,
@@ -561,8 +557,6 @@ export function hydraDigest({
   owner: Memory
   ownerWrite?: Memory
   projects?: string[]
-  // Attached repositories this Hydra may read; the others stay out of its project columns.
-  readable?: string[]
   setup?: string[]
   previousDigest?: string
   checkpointed?: boolean
@@ -580,7 +574,6 @@ export function hydraDigest({
       now,
     }),
     projects,
-    readable,
     setup,
   })
   const checkpointBefore = previousCheckpoint({

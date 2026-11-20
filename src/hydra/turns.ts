@@ -220,7 +220,6 @@ export function createHydraTurns({
     const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const state = loadHydra({ hydraId }).state
     const readable = projectsFor({ state })
-    const readablePaths = readable.map(project => project.path)
 
     if (onlyTasks) {
       return hydraDigest({
@@ -228,7 +227,6 @@ export function createHydraTurns({
         state,
         owner,
         ownerWrite,
-        readable: readablePaths,
         onlyTasks,
         previousDigest,
         checkpointed,
@@ -268,7 +266,6 @@ export function createHydraTurns({
       owner,
       ownerWrite,
       projects,
-      readable: readablePaths,
       setup: setupDigest({ items }),
     })
   }

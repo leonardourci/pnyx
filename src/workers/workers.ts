@@ -498,10 +498,9 @@ const hydraDigestHandler = guard({
       conditions: memoryConditions(),
       hydraId,
       owner,
-      ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
+      ownerWrite: writableOwnerMemory({ hydraId }).memory,
       state,
       projects,
-      readable: readable.map(project => project.path),
       setup: setupDigest({ items }),
     })
 

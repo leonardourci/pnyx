@@ -556,6 +556,151 @@ test(
         'Owner journal previously private',
       ],
     })
+    const source = await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'moved-journal',
+        '--if-revision',
+        String(source.revision),
+        '--if-destination-revision',
+        '0',
+      ],
+    })
+    const moved = await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(moved.writable).not.toHaveProperty('preferences')
+    expect(moved.archived).not.toContainEqual(expect.objectContaining({ text: 'Owner journal previously private' }))
+    await owner.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'moved-journal',
+      ],
+    })
+    expect((await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable.preferences.text).toBe('Owner journal previously private')
+    await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Keep importer conventions with its project',
+      ],
+    })
+    await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'confirm',
+        '--text',
+        'Keep importer conventions with its project',
+        '--reason',
+        'Verified against the importer',
+      ],
+    })
+    const confirmed = await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    const projectMemory = await owner.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+      ],
+    })
+    await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--project',
+        project,
+        '--text',
+        'Keep importer conventions with its project',
+        '--if-revision',
+        String(confirmed.revision),
+        '--if-destination-revision',
+        String(projectMemory.revision),
+      ],
+    })
+    expect((await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable).not.toHaveProperty('learnings')
+    const destination = await owner.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+      ],
+    })
+    expect(destination.memory.learnings).toBe('Keep importer conventions with its project')
+    expect(destination.learnings).toEqual(confirmed.writable.learnings.lines)
+    await owner.owner({
+      args: [
+        'project',
+        'memory',
+        'archive',
+        '--project',
+        project,
+        '--text',
+        'Keep importer conventions with its project',
+        '--reason',
+        'Importer changed',
+      ],
+    })
+    const archived = await owner.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+      ],
+    })
+    expect(archived.memory).not.toHaveProperty('learnings')
+    expect(archived.archived).toContainEqual(expect.objectContaining({
+      key: 'learnings',
+      text: 'Keep importer conventions with its project',
+      reason: 'Importer changed',
+    }))
     const settingsPath = join(
       process.env.PNYX_HOME!,
       'settings',
