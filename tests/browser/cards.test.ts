@@ -147,7 +147,12 @@ test(
     await card.waitFor()
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
     const fillsColumn = () => card.evaluate(element => {
-      const column = element.closest<HTMLElement>('.column-cards')!
+      const column = element.closest<HTMLElement>('.column-cards')
+
+      if (!column) {
+        throw new Error('The open card is outside its project column')
+      }
+
       const spacing = getComputedStyle(column)
       const padding = parseFloat(spacing.paddingTop) + parseFloat(spacing.paddingBottom)
       const available = column.clientHeight - padding
@@ -189,8 +194,8 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
     })
-    const card = await page.locator(`[data-task="${task}"]`).elementHandle()
-    expect(card).not.toBeNull()
+    const taskCard = page.locator(`[data-task="${task}"]`)
+    const card = await taskCard.elementHandle()
     await hydra.owner({
       args: [
         'task',
@@ -212,9 +217,8 @@ test(
         'One task, one card',
       ],
     })).toEqual([{ id: task }])
-    await page.locator(`[data-task="${task}"] .card-agent[aria-label="Codex"]`).waitFor()
+    await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
-    expect(await card!.evaluate(element => element.isConnected)).toBe(true)
-    expect(await page.locator(`[data-task="${task}"]`).count()).toBe(1)
+    expect(await taskCard.evaluate((element, original) => element === original, card)).toBe(true)
   },
 )

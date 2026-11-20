@@ -372,6 +372,26 @@ export function createWorkerStarts({
           ...(reason ? { reason } : {}),
         }
 
+        const agent: AgentRef = {
+          provider,
+          sessionId: prepared.id,
+          cwd,
+          ...(prepared.path ? { transcriptPath: prepared.path } : {}),
+          host: 'pnyx',
+          ...(dispatch ? {
+            account: dispatch.account,
+            loginFolder: dispatch.folder,
+          } : {}),
+        }
+        const sessionKey = sessionId({ agent })
+
+        if (writer.state.sessions?.[sessionKey]) {
+          throw new HydraError({
+            message: 'the provider returned a session that already exists',
+            code: 'SESSION_CONFLICT',
+          })
+        }
+
         if (replacement) {
           applyDecision({
             writer,
@@ -387,7 +407,6 @@ export function createWorkerStarts({
           })
         }
 
-        // A marker left by an earlier agent belongs to it, not to the one starting now.
         const attention = withoutInterrupted({ attention: card.attention })
         const input = {
           ...(cwd !== card.folder ? { folder: cwd } : {}),
@@ -409,17 +428,6 @@ export function createWorkerStarts({
           })
         }
 
-        const agent: AgentRef = {
-          provider,
-          sessionId: prepared.id,
-          cwd,
-          ...(prepared.path ? { transcriptPath: prepared.path } : {}),
-          host: 'pnyx',
-          ...(dispatch ? {
-            account: dispatch.account,
-            loginFolder: dispatch.folder,
-          } : {}),
-        }
         applyDecision({
           writer,
           decision: {
@@ -434,7 +442,7 @@ export function createWorkerStarts({
               }),
               type: 'task.session',
               data: {
-                session: sessionId({ agent }),
+                session: sessionKey,
                 before: null,
                 after: card.id,
                 started: {
@@ -525,7 +533,7 @@ export function createWorkerStarts({
                 route: 'pnyx',
                 worker: {
                   agent: queued.worker.agent,
-                  session: sessionId({ agent }),
+                  session: sessionKey,
                 },
               },
               meta,
