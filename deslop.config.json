@@ -160,5 +160,6 @@
     "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md",
     "follow-conventions": ".agents/skills/follow-conventions/SKILL.md"
   },
-  "checkFixAttempts": 0
+  "checkFixAttempts": 0,
+  "agentTimeoutMinutes": 45
 }
