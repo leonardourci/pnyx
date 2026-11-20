@@ -76,7 +76,7 @@ function pageError({ error }: { error: unknown }) {
 }
 
 // How many queued lines the next message takes: at least one, and at most PAGE_LINES_MAX or BATCH_LENGTH code units.
-export function batchSize({ lines }: { lines: string[] }): number {
+function batchSize({ lines }: { lines: string[] }): number {
   let length = 0
   let count = 0
 
