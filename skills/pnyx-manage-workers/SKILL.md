@@ -1,6 +1,6 @@
 ---
 name: pnyx-manage-workers
-description: Use when you are Hydra and a worker needs more than task intake - an owner's harness or model override, a dispatch rule change, another launch route, a lost or ended worker, a queue, moving a worker to another task, a browser grant, a flagged task copy or a permission request.
+description: Use when you are Hydra and a worker needs more than task create - an owner's harness or model override, a dispatch rule change, another launch route, a lost or ended worker, a queue, moving a worker to another task, a browser grant, a flagged task copy or a permission request.
 user-invocable: false
 metadata:
   internal: true
@@ -8,11 +8,11 @@ metadata:
 
 # Hydra workers
 
-`task intake` starts a task's worker through the dispatch rules. This skill covers the starts and moves that need more; `pnyx-axi task --help` lists every flag.
+`task create` starts a task's worker through the dispatch rules. This skill covers the starts and moves that need more; `pnyx-axi task --help` lists every flag.
 
 ## Owner choices and dispatch rules
 
-Pass the owner's explicit `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly on `task intake` or `task start`; never start on the rule's settings and change them afterwards. Otherwise `rule list` shows the named rules: pass `--rule <name>` for the one whose `when` fits the task, and leave the `default` list for when none does. `rule now` shows which candidate would start. When a start reports no usable candidate or a signed-out account, tell the owner what stopped it rather than switching to a weaker rule, and ask them to sign in when that is the fix.
+Pass the owner's explicit `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly on `task create` or `task start`; never start on the rule's settings and change them afterwards. Otherwise `rule list` shows the named rules: pass `--rule <name>` for the one whose `when` fits the task, and leave the `default` list for when none does. `rule now` shows which candidate would start. When a start reports no usable candidate or a signed-out account, tell the owner what stopped it rather than switching to a weaker rule, and ask them to sign in when that is the fix.
 
 To change rules or accounts, read `rule show` and `rule schema`, preview a patch with `rule apply --file <path> --check`, fix what it lists, then apply it; `rule set|remove|accounts` and `account set|remove` cover one small change. A permission increase goes through `rule apply --propose` and the owner's Confirm.
 

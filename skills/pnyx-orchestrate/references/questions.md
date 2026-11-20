@@ -12,7 +12,7 @@ Escalate a product or architecture choice the ask leaves open, requirements that
 
 Decide everything else yourself and answer the worker. Announce a consequential decision once, in one line with its reason: `hydra send --task <task> --text "<decision and reason>"`.
 
-Make an owner question readable on its own. Its context gives the owner's requirement, what the proposed expansion adds, the smallest option that fulfills the ask, each choice's cost, and your recommendation. Ask on the task with `task ask <task> --to owner`; a decision with no task uses `hydra ask`. Work that depends on the answer waits; independent work goes on.
+Make an owner question readable on its own. Its context gives the owner's requirement, what the proposed expansion adds, the smallest option that fulfills the ask, each choice's cost, and your recommendation. Ask on the task with `task ask <task> --to owner`; a decision with no task uses `hydra ask`.
 
 ## The owner's answer
 
@@ -20,4 +20,4 @@ The owner answers on the card. To record an answer they wrote in chat, run `task
 
 ## Talking it over first
 
-When the owner asks to discuss before work starts, hold the card (`task intake --hold`, or `task hold <task> --reason "<topic>"` on an existing one). Once your playback is complete, ask `task ask <task> --to owner --kind go --question "<go question?>"`; the owner's Go releases the hold, as does `task release <task> --from-message <message-id> --reason "<why>"` for a newer message that gives the go.
+When the owner asks to discuss before work starts, hold the card (`task create --hold`, or `task hold <task> --reason "<topic>"` on an existing one). Once your playback is complete, ask `task ask <task> --to owner --kind go --question "<go question?>"`; the owner's Go releases the hold, as does `task release <task> --from-message <message-id> --reason "<why>"` for a newer message that gives the go.
