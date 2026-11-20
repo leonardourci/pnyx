@@ -76,7 +76,7 @@ function Snippets({
         snippet,
         index,
       ) => (
-        <p key={index} className="oracle-snippet flex flex-col gap-0.5 max-h-oracle-excerpt overflow-hidden px-2 py-1.5 border-l-2 border-gold-line rounded-sm bg-background whitespace-pre-wrap wrap-anywhere">
+        <p key={index} className="oracle-snippet flex max-h-oracle-excerpt flex-col gap-0.5 overflow-hidden rounded-sm border-l-2 border-gold-line bg-background px-2 py-1.5 wrap-anywhere whitespace-pre-wrap">
           <span className="muted small">{SNIPPET_SOURCES[snippet.kind]} · {relativeTime({
             at: snippet.at,
             now,
@@ -134,7 +134,7 @@ function TaskPreview({
 
   return (
     <>
-      <div className="oracle-card flex flex-col items-start gap-1.75 px-3 py-2.5 border border-line rounded-card bg-background">
+      <div className="oracle-card flex flex-col items-start gap-1.75 rounded-card border border-line bg-background px-3 py-2.5">
         <CardContent className="w-full">
           <CardSummary
             card={card}
@@ -147,7 +147,7 @@ function TaskPreview({
             }) === 'ideas'}
             heading={<h3 className="oracle-card-title font-semibold"><Highlight text={card.title} terms={terms} /></h3>}
           />
-          {said && <p className="oracle-card-said text-muted line-clamp-4"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
+          {said && <p className="oracle-card-said line-clamp-4 text-muted"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
           <CardLinks links={card.links} expanded={false} />
         </CardContent>
       </div>
@@ -447,7 +447,7 @@ export function ResultPreview({
         />
       )}
       {result.kind === 'action' && <ActionPreview action={result.action} />}
-      <div className="oracle-preview-foot mt-auto flex flex-col items-start gap-1.5 pt-2 border-t border-subtle">
+      <div className="oracle-preview-foot mt-auto flex flex-col items-start gap-1.5 border-t border-subtle pt-2">
         <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[shownKind]}</Button>
       </div>
     </>
@@ -473,7 +473,7 @@ export function AskPreview({
   return (
     <>
       <PreviewTitle><Icon name={to?.icon ?? HYDRA_MARK} size={ICON_SIZE.control} />Request to {to?.name ?? 'a Hydra'}</PreviewTitle>
-      {request.trim() && <p className="oracle-ask-message m-0 px-3 py-2.5 border border-subtle rounded-lg bg-background whitespace-pre-wrap wrap-anywhere">{request.trim()}</p>}
+      {request.trim() && <p className="oracle-ask-message m-0 rounded-lg border border-subtle bg-background px-3 py-2.5 wrap-anywhere whitespace-pre-wrap">{request.trim()}</p>}
       {error && <p className="oracle-ask-error text-red" role="alert">{error}</p>}
       {sending && <p className="muted small" role="status">{progress}</p>}
     </>

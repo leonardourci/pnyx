@@ -911,11 +911,11 @@ export function Oracle({
         onKeyDown={inputKey}
       />
       {open && (
-        <div className="oracle-body grid flex-1 min-h-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] border-t border-subtle max-phone:grid-cols-1 max-phone:grid-rows-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="oracle-body grid min-h-0 flex-1 grid-cols-oracle border-t border-subtle max-phone:grid-cols-1 max-phone:grid-rows-oracle">
           <div
             ref={list}
             id={listId}
-            className="oracle-list overflow-auto pt-1 px-1.5 pb-2 border-r border-subtle transition-opacity ease-ui duration-fast data-pending:opacity-55 max-phone:border-r-0 max-phone:border-b"
+            className="oracle-list overflow-auto border-r border-subtle px-1.5 pt-1 pb-2 transition-opacity duration-fast ease-ui data-pending:opacity-55 max-phone:border-r-0 max-phone:border-b"
             role="listbox"
             aria-label={ask ? 'Ask' : listLabel}
             data-pending={dimmed || undefined}
@@ -929,7 +929,7 @@ export function Oracle({
           </div>
           <div
             ref={preview}
-            className="oracle-preview flex flex-col gap-2.5 overflow-auto px-4 py-3.5 [&_mark]:bg-gold-wash [&_mark]:text-inherit [&_mark]:rounded-xs [&_.setting-row]:border-t-0 [&_.setting-row]:pt-0"
+            className="oracle-preview flex flex-col gap-2.5 overflow-auto px-4 py-3.5 [&_.setting-row]:border-t-0 [&_.setting-row]:pt-0 [&_mark]:rounded-xs [&_mark]:bg-gold-wash [&_mark]:text-inherit"
             role="region"
             aria-label="Preview"
             onKeyDownCapture={event => previewArrow({ event })}
