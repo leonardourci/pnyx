@@ -2054,7 +2054,13 @@ test(
       line: 'done: outside work complete',
     })
     expect((await hydra.task({ key: 'completed-worker' })).status).toBe('done')
-    await hydra.owner({ args: ['task', 'hide', 'completed-worker'] })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'completed-worker',
+      ],
+    })
     const completed = await hydra.task({ key: 'completed-worker' })
     const hiddenLog = join(
       process.env.PNYX_HOME!,

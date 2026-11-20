@@ -92,7 +92,10 @@ export function foldWorkerLog({
     )
     let start = 0
 
-    const complete = bytes.subarray(0, count)
+    const complete = bytes.subarray(
+      0,
+      count,
+    )
 
     for (let end = complete.indexOf(10); end >= 0; end = complete.indexOf(
       10,

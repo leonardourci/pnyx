@@ -174,6 +174,7 @@ export function applySessionFacts({
       })),
       { ...source },
     ]
+
     if (!session.lastSeen || Date.parse(event.at) >= Date.parse(session.lastSeen)) {
       session.lastSeen = event.at
     }
