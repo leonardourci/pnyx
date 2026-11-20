@@ -138,6 +138,57 @@ const movedRows = ({ frames }: { frames: Frame[] }) => frames.slice(1).flatMap((
 const offEnd = ({ frames }: { frames: Frame[] }) => frames.map(frame => frame.fromBottom)
   .filter(distance => distance > 1)
 
+test(
+  'plain task ids, exact titles and card links open live task chips in both chats',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'mentions' })
+    const task = await hydra.task({ key: 'mentions' })
+    const text = `Check ${task.id}, Task mentions and [the card](pnyx-task:${task.id}).`
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Show the references',
+      reply: text,
+    })
+    await hydra.chat({ text: 'Show the references' })
+    await appendRecords({
+      session: worker,
+      records: [
+        {
+          type: 'assistant',
+          content: text,
+        },
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const hydraChat = page.getByRole(
+      'region',
+      { name: 'Hydra conversation' },
+    )
+    await hydraChat.getByText(
+      'Check',
+      { exact: false },
+    ).waitFor()
+    expect(await hydraChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
+    await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()
+      .click()
+    const taskChat = page.getByRole(
+      'region',
+      { name: 'Task mentions conversation' },
+    )
+    await taskChat.getByText(
+      'Check',
+      { exact: false },
+    ).waitFor()
+    expect(await taskChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
+    expect(await taskChat.locator(`[data-task-ref="${task.id}"]`).first()
+      .getAttribute('aria-label')).toContain('Task mentions;')
+  },
+)
+
 const nextFrames = ({
   page,
   count,

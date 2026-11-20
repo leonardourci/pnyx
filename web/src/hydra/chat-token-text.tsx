@@ -5,6 +5,7 @@ import type { PreparedChatTokens } from './chat-tokens.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import type { SkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SPACE } from './draft.ts'
+import { TaskReferenceText } from '#web-tasks/task-reference.tsx'
 
 export const ChatTokensContext = createContext<{
   suggestions?: Suggestion[]
@@ -51,7 +52,7 @@ export function ChatTokenText({
           colors={colors}
         />{CHIP_SPACE}
       </Fragment>
-    ) : <Fragment key={index}>{part.text}</Fragment>)}
+    ) : <TaskReferenceText key={index} text={part.text ?? ''} />)}
     </>
   )
 }
