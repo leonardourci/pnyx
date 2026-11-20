@@ -993,18 +993,19 @@ test.each([
       expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
         .count()).toBe(1)
       const rows = await conversation.locator('[data-entry-id]').count()
-      await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      const stopButton = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
         'button',
         {
           name: stop,
           exact: true,
         },
       )
-        .click()
+      await stopButton.click()
       await until({
         what: 'the stopped turn to end',
         check: () => session.answered === session.received.length,
       })
+      await stopButton.waitFor({ state: 'hidden' })
       await nextFrames({
         page,
         count: SETTLING_FRAMES,
@@ -1153,6 +1154,12 @@ test.each([
     await row.getByRole('alert').filter({ hasText: 'refused this turn' })
       .waitFor()
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
+    const reply = `The ${target} retry succeeded.`
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text: input }) => input.includes(text),
+      reply,
+    })
     await row.getByRole(
       'button',
       {
@@ -1160,19 +1167,10 @@ test.each([
         exact: true,
       },
     ).click()
-    await until({
-      what: 'the second attempt to finish after the one-shot refusal',
-      check: () => pnyx.codex.sessions.some(session => {
-        const received = session.received.some(input => input.includes(text))
-
-        return received && session.answered === session.received.length
-      }),
-    })
     await conversation.getByText(
-      'Recorded reply.',
+      reply,
       { exact: true },
     )
-      .first()
       .waitFor()
     const attempts = pnyx.codex.sessions.flatMap(session => session.received)
       .filter(input => input.includes(text))

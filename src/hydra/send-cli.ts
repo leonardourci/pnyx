@@ -143,10 +143,14 @@ export async function hydraSend({
     }
   }
 
-  const message = loadHydra({ hydraId }).state.hydraMessages
-    ?.find(message => message.id === (result.message ?? m.id))
+  if (m.actor === HYDRA_ACTOR || typeof result.message !== 'string') {
+    return result
+  }
 
-  if (m.actor === HYDRA_ACTOR || !message) {
+  const message = loadHydra({ hydraId }).state.hydraMessages
+    ?.find(message => message.id === result.message)
+
+  if (!message) {
     return result
   }
 
