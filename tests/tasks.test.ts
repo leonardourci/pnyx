@@ -236,7 +236,7 @@ test(
 )
 
 test(
-  'a start on a held task goes ahead and lists the hold, with the command that releases it, once on the card',
+  'a start on a held task goes ahead and lists the hold, with the command that releases it, once on the card, and a failed or retried start adds nothing',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'held' })
@@ -254,28 +254,48 @@ test(
       ],
     })
     const card = await hydra.task({ key: 'rename' })
-    const started = await hydra.owner({
-      args: [
-        'task',
-        'start',
-        'rename',
-      ],
-    })
-    expect(started.open).toEqual([
-      expect.objectContaining({
-        reason: 'held for discussion: Rename the API',
-        clear: expect.stringContaining(`pnyx-axi task release ${card.id} --from-message`),
-      }),
-    ])
-    expect((await hydra.agent({ cwd: folder })).received).toHaveLength(1)
-    expect((await hydra.owner({
+    const notes = async () => (await hydra.owner({
       args: [
         'task',
         'show',
         'rename',
         '--full',
       ],
-    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:start' })])
+    })).task.notes
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'rename',
+        '--via',
+        'nowhere',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect(await notes()).toBeUndefined()
+
+    const start = [
+      'task',
+      'start',
+      'rename',
+      '--prompt',
+      'Rename the public API',
+      '--event-id',
+      'rename-start',
+    ]
+    const started = await hydra.owner({ args: start })
+    expect(started.open).toEqual([
+      expect.objectContaining({
+        reason: 'held for discussion: Rename the API',
+        clear: expect.stringContaining(`pnyx-axi task release ${card.id} --from-message`),
+      }),
+    ])
+    const worker = await hydra.agent({ cwd: folder })
+    expect(worker.received).toHaveLength(1)
+
+    expect(await hydra.owner({ args: start })).toMatchObject({ event: 'none: duplicate' })
+    expect(worker.received).toHaveLength(1)
+    expect(await notes()).toEqual([expect.objectContaining({ source: 'pnyx:start' })])
   },
 )
 
@@ -507,6 +527,23 @@ test(
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Import the refunds',
+        '--behind',
+        'no-such-task',
+      ],
+    })).code).toBe('NOT_FOUND')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'list',
+      ],
+    })).tasks.some((task: { title: string }) => task.title === 'Import the refunds')).toBe(false)
+
     const idea = await hydra.owner({
       args: [
         'task',
@@ -516,18 +553,38 @@ test(
         '--no-start',
       ],
     })
-    expect(await hydra.owner({
+    const later = await hydra.owner({
       args: [
         'task',
-        'queue',
-        idea.card.id,
-        '--behind',
-        'export',
+        'create',
+        '--title',
+        'Compress the archive',
+        '--no-start',
       ],
-    })).toMatchObject({
-      queued: false,
-      reason: expect.stringContaining('worker’s project'),
     })
+    const reasons = {
+      export: 'worker’s project',
+      [later.card.id]: 'no live task worker',
+    }
+
+    for (const [
+      anchor,
+      reason,
+    ] of Object.entries(reasons)) {
+      expect(await hydra.owner({
+        args: [
+          'task',
+          'queue',
+          idea.card.id,
+          '--behind',
+          anchor,
+        ],
+      })).toMatchObject({
+        queued: false,
+        reason: expect.stringContaining(reason),
+      })
+    }
+
     expect((await hydra.task({ key: idea.card.id })).queue).toBeUndefined()
   },
 )

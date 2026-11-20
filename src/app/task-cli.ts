@@ -646,14 +646,12 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         type: 'task.queue',
         card: task,
       },
-      decide: ({ state }) => {
-        return decideQueue({
-          state,
-          task,
-          behind,
-          meta: m,
-        })
-      },
+      decide: ({ state }) => decideQueue({
+        state,
+        task,
+        behind,
+        meta: m,
+      }),
     })
   }
 

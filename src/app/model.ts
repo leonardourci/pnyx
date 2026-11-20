@@ -146,7 +146,6 @@ export type HydraChange = EventBase & (
     type: 'task.created'
     data: {
       hold?: string
-      // Why the task was filed without a worker, when it was.
       unstarted?: string
       ask?: OwnerAsk
       key: string

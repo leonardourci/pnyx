@@ -12,8 +12,9 @@ import { goQuestionCommand, type Blocker } from '#tasks/owner-gates.ts'
 import { localTaskCommand } from '#tasks/plans-cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { START_FLAGS, startFlags } from './cli.ts'
-import { decideQueue, queueGap } from './queue-decisions.ts'
-import { startTask } from './start.ts'
+import { decideQueue, queueAnchor, queueGap } from './queue-decisions.ts'
+import { findSession } from './session-attachments.ts'
+import { startRecorded, startTask } from './start.ts'
 
 const WAIT_FLAGS = {
   hold: 'hold',
@@ -52,6 +53,41 @@ function chooseWait({ values }: { values: Values }): Wait | undefined {
   return wait
 }
 
+function requireWaitTargets({
+  state,
+  wait,
+  values,
+}: {
+  state: HydraState
+  wait?: Wait
+  values: Values
+}): void {
+  if (wait === 'depend') {
+    for (const ref of values.on as string[]) {
+      findCard({
+        state,
+        ref,
+      })
+    }
+  }
+
+  if (wait !== 'queue') {
+    return
+  }
+
+  const behind = values.behind as string
+
+  if (!queueAnchor({
+    state,
+    behind,
+  })) {
+    findSession({
+      state,
+      ref: behind,
+    })
+  }
+}
+
 const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
   hold: ({ card }) => ({
     launch: 'held',
@@ -82,15 +118,10 @@ function recordedLaunch({
   state: HydraState
   id: string
 }): 'started' | 'requested' | undefined {
-  const attached = [
-    `${id}:attach`,
-    `${id}:started`,
-  ].some(recorded => Object.hasOwn(
-    state.eventIds,
-    recorded,
-  ))
-
-  if (attached) {
+  if (startRecorded({
+    state,
+    id,
+  })) {
     return 'started'
   }
 
@@ -128,6 +159,7 @@ function recordWait({
         meta: {
           ...meta,
           id: `${operation}:queue`,
+          ifRevision: undefined,
         },
       })
     }
@@ -140,6 +172,7 @@ function recordWait({
       meta: {
         ...meta,
         id: `${operation}:depend`,
+        ifRevision: undefined,
       },
     })
   }
@@ -153,7 +186,6 @@ function recordWait({
   })
 }
 
-// The same blocker always gets the same note, so a retry that hits it again adds nothing.
 function noteBlocker({
   hydraId,
   task,
@@ -190,6 +222,7 @@ function noteBlocker({
             cardKey: operation,
             ref: text,
           }),
+          ifRevision: undefined,
         },
       }),
     }),
@@ -199,13 +232,13 @@ function noteBlocker({
 async function startCreated({
   hydraId,
   task,
-  values,
+  flags,
   meta,
   operation,
 }: {
   hydraId: string
   task: string
-  values: Values
+  flags: ReturnType<typeof startFlags>
   meta: Meta
   operation: string
 }): Promise<Output> {
@@ -240,7 +273,7 @@ async function startCreated({
     const started = await startTask({
       hydraId,
       task,
-      ...startFlags({ values }),
+      ...flags,
       meta: {
         ...meta,
         id: startId,
@@ -297,17 +330,12 @@ export async function createCommand({
   meta: Meta
 }): Promise<Output> {
   let wait = chooseWait({ values })
-
-  if (wait === 'depend') {
-    const state = loadHydra({ hydraId }).state
-
-    for (const ref of values.on as string[]) {
-      findCard({
-        state,
-        ref,
-      })
-    }
-  }
+  const flags = startFlags({ values })
+  requireWaitTargets({
+    state: loadHydra({ hydraId }).state,
+    wait,
+    values,
+  })
 
   const created = (await localTaskCommand({
     action: 'create',
@@ -318,17 +346,17 @@ export async function createCommand({
   }))!
   const task = (created.card as { id: string }).id
   const operation = meta.id ?? task
-  let unqueued: Blocker | undefined
+  let notQueued: Blocker | undefined
 
   if (wait === 'queue') {
-    unqueued = queueGap({
+    notQueued = queueGap({
       state: loadHydra({ hydraId }).state,
       task,
       behind: values.behind as string,
     })
   }
 
-  if (unqueued) {
+  if (notQueued) {
     wait = undefined
   }
 
@@ -353,12 +381,12 @@ export async function createCommand({
     : await startCreated({
       hydraId,
       task,
-      values,
+      flags,
       meta,
       operation,
     })
 
-  if (!unqueued) {
+  if (!notQueued) {
     return {
       ...created,
       ...receipt,
@@ -368,10 +396,10 @@ export async function createCommand({
   return {
     ...created,
     ...receipt,
-    queued: `no: ${unqueued.reason}`,
+    queued: `no: ${notQueued.reason}`,
     help: [
       ...receipt.help as string[],
-      unqueued.clear,
+      notQueued.clear,
     ],
   }
 }

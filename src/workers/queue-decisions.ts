@@ -37,7 +37,16 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
   return undefined
 }
 
-// Why a task cannot wait behind that worker, if it cannot; the caller reports it and leaves the task as it is.
+export function queueAnchor({
+  state,
+  behind,
+}: {
+  state: HydraState
+  behind: string
+}): Card | undefined {
+  return state.cards[behind] ?? state.cards[state.keys[behind] ?? '']
+}
+
 export function queueGap({
   state,
   task,
@@ -65,7 +74,10 @@ export function queueGap({
     return started
   }
 
-  const anchor = state.cards[behind] ?? state.cards[state.keys[behind] ?? '']
+  const anchor = queueAnchor({
+    state,
+    behind,
+  })
 
   if (anchor?.id === card.id) {
     return {
@@ -74,12 +86,14 @@ export function queueGap({
     }
   }
 
-  const current = queueWorker({
+  const workerlessTask = anchor !== undefined && !anchor.queue && !anchor.sessionIds?.length
+  const session = workerlessTask ? undefined : findSession({
     state,
-    session: findSession({
-      state,
-      ref: anchor?.queue?.session ?? behind,
-    }),
+    ref: anchor?.queue?.session ?? behind,
+  })
+  const current = session && queueWorker({
+    state,
+    session,
   })
 
   if (!current) {
@@ -152,7 +166,6 @@ export function decideQueue({
       behind,
     })
 
-    // Callers report a gap before deciding; this keeps a race from queueing a task that cannot wait.
     if (gap) {
       throw new HydraError({
         message: gap.reason,
@@ -161,7 +174,10 @@ export function decideQueue({
       })
     }
 
-    const anchor = state.cards[behind] ?? state.cards[state.keys[behind] ?? '']
+    const anchor = queueAnchor({
+      state,
+      behind,
+    })
     const session = findSession({
       state,
       ref: anchor?.queue?.session ?? behind,

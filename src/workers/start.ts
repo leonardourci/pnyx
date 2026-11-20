@@ -68,6 +68,22 @@ function chooseVia({
   return chosen as Via
 }
 
+export function startRecorded({
+  state,
+  id,
+}: {
+  state: HydraState
+  id: string
+}): boolean {
+  return [
+    `${id}:attach`,
+    `${id}:started`,
+  ].some(recorded => Object.hasOwn(
+    state.eventIds,
+    recorded,
+  ))
+}
+
 function queuedRefusal({
   task,
   session,
@@ -176,7 +192,6 @@ function unappliedFlags({ given }: { given: Record<StartFlag, unknown> }): strin
     ]) => flag)
 }
 
-// A task has one worker, so a start on a task that has one sends the prompt to that worker.
 async function steerAttached({
   hydraId,
   card,
@@ -218,6 +233,7 @@ async function steerAttached({
     hydraId,
     request: {
       card: card.id,
+      expectedSession: worker,
       text: prompt,
       homes: home ? [home] : [],
       actor: meta.actor,
@@ -234,7 +250,6 @@ async function steerAttached({
   }
 }
 
-// A copy being settled stays refused: a worker started in it could lose work that has not landed.
 function leaseOrWait({
   hydraId,
   task,
@@ -273,11 +288,13 @@ function leaseOrWait({
 
 function unqueue({
   hydraId,
-  card,
+  task,
+  session,
   meta,
 }: {
   hydraId: string
-  card: Card
+  task: string
+  session: string
   meta: Meta
 }): string {
   withWriter({
@@ -286,68 +303,61 @@ function unqueue({
       writer,
       decision: decideQueue({
         state: writer.state,
-        task: card.id,
+        task,
         meta: {
           ...meta,
           id: meta.id ? `${meta.id}:unqueue` : undefined,
+          ifRevision: undefined,
         },
       }),
     }),
   })
 
-  return `was queued behind worker ${card.queue!.session}; it now gets its own worker`
+  return `was queued behind worker ${session}; it now gets its own worker`
 }
 
 function noteOpen({
   hydraId,
-  card,
+  task,
+  open,
   meta,
 }: {
   hydraId: string
-  card: Card
+  task: string
+  open: Blocker[]
   meta: Meta
-}): Blocker[] {
-  return withWriter({
+}): void {
+  if (!open.length) {
+    return
+  }
+
+  const text = [
+    'Started with these still open:',
+    ...open.map(item => `- ${item.reason}. ${item.clear}`),
+  ].join('\n')
+
+  withWriter({
     hydraId,
-    fn: ({ writer }) => {
-      const open = startBlockers({
+    fn: ({ writer }) => applyDecision({
+      writer,
+      decision: decideNote({
         state: writer.state,
-        card: findCard({
-          state: writer.state,
-          ref: card.id,
-        }),
-      })
-
-      if (!open.length) {
-        return open
-      }
-
-      const text = [
-        'Started with these still open:',
-        ...open.map(item => `- ${item.reason}. ${item.clear}`),
-      ].join('\n')
-      applyDecision({
-        writer,
-        decision: decideNote({
-          state: writer.state,
-          ref: card.id,
-          note: {
-            kind: 'context',
-            source: 'pnyx:start',
-            text,
-          },
-          meta: {
-            ...meta,
-            id: noteId({
-              cardKey: card.id,
-              ref: text,
-            }),
-          },
-        }),
-      })
-
-      return open
-    },
+        ref: task,
+        note: {
+          kind: 'context',
+          source: 'pnyx:start',
+          text,
+        },
+        meta: {
+          ...meta,
+          id: noteId({
+            cardKey: task,
+            ref: text,
+          }),
+          ifRevision: undefined,
+        },
+      }),
+    }),
   })
 }
 
@@ -402,6 +412,17 @@ export async function startTask({
     task: card.id,
   })
 
+  if (meta.id && startRecorded({
+    state,
+    id: meta.id,
+  })) {
+    return {
+      task: card.id,
+      event: 'none: duplicate',
+      help: ['This start was already recorded; nothing was started again'],
+    }
+  }
+
   const worker = card.sessionIds?.[0]
 
   if (worker && !replacement) {
@@ -427,6 +448,10 @@ export async function startTask({
     })
   }
 
+  const open = startBlockers({
+    state,
+    card,
+  })
   const leased = leaseOrWait({
     hydraId,
     task: card.id,
@@ -439,21 +464,6 @@ export async function startTask({
   const release = leased.release
 
   try {
-    const unqueued = card.queue ? unqueue({
-      hydraId,
-      card,
-      meta,
-    }) : undefined
-    const open = noteOpen({
-      hydraId,
-      card,
-      meta,
-    })
-    const guidance = {
-      ...(open.length ? { open } : {}),
-      ...(unqueued ? { unqueued } : {}),
-    }
-
     const how = chooseVia({
       state,
       via,
@@ -488,23 +498,37 @@ export async function startTask({
       })
     }
 
-    if (how === 'firstmate') {
+    const unqueued = card.queue ? unqueue({
+      hydraId,
+      task: card.id,
+      session: card.queue.session,
+      meta,
+    }) : undefined
+
+    const guided = ({ started }: { started: Output }): Output => {
+      noteOpen({
+        hydraId,
+        task: card.id,
+        open,
+        meta,
+      })
+
       return {
-        ...await askFirstmate({
+        ...started,
+        ...(open.length ? { open } : {}),
+        ...(unqueued ? { unqueued } : {}),
+      }
+    }
+
+    if (how === 'firstmate') {
+      return guided({
+        started: await askFirstmate({
           hydraId,
           task,
           prompt,
           meta,
         }),
-        ...guidance,
-      }
-    }
-
-    if (meta.id && (how === 'pnyx' || how === 'paseo') && `${meta.id}:attach` in state.eventIds) {
-      return {
-        task: card.id,
-        event: 'none: duplicate',
-      }
+      })
     }
 
     if (tools?.length) {
@@ -614,8 +638,8 @@ export async function startTask({
       })
 
     if (command) {
-      return {
-        ...await startCommand({
+      return guided({
+        started: await startCommand({
           hydraId,
           role: 'worker',
           task,
@@ -625,8 +649,7 @@ export async function startTask({
           commandName,
           meta,
         }),
-        ...guidance,
-      }
+      })
     }
 
     const started = how === 'pnyx'
@@ -671,11 +694,12 @@ export async function startTask({
         connect,
       })
 
-    return {
-      ...started,
-      rule: dispatch?.rule,
-      ...guidance,
-    }
+    return guided({
+      started: {
+        ...started,
+        rule: dispatch?.rule,
+      },
+    })
   } catch (error) {
     if (error instanceof HydraError && error.code === 'TASK_STARTING') {
       return {

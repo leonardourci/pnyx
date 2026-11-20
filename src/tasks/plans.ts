@@ -217,14 +217,14 @@ export function planTaskChange({
       read: () => parseKind({ value: operation.kind ?? 'build' }),
     })
 
+    const reason = meta.reason?.trim()
+
     if (operation.hold) {
-      created.hold = meta.reason?.trim() || title
+      created.hold = reason || title
     }
 
-    const unstarted = operation.noStart && meta.reason?.trim()
-
-    if (unstarted) {
-      created.unstarted = unstarted
+    if (operation.noStart && reason) {
+      created.unstarted = reason
     }
 
     if (project) {

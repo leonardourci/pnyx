@@ -285,13 +285,9 @@ export function requireReady({
   state: HydraState
   card: Card
 }): void {
-  const blockers = readinessBlockers({
+  const blockers = startBlockers({
     state,
     card,
-    unmet: unmetPrerequisites({
-      state,
-      card,
-    }),
   })
 
   if (blockers.length) {
