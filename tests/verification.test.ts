@@ -19,6 +19,22 @@ test(
     const linter = new ESLint()
     const cases = [
       {
+        source: '<Tooltip anchorClassName="w-[317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className={`w-[${width}px]`} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className={`[width:${width}px]`} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<Tooltip anchorClassName="text-ink flex" />',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+      {
         source: '<div className="bg-[#123456]/50" />',
         rule: 'better-tailwindcss/no-restricted-classes',
       },

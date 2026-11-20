@@ -66,6 +66,10 @@ export default tseslint.config(
         selectors: {
           extends: [
             {
+              kind: 'attribute',
+              name: '^(?:class|.*ClassName)$',
+            },
+            {
               kind: 'variable',
               name: '^(?:.*CLASSES|.*_CLASS|.*_TONE|VARIANTS|SIZES|ROWS|BADGE_COLORS|DATE_EDITOR|SETTING_STACK|appearance|tone|border|selection|layout|fill|button|color|vertical|classes|className)$',
               match: [
@@ -98,6 +102,10 @@ export default tseslint.config(
             {
               pattern: '(?:^|:)(?:!?[a-zA-Z0-9-]+-\\[.*\\]|\\[[a-zA-Z-]+:[^\\]]+\\])(?:/[^:]+)?!?$',
               message: 'Use a theme token or a shared utility instead of an arbitrary value.',
+            },
+            {
+              pattern: '(?:^|:)(?:!?[a-zA-Z0-9-]+-\\[[^\\[\\]]*|\\[[a-zA-Z-]+:[^\\[\\]]*)$',
+              message: 'Keep class names complete; computed values belong in runtimeStyle.',
             },
           ],
         },
