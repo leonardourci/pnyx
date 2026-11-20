@@ -546,17 +546,18 @@ test(
 
     try {
       for (let index = 0; index < 300; index++) {
-        const receipt = await page.send({
+        const body = index === 0 ? '<'.repeat(500) : 'Long report body '.repeat(100)
+
+        await page.send({
           name: 'hydra',
           args: [
             'send',
             '--actor',
             'worker:burst',
             '--text',
-            `Report ${index}: ${'Long report body '.repeat(100)}`,
+            `Report ${index}: ${body}`,
           ],
         })
-        expect(receipt.type).toBe('receipt')
       }
 
       await hydra.owner({
@@ -637,14 +638,17 @@ test(
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
       const wake = session.received.find(text => text.includes('more worker reports'))!
-      expect(wake).toBeDefined()
       expect(wake.length).toBeLessThan(12_000)
+      expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
       expect(wake).not.toContain('Long report body '.repeat(30))
       expect(wake).toContain('Open decisions (1):')
       expect(wake).toContain('Which export format?')
 
       const reviewBefore = wake.match(/history --kind hydra.review --before (\d+) --limit 1 --full/)?.[1]
-      expect(reviewBefore).toBeDefined()
+      if (reviewBefore === undefined) {
+        throw new Error('The wake did not provide the timed review history cursor')
+      }
+
       expect(wake).not.toContain('End of timed review evidence')
       const fullReview = await hydra.owner({
         args: [
@@ -652,7 +656,7 @@ test(
           '--kind',
           'hydra.review',
           '--before',
-          reviewBefore!,
+          reviewBefore,
           '--limit',
           '1',
           '--full',
@@ -750,6 +754,11 @@ test(
         check: () => queue({ hydraId: hydra.id })?.working === false,
       })
       await hydra.chat({ text: 'Resume after the interrupted read' })
+      await until({
+        what: 'the replacement turn to be running before the discarded read returns',
+        check: () => session.received.some(text => text.endsWith('Resume after the interrupted read'))
+          && queue({ hydraId: hydra.id })?.working === true,
+      })
       releaseRead()
       const discardedPage = await interruptedRead
       expect(discardedPage.changes).toContainEqual(expect.objectContaining({
@@ -766,7 +775,7 @@ test(
       expect(recovered.split('Report 7:')).toHaveLength(2)
 
       let cursor = after
-      const reports: string[] = []
+      const reports: { summary: string; reportStatus?: string }[] = []
 
       for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
         const rest = await hydra.as({ session }).run({
@@ -779,18 +788,21 @@ test(
         })
         expect(rest.through).toBeGreaterThan(Number(cursor))
         const pending = rest.changes.filter((change: { actor: string }) => change.actor === 'worker:burst')
-        expect(pending[0]).toMatchObject({ reportStatus: 'unhandled' })
-        expect(pending.at(-1)).toMatchObject({ reportStatus: 'unhandled' })
-        reports.push(...pending.map((change: { summary: string }) => change.summary))
+        reports.push(...pending)
         cursor = String(rest.through)
 
-        if (reports.some(text => text.includes('Report 299:'))) {
+        if (reports.some(report => report.summary.startsWith('Report 299:'))) {
           break
         }
       }
 
-      expect(reports).toHaveLength(293)
-      expect(reports.at(-1)).toContain('Report 299:')
+      expect(reports).toEqual(Array.from(
+        { length: 293 },
+        (_, index) => expect.objectContaining({
+          reportStatus: 'unhandled',
+          summary: expect.stringMatching(new RegExp(`^Report ${index + 7}:`)),
+        }),
+      ))
       overflowTurn.release()
       await until({
         what: 'the overflow-reading turn to finish',
@@ -1245,7 +1257,6 @@ test(
     })
 
     await pnyx.restart()
-    // Hydra resumes its session once and is pointed at the messages it did not answer.
     const resumed = await until({
       what: 'Hydra to resume its session after the restart',
       check: () => pnyx.claude.sessions.find(s => s.env.PNYX_HYDRA === hydra.id && s.resumed),
@@ -1263,6 +1274,7 @@ test(
     const recoveredReport = resumed.received.find(text => text.includes('Worker report awaiting restart'))!
     expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
     expect(recoveredReport).toContain('hydra messages --after <seq minus one> --limit 1')
+    expect(recoveredReport).toContain('Open decisions')
 
     const { messages } = await hydra.owner({
       args: [

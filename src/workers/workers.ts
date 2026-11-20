@@ -383,18 +383,6 @@ export async function hydraCheck({
     )}s`,
   })))
 
-  if (reportTurn && readReports.length) {
-    await askHost({
-      hydraId,
-      body: {
-        action: 'reports-read',
-        actor: HYDRA_ACTOR,
-        turn: reportTurn,
-        seqs: readReports,
-      },
-    })
-  }
-
   const paginationHelp: string[] = []
 
   if (paged) {
@@ -403,7 +391,7 @@ export async function hydraCheck({
     paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
   }
 
-  return {
+  const output: Output = {
     hydraId,
     projects: projectRows({ state }),
     changes: page.length ? changesWithReportStatus : `none: nothing Hydra tracks changed after seq ${after}`,
@@ -428,6 +416,20 @@ export async function hydraCheck({
       ...paginationHelp,
     ],
   }
+
+  if (reportTurn && readReports.length) {
+    await askHost({
+      hydraId,
+      body: {
+        action: 'reports-read',
+        actor: HYDRA_ACTOR,
+        turn: reportTurn,
+        seqs: readReports,
+      },
+    })
+  }
+
+  return output
 }
 
 function compact({ text }: { text: string }): string {
@@ -506,7 +508,7 @@ const hydraDigestHandler = guard({
         return [
           digest,
           contextNoteBlock({
-            notes: state.contextNotes ?? [],
+            notes: (state.contextNotes ?? []).filter(note => note.report),
             hydraId,
             state,
           }),

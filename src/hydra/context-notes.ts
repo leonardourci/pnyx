@@ -317,10 +317,12 @@ export function contextNoteBlock({
 
   const shown = contextTurnNotes({ notes })
   const lines = shown.map(note => {
-    const text = note.text.replace(
-      /</g,
-      '&lt;',
-    )
+    const text = line({
+      text: note.text.replace(
+        /</g,
+        '&lt;',
+      ),
+    })
 
     if (!note.report) {
       return `- ${text}`

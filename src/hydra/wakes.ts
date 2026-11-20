@@ -79,7 +79,6 @@ export const decisionsText = ({
 })
 
 const WAKE_UPDATE_CHARS = 6000
-const WAKE_REASON_CHARS = 400
 
 // Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
 const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
@@ -116,21 +115,11 @@ export function wakeText({
     used = heading.length + 1
 
     for (const reason of reasons) {
-      let line = reason
-
-      if (!pick && reason.length > WAKE_REASON_CHARS) {
-        overflow = true
-        line = clip({
-          text: reason,
-          size: WAKE_REASON_CHARS,
-        })
-      }
-
-      const escaped = sealed({ text: line })
+      const escaped = sealed({ text: reason })
 
       if (!pick && used + escaped.length + 1 > WAKE_UPDATE_CHARS) {
         overflow = true
-        break
+        continue
       }
 
       lines.push(escaped)
@@ -441,6 +430,9 @@ export function findHydraTurnToResume({
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${REPLY_RULES}</pnyx-wake>`,
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${decisionsText({
+      state,
+      now: Date.now(),
+    })}\n${REPLY_RULES}</pnyx-wake>`,
   }
 }
