@@ -24,7 +24,7 @@ export function Detail({
   })
 
   return (
-    <section aria-label={`Details for ${card.title}`} className="detail relative mt-0.75 flex min-h-0 min-w-0 flex-none flex-col overflow-visible border-t border-line bg-transparent pt-2">
+    <section aria-label={`Details for ${card.title}`} className="detail relative mt-0.75 inline min-h-0 min-w-0 flex-none overflow-visible border-t border-line bg-transparent pt-2">
       <Prerequisites card={card} state={state} />
       <TaskUpdates
         card={card}
