@@ -66,8 +66,9 @@ export interface TurnPlan {
   // The next prompt ending with this text, or the one match accepts, takes the plan.
   text?: string
   match?({ text }: { text: string }): boolean
+  // Claude can override response text; Codex replays its recorded response.
   reply?: string
-  // Streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
+  // Claude streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
   partial?: string
   hold?: boolean
   acknowledgeStartAfter?: Promise<void>
