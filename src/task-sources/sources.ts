@@ -19,8 +19,8 @@ import { isManagedTask } from '#tasks/select.ts'
 export const SOURCE_TIMEOUT_MS = 3_600_000
 export const SOURCE_MAX_TIMEOUT_MS = 86_400_000
 export const SOURCE_MAX_BYTES = 65_536
-export const SOURCE_OUTPUT_LIMIT = 1_048_576
-export const SOURCE_MAX_RUNS = 10
+const SOURCE_OUTPUT_LIMIT = 1_048_576
+const SOURCE_MAX_RUNS = 10
 const MAX_ARGUMENT_BYTES = 65_536
 
 export function invalidSource({
