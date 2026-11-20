@@ -5,7 +5,7 @@ import { liveTask } from './select.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
-export const QUESTION_REMINDER_MS = 4 * 60 * 60_000
+const QUESTION_REMINDER_MS = 4 * 60 * 60_000
 
 export function questionReminder({
   state,

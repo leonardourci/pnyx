@@ -7,7 +7,7 @@ import { workingTask } from './follow-schedule.ts'
 import { followedLinks } from './follow.ts'
 
 // A copy whose refs cannot be watched is tried again after this long, not on every pump.
-export const GIT_RETRY_MS = 60_000
+const GIT_RETRY_MS = 60_000
 
 const BRANCH_HEAD = 'ref: refs/heads/'
 

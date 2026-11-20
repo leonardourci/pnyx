@@ -8,7 +8,7 @@ import type { LandingRule } from './model.ts'
 import { loadHydra } from '#app/store.ts'
 import { parseLanding, parseMerger, taskLanding } from './rule.ts'
 
-export function decideTaskLanding({
+function decideTaskLanding({
   state,
   ref,
   landing,

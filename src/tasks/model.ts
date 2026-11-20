@@ -137,20 +137,20 @@ export interface OwnerAsk {
   message?: string
 }
 
-export interface TaskProgress {
+interface TaskProgress {
   text: string
   at: string
   actor: string
 }
 
-export interface TaskHold {
+interface TaskHold {
   id: string
   at: string
   actor: string
   reason: string
 }
 
-export interface CardFacts {
+interface CardFacts {
   childWorking: boolean
   waitTitle?: string
   unmetPrerequisites: ReturnType<typeof import('./dependencies.ts').unmetPrerequisites>
@@ -172,7 +172,7 @@ export interface WorkerLine {
   at: string
 }
 
-export interface WorkerLog {
+interface WorkerLog {
   latest: WorkerLine
   status?: WorkerLine
 }
@@ -291,25 +291,11 @@ export interface PushFields {
   attention?: Attention[]
 }
 
-export const TASK_STATES = [
-  'working',
-  'needs_you',
-  'paused',
-  'blocked',
-  'done',
-] as const
-
-export type TaskStatus = (typeof TASK_STATES)[number]
-
-export const WAIT_CONDITIONS = [
-  'task-done',
-  'pr-opened',
-  'pr-merged',
-] as const
+export type TaskStatus = 'working' | 'needs_you' | 'paused' | 'blocked' | 'done'
 
 export interface TaskWait {
   task: string
-  condition: (typeof WAIT_CONDITIONS)[number]
+  condition: 'task-done' | 'pr-opened' | 'pr-merged'
 }
 
 export interface TaskDeclaration {
@@ -408,7 +394,7 @@ export const LABEL_COLORS = [
   'coral',
 ] as const
 
-export type LabelColor = (typeof LABEL_COLORS)[number]
+type LabelColor = (typeof LABEL_COLORS)[number]
 
 export interface SavedLabelColor {
   label: string

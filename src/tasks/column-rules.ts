@@ -36,7 +36,7 @@ export function taskColumn({
 }
 
 // The column a new task asks for: the queued column when it is held, else the one it names.
-export function heldPlacement({
+function heldPlacement({
   columns,
   column,
   held,

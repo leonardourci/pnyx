@@ -157,7 +157,7 @@ export function cardStatus({
 
 const neverStarted = ({ card }: { card: Card }) => !card.agent && !card.launch
 
-export function noWorkerText({ card }: { card: Card }): string {
+function noWorkerText({ card }: { card: Card }): string {
   if (!neverStarted({ card })) {
     return 'no worker assigned'
   }
