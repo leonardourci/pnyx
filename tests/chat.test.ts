@@ -1521,7 +1521,35 @@ test(
       )
     }
 
+    const retiredSkills = [
+      'pnyx-firstmate-as-hydra',
+      'pnyx-hydra-firstmate',
+    ].map(name => join(
+      session.cwd,
+      '.agents',
+      'skills',
+      name,
+    ))
+
+    for (const folder of retiredSkills) {
+      mkdirSync(
+        folder,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          folder,
+          'SKILL.md',
+        ),
+        'Retired Firstmate integration',
+      )
+    }
+
     await hydra.chat({ text: 'hello again' })
+
+    for (const folder of retiredSkills) {
+      expect(existsSync(folder)).toBe(false)
+    }
 
     for (const folder of [
       withReferences,

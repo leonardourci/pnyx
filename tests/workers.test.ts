@@ -424,6 +424,32 @@ test(
       what: 'Hydra first turn',
       check: () => main.answered === 1,
     })
+    const retiredSkills = [
+      'pnyx-firstmate-as-hydra',
+      'pnyx-hydra-firstmate',
+    ].map(name => join(
+      main.cwd,
+      '..',
+      'helper',
+      '.agents',
+      'skills',
+      name,
+    ))
+
+    for (const folder of retiredSkills) {
+      mkdirSync(
+        folder,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          folder,
+          'SKILL.md',
+        ),
+        'Retired Firstmate integration',
+      )
+    }
+
     await hydra.startTask({ key: 'routine-scope' })
     await workerLine({
       hydra,
@@ -435,6 +461,11 @@ test(
       check: () => pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === hydra.id
         && session.env.PNYX_ACTOR?.startsWith('helper:') && session.answered > 0),
     })
+
+    for (const folder of retiredSkills) {
+      expect(existsSync(folder)).toBe(false)
+    }
+
     expect(helper.config).toMatchObject({
       'features.apps': false,
       'features.plugins': false,
