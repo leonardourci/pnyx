@@ -570,6 +570,15 @@ test(
         ],
         code: 'VALIDATION_ERROR',
       },
+      {
+        flags: [
+          '--start',
+          '--harness',
+          'claude',
+          '--hold',
+        ],
+        code: 'VALIDATION_ERROR',
+      },
     ]
 
     for (const {

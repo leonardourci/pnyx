@@ -791,6 +791,30 @@ test(
       ],
     })
     expect((await hydra.task({ key: 'follow' })).worker).toBe('none')
+
+    const second = [
+      'task',
+      'create',
+      '--title',
+      'Follow again',
+      '--project',
+      'shop',
+      '--behind',
+      'lead',
+      '--event-id',
+      'follow-again',
+    ]
+    expect(await hydra.owner({ args: second })).toMatchObject({ launch: 'queued' })
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'lead',
+      ],
+    })
+    const sessions = pnyx.claude.sessions.length
+    expect(await hydra.owner({ args: second })).toMatchObject({ launch: 'queued' })
+    expect(pnyx.claude.sessions).toHaveLength(sessions)
   },
 )
 
