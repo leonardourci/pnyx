@@ -1,15 +1,5 @@
 import { tokens } from '#oracle/query.ts'
 import type { HydraState } from '#app/model.ts'
-import { KEY_ACTIONS, type KeyScope } from '#preferences/keyboard.ts'
-
-// Keys that open, close or type into the Oracle itself are no use as its rows.
-const OWN_KEYS = [
-  'palette',
-  'search',
-  'help',
-  'cancel',
-  'send',
-]
 
 export type OracleAction = {
   id: string
@@ -19,16 +9,12 @@ export type OracleAction = {
 } & ({
   run: 'task'
   column: string
-} | { run: 'column' } | { run: 'ask' } | {
-  run: 'key'
-  key: string
-})
+} | { run: 'column' } | { run: 'ask' })
 
 export const ACTION_ICONS = {
   task: 'plus',
   column: 'plus',
   ask: 'comments',
-  key: 'keyboard',
 } as const
 
 export interface OraclePanel {
@@ -56,13 +42,11 @@ export const oraclePanels = ({ state }: { state: HydraState }): OraclePanel[] =>
 
 export function oracleActions({
   columns,
-  scope,
 }: {
   columns: {
     id: string
     title: string
   }[]
-  scope: KeyScope
 }): OracleAction[] {
   return [
     {
@@ -87,15 +71,7 @@ export function oracleActions({
       does: 'Attach a repository or a folder of repositories.',
       run: 'column',
     },
-    ...KEY_ACTIONS.filter(entry => !OWN_KEYS.includes(entry.id) && entry.scopes.includes(scope))
-      .map((entry): OracleAction => ({
-        id: `action:key:${entry.id}`,
-        label: entry.label,
-        words: 'keyboard shortcut action',
-        does: `Enter runs “${entry.label}” where you opened the Oracle, as its shortcut does.`,
-        run: 'key',
-        key: entry.id,
-      })),
+
   ]
 }
 
@@ -104,12 +80,6 @@ const CONCEPTS = [
     'new',
     'create',
     'add',
-  ],
-  [
-    'keyboard',
-    'shortcut',
-    'binding',
-    'keys',
   ],
 ]
 

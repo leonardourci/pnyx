@@ -636,6 +636,7 @@ test(
     expect(settings.theme).toBe('dark')
     expect(settings).not.toHaveProperty('poleis')
     expect(settings).not.toHaveProperty('projectPoleis')
+    expect(settings).not.toHaveProperty('keyboard')
     const results = await read({
       args: [
         'oracle',

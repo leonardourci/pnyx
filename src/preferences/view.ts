@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
 import { COLUMNS } from '#tasks/columns-model.ts'
-import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 import { hydraConfig } from '#hydra/config.ts'
 
 const DEFAULT_WIDTHS = {
@@ -26,7 +25,6 @@ export const DEFAULT_VIEW: ViewPreferences = {
   defaultHydraWidth: DEFAULT_WIDTHS.hydra,
   defaultColumnWidth: DEFAULT_COLUMN_WIDTH,
   defaultColumnWidths: {},
-  keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
   chatFontSize: 16,
   codeFontSize: 13,
@@ -142,6 +140,12 @@ export function traces({
   }
 }
 
+const knownViewFields = ({ view }: { view?: Partial<ViewPreferences> }): Partial<ViewPreferences> =>
+  Object.fromEntries(Object.entries(view ?? {}).filter(([key]) => Object.hasOwn(
+    DEFAULT_VIEW,
+    key,
+  )))
+
 // Shared settings, when given, win over the Hydra's own copy of the same preferences.
 export const viewFor = ({
   state,
@@ -150,7 +154,7 @@ export const viewFor = ({
   state: Pick<HydraState, 'view' | 'config'>
   settings?: Partial<ViewPreferences>
 }): ViewPreferences => {
-  const own = structuredClone(state.view ?? {}) as Partial<ViewPreferences>
+  const own = structuredClone(knownViewFields({ view: state.view }))
 
   // Only a Hydra's own view from older releases can hold their saved default widths; shared values are literal.
   if (own.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
@@ -167,7 +171,7 @@ export const viewFor = ({
   const view = {
     ...structuredClone(DEFAULT_VIEW),
     ...own,
-    ...structuredClone(settings),
+    ...structuredClone(knownViewFields({ view: settings })),
   }
   const columnIds = new Set<string>([
     ...COLUMNS,
@@ -184,11 +188,6 @@ export const viewFor = ({
     ...view,
     workspace: workspaceLayout({ input: view.workspace }),
     defaultColumnWidth,
-    keyboard: {
-      ...view.keyboard,
-      bindings: Object.fromEntries(Object.entries(view.keyboard.bindings)
-        .filter(([id]) => KEY_ACTIONS.some(action => action.id === id))),
-    },
     defaultHydraWidth: persistedSize({
       value: view.defaultHydraWidth,
       fallback: DEFAULT_VIEW.defaultHydraWidth,
@@ -402,59 +401,6 @@ export function patchView({
           current: next.workspace,
           input: value,
         }); break
-      case 'keyboard': {
-        const keyboard = record({ value })
-
-        if (!keyboard || Object.keys(keyboard).some(k => ![
-          'characterShortcuts',
-          'bindings',
-        ].includes(k))) {
-          return invalid({ detail: key })
-        }
-
-        if (keyboard.characterShortcuts !== undefined) {
-          if (typeof keyboard.characterShortcuts !== 'boolean') {
-            return invalid({ detail: key })
-          }
-
-          next.keyboard.characterShortcuts = keyboard.characterShortcuts
-        }
-
-        if (keyboard.bindings === null) {
-          next.keyboard.bindings = {}
-        } else if (keyboard.bindings !== undefined) {
-          const bindings = record({ value: keyboard.bindings })
-
-          if (!bindings) {
-            return invalid({ detail: key })
-          }
-
-          for (const [
-            id,
-            keys,
-          ] of Object.entries(bindings)) {
-            if (!safeKey({ key: id }) || !KEY_ACTIONS.some(action => action.id === id)) {
-              return invalid({ detail: key })
-            }
-
-            if (keys === null) {
-              delete next.keyboard.bindings[id]
-            } else if (Array.isArray(keys) && keys.every(k => typeof k === 'string')) {
-              next.keyboard.bindings[id] = keys
-            } else {
-              return invalid({ detail: key })
-            }
-          }
-        }
-
-        const error = keyboardError({ prefs: next.keyboard })
-
-        if (error) {
-          return invalid({ detail: error })
-        }
-
-        break
-      }
       case 'theme':
         if (value !== 'light' && value !== 'dark' && value !== 'system') {
           return invalid({ detail: key })

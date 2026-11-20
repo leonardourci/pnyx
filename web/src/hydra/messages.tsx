@@ -8,7 +8,7 @@ import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
-import { isEditing,useKeyAction,useKeyboard } from '#web-preferences/keyboard-registry.tsx'
+import { isEditing } from '#web-shared/ui/focus.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -42,7 +42,7 @@ import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,p
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
 import {
-  MESSAGE_DECORATIONS,blockPassage,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
+  MESSAGE_DECORATIONS,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
   selectedPassage,type CommentPassage,
 } from './message-selection.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
@@ -501,7 +501,7 @@ export function Messages({
     [],
   )
 
-  const { platform } = useKeyboard()
+  const platform = /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other'
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
     blocks().find(e => e.dataset.messageBlock === key)
@@ -899,96 +899,6 @@ export function Messages({
       }
     })
   }
-
-  const step = ({ to }: { to: 'up' | 'down' | 'first' | 'last' }) => {
-    const elements = blocks()
-
-    if (!elements.length) {
-      return false
-    }
-
-    const n = elements.findIndex(e => e.dataset.messageBlock === active)
-    const next = to === 'first' ? 0 : to === 'last' ? elements.length - 1
-      : n < 0 ? to === 'up' ? elements.length - 1 : 0 : n + (to === 'up' ? -1 : 1)
-    focusBlock({
-      element: elements[Math.max(
-        0,
-        Math.min(
-          elements.length - 1,
-          next,
-        ),
-      )],
-    })
-
-    return true
-  }
-
-  const pageStep = ({
-    target,
-    direction,
-  }: {
-    target: HTMLElement
-    direction: number
-  }) => {
-    if (!root.current?.closest('.thread')?.contains(target)) {
-      return false
-    }
-
-    const scroller = root.current.closest<HTMLElement>('.chat-messages, .column-cards')
-    scroller?.scrollBy({ top: scroller.clientHeight * direction })
-
-    return !!scroller
-  }
-
-  useKeyAction({
-    id: 'thread.pageUp',
-    handler: ({ context }) => pageStep({
-      target: context.target,
-      direction: -1,
-    }),
-  })
-  useKeyAction({
-    id: 'thread.pageDown',
-    handler: ({ context }) => pageStep({
-      target: context.target,
-      direction: 1,
-    }),
-  })
-  useKeyAction({
-    id: 'thread.up',
-    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'up' }),
-  })
-  useKeyAction({
-    id: 'thread.down',
-    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'down' }),
-  })
-  useKeyAction({
-    id: 'thread.first',
-    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'first' }),
-  })
-  useKeyAction({
-    id: 'thread.last',
-    handler: ({ context }) => !!root.current?.closest('.thread')?.contains(context.target) && step({ to: 'last' }),
-  })
-  useKeyAction({
-    id: 'thread.comment',
-    handler: ({ context }) => {
-      if (!root.current?.closest('.thread')?.contains(context.target)) {
-        return false
-      }
-
-      const element = blockFor({ key: active }) ?? blocks().at(-1)
-
-      if (!element) {
-        return false
-      }
-
-      setActive(element.dataset.messageBlock!)
-      addComment({ quote: blockPassage({ block: element }) })
-
-      return true
-    },
-  })
 
   return (
     <TaskReferencesProvider references={taskReferences} openTask={openTask}>

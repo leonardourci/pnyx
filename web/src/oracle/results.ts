@@ -367,14 +367,12 @@ export const resultIcon = ({ result }: { result: OracleResult }) => {
 export function resultMeta({
   result,
   state,
-  keys,
   now,
   actions,
 }: {
   actions: Record<string, CurrentAction>
   result: OracleResult
   state: HydraState
-  keys({ id }: { id: string }): string
   now: number
 }): string {
   switch (result.kind) {
@@ -401,7 +399,7 @@ export function resultMeta({
     case 'panel':
       return ''
     case 'action':
-      return result.action.run === 'key' ? keys({ id: result.action.key }) : ''
+      return ''
   }
 }
 

@@ -11,7 +11,7 @@ import { base, type Meta } from './command-meta.ts'
 import { notUndoable } from './command-validation.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { viewFor, patchView, DEFAULT_VIEW } from '#preferences/view.ts'
+import { viewFor } from '#preferences/view.ts'
 import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
 
@@ -275,12 +275,11 @@ export function decideUndo({
       })
     }
 
-    const after = patchView({
+    const after = viewFor({
       state: {
         ...state,
-        view: DEFAULT_VIEW,
+        view: target.data.before,
       },
-      input: target.data.before,
     })
     const placements = removedColumnPlacements({
       state,

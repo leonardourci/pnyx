@@ -13,7 +13,6 @@ export const SETTING_ICONS: Record<string, string> = {
   toolDetails: 'tool',
   thinkingDetails: 'thinking',
   headsDispatch: 'dispatch',
-  keyboard: 'keyboard',
   version: 'about',
   doneAfterHours: 'done',
   reviewMinutes: 'reminder',
@@ -76,12 +75,6 @@ export const SETTINGS_SECTIONS = [
     label: 'Heads dispatch',
     icon: 'dispatch',
     note: 'Which agent and which login each worker gets. Hydra can update these settings and records each change in chat.',
-  },
-  {
-    id: 'keyboard',
-    label: 'Keyboard',
-    icon: 'keyboard',
-    note: 'An action can have several keys. Press + on a row to add one, or ✕ on a key to drop it.',
   },
   {
     id: 'logs',
@@ -335,18 +328,6 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'logins',
       'quota',
       'routing',
-    ],
-  },
-  {
-    id: 'keyboard',
-    section: 'keyboard',
-    label: 'Character shortcuts',
-    description: 'Single-letter keys such as j and k. Text fields always keep normal typing.',
-    related: [
-      'keyboard',
-      'keys',
-      'hotkeys',
-      'bindings',
     ],
   },
   {

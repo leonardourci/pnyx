@@ -9,7 +9,6 @@ import { MentionPicker,type MentionItem } from './mention-picker.tsx'
 import { completePath } from './path-completion.ts'
 import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } from './project-request.ts'
 import { slashState,type SlashState } from './view.ts'
-import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { useFolders } from '#web-projects/folders.ts'
 import { useAutoHeight } from './auto-height.ts'
 import { Textarea } from '#web-shared/ui/controls.tsx'
@@ -636,19 +635,6 @@ export function ComposerField({
     }),
   )
 
-  useKeyAction({
-    id: 'cancel',
-    handler: ({ context: { target } }) => {
-      if (!input.current?.contains(target) || prefix === null && mention === null) {
-        return false
-      }
-
-      closePickers()
-
-      return true
-    },
-  })
-
   return (
     <div
       className={`composer-field group/composer-field [&.comment-note]:flex-1 ${standalone ? 'composer-compact relative min-w-0 rounded-md border border-control bg-surface focus-within:border-gold-line' : 'contents'} ${className}`}
@@ -879,6 +865,14 @@ export function ComposerField({
           }}
           onKeyDown={e => {
             if (e.nativeEvent.isComposing || e.key === 'Process') {
+              return
+            }
+
+            if (e.key === 'Escape' && (prefix !== null || mention !== null)) {
+              e.preventDefault()
+              e.stopPropagation()
+              closePickers()
+
               return
             }
 

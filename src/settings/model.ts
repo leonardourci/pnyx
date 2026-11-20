@@ -12,7 +12,6 @@ export const SHARED_VIEW_KEYS = [
   'lastMessageOnCards',
   'toolDetails',
   'thinkingDetails',
-  'keyboard',
   'defaultHydraWidth',
   'defaultColumnWidth',
   'defaultColumnWidths',

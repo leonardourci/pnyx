@@ -35,7 +35,10 @@ export const DEFAULT_SETTINGS: Settings = {
 // Settings stored before a key existed lack it, so each missing key reads as its default.
 export const withDefaults = ({ stored }: { stored: Partial<Settings> }): Settings => ({
   ...structuredClone(DEFAULT_SETTINGS),
-  ...structuredClone(Object.fromEntries(Object.entries(stored).filter(([key]) => Object.hasOwn(DEFAULT_SETTINGS, key)))),
+  ...structuredClone(Object.fromEntries(Object.entries(stored).filter(([key]) => Object.hasOwn(
+    DEFAULT_SETTINGS,
+    key,
+  )))),
 })
 
 export function pickView({ view }: { view: SharedView }): SharedView {

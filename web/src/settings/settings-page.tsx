@@ -15,15 +15,12 @@ import type { HydraSummary } from '#app/server-hydras.ts'
 import { SettingsFrame, SettingsSearch, SettingsSection } from './settings-frame.tsx'
 import { RepositoryOwnership } from '#web-projects/ownership.tsx'
 import { About } from '#web-app/about.tsx'
-import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
-import { keyActionsMatching } from '#web-preferences/key-search.ts'
 import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SettingRow, SettingStack, SettingsRows } from '#web-shared/ui/setting-row.tsx'
 import { useSharedSettings } from './shared-settings.ts'
-import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { AccountSettings } from '#web-workers/account-settings.tsx'
@@ -31,7 +28,7 @@ import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, LogDaysPreview, LogLinesPreview, LogSizePreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
-import { SETTING_ICONS, SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
+import { SETTING_ICONS, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
 const UNITS: Record<string, string> = {
   fontSize: 'px',
@@ -85,7 +82,6 @@ const SUGGESTIONS = [
   'model',
   'dark',
   'quota',
-  'shortcut',
 ]
 const THEMES = [
   {
@@ -503,17 +499,6 @@ export function SettingControl({
       return <AccountSettings command={command} initialProvider={accountSetup} notify={notify} />
     case 'headsDispatch':
       return <DispatchSettings command={command} notify={notify} />
-    case 'keyboard':
-      return (
-        <Switch
-          label="Character shortcuts"
-          caption="On"
-          checked={view.keyboard.characterShortcuts}
-          onChange={({ value: characterShortcuts }) => save({
-            patch: { keyboard: { characterShortcuts } },
-          })}
-        />
-      )
     case 'version':
       return <About upgrade={upgrade} startUpgrade={startUpgrade} />
     default:
@@ -613,24 +598,14 @@ export function SettingsPage({
     settings,
   })
   const searching = query.trim() !== ''
-  const found = searchSettings({ query })
-  const keyboardFound = found.some(match => match.entry.id === 'keyboard')
-  const keys = searching && !keyboardFound ? keyActionsMatching({ query }) : []
-  const keyboardEntry = SETTINGS_CATALOG.find(entry => entry.id === 'keyboard')!
-  const matches = keys.length ? [
-    ...found,
-    {
-      entry: keyboardEntry,
-      terms: [],
-    },
-  ] : found
+  const matches = searchSettings({ query })
   const shown = matches.filter(match => !onlyChanged || changed.has(match.entry.id))
   const counts = Object.fromEntries(SETTINGS_SECTIONS.map(item => [
     item.id,
-    shown.filter(match => match.entry.section === item.id).length + (item.id === 'keyboard' ? keys.length : 0),
+    shown.filter(match => match.entry.section === item.id).length,
   ]))
   const filtering = searching || onlyChanged
-  const total = shown.length + keys.length
+  const total = shown.length
   const count = filtering ? `${total} match${total === 1 ? '' : 'es'}` : undefined
   const sections = SETTINGS_SECTIONS
     .filter(item => shown.some(match => match.entry.section === item.id))
@@ -687,20 +662,6 @@ export function SettingsPage({
   const goTo = ({ id }: { id: string }) => surface.current?.querySelector(`#settings-${id}`)?.scrollIntoView({
     behavior: 'smooth',
     block: 'start',
-  })
-
-  // While Settings is open, the search action focuses its own search instead of the Oracle's.
-  useKeyAction({
-    id: 'search',
-    handler: () => {
-      if (hidden) {
-        return false
-      }
-
-      search.current?.focus()
-
-      return true
-    },
   })
 
   if (!connected) {
@@ -824,9 +785,7 @@ export function SettingsPage({
                 </SettingRow>
               )
             })}
-            {item.id === 'keyboard' && (
-              <KeyRows prefs={view.keyboard} save={save} query={keyboardFound ? '' : query} />
-            )}
+
           </SettingsRows>
         </SettingsSection>
       ))}

@@ -1,6 +1,6 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { refreshTasks } from '#tasks/columns.ts'
-import { workspaceLayout } from './workspace.ts'
+import { viewFor } from './view.ts'
 import { touch } from '#tasks/touch.ts'
 
 export function applyView({
@@ -11,8 +11,12 @@ export function applyView({
   event: HydraEvent
 }): boolean {
   if (event.type === 'board.view') {
-    state.view = structuredClone(event.data.after)
-    state.view.workspace = workspaceLayout({ input: state.view.workspace })
+    state.view = viewFor({
+      state: {
+        ...state,
+        view: event.data.after,
+      },
+    })
     state.viewRevision = (state.viewRevision ?? 0) + 1
 
     for (const placement of event.data.placements ?? []) {

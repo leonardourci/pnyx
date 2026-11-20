@@ -9,7 +9,6 @@ export interface ViewPreferences {
   defaultColumnWidth: number
   defaultColumnWidths: Record<string, number>
   theme: 'light' | 'dark' | 'system'
-  keyboard: import('./keyboard.ts').KeyboardPreferences
   fontSize: number
   chatFontSize: number
   codeFontSize: number

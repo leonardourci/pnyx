@@ -12,7 +12,7 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command,Receipt } from '#web-app/connection.ts'
-import { focusElement,keyScopeOf,useKeyAction,useKeyboard,type ActionContext } from '#web-preferences/keyboard-registry.tsx'
+import { focusElement } from '#web-shared/ui/focus.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { composing } from '#web-shared/ime.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
@@ -24,16 +24,13 @@ import { createPortal,flushSync } from 'react-dom'
 import { ASK_BADGE,useAskMode,type Asking } from './ask-mode.ts'
 import { askTargets,type AskAttempt,type AskTarget } from './ask.ts'
 import { useFoundCards } from './card-oracle.ts'
-import { addBadge,committedQuery,filterMenu,filterOptions,filterToken,hydraFilter,queryText,SETTINGS_FILTER,type Filter } from './filters.ts'
+import { addBadge,committedQuery,filterMenu,filterOptions,filterToken,hydraFilter,queryText,type Filter } from './filters.ts'
 import { keepInView,usePreviewFocus } from './focus.ts'
 import { movedId,paletteKey,selectedId,type Chosen,type PaletteKey } from './keys.ts'
 import { oracleActions,type OracleAction } from './oracle-catalog.ts'
 import { AskPreview,FilterPreview,ResultPreview,type SettingProps } from './oracle-preview.tsx'
 import { oracleResultList } from './result-list.tsx'
 import { countLabel,menuActions,oracleResults,type OracleResult } from './results.ts'
-
-// The help key opens on the settings and actions that name the keyboard.
-const HELP_QUERY = 'keyboard'
 
 const MENU_LABEL = 'Filters, actions and settings'
 
@@ -42,11 +39,6 @@ interface Pressed {
   mod: boolean
   atEnd: boolean
 }
-
-const contextOf = ({ target }: { target: HTMLElement }): ActionContext => ({
-  target,
-  scope: keyScopeOf({ target }),
-})
 
 // A press outside the palette's box lands on its backdrop, which closes it.
 const onBackdrop = ({ event }: { event: MouseEvent<HTMLDialogElement> }) => {
@@ -82,7 +74,6 @@ export function Oracle({
   openSettings,
   createTask,
   createColumn,
-  action,
   hydras,
   send,
   openChat,
@@ -131,13 +122,6 @@ export function Oracle({
   openSettings({ query }: { query: string }): void
   createTask({ column }: { column: string }): void
   createColumn(): void
-  action({
-    id,
-    context,
-  }: {
-    id: string
-    context: ActionContext
-  }): boolean
   // Every Hydra a request can go to, by display name.
   hydras: AskTarget[]
   send({
@@ -153,12 +137,7 @@ export function Oracle({
   }): Promise<Receipt>
   openChat({ id }: { id: string }): void
 }) {
-  const {
-    handlers,
-    label: keys,
-    platform,
-  } = useKeyboard()
-  const mod = platform === 'mac' ? '⌘' : 'Ctrl+'
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
   const shared = useSharedSettings()
   const remember = shared?.oracleRememberFilters === true
   const hydraBadge = hydraFilter({ hydra })
@@ -194,10 +173,7 @@ export function Oracle({
   const input = useRef<HTMLInputElement>(null)
   const preview = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLDivElement>(null)
-  const origin = useRef<ActionContext>({
-    scope: 'navigation',
-    target: document.body,
-  })
+  const origin = useRef<HTMLElement>(document.body)
   // The last Enter or arrow pressed while the query was still being answered, run once it is.
   const waiting = useRef<Pressed | null>(null)
   // The request being sent or last refused; opening, closing or leaving Ask mode drops it.
@@ -267,7 +243,6 @@ export function Oracle({
       actions: cardActions,
       order: [],
     }),
-    scope: origin.current.scope,
   }) : []
   const now = Date.now()
   const typedActions = open ? menuActions({
@@ -351,7 +326,7 @@ export function Oracle({
   }
 
   const returnFocus = () => {
-    const { target } = origin.current
+    const target = origin.current
 
     if (target.isConnected && target !== document.body) {
       target.focus({ preventScroll: true })
@@ -361,11 +336,11 @@ export function Oracle({
   }
 
   const show = ({
-    context,
+    target,
     ids,
     text: opening,
   }: {
-    context: ActionContext
+    target: HTMLElement
     ids?: string[]
     text?: string
   }) => {
@@ -375,10 +350,10 @@ export function Oracle({
       return true
     }
 
-    origin.current = context
+    origin.current = target
     attempt.current = null
     const reset = !remember || ids !== undefined
-    // The palette renders before focusing, so keys typed right after the shortcut reach the input.
+    // Render before focusing so typed keys reach the input.
     flushSync(() => {
       setOpen(true)
       setAsk(null)
@@ -409,49 +384,11 @@ export function Oracle({
     }
   }
 
-  useKeyAction({
-    id: 'palette',
-    handler: ({ context }) => {
-      if (!dialog.current?.open) {
-        return show({ context })
-      }
-
-      close({ restore: true })
-
-      return true
-    },
-  })
-  useKeyAction({
-    id: 'search',
-    handler: ({ context }) => show({ context }),
-  })
-  useKeyAction({
-    id: 'help',
-    handler: ({ context }) => show({
-      context,
-      ids: [
-        hydraBadge.id,
-        SETTINGS_FILTER.id,
-      ],
-      text: HELP_QUERY,
-    }),
-  })
-
   const runAction = ({ entry }: { entry: OracleAction }) => {
     if (entry.run === 'task') {
       createTask({ column: entry.column })
     } else if (entry.run === 'column') {
       createColumn()
-    } else if (entry.run === 'key') {
-      const context = origin.current
-      const registered = [...(handlers.get(entry.key) ?? [])].reverse()
-
-      if (!registered.some(run => run({ context }))) {
-        action({
-          id: entry.key,
-          context,
-        })
-      }
     }
   }
 
@@ -838,7 +775,6 @@ export function Oracle({
     actions: cardActions,
     workspaces,
     state,
-    keys,
     now,
     choose,
     commit,
@@ -999,7 +935,7 @@ export function Oracle({
         label="Oracle"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={({ currentTarget }) => show({ context: contextOf({ target: currentTarget }) })}
+        onClick={({ currentTarget }) => show({ target: currentTarget })}
       />
       {layer && createPortal(
         palette,
