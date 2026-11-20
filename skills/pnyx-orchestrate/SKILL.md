@@ -36,7 +36,7 @@ The receipt shows the started worker, or why it did not start, and lists anythin
 | a pull request needs a worker, a merge or a follow-up, the owner changes how one task lands, or a review page is ready | [pull requests](references/pull-requests.md) |
 | an ask needs a cause found or a question answered before anything is built, an investigation finishes, or you write a bug brief | [investigations and bugs](references/investigations.md) |
 | a project has no profile or an outdated one, or the owner adds a project | [projects](references/projects.md) |
-| a wake names a stall, a helper hand-back or an external blocker | [wakes](references/wakes.md) |
+| a wake says a worker is quiet or a request waits, a reply is `not confirmed`, a helper hands work back, or a review flags an external blocker | [wakes](references/wakes.md) |
 | a reply links tasks or images, or the owner commented on a reply | [replies](references/replies.md) |
 | a reminder, hide, batch edit, Intent change, recurring worker snag or finished worker to free | [task records](references/tasks.md) |
 | an owner override, a dispatch rule change, another route, a lost, ended or moved worker, a queue, a browser grant, a task copy or a permission request | `pnyx-manage-workers` |

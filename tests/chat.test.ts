@@ -1387,7 +1387,7 @@ test(
 
 // The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written.
 test(
-  'Hydra\'s folder holds the shipped skills as written, and every reference its contract links, before its first turn',
+  'Hydra\'s folder holds the shipped skills as written and every reference its contract links before its first turn, and loses a reference the skills dropped by its next',
   async () => {
     const hydra = await pnyx.hydra()
     const session = await hydra.chat({ text: 'hello' })
@@ -1451,16 +1451,9 @@ test(
         link,
       ).toBe(true)
     }
-  },
-)
 
-test(
-  'a reference the shipped skill dropped is gone from Hydra\'s folder by its next turn, even for a skill that ships none',
-  async () => {
-    const hydra = await pnyx.hydra()
-    const first = await hydra.chat({ text: 'hello' })
     const references = ({ skill }: { skill: string }) => join(
-      first.cwd,
+      session.cwd,
       '.agents',
       'skills',
       skill,
