@@ -456,7 +456,6 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.declared',
   'task.worker-line',
   'task.branch',
-  'session.observed',
   'task.tools',
   'task.tools-applied',
   'task.asked',

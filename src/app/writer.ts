@@ -468,8 +468,14 @@ export function eventWriter({
 
       const card = state.cards[event.cardId]
       const parent = event.type === 'task.created' ? event.data.parentId : card?.parentId
-      const session = event.type === 'task.session' || event.type === 'session.observed'
-        ? event.data.session : card?.sessionIds?.[0]
+      let session = card?.sessionIds?.[0]
+
+      if (event.type === 'task.session') {
+        session = event.data.session
+      } else if (event.type === 'session.observed' && 'session' in event.data) {
+        session = event.data.session
+      }
+
       let agent = card?.agent
 
       if (session) {
@@ -478,7 +484,7 @@ export function eventWriter({
 
       if (event.type === 'card.pushed' && event.data.agent) {
         agent = event.data.agent
-      } else if (event.type === 'session.observed') {
+      } else if (event.type === 'session.observed' && 'fields' in event.data) {
         agent = event.data.fields.agent
       }
 
@@ -492,7 +498,7 @@ export function eventWriter({
         commandId: event.id,
       }
 
-      if (event.cardId !== '$board' && event.type !== 'session.observed') {
+      if (event.cardId !== '$board' && event.cardId !== '$sessions') {
         envelope.taskId = parent ?? event.cardId
       }
 

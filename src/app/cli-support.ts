@@ -445,7 +445,7 @@ function originalReceipt(
   },
 ): Output {
   // The key a card had when it moved to another Hydra still names it in a retry.
-  const sameCard = (original.type === 'session.observed' && original.data.key === intent.card)
+  const sameCard = (original.type === 'session.observed' && 'key' in original.data && original.data.key === intent.card)
     || original.cardId === intent.card
     || state.keys[intent.card] === original.cardId
     || state.movedOut?.[original.cardId]?.key === intent.card
