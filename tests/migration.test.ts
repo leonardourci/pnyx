@@ -722,3 +722,127 @@ test(
     })
   },
 )
+
+test(
+  'upgrading retires access rules, shortcuts and task reports while preserving notes, layout and event history',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Keep ordinary work',
+        '--key',
+        'ordinary',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'context',
+        '--text',
+        'Keep the Hydra note',
+      ],
+    })
+    const layout = await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        '{"workspace":{"projectWidths":{"ideas":944}},"cardHeight":420}',
+      ],
+    })
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        await sql({
+          database: homeDatabase(),
+          text: `alter table cards add column kind text;
+      update cards set kind = 'investigation';
+      update card_bodies set data = (data::jsonb || '{"kind":"investigation","report":{"id":"old-report","chars":8}}'::jsonb)::json;
+      update card_references set data = (data::jsonb || '{"kind":"investigation","report":{"id":"old-report","chars":8}}'::jsonb)::json;
+      update hydras set config = (config::jsonb || '{"readPoleis":[]}'::jsonb)::json;
+      update hydra_values set value = (value::jsonb || '{"keyboard":{"bindings":{}}}'::jsonb)::json where key = 'view';
+      update settings set value = (value::jsonb || '{"keyboard":{"bindings":{}},"poleis":{"shared":{"readers":[]}},"projectPoleis":{}}'::jsonb)::json;
+      delete from schema_version; insert into schema_version (version) values (9)`,
+        })
+        await sql({
+          database: homeDatabase(),
+          text: 'update events set data = jsonb_set(data::jsonb, \'{data,before,keyboard}\', \'{"bindings":{}}\'::jsonb)::json where hydra_id = $1 and id = $2',
+          values: [
+            hydra.id,
+            layout.event.id,
+          ],
+        })
+      },
+    })
+    expect((await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view).toMatchObject({
+      cardHeight: 420,
+      workspace: { projectWidths: { ideas: 944 } },
+    })
+    expect((await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view).not.toHaveProperty('keyboard')
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra).not.toHaveProperty('readPoleis')
+    expect(JSON.stringify((await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
+    })).memory)).toContain('Keep the Hydra note')
+    const stored = rows<{ data: object }>({
+      text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
+      values: [
+        hydra.id,
+        created.card.id,
+      ],
+    })[0]!.data
+    expect(stored).not.toHaveProperty('kind')
+    expect(stored).not.toHaveProperty('report')
+    expect(rows({ text: "select column_name from information_schema.columns where table_name = 'cards' and column_name = 'kind'" })).toEqual([])
+    const page = rows<{ value: object }>({ text: "select value from settings where id = 'shared'" })[0]!.value
+    expect(page).not.toHaveProperty('poleis')
+    expect(page).not.toHaveProperty('projectPoleis')
+    expect(page).not.toHaveProperty('keyboard')
+    await hydra.owner({
+      args: [
+        'undo',
+        layout.event.id,
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view.cardHeight).toBe(250)
+    const history = await hydra.owner({
+      args: [
+        'history',
+        '--kind',
+        'board.view',
+        '--full',
+      ],
+    })
+    expect(history.events.find((event: { id: string }) => event.id === layout.event.id).data.before).toHaveProperty('keyboard')
+  },
+)

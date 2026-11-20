@@ -84,6 +84,17 @@ const REMOVE_CARD_WIDTHS = `update hydra_values
   set value = (value::jsonb #- '{workspace,cardWidths}')::json
   where key = 'view' and (value::jsonb->'workspace') ? 'cardWidths'`
 
+const REMOVE_RETIRED_FEATURES = `alter table cards drop column if exists kind;
+  update card_bodies set data = (data::jsonb - 'kind' - 'report')::json
+    where data::jsonb ?| array['kind', 'report'];
+  update card_references set data = (data::jsonb - 'kind' - 'report')::json
+    where data::jsonb ?| array['kind', 'report'];
+  update questions set data = (data::jsonb - 'origin')::json where data::jsonb ? 'origin';
+  update hydras set config = (config::jsonb - 'readPoleis')::json where config::jsonb ? 'readPoleis';
+  update hydra_values set value = (value::jsonb - 'keyboard')::json
+    where key = 'view' and value::jsonb ? 'keyboard';
+  update settings set value = (value::jsonb - 'keyboard' - 'poleis' - 'projectPoleis')::json`
+
 // A database another build's schema made would fail writes this build's statements make, so it is refused by name.
 async function requireSchema({
   client,
@@ -146,7 +157,7 @@ async function requireSchema({
           'create publication pnyx_page for table',
           'alter publication pnyx_page set table',
         )};
-        ${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+        ${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; ${REMOVE_RETIRED_FEATURES}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')
@@ -156,7 +167,13 @@ async function requireSchema({
     return
   }
 
-  if ((current === 5 || current === 6 || current === 7 || current === 8) && migrate) {
+  if ([
+    5,
+    6,
+    7,
+    8,
+    9,
+  ].includes(current) && migrate) {
     await client.query('begin')
 
     try {
@@ -167,7 +184,7 @@ async function requireSchema({
         'alter publication pnyx_page set table',
       ))
 
-      await client.query(`${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+      await client.query(`${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; ${REMOVE_RETIRED_FEATURES}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')
