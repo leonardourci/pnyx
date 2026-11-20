@@ -170,8 +170,20 @@ export function cardStatus({
 
   return {
     kind: activity ?? 'not-started',
-    text: ACTIVITY_TEXT[activity ?? ''] ?? (card.agent ? 'activity unknown' : card.mirror ? 'not started' : 'no worker assigned'),
+    text: ACTIVITY_TEXT[activity ?? ''] ?? (card.agent ? 'activity unknown' : card.mirror ? 'not started' : notStartedText({ card })),
   }
+}
+
+// A task filed without a worker says why, or that nobody gave a reason.
+export function notStartedText({ card }: { card: Card }): string {
+  return card.unstarted ? `not started: ${card.unstarted}` : 'not started, no reason given'
+}
+
+// The worker field of a task that has none: a hold, queue or prerequisite already says why it waits.
+export function workerGap({ card }: { card: Card }): string {
+  const waits = card.agent || card.hold || card.queue || card.prerequisites?.length
+
+  return waits ? 'none' : `none: ${notStartedText({ card })}`
 }
 
 // A later worker turn, a new question for Hydra or an owner answer makes an earlier wait note stale.

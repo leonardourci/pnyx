@@ -223,6 +223,10 @@ export function applyTask({
       state.cards[event.cardId]!.rank = event.data.rank
     }
 
+    if (event.data.unstarted) {
+      state.cards[event.cardId]!.unstarted = event.data.unstarted
+    }
+
     if (kind === 'investigation') {
       state.cards[event.cardId]!.kind = kind
     }

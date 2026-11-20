@@ -30,6 +30,7 @@ import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
 import { intakeCommand } from '#workers/intake.ts'
+import { workerGap } from '#tasks/card-status.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, startFlags, sessionRef, afterAttach } from '#workers/cli.ts'
@@ -809,7 +810,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${clip({ text: task.status.note })}` : ''}` : 'none: no declaration yet',
-        worker: task.sessionIds?.[0] ?? 'none',
+        worker: task.sessionIds?.[0] ?? workerGap({ card: task }),
         ...(task.queue ? {
           queue: queuePosition({
             state,

@@ -31,6 +31,7 @@ export type TaskOperation = { reason?: string } & (
     folder?: string
     kind?: string
     hold?: boolean
+    noStart?: boolean
     parent?: string
     column?: string
     before?: string
@@ -218,6 +219,12 @@ export function planTaskChange({
 
     if (operation.hold) {
       created.hold = meta.reason?.trim() || title
+    }
+
+    const unstarted = operation.noStart && meta.reason?.trim()
+
+    if (unstarted) {
+      created.unstarted = unstarted
     }
 
     if (project) {
