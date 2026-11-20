@@ -248,7 +248,7 @@ function append({
 }
 
 // Lines of both documents, each kept once; a line differing only in spacing or case is the same line.
-export function mergeLines({ texts }: { texts: string[] }): string {
+function mergeLines({ texts }: { texts: string[] }): string {
   const seen = new Set<string>()
 
   return texts.flatMap(text => text.split('\n'))
