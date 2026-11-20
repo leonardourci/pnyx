@@ -1,9 +1,10 @@
 import { steeringText } from '#workers/inbox-notice.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { AgentRef } from '#workers/model.ts'
+import { redact } from '#oracle/text.ts'
 import { injectedInstructions, ownMessage } from './chat-messages.ts'
 import { joinMessageParts } from './history.ts'
-import { splitEntry, type ThreadEntry } from './transcripts-read.ts'
+import type { ThreadEntry } from './transcripts-read.ts'
 
 export function replyEchoes({
   card,
@@ -26,19 +27,12 @@ export function replyEchoes({
 
     counted.add(event.data.reply)
     const sentAt = Date.parse(event.at)
-    const parts = splitEntry({
-      entry: {
-        id: event.data.reply,
-        role: 'user',
-        kind: 'message',
-        text: [
-          event.data.text,
-          event.data.context,
-        ].filter(Boolean).join('\n\n'),
-      },
+    const sent = redact({
+      text: [
+        event.data.text,
+        event.data.context,
+      ].filter(Boolean).join('\n\n'),
     })
-
-    const sent = parts.map(part => part.text).join('')
     sentTimes.set(
       sent,
       [
@@ -94,18 +88,22 @@ export function deliveredInputs({
   }
 
   const messages = joinMessageParts({ entries: inputs })
-  const pnyxWords = ({ message }: { message: ThreadEntry }) => steeringText({ text: message.text })
+  const pnyxWords = ({ message }: { message: ThreadEntry }) => message.pnyx === true
+    || steeringText({ text: message.text })
     || injectedInstructions({
       entry: message,
       provider: agent?.provider,
     })
-  const fromPnyx = ({ message }: { message: ThreadEntry }) => message.pnyx === true
-    || pnyxWords({ message })
-    || echoes.take({
+  const delivered = messages.filter(message => {
+    if (pnyxWords({ message })) {
+      return true
+    }
+
+    return echoes.take({
       text: message.text,
       at: message.at,
     })
-  const delivered = messages.filter(message => fromPnyx({ message }))
+  })
   const deliveredMessages = new Set(delivered.map(message => messageOf({ entry: message })))
 
   return new Set(inputs.filter(entry => deliveredMessages.has(messageOf({ entry }))))

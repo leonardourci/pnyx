@@ -2,7 +2,7 @@ import { claudeTools } from './claude-tools.ts'
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
 import { blockText, foundSettings, injectedDigest, fastSetting, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
@@ -18,12 +18,12 @@ import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
 import { watchIntake } from './claude-intake.ts'
+import { readTranscript } from './transcript-read.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const RECORDED_UUID = /"uuid":"([0-9a-f-]{36})"/
 let permissionWarningLogged = false
 
 function startQuery({
@@ -1298,26 +1298,20 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
 }
 
 function recordedUuids({ path }: { path: string }): Set<string> {
-  const uuids = new Set<string>()
+  const read = readTranscript({
+    cursor: {
+      source: path,
+      identity: '',
+      pos: 0,
+    },
+  })
+  const uuids = (read?.lines ?? []).flatMap(({ record }) => {
+    const { uuid } = object({ value: record })
 
-  if (!existsSync(path)) {
-    return uuids
-  }
+    return typeof uuid === 'string' ? [uuid] : []
+  })
 
-  for (const line of readFileSync(
-    path,
-    'utf8',
-  ).split('\n')) {
-    const [
-      , uuid,
-    ] = line.includes('"type":"user"') ? RECORDED_UUID.exec(line) ?? [] : []
-
-    if (uuid) {
-      uuids.add(uuid)
-    }
-  }
-
-  return uuids
+  return new Set(uuids)
 }
 
 function unsentUuid({

@@ -63,7 +63,10 @@ function firstOwnerMessage({
   }
 
   if (card !== HYDRA_CARD) {
-    return undefined
+    const sent = state.cards[card]?.replies?.find(reply => reply.id === input)
+    const untakenCardSend = sent !== undefined && sent.worker !== undefined && !sent.received
+
+    return untakenCardSend ? sent.id : undefined
   }
 
   const message = state.hydraMessages?.find(message => message.id === input)
@@ -448,7 +451,7 @@ export function createLiveSessions({
             }
           }
 
-          let firstSteering: string[] | undefined
+          let inlineSteering: string[] | undefined
 
           if (item.steeringIds) {
             const current = loadHydra({ hydraId }).state.cards[card.id]
@@ -478,7 +481,7 @@ export function createLiveSessions({
                 item.id,
                 ids,
               )
-              firstSteering = ids
+              inlineSteering = ids
             } else {
               item.text = inboxNotice({
                 card: current,
@@ -536,7 +539,7 @@ export function createLiveSessions({
               state: loadHydra({ hydraId }).state,
               card: card.id,
               input: item.id,
-              steering: firstSteering,
+              steering: inlineSteering,
             }),
           })
         }
