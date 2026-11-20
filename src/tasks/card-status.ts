@@ -180,25 +180,32 @@ export const statusLabel = ({ status }: { status: CardStatus }) => {
   return status.count ? `${text} · ${status.count}` : text
 }
 
-export function currentState({ card }: { card: Card }): {
+export function currentState({
+  card,
+  workerOnly = false,
+}: {
+  card: Card
+  workerOnly?: boolean
+}): {
   text: string
   at: string
   source: 'note' | 'progress' | 'reminder' | 'review'
 } | undefined {
-  if (card.workerLog) {
-    const line = card.workerLog.latest
+  const line = card.workerLog?.latest
+  const workerUpdate = line ? {
+    text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
+    at: line.at,
+    source: 'note' as const,
+  } : undefined
 
-    return {
-      text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
-      at: line.at,
-      source: 'note',
-    }
+  if (workerUpdate && !workerOnly) {
+    return workerUpdate
   }
 
   const note = (card.statusLog ?? [])
     .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
     .at(-1)
-  const reviewUpdates = card.links.flatMap(link => {
+  const reviewUpdates = workerOnly ? [] : card.links.flatMap(link => {
     const at = link.checkedAt
     const openDecision = (card.asks ?? []).some(ask =>
       ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
@@ -220,11 +227,15 @@ export function currentState({ card }: { card: Card }): {
       },
     ]
   })
+  const reminder = workerOnly ? undefined : card.reminder
+  const progress = card.progress
+  const includeProgress = progress && (!workerOnly || reportActor({ actor: progress.actor }))
   const said = [
     ...reviewUpdates,
-    card.reminder?.dueAt ? {
+    workerUpdate,
+    reminder?.dueAt ? {
       text: 'Reminder due',
-      at: card.reminder.dueAt,
+      at: reminder.dueAt,
       source: 'reminder' as const,
     } : undefined,
     note ? {
@@ -232,9 +243,9 @@ export function currentState({ card }: { card: Card }): {
       at: note.at,
       source: 'note' as const,
     } : undefined,
-    card.progress ? {
-      text: card.progress.text,
-      at: card.progress.at,
+    includeProgress ? {
+      text: progress.text,
+      at: progress.at,
       source: 'progress' as const,
     } : undefined,
   ].filter(entry => entry !== undefined)

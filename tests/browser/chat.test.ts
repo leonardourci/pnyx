@@ -48,7 +48,7 @@ function recordPaintedChats() {
       return
     }
 
-    for (const chat of document.querySelectorAll<HTMLElement>('.chat-messages')) {
+    for (const chat of document.querySelectorAll<HTMLElement>('[data-hydra-workspace][data-active=true] .chat-messages')) {
       const box = chat.getBoundingClientRect()
       const loaded = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')].flatMap(row => {
         const id = row.dataset.entryId
@@ -161,10 +161,11 @@ const shownText = ({
   page: Page
   chat: string
   text: string
-}) => page.getByRole(
+}) => page.locator('[data-hydra-workspace][data-active=true]').getByRole(
   'region',
   { name: chat },
-).getByText(text)
+)
+  .getByText(text)
   .filter({ visible: true })
   .waitFor()
 
@@ -291,7 +292,7 @@ test(
       }),
     })).toEqual([])
 
-    const card = page.locator('[data-task]').filter({ hasText: 'Task notes' })
+    const card = page.locator('[data-hydra-workspace][data-active=true] [data-task]').filter({ hasText: 'Task notes' })
     await card.getByText(
       'Task notes',
       { exact: true },
@@ -396,21 +397,21 @@ test(
           'Run the build',
         ],
       })
-      await page.locator('[data-task]').getByText(
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
         'Task build',
         { exact: true },
       )
         .click()
       const working = [
-        page.locator('.hydra-chat .chat-running-status'),
-        page.locator('[data-task] .chat-running-status'),
+        page.locator('[data-hydra-workspace][data-active=true] .hydra-chat .chat-running-status'),
+        page.locator('[data-hydra-workspace][data-active=true] [data-task] .chat-running-status'),
       ]
 
       for (const line of working) {
         await line.getByText('Running a command').waitFor()
       }
 
-      await page.locator('[data-task] .agent-activity').focus()
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task] .agent-activity').focus()
       expect(await page.getByRole('tooltip').textContent()).toBe('working')
 
       await setFocusMode({
@@ -508,7 +509,7 @@ test(
       chat: 'Hydra conversation',
       text: `answer ${EXCHANGES}`,
     })
-    const conversation = page.getByRole(
+    const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
       'region',
       { name: 'Hydra conversation' },
     )
@@ -597,7 +598,7 @@ test(
       hydraId: hydra.id,
       reducedMotion: true,
     })
-    await page.locator('[data-task]').getByText(
+    await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
       'Task lakes',
       { exact: true },
     )

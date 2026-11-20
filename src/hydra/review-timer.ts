@@ -39,7 +39,6 @@ function running({ state }: { state: HydraState }): boolean {
     || Boolean(card?.attention.some(item => item.key === INTERRUPTED))
 }
 
-// Worked out the same way before taking the lock and under it.
 function timedReview({
   memory,
   state,
@@ -59,11 +58,11 @@ function timedReview({
     ])),
   })
   const flags = review.flags
-    .filter(flag => flag.kind !== 'memory behind' && flag.kind !== 'question reminder')
+    .filter(flag => flag.kind !== 'memory behind')
     .map(flag => JSON.stringify([
       flag.kind,
       flag.task,
-      flag.detail,
+      flag.reminder ?? flag.detail,
     ]))
   const previousFlags = new Set(state.hydraReview?.flags ?? [])
   // An idle Hydra whose flags are unchanged, such as a stale `left-off`, has nothing to record.
@@ -166,12 +165,15 @@ export function startReviewTimer({
         fn: ({ writer }) => {
           const current = writer.state
           const previous = current.hydraReview?.at
-          const cadence = minutes * MINUTE_MS
-          const deadline = (previous ? Date.parse(previous) : started) + cadence
+          const cadence = readSettings().settings.reviewMinutes * MINUTE_MS
+          const deadline = Math.max(
+            previous ? Date.parse(previous) : started,
+            emptyAt,
+          ) + cadence
 
           const unavailable = running({ state: current }) || !pnyxRunsHydra({ state: current })
 
-          if (!cadence || time < deadline || unavailable) {
+          if (!cadence || time < deadline || unavailable || busy()) {
             return false
           }
 
