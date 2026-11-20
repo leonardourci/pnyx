@@ -16,6 +16,8 @@ Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get i
 ```sh
 pnpm test                                   # builds, then runs everything
 pnpm exec vitest run tests/chat.test.ts     # one file, after a build
+pnpm exec vitest run --project integration  # the integration suite
+pnpm exec vitest run --project browser      # targeted browser checks
 pnpm exec vitest run -t "Stop ends"         # tests whose name matches
 ```
 
@@ -23,7 +25,7 @@ The tests run the built CLI and serve the built page, so run `pnpm run build` af
 
 Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Postgres log there before they are deleted; CI does this and uploads the folder when a run fails.
 
-A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts, so zero-cache, which sizes its buffers from the heap limit, stays small. The files run on half the cores, longest first, leaving CPU and memory for their child processes. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
+A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts, so zero-cache, which sizes its buffers from the heap limit, stays small. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
 ## Writing a test
 
@@ -99,3 +101,4 @@ Rules:
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
 - `browser/chat.test.ts`: Hydra's chat and a task's chat open on their latest row, hold still and keep new rows in view, in a card as tall as its column; older rows load without moving the ones being read and a failed load offers Retry; Focus mode keeps tool names out of the working line, and a card's status never names one.
+- `browser/cards.test.ts`: all 61 tasks remain mounted once through column scrolling, an open card fills its column after a viewport resize, and starting its worker keeps one stored card and the same DOM node.
