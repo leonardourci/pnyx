@@ -446,6 +446,14 @@ export async function startTask({
     task: card.id,
   })
 
+  const how = startRoute({
+    via,
+    commandName,
+    replacement,
+    override,
+    tools,
+  })
+
   if (meta.id && startRecorded({
     state,
     id: meta.id,
@@ -457,13 +465,6 @@ export async function startTask({
     }
   }
 
-  const how = startRoute({
-    via,
-    commandName,
-    replacement,
-    override,
-    tools,
-  })
   const worker = card.sessionIds?.[0]
 
   if (worker && !replacement) {

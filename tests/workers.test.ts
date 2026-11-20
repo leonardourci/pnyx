@@ -2261,9 +2261,10 @@ test(
         'hydra',
         'set',
         '--command',
-        'test -n "$PNYX_TASK_DIR" && printf "note: command update\\n" >> "$PNYX_TASK_DIR/worker.log"',
+        'printenv PNYX_TASK > launch.txt; test -n "$PNYX_TASK_DIR" && printf "note: command update\\n" >> "$PNYX_TASK_DIR/worker.log"',
       ],
     })
+    const commandFolder = hydra.folder({ name: 'command-worker' })
     await hydra.owner({
       args: [
         'task',
@@ -2274,22 +2275,69 @@ test(
         '--title',
         'Command worker',
         '--folder',
-        hydra.folder({ name: 'command-worker' }),
+        commandFolder,
       ],
     })
-    await hydra.owner({
+    expect(await hydra.owner({
       args: [
         'task',
         'start',
         'command-worker',
         '--via',
         'command',
+        '--event-id',
+        'command-worker-launch',
       ],
+    })).toMatchObject({
+      via: 'command',
+      folder: commandFolder,
     })
     await until({
       what: 'the command worker to write through its task directory environment',
       check: async () => (await hydra.task({ key: 'command-worker' })).latest === 'command update',
     })
+    const commandTask = await hydra.task({ key: 'command-worker' })
+    expect(readFileSync(
+      join(
+        commandFolder,
+        'launch.txt',
+      ),
+      'utf8',
+    ).trim()).toBe(commandTask.id)
+
+    for (const route of [
+      'firstmate',
+      'paseo',
+    ]) {
+      expect(await hydra.ownerRefused({
+        args: [
+          'task',
+          'start',
+          'command-worker',
+          '--via',
+          route,
+          '--event-id',
+          'command-worker-launch',
+        ],
+      }))
+        .toMatchObject({
+          code: 'VALIDATION_ERROR',
+          error: expect.stringContaining(route),
+        })
+    }
+
+    expect(await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'command-worker',
+        '--via',
+        'command',
+        '--event-id',
+        'command-worker-launch',
+      ],
+    }))
+      .toMatchObject({ event: 'none: duplicate' })
   },
 )
 
@@ -2506,7 +2554,7 @@ test(
 )
 
 test(
-  'only supported integrations launch workers, while command launches and explicit outside attachments stay available',
+  'retired integration commands and launch routes are refused',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -2530,7 +2578,7 @@ test(
 
     for (const [
       args,
-      error,
+      route,
     ] of [
         [
           [
@@ -2540,7 +2588,7 @@ test(
             '--via',
             'unknown',
           ],
-          'unknown start route: unknown',
+          'unknown',
         ],
         [
           [
@@ -2550,7 +2598,7 @@ test(
             '--via',
             'firstmate',
           ],
-          'unknown start route: firstmate',
+          'firstmate',
         ],
         [
           [
@@ -2560,7 +2608,7 @@ test(
             '--via',
             'paseo',
           ],
-          'unknown start route: paseo',
+          'paseo',
         ],
         [
           [
@@ -2569,7 +2617,7 @@ test(
             '--via',
             'firstmate',
           ],
-          'unknown start route: firstmate',
+          'firstmate',
         ],
         [
           [
@@ -2578,12 +2626,12 @@ test(
             '--via',
             'paseo',
           ],
-          'unknown start route: paseo',
+          'paseo',
         ],
       ] as const) {
       expect(await hydra.ownerRefused({ args: [...args] })).toMatchObject({
         code: 'VALIDATION_ERROR',
-        error,
+        error: expect.stringContaining(route),
       })
     }
 
@@ -2639,43 +2687,32 @@ test(
       expect((await hydra.ownerRefused({ args })).code).toBe('VALIDATION_ERROR')
     }
 
-    const folder = hydra.folder({ name: 'command-route' })
-    const receipt = join(
-      folder,
-      'launch.txt',
-    )
+    const help = await pnyxAxi({
+      args: ['--help'],
+      env: process.env,
+    })
+    expect(help.status).toBe(0)
+    expect(help.stdout).not.toMatch(/\bhomes\b/)
+  },
+)
+
+test(
+  'outside sessions attach by id and by the caller tmux or Herdr pane',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'outside-session' })
     await hydra.owner({
       args: [
-        'hydra',
-        'set',
-        '--command',
-        `printenv PNYX_TASK > '${receipt}'`,
-      ],
-    })
-    expect(await hydra.owner({
-      args: [
         'task',
-        'start',
-        'outside-routes',
-        '--via',
-        'command',
-        '--folder',
-        folder,
+        'create',
+        '--no-start',
+        '--key',
+        'outside-task',
+        '--title',
+        'Outside task',
       ],
-    }))
-      .toMatchObject({
-        via: 'command',
-        folder,
-      })
-    const task = await hydra.task({ key: 'outside-routes' })
-    await until({
-      what: 'the command to receive its task',
-      check: () => existsSync(receipt) && readFileSync(
-        receipt,
-        'utf8',
-      ).trim() === task.id,
     })
-
+    const task = await hydra.task({ key: 'outside-task' })
     await hydra.owner({
       args: [
         'push',
@@ -2751,25 +2788,6 @@ test(
       })
     }
 
-    const hydraStart = await hydra.owner({
-      args: [
-        'hydra',
-        'start',
-        '--folder',
-        folder,
-      ],
-    })
-    expect(hydraStart).toMatchObject({
-      via: 'command',
-      folder,
-    })
-    await until({
-      what: 'the command to receive Hydra context',
-      check: () => readFileSync(
-        receipt,
-        'utf8',
-      ).trim() === '$hydra',
-    })
     const listed = parsed(await pnyxAxi({
       args: [
         'task',
@@ -2780,6 +2798,130 @@ test(
       env: process.env,
     }))
     expect(listed.sessions).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'codex:outside-session' })]))
+  },
+)
+
+test(
+  'Hydra command starts run in the selected folder and replay after it disappears',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'hydra-command' })
+    const receipt = join(
+      folder,
+      'launch.txt',
+    )
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        'printenv PNYX_TASK > launch.txt',
+      ],
+    })
+    expect(await hydra.owner({
+      args: [
+        'hydra',
+        'start',
+        '--folder',
+        folder,
+        '--event-id',
+        'hydra-command-launch',
+      ],
+    }))
+      .toMatchObject({
+        via: 'command',
+        folder,
+      })
+    await until({
+      what: 'the command to receive Hydra context in its launch folder',
+      check: () => existsSync(receipt) && readFileSync(
+        receipt,
+        'utf8',
+      ).trim() === '$hydra',
+    })
+    rmSync(
+      folder,
+      { recursive: true },
+    )
+    expect(await hydra.owner({
+      args: [
+        'hydra',
+        'start',
+        '--folder',
+        folder,
+        '--event-id',
+        'hydra-command-launch',
+      ],
+    }))
+      .toMatchObject({ event: 'none: duplicate' })
+    expect(await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'start',
+        '--folder',
+        folder,
+      ],
+    }))
+      .toMatchObject({ code: 'VALIDATION_ERROR' })
+  },
+)
+
+test(
+  'Hydra command starts reject stale revisions before spawning',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'hydra-command-revision' })
+    const receipt = join(
+      folder,
+      'launch.txt',
+    )
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        'printenv PNYX_TASK > launch.txt',
+      ],
+    })
+    expect(await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'start',
+        '--folder',
+        folder,
+        '--if-revision',
+        '1',
+      ],
+    }))
+      .toMatchObject({ code: 'REVISION_CONFLICT' })
+    expect(existsSync(receipt)).toBe(false)
+    expect(await hydra.owner({
+      args: [
+        'hydra',
+        'start',
+        '--folder',
+        folder,
+        '--if-revision',
+        '0',
+      ],
+    }))
+      .toMatchObject({
+        via: 'command',
+        folder,
+      })
+    await until({
+      what: 'the matching revision to launch Hydra',
+      check: () => existsSync(receipt) && readFileSync(
+        receipt,
+        'utf8',
+      ).trim() === '$hydra',
+    })
+  },
+)
+
+test(
+  'the retired Hydra setup command fails locally while the server is stopped',
+  async () => {
     await pnyx.restart({
       whileStopped: async () => {
         const retiredSetup = await pnyxAxi({
@@ -2792,7 +2934,7 @@ test(
         expect(retiredSetup.status).toBe(2)
         expect(parsed(retiredSetup)).toMatchObject({
           code: 'VALIDATION_ERROR',
-          error: 'unknown setup target: hydra',
+          error: expect.stringContaining('hydra'),
         })
       },
     })
