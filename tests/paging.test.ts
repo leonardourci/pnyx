@@ -218,8 +218,20 @@ test(
         }),
       ],
     }) as unknown as { thread: { entries: Entry[] } }
+    // A tab from before the server stopped trimming conversations still asks for the recent pages.
+    const trimmed = await reconnected.send({
+      name: 'thread',
+      args: [
+        'notes',
+        '--recent',
+      ],
+    })
     reconnected.close()
     expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+    expect(trimmed).toMatchObject({
+      type: 'error',
+      code: 'VALIDATION_ERROR',
+    })
   },
 )
 

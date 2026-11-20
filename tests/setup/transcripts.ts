@@ -47,13 +47,10 @@ export async function appendToolCalls({
 }) {
   await appendRecords({
     session,
-    records: Array.from(
-      { length: tools },
-      (
-        _,
-        tool,
-      ) => tool,
-    ).flatMap(tool => [
+    records: Array.from({ length: tools }).flatMap((
+      _,
+      tool,
+    ) => [
       {
         type: 'assistant' as const,
         content: [

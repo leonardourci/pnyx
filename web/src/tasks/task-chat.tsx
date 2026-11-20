@@ -453,7 +453,7 @@ export function TaskChat({
         drafts={drafts}
         thread={live ?? null}
         settings={settings}
-        stop={card.agent?.host === 'pnyx' && (card.sessionActivity ?? card.activity) === 'working' ? async () => {
+        stop={card.agent?.host === 'pnyx' && working ? async () => {
           await command({
             name: 'task',
             args: [

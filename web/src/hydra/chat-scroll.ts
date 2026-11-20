@@ -92,35 +92,33 @@ export function useChatScroll() {
 
   const handlers = {
     onWheel: ownerInput,
-    // eslint-disable-next-line pnyx/object-params -- React owns event handler signatures.
-    onKeyDown: (event: React.KeyboardEvent) => {
+    onKeyDown: ({ target }: React.KeyboardEvent) => {
       ownerInput()
-      expandRow({ target: event.target })
+      expandRow({ target })
     },
     onTouchStart: ownerInput,
     onTouchMove: ownerInput,
-    // eslint-disable-next-line pnyx/object-params -- React owns event handler signatures.
-    onPointerDown: (event: React.PointerEvent) => {
-      expandRow({ target: event.target })
+    onPointerDown: ({
+      target,
+      currentTarget,
+    }: React.PointerEvent) => {
+      expandRow({ target })
 
       // The scrollbar belongs to the scroller itself.
-      if (event.target === event.currentTarget) {
+      if (target === currentTarget) {
         ownerInput()
       }
     },
-    // eslint-disable-next-line pnyx/object-params -- React owns event handler signatures.
-    onPointerMove: (event: React.PointerEvent) => {
-      if (event.buttons) {
+    onPointerMove: ({ buttons }: React.PointerEvent) => {
+      if (buttons) {
         ownerInput()
       }
     },
-    // eslint-disable-next-line pnyx/object-params -- React owns event handler signatures.
-    onScroll: (event: React.UIEvent<HTMLElement>) => {
-      const element = event.currentTarget
+    onScroll: ({ currentTarget }: React.UIEvent<HTMLElement>) => {
       follow.scrolled({
         at: performance.now(),
-        top: element.scrollTop,
-        remaining: element.scrollHeight - element.scrollTop - element.clientHeight,
+        top: currentTarget.scrollTop,
+        remaining: currentTarget.scrollHeight - currentTarget.scrollTop - currentTarget.clientHeight,
       })
     },
   }

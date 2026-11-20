@@ -1,16 +1,8 @@
-import { beforeAll, expect, test, vi } from 'vitest'
+import { beforeAll, expect, test } from 'vitest'
 import type { Page } from 'playwright-core'
 import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 import { appendRecords } from '../setup/transcripts.ts'
 import { openHydra } from './page.ts'
-
-// zero-cache and Chrome start beside the server, and a check seeds a conversation before it opens the page.
-const BROWSER_TIMEOUT_MS = 120_000
-
-vi.setConfig({
-  testTimeout: BROWSER_TIMEOUT_MS,
-  hookTimeout: BROWSER_TIMEOUT_MS,
-})
 
 let pnyx: Pnyx
 
@@ -129,7 +121,6 @@ const nextFrames = ({
   page: Page
   count: number
 }) => page.evaluate(
-  // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
   async frames => {
     for (let frame = 0; frame < frames; frame++) {
       await new Promise(requestAnimationFrame)
@@ -300,7 +291,6 @@ test(
     expect(taskOpened.at(-1)!.scrolls).toBe(true)
     expect(offEnd({ frames: taskOpened })).toEqual([])
     expect(moves({ frames: taskOpened })).toEqual([])
-    // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
     const heights = await card.evaluate(element => {
       const column = element.closest<HTMLElement>('.column-cards')!
       const css = getComputedStyle(column)
@@ -442,10 +432,8 @@ test(
         await page.addInitScript(recordChats)
         await page.routeWebSocket(
           /\/ws(\?|$)/,
-          // eslint-disable-next-line pnyx/object-params -- Playwright owns these callbacks' signatures.
           socket => {
             const server = socket.connectToServer()
-            // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
             socket.onMessage(message => {
               const sent = JSON.parse(String(message)) as {
                 id?: string
@@ -459,7 +447,6 @@ test(
 
               server.send(message)
             })
-            // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
             server.onMessage(message => {
               const answer = JSON.parse(String(message)) as { id?: string }
 
@@ -490,7 +477,6 @@ test(
       box.y + box.height / 2,
     )
     // Up to half a screen below the first loaded row, within reach of the older rows' loading point.
-    // eslint-disable-next-line pnyx/object-params -- Playwright owns this callback's signature.
     const distance = await conversation.evaluate(chat => chat.scrollTop - chat.clientHeight / 2)
     await page.mouse.wheel(
       0,

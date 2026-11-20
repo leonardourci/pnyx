@@ -104,7 +104,6 @@ export function useChatThread({
     return result.thread as ThreadPage
   }
 
-  // Until the opening read settles, an older read would race it on the server.
   const older: OlderRows | undefined = connected && opened ? {
     cursor: page?.older,
     load: async ({ cursor }) => {

@@ -57,7 +57,6 @@ function OlderSentinel({
       }
 
       const observer = new IntersectionObserver(
-        // eslint-disable-next-line pnyx/object-params -- IntersectionObserver owns this callback's signature.
         async reached => {
           if (!reached.some(entry => entry.isIntersecting)) {
             return
