@@ -624,9 +624,7 @@ export function HydraChat({
         text,
         reference ?? id,
       ],
-    }).catch(() => {
-      // The message stays marked not sent with the new reason.
-    })
+    }).catch((error: Error) => notify({ text: error.message }))
   }
 
   const route: ThreadPage = {

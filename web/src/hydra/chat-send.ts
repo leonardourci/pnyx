@@ -63,8 +63,7 @@ function cardSendArgs({
   const args = [
     'send',
     card,
-    '--text',
-    text,
+    `--text=${text}`,
     '--harness',
     agent.harness,
     '--event-id',

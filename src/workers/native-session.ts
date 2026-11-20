@@ -592,17 +592,20 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
             try {
               await interruptTurn({ cancelQueued: false })
             } catch (error) {
+              const stopped = generation !== inputGeneration
+              const reason = error instanceof Error ? error.message : String(error)
               emit({
                 event: {
                   type: 'input',
                   receipt: {
                     inputId: message.id,
                     phase: 'refused',
-                    error: (error as Error).message,
+                    stopped: stopped ? true : undefined,
+                    error: stopped ? undefined : reason,
                   },
                 },
               })
-              throw error
+              continue
             }
           }
 

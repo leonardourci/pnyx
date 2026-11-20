@@ -20,7 +20,6 @@ import { decideReply } from './reply-rules.ts'
 import { sessionId } from './session-attachments.ts'
 import { startTask } from './start.ts'
 
-// A persisted card send stays pending until its session takes it.
 export const waitingCardInput = ({ reply }: { reply: Reply }) =>
   !!reply.worker && !reply.worker.session && reply.state === 'queued'
 

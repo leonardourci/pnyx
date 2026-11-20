@@ -14,7 +14,7 @@ import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
-import { failHydraInput, hydraDeliveryId } from './received.ts'
+import { failHydraInput, hydraInputDispatched } from './received.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -69,7 +69,7 @@ export const arrivedSince = ({
   state: HydraState
   after: number
 }) => (state.hydraMessages ?? []).some(message => (state.eventIds[message.id] ?? 0) > after
-  && !(hydraDeliveryId({ message }) in state.eventIds) && !message.stopped && !message.failure
+  && !hydraInputDispatched({ state, message }) && !message.stopped && !message.failure
   && message.actor !== HYDRA_ACTOR && message.kind !== 'progress' && message.kind !== 'divider'
   && !isRoutineMessage({ message }))
 

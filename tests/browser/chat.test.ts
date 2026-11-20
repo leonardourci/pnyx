@@ -654,13 +654,20 @@ test(
           page,
           label,
         })).length - 1
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns this element callback.
-        const anchor = await conversation.evaluateHandle(chat => {
+        const anchorId = await conversation.evaluate(chat => {
           const top = chat.getBoundingClientRect().top
+          const firstVisible = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')]
+            .find(row => row.getBoundingClientRect().bottom > top)
 
-          return [...chat.querySelectorAll('[data-entry-id]')].find(row => row.getBoundingClientRect().bottom > top)
+          return firstVisible?.dataset.entryId
         })
-        const anchorBefore = await anchor.evaluate(row => row!.getBoundingClientRect().top)
+
+        if (!anchorId) {
+          throw new Error('No visible message before loading older history')
+        }
+
+        const anchor = conversation.locator(`[data-entry-id="${anchorId}"]`)
+        const anchorBefore = await anchor.evaluate(row => row.getBoundingClientRect().top)
         heldOlderAnswers.splice(0).forEach(release => release())
         await until({
           what: 'older messages above the reading position',
@@ -687,13 +694,11 @@ test(
           JSON.stringify(frames),
         ).toEqual([])
         expect(frames.every(frame => Object.keys(frame.shownFromBottom).length > 0)).toBe(true)
-        expect(await anchor.evaluate(row => row?.isConnected)).toBe(true)
-        const anchorAfter = await anchor.evaluate(row => row!.getBoundingClientRect().top)
+        const anchorAfter = await anchor.evaluate(row => row.getBoundingClientRect().top)
         const movement = anchorAfter - anchorBefore
         totalMovement += movement
         // scrollTop rounds fractional geometry; total drift stays within one pixel across prepends.
         expect(Math.abs(totalMovement)).toBeLessThanOrEqual(1)
-        await anchor.dispose()
       }
 
       expect(await conversation.getByText('The transcript is unavailable').count()).toBe(0)
@@ -729,7 +734,24 @@ test.each([
       hold: true,
     })
     onTestFinished(() => compact.release())
-    const session = target === 'Hydra' ? await hydra.chat({ text: '/compact' }) : worker
+    let session = worker
+
+    if (target === 'Hydra') {
+      session = await hydra.chat({ text: '/compact' })
+    } else {
+      await hydra.owner({
+        args: [
+          'reply',
+          'lakes',
+          '--text',
+          '/compact',
+        ],
+      })
+      await until({
+        what: 'the worker to begin compaction',
+        check: () => worker.received.some(text => text.endsWith('/compact')),
+      })
+    }
     const label = target === 'Hydra' ? 'Hydra conversation' : 'Task lakes conversation'
     const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
     const answer = pnyx.claude.plan({
@@ -790,6 +812,7 @@ test.each([
       page,
       count: SETTLING_FRAMES,
     })
+    expect(session.received.some(text => text.includes('List three lakes'))).toBe(false)
     compact.release()
     await until({
       what: 'the agent to take the message',
