@@ -1,4 +1,5 @@
-import { readableProjects } from '#memory/poleis.ts'
+import { projectsFor } from '#projects/read.ts'
+
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { matchesProject } from './identity.ts'
@@ -64,10 +65,7 @@ export async function projectWorkerContext({
   state: HydraState
   project?: string
 }): Promise<string> {
-  const project = (await readableProjects({
-    state,
-    hydraId,
-  })).filter(project => !project.detached)
+  const project = (projectsFor({ state })).filter(project => !project.detached)
     .find(project => matchesProject({
       project,
       ref,

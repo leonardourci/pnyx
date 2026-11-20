@@ -1,4 +1,4 @@
-import { hydraPolisConfig } from '#memory/polis-policy.ts'
+import { ownerPolis } from '#memory/owner-polis.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import type { HydraSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
@@ -100,7 +100,7 @@ export function summarize({
     return {
       asks: groups.length,
       id,
-      polis: hydraPolisConfig({ state }).polis,
+      polis: ownerPolis({ state }),
       identity: hydraIdentity({ hydraId: id }),
       creationAttempt: creationAttempt({ event: initial }),
       name: config.name,

@@ -17,7 +17,6 @@ import { PROJECT_CONTENT_INSET, projectWidth } from './project-layout.ts'
 
 export function ProjectColumn({
   column,
-  poleis,
   hydraId,
   revealing,
   view,
@@ -26,7 +25,6 @@ export function ProjectColumn({
   children,
   create,
 }: {
-  poleis?: string[]
   column: ProjectColumnData
   hydraId: string
   revealing: boolean
@@ -149,7 +147,6 @@ export function ProjectColumn({
     >
       <ProjectColumnHeader
         column={column}
-        poleis={poleis}
         folded={folded}
         hint={showHint}
         drag={sort}

@@ -378,14 +378,12 @@ export function optimisticState({
     const title = option({ flag: '--name' })
     const identity = option({ flag: '--identity' })
     const polis = option({ flag: '--polis' })
-    const reads = option({ flag: '--read-poleis' })
 
     return {
       ...state,
       config: {
         ...config,
         polis: polis ?? config.polis,
-        readPoleis: reads === undefined ? config.readPoleis : reads.split(',').filter(Boolean),
         ...(title ? { name: title } : {}),
         hydra: {
           ...config.hydra,

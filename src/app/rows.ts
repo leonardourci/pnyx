@@ -1010,6 +1010,10 @@ export function stateFromRows({
     }
   }
 
+  if (state.config) {
+    Reflect.deleteProperty(state.config, 'readPoleis')
+  }
+
   for (const { id } of ids) {
     const row = body.get(id)
 

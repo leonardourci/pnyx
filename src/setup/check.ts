@@ -1,4 +1,5 @@
-import { readableProjects } from '#memory/poleis.ts'
+import { projectsFor } from '#projects/read.ts'
+
 import { SET_UP_SKILL } from './skill-names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
@@ -239,10 +240,7 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
   const loaded = database ?? hydraIssue({ hydraId })
   const items = 'missing' in loaded ? [loaded] : await setupCheck({
     hydraId,
-    readable: await readableProjects({
-      state: loaded,
-      hydraId,
-    }),
+    readable: projectsFor({state: loaded}),
   })
 
   if (!items.length) {

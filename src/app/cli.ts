@@ -1,5 +1,3 @@
-import { memoryHistoryFilter } from '#memory/history-access.ts'
-import { memoryAgent } from '#memory/poleis.ts'
 import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
@@ -45,7 +43,6 @@ const history = guard({
       options,
       positionals: 0,
     })
-    const visible = await memoryHistoryFilter({ hydraId })
     const limit = Math.min(
       integer({
         value: values.limit,
@@ -102,7 +99,7 @@ const history = guard({
     }
     let matches = 0
     const page: HydraEvent[] = []
-    const exactSelection = !memoryAgent() && !workspace && (!cardId || values.updates)
+    const exactSelection = !workspace && (!cardId || values.updates)
 
     if (exactSelection) {
       const read = values.updates ? readUpdateEvents({
@@ -125,7 +122,7 @@ const history = guard({
         ...selection,
         descending: true,
       })) {
-        if (!visible({ event }) || (values.updates && !showsUpdate({ event }))) {
+        if ((values.updates && !showsUpdate({ event }))) {
           continue
         }
 

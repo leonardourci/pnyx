@@ -202,7 +202,6 @@ export function startReviewTimer({
               type: 'hydra.review',
               data: {
                 block: review.block,
-                memoryAccess: reviewed.access,
                 reminders: [],
                 flags,
                 wake: shouldWake,

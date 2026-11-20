@@ -89,7 +89,7 @@ export function sharedSettings() {
   return resource
 }
 
-export function useSharedSettingsState(): SharedSettings | undefined {
+function useSharedSettingsState(): SharedSettings | undefined {
   const resource = sharedSettings()
 
   return useSyncExternalStore(

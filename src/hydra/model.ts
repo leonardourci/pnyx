@@ -15,7 +15,6 @@ export interface HydraConfig {
   removing?: boolean
   removalWork?: Record<string, string>
   polis?: string
-  readPoleis?: string[]
   helper?: AgentConfig | false
   id: string
   name: string

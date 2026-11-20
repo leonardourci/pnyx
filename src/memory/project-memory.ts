@@ -1,7 +1,6 @@
 import { inform } from '#app/command-notices.ts'
 import { loadHydra } from '#app/store.ts'
 import { findProject } from '#projects/read.ts'
-import { requireProjectMemory } from './poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { ownerProjectMoves } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
@@ -70,23 +69,8 @@ function memoryPath({ id }: { id: string }) {
   )
 }
 
-export function readProjectMemory({
-  id,
-  hydraId,
-}: {
-  id: string
-  hydraId: string
-}): ProjectMemory {
-  return withRegistryLock({
-    fn: () => {
-      requireProjectMemory({
-        hydraId,
-        id,
-      })
-
-      return readProjectMemoryLog({ id })
-    },
-  })
+export function readProjectMemory({ id }: { id: string }): ProjectMemory {
+  return withRegistryLock({ fn: () => readProjectMemoryLog({ id }) })
 }
 
 function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
@@ -228,11 +212,9 @@ export async function projectFacts({ path }: { path: string }): Promise<ProjectF
 export async function projectMemoryView({
   path,
   hydraId,
-  writing = false,
 }: {
   path: string
   hydraId: string
-  writing?: boolean
 }) {
   const facts = await projectFacts({ path })
 
@@ -240,7 +222,6 @@ export async function projectMemoryView({
     fn: () => projectMemoryViewUnderLock({
       facts,
       hydraId,
-      writing,
     }),
   })
 }
@@ -269,11 +250,9 @@ export async function readableProjectMemory({
 export function projectMemoryViewUnderLock({
   facts,
   hydraId,
-  writing = false,
 }: {
   facts: ProjectFacts
   hydraId: string
-  writing?: boolean
 }) {
   const {
     identity,
@@ -283,11 +262,6 @@ export function projectMemoryViewUnderLock({
     state: loadHydra({ hydraId }).state,
     ref: facts.path,
     attached: true,
-  })
-  requireProjectMemory({
-    hydraId,
-    id: identity.id,
-    writing,
   })
   const memory = readProjectMemoryLog(identity)
   const changed = [
@@ -345,20 +319,9 @@ export async function writeProjectMemory({
   return withRegistryLock({
     fn: () => {
       const view = projectMemoryViewUnderLock({
-        writing: true,
         facts,
         hydraId,
       })
-
-      const readsLearning = confirmed !== undefined
-        || learning?.used !== undefined || learning?.archive !== undefined
-
-      if (readsLearning) {
-        requireProjectMemory({
-          hydraId,
-          id: view.id,
-        })
-      }
 
       const previous = view.events.find(event => event.id === meta.id)
 

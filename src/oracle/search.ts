@@ -216,7 +216,6 @@ export function search({
   }
 
   const ownerDocuments = includeMemory ? Object.values(ownerMemory({
-    hydraId,
     migrate: false,
   })).map(entry => ({
     card: '$board',

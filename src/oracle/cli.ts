@@ -1,7 +1,7 @@
+import { projectsFor } from '#projects/read.ts'
 import { readSearchFilters } from './filters.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
-import { readableProjects } from '#memory/poleis.ts'
 import type { HydraProject } from '#projects/model.ts'
 import { findProject } from '#projects/read.ts'
 import type { HydraState } from '#app/model.ts'
@@ -111,10 +111,7 @@ const oracleCommand = guard({
         state,
         ref: values.card as string,
       }).id
-    const visibleProjects = values.project === undefined ? [] : await readableProjects({
-      hydraId,
-      state,
-    })
+    const visibleProjects = values.project === undefined ? [] : projectsFor({ state })
     const projects = (values.project as string[] | undefined)?.flatMap(ref => projectRefs({
       state,
       ref,
@@ -211,5 +208,5 @@ Results rank by the query words in a card's title, project and link titles, then
 (notes count double), then by latest activity.
 Each card shows its ${SNIPPETS} best entries; --card shows matching entries up to --limit.
 The default limit is ${LIMIT}, capped at ${MAX}. Secret-shaped strings are redacted.
-\`task report <task>\` reads the latest stored report.
+\`task history <task> --full\` reads the recorded task history.
 `

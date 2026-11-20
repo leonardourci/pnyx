@@ -8,8 +8,6 @@ import { CommandFailure } from '#web-shared/pending-intents.ts'
 
 export interface ProjectRow {
   name: string
-  readPoleis?: string[]
-  polis?: string
   path: string
   state: string
   landing: LandingChoice['landing']
@@ -80,12 +78,6 @@ function createProjects() {
         }),
       }
 
-      const polis = option({ flag: '--polis' })
-
-      if (polis !== undefined) {
-        row.polis = polis
-      }
-
       if (landing) {
         row.landing = landing
       }
@@ -138,11 +130,6 @@ function createProjects() {
       })
       const landing = option({ flag: '--landing' }), merge = option({ flag: '--merge' })
       const shell = option({ flag: '--command' })
-      const polis = option({ flag: '--polis' })
-
-      if (polis !== undefined && row.polis !== polis) {
-        return false
-      }
 
       if ((landing !== undefined && row.landing !== landing)
         || (merge !== undefined && row.merge !== merge)) {

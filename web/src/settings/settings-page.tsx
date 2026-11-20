@@ -1,5 +1,4 @@
 import { HydraRemoval } from './hydra-removal.tsx'
-import { Poleis, HydraPoleis } from './poleis.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
@@ -339,7 +338,6 @@ export function SettingControl({
   saveHydra,
   dispatchError,
   accountSetup,
-  hydras,
 }: Saving & Hydra & {
   hydras: Pick<HydraSummary, 'id' | 'name'>[]
   entry: CatalogEntry
@@ -376,23 +374,6 @@ export function SettingControl({
   })
 
   switch (entry.id) {
-    case 'poleis':
-      return (
-        <Poleis
-          hydras={hydras}
-          command={command}
-          notify={notify}
-        />
-      )
-    case 'hydraPoleis':
-      return (
-        <HydraPoleis
-          state={state}
-          settings={settings}
-          command={command}
-          notify={notify}
-        />
-      )
     case 'theme':
       return (
         <Segmented

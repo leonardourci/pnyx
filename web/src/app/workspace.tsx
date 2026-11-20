@@ -31,7 +31,7 @@ import { useHydraKeyboard } from '#web-preferences/keyboard-hydra.tsx'
 import { focusElement,KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
 import { useSaveView } from '#web-preferences/save-view.ts'
 import { useViewTheme } from '#web-preferences/view-theme.ts'
-import { useProjectIntents, useProjectsResource } from '#web-projects/project-resource.ts'
+import { useProjectIntents } from '#web-projects/project-resource.ts'
 import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -601,16 +601,6 @@ export function HydraView({
     collapsed: view.workspace.collapsed,
     loaded,
   })
-  const projectSettings = useSharedSettings()
-  const { projects: polisProjects } = useProjectsResource({
-    command,
-    connected,
-    revision: `${state.projectsRevision}:${JSON.stringify(projectSettings?.projectPoleis)}:${JSON.stringify(projectSettings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}`,
-  })
-  const projectPolisByPath = new Map(polisProjects.map(project => [
-    project.path,
-    project.polis,
-  ]))
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
   const requestedColumnId = columns.find(column => column.id === columnRequest?.id)?.id
@@ -1351,13 +1341,6 @@ export function HydraView({
                                 <ProjectColumn
                                   key={c.id}
                                   column={c}
-                                  poleis={[
-                                    ...new Set(c.repositories.flatMap(path => {
-                                      const polis = projectPolisByPath.get(path)
-
-                                      return polis ? [polis] : []
-                                    })),
-                                  ]}
                                   hydraId={navigation.hydraId}
                                   revealing={revealingProjects}
                                   view={view}

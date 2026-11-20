@@ -1,7 +1,6 @@
+import { projectsFor } from '#projects/read.ts'
 import { inform } from '#app/command-notices.ts'
 import { observedQuestions } from './session-attachments.ts'
-import { readMemoryContext } from '#memory/context.ts'
-import { memoryCaller, readableProjects } from '#memory/poleis.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
@@ -479,53 +478,41 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
-    return readMemoryContext({
-      read: async () => {
-        const owner = ownerMemory({ hydraId })
-        const current = loadHydra({ hydraId }).state
-        const state = memoryCaller({ hydraId }) ? current : {
-          ...current,
-          hydraMemory: undefined,
-        }
-        const readable = await readableProjects({
-          state,
-          hydraId,
-        })
-        const [
-          projects,
-          items,
-        ] = await Promise.all([
-          projectDigest({
-            hydraId,
-            readable,
-          }),
-          setupCheck({
-            hydraId,
-            readable,
-          }),
-        ])
-
-        const digest = hydraDigest({
-          conditions: memoryConditions(),
-          hydraId,
-          owner,
-          ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
-          state,
-          projects,
-          readable: readable.map(project => project.path),
-          setup: setupDigest({ items }),
-        })
-
-        return [
-          digest,
-          contextNoteBlock({
-            notes: (state.contextNotes ?? []).filter(note => note.report),
-            hydraId,
-            state,
-          }),
-        ].filter(Boolean).join('\n')
-      },
+    const owner = ownerMemory({})
+    const state = loadHydra({ hydraId }).state
+    const readable = projectsFor({ state })
+    const [
+      projects,
+      items,
+    ] = await Promise.all([
+      projectDigest({
+        hydraId,
+        readable,
+      }),
+      setupCheck({
+        hydraId,
+        readable,
+      }),
+    ])
+    const digest = hydraDigest({
+      conditions: memoryConditions(),
+      hydraId,
+      owner,
+      ownerWrite: writableOwnerMemory({ hydraId })?.memory ?? {},
+      state,
+      projects,
+      readable: readable.map(project => project.path),
+      setup: setupDigest({ items }),
     })
+
+    return [
+      digest,
+      contextNoteBlock({
+        notes: (state.contextNotes ?? []).filter(note => note.report),
+        hydraId,
+        state,
+      }),
+    ].filter(Boolean).join('\n')
   },
 })
 

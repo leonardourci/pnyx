@@ -1,13 +1,10 @@
-import { inform } from '#app/command-notices.ts'
-import { projectIdentity } from '#projects/sources.ts'
-import { canReadProject } from './poleis.ts'
+import { findProject } from '#projects/read.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from './conditions.ts'
 import { learningChange, staleLearnings } from './learnings.ts'
 import { explained, meta, parse, required, WRITE, type Output } from '#app/cli-support.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
-import { findReadableProject } from './poleis.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView, writeProjectMemory, type ProjectMemoryKey } from './project-memory.ts'
 
 export async function projectMemoryCommand({ args }: { args: string[] }): Promise<Output> {
@@ -30,9 +27,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
     positionals: 1,
   })
   const action = positionals[0] ?? 'list'
-  const project = await findReadableProject({
-    writing: true,
-    hydraId,
+  const project = findProject({
     state: loadHydra({ hydraId }).state,
     ref: required({
       value: values.project as string | undefined,
@@ -49,24 +44,6 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   })
 
   if (action === 'list') {
-    const identity = await projectIdentity(project)
-
-    if (!canReadProject({
-      hydraId,
-      state: loadHydra({ hydraId }).state,
-      id: identity.id,
-    })) {
-      inform({
-        reason: 'Project memory is filtered by the caller’s visibility settings',
-        clear: `Use pnyx-axi project move ${project.path} --polis <polis> or hydra set --read-poleis <poleis> to change visibility`,
-      })
-
-      return {
-        project: project.name,
-        memory: 'none: project memory is filtered',
-      }
-    }
-
     const view = await projectMemoryView({
       ...project,
       hydraId,
@@ -117,7 +94,6 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
 
   if (action === 'confirm') {
     const view = await projectMemoryView({
-      writing: true,
       ...project,
       hydraId,
     })
