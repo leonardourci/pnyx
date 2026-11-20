@@ -106,15 +106,16 @@ export function ProjectColumn({
     },
   })
 
+  const contentWidth = width - PROJECT_CONTENT_INSET
   const content = useMemo(
     () => children({
       scroll: scrollElement,
-      width: width - PROJECT_CONTENT_INSET,
+      width: contentWidth,
     }),
     [
       children,
       scrollElement,
-      width,
+      contentWidth,
     ],
   )
 
@@ -161,7 +162,7 @@ export function ProjectColumn({
       data-sort-scope="projects"
       data-sort-disabled={column.id === 'ideas'}
       aria-label={column.title}
-      style={runtimeStyle({ projectCardWidth: `${width - PROJECT_CONTENT_INSET}px` })}
+      style={runtimeStyle({ projectCardWidth: `${contentWidth}px` })}
       animate={{ width: folded ? 48 : width }}
       transition={preview !== null || reduced ? { duration: motionDuration({ speed: 'instant' }) / 1000 } : undefined}
     >

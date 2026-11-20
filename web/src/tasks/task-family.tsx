@@ -155,11 +155,8 @@ export function TaskFamily({
   )
   const childSelected = children.some(child => selected.includes(child.id))
   const childrenOpen = expanded || childSelected || children.length > previousCount.current
-  const opened = [
-    card,
-    ...children,
-  ].filter(item => selected.includes(item.id))
-  const className = `task-family min-w-0 flex-task task-family-sizing ${opened.length || childrenOpen && children.length ? 'family-open basis-full' : ''}`
+  const familyOpen = selected.includes(card.id) || childrenOpen && children.length > 0
+  const className = `task-family min-w-0 flex-task task-family-sizing ${familyOpen ? 'family-open basis-full' : ''}`
 
   return (
     <DraggableFamily
