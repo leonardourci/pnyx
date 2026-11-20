@@ -1,3 +1,5 @@
+import { operationEvent } from '#hydra/operations.ts'
+import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { randomUUID } from 'node:crypto'
@@ -2992,5 +2994,79 @@ test(
     const attempts = pnyx.codex.sessions.flatMap(session => session.received)
       .filter(input => input.endsWith(text))
     expect(attempts).toHaveLength(2)
+  },
+)
+
+test(
+  'a refused recovery recap fails every owner message it carries',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await page.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    page.close()
+    const messages: string[] = []
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('first held request') && text.includes('second held request'),
+      refuse: true,
+    })
+    await pnyx.restart({
+      whileStopped: async () => {
+        withWriter({
+          hydraId: hydra.id,
+          fn: ({ writer }) => applyDecision({
+            writer,
+            decision: operationEvent({
+              state: writer.state,
+              operation: {
+                id: randomUUID(),
+                kind: 'restart',
+                state: 'started',
+              },
+              meta: {
+                actor: 'pnyx',
+                at: new Date().toISOString(),
+              },
+            }),
+          }),
+        })
+
+        for (const text of [
+          'first held request',
+          'second held request',
+        ]) {
+          const id = randomUUID()
+          messages.push(id)
+          await hydraSend({
+            hydraId: hydra.id,
+            values: {
+              text,
+              'event-id': id,
+            },
+          })
+        }
+      },
+    })
+    await until({
+      what: 'both carried messages to show the refusal',
+      check: () => {
+        const saved = loadHydra({ hydraId: hydra.id }).state.hydraMessages!
+
+        return messages.every(id => saved.find(message => message.id === id)?.failure?.includes('refused'))
+      },
+    })
+
+    for (const text of [
+      'first held request',
+      'second held request',
+    ]) {
+      expect(await chatEntry({
+        hydra,
+        text,
+      })).toMatchObject({ receipt: 'failed' })
+    }
   },
 )

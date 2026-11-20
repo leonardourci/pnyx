@@ -122,7 +122,6 @@ export function createHostedDelivery({
           meta: {
             at: at(),
             actor: 'pnyx',
-            id: `direct:${inputId}:${state}`,
           },
         }),
       })

@@ -1067,6 +1067,52 @@ test.each([
       expect(await row.getByRole('alert').textContent()).toContain('refused')
     }
 
+    const bubble = await row.locator('[data-entry-id]').elementHandle()
+
+    if (!bubble) {
+      throw new Error('No sent bubble before Retry')
+    }
+
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text: input }) => input.includes(text),
+      refuse: true,
+    })
+    await row.getByRole(
+      'button',
+      {
+        name: 'Retry',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the repeated refusal to reach the provider',
+      check: () => pnyx.codex.sessions.flatMap(session => session.received)
+        .filter(input => input.includes(text)).length === (target === 'Hydra' ? 1 : 2),
+    })
+    await until({
+      what: 'the repeated refusal to remain recorded',
+      check: async () => {
+        if (target === 'Hydra') {
+          return true
+        }
+
+        const thread = await hydra.owner({
+          args: [
+            'task',
+            'chat',
+            'retry-input',
+          ],
+        })
+
+        return thread.thread.entries.some((entry: {
+          text: string
+          receipt?: string
+        }) => entry.text === text && entry.receipt === 'failed')
+      },
+    })
+    await row.getByRole('alert').waitFor()
+    expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     await row.getByRole(
       'button',
       {
@@ -1090,7 +1136,8 @@ test.each([
       .waitFor()
     const attempts = pnyx.codex.sessions.flatMap(session => session.received)
       .filter(input => input.includes(text))
-    expect(attempts).toHaveLength(target === 'Hydra' ? 1 : 2)
+    expect(attempts).toHaveLength(target === 'Hydra' ? 2 : 3)
+    expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
     expect(await row.getByRole('alert').count()).toBe(0)

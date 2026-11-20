@@ -710,18 +710,26 @@ export function createLiveSessions({
 
         // A refused input is never confirmed, so nothing will take the owner's messages it carried.
         if (refused) {
+          const carried = entry.carried.get(receipt.inputId) ?? []
+
           if (card.id === HYDRA_CARD && !receipt.stopped) {
             note({
-              fn: ({ writer }) => failHydraInput({
-                writer,
-                input: receipt.inputId,
-                error: receipt.error ?? 'The agent refused this message; nothing was delivered',
-                at: at(),
-              }),
+              fn: ({ writer }) => {
+                for (const input of [
+                  receipt.inputId,
+                  ...carried,
+                ]) {
+                  failHydraInput({
+                    writer,
+                    input,
+                    error: receipt.error ?? 'The agent refused this message; nothing was delivered',
+                    at: at(),
+                  })
+                }
+              },
             })
           }
 
-          const carried = entry.carried.get(receipt.inputId) ?? []
           const steering = entry.delivered.get(receipt.inputId) ?? []
           entry.carried.delete(receipt.inputId)
           entry.delivered.delete(receipt.inputId)
