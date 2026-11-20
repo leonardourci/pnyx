@@ -186,7 +186,7 @@ pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|cod
 pnyx-axi hydra start --via firstmate --home <firstmate home>
 hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
 session becomes Hydra (in Paseo on the hydra rule's agent unless --rule names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
-prompt points Hydra at the ${ORCHESTRATE_SKILL} skill and has it keep a background \`hydra check --wait\` running, since Pnyx does not wake a Hydra it does not run.
+prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)

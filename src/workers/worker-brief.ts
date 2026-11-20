@@ -190,5 +190,4 @@ export async function taskPrompt({
 
 export const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
   `You are Hydra, the orchestrator of the Pnyx Hydra "${hydraId}". Read ${HYDRA_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(HYDRA_SKILL))}. `
-  + `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`. `
-  + `Pnyx does not wake a Hydra it does not run: keep \`pnyx-axi hydra check --after <through> --wait 1800 --hydra ${hydraId}\` running in the background, so its exit wakes you, and pass each check's \`through\` to the next.`
+  + `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`
