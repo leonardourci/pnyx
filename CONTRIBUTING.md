@@ -17,7 +17,7 @@ Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in
 
 ## Pull requests and checks
 
-Commit with Conventional Commits, split by concern. Push the branch and open a draft pull request against `main`, following [write-pull-request](.agents/skills/write-pull-request/SKILL.md). Keep its Intent, Problem, Fix, Validation and Review sections current, link the issue, and include media for visible changes.
+Commit with Conventional Commits, split by concern. Push the branch and open a draft pull request against `main`, following [write-pull-request](.agents/skills/write-pull-request/SKILL.md). Keep its Intent, Problem, Fix, Validation and Review sections current, link the issue and include media for visible changes. List each comment, workaround or one-off value kept on purpose in the folded Intentional slop section (file, what is kept, why); deslop's reviewer reads it.
 
 Run `pnpm deslop` before marking the pull request ready; see [Verification](docs/development.md#verification) for the checks and CI approval steps. The owner runs deslop for pull requests from forks.
 

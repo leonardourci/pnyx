@@ -17,3 +17,10 @@
 ## Review
 
 <!-- Findings and fixes from the deslop review, and any pending checks. -->
+
+<details>
+<summary>Intentional slop</summary>
+
+<!-- One item per line: file, what is kept, and why. -->
+
+</details>
