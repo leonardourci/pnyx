@@ -39,8 +39,7 @@ function retainedBoundary({ value }: { value?: string }): ThreadBoundary {
   }
 }
 
-// thread follows a card; --retain restores the range identified by its session and oldest entry, and --recent
-// keeps only the recent pages of Hydra's conversation.
+// thread follows a card; --retain restores the range identified by its session and oldest entry.
 export function threadCommand({
   ws,
   id,
@@ -82,10 +81,9 @@ export function threadCommand({
   })
   const map = subscriptionMap({ card: card.id })
   const old = map.get(ws)
-  const recent = args[1] === '--recent'
   const restoring = args[1] === '--retain'
   const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined
-  const before = restoring || recent ? undefined : args[1]
+  const before = restoring ? undefined : args[1]
   const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
   const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
 
@@ -116,7 +114,6 @@ export function threadCommand({
           card,
           before,
           retain,
-          recent,
           receipt: id,
         })
       } catch (error) {

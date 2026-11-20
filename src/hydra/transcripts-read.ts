@@ -85,8 +85,6 @@ export interface ThreadPage {
   session?: string
   stream?: string
   version?: number
-  pages?: number
-  recent?: boolean
   entries: ThreadEntry[]
   conversation?: {
     through: number

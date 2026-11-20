@@ -1,8 +1,10 @@
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Compaction } from '#workers/compaction/model.ts'
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { appendRecords } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
 
@@ -19,6 +21,8 @@ interface Entry {
 
 interface ThreadReceipt {
   thread: {
+    card: string
+    session?: string
     older?: string
     conversation: { entries: Entry[] }
   }
@@ -34,6 +38,8 @@ interface UpdatesReceipt {
 }
 
 const EXCHANGES = 30
+// More than a task's first page holds.
+const WORKER_NOTES = 70
 // A reply larger than one transport part, which the page must still read whole.
 const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End of notes.`
 
@@ -128,6 +134,101 @@ test(
         index + 1 === 5 ? LONG_REPLY : `answer ${index + 1}`,
       ],
     ).flat())
+  },
+)
+
+test(
+  'a task\'s chat keeps the older page it read back, in order, when its worker writes more',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'notes' })
+    await appendRecords({
+      session: worker,
+      records: Array.from(
+        { length: WORKER_NOTES },
+        (
+          _,
+          index,
+        ) => ({
+          type: 'assistant' as const,
+          content: `note ${index + 1}`,
+        }),
+      ),
+    })
+    const threads = createThreadReceiver()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      receive: ({ message }) => {
+        threads.receive({ message })
+      },
+    })
+    const first = await page.send({
+      name: 'thread',
+      args: ['notes'],
+    }) as unknown as ThreadReceipt
+    expect(first.thread.older).toBeTruthy()
+    await page.send({
+      name: 'thread',
+      args: [
+        'notes',
+        first.thread.older!,
+      ],
+    })
+
+    await appendRecords({
+      session: worker,
+      records: [
+        {
+          type: 'assistant',
+          content: 'note after reading back',
+        },
+      ],
+    })
+    const notes = () => threads.read({ card: first.thread.card })?.entries
+      .map(entry => entry.text)
+      .filter(text => text.startsWith('note '))
+    await until({
+      what: 'the note written after reading back',
+      check: () => notes()?.includes('note after reading back'),
+    })
+    page.close()
+    const everyNote = [
+      ...Array.from(
+        { length: WORKER_NOTES },
+        (
+          _,
+          index,
+        ) => `note ${index + 1}`,
+      ),
+      'note after reading back',
+    ]
+    expect(notes()).toEqual(everyNote)
+
+    // A reconnecting tab restores what it had loaded.
+    const reconnected = await hydra.page()
+    const restored = await reconnected.send({
+      name: 'thread',
+      args: [
+        'notes',
+        '--retain',
+        JSON.stringify({
+          session: first.thread.session,
+          oldest: threads.read({ card: first.thread.card })!.entries[0]!.id,
+        }),
+      ],
+    }) as unknown as { thread: { entries: Entry[] } }
+    // A tab from before the recent window was removed gets a refusal, not a page read from a bogus cursor.
+    const recent = await reconnected.send({
+      name: 'thread',
+      args: [
+        'notes',
+        '--recent',
+      ],
+    }) as unknown as { code?: string }
+    reconnected.close()
+    expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+    expect(recent.code).toBe('VALIDATION_ERROR')
   },
 )
 
