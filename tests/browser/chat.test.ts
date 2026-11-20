@@ -402,14 +402,8 @@ test(
       )
         .click()
       const working = [
-        page.locator('.hydra-chat').getByRole(
-          'status',
-          { name: /^Working(?:\.|$)/ },
-        ),
-        page.locator('[data-task]').getByRole(
-          'status',
-          { name: /^Working(?:\.|$)/ },
-        ),
+        page.locator('.hydra-chat .chat-running-status'),
+        page.locator('[data-task] .chat-running-status'),
       ]
 
       for (const line of working) {

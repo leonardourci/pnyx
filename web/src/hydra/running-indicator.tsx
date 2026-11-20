@@ -68,12 +68,6 @@ export function Running({
     >
       <span
         className="chat-running-status inline-flex items-center gap-2 min-w-0 max-w-full [&>:not(.action-bubble,.chat-status-label)]:shrink-0 [&>:not(.action-bubble,.chat-status-label)]:whitespace-nowrap"
-        role="status"
-        aria-label={statusName({
-          running,
-          label,
-          words,
-        })}
       >
         {running && <WorkingDots />}
         {running && since && (
@@ -87,7 +81,7 @@ export function Running({
         )}
         <span
           className="chat-status-label min-w-0 break-words"
-          role={labelName ? 'status' : undefined}
+          role="status"
           aria-label={labelName}
           data-status={label}
         >{label}
@@ -132,26 +126,6 @@ export function Running({
 
     </div>
   )
-}
-
-function statusName({
-  running,
-  label,
-  words,
-}: {
-  running: boolean
-  label: string
-  words: string | null
-}): string | undefined {
-  if (running && words) {
-    return `${label}. ${words}`
-  }
-
-  if (running) {
-    return label
-  }
-
-  return words ?? label
 }
 
 function queueWords({
