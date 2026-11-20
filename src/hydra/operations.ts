@@ -14,6 +14,7 @@ import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
+import { failHydraInput, hydraDeliveryId } from './received.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -68,7 +69,7 @@ export const arrivedSince = ({
   state: HydraState
   after: number
 }) => (state.hydraMessages ?? []).some(message => (state.eventIds[message.id] ?? 0) > after
-  && !(`${message.id}:hosted` in state.eventIds) && !message.stopped
+  && !(hydraDeliveryId({ message }) in state.eventIds) && !message.stopped && !message.failure
   && message.actor !== HYDRA_ACTOR && message.kind !== 'progress' && message.kind !== 'divider'
   && !isRoutineMessage({ message }))
 
@@ -543,7 +544,14 @@ export function createHydraOutage({
         }
 
         // Retries fail quietly; the owner hears of each failure their own message meets.
-        if (!down || ownerActor({ actor })) {
+        if (ownerActor({ actor })) {
+          failHydraInput({
+            writer,
+            input: id,
+            error: reason,
+            at: now,
+          })
+        } else if (!down) {
           applyDecision({
             writer,
             decision: hydraEvent({

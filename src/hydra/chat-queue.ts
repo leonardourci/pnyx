@@ -6,6 +6,7 @@ import { isRoutineMessage, type HydraMessage } from './model.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
+import { hydraDeliveryId } from './received.ts'
 
 const STARTED_RECEIPTS = 32
 
@@ -16,7 +17,7 @@ const taken = ({
 }: {
   state: HydraState
   message: HydraMessage
-}) => `${message.id}:hosted` in state.eventIds
+}) => hydraDeliveryId({ message }) in state.eventIds
 
 // Messages sent to this Hydra after an operation or a waiting agent change began holding them, that no turn has taken and Stop has not cancelled.
 function heldMessages({ state }: { state: HydraState }) {

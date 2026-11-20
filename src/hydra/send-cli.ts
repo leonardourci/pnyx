@@ -13,6 +13,9 @@ import { hydraCandidate } from './agent-choice.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
+import { withWriter } from '#app/writer.ts'
+import { applyDecision } from '#app/decision.ts'
+import { HYDRA_CARD } from './identity.ts'
 
 export function hydraSend({
   values,
@@ -138,7 +141,7 @@ export function hydraSend({
     id: hydraId,
   })
 
-  if (progress && result.event !== 'none: duplicate') {
+  if (progress && !result.duplicate) {
     return {
       ...result,
       help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use worker.log'],
@@ -149,19 +152,48 @@ export function hydraSend({
   const pnyxRuns = config.hydra.kind !== 'firstmate' || upgradeCommand({ text: String(values.text ?? '') })
     || restartCommand({ text: String(values.text ?? '') })
 
-  if (!pnyxRuns || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
+  const message = loadHydra({ hydraId }).state.hydraMessages
+    ?.find(message => message.id === (result.message ?? m.id))
+
+  if (!pnyxRuns || m.actor === HYDRA_ACTOR || !message) {
     return result
   }
 
-  const message = loadHydra({ hydraId }).state.hydraMessages
-    ?.find(message => message.id === result.message)
-  const text = message ? hydraDelivery({ message }) : String(values.text ?? '')
+  if (result.duplicate) {
+    if (!message.failure) {
+      return result
+    }
+
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: hydraEvent({
+          state: writer.state,
+          cardId: HYDRA_CARD,
+          meta: {
+            actor: m.actor,
+            at: m.at,
+          },
+          change: {
+            type: 'hydra.input',
+            data: {
+              message: message.id,
+              state: 'retrying',
+            },
+          },
+        }),
+      }),
+    })
+  }
+
+  const text = hydraDelivery({ message })
 
   return readServer({ hydraId }).then(server => server ? askHost({
     hydraId,
     body: {
       action: 'hydra',
-      id: String(result.message),
+      id: message.id,
       text,
       actor: m.actor,
     },

@@ -349,6 +349,14 @@ export type HydraChange = EventBase & (
     data: { messages: string[] }
   }
   | {
+    type: 'hydra.input'
+    data: {
+      message: string
+      state: 'failed' | 'retrying'
+      error?: string
+    }
+  }
+  | {
     type: 'hydra.agent-used'
     data: import('#workers/model.ts').AgentConfig
   }
@@ -468,6 +476,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.status',
   'hydra.received',
   'hydra.input-stopped',
+  'hydra.input',
   'hydra.operation',
   'hydra.agent-used',
   'hydra.delivered',

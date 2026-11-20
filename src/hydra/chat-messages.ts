@@ -317,6 +317,12 @@ export function hydraMessages({
       continue
     }
 
+    if (message.failure) {
+      entry.receipt = 'failed'
+      entry.waiting = message.failure
+      continue
+    }
+
     if (message.stopped) {
       entry.receipt = 'failed'
       entry.waiting = 'stopped'

@@ -198,6 +198,7 @@ export function decideUndo({
     'hydra.status',
     'hydra.received',
     'hydra.input-stopped',
+    'hydra.input',
     'hydra.review',
     'chat.message',
     'board.agents',
