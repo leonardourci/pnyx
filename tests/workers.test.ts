@@ -72,6 +72,7 @@ test(
       session: `codex:${worker.id}`,
     })
     expect(pending.information).toContain('existing session')
+    expect(pending.help).toEqual(expect.arrayContaining([expect.stringContaining('Retry the same start request')]))
     expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
     expect((await hydra.task({ key: task })).worker).toBe('none: not started, no reason given')
     expect(worker.closed).toBe(false)

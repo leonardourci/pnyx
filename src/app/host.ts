@@ -361,7 +361,6 @@ export function createHost({
     eventId?: string
     details?: string
   }) => {
-    // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
 
     if (session?.launchId && !session.taskId) {
