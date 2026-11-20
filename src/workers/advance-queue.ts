@@ -458,7 +458,6 @@ async function deliverHandoffs({
         text: event.data.brief,
         actor: 'pnyx',
         id,
-        homes: [],
       },
     })
   }
@@ -498,7 +497,7 @@ export async function advanceQueues({
   // The Hydra the server already holds; each queued session is read again from disk.
   state: HydraState
 }): Promise<boolean> {
-  if (initial.config?.hydra.kind === 'firstmate' || !active()) {
+  if (!active()) {
     return false
   }
 

@@ -91,7 +91,7 @@ export function createWorkerStarts({
     const agent = card.agent
 
     if (!liveTask({ card }) || !agent || !knownProvider({ name: agent.provider })
-      || agent.host || agent.agentId || agent.paseoAgentId) {
+      || agent.host || agent.agentId) {
       throw new HydraError({
         message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
         code: 'NO_ROUTE',

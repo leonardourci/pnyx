@@ -26,7 +26,6 @@ export function HydraAgent({
   }) : undefined
   const sameAccount = !agent.account || agent.account === ruleAccount
   const inherited = rule?.harness === agent.harness && sameAccount ? rule : undefined
-  const firstmate = state.config?.hydra.kind === 'firstmate'
 
   const save = ({ next }: { next: AgentConfig }) => {
     void command({
@@ -34,10 +33,6 @@ export function HydraAgent({
       args: [JSON.stringify(next)],
     })
       .catch((error: Error) => notify({ text: error.message }))
-  }
-
-  if (firstmate) {
-    return null
   }
 
   return (

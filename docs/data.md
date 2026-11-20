@@ -14,7 +14,7 @@ To start a Hydra over, first settle that Hydra's task copies with `pnyx-axi task
 
 Pnyx stores task history, messages, attachments, project paths, saved memory and its diagnostic logs on your machine. Treat the Pnyx data folder and backups as private: transcript redaction does not make every message or attachment safe to publish. The local write token protects server writes; keep it private too.
 
-Agents use the harness and provider you configure, so their prompts and tool results follow that provider's data policy. The GitHub integration contacts GitHub through `gh-axi`; Paseo and Firstmate use their configured local routes. Account configuration stores login folder paths rather than provider tokens.
+Agents use the harness and provider you configure, so their prompts and tool results follow that provider's data policy. The GitHub integration contacts GitHub through `gh-axi`. Account configuration stores login folder paths rather than provider tokens.
 
 ## Uninstall
 

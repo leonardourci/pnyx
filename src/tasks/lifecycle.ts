@@ -75,7 +75,7 @@ export function lifecycleMoves({
 
   const reminderUpdate = event?.type === 'task.reminder-due' && event.data.column === undefined
 
-  if (state.config?.hydra.kind === 'firstmate' || migrating || reminderUpdate) {
+  if (migrating || reminderUpdate) {
     return []
   }
 

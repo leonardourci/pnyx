@@ -1,11 +1,10 @@
 import { AxiError } from 'axi-sdk-js'
-import { guard, WRITE, parse, integer, required, meta, type Options, type Output } from '#app/cli-support.ts'
+import { guard, WRITE, parse, integer, meta, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
 import { setupPostgres } from './postgres.ts'
 import { requireSetupHome } from './home.ts'
 import { setupSkills } from './skills.ts'
 import { setupService } from './service.ts'
-import { setupHydra } from '#integrations/firstmate/home.ts'
 import { HARNESSES, type Harness } from '#integrations/hooks/observe.ts'
 import { detectedHarnesses, setupHooks } from './hooks.ts'
 
@@ -17,7 +16,6 @@ export const setup = guard({
       remove: { type: 'boolean' },
       preview: { type: 'boolean' },
       'allow-custom-home': { type: 'boolean' },
-      home: { type: 'string' },
       port: { type: 'string' },
       check: { type: 'boolean' },
       url: { type: 'string' },
@@ -81,11 +79,10 @@ export const setup = guard({
     }
 
     if (positionals[0] === undefined) {
-      if (values.home !== undefined || args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
+      if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
         throw new AxiError(
-          'setup runs every Hydra; it takes no --hydra or --home',
+          'setup runs every Hydra; it takes no --hydra',
           'VALIDATION_ERROR',
-          ['Run `pnyx-axi setup hydra --home <firstmate home> --hydra <id>` to link a Firstmate home to its Hydra'],
         )
       }
 
@@ -99,22 +96,11 @@ export const setup = guard({
       })
     }
 
-    if (positionals[0] === 'hydra') {
-      return setupHydra({
-        hydraId,
-        home: required({
-          value: values.home as string | undefined,
-          what: '--home',
-        }),
-        meta: meta({ values }),
-      })
-    }
-
     if (positionals[0] !== 'hooks') {
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup postgres`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup postgres`, `pnyx-axi setup skills` or `pnyx-axi setup hooks`'],
       )
     }
 

@@ -22,7 +22,7 @@ import { tagsTask } from './updates.ts'
 import { movedHistory, type HistoryEntry } from './move-history.ts'
 import { columnRule } from './column-defaults.ts'
 import { decideView } from '#preferences/decisions.ts'
-import { columnByRef, lockedColumn, LOCKED_DELETE, validateColumns } from './column-rules.ts'
+import { columnByRef, validateColumns } from './column-rules.ts'
 import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
 import { answerPrompt } from '#workers/answers.ts'
@@ -619,16 +619,6 @@ function columnCommand({ args }: { args: string[] }): Output {
         throw new HydraError({
           message: `column not found: ${ref}`,
           code: 'NOT_FOUND',
-        })
-      }
-
-      if (action === 'delete' && lockedColumn({
-        state,
-        id: selected!.id,
-      })) {
-        throw new HydraError({
-          message: LOCKED_DELETE,
-          code: 'VALIDATION_ERROR',
         })
       }
 

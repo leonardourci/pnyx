@@ -764,7 +764,6 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.ask.reopened': return `${event.data.reask ? 'Hydra re-asked' : 'Reopened'} ${event.data.ask}`
     case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
-    case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
     case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`

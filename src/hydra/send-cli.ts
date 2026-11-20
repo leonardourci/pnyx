@@ -7,7 +7,6 @@ import { HydraError } from '#store/errors.ts'
 import { liveTask } from '#tasks/select.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
-import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { hydraConfig } from './config.ts'
 import { hydraCandidate } from './agent-choice.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
@@ -133,11 +132,6 @@ export function hydraSend({
     },
   })
 
-  const config = hydraConfig({
-    state: loadHydra({ hydraId }).state,
-    id: hydraId,
-  })
-
   if (progress && result.event !== 'none: duplicate') {
     return {
       ...result,
@@ -145,11 +139,7 @@ export function hydraSend({
     }
   }
 
-  // Pnyx runs its own commands even for a Firstmate-linked Hydra.
-  const pnyxRuns = config.hydra.kind !== 'firstmate' || upgradeCommand({ text: String(values.text ?? '') })
-    || restartCommand({ text: String(values.text ?? '') })
-
-  if (!pnyxRuns || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
+  if (m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
     return result
   }
 

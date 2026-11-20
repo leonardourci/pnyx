@@ -39,10 +39,6 @@ function discoveryFolder({ card }: { card: import('#tasks/model.ts').Card }): st
 }
 
 export function discoverableTasks({ state }: { state: HydraState }) {
-  if (state.config?.hydra.kind === 'firstmate') {
-    return []
-  }
-
   return Object.values(state.cards).filter(card => liveTask({ card }) && !card.doneAt
     && Boolean(card.copy?.state === 'active' || card.agent || card.launch || card.branches?.length))
 }

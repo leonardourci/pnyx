@@ -2,38 +2,27 @@ import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
-import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { startBlockers } from '#tasks/dependencies.ts'
 import { noteOnce } from '#tasks/notes.ts'
 import type { Blocker } from '#tasks/owner-gates.ts'
 import { dispatchTask, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
 import { modelIds, type ModelOption } from './provider.ts'
 import { effectiveDispatch } from './dispatch-config.ts'
-import { openPaseo } from '#integrations/paseo/client.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { checkRevision, findCard } from '#tasks/push-rules.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import { paseoUrl } from '#integrations/paseo/url.ts'
 import { liveTask } from '#tasks/select.ts'
 import { taskFolder } from '#projects/copy-create.ts'
-import { fmNote } from '#integrations/firstmate/reply.ts'
-import { startAgent } from '#integrations/paseo/launch.ts'
 import type { Harness } from '#workers/providers.ts'
-import type { Connect } from '#integrations/paseo/client.ts'
-import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { canonical } from '#store/paths.ts'
 import { askHost } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import type { Output } from '#app/cli-support.ts'
-import { requestCwd } from '#app/request-context.ts'
-import { requireOwnerToRaise } from './permission-level.ts'
 import { applyDecision } from '#app/decision.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { namedProjectCommand, startCommand } from './start-command.ts'
@@ -43,28 +32,24 @@ import { flagGiven } from './cli.ts'
 
 const VIAS = [
   'pnyx',
-  'paseo',
-  'firstmate',
   'command',
 ] as const
 type Via = (typeof VIAS)[number]
 
 export function startRoute({
-  state,
   via,
   commandName,
   replacement,
   override,
   tools,
 }: {
-  state: HydraState
   via?: string
   commandName?: string
   replacement?: string
   override?: Override
   tools?: string[]
 }): Via {
-  const chosen = via ?? (state.config?.hydra.kind === 'firstmate' ? 'firstmate' : 'pnyx')
+  const chosen = via ?? 'pnyx'
 
   if (!(VIAS as readonly string[]).includes(chosen)) {
     throw new HydraError({
@@ -90,11 +75,11 @@ export function startRoute({
     })
   }
 
-  if (override && (how === 'firstmate' || how === 'command')) {
+  if (override && how === 'command') {
     throw new HydraError({
-      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
+      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx starts',
       code: 'VALIDATION_ERROR',
-      help: ['Use --via pnyx or --via paseo'],
+      help: ['Use --via pnyx'],
     })
   }
 
@@ -228,7 +213,6 @@ const START_FLAG_NAMES = {
   folder: '--folder',
   inPlace: '--in-place',
   commandName: '--command',
-  url: '--paseo-url',
 }
 
 type StartFlag = keyof typeof START_FLAG_NAMES
@@ -277,8 +261,6 @@ async function steerAttached({
     }
   }
 
-  const home = loadHydra({ hydraId }).state.config?.hydra.home
-
   try {
     const sent = await sendReply({
       hydraId,
@@ -286,7 +268,6 @@ async function steerAttached({
         card: card.id,
         expectedSession: worker,
         text: prompt,
-        homes: home ? [home] : [],
         actor: meta.actor,
         reason: meta.reason,
         id: meta.id ? `${meta.id}:steer` : randomUUID(),
@@ -432,9 +413,7 @@ export async function startTask({
   replacement,
   inputId,
   commandName,
-  url,
   meta,
-  connect,
 }: {
   hydraId: string
   task: string
@@ -449,10 +428,15 @@ export async function startTask({
   prompt?: string
   folder?: string
   inPlace?: boolean
-  url?: string
   meta: Meta
-  connect?: Connect
 }): Promise<Output> {
+  const how = startRoute({
+    via,
+    commandName,
+    replacement,
+    override,
+    tools,
+  })
   const state = loadHydra({ hydraId }).state
   const card = findCard({
     state,
@@ -480,14 +464,6 @@ export async function startTask({
     }
   }
 
-  const how = startRoute({
-    state,
-    via,
-    commandName,
-    replacement,
-    override,
-    tools,
-  })
   const worker = card.sessionIds?.[0]
 
   if (worker && !replacement) {
@@ -515,7 +491,6 @@ export async function startTask({
           folder: given,
           inPlace,
           commandName,
-          url,
         },
       }),
       meta,
@@ -537,11 +512,9 @@ export async function startTask({
     const guided = ({
       started,
       unqueued,
-      launched = true,
     }: {
       started: Output
       unqueued?: string
-      launched?: boolean
     }): Output => {
       const current = loadHydra({ hydraId }).state
       const open = startBlockers({
@@ -552,40 +525,18 @@ export async function startTask({
         }),
       })
 
-      if (launched) {
-        noteOpen({
-          hydraId,
-          task: card.id,
-          open,
-          meta,
-        })
-      }
+      noteOpen({
+        hydraId,
+        task: card.id,
+        open,
+        meta,
+      })
 
       return {
         ...started,
         ...(open.length ? { open } : {}),
         ...(unqueued ? { unqueued } : {}),
       }
-    }
-
-    if (how === 'firstmate') {
-      const requested = await askFirstmate({
-        hydraId,
-        task,
-        prompt,
-        meta,
-      })
-      const unqueued = leaveQueue({
-        hydraId,
-        card,
-        meta,
-      })
-
-      return guided({
-        started: requested,
-        unqueued,
-        launched: requested.sent !== 'failed',
-      })
     }
 
     if (tools?.length) {
@@ -600,7 +551,6 @@ export async function startTask({
     let dispatch: DispatchChoice | undefined
 
     if (how !== 'command') {
-      let offers: Partial<Record<Harness, string[]>> | undefined
       const { dispatch: effective } = effectiveDispatch()
       const list = harness ? startCandidates({
         dispatch: effective,
@@ -620,36 +570,12 @@ export async function startTask({
             rule,
           }) ?? []
 
-      if (how === 'pnyx') {
-        // Only a candidate that names a model needs its harness's catalog.
-        const named = list.filter(c => (!harness || c.harness === harness)
-          && (override?.model || c.model))
-        offers = await hostedOffers({
-          hydraId,
-          harnesses: named.map(c => c.harness),
-        })
-      }
-
-      if (how === 'paseo') {
-        offers = {}
-        const client = await (connect ?? openPaseo)({ url: paseoUrl({ url }) })
-
-        try {
-          for (const candidate of list) {
-            if (!offers[candidate.harness]) {
-              const { models } = await client.providers.listModels(
-                candidate.harness,
-                {
-                  cwd: given ?? card.folder ?? requestCwd(),
-                },
-              )
-              offers[candidate.harness] = models?.map(m => m.id) ?? []
-            }
-          }
-        } finally {
-          await client.close()
-        }
-      }
+      const named = list.filter(c => (!harness || c.harness === harness)
+        && (override?.model || c.model))
+      const offers = await hostedOffers({
+        hydraId,
+        harnesses: named.map(c => c.harness),
+      })
 
       dispatch = await dispatchTask({
         project: card.project,
@@ -661,17 +587,6 @@ export async function startTask({
     }
 
     const agent = dispatch?.candidate
-
-    // The host checks a Pnyx start when it receives it; a Paseo start is checked here.
-    if (how === 'paseo' && agent) {
-      requireOwnerToRaise({
-        state,
-        actor: meta.actor,
-        harness: agent.harness,
-        before: agent.mode,
-        after: override?.mode,
-      })
-    }
 
     const command = how === 'command' || !agent
     const selectedCommand = commandName
@@ -715,47 +630,27 @@ export async function startTask({
       })
     }
 
-    const started = how === 'pnyx'
-      ? await askHost({
-        hydraId,
-        body: {
-          action: 'start',
-          inputId,
-          dispatch,
-          tools,
-          task: card.id,
-          ...(replacement ? { replacement } : {}),
-          prompt: await taskPrompt({
-            hydraId,
-            card,
-            prompt,
-            replacing: replacement,
-          }),
-          ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
-          id: meta.id ?? randomUUID(),
-          actor: meta.actor,
-          ...(meta.reason ? { reason: meta.reason } : {}),
-        },
-      }) as Output
-      : await startAgent({
-        hydraId,
-        task,
-        harness: harness ?? agent.harness,
-        agent: {
-          ...agent,
-          ...dispatch?.override,
-        },
+    const started = await askHost({
+      hydraId,
+      body: {
+        action: 'start',
+        inputId,
         dispatch,
+        tools,
+        task: card.id,
+        ...(replacement ? { replacement } : {}),
         prompt: await taskPrompt({
           hydraId,
           card,
           prompt,
+          replacing: replacement,
         }),
-        folder,
-        url,
-        meta,
-        connect,
-      })
+        ...(canonical({ path: folder }) ? { folder: canonical({ path: folder }) } : {}),
+        id: meta.id ?? randomUUID(),
+        actor: meta.actor,
+        ...(meta.reason ? { reason: meta.reason } : {}),
+      },
+    }) as Output
 
     return guided({
       started: {
@@ -777,115 +672,5 @@ export async function startTask({
     throw error
   } finally {
     release()
-  }
-}
-
-// Puts the request in Hydra's chat, then hands it to the Firstmate home that is
-// this Hydra as an inbox note, which wakes Firstmate. The note's request id
-// is the message's, so a retry replays the same note.
-async function askFirstmate({
-  hydraId,
-  task,
-  prompt,
-  meta,
-}: {
-  hydraId: string
-  task: string
-  prompt?: string
-  meta: Meta
-}): Promise<Output> {
-  const initial = findCard({
-    state: loadHydra({ hydraId }).state,
-    ref: task,
-  })
-  const brief = await taskPrompt({
-    hydraId,
-    card: initial,
-    prompt: prompt ? `Request: ${prompt}` : undefined,
-  })
-  const queued = withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      drainSpool({ writer })
-      const card = findCard({
-        state: writer.state,
-        ref: task,
-      })
-
-      if (card.revision !== initial.revision) {
-        throw new HydraError({
-          message: 'Task changed while preparing its worker brief',
-          code: 'REVISION_CONFLICT',
-        })
-      }
-
-      requireLiveTask({
-        card,
-        ref: task,
-      })
-
-      const config = hydraConfig({
-        state: writer.state,
-        id: hydraId,
-      })
-
-      if (config.hydra.kind !== 'firstmate' || !config.hydra.home) {
-        throw new HydraError({
-          message: `Hydra ${hydraId} has no Firstmate Hydra`,
-          code: 'NO_ROUTE',
-          help: [`Run \`pnyx-axi setup hydra --home <firstmate home> --hydra ${hydraId}\``],
-        })
-      }
-
-      const text = [
-        `Pnyx Hydra ${hydraId} asks for a worker on task ${card.id} "${card.title}"${card.folder ? ` in ${card.folder}` : ''}.`,
-        `Task brief (give this to the worker as its first prompt):\n${brief}`,
-        `Use the ${ORCHESTRATE_SKILL} skill: read \`pnyx-axi task show ${card.id} --hydra ${hydraId}\`, dispatch the worker, and keep the task's status current.`,
-      ].join('\n')
-      const id = meta.id ?? randomUUID()
-      applyDecision({
-        writer,
-        decision: hydraEvent({
-          state: writer.state,
-          meta: {
-            ...meta,
-            id,
-          },
-          cardId: card.id,
-          change: {
-            type: 'hydra.message',
-            data: {
-              task: card.id,
-              action: 'worker',
-              text,
-              hydra: config.hydra.id,
-            },
-          },
-        }),
-      })
-
-      return {
-        card: card.id,
-        home: config.hydra.home,
-        id,
-        text,
-      }
-    },
-  })
-  const sent = await fmNote({
-    home: queued.home,
-    requestId: `pnyx:${hydraId}:${queued.id}`,
-    text: queued.text,
-  })
-
-  return {
-    task: queued.card,
-    via: 'firstmate',
-    message: queued.id,
-    sent: sent.state,
-    ...(sent.detail ? { detail: sent.detail } : {}),
-    help: sent.state === 'failed'
-      ? [`The request stays in \`pnyx-axi hydra messages --hydra ${hydraId}\`; retry with --event-id ${queued.id}`]
-      : [`Firstmate dispatches the worker; follow it with \`pnyx-axi task history ${queued.card} --hydra ${hydraId}\``],
   }
 }

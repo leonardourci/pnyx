@@ -19,9 +19,7 @@ export const STEERING_RING_LIMIT = 3
 export const STEERING_DEFERRAL_LIMIT = 2
 
 function oldestUnread({ card }: { card: Card }): SteeringMessage | undefined {
-  const firstmate = card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')
-
-  if (!liveTask({ card }) || card.id === HYDRA_CARD || firstmate) {
+  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
     return undefined
   }
 
@@ -81,7 +79,7 @@ export async function followUpSteering({
     const cardId = previous.id
     const claim = steeringClaim({ card: previous })
     const session = claim && observed.sessions?.[claim.session]
-    const terminal = session && !session.agent.host && !session.agent.paseoAgentId
+    const terminal = session && !session.agent.host
       && session.terminal?.pid
     const working = agentActivity({
       card: previous,

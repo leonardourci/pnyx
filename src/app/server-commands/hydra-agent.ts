@@ -101,13 +101,6 @@ export function hydraAgentCommand({
         }
       }
 
-      if (config.hydra.kind === 'firstmate') {
-        throw new HydraError({
-          message: 'Firstmate manages this Hydra’s agent',
-          code: 'NO_ROUTE',
-        })
-      }
-
       const decision = hydraEvent({
         state: writer.state,
         cardId: HYDRA_CARD,

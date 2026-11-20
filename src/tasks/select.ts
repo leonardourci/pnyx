@@ -9,7 +9,7 @@ const known = new WeakMap<Record<string, Card>, {
 }>()
 
 export function isManagedTask({ card }: { card: Card }): boolean {
-  return Boolean(card.automaticTask) || card.id === HYDRA_CARD
+  return card.id === HYDRA_CARD
 }
 
 // Every card a lookup by id may name. On the page, this includes the reference copies of hidden tasks.
@@ -41,9 +41,8 @@ export function knownCards({ state }: { state: HydraState }): Record<string, Car
   return cards
 }
 
-// The page's board.cards query (src/store/zero-schema.ts) filters on the same two columns.
 export function liveTask({ card }: { card: Card }): boolean {
-  return card.hidden !== true && !card.automaticTask
+  return card.hidden !== true
 }
 
 // Declared done by its worker, or moved into a done column.

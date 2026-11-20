@@ -49,12 +49,10 @@ SessionStart | UserPromptSubmit)
   fact program "${TERM_PROGRAM:-}"
   [ -z "${TMUX:-}" ] || fact tmux "${TMUX%%,*}"
   fact tmuxPane "${TMUX_PANE:-}"
-  fact paseoHome "${PASEO_HOME:-}"
   fact herdrSession "${HERDR_SESSION:-}"
   fact herdrPane "${HERDR_PANE_ID:-}"
   ;;
 esac
-fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 [ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
 hook_clock=$(node -e 'const now = new Date(); const iso = now.toISOString(); console.log(Math.floor(now.getTime() / 1000), iso, iso.slice(-4, -1))') || hook_clock=$(date -u '+%s %Y-%m-%dT%H:%M:%SZ 000')

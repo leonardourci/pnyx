@@ -19,6 +19,7 @@ import { pnyxHome } from '#store/storage.ts'
 import type { Card } from '#tasks/model.ts'
 import { decideNote } from '#tasks/notes.ts'
 import { freeTask } from './start.ts'
+import { checkRevision, findCard } from '#tasks/push-rules.ts'
 import { hydraPrompt, taskPrompt } from './worker-brief.ts'
 
 export function namedProjectCommand({
@@ -48,8 +49,6 @@ export function namedProjectCommand({
   return selected
 }
 
-// Runs the Hydra's command with the task in its environment, then notes the start;
-// a repeated event id runs nothing again.
 export async function startCommand({
   hydraId,
   role,
@@ -74,6 +73,22 @@ export async function startCommand({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
+      const target = role === 'worker' ? findCard({
+        state: writer.state,
+        ref: task!,
+      }).id : HYDRA_CARD
+
+      if (`${id}:started` in writer.state.eventIds) {
+        return {
+          duplicate: true as const,
+          target,
+        }
+      }
+
+      checkRevision({
+        card: writer.state.cards[target],
+        ifRevision: meta.ifRevision,
+      })
       const config = hydraConfig({
         state: writer.state,
         id: hydraId,
@@ -118,9 +133,7 @@ export async function startCommand({
         })
       }
 
-      const duplicate = `${id}:started` in writer.state.eventIds
-
-      if (!duplicate && role === 'hydra' && !writer.state.configured) {
+      if (role === 'hydra' && !writer.state.configured) {
         applyDecision({
           writer,
           decision: hydraEvent({
@@ -128,6 +141,7 @@ export async function startCommand({
             meta: {
               ...meta,
               id: `${id}:config`,
+              ifRevision: undefined,
             },
             cardId: '$board',
             change: {
@@ -139,14 +153,15 @@ export async function startCommand({
       }
 
       return {
-        duplicate,
+        duplicate: false as const,
+        target,
         command,
         cwd,
         card,
       }
     },
   })
-  const target = claimed.card?.id ?? HYDRA_CARD
+  const target = claimed.target
 
   if (claimed.duplicate) {
     return {
@@ -191,6 +206,7 @@ export async function startCommand({
           meta: {
             ...meta,
             id: `${id}:launch`,
+            ifRevision: undefined,
           },
           cardId: target,
           change: {
@@ -219,6 +235,7 @@ export async function startCommand({
           meta: {
             ...meta,
             id: `${id}:started`,
+            ifRevision: undefined,
           },
         }),
       })

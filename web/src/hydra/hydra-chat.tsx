@@ -7,7 +7,7 @@ import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraChatQueue } from '#hydra/chat-queue.ts'
-import { hostedHydra,hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
@@ -183,8 +183,8 @@ export function HydraChat({
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
-  const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
-  const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
+  const config = hydraConfig({ state }), card = state.cards[HYDRA_CARD]
+  const offerProject = !!addProject && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
   const thread = useChatThread({
     card: HYDRA_CARD,
@@ -211,7 +211,6 @@ export function HydraChat({
     upgradeRunning,
     working,
   } = chatQueue
-  const hosted = hostedHydra({ state })
   const inFlight = pending.filter(item => item.failed === undefined)
   // An unsent message stays in the chat even while Hydra holds new input in the queue box.
   const shownSends = pending.filter(item => item.failed !== undefined
@@ -713,7 +712,7 @@ export function HydraChat({
     ],
   )
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
-  const down = hosted ? hydraDown({ status: state.hydraStatus }) : undefined
+  const down = hydraDown({ status: state.hydraStatus })
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   const showsTools = traces({
     view,
@@ -789,7 +788,7 @@ export function HydraChat({
           sendAgain={sendAgain}
           sendableNow={({ entry }) => {
             if (!entry.replyId) {
-              return hosted && working && !holding
+              return working && !holding
             }
 
             const worker = entry.task ? state.cards[entry.task] : undefined

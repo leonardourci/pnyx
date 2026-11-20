@@ -33,8 +33,6 @@ const SEARCH: Options = {
   limit: { type: 'string' },
 }
 
-// Pnyx tasks record a project by its path and Firstmate tasks by its name, so a filter
-// matches both the value given and the attached project it names.
 function projectRefs({
   state,
   ref,

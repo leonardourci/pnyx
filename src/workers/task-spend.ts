@@ -89,7 +89,7 @@ function transcriptUsage({ agent }: { agent: SpendInputs['sessions'][number]['ag
 }
 
 const declaredTasks = ({ state }: { state: HydraState }) => Object.values(state.cards)
-  .filter(card => card.tracking === 'declared' && !card.automaticTask)
+  .filter(card => card.tracking === 'declared')
   .map(card => card.id)
 
 export function spendInputs({

@@ -547,7 +547,6 @@ export function createRoutineHelper({
             hydraId,
             state,
             card,
-            homes: [],
           }).entries
             .filter(entry => entry.kind === 'message' && (entry.role === 'user' || entry.role === 'assistant'))
             .slice(-DIALOG_MESSAGES)

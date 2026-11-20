@@ -263,10 +263,7 @@ function replyFollowUps({
         continue
       }
 
-      const outsideRoute = original.control || original.route.startsWith('firstmate')
-      const tooOld = now - original.firstAt >= FOLLOW_UP_WINDOW_MS
-
-      if (outsideRoute || tooOld) {
+      if (original.control || now - original.firstAt >= FOLLOW_UP_WINDOW_MS) {
         continue
       }
 
