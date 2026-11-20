@@ -12,7 +12,7 @@
 
 ## Validation
 
-<!-- What was run and what passed. For each new or changed test, name the user-visible behavior or past bug it guards and the test that failed when its change was reverted in a throwaway copy. Note any test that failed or was skipped, and why. -->
+<!-- What was run and what passed. For each test of new or changed behavior, name the user-visible behavior or past bug it guards and the test that failed when its change was reverted in a throwaway copy; a behavior-preserving refactor's tests only need to keep passing. Note any test that failed or was skipped, and why. -->
 
 ## Review
 
