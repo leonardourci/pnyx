@@ -285,8 +285,6 @@ async function startCreated({
   }
 }
 
-// Files a task and starts its worker through the normal dispatch rules, unless --hold, --behind, --on or --no-start
-// says why it waits. Repeating the same --event-id never files or starts anything twice.
 export async function createCommand({
   hydraId,
   positionals,

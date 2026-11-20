@@ -261,7 +261,6 @@ export function taskReadiness({
   }
 }
 
-// Everything still open on a task, each with the command that clears it; a start goes ahead and reports them.
 export function startBlockers({
   state,
   card,

@@ -174,7 +174,6 @@ export function cardStatus({
   }
 }
 
-// A task filed without a worker says why, or that nobody gave a reason.
 export function notStartedText({ card }: { card: Card }): string {
   return card.unstarted ? `not started: ${card.unstarted}` : 'not started, no reason given'
 }

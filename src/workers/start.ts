@@ -234,8 +234,7 @@ async function steerAttached({
   }
 }
 
-// Another actor's turn on the task is a wait, not a refusal; a copy being settled stays refused, since starting in it
-// could lose work that has not landed.
+// A copy being settled stays refused: a worker started in it could lose work that has not landed.
 function leaseOrWait({
   hydraId,
   task,
@@ -299,7 +298,6 @@ function unqueue({
   return `was queued behind worker ${card.queue!.session}; it now gets its own worker`
 }
 
-// What is still open on the task goes on its card once, with the command that clears each item.
 function noteOpen({
   hydraId,
   card,
