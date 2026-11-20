@@ -205,8 +205,9 @@ export function guardTaskLease({
 
   if ((helper && lease?.actor !== actor) || otherHelper) {
     throw new HydraError({
-      message: `Task ${task} is leased to another Hydra session`,
+      message: `Task ${task} is leased to ${lease?.actor ?? 'another Hydra session'}`,
       code: 'TASK_LEASED',
+      help: [`\`pnyx-axi task history ${task}\` shows what that session did`],
     })
   }
 }
@@ -248,9 +249,18 @@ export function taskLease({
     }
 
     if (lease && (lease.actor !== owner || copyHeld)) {
+      const settling = lease.actor.startsWith(COPY_LEASE_PREFIX)
+
       throw new HydraError({
-        message: `Task ${task} is being handled by ${lease.actor}; try again after its turn ends`,
+        message: settling
+          ? `Task ${task} is settling its copy; try again when cleanup finishes`
+          : `Task ${task} is being handled by ${lease.actor}; try again after its turn ends`,
         code: 'TASK_LEASED',
+        help: [
+          settling
+            ? `\`pnyx-axi task copy ${task}\` shows the copy's state`
+            : `\`pnyx-axi task history ${task}\` shows what that session did`,
+        ],
       })
     }
 
