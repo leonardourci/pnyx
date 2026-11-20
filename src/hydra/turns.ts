@@ -1149,9 +1149,32 @@ export function createHydraTurns({
     }
   }
 
-  const reportsRead = ({ seqs }: { seqs: number[] }) => {
-    if (!hydraBusy()) {
-      return
+  const reportTurn = (): string | undefined => {
+    const agent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
+    const entry = agent && live.get(sessionId({ agent }))
+
+    if (!entry || entry.activity !== 'working' || entry.stopping || closing()) {
+      return undefined
+    }
+
+    const turns = entry.session?.snapshot().work.runningTurns
+
+    if (turns?.length !== 1) {
+      return undefined
+    }
+
+    return `${sessionId({ agent })}:${turns[0]}`
+  }
+
+  const reportsRead = ({
+    turn,
+    seqs,
+  }: {
+    turn: string
+    seqs: number[]
+  }) => {
+    if (turn !== reportTurn()) {
+      return false
     }
 
     const state = loadHydra({ hydraId }).state
@@ -1165,6 +1188,8 @@ export function createHydraTurns({
         })
       }
     }
+
+    return true
   }
 
   return {
@@ -1176,6 +1201,7 @@ export function createHydraTurns({
       await hydraTurn
     },
     digest,
+    reportTurn,
     reportsRead,
     hydraSession,
     hydra,

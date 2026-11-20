@@ -41,6 +41,7 @@ export async function hostRequestUnlocked({
   }) ?? 'cli'
 
   switch (body.action) {
+    case 'report-turn':
     case 'reports-read': {
       if (actor !== HYDRA_ACTOR || !hostedHydraRequest({ hydraId: host.hydraId })) {
         throw new HydraError({
@@ -49,6 +50,14 @@ export async function hostRequestUnlocked({
         })
       }
 
+      if (body.action === 'report-turn') {
+        return { turn: host.reportTurn() ?? null }
+      }
+
+      const turn = field({
+        body,
+        name: 'turn',
+      })!
       const seqs = body.seqs
 
       if (!Array.isArray(seqs) || !seqs.every(seq => Number.isSafeInteger(seq) && seq > 0)) {
@@ -58,9 +67,12 @@ export async function hostRequestUnlocked({
         })
       }
 
-      host.reportsRead({ seqs })
+      const accepted = host.reportsRead({
+        turn,
+        seqs,
+      })
 
-      return { read: seqs.length }
+      return { read: accepted ? seqs.length : 0 }
     }
     case 'compact':
       return host.compact({
