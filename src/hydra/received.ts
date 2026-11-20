@@ -20,9 +20,24 @@ export function hydraDeliveryId({
   return `${message.id}${attempt}${compact}:hosted`
 }
 
-export function hydraInputDispatched({ state, message }: { state: HydraState; message: HydraMessage }) {
-  return Object.hasOwn(state.eventIds, hydraDeliveryId({ message }))
-    || Object.hasOwn(state.eventIds, hydraDeliveryId({ message, release: true }))
+export function hydraInputDispatched({
+  state,
+  message,
+}: {
+  state: HydraState
+  message: HydraMessage
+}) {
+  return Object.hasOwn(
+    state.eventIds,
+    hydraDeliveryId({ message }),
+  )
+    || Object.hasOwn(
+      state.eventIds,
+      hydraDeliveryId({
+        message,
+        release: true,
+      }),
+    )
 }
 
 export function failHydraInput({

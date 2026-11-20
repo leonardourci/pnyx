@@ -69,7 +69,10 @@ export const arrivedSince = ({
   state: HydraState
   after: number
 }) => (state.hydraMessages ?? []).some(message => (state.eventIds[message.id] ?? 0) > after
-  && !hydraInputDispatched({ state, message }) && !message.stopped && !message.failure
+  && !hydraInputDispatched({
+    state,
+    message,
+  }) && !message.stopped && !message.failure
   && message.actor !== HYDRA_ACTOR && message.kind !== 'progress' && message.kind !== 'divider'
   && !isRoutineMessage({ message }))
 

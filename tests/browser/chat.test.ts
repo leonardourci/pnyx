@@ -752,6 +752,7 @@ test.each([
         check: () => worker.received.some(text => text.endsWith('/compact')),
       })
     }
+
     const label = target === 'Hydra' ? 'Hydra conversation' : 'Task lakes conversation'
     const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
     const answer = pnyx.claude.plan({

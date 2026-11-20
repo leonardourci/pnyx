@@ -234,7 +234,10 @@ export function recapText({
   // A message whose turn started has been read; worker reports reach Hydra in their own wake.
   const unread = sent.filter(message => !message.stopped && !message.failure
     && ownerActor({ actor: message.actor })
-    && !hydraInputDispatched({ state, message }))
+    && !hydraInputDispatched({
+      state,
+      message,
+    }))
   const unreadLines = unread.map(message => {
     const card = message.task ? state.cards[message.task] : undefined
     const task = card ? ` on ${taskMention({
