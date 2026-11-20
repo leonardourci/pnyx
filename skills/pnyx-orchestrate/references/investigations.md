@@ -1,6 +1,6 @@
 # Investigations and bug briefs
 
-Read this when an investigation finishes or you write a bug brief.
+Read this when an ask needs a cause found or a question answered before anything is built, an investigation finishes, or you write a bug brief.
 
 An investigation answers a question or finds a cause before anything is built: `task create --kind investigation`, with a title that says so. Its worker stores a report and builds nothing. When it is done, read `task report <task>`, tell the owner the findings in a line or two with `hydra send --task <task>`, and ask whether to build. Only the owner's yes turns it into the build: `task build <task> --reason "<the owner's word>"`. On a no, `task copy <task> remove --safe`.
 

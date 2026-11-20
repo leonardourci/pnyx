@@ -1,6 +1,6 @@
 # Pull requests and review pages
 
-Read this when a pull request needs a worker, a merge or a follow-up, or a review page is ready.
+Read this when a pull request needs a worker, a merge or a follow-up, the owner changes how one task lands, or a review page is ready.
 
 - Each project's rule (`project list`) says how work lands and who merges, and every worker's header carries it. Only the owner changes it for one task: `task landing <task> --landing pr|branch --merge owner|hydra --reason "<the owner's word>"` before its worker starts, or tell the running worker too.
 - Never tell a worker to stop before the landing steps its rule requires.

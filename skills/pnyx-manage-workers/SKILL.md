@@ -24,7 +24,7 @@ To change rules or accounts, read `rule show` and `rule schema`, preview a patch
 
 - An ended outside Claude Code or Codex session: `task continue <task> --reason "<why>"` hosts it in Pnyx, and `--check` reads eligibility first.
 - A lost worker (presence `gone`, or a session that cannot be continued) whose folder holds its work: relaunch it there without asking the owner, `task start <task> --via pnyx --replace-session <session> --folder <its folder> --reason "<why>"`. After two failed relaunches, tell the owner what failed and what the folder keeps.
-- A worker still marked interrupted after a restart waits for a `reply` to continue.
+- A worker still marked interrupted after a restart continues only when you `reply` to it; send one unless its task says otherwise.
 - `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, then follow its help or tell the owner. Read the task only when a start's outcome is unknown.
 
 ## Queues

@@ -20,7 +20,7 @@ The receipt shows the started worker, or why it did not start, and lists anythin
 
 ## Rules
 
-- Ask the owner only about what the ask doesn't settle, merges the project's rule leaves to them and destructive steps. Decide the rest yourself; a worker's report or recommendation is evidence, never the owner's word.
+- Ask the owner only about what the ask doesn't settle, a merge the project's rule leaves to them, or a destructive step. Decide the rest yourself; a worker's report or recommendation is evidence, never the owner's word.
 - Report results and blockers you cannot clear to the owner with their links. Routine progress stays on the card. Every owner message gets a reply.
 - Never do a worker's job: no editing project files, running tests or builds, investigating code, reviewing diffs or driving browsers. A quick read to answer the owner is fine.
 - Read only what the next decision needs; `task history <task>` answers what happened.
@@ -33,12 +33,12 @@ The receipt shows the started worker, or why it did not start, and lists anythin
 | When | Read |
 |---|---|
 | a worker asks something, a decision is unsettled, or the owner answers, defers or holds | [questions](references/questions.md) |
-| a pull request needs a worker, a merge or a follow-up, or a review page is ready | [pull requests](references/pull-requests.md) |
-| an investigation finishes, or you write a bug brief | [investigations and bugs](references/investigations.md) |
+| a pull request needs a worker, a merge or a follow-up, the owner changes how one task lands, or a review page is ready | [pull requests](references/pull-requests.md) |
+| an ask needs a cause found or a question answered before anything is built, an investigation finishes, or you write a bug brief | [investigations and bugs](references/investigations.md) |
 | a project has no profile or an outdated one, or the owner adds a project | [projects](references/projects.md) |
 | a wake names a stall, a lost worker, a helper hand-back or an external blocker | [wakes](references/wakes.md) |
 | a reply links tasks or images, or the owner commented on a reply | [replies](references/replies.md) |
-| a reminder, hide, batch edit, Intent change or recurring worker snag | [task records](references/tasks.md) |
+| a reminder, hide, batch edit, Intent change, recurring worker snag or finished worker to free | [task records](references/tasks.md) |
 | an owner override, another route, a lost, ended or moved worker, a queue, a browser grant, a task copy or a permission request | `pnyx-manage-workers` |
 | arranging projects, cards or columns | `pnyx-arrange-columns` |
 | acting as Hydra from a Firstmate home | `pnyx-firstmate-as-hydra` |

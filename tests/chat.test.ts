@@ -1475,6 +1475,36 @@ test(
 )
 
 test(
+  'hydra check never points a Hydra that Pnyx runs at the wait it refuses',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'hello' })
+    const hosted = hydra.as({ session })
+    const check = await hosted.run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+
+    expect(check.help.join('\n')).not.toContain('--wait')
+
+    const waited = await hosted.refused({
+      args: [
+        'hydra',
+        'check',
+        '--wait',
+        '5',
+      ],
+    })
+
+    expect(waited.code).toBe('VALIDATION_ERROR')
+  },
+)
+
+test(
   'Send now ends a running compaction and delivers the message held behind it at once, and only once',
   async () => {
     const hydra = await pnyx.hydra()

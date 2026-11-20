@@ -186,11 +186,11 @@ pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|cod
 pnyx-axi hydra start --via firstmate --home <firstmate home>
 hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
 session becomes Hydra (in Paseo on the hydra rule's agent unless --rule names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
-prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
+prompt points Hydra at the ${ORCHESTRATE_SKILL} skill and has it keep a background \`hydra check --wait\` running, since Pnyx does not wake a Hydra it does not run.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
-except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It returns
+except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears, and a Hydra Pnyx runs is refused --wait and ends its turn instead. It returns
 a compact conversations digest of the owner's queued task replies (read them whole with task history --full) and of the words
 typed straight into the session of a worker Pnyx does not run, which carry their time, count once an event follows them, wake --wait
 and are read whole with task chat <task>. Pass the printed through as the next --after.
