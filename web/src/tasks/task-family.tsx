@@ -11,7 +11,6 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { compareTasks, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
-import { SUBTASK_INDENT } from './project-layout.ts'
 
 function Subtasks({
   children,
