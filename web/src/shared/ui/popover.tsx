@@ -145,7 +145,6 @@ export function Popover({
   return (
     <div
       className={`popover relative min-w-0 ${className}`}
-      data-key-scope={open ? 'overlay' : undefined}
       ref={root}
       onBlur={event => {
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) {

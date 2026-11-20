@@ -356,7 +356,6 @@ export function Composer({
           ref={field}
           standalone={false}
           id={`reply-${card}`}
-          keyScope="composer"
           value={drafts.read().text}
           change={setDraft}
           label={fieldLabel ?? `Reply to ${title}`}

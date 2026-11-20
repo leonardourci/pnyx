@@ -36,7 +36,6 @@ export function ProjectColumnHeader({
           aria-disabled={undefined}
           ref={drag.setActivatorNodeRef}
           data-column-heading={column.id}
-          data-key-scope="hydra"
           aria-label={`${folded ? 'Unfold' : 'Fold'} ${column.title}`}
           onClick={fold}
         ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />

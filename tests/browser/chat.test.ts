@@ -174,6 +174,30 @@ test(
       { exact: false },
     ).waitFor()
     expect(await hydraChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
+    const unmatched = 'Send this @zzzznomatchingtaskzzzz'
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: unmatched,
+      reply: 'Received the unmatched reference.',
+    })
+    const composer = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      'textbox',
+      {
+        name: 'Reply to Hydra',
+        exact: true,
+      },
+    )
+    await composer.fill(unmatched)
+    await page.getByText(
+      'Nothing in this Hydra matches.',
+      { exact: true },
+    ).waitFor()
+    await page.keyboard.press('Enter')
+    await hydraChat.getByText(
+      unmatched,
+      { exact: true },
+    ).waitFor()
+    expect(await composer.inputValue()).toBe('')
     const copied = await hydraChat.evaluate(chat => {
       const paragraph = [...chat.querySelectorAll('p')].find(p => p.textContent?.startsWith('Check'))!
       const range = document.createRange()

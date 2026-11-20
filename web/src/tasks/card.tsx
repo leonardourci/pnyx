@@ -743,7 +743,6 @@ export const HydraCard = memo(function HydraCard({
                         id: 'context',
                       }) : undefined}
                       data-card={card.id}
-                      data-key-scope="hydra"
                       tabIndex={tabIndex}
                     />
                   )}

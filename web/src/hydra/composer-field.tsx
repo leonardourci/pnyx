@@ -61,7 +61,6 @@ export function ComposerField({
   placeholder,
   className = '',
   standalone = true,
-  keyScope,
   onKeyDown,
   onBlur,
   projectRequests = false,
@@ -77,7 +76,6 @@ export function ComposerField({
   className?: string
   // A field on its own is a compact box; the Hydra composer draws its own box, menu and controls around it.
   standalone?: boolean
-  keyScope?: string
   // Runs after the pickers had their turn with the key.
   onKeyDown?({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }): void
   onBlur?(): void
@@ -738,7 +736,6 @@ export function ComposerField({
           className="composer-text group-[.comment-note]/composer-field:select-text h-auto max-h-[min(50vh,var(--spacing-composer-max))] resize-none overflow-y-auto bg-transparent outline-none group-data-[standalone=true]/composer-field:max-h-[min(40vh,12lh)] in-[.task-editor]:max-h-[min(50vh,24lh)] group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
           ref={input}
           rows={1}
-          data-key-scope={keyScope}
           id={id}
           defaultValue={display}
           placeholder={placeholder}
@@ -948,6 +945,7 @@ export function ComposerField({
             && (e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.altKey) {
               setMention(null)
               dismissSlash()
+              onKeyDown?.({ event: e })
 
               return
             }
