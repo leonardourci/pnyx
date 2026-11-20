@@ -239,6 +239,36 @@ test(
           return box.left >= 0 && box.right <= innerWidth
         }),
     })
+    await workspace.getByRole(
+      'button',
+      {
+        name: 'Fold all projects',
+        exact: true,
+      },
+    ).click()
+    await workspace.getByRole(
+      'button',
+      {
+        name: 'Fold Hydra',
+        exact: true,
+      },
+    ).click()
+    await workspace.getByRole(
+      'button',
+      {
+        name: 'Project-7',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the folded final project to unfold fully in view',
+      check: () => workspace.locator('[data-column]').last()
+        .evaluate(element => {
+          const box = element.getBoundingClientRect()
+
+          return box.width > 300 && box.left >= 0 && box.right <= innerWidth
+        }),
+    })
   },
 )
 

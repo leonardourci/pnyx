@@ -619,19 +619,38 @@ export function HydraView({
         return
       }
 
-      scroller.scrollTo({
-        left: layoutOffset({
+      const reveal = () => {
+        const left = layoutOffset({
           element: kanban,
           horizontal: true,
         }) - layoutOffset({
           element: scroller,
           horizontal: true,
-        }) + revealLeft - revealPadding,
-        behavior: 'instant',
-      })
+        }) + revealLeft - revealPadding
+        scroller.scrollTo({
+          left,
+          behavior: 'instant',
+        })
+
+        if (Math.abs(scroller.scrollLeft - left) <= 1) {
+          observer.disconnect()
+        }
+      }
+
+      const observer = new ResizeObserver(reveal)
+      observer.observe(kanban)
+
+      if (layer) {
+        observer.observe(layer)
+      }
+
+      reveal()
+
+      return () => observer.disconnect()
     },
     [
       kanban,
+      layer,
       revealingColumn,
       columnRequest?.key,
       revealLeft,
