@@ -21,6 +21,6 @@
 <details>
 <summary>Intentional slop</summary>
 
-<!-- One item per line: file, what is kept, and why. -->
+<!-- One item per line: file, what is kept and why. -->
 
 </details>
