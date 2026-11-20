@@ -35,8 +35,10 @@ function OlderSentinel({
     text: string
   }>()
   const latestOlder = useRef(older)
+  const explicitRead = useRef(loadingEarlier)
   useLayoutEffect(() => {
     latestOlder.current = older
+    explicitRead.current = loadingEarlier
   })
   const cursor = older?.cursor
   const offline = !older
@@ -58,7 +60,7 @@ function OlderSentinel({
 
       const observer = new IntersectionObserver(
         async reached => {
-          if (!reached.some(entry => entry.isIntersecting)) {
+          if (!reached.some(entry => entry.isIntersecting) || explicitRead.current) {
             return
           }
 
@@ -163,28 +165,30 @@ export function Chat({
 }) {
   return (
     <div className="chat-body relative flex-1 min-h-0 flex flex-col">
-      <div
-        className="chat-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
-        ref={scroll.scroller}
-        data-key-scope="thread"
-        role="region"
-        aria-label={`${title} conversation`}
-        data-away={scroll.reading || undefined}
-        tabIndex={0}
-        {...scroll.handlers}
-      >
-        <div className="chat-stream max-w-(--chat-max) mx-auto" ref={scroll.content}>
-          <OlderSentinel
-            scroll={scroll}
-            older={older}
-            loadingEarlier={loadingEarlier}
-          />
-          {children}
-          {error && <ChatError text={error} />}
+      <div className="chat-viewport relative flex min-h-0 flex-1 flex-col">
+        <div
+          className="chat-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
+          ref={scroll.scroller}
+          data-key-scope="thread"
+          role="region"
+          aria-label={`${title} conversation`}
+          data-away={scroll.reading || undefined}
+          tabIndex={0}
+          {...scroll.handlers}
+        >
+          <div className="chat-stream max-w-(--chat-max) mx-auto" ref={scroll.content}>
+            <OlderSentinel
+              scroll={scroll}
+              older={older}
+              loadingEarlier={loadingEarlier}
+            />
+            {children}
+            {error && <ChatError text={error} />}
+          </div>
         </div>
+        {scroll.reading && <JumpToLatest scroll={scroll} />}
       </div>
       {status}
-      {scroll.reading && <JumpToLatest scroll={scroll} />}
     </div>
   )
 }
