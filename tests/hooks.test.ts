@@ -249,22 +249,54 @@ test(
       env: process.env,
     })
     expect(parsed(tasks).tasks).toEqual(beforeTasks)
-    const assignedHydra = await pnyx.hydra({ id: 'default', create: false })
-    await assignedHydra.owner({
-      args: ['task', 'create', '--key', 'outside-hook-chat', '--title', 'Outside hook chat', '--no-start'],
+    const assignedHydra = await pnyx.hydra({
+      id: 'default',
+      create: false,
     })
     await assignedHydra.owner({
-      args: ['push', '--key', 'outside-1', '--file', '-'],
+      args: [
+        'task',
+        'create',
+        '--key',
+        'outside-hook-chat',
+        '--title',
+        'Outside hook chat',
+        '--no-start',
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-1',
+        '--file',
+        '-',
+      ],
       input: JSON.stringify({
-        agent: { provider: 'claude', sessionId: 'outside-1' },
+        agent: working.agent,
         terminal: { tty: '/dev/ttys99999' },
       }),
     })
     await assignedHydra.owner({
-      args: ['task', 'attach', 'outside-hook-chat', '--session', 'claude:outside-1'],
+      args: [
+        'task',
+        'attach',
+        'outside-hook-chat',
+        '--session',
+        working.id,
+      ],
     })
-    const chat = await assignedHydra.owner({ args: ['task', 'chat', 'outside-hook-chat'] })
-    expect((chat.thread.entries as { role: string; text: string }[])
+    const chat = await assignedHydra.owner({
+      args: [
+        'task',
+        'chat',
+        'outside-hook-chat',
+      ],
+    })
+    expect((chat.thread.entries as {
+      role: string
+      text: string
+    }[])
       .filter(entry => entry.role === 'user' || entry.role === 'You')
       .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
 
