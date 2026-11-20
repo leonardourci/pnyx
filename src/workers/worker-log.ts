@@ -254,11 +254,6 @@ export function followWorkerLogs({
         continue
       }
 
-      const dir = workerTaskDir({
-        hydraId,
-        task: card.id,
-      })
-
       const read = () => {
         withWriter({
           hydraId,
@@ -270,19 +265,22 @@ export function followWorkerLogs({
         changed()
       }
 
-      watches.set(
-        card.id,
-        watchPath({
-          path: join(
-            dir,
-            'worker.log',
-          ),
-          changed: read,
-          poll: true,
-        }),
-      )
-
       try {
+        const dir = workerTaskDir({
+          hydraId,
+          task: card.id,
+        })
+        watches.set(
+          card.id,
+          watchPath({
+            path: join(
+              dir,
+              'worker.log',
+            ),
+            changed: read,
+            poll: true,
+          }),
+        )
         read()
       } catch (error) {
         log({

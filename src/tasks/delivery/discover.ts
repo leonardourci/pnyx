@@ -193,7 +193,20 @@ export async function discoverPullRequests({
         continue
       }
 
-      const output = decode(result.stdout) as { pull_requests?: { url: string }[] }
+      let output: { pull_requests?: { url: string }[] }
+
+      try {
+        output = decode(result.stdout) as typeof output
+      } catch (error) {
+        log({
+          level: 'warn',
+          operation: 'follow.discover',
+          hydraId,
+          taskId: card.id,
+          error,
+        })
+        continue
+      }
 
       for (const request of output.pull_requests ?? []) {
         withWriter({

@@ -4662,22 +4662,35 @@ test(
         draft: true,
       }),
     )
-    await workerLine({
-      hydra,
-      key: 'discovered',
-      line: 'note: Follow-up branch ready',
-    })
-    await until({
-      what: 'the new branch pull request',
-      check: async () => (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          'discovered',
-          '--full',
-        ],
-      })).task.links.some((link: { url: string }) => link.url.endsWith('/903')),
-    })
+    const malformed = join(
+      github,
+      'malformed-discovery',
+    )
+    writeFileSync(
+      malformed,
+      JSON.stringify({ branch }),
+    )
+
+    try {
+      await workerLine({
+        hydra,
+        key: 'discovered',
+        line: 'note: Follow-up branch ready',
+      })
+      await until({
+        what: 'the new branch pull request despite an unreadable response for the earlier branch',
+        check: async () => (await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'discovered',
+            '--full',
+          ],
+        })).task.links.some((link: { url: string }) => link.url.endsWith('/903')),
+      })
+    } finally {
+      unlinkSync(malformed)
+    }
     await pnyx.restart()
     const restored = await hydra.owner({
       args: [

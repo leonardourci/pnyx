@@ -170,6 +170,16 @@ if (args[0] === 'api') {
     root,
     repo,
   )
+  const malformed = join(
+    root,
+    'malformed-discovery',
+  )
+
+  if (existsSync(malformed) && read({ file: malformed }).branch === branch) {
+    console.log('pull_requests[2]{url}:\n  "https://github.com/example/repo/pull/1"')
+    process.exit(0)
+  }
+
   const requests = existsSync(folder) ? readdirSync(folder).filter(name => /^\d+\.json$/.test(name))
     .filter(name => read({
       file: join(
