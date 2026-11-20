@@ -644,7 +644,6 @@ export function createSourceRunner({
           id: `source-notice:${message}:${claim.generation}`,
           text: `External result waiting in your durable inbox: ${message}. Run task inbox read ${card}, then task source read ${card} <source-id>. Handle the inbox in order; a notification is not an acknowledgement.`,
           actor: 'pnyx',
-          homes: [],
         },
       })
       result = receipt.state === 'delivered' ? 'delivered' : 'unknown'

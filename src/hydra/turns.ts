@@ -487,10 +487,6 @@ export function createHydraTurns({
         id: hydraId,
       })
 
-      if (config.hydra.kind === 'firstmate') {
-        return { state: 'queued' }
-      }
-
       if (deliveryId in state.eventIds) {
         return { state: 'queued' }
       }

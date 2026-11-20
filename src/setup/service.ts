@@ -4,7 +4,6 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
-import { loadHydra } from '#app/store.ts'
 import { pnyxHome, privateDir } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
 import { DEFAULT_PORT } from '#app/server-state.ts'
@@ -350,10 +349,6 @@ type ServiceResult = {
   unit?: string
   replaces?: string[]
   replaced?: string[]
-  unrecorded?: {
-    hydra: string
-    home: string
-  }[]
   help?: string[]
 }
 
@@ -656,36 +651,6 @@ export function setupService({
       return []
     }
   })()
-  // A replaced job's --home reached its Hydra only through that job; the server now watches only recorded homes.
-  const unrecorded = replaced.flatMap(file => {
-    const text = readFileSync(
-      file,
-      'utf8',
-    )
-    const flag = ({ name }: { name: string }) => [
-      ...text.matchAll(new RegExp(
-        `<string>--${name}</string><string>([^<]*)</string>`,
-        'g',
-      )),
-    ].map(m => unxml({ text: m[1]! }))
-    const hydraId = flag({ name: 'hydra' })[0] ?? 'default'
-    let recorded: string | undefined
-
-    try {
-      const hydra = loadHydra({ hydraId }).state.config?.hydra
-      recorded = hydra?.kind === 'firstmate' ? canonical({ path: hydra.home }) : undefined
-    } catch { /* An unreadable Hydra records nothing. */ }
-
-    return flag({ name: 'home' }).filter(h => canonical({ path: h }) !== recorded)
-      .map(h => ({
-        hydra: hydraId,
-        home: h,
-      }))
-  })
-  const relink = unrecorded.map(({
-    hydra,
-    home: h,
-  }) => `Run \`pnyx-axi setup hydra --home ${h} --hydra ${hydra}\` so the server watches that Firstmate home again`)
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -706,8 +671,6 @@ export function setupService({
       path,
       plist: remove ? undefined : plist,
       replaces: replaced,
-      unrecorded,
-      help: relink,
     }
   }
 
@@ -791,8 +754,6 @@ export function setupService({
       service: 'removed',
       path,
       replaced,
-      unrecorded,
-      help: relink,
     }
   }
 
@@ -843,10 +804,6 @@ export function setupService({
     path,
     log,
     replaced,
-    unrecorded,
-    help: [
-      ...relink,
-      ...INSTALLED_HELP,
-    ],
+    help: INSTALLED_HELP,
   }
 }

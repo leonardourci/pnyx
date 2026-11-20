@@ -6,8 +6,6 @@ import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { replyRoute } from './reply-route.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { terminalNotice, typeInto } from '#integrations/hooks/terminal.ts'
-import type { Connect } from '#integrations/paseo/client.ts'
-import { paseoNotice } from '#integrations/paseo/reply.ts'
 import { askHost } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -21,14 +19,12 @@ export async function notifySteering({
   message: messageId,
   attempt,
   now = Date.now(),
-  connectPaseo,
 }: {
   hydraId: string
   card: string
   message: string
   attempt: string
   now?: number
-  connectPaseo?: Connect
 }): Promise<NotificationResult> {
   const card = loadHydra({ hydraId }).state.cards[cardId]
   const message = card?.steering?.find(message => message.id === messageId)
@@ -112,7 +108,7 @@ export async function notifySteering({
         const current = writer.state.cards[cardId]
         const pending = current?.steering?.find(message => message.id === messageId)
 
-        if (!current || current.mirror || current.sourceRefs.some(source => source.adapter === 'firstmate')) {
+        if (!current) {
           return false
         }
 
@@ -126,10 +122,7 @@ export async function notifySteering({
           }))
       },
     })
-    const found = replyRoute({
-      card,
-      homes: [],
-    })
+    const found = replyRoute({ card })
     let outcome: NotificationResult
 
     if ('reason' in found) {
@@ -169,24 +162,6 @@ export async function notifySteering({
             detail: `host did not confirm notification: ${(error as Error).message}`,
           }
         }
-      } else if (route.kind === 'firstmate') {
-        return {
-          result: 'gone',
-          detail: 'Firstmate owns this task’s inbox; use fm-send',
-        }
-      } else if (route.kind === 'paseo-agent' && waitsOnHook({ attention: card.attention })) {
-        outcome = {
-          result: 'deferred',
-          detail: 'worker is waiting on a permission or question; answer it before notifying',
-        }
-      } else if (route.kind === 'paseo-agent') {
-        outcome = await paseoNotice({
-          route,
-          text,
-          id: attempt,
-          canSend,
-          connect: connectPaseo,
-        })
       } else {
         outcome = await terminalNotice({
           route,

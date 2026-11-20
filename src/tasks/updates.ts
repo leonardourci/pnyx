@@ -89,10 +89,6 @@ const LINK_VERBS: Record<string, string> = {
   closed: 'closed',
 }
 
-const INTENT = /^Captain's intent:\s*/
-const NEEDS_DECISION = /^needs-decision(?: \[([^\]]+)\])?:\s*([\s\S]+)$/
-const RESOLVED = /^resolved(?: \[([^\]]+)\])?:\s*(?:answered:\s*)?([\s\S]+)$/
-
 const column = ({
   columns,
   id,
@@ -247,41 +243,7 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
     }
   }
 
-  if (data.source !== 'firstmate') {
-    return undefined
-  }
-
-  if (data.kind === 'context' && INTENT.test(text)) {
-    return {
-      kind: 'ask',
-      state: 'You asked',
-      note: text.replace(
-        INTENT,
-        '',
-      ),
-      ...at,
-    }
-  }
-
-  const asked = NEEDS_DECISION.exec(text)
-  const resolved = RESOLVED.exec(text)
-
-  if (data.kind !== 'decision' || !(asked || resolved)) {
-    return undefined
-  }
-
-  return {
-    kind: 'decision',
-    state: 'Decision',
-    note: '',
-    decision: {
-      questionId: `firstmate:${(asked ?? resolved)![1] ?? 'default'}`,
-      question: asked?.[2] ?? '',
-      answer: resolved?.[2] ?? '',
-      actor: 'Hydra',
-    },
-    ...at,
-  }
+  return undefined
 }
 
 // Receipts, worker attachments, reminders and project changes stay in recorded history.

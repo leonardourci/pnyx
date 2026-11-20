@@ -12,7 +12,6 @@ import type { AgentSession } from './model.ts'
 export function isSessionSource({ source }: { source?: SourceRef }): boolean {
   return !source || [
     'hooks',
-    'paseo',
     'pnyx',
     'transcript',
   ].includes(source.adapter)
@@ -172,8 +171,6 @@ export function applySessionFacts({
 
     if (fields.agent.host) {
       via = 'pnyx'
-    } else if (fields.agent.paseoAgentId) {
-      via = 'paseo'
     }
 
     const task = state.cards[event.data.task ?? '']

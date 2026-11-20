@@ -19,10 +19,6 @@ export async function settleDone({
 }): Promise<number> {
   const state = loadHydra({ hydraId }).state
 
-  if (state.config?.hydra.kind === 'firstmate') {
-    return 0
-  }
-
   const due = Object.values(state.cards).filter(card => {
     if (!settles({ card })) {
       return false

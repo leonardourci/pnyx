@@ -149,16 +149,14 @@ export function Projects({
   const settings = useSharedSettings()
   const {
     projects,
-    readonly,
     loaded,
     error,
     mutate,
     intents,
-    refresh,
   } = useProjectsResource({
     command,
     connected,
-    revision: `${JSON.stringify(settings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}:${JSON.stringify(settings?.projectPoleis)}:${state.projectsRevision ?? 0}:${state.config?.hydra.kind}:${state.config?.hydra.home ?? ''}`,
+    revision: `${JSON.stringify(settings?.poleis)}:${JSON.stringify(state.config?.readPoleis)}:${JSON.stringify(settings?.projectPoleis)}:${state.projectsRevision ?? 0}`,
   })
   useEffect(
     () => {
@@ -187,7 +185,7 @@ export function Projects({
     <li key={p.path} className={`project-row flex items-center justify-between gap-3 px-0 py-2 [&.detached_strong]:text-muted [&>div]:min-w-0 ${p.state === 'detached' ? 'detached' : ''}`}>
       <div className="project-details flex-1">
         <strong>{p.name}</strong><span className="project-path block text-ui wrap-anywhere text-muted">{p.path}</span>
-        {!readonly && p.state === 'attached' && (
+        {p.state === 'attached' && (
           <label>Polis<Select
             label={`Polis for ${p.name}`}
             value={p.polis ?? 'shared'}
@@ -216,7 +214,7 @@ export function Projects({
           </label>
         )}
         {p.pending && <span role="status">{p.pending}</span>}
-        {!readonly && p.state === 'attached' && (
+        {p.state === 'attached' && (
           <ProjectLanding
             project={p}
             disabled={!connected || !!p.pending}
@@ -224,7 +222,7 @@ export function Projects({
             notify={notify}
           />
         )}
-        {!readonly && p.state === 'attached' && (
+        {p.state === 'attached' && (
           <ProjectCommand
             key={p.path}
             project={p}
@@ -234,19 +232,17 @@ export function Projects({
           />
         )}
       </div>
-      {!readonly && (
-        <Button
-          disabled={!connected || !!p.pending}
-          aria-label={`${p.state === 'detached' ? 'Re-attach' : 'Detach'} ${p.name}`}
-          onClick={() => run({
-            args: [
-              p.state === 'detached' ? 'add' : 'remove',
-              p.path,
-            ],
-          })}
-        >{p.state === 'detached' ? 'Re-attach' : 'Detach'}
-        </Button>
-      )}
+      <Button
+        disabled={!connected || !!p.pending}
+        aria-label={`${p.state === 'detached' ? 'Re-attach' : 'Detach'} ${p.name}`}
+        onClick={() => run({
+          args: [
+            p.state === 'detached' ? 'add' : 'remove',
+            p.path,
+          ],
+        })}
+      >{p.state === 'detached' ? 'Re-attach' : 'Detach'}
+      </Button>
     </li>
   )
 
@@ -255,18 +251,6 @@ export function Projects({
       <h2>Projects</h2>
       {!loaded && !projects.length ? <p className="muted">Loading projects…</p> : (
         <>
-          {readonly && (
-            <>
-              <p className="muted">Managed by Firstmate. Projects are read-only here.</p>
-              <Button
-                disabled={!connected}
-                onClick={() => {
-                  void refresh()
-                }}
-              >Refresh projects
-              </Button>
-            </>
-          )}
           {!projects.some(p => p.state === 'attached') && <p className="muted">No projects attached.</p>}
           <ProjectList>{projects.filter(p => p.state === 'attached').map(p => row({ project: p }))}</ProjectList>
           {projects.some(p => p.state === 'detached') && (
@@ -277,13 +261,11 @@ export function Projects({
               </ProjectList>
             </>
           )}
-          {!readonly && (
-            <AddProject
-              command={command}
-              connected={connected}
-              notify={notify}
-            />
-          )}
+          <AddProject
+            command={command}
+            connected={connected}
+            notify={notify}
+          />
         </>
       )}
       <PendingStatus intents={intents} />

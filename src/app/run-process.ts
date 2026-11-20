@@ -11,7 +11,6 @@ const SUBCOMMAND_TOOLS = new Set([
   'launchctl',
   'systemctl',
   'pnpm',
-  'paseo',
   'herdr',
 ])
 // Flags whose next argument is a value, so `git -C <folder> fetch` is named after fetch.

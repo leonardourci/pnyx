@@ -21,7 +21,7 @@ export function validateWait({
     ref,
   })
 
-  if (isManagedTask({ card: dependency }) || card.mirror || dependency.mirror) {
+  if (isManagedTask({ card: dependency })) {
     throw new HydraError({
       message: 'waits must name native tasks in this Hydra',
       code: 'VALIDATION_ERROR',

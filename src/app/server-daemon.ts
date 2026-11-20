@@ -85,13 +85,11 @@ const saveUpgradeStatus = ({ status }: { status: UpgradeStatus }) => query({
 export async function startServer({
   hydraId = 'default',
   port = 0,
-  homes,
   zeroCache = false,
   ...options
 }: {
   hydraId?: string
   port?: number
-  homes?: string[]
   // Whether to run zero-cache for the page's reads; only serve does, so other test servers start no child.
   zeroCache?: boolean
   catalogLocations?: CatalogLocations
@@ -163,8 +161,6 @@ export async function startServer({
 
         const hydras = listHydras(), key = JSON.stringify(hydras)
 
-        // The page reads the Hydra list through Zero; a summary that changes without an event, as a Firstmate home's
-        // projects can, is written to its row here.
         if (key !== summariesKey) {
           query({
             statements: hydras.map(summary => ({
@@ -785,7 +781,6 @@ export async function startServer({
     const started = mountHydra({
       hydraId: id,
       url: `http://127.0.0.1:${bound}/hydra/${id}/`,
-      homes: id === hydraId ? homes : undefined,
       open,
       hydrasChanged,
       ...options,
@@ -1207,7 +1202,6 @@ export async function startServer({
 async function mountHydra({
   hydraId,
   url,
-  homes,
   catalogLocations,
   query,
   spawnCodex,
@@ -1229,8 +1223,6 @@ async function mountHydra({
 }: {
   hydraId: string
   url: string
-  // Firstmate homes for replies; without them, the Hydra's recorded home, which is also watched.
-  homes?: string[]
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
@@ -1253,7 +1245,6 @@ async function mountHydra({
   return mountOwnedHydra({
     hydraId,
     url,
-    homes,
     catalogLocations,
     query,
     spawnCodex,

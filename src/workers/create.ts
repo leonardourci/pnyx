@@ -109,30 +109,6 @@ const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
   }),
 }
 
-function recordedLaunch({
-  state,
-  id,
-}: {
-  state: HydraState
-  id: string
-}): 'started' | 'requested' | undefined {
-  if (startRecorded({
-    state,
-    id,
-  })) {
-    return 'started'
-  }
-
-  if (Object.hasOwn(
-    state.eventIds,
-    id,
-  )) {
-    return 'requested'
-  }
-
-  return undefined
-}
-
 function recordWait({
   hydraId,
   task,
@@ -198,25 +174,12 @@ async function startCreated({
   operation: string
 }): Promise<Output> {
   const startId = `${operation}:start`
-  const resend = `Run \`pnyx-axi task start ${task} --event-id ${startId}\` if Firstmate did not get the request; the same id never asks twice`
   const state = loadHydra({ hydraId }).state
-  const launched = recordedLaunch({
+
+  if (startRecorded({
     state,
     id: startId,
-  })
-
-  if (launched === 'requested') {
-    return {
-      launch: 'requested',
-      message: startId,
-      help: [
-        'This create already asked Firstmate for its worker; nothing was asked again',
-        resend,
-      ],
-    }
-  }
-
-  if (launched === 'started') {
+  })) {
     return {
       launch: 'started',
       worker: state.cards[task]?.sessionIds?.[0] ?? 'none',
@@ -235,14 +198,6 @@ async function startCreated({
         ifRevision: undefined,
       },
     })
-
-    if (started.via === 'firstmate') {
-      return {
-        launch: 'requested',
-        ...started,
-        help: started.sent === 'failed' ? [resend] : started.help,
-      }
-    }
 
     return {
       launch: 'started',
@@ -292,7 +247,6 @@ export async function createCommand({
   const chosen = chooseWait({ values })
   const flags = startFlags({ values })
   startRoute({
-    state,
     via: flags.via,
     commandName: flags.commandName,
     override: flags.override,

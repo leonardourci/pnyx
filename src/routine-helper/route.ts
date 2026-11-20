@@ -1,7 +1,6 @@
 import { ownerGates } from '#tasks/owner-gates.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { openDecisions } from '#tasks/decisions.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { effectiveDispatch, type HeadsDispatch } from '#workers/dispatch-config.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -62,15 +61,10 @@ type HelperScope = 'routine' | 'owner'
 export type HelperAction = 'reply' | 'continue' | 'answer' | 'permission'
 
 // The helper the settings ask for, before an automatic one gets its harness.
-export function helperChoice({ state }: { state: HydraState }): Exclude<HelperSetting, 'off'> | undefined {
-  const config = hydraConfig({ state })
+export function helperChoice(): Exclude<HelperSetting, 'off'> | undefined {
   const helper = readSettings().settings.helper
 
-  if (helper === 'off' || config.hydra.kind !== 'agent') {
-    return undefined
-  }
-
-  return helper
+  return helper === 'off' ? undefined : helper
 }
 
 export function helperAgent({
@@ -81,7 +75,7 @@ export function helperAgent({
   // The dispatch the caller already read; the saved one otherwise.
   dispatch?: HeadsDispatch
 }): AgentConfig | undefined {
-  const helper = helperChoice({ state })
+  const helper = helperChoice()
 
   if (helper !== 'auto') {
     return helper
