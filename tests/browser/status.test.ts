@@ -23,7 +23,7 @@ async function openChat({
     url: `http://127.0.0.1:${pnyx.port()}/zero/`,
     cookie: `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`,
   })
-  const selector = `[data-task="${taskId}"]`
+  const selector = `[data-hydra="${hydraId}"] [data-task="${taskId}"]`
   await chrome({
     script: `
     await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydraId}/`)});
@@ -54,7 +54,7 @@ async function status({
   expect(result).toBe(label)
 }
 
-async function recordBadges({ selector }: { selector: string }) {
+async function recordBadges({ selectors }: { selectors: Record<string, string> }) {
   await chrome({
     script: `
     await page.eval(() => {
@@ -70,11 +70,8 @@ async function recordBadges({ selector }: { selector: string }) {
           window.sendSocketMessage.call(this, message);
         }
       };
-      const readBadges = () => ({
-        hydra: document.querySelector('.hydra-chat [aria-label="Hydra status"]')?.textContent,
-        pill: document.querySelector(${JSON.stringify(`${selector} .activity-text`)})?.textContent,
-        task: document.querySelector(${JSON.stringify(`${selector} [aria-label="Worker status"]`)})?.textContent,
-      });
+      const readBadges = () => Object.fromEntries(Object.entries(${JSON.stringify(selectors)})
+        .map(([name, selector]) => [name, document.querySelector(selector)?.textContent]));
       document.addEventListener('click', event => {
         const button = event.target.closest?.('button');
         const send = button?.matches('[aria-label="Send reply"], [aria-label="Send to worker"]');
@@ -93,51 +90,59 @@ async function recordBadges({ selector }: { selector: string }) {
   })
 }
 
+async function releaseSends() {
+  await chrome({
+    script: `
+    await page.eval(() => {
+      for (const {socket, message} of window.heldSends.splice(0)) window.sendSocketMessage.call(socket, message);
+    });
+  `,
+  })
+}
+
+const turns = [
+  {
+    text: 'Check live badges before tools',
+    label: 'Thinking',
+    tool: undefined,
+  },
+  {
+    text: 'Check live badges with tools',
+    label: 'Working',
+    tool: {
+      id: 'live_badge_tool',
+      name: 'Bash',
+      input: { command: 'pwd' },
+    },
+  },
+]
+
 test(
-  'live badges show Starting… on Send, Thinking at turn start, Working through tools and Idle at turn end',
+  'Hydra first send shows Starting… on the first frame, then Thinking, Working and Idle',
   async () => {
     const hydra = await pnyx.hydra()
-    await hydra.startTask({ key: 'live-badges' })
-    await until({
-      what: 'the initial worker turn to end',
-      check: async () => (await hydra.task({ key: 'live-badges' })).status === 'idle',
+    const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
+    const badge = `${hydraChat} [aria-label="Hydra status"]`
+    await zeroReady({
+      url: `http://127.0.0.1:${pnyx.port()}/zero/`,
+      cookie: `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`,
     })
-    const task = await hydra.task({ key: 'live-badges' })
-    const selector = await openChat({
-      hydraId: hydra.id,
-      taskId: task.id,
+    await chrome({
+      script: `
+      await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+      await page.wait('${hydraChat} [aria-label="Reply to Hydra"]', 5000);
+    `,
     })
-    await recordBadges({ selector })
+    await recordBadges({ selectors: { hydra: badge } })
 
     for (const {
       text,
       label,
       tool,
-    } of [
-        {
-          text: 'Check live badges before tools',
-          label: 'Thinking',
-          tool: undefined,
-        },
-        {
-          text: 'Check live badges with tools',
-          label: 'Working',
-          tool: {
-            id: 'live_badge_tool',
-            name: 'Bash',
-            input: { command: 'pwd' },
-          },
-        },
-      ]) {
-      const hydraTurn = pnyx.claude.plan({
+    } of turns) {
+      const turn = pnyx.claude.plan({
         hydra: hydra.id,
         text,
-        tool,
-        hold: true,
-      })
-      const workerTurn = pnyx.claude.plan({
-        hydra: hydra.id,
-        match: ({ text: prompt }) => prompt.includes(`Worker: ${text}`),
         tool,
         hold: true,
       })
@@ -146,61 +151,165 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          await page.fill('[aria-label="Reply to Hydra"]', ${JSON.stringify(text)});
-          await page.click('.hydra-chat [aria-label="Send reply"]');
+          await page.fill('${hydraChat} [aria-label="Reply to Hydra"]', ${JSON.stringify(text)});
+          await page.wait('${hydraChat} [aria-label="Send reply"]:not(:disabled)', 5000);
+          await page.click('${hydraChat} [aria-label="Send reply"]');
           console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
         `,
         })
-        expect(JSON.parse(started).hydra).toBe('Starting…')
-        const workerStarted = await chrome({
+        expect(JSON.parse(started)).toEqual({ hydra: 'Starting…' })
+        await releaseSends()
+        const sampled = await chrome({
           script: `
-          await page.fill('[aria-label="Message worker"]', ${JSON.stringify(`Worker: ${text}`)});
-          await page.click('[aria-label="Send to worker"]');
-          console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
-          await page.eval(() => {
-            for (const {socket, message} of window.heldSends.splice(0)) window.sendSocketMessage.call(socket, message);
-          });
-          `,
+          await page.wait('${badge}[data-status="${label}"]', 5000);
+          await page.eval(() => new Promise(requestAnimationFrame));
+          console.log(JSON.stringify(await page.eval(() => ({
+            active: window.badgeFrames.filter(frame => frame.hydra === ${JSON.stringify(label)}).length,
+            interrupted: window.badgeFrames.slice(window.sendFrames.hydra).filter(frame => !['Starting…', 'Thinking', 'Working'].includes(frame.hydra)),
+          }))));
+        `,
         })
-        expect(JSON.parse(workerStarted)).toMatchObject({
+        expect(JSON.parse(sampled).active).toBeGreaterThan(0)
+        expect(JSON.parse(sampled).interrupted).toEqual([])
+      } finally {
+        turn.release()
+      }
+
+      const dots = await chrome({
+        script: `
+        await page.wait('${badge}[data-status="Idle"]', 5000);
+        console.log(await page.eval(() => document.querySelectorAll('${hydraChat} .chat-running-status .working-dots').length));
+      `,
+      })
+      expect(dots).toBe('0')
+    }
+  },
+)
+
+test(
+  'worker first send shows Starting… before attachment, reports a refused start and follows later live turns',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'live-badges' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'live-badges',
+        '--title',
+        'Task live-badges',
+        '--project',
+        folder,
+        '--folder',
+        folder,
+      ],
+    })
+    const task = await hydra.task({ key: 'live-badges' })
+    const selector = await openChat({
+      hydraId: hydra.id,
+      taskId: task.id,
+    })
+    await recordBadges({
+      selectors: {
+        pill: `${selector} .activity-text`,
+        task: `${selector} [aria-label="Worker status"]`,
+      },
+    })
+
+    const firstSend = await chrome({
+      script: `
+      await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Start the never-attached worker');
+      await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+      await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
+      console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
+    `,
+    })
+    expect(JSON.parse(firstSend)).toEqual({
+      pill: 'Starting…',
+      task: 'Starting…',
+    })
+    expect((await hydra.task({ key: 'live-badges' })).agent).toBeUndefined()
+    await releaseSends()
+    await status({
+      selector,
+      label: 'Project live-badges is not a git repository',
+    })
+    expect((await hydra.task({ key: 'live-badges' })).agent).toBeUndefined()
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        task.id,
+        '--in-place',
+        '--harness',
+        'claude',
+      ],
+    })
+    await until({
+      what: 'the in-place worker start to end',
+      check: async () => (await hydra.task({ key: 'live-badges' })).status === 'idle',
+    })
+
+    for (const {
+      text,
+      label,
+      tool,
+    } of turns) {
+      const turn = pnyx.claude.plan({
+        hydra: hydra.id,
+        tool,
+        hold: true,
+      })
+
+      try {
+        const started = await chrome({
+          script: `
+          await page.eval(() => { window.badgeFrames = []; });
+          await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, ${JSON.stringify(text)});
+          await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+          await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
+          console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
+        `,
+        })
+        expect(JSON.parse(started)).toEqual({
           pill: 'Starting…',
           task: 'Starting…',
         })
+
+        await releaseSends()
         await status({
           selector,
           label,
         })
         const sampled = await chrome({
           script: `
-          await page.wait('.hydra-chat [aria-label="Hydra status"][data-status="${label}"]', 5000);
           await page.eval(() => new Promise(requestAnimationFrame));
           console.log(JSON.stringify(await page.eval(() => {
-            const frames = window.badgeFrames;
+            const frames = window.badgeFrames.slice(window.sendFrames.worker);
             const active = ['Starting…', 'Thinking', 'Working'];
             return {
-              frames: frames.filter(frame => frame.hydra === ${JSON.stringify(label)} && frame.pill === ${JSON.stringify(label)} && frame.task === ${JSON.stringify(label)}).length,
-              interrupted: {
-                hydra: frames.slice(window.sendFrames.hydra).filter(frame => !active.includes(frame.hydra)),
-                pill: frames.slice(window.sendFrames.worker).filter(frame => !active.includes(frame.pill)),
-                task: frames.slice(window.sendFrames.worker).filter(frame => !active.includes(frame.task)),
-              },
-              workerDisagreements: frames.slice(window.sendFrames.worker).filter(frame => frame.pill !== frame.task),
+              active: frames.filter(frame => frame.pill === ${JSON.stringify(label)} && frame.task === ${JSON.stringify(label)}).length,
+              interrupted: frames.filter(frame => !active.includes(frame.pill) || !active.includes(frame.task)),
+              disagreements: frames.filter(frame => frame.pill !== frame.task),
             };
           })));
         `,
         })
-        const sample = JSON.parse(sampled)
-        expect(sample.frames).toBeGreaterThan(0)
-        expect(sample.workerDisagreements).toEqual([])
-        expect(sample.interrupted).toEqual({
-          hydra: [],
-          pill: [],
-          task: [],
-        })
+        expect(JSON.parse(sampled).active).toBeGreaterThan(0)
+        expect(JSON.parse(sampled).interrupted).toEqual([])
+        expect(JSON.parse(sampled).disagreements).toEqual([])
         expect((await hydra.task({ key: 'live-badges' })).status).toBe('running')
       } finally {
-        hydraTurn.release()
-        workerTurn.release()
+        turn.release()
       }
 
       await status({
@@ -208,10 +317,7 @@ test(
         label: 'Idle',
       })
       const dots = await chrome({
-        script: `
-        await page.wait('.hydra-chat [aria-label="Hydra status"][data-status="Idle"]', 5000);
-        console.log(await page.eval(() => document.querySelectorAll('.chat-running-status .working-dots').length));
-      `,
+        script: `console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${selector} .chat-running-status .working-dots`)}).length));`,
       })
       expect(dots).toBe('0')
       expect((await hydra.task({ key: 'live-badges' })).status).toBe('idle')
@@ -223,6 +329,7 @@ test(
   'a refused turn replaces the pending Hydra and worker badges with its error',
   async () => {
     const hydra = await pnyx.hydra()
+    const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
     const owner = await hydra.page()
     await owner.send({
       name: 'hydra-agent',
@@ -252,13 +359,17 @@ test(
       match: ({ text }) => text.includes('Refuse worker badge turn'),
       refuse: true,
     })
+    await chrome({
+      script: `
+      await page.fill('${hydraChat} [aria-label="Reply to Hydra"]', 'Refuse Hydra badge turn');
+      await page.click('${hydraChat} [aria-label="Send reply"]');
+    `,
+    })
     const result = await chrome({
       script: `
-      await page.fill('[aria-label="Reply to Hydra"]', 'Refuse Hydra badge turn');
-      await page.click('.hydra-chat [aria-label="Send reply"]');
-      await page.fill('[aria-label="Message worker"]', 'Refuse worker badge turn');
+      await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Refuse worker badge turn');
       await page.click('[aria-label="Send to worker"]');
-      await page.wait('.hydra-chat [aria-label="Hydra status"][data-status*="refused this turn"]', 5000);
+      await page.wait('${hydraChat} [aria-label="Hydra status"][data-status*="refused this turn"]', 5000);
       await page.wait(${JSON.stringify(`${selector} .agent-activity[aria-label*="refused this turn"]`)}, 5000);
       await page.wait(${JSON.stringify(`${selector} [aria-label="Worker status"][data-status*="refused this turn"]`)}, 5000);
       console.log(await page.eval(() => document.querySelectorAll('.chat-running-status .working-dots').length));
@@ -302,16 +413,16 @@ test(
     try {
       await chrome({
         script: `
-        await page.fill('[aria-label="Reply to Hydra"]', 'Recover Hydra badge turn');
-        await page.click('.hydra-chat [aria-label="Send reply"]');
-        await page.wait('.hydra-chat [data-status="Thinking"]', 5000);
+        await page.fill('${hydraChat} [aria-label="Reply to Hydra"]', 'Recover Hydra badge turn');
+        await page.click('${hydraChat} [aria-label="Send reply"]');
+        await page.wait('${hydraChat} [data-status="Thinking"]', 5000);
       `,
       })
     } finally {
       recovery.release()
     }
 
-    await chrome({ script: 'await page.wait(\'.hydra-chat [data-status="Idle"]\', 5000);' })
+    await chrome({ script: `await page.wait('${hydraChat} [data-status="Idle"]', 5000);` })
   },
 )
 
