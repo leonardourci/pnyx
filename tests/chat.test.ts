@@ -1420,10 +1420,11 @@ test(
         ),
         'utf8',
       ))
-      // Harnesses and Pnyx's own skill catalog read the frontmatter as YAML.
+      const frontmatter = /^---\n([\s\S]*?)\n---/.exec(installed)?.[1] ?? ''
+
       expect(
-        parse(/^---\n([\s\S]*?)\n---/.exec(installed)?.[1] ?? ''),
-        skill,
+        parse(frontmatter),
+        `${skill} frontmatter`,
       ).toMatchObject({
         name: skill,
         description: expect.any(String),
@@ -1465,7 +1466,7 @@ test(
       skill,
       'references',
     )
-    const installed = references({ skill: ORCHESTRATE_SKILL })
+    const withReferences = references({ skill: ORCHESTRATE_SKILL })
     const withoutReferences = references({ skill: MANAGE_WORKERS_SKILL })
     mkdirSync(
       withoutReferences,
@@ -1473,7 +1474,7 @@ test(
     )
 
     for (const folder of [
-      installed,
+      withReferences,
       withoutReferences,
     ]) {
       writeFileSync(
@@ -1488,7 +1489,7 @@ test(
     await hydra.chat({ text: 'hello again' })
 
     for (const folder of [
-      installed,
+      withReferences,
       withoutReferences,
     ]) {
       expect(

@@ -11,7 +11,6 @@ import { taskMention } from '#hydra/mentions.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
-// The fixed words a decision line names its item with; the orchestrator skill lists them.
 type DecisionKind = 'owner question' | 'worker question' | 'permission' | 'blocking prompt' | 'approved merge'
 
 export interface OpenDecision {

@@ -15,7 +15,7 @@ import { cardLanding, failedChecks, pendingChecks, ranChecks, type Link } from '
 import { columnCards } from '#tasks/select.ts'
 import { taskMention } from './mentions.ts'
 
-// The fixed words a reason line names its fact with; the orchestrator skill and docs/pnyx-axi.md list them.
+// The fixed words a reason line names its fact with; docs/pnyx-axi.md lists them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
   | 'instruction unread' | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'

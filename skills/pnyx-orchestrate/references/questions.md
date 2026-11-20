@@ -18,4 +18,4 @@ The owner answers on the card. To record an answer they wrote in chat, run `task
 
 ## Talking it over first
 
-When the owner asks to discuss before work starts, hold the card (`task create --hold`, or `task hold <task> --reason "<topic>"` on an existing one). Once your playback is complete, ask `task ask <task> --to owner --kind go --question "<go question?>" --context "<what Go changes, next action and [card](pnyx-task:<task-id>)>"`; the owner's Go releases the hold, as does `task release <task> --from-message <message-id> --reason "<why>"` for a newer message that gives the go.
+When the owner asks to discuss before work starts, hold the card (`task create --hold`, or `task hold <task> --reason "<topic>"` on an existing one). Once your playback is complete, ask `task ask <task> --to owner --kind go --question "<go question?>" --context "<what Go changes, next action and [card](pnyx-task:<task-id>)>"`; the owner's Go releases the hold, as does `task release <task> --from-message <message-id> --reason "<why>"` for a newer message that gives the go. Then start its worker.
