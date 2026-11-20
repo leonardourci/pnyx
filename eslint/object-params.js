@@ -16,6 +16,11 @@ const arrayCallbacks = new Set([
   'forEach',
   'from',
 ])
+const playwrightCallbacks = [
+  'evaluate',
+  'routeWebSocket',
+  'onMessage',
+]
 const externalCallbacks = new Set([
   'then',
   'catch',
@@ -35,10 +40,7 @@ const externalCallbacks = new Set([
   'beforeEach',
   // Zero's query builder
   'related',
-  // Playwright
-  'evaluate',
-  'routeWebSocket',
-  'onMessage',
+  ...playwrightCallbacks,
 ])
 const callbackCalls = new Set([
   'test',

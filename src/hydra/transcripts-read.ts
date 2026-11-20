@@ -855,7 +855,6 @@ type ThreadRead = {
   homes: string[]
   before?: string
   selectedSession?: boolean
-  // Every tool and thinking row, for a page kept open that shows them by the view each time it is sent.
   allTraces?: boolean
 }
 

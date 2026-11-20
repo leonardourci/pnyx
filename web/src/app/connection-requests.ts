@@ -416,7 +416,6 @@ export function createConnectionRequests({
       }
 
       const cancelledSearch = request.name === 'oracle' && message.code === 'CANCELLED'
-      // A newer read of the same chat brings the rows this one would have.
       const supersededRead = request.name === 'thread' && message.code === 'THREAD_SUPERSEDED'
 
       if (!cancelledSearch && !supersededRead) {

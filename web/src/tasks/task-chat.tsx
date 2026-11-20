@@ -29,8 +29,7 @@ type WorkerMessage = ChatEntry & { targetAgent?: AgentConfig }
 
 type ReplyResource = ReturnType<typeof createPendingResource<WorkerMessage[], WorkerMessage>>
 const replies = new Map<string, ReplyResource>()
-// Workers have no wake queue; only Hydra's status line counts queued updates.
-const NO_UPDATES: [] = []
+const NO_WAKE_QUEUE: [] = []
 
 export function TaskChat({
   hydraId,
@@ -347,8 +346,8 @@ export function TaskChat({
       since={since}
       running
       label="Worker is working"
-      reading={NO_UPDATES}
-      waiting={NO_UPDATES}
+      reading={NO_WAKE_QUEUE}
+      waiting={NO_WAKE_QUEUE}
       state={state}
     >
       {showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}

@@ -6,9 +6,6 @@ import type { ChatScroll } from './chat-scroll.ts'
 import type { OlderRows } from './chat-view.tsx'
 import { loadEarlierMessages, threadArgs } from './conversation-history.ts'
 
-// How a chat reads its conversation, the same for Hydra's and each task's: one read when it connects, which restores
-// the rows it had loaded, then older rows as the owner reads up or opens a comment on an older message. Pages arrive
-// through the connection's thread store.
 export function useChatThread({
   card,
   session,
@@ -18,7 +15,6 @@ export function useChatThread({
   scroll,
 }: {
   card: string
-  // A new session starts the conversation over.
   session?: string
   page: ThreadPage | null | undefined
   command: Command
@@ -41,8 +37,7 @@ export function useChatThread({
   useLayoutEffect(() => {
     loaded.current = page
   })
-  // An older read beside a restoring opening read would supersede it and land on a subscription without rows.
-  const opening = useRef<Promise<void>>(Promise.resolve())
+  const openingRead = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(
     () => {
@@ -78,7 +73,7 @@ export function useChatThread({
         }
       }
 
-      opening.current = open()
+      openingRead.current = open()
 
       return () => {
         cancelled = true
@@ -121,7 +116,7 @@ export function useChatThread({
     setLoadingEarlier(true)
 
     try {
-      await opening.current
+      await openingRead.current
       await loadEarlierMessages({
         page: loaded.current,
         until,
@@ -134,7 +129,7 @@ export function useChatThread({
   }
 
   const loadComment = async ({ comment }: { comment: ChatComment }) => {
-    scroll.read()
+    scroll.stopFollowing()
     const selector = `[data-comment-id="${CSS.escape(comment.id)}"] textarea`
 
     if (scroll.content.current?.querySelector(selector)) {

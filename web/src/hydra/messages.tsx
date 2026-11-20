@@ -1129,7 +1129,6 @@ export function Messages({
           const rowKey = entry.renderKey ?? entry.id
 
           return (
-            // content-visibility contains each row's paint, so focus rings and shadows may reach into the gap around it.
             <div key={rowKey} className="message-row flex flex-col gap-(--message-gap) [content-visibility:auto] [contain-intrinsic-size:auto_var(--spacing-chat-row)] [overflow-clip-margin:var(--message-gap)]">
               <MessageRow
                 entry={entry}

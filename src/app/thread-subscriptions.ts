@@ -54,7 +54,6 @@ export type Subscription = {
   sent?: string
   // The last page versioned for the tab, which the next delta is computed from.
   versioned?: ThreadPage
-  // A count of explicit reads, so a read or refresh that a newer read overtook is dropped.
   readVersion?: number
 }
 
@@ -172,7 +171,6 @@ export function createThreadSubscriptions({
     },
   })
 
-  // A task's loaded pages were each read with the traces its view showed then, so its page keeps only those shown now.
   const shownRows = ({
     card,
     page,
@@ -212,7 +210,6 @@ export function createThreadSubscriptions({
     // A push the tab did not ask for is skipped when the page has not changed.
     push?: boolean
   }): PreparedThread | undefined => {
-    // Every chat keeps the pages its tab loaded, so an older page joins what the tab already shows.
     sub.history = mergeThreadPages({
       before: sub.history ?? null,
       latest: page,
@@ -371,7 +368,6 @@ export function createThreadSubscriptions({
           view: effectiveView({ state: state() }),
           card: HYDRA_CARD,
         })
-        // Hydra's view merges the latest page into its loaded history itself.
         sub.base = {
           signature,
           page,

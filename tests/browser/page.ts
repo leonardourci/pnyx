@@ -1,16 +1,17 @@
-// The owner's page for the browser checks: the installed Chrome, headless, with its own profile and no Keychain prompt.
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { afterAll, afterEach } from 'vitest'
 import { localToken } from '#app/server-state.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
 import { zeroReady } from '../setup/zero.ts'
 
-// Chrome started under a scratch HOME on macOS asks for a login keychain on the owner's screen without the first two;
-// without smooth scrolling a wheel step lands at once.
-const CHROME_FLAGS = [
+const NO_KEYCHAIN_PROMPT = [
   '--use-mock-keychain',
   '--password-store=basic',
-  '--disable-smooth-scrolling',
+]
+const INSTANT_WHEEL_STEPS = ['--disable-smooth-scrolling']
+const CHROME_FLAGS = [
+  ...NO_KEYCHAIN_PROMPT,
+  ...INSTANT_WHEEL_STEPS,
 ]
 const VIEWPORT = {
   width: 1440,
@@ -20,7 +21,6 @@ const VIEWPORT = {
 let browser: Browser | undefined
 const contexts = new Set<BrowserContext>()
 
-// A page left open keeps rendering and would compete with the next check's frames.
 afterEach(async () => {
   await Promise.all([...contexts].map(context => context.close()))
   contexts.clear()
@@ -34,16 +34,13 @@ export async function openHydra({
   port,
   hydraId,
   reducedMotion = false,
-  prepare,
+  beforeLoad,
 }: {
   port: number
   hydraId: string
-  // Rows then appear without their entrance animation, so only layout moves them.
   reducedMotion?: boolean
-  // Runs before the page loads, such as installing a recorder.
-  prepare?({ page }: { page: Page }): Promise<void>
+  beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
-  // A page opened before zero-cache's first replica is ready waits out Zero's reconnect delay.
   await zeroReady({
     url: `http://127.0.0.1:${port}/zero/`,
     cookie: `${zeroCookieName({ port })}=${localToken()}`,
@@ -63,7 +60,7 @@ export async function openHydra({
   })
   contexts.add(context)
   const page = await context.newPage()
-  await prepare?.({ page })
+  await beforeLoad?.({ page })
   await page.goto(`http://127.0.0.1:${port}/hydra/${hydraId}/`)
 
   return page

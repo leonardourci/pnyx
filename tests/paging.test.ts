@@ -40,8 +40,7 @@ interface UpdatesReceipt {
 }
 
 const EXCHANGES = 30
-// More than a task's first page holds.
-const WORKER_NOTES = 70
+const NOTES_PAST_FIRST_PAGE = 70
 // A reply larger than one transport part, which the page must still read whole.
 const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End of notes.`
 
@@ -137,12 +136,11 @@ test(
       ],
     ).flat())
 
-    // A comment on question 15 carries its message and time; a fresh tab opens on the latest page.
     const commented = loaded.conversation.entries.find(entry => entry.text === 'question 15')!
-    const reader = await hydra.page()
+    const freshTab = await hydra.page()
 
     const readPage = async ({ args }: { args: string[] }) => {
-      const receipt = await reader.send({
+      const receipt = await freshTab.send({
         name: 'thread',
         args: [
           '$hydra',
@@ -164,7 +162,7 @@ test(
         return revealed
       },
     })
-    reader.close()
+    freshTab.close()
     const revealedTexts = revealed.conversation?.entries.map(entry => entry.text)
     expect(revealedTexts).toContain('question 15')
     expect(revealedTexts).not.toContain('question 1')
@@ -186,7 +184,6 @@ test(
     })
 
     try {
-      // A tool call older than the first page, so only the page read back holds it; Focus mode is on while it loads.
       await appendToolCalls({
         session: worker,
         tools: 1,
@@ -194,7 +191,7 @@ test(
       await appendRecords({
         session: worker,
         records: Array.from(
-          { length: WORKER_NOTES },
+          { length: NOTES_PAST_FIRST_PAGE },
           (
             _,
             index,
@@ -257,7 +254,7 @@ test(
       page.close()
       const everyNote = [
         ...Array.from(
-          { length: WORKER_NOTES },
+          { length: NOTES_PAST_FIRST_PAGE },
           (
             _,
             index,
@@ -267,7 +264,6 @@ test(
       ]
       expect(notes()).toEqual(everyNote)
 
-      // A reconnecting tab restores what it had loaded.
       const reconnected = await hydra.page()
       const restored = await reconnected.send({
         name: 'thread',
@@ -280,8 +276,7 @@ test(
           }),
         ],
       }) as unknown as { thread: { entries: Entry[] } }
-      // An option the server does not know reads the latest page instead of being refused.
-      const recent = await reconnected.send({
+      const unknownOption = await reconnected.send({
         name: 'thread',
         args: [
           'notes',
@@ -290,7 +285,7 @@ test(
       }) as unknown as { thread?: { entries: Entry[] } }
       reconnected.close()
       expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
-      expect(recent.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
+      expect(unknownOption.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
     } finally {
       await focusMode({ on: true })
     }

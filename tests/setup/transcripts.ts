@@ -2,8 +2,11 @@ import { appendFileSync } from 'node:fs'
 import { transcriptPath } from '#workers/claude.ts'
 import type { AgentSession } from './agents.ts'
 
-// Appends records to a Claude session's transcript, one millisecond apart, and waits out their timestamps so the next
-// message sorts after them.
+const clockPast = ({ time }: { time: number }) => new Promise(resolve => setTimeout(
+  resolve,
+  time - Date.now() + 1,
+))
+
 export async function appendRecords({
   session,
   records,
@@ -14,10 +17,13 @@ export async function appendRecords({
     content: unknown
   }[]
 }) {
-  let time = Date.now()
-  const lines = records.map(record => JSON.stringify({
+  const start = Date.now()
+  const lines = records.map((
+    record,
+    index,
+  ) => JSON.stringify({
     type: record.type,
-    timestamp: new Date(time += 1).toISOString(),
+    timestamp: new Date(start + index + 1).toISOString(),
     message: {
       role: record.type,
       content: record.content,
@@ -31,13 +37,9 @@ export async function appendRecords({
     }),
     `${lines.join('\n')}\n`,
   )
-  await new Promise(resolve => setTimeout(
-    resolve,
-    time - Date.now() + 1,
-  ))
+  await clockPast({ time: start + records.length })
 }
 
-// Appends a long working stretch to a Claude session's transcript.
 export async function appendToolCalls({
   session,
   tools,

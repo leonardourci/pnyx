@@ -82,7 +82,6 @@ export function observedStatus({
     reasons.push(wait)
   }
 
-  // A status names no tool: the chat shows the calls, and only while Focus mode is off.
   if (work?.runningTools.length) {
     add({
       kind: 'working',

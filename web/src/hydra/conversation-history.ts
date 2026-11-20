@@ -30,17 +30,14 @@ function reaches({
     ...page.entries,
     ...page.conversation?.entries ?? [],
   ]
-  // A comment carries its message's time, so a range older than that holds the message or never will.
-  const passed = until !== undefined && earliest !== undefined && earliest < until
+  const passedMessageTime = until !== undefined && earliest !== undefined && earliest < until
 
   return holdsMessage({
     entries: rows,
     message,
-  }) || passed
+  }) || passedMessageTime
 }
 
-// Reads older pages until the chat reaches a time or holds a message. Each page the server returns holds every row the
-// chat loaded, and reaches the chat through the connection's thread store.
 export async function loadEarlierMessages({
   page,
   until,

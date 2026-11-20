@@ -24,10 +24,7 @@ const IMPORT_RESTRICTIONS = [
 const STYLED_WEB = ['web/**/*.{ts,tsx}']
 
 // Chat rebuild removes this temporary styling exception and its scoped file list.
-const CHAT_STYLES = [
-  'web/src/hydra/**/*.{ts,tsx}',
-  'web/src/tasks/worker-chat.tsx',
-]
+const CHAT_STYLES = ['web/src/hydra/**/*.{ts,tsx}']
 
 const FIXED_STYLE_VALUE = ':matches([value.type="Literal"], [value.type="UnaryExpression"][value.argument.type="Literal"], [value.type="TemplateLiteral"][value.expressions.length=0])'
 const STYLE_RESTRICTIONS = [

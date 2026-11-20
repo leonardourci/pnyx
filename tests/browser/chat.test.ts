@@ -12,34 +12,27 @@ beforeAll(async () => {
 
 const EXCHANGES = 12
 const WORKER_MESSAGES = 40
-// Painted frames after a load for its rows to come into view and take their size, and after one change, a new row or
-// a Jump, for it to paint.
 const SETTLING_FRAMES = 10
 const ARRIVAL_FRAMES = 2
-// Enough lines that the conversation is several screens tall.
-const paragraph = ({ label }: { label: string }) => `${label}\n\n${'A line of the release notes that fills the width. '.repeat(6)}`
+const tallParagraph = ({ label }: { label: string }) => `${label}\n\n${'A line of the release notes that fills the width. '.repeat(6)}`
 
 interface Frame {
   label: string
   fromBottom: number
   scrolls: boolean
-  // The first row the chat has loaded, shown or not.
-  first?: string
-  // Each shown row's distance from the bottom of its chat.
-  rows: Record<string, number>
+  firstLoaded?: string
+  shownFromBottom: Record<string, number>
 }
 
-// Records, for every frame from the first, where each chat sits and where its rows are as painted: the sample runs
-// after the frame, and a frame whose page changed after it rendered is not one the owner saw.
-function recordChats() {
+function recordPaintedChats() {
   const frames: Frame[] = []
   Object.assign(
     window,
     { chatFrames: frames },
   )
-  let changed = false
+  let changedSinceFrame = false
   new MutationObserver(() => {
-    changed = true
+    changedSinceFrame = true
   }).observe(
     document,
     {
@@ -50,8 +43,8 @@ function recordChats() {
     },
   )
 
-  const sample = () => {
-    if (changed) {
+  const samplePaintedFrame = () => {
+    if (changedSinceFrame) {
       return
     }
 
@@ -69,8 +62,8 @@ function recordChats() {
           label: chat.getAttribute('aria-label')!,
           fromBottom: chat.scrollHeight - chat.clientHeight - chat.scrollTop,
           scrolls: chat.scrollHeight > chat.clientHeight + 1,
-          first: loaded[0]?.dataset.entryId,
-          rows: Object.fromEntries(shown.map(row => [
+          firstLoaded: loaded[0]?.dataset.entryId,
+          shownFromBottom: Object.fromEntries(shown.map(row => [
             row.dataset.entryId!,
             Math.round(box.bottom - row.getBoundingClientRect().bottom),
           ])),
@@ -79,12 +72,12 @@ function recordChats() {
     }
   }
 
-  const painted = new MessageChannel()
-  painted.port1.onmessage = sample
+  const afterPaint = new MessageChannel()
+  afterPaint.port1.onmessage = samplePaintedFrame
 
   const frame = () => {
-    changed = false
-    painted.port2.postMessage(null)
+    changedSinceFrame = false
+    afterPaint.port2.postMessage(null)
     requestAnimationFrame(frame)
   }
 
@@ -100,16 +93,15 @@ const framesOf = async ({
 }) => (await page.evaluate(() => (window as unknown as { chatFrames: Frame[] }).chatFrames))
   .filter(frame => frame.label === label)
 
-// Rows that moved from one frame to the next while the owner did nothing.
-const moves = ({ frames }: { frames: Frame[] }) => frames.slice(1).flatMap((
+const movedRows = ({ frames }: { frames: Frame[] }) => frames.slice(1).flatMap((
   frame,
   index,
-) => Object.entries(frame.rows)
+) => Object.entries(frame.shownFromBottom)
   .filter(([
     id,
     offset,
   ]) => {
-    const before = frames[index]!.rows[id]
+    const before = frames[index]!.shownFromBottom[id]
 
     return before !== undefined && Math.abs(before - offset) > 1
   })
@@ -158,7 +150,7 @@ const exchange = async ({
   pnyx.claude.plan({
     hydra: hydra.id,
     text: `question ${number}`,
-    reply: paragraph({ label: `answer ${number}` }),
+    reply: tallParagraph({ label: `answer ${number}` }),
   })
   const session = await hydra.chat({ text: `question ${number}` })
   const turn = session.received.findLastIndex(text => text.includes(`question ${number}`))
@@ -168,8 +160,7 @@ const exchange = async ({
   })
 }
 
-// A Hydra whose conversation is several screens and more than one page long.
-async function seededHydra() {
+async function hydraWithLongConversation() {
   const hydra = await pnyx.hydra()
 
   for (let number = 1; number <= EXCHANGES; number++) {
@@ -195,7 +186,7 @@ const workerNotes = ({
     index,
   ) => ({
     type: 'assistant' as const,
-    content: paragraph({ label: `worker note ${from + index}` }),
+    content: tallParagraph({ label: `worker note ${from + index}` }),
   }),
 )
 
@@ -217,7 +208,7 @@ const setFocusMode = ({
 test(
   'Hydra\'s chat and a task\'s chat open on their latest row, hold still and keep the end in view as rows arrive, in a card as tall as its column',
   async () => {
-    const hydra = await seededHydra()
+    const hydra = await hydraWithLongConversation()
     const { worker } = await hydra.startTask({ key: 'notes' })
     await appendRecords({
       session: worker,
@@ -231,8 +222,8 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
       reducedMotion: true,
-      prepare: async ({ page }) => {
-        await page.addInitScript(recordChats)
+      beforeLoad: async ({ page }) => {
+        await page.addInitScript(recordPaintedChats)
       },
     })
     await shownText({
@@ -251,7 +242,7 @@ test(
     expect(opened.length).toBeGreaterThan(0)
     expect(opened.at(-1)!.scrolls).toBe(true)
     expect(offEnd({ frames: opened })).toEqual([])
-    expect(moves({ frames: opened })).toEqual([])
+    expect(movedRows({ frames: opened })).toEqual([])
 
     await exchange({
       hydra,
@@ -294,7 +285,7 @@ test(
     expect(taskOpened.length).toBeGreaterThan(0)
     expect(taskOpened.at(-1)!.scrolls).toBe(true)
     expect(offEnd({ frames: taskOpened })).toEqual([])
-    expect(moves({ frames: taskOpened })).toEqual([])
+    expect(movedRows({ frames: taskOpened })).toEqual([])
     const heights = await card.evaluate(element => {
       const column = element.closest<HTMLElement>('.column-cards')!
       const css = getComputedStyle(column)
@@ -394,7 +385,6 @@ test(
         await line.getByText('Running a command').waitFor()
       }
 
-      // The card's status explains itself on hover or focus, and never names a tool: the chat shows the calls.
       await page.locator('[data-task] .agent-activity').focus()
       expect(await page.getByRole('tooltip').textContent()).toBe('working')
 
@@ -424,18 +414,16 @@ test(
 test(
   'reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest',
   async () => {
-    const hydra = await seededHydra()
-    // The first older-page read is refused. The answer to the next waits here, so the reading position paints before
-    // the rows arrive.
-    let refused = false
+    const hydra = await hydraWithLongConversation()
+    let refusedFirstOlderRead = false
     const olderReads = new Set<string>()
-    const heldAnswers: (() => void)[] = []
+    const heldOlderAnswers: (() => void)[] = []
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
       reducedMotion: true,
-      prepare: async ({ page }) => {
-        await page.addInitScript(recordChats)
+      beforeLoad: async ({ page }) => {
+        await page.addInitScript(recordPaintedChats)
         await page.routeWebSocket(
           /\/ws(\?|$)/,
           socket => {
@@ -443,14 +431,15 @@ test(
             socket.onMessage(message => {
               const sent = JSON.parse(String(message)) as {
                 scope?: string
-                id?: string
+                id: string
                 name?: string
                 args?: string[]
               }
-              const olderRead = sent.name === 'thread' && sent.args?.length === 2 && !sent.args[1]!.startsWith('--')
+              const cursor = sent.args?.length === 2 ? sent.args[1] : undefined
+              const olderRead = sent.name === 'thread' && cursor !== undefined && !cursor.startsWith('--')
 
-              if (olderRead && !refused) {
-                refused = true
+              if (olderRead && !refusedFirstOlderRead) {
+                refusedFirstOlderRead = true
                 socket.send(JSON.stringify({
                   type: 'error',
                   scope: sent.scope,
@@ -463,7 +452,7 @@ test(
               }
 
               if (olderRead) {
-                olderReads.add(sent.id!)
+                olderReads.add(sent.id)
               }
 
               server.send(message)
@@ -472,7 +461,7 @@ test(
               const answer = JSON.parse(String(message)) as { id?: string }
 
               if (answer.id !== undefined && olderReads.has(answer.id)) {
-                heldAnswers.push(() => socket.send(message))
+                heldOlderAnswers.push(() => socket.send(message))
               } else {
                 socket.send(message)
               }
@@ -497,11 +486,10 @@ test(
       box.x + box.width / 2,
       box.y + box.height / 2,
     )
-    // Up to the very top, where the browser's own scroll anchoring does not hold the rows on screen.
-    const distance = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
+    const pastTheTop = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
     await page.mouse.wheel(
       0,
-      -distance,
+      -pastTheTop,
     )
     await conversation.getByRole('alert')
       .filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
@@ -512,7 +500,7 @@ test(
       .click()
     await until({
       what: 'the older page to be read again',
-      check: () => heldAnswers.length > 0,
+      check: () => heldOlderAnswers.length > 0,
     })
     await until({
       what: 'the reading position to paint',
@@ -525,13 +513,13 @@ test(
       page,
       label: 'Hydra conversation',
     })).length - 1
-    heldAnswers.splice(0).forEach(release => release())
+    heldOlderAnswers.splice(0).forEach(release => release())
     await until({
       what: 'older messages to load above',
       check: async () => (await framesOf({
         page,
         label: 'Hydra conversation',
-      })).at(-1)!.first !== loadedFirst,
+      })).at(-1)!.firstLoaded !== loadedFirst,
     })
     await nextFrames({
       page,
@@ -541,9 +529,11 @@ test(
       page,
       label: 'Hydra conversation',
     })).slice(reading)
-    const shared = Object.keys(frames[0]!.rows).filter(id => frames.at(-1)!.rows[id] !== undefined)
+    const firstShown = frames[0]!.shownFromBottom
+    const lastShown = frames.at(-1)!.shownFromBottom
+    const shared = Object.keys(firstShown).filter(id => lastShown[id] !== undefined)
     expect(shared.length).toBeGreaterThan(0)
-    expect(moves({ frames })).toEqual([])
+    expect(movedRows({ frames })).toEqual([])
 
     await page.getByRole(
       'button',

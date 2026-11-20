@@ -78,7 +78,6 @@ export interface TurnPlan {
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean
-  // Claude calls this tool first and is still running it until the turn's release.
   tool?: {
     id: string
     name: string

@@ -11,8 +11,6 @@ const HISTORY_FOCUS_EVENTS = [
   'focusout',
 ]
 
-// Whether a chat follows new messages. Paging emits layout scrolls near the bottom, so only the owner's
-// scrolls, an explicit stop or a resume change it, and each change reports whether the chat is away.
 export function createChatFollow({ changed }: { changed({ away }: { away: boolean }): void }) {
   let following = true
   let lastTop = 0
@@ -54,9 +52,9 @@ export function createChatFollow({ changed }: { changed({ away }: { away: boolea
       lastTop = top
 
       if (owner) {
-        // A fling or a scrollbar drag keeps scrolling after its last input event. While the chat follows, its own
-        // scrolls to the end must not renew the window, or a later layout scroll would count as the owner's.
-        if (!following) {
+        const continuesOwnerScroll = !following
+
+        if (continuesOwnerScroll) {
           inputAt = at
         }
 

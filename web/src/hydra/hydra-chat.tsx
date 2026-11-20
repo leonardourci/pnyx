@@ -494,7 +494,7 @@ export function HydraChat({
   )
 
   const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
-    scroll.read()
+    scroll.stopFollowing()
 
     try {
       const selector = `[data-entry-id="${CSS.escape(decision.id)}"]`

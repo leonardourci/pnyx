@@ -4,13 +4,11 @@ import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatScroll } from './chat-scroll.ts'
 
-// The next older rows load once the first row comes within a screen and a half above the visible ones.
-const OLDER_MARGIN = '150% 0px 0px 0px'
+const SCREEN_AND_A_HALF_ABOVE = '150% 0px 0px 0px'
 
 export const CHAT_FRAME = 'chat-frame [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto'
 
 export interface OlderRows {
-  // Where the next older rows start; none once the conversation's first row is loaded.
   cursor?: string
   load({ cursor }: { cursor: string }): Promise<void>
 }
@@ -29,7 +27,6 @@ function OlderSentinel({
     loading,
     setLoading,
   ] = useState(false)
-  // A read that failed is not sent again on its own; Retry or a reconnect, which drops older, sends it again.
   const [
     failure,
     setFailure,
@@ -71,8 +68,9 @@ function OlderSentinel({
           try {
             await latestOlder.current?.load({ cursor })
           } catch (error) {
-            // A newer read of the same chat replaced this one, and its page carries these rows.
-            if (error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED') {
+            const superseded = error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED'
+
+            if (superseded) {
               return
             }
 
@@ -86,7 +84,7 @@ function OlderSentinel({
         },
         {
           root,
-          rootMargin: OLDER_MARGIN,
+          rootMargin: SCREEN_AND_A_HALF_ABOVE,
         },
       )
       observer.observe(element)
@@ -158,9 +156,7 @@ export function Chat({
   title: string
   scroll: ChatScroll
   older?: OlderRows
-  // Older rows another action is loading, such as the message of a comment the owner opened.
   loadingEarlier?: boolean
-  // Why the conversation could not be read.
   error?: string
   status?: ReactNode
   children: ReactNode

@@ -107,7 +107,6 @@ function ContextIndex({
   )
 }
 
-// An open card's body: the chat alone, or the details above the chat, beside it once the card is wide enough.
 const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
 const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
 
