@@ -1,7 +1,7 @@
+import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
-import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
@@ -1877,29 +1877,13 @@ test(
   'worker log status and complete lines survive restarts',
   async () => {
     const hydra = await pnyx.hydra()
-    const nativeWatch = fs.watch
     const taskRoot = join(
       process.env.PNYX_HOME!,
       'hydras',
       hydra.id,
       'tasks',
     )
-    onTestFinished(() => {
-      fs.watch = nativeWatch
-      syncBuiltinESMExports()
-    })
-    fs.watch = ((...args: unknown[]) => {
-      if (String(args[0]).startsWith(`${taskRoot}/`) && typeof args.at(-1) === 'function') {
-        args[args.length - 1] = () => {}
-      }
-
-      return Reflect.apply(
-        nativeWatch,
-        fs,
-        args,
-      )
-    }) as typeof fs.watch
-    syncBuiltinESMExports()
+    quietNativeWatch({ root: taskRoot })
     const { worker } = await hydra.startTask({ key: 'facts' })
     await until({
       what: 'idle worker status',
