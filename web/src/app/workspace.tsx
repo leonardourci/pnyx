@@ -1290,7 +1290,7 @@ export function HydraView({
 
                 <TaskReferencesProvider references={references} openTask={revealTask}>
                   <div className="hydra-main flex min-h-0 w-max flex-none flex-col">
-                    <div className="work-area relative flex inline h-full min-h-0 min-w-0 flex-1 overflow-visible">
+                    <div className="work-area relative flex h-full min-h-0 min-w-0 flex-1 overflow-visible">
                       <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
                         <div data-sort-surface={`project-columns:${navigation.hydraId}`} className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0" aria-label="Work columns">
                           <SortGroup id={`project-columns:${navigation.hydraId}`} items={columns.map(column => column.id)}>
