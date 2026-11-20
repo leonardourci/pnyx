@@ -5,7 +5,7 @@ export function ModelPicker({
   className = '',
   ...props
 }: ComponentProps<typeof Popover>) {
-  return <Popover {...props} className={`account-model-picker [&_.popover-panel]:h-model-menu-height [&_.popover-panel]:w-model-menu [&_.popover-panel]:overflow-hidden [&_.popover-panel]:p-0 [&>.button]:min-h-9 [&>.button]:gap-1.75 [&>.button]:px-1.25 [&>.button]:py-0.5 [&>.button]:text-left in-[.settings-page]:[&>.button]:max-w-full ${className}`} />
+  return <Popover {...props} className={`account-model-picker [&_.popover-panel]:h-model-menu-height [&_.popover-panel]:w-model-menu [&_.popover-panel]:p-0 [&>.button]:min-h-9 [&>.button]:gap-1.75 [&>.button]:px-1.25 [&>.button]:py-0.5 [&>.button]:text-left in-[.settings-page]:[&>.button]:max-w-full ${className}`} />
 }
 
 export function ModelMenu({
