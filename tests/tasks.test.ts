@@ -3112,6 +3112,18 @@ test(
         },
       }),
     })).event).toEqual(outside.event)
+    expect((await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        '$sessions',
+        '--event-id',
+        'outside-observation',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ title: 'Unrelated write' }),
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
     const result = await hydra.owner({
       args: [
         'task',

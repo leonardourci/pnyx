@@ -445,14 +445,17 @@ function originalReceipt(
   },
 ): Output {
   // The key a card had when it moved to another Hydra still names it in a retry.
-  const sameCard = (original.type === 'session.observed' && 'key' in original.data && original.data.key === intent.card)
-    || original.cardId === intent.card
+  const sessionObservation = original.type === 'session.observed' ? original.data : undefined
+  const pushKey = sessionObservation && 'key' in sessionObservation ? sessionObservation.key : undefined
+  const sameCard = original.cardId !== '$sessions' && (original.cardId === intent.card
     || state.keys[intent.card] === original.cardId
-    || state.movedOut?.[original.cardId]?.key === intent.card
+    || state.movedOut?.[original.cardId]?.key === intent.card)
+  const samePushKey = pushKey === intent.card
 
-  const sameType = original.type === intent.type || intent.accepts?.includes(original.type)
+  const sameType = original.type === intent.type
+    || (pushKey !== undefined && intent.accepts?.includes(original.type))
 
-  if (!sameType || !sameCard) {
+  if (!sameType || (!sameCard && !samePushKey)) {
     throw new AxiError(
       `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       'IDEMPOTENCY_CONFLICT',
