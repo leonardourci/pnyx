@@ -16,6 +16,7 @@ interface Lease {
   holders: {
     id: string
     pid: number
+    actor?: string
   }[]
 }
 
@@ -264,7 +265,7 @@ export function taskLease({
     }
 
     if (lease && (lease.actor !== owner || copyHeld)) {
-      if (lease.actor.startsWith(COPY_LEASE_PREFIX)) {
+      if (actor.startsWith(COPY_LEASE_PREFIX) || lease.actor.startsWith(COPY_LEASE_PREFIX)) {
         throw copySettlingRefusal({
           task,
           code: 'TASK_LEASED',
@@ -277,7 +278,7 @@ export function taskLease({
         clear: `Use pnyx-axi task history ${task} to inspect overlapping work`,
       })
 
-      return () => {}
+      owner = lease.actor
     }
 
     if (isHelper({ actor }) && !helperGrant({
@@ -297,6 +298,7 @@ export function taskLease({
       {
         id: holder,
         pid,
+        actor,
       },
     ]
     writeLease({
@@ -348,8 +350,13 @@ export function releaseTask({
     const lease = readLease({ path })
 
     if (lease?.actor === actor) {
-      lease.holders = lease.holders.filter(entry =>
-        holder ? entry.id !== holder : entry.pid !== process.pid)
+      lease.holders = lease.holders.filter(entry => {
+        if (holder) {
+          return entry.id !== holder
+        }
+
+        return entry.pid !== process.pid || (entry.actor ?? lease.actor) !== actor
+      })
 
       if (lease.holders.length) {
         writeLease({
