@@ -349,10 +349,6 @@ type ServiceResult = {
   unit?: string
   replaces?: string[]
   replaced?: string[]
-  unrecorded?: {
-    hydra: string
-    home: string
-  }[]
   help?: string[]
 }
 
