@@ -1,4 +1,5 @@
 import { agentActivity } from '#workers/activity.ts'
+import { sessionTask } from '#workers/session-attachments.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
@@ -543,9 +544,16 @@ export function eventReasons({
   event: HydraEvent
 }): WakeReason[] {
   if (event.type === 'session.observed') {
-    const card = state.cards[event.cardId]
+    if (event.data.cursor) {
+      return []
+    }
 
-    if (!card) {
+    const card = sessionTask({
+      state,
+      agent: event.data.fields.agent,
+    })
+
+    if (!card || card.id !== event.cardId) {
       return []
     }
 

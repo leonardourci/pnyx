@@ -2080,6 +2080,15 @@ test(
     await workerLine({
       hydra,
       key: 'facts',
+      line: 'blocked: bad\0input',
+    })
+    expect(await hydra.task({ key: 'facts' })).toMatchObject({
+      status: 'idle',
+      latest: 'Invalid worker.log line: blocked: bad\\0input',
+    })
+    await workerLine({
+      hydra,
+      key: 'facts',
       line: 'link: javascript:alert(1)',
     })
     expect((await hydra.owner({
