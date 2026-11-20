@@ -234,10 +234,6 @@ export function FilterPreview({
 }
 
 export interface SettingProps {
-  hydras: {
-    id: string
-    name: string
-  }[]
   view: ViewPreferences
   connected: boolean
   save({ patch }: { patch: unknown }): Promise<boolean>

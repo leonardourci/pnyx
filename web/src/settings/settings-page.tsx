@@ -335,7 +335,6 @@ export function SettingControl({
   dispatchError,
   accountSetup,
 }: Saving & Hydra & {
-  hydras: Pick<HydraSummary, 'id' | 'name'>[]
   entry: CatalogEntry
   state: HydraState
   slide: Slide
@@ -730,7 +729,6 @@ export function SettingsPage({
             {shown.filter(match => match.entry.section === item.id).map(match => {
               const control = (
                 <SettingControl
-                  hydras={hydras}
                   entry={match.entry}
                   state={state}
                   view={view}

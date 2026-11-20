@@ -315,7 +315,6 @@ export function Oracle({
   // While a filter is half-typed, the menu's selection stands in for the results list's.
   const shownResult = token ? menuAction : current
   const settings: SettingProps = {
-    hydras,
     view,
     connected,
     save,
@@ -337,39 +336,28 @@ export function Oracle({
 
   const show = ({
     target,
-    ids,
-    text: opening,
   }: {
     target: HTMLElement
-    ids?: string[]
-    text?: string
   }) => {
     if (dialog.current?.open) {
       input.current?.focus()
 
-      return true
+      return
     }
 
     origin.current = target
     attempt.current = null
-    const reset = !remember || ids !== undefined
     // Render before focusing so typed keys reach the input.
     flushSync(() => {
       setOpen(true)
       setAsk(null)
 
-      if (reset) {
-        setBadgeIds(ids ?? [])
-      }
-
-      if (opening !== undefined) {
-        setQuery(opening)
+      if (!remember) {
+        setBadgeIds([])
       }
     })
     dialog.current?.showModal()
     input.current?.focus(); input.current?.select()
-
-    return true
   }
 
   const close = ({ restore }: { restore: boolean }) => {
