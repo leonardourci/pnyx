@@ -250,10 +250,16 @@ test(
       )
       appendFileSync(
         path,
-        readFileSync(new URL(
-          './setup/fixtures/memory/owner-move-valid-source.jsonl',
-          import.meta.url,
-        )),
+        readFileSync(
+          new URL(
+            './setup/fixtures/memory/owner-move-valid-source.jsonl',
+            import.meta.url,
+          ),
+          'utf8',
+        ).replace(
+          '"seq":3,',
+          '"seq":4,',
+        ),
       )
       const invalidTail = await hydra.owner({
         args: [
@@ -274,10 +280,16 @@ test(
       )
       appendFileSync(
         path,
-        readFileSync(new URL(
-          './setup/fixtures/memory/owner-move-valid-source.jsonl',
-          import.meta.url,
-        )),
+        readFileSync(
+          new URL(
+            './setup/fixtures/memory/owner-move-valid-source.jsonl',
+            import.meta.url,
+          ),
+          'utf8',
+        ).replace(
+          '"seq":3,',
+          '"seq":4,',
+        ),
       )
       const malformedProjectMove = await hydra.owner({
         args: [
@@ -563,7 +575,42 @@ test(
         'list',
       ],
     })
-    await owner.owner({
+    await caller.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'moved-journal',
+      ],
+    })
+    const emptyDestination = await caller.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(emptyDestination.revision).toBe('moved-journal:0')
+    await caller.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'context',
+        '--text',
+        'Destination changed independently',
+      ],
+    })
+    const changedDestination = await caller.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    expect(changedDestination.revision).toBe('moved-journal:1')
+    expect((await owner.ownerRefused({
       args: [
         'owner',
         'memory',
@@ -576,6 +623,35 @@ test(
         String(source.revision),
         '--if-destination-revision',
         '0',
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    expect((await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable).toEqual(source.writable)
+    expect((await caller.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable).toEqual(changedDestination.writable)
+    await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'moved-journal',
+        '--if-revision',
+        String(source.revision),
+        '--if-destination-revision',
+        '1',
       ],
     })
     const moved = await owner.owner({
@@ -642,6 +718,28 @@ test(
     })
     await owner.owner({
       args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        project,
+        '--key',
+        'preferences',
+        '--text',
+        'Project destination changed independently',
+      ],
+    })
+    const changedProject = await owner.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+      ],
+    })
+    expect((await owner.ownerRefused({
+      args: [
         'owner',
         'memory',
         'move',
@@ -653,6 +751,37 @@ test(
         String(confirmed.revision),
         '--if-destination-revision',
         String(projectMemory.revision),
+      ],
+    })).code).toBe('REVISION_CONFLICT')
+    expect((await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable).toEqual(confirmed.writable)
+    expect((await owner.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+      ],
+    })).memory).toEqual(changedProject.memory)
+    await owner.owner({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--project',
+        project,
+        '--text',
+        'Keep importer conventions with its project',
+        '--if-revision',
+        String(confirmed.revision),
+        '--if-destination-revision',
+        String(changedProject.revision),
       ],
     })
     expect((await owner.owner({
@@ -673,6 +802,7 @@ test(
     })
     expect(destination.memory.learnings).toBe('Keep importer conventions with its project')
     expect(destination.learnings).toEqual(confirmed.writable.learnings.lines)
+    expect(destination.learnings).toContainEqual(expect.objectContaining({ evidence: 'Verified against the importer' }))
     await owner.owner({
       args: [
         'project',
@@ -771,7 +901,7 @@ test(
         '--project',
         project,
       ],
-    })).memory.preferences).toBe('Project note available to every caller')
+    })).memory.preferences).toBe('Project destination changed independently')
     const settings = (await read({
       args: [
         'settings',
