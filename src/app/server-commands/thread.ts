@@ -1,7 +1,6 @@
 import { asRecord, invalid } from '#app/command-validation.ts'
 import type { ThreadBoundary } from '#hydra/thread-history.ts'
 import { THREAD_CURSOR, threadPath } from '#hydra/transcripts-read.ts'
-import { PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { HydraState } from '#app/model.ts'
@@ -84,8 +83,8 @@ export function threadCommand({
   const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined
   const cursorGiven = args[1] !== undefined && !args[1].startsWith('--')
   const before = cursorGiven ? args[1] : undefined
-  const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
-  const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
+  const cursor = THREAD_CURSOR
+  const cursorLimit = 200
 
   if (before !== undefined && (before.length > cursorLimit || !cursor.test(before))) {
     throw new HydraError({
@@ -95,7 +94,7 @@ export function threadCommand({
   }
 
   const sameThread = old !== undefined && old.card === card.id
-    && old.path === threadPath({ card }) && old.paseo === card.agent?.paseoAgentId
+    && old.path === threadPath({ card })
 
   if (!sameThread) {
     bindThread({

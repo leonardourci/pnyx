@@ -2,7 +2,7 @@ import { hydraPolisConfig } from '#memory/polis-policy.ts'
 import type { HydraEvent, HydraState } from './model.ts'
 import type { HydraSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
-import { hostedHydra, hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#hydra/config.ts'
 import { readEvents } from './event-log.ts'
 import { homeScoped } from '#store/postgres.ts'
 import { projectsFor } from '#projects/read.ts'
@@ -70,10 +70,7 @@ export function summarize({
 }: {
   id: string
   state: HydraState
-}): {
-  summary: HydraSummary
-  home?: string
-} {
+}): HydraSummary {
   try {
     const config = hydraConfig({
       state,
@@ -81,19 +78,9 @@ export function summarize({
     })
     const cards = Object.values(state.cards).filter(c => liveTask({ card: c }))
     const groups = ownerQuestionGroups({ state })
-    const projects = projectsFor({
-      state,
-      aliases: true,
-    }).filter(p => !p.detached)
+    const projects = projectsFor({ state }).filter(p => !p.detached)
       .map(p => {
-        const references = [
-          p.path,
-          ...(config.hydra.kind === 'firstmate' ? [
-            p.name,
-            ...p.aliases ?? [],
-          ] : []),
-        ]
-        const tasks = cards.filter(c => c.project && references.includes(c.project))
+        const tasks = cards.filter(c => c.project === p.path)
 
         const live = tasks.filter(c => c.agent && (c.sessionActivity ?? c.activity) === 'working')
         const taskIds = new Set(tasks.map(task => task.id))
@@ -103,33 +90,28 @@ export function summarize({
         return {
           name: p.name,
           path: p.path,
-          references,
           live: live.length,
           asks: asks.length,
         }
       })
 
-    const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
     const initial = firstEvent({ hydraId: id })
 
     return {
-      home,
-      summary: {
-        asks: groups.length,
-        id,
-        polis: hydraPolisConfig({ state }).polis,
-        identity: hydraIdentity({ hydraId: id }),
-        creationAttempt: creationAttempt({ event: initial }),
-        name: config.name,
-        icon: config.icon,
-        order: config.position ?? createdAt({ event: initial }),
-        hydra: home ? `Firstmate ${home}` : config.hydra.name,
-        working: hostedHydra({ state }) ? hydraWorking({ state }) : undefined,
-        projects,
-      },
+      asks: groups.length,
+      id,
+      polis: hydraPolisConfig({ state }).polis,
+      identity: hydraIdentity({ hydraId: id }),
+      creationAttempt: creationAttempt({ event: initial }),
+      name: config.name,
+      icon: config.icon,
+      order: config.position ?? createdAt({ event: initial }),
+      hydra: config.hydra.name,
+      working: hydraWorking({ state }),
+      projects,
     }
   } catch {
-    return { summary: unreadableSummary({ id }) }
+    return unreadableSummary({ id })
   }
 }
 

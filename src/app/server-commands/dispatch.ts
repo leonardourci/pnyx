@@ -46,7 +46,6 @@ export function createServerCommands({
   url,
   open,
   state,
-  homes,
   closed,
   send: sendToTab,
   kick,
@@ -63,7 +62,6 @@ export function createServerCommands({
   url: string
   open({ id }: { id: string }): Promise<string>
   state(): HydraState
-  homes(): string[]
   closed(): boolean
   send: ReturnType<typeof createServerClients>['send']
   kick(): void
@@ -354,7 +352,6 @@ export function createServerCommands({
             send,
             hydraId,
             state,
-            homes,
             closed,
             kick,
             startWorker,

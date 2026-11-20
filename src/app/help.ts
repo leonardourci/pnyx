@@ -49,11 +49,9 @@ commands:
   restart                                    Restart the application; a turn it cut resumes from its saved session
   upgrade [--check] [--now] [--stop]         Pull, install, build and check the data of the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
   setup [check|postgres|skills|hooks]        Install login services, list missing setup, start Postgres, or install skills or hooks
-  setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
-  reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
+  reply <id> --text <text>   Send a reply to the card's worker session
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
-  firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the Hydra, once or on every change
 worker:
   A worker reads any task or Hydra and writes only its own task (task ask|report|report-review|refresh-links|inbox|source, link, hydra send --task); any other write fails with WORKER_SCOPE
 flags:
@@ -117,22 +115,18 @@ Owner message references and existing authority, discussion-hold, report and lan
 No worker starts, messages, memory, settings or external effects. Correct a batch with another apply;
 undo refuses its individual events. See docs/pnyx-axi.md for the full operation schema and examples.
 `,
-  hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--icon <icon>] [--identity <identity>] [--session <session>] [--firstmate <home>]
-pnyx-axi hydra create --firstmate <home>
+  hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--icon <icon>] [--identity <identity>] [--session <session>]
 pnyx-axi hydra list
 pnyx-axi hydra remove <id> [--hydra <caller>]
-Removal asks the owner to Confirm the task count, unlanded copies and open PRs in the caller’s chat. It stops workers and tools, detaches projects, discards task copies and removes its own pooled worktree slots and registrations; history and Oracle stay, and GitHub PRs stay on GitHub. The last Hydra, caller’s own Hydra and Firstmate Hydras cannot be removed. Interrupted cleanup stays pending and resumes on restart.
-pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
+Removal asks the owner to Confirm the task count, unlanded copies and open PRs in the caller’s chat. It stops workers and tools, detaches projects, discards task copies and removes its own pooled worktree slots and registrations; history and Oracle stay, and GitHub PRs stay on GitHub. The last Hydra and caller’s own Hydra cannot be removed. Interrupted cleanup stays pending and resumes on restart.
+pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 pnyx-axi hydra set [--read-poleis <comma-separated poleis>] [--polis <polis>] [--propose] [--hydra <id>]
 A Hydra must be on the polis reader list and include the polis in its own read list. The default owner-memory write polis is shared.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
-At start the server names, once, every Hydra still called by its id or by no name; a Firstmate Hydra keeps its home's name.
---session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
-hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
-in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
+At start the server names, once, every Hydra still called by its id or by no name.
+--session self picks the session running in the caller's own tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 --done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] [--helper-fast on|off] selects its agent, separate from Hydra’s own. Fast is off unless --helper-fast on is set or Fast is on in the Hydra’s composer, which turns it on for every worker and helper run that Hydra starts where the model has Fast; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
@@ -182,10 +176,8 @@ Read whole messages since a successful milestone: the owner's messages, Hydra's 
 pnyx-axi hydra inscribe start|finish|fail [--key <milestone-id>] [--through <seq>] [--error <why>]
 start returns the pass ID, snapshot and history command; finish requires that snapshot after every page and memory save succeeds. Failed and started passes never advance the inscribe boundary.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
-pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
-pnyx-axi hydra start --via firstmate --home <firstmate home>
-hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
-session becomes Hydra (in Paseo on the hydra rule's agent unless --rule names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
+pnyx-axi hydra start [--via command] [--harness claude|codex] [--prompt <text>] [--folder <path>]
+hydra start runs the configured command; its session becomes Hydra when its hooks report. The default
 prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
@@ -339,8 +331,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear> [--every "4 hours" --until worker-started|question-answered|task-done] [--question <id>]
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>] [--tool <capability>]...
-pnyx-axi task start <task> --via firstmate [--prompt <text>]
+pnyx-axi task start <task> [--via pnyx|command] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--replace-session <session>] [--tool <capability>]...
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 A start goes ahead over an open hold, question, prerequisite or worker prompt; its receipt lists each under open with the command that clears it,
 and the card gets the same note once. A task that has a worker keeps it: --prompt goes to that worker, and the receipt lists the start flags it did not apply.
@@ -352,7 +343,6 @@ Refused, with the command that clears it, while the target lacks its project, it
 or it is queued, a subtask or parent, or tied by a prerequisite or wait to a task that stays. Undo refuses; move it back with the same command.
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start, permission, move and task move. Pnyx keeps it on the event,
 and shows the changes in the task’s Updates and the turn’s fold. --details keeps longer context on the same event.
-pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task queue <task> --behind <task|session>
 pnyx-axi task unqueue <task>
 pnyx-axi task reorder <task> --behind <task|session>
@@ -378,10 +368,6 @@ go straight to it; after a server restart the next message resumes the same sess
 running when the server stopped is marked interrupted and waits for a message. Permission prompts and
 questions wait on the task for task permission. Codex mode is its approval policy (untrusted, on-request or
 never) with its sandbox: never, or bypassPermissions, runs with full access, the others write only in the folder and Pnyx's home. Codex applies picker changes on the next turn and queues messages during a turn.
---via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
-Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
-and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
-Repeating the same --event-id never starts a second agent.
 --rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness,
 --account or --model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
@@ -389,17 +375,15 @@ by spendPriority above unknown quota; a tie, or several candidates with unknown 
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
 must be in the harness's catalog and the task records the override. An explicit --fast wins for that start; otherwise
 Fast in the Hydra's composer puts every worker on Fast where the model has it.
---via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
 --via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.
-The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
+The default route is pnyx.
 A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
 <hydra-name-slug>/<task-title-slug> (or the project's copy command, see project set), taken once and reused by later starts. A start
 takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
 dependencies, and starts the branch from the fetched origin default branch. A failed refresh or remote branch listing stops allocation;
 projects without origin use local HEAD. --in-place works in the project folder
-itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
-make their own copies.
+itself and is refused while a worker of another Hydra runs there; --folder names the folder outright.
 When the task reaches Done and its agent stops working, Pnyx releases its copy if it has no uncommitted changes and its
 commit is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy
 command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
@@ -415,7 +399,7 @@ Creates or updates the card with this key. Repeating the same push, or the same 
 card.json fields (all optional): title (null clears the explicit task and session title), autoTitle {from: session|prompt|agent|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
   agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text, questions[] {question, header, options[] {label, description}, multiSelect}, form[] {name, title, type, options[], required}, answered},
   settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
-  terminal {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane},
+  terminal {tty, pid, program, tmux, tmuxPane, herdrSession, herdrPane},
   folder (absolute path, null to clear; a hook session started there reports to this card),
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
 An observation older than the card's latest one from the same source is ignored. A push that reports exactly what its
@@ -433,7 +417,7 @@ with the Hydra and server state. Prints nothing outside every attached project. 
 Collects notes that sources already recorded, with no model and nothing asked of agents: Claude Code
 compaction summaries, session titles and AskUserQuestion answers, Codex compaction summaries, and each
 linked pull request's title and description through gh-axi. Sessions are also harvested whenever a
-turn ends; Firstmate decisions, reports and Captain's intent arrive through \`firstmate sync\`.
+turn ends.
 Sources are only read. Each note is kept once, so running it again appends only what is new.
 `,
   move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>] [--details <text>]
@@ -460,7 +444,6 @@ pnyx-axi setup check [--hydra <id>]
 pnyx-axi setup postgres [--check | --url <url>] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
-pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
 service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
 setup postgres on macOS starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and
@@ -487,16 +470,12 @@ except at session start in a folder inside an attached project, where they print
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
 setup installs one login service for the server of every Hydra: a launchd job on macOS, a systemd user unit on Linux.
 It replaces the older one-per-Hydra services.
-setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
-.agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
-Firstmate's own files are not changed.
 `,
-  serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>] [--home <Firstmate path>]...
+  serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>]
 Serves every Hydra in PNYX_HOME on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
 Each Hydra lives at /hydra/<id>/; / opens the --hydra Hydra. A Hydra that fails to load is skipped and reported, and a Hydra created
 while the server runs is served once its folder appears. --hydra names the Hydra whose address is printed (default: default); it and
-the default Hydra must load. A Hydra run by a Firstmate home watches that home and replies through it. Each --home is a Firstmate home
-for the --hydra Hydra instead: replies to its cards go through it, and its tasks are folded in as \`pnyx-axi firstmate watch\` would.
+the default Hydra must load.
 Hook events arrive on each Hydra's server.sock or through its spool. Browsers read Hydra data through Zero at /zero and get one
 WebSocket per Hydra at /hydra/<id>/ws for live agent activity, conversation pages and commands.
 The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.

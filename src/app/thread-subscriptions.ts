@@ -9,8 +9,6 @@ import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readThread, showsKind, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
-import { paseoHistory } from '#integrations/paseo/history.ts'
-import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import type { Card } from '#tasks/model.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -45,9 +43,7 @@ export type Subscription = {
     version: number
   }
   path?: string
-  paseo?: string
   watcher?: { close(): unknown }
-  native?: Promise<PaseoConversation>
   // The card titles the Hydra thread was last built from.
   titles?: Record<string, string>
   // The last page the tab accepted, apart from the seq it was read at.
@@ -88,18 +84,15 @@ const HYDRA_THREAD_EVENTS: readonly EventType[] = [
   'pnyx.upgrade',
 ]
 
-// Each tab's open conversation page: the transcript or Paseo conversation it follows and the debounced refresh it gets.
 export function createThreadSubscriptions({
   hydraId,
   state,
-  homes,
   closed,
   send,
   agents,
 }: {
   hydraId: string
   state(): HydraState
-  homes(): string[]
   closed(): boolean
   send({
     ws,
@@ -217,7 +210,7 @@ export function createThreadSubscriptions({
     })
     let visible = sub.history
 
-    if (older && !sub.native) {
+    if (older) {
       visible = agents().thread({
         card,
         page: {
@@ -346,7 +339,6 @@ export function createThreadSubscriptions({
       native,
       path,
       agent: card.agent,
-      homes: homes(),
     })
 
     if (!sub.base || sub.base.signature !== signature) {
@@ -355,7 +347,6 @@ export function createThreadSubscriptions({
         allTraces: true,
         state: state(),
         card,
-        homes: homes(),
       })
 
       sub.history = joinLatest({
@@ -366,7 +357,6 @@ export function createThreadSubscriptions({
           allTraces: true,
           state: state(),
           card,
-          homes: homes(),
           before,
         }),
       })
@@ -479,52 +469,6 @@ export function createThreadSubscriptions({
           error: 'Conversation could not be refreshed',
         },
       })
-
-      if (sub.native) {
-        const native = sub.native
-        const version = sub.readVersion
-        background({
-          name: 'native conversation refresh',
-          run: async () => {
-            try {
-              const page = await paseoHistory({
-                card: card.id,
-                conversation: { read: async ({ before }) => (await native).read({ before }) },
-                readSaved: ({ before }) => readThread({
-                  hydraId,
-                  allTraces: true,
-                  state: state(),
-                  card,
-                  homes: homes(),
-                  before,
-                }),
-              })
-
-              if (map.get(ws) !== sub || ws.readyState !== ws.OPEN || version !== sub.readVersion) {
-                return
-              }
-
-              const prepared = prepareThread({
-                sub,
-                card,
-                page,
-                push: true,
-              })
-
-              if (prepared) {
-                deliver({
-                  ws,
-                  sub,
-                  prepared,
-                })
-              }
-            } catch {
-              unavailable()
-            }
-          },
-        })
-        continue
-      }
 
       try {
         const building = performance.now()
@@ -655,9 +599,7 @@ export function createThreadSubscriptions({
 
     const version = sub.readVersion
 
-    const native = sub.native
-
-    if (!native && before === undefined && !retain) {
+    if (before === undefined && !retain) {
       const prepared = versionThread({
         sub,
         prepared: currentThread({
@@ -674,28 +616,11 @@ export function createThreadSubscriptions({
     }
 
     const readPage = async ({ before }: { before?: string }): Promise<ThreadPage> => {
-      if (native) {
-        return paseoHistory({
-          card: card.id,
-          conversation: { read: async ({ before }) => (await native).read({ before }) },
-          readSaved: ({ before }) => readThread({
-            hydraId,
-            allTraces: true,
-            state: state(),
-            card,
-            homes: homes(),
-            before,
-          }),
-          before,
-        })
-      }
-
       const page = readThread({
         hydraId,
         allTraces: true,
         state: state(),
         card,
-        homes: homes(),
         before,
       })
 
@@ -778,32 +703,8 @@ export function createThreadSubscriptions({
       client: ws,
       path,
     }
-    const paseo = card.agent?.paseoAgentId
 
-    if (paseo) {
-      const native = paseoConversation({
-        card,
-        changed: () => refreshThread({
-          ws,
-          invalidate: false,
-        }),
-      })
-      native.catch(() => undefined)
-      const watcher = {
-        close: () => void native.then(
-          n => n.close(),
-          () => undefined,
-        ),
-      }
-      Object.assign(
-        sub,
-        {
-          paseo,
-          native,
-          watcher,
-        },
-      )
-    } else if (path) {
+    if (path) {
       let file: PathWatch | undefined
 
       const followFile = () => {
