@@ -1,5 +1,5 @@
 export const ORCHESTRATE_SKILL = 'pnyx-orchestrate'
-export const ARRANGE_COLUMNS_SKILL = 'pnyx-arrange-columns'
+const ARRANGE_COLUMNS_SKILL = 'pnyx-arrange-columns'
 export const MANAGE_WORKERS_SKILL = 'pnyx-manage-workers'
 export const SET_UP_SKILL = 'pnyx-set-up'
 export const INSCRIBE_SKILL = 'inscribe'

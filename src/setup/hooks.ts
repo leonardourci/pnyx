@@ -67,7 +67,7 @@ interface Group {
 }
 type Config = { hooks?: Record<string, Group[]> } & Record<string, unknown>
 
-export function configPath({ harness }: { harness: Harness }): string {
+function configPath({ harness }: { harness: Harness }): string {
   if (harness === 'claude') {
     return join(
       process.env.CLAUDE_CONFIG_DIR || join(
@@ -95,7 +95,7 @@ const CLI_ENTRY = join(
   import.meta.url.endsWith('.ts') ? 'pnyx-axi.ts' : 'pnyx-axi.js',
 )
 
-export function scriptPath(): string {
+function scriptPath(): string {
   return join(
     pnyxHome(),
     'hooks',
