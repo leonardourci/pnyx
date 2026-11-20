@@ -316,7 +316,6 @@ export function parseAutoTitle({ value: rawValue }: { value: unknown }): AutoTit
   }
 }
 
-// Explicit attachments survive folder changes.
 // task is the PNYX_TASK a session was started with: the task it works on, or
 // Hydra's own marker; it outranks the folder join for a session not seen yet.
 export function joinedKey({

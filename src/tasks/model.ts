@@ -252,7 +252,6 @@ export interface Card {
   settings?: AgentSettings
   terminal?: TerminalFacts
   copy?: TaskCopy
-  // A hook session started in the assigned working folder joins this card.
   folder?: string
   attention: Attention[]
   permissions?: PermissionRequest[]

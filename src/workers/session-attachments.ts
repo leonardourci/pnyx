@@ -63,7 +63,6 @@ export function findSession({
   return found
 }
 
-// Prefer the newest live session in the caller's tmux or Herdr pane for `--session self`.
 export function selfSession({
   state,
   here,

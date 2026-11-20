@@ -32,7 +32,6 @@ export interface ReplyRequest {
   key?: Key
   // One more Enter after the text, for a command the harness may ask to confirm.
   confirm?: boolean
-  // A setting change, refused while the session waits on an open request.
   control?: boolean
   // Idempotency key: a retry with the same id never sends twice unless the
   // earlier send failed outright.

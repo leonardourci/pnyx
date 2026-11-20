@@ -478,7 +478,7 @@ export function createServerClients({
           })))) {
           const card = state().cards[sub.card]
 
-          if (card && (sub.path !== threadPath({ card }))) {
+          if (card && sub.path !== threadPath({ card })) {
             bindThread({
               ws,
               card,

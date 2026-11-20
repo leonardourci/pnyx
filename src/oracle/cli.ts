@@ -33,7 +33,6 @@ const SEARCH: Options = {
   limit: { type: 'string' },
 }
 
-// Project filters accept either the recorded label or its attached project path.
 function projectRefs({
   state,
   ref,

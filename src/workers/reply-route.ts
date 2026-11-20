@@ -62,7 +62,6 @@ export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'terminal-app': 'Terminal',
 }
 
-// tmux and Herdr inherit terminal-app variables, so their more specific facts take priority.
 function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
   if (facts.tmux && facts.tmuxPane) {
     return {

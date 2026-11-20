@@ -103,7 +103,6 @@ function ingest({
   const folder = canonical({ path: (entry.payload as { cwd?: unknown } | null)?.cwd })
   const terminal = terminalFacts({ value: entry.terminal })
   const probed = TERMINAL_EVENTS.includes(entry.event)
-  // Subagents keep their own session key instead of joining the parent's task folder.
   const task = typeof entry.task === 'string' ? entry.task : undefined
   const resolve = ({ key }: { key: string }) => (key.includes('/') ? key : joinedKey({
     state: writer.state,
@@ -217,12 +216,11 @@ function ingest({
       writer,
       decision: pushed,
     })
-    // Hook observations preserve outcomes set manually.
     const target = writer.state.cards[writer.state.keys[key] ?? '']
     const stale = 'skipped' in pushed && pushed.skipped === 'stale'
-    const owned = !target?.outcome || target.outcome.source === HOOKS
+    const canUpdateOutcome = !target?.outcome || target.outcome.source === HOOKS
 
-    if (o.outcome !== undefined && target && !stale && owned) {
+    if (o.outcome !== undefined && target && !stale && canUpdateOutcome) {
       const outcome = o.outcome && { state: o.outcome }
       applyDecision({
         writer,

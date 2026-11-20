@@ -2517,18 +2517,28 @@ test(
         '--no-start',
       ],
     })
-    expect((await hydra.owner({ args: ['integrations'] })).integrations.map((entry: { name: string }) => entry.name))
+    expect((await hydra.owner({ args: ['integrations'] })).integrations.map((entry: { name: string }) => entry.name).sort())
       .toEqual([
-        'skills',
-        'hooks',
         'command',
         'github',
+        'hooks',
+        'skills',
       ])
 
     for (const [
       args,
       error,
     ] of [
+        [
+          [
+            'task',
+            'start',
+            'outside-routes',
+            '--via',
+            'unknown',
+          ],
+          'unknown start route: unknown',
+        ],
         [
           [
             'task',
@@ -2581,6 +2591,19 @@ test(
         'removed-home',
         '--firstmate',
         '/unused',
+      ],
+      [
+        'integrations',
+        '--paseo-url',
+        'ws://127.0.0.1:1/ws',
+      ],
+      [
+        'reply',
+        'outside-routes',
+        '--text',
+        'Retired route',
+        '--resolve-key',
+        'decision',
       ],
       [
         'hydra',
@@ -2709,6 +2732,8 @@ test(
         ],
         env: {
           ...process.env,
+          TMUX_PANE: undefined,
+          HERDR_PANE_ID: undefined,
           ...identity,
         },
       })

@@ -83,10 +83,7 @@ export function threadCommand({
   const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined
   const cursorGiven = args[1] !== undefined && !args[1].startsWith('--')
   const before = cursorGiven ? args[1] : undefined
-  const cursor = THREAD_CURSOR
-  const cursorLimit = 200
-
-  if (before !== undefined && (before.length > cursorLimit || !cursor.test(before))) {
+  if (before !== undefined && (before.length > 200 || !THREAD_CURSOR.test(before))) {
     throw new HydraError({
       message: 'invalid thread cursor',
       code: 'VALIDATION_ERROR',

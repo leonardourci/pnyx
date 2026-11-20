@@ -770,10 +770,6 @@ test(
         '--rule',
         'no-such-rule',
       ],
-      VALIDATION_ERROR: [
-        '--via',
-        'unknown',
-      ],
     }
 
     for (const [
