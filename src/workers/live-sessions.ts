@@ -18,7 +18,6 @@ import type { createHydraTurns } from '#hydra/turns.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
-import { declareTask } from '#tasks/declarations.ts'
 import type { Card } from '#tasks/model.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
@@ -1197,26 +1196,6 @@ export function createLiveSessions({
             agent: card.agent,
             note: text,
           })
-
-          const attached = writer.state.cards[card.id]?.sessionIds?.includes(key)
-
-          const done = writer.state.cards[card.id]?.status?.state === 'done'
-
-          if (failure && card.id !== HYDRA_CARD && attached && !done) {
-            applyDecision({
-              writer,
-              decision: declareTask({
-                state: writer.state,
-                ref: card.id,
-                status: 'blocked',
-                note: text,
-                meta: {
-                  at: at(),
-                  actor: 'pnyx',
-                },
-              }),
-            })
-          }
         },
       })
     }

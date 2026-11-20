@@ -12,7 +12,7 @@ import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
-import { agentActivity } from '#workers/activity.ts'
+import { cardStatus } from '#tasks/card-status.ts'
 import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
 import { LIST_LIMIT } from '#store/zero-schema.ts'
@@ -280,7 +280,11 @@ function cardSummary({
     parent_id: nullable({ value: card.parentId }),
     project: nullable({ value: card.project }),
     kind: nullable({ value: card.kind }),
-    status: nullable({ value: card.status?.state }),
+    status: cardStatus({
+      card,
+      cards: state.cards,
+      sessions: state.sessions,
+    }).state ?? null,
     hidden: card.hidden === true,
     automatic_task: card.automaticTask === true,
     done_at: nullable({ value: card.doneAt }),
@@ -420,9 +424,9 @@ function stateRows({
   }
 
   const all = Object.values(state.cards)
-  const working = new Set(all.flatMap(card => card.agent?.agentId && agentActivity({ card }) === 'working'
-    ? [`${card.agent.provider}:${card.agent.sessionId}`]
-    : []))
+  const working = new Set(Object.values(state.sessions ?? {}).flatMap(session =>
+    session.agent.agentId && (session.sessionActivity ?? session.activity) === 'working'
+      ? [`${session.agent.provider}:${session.agent.sessionId}`] : []))
   // Each pull request's merge questions are read from the cards that ask about it, not from every card.
   const asking = new Map<string, Record<string, Card>>()
 

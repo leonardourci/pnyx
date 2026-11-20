@@ -31,10 +31,6 @@ const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
   in_progress: [
     [
       ...ACTIVE,
-      'worker:working',
-    ],
-    [
-      ...ACTIVE,
       'worker:checks',
     ],
     [
@@ -119,7 +115,16 @@ export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraCo
   const holdRule = PREVIOUS_HOLD_RULES[role]
   const previous = holdRule ? withReminderExclusion({ rule: holdRule }) : undefined
   const savedRule = JSON.stringify(column.rule)
+  const workingRule = [
+    [
+      ...ACTIVE,
+      'worker:working',
+    ],
+    ...DEFAULT_COLUMN_RULES.in_progress!,
+  ]
+  const precedingDefault = role === 'in_progress' ? workingRule : undefined
   const unchangedDefault = [
+    precedingDefault,
     previous,
     PREVIOUS_REMINDER_RULES[role],
   ]

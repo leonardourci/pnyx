@@ -17,7 +17,6 @@ import { sessionId, withoutInterrupted } from './session-attachments.ts'
 import { decideSession } from './sessions.ts'
 import { freeTask } from './start.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { declareTask } from '#tasks/declarations.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
@@ -716,22 +715,6 @@ export function createWorkerStarts({
             meta: {
               ...meta,
               id: `${id}:outcome`,
-            },
-          }),
-        })
-      }
-
-      if (card.status?.state !== 'done') {
-        applyDecision({
-          writer,
-          decision: declareTask({
-            state: writer.state,
-            ref: card.id,
-            status: 'working',
-            note: 'Worker continued in Pnyx',
-            meta: {
-              ...meta,
-              id: `${id}:working`,
             },
           }),
         })

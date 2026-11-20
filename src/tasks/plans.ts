@@ -11,12 +11,10 @@ import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
 import { parseKind } from '#investigations/report.ts'
 import { findCard } from './push-rules.ts'
-import { taskBrief, taskIntent, untilTime, type TaskCreated } from './cli.ts'
+import { taskBrief, taskIntent, type TaskCreated } from './cli.ts'
 import { ownerAsk } from './owner-ask.ts'
-import { declareTask } from './declarations.ts'
 import { decideDependencies } from './dependency-decisions.ts'
 import { decideHold } from './holds.ts'
-import { refuseEarlyDone } from '#tasks/delivery/done.ts'
 import { isManagedTask } from './select.ts'
 
 export type TaskOperation = { reason?: string } & (
@@ -61,16 +59,6 @@ export type TaskOperation = { reason?: string } & (
     on: string[]
   }
   | {
-    op: 'task.status'
-    task: string
-    status: string
-    note?: string
-    until?: string
-    hold?: boolean
-    waitFor?: string
-    readyWhen?: string
-  }
-  | {
     op: 'task.hold'
     task: string
     message?: string
@@ -88,15 +76,12 @@ export function planTaskChange({
   meta,
   hydraId,
   cardId,
-  landing,
 }: {
   state: HydraState
   operation: TaskOperation
   meta: Meta
   hydraId: string
   cardId?: string
-  // landingGaps for a done declaration, read before the write.
-  landing: ReadonlyMap<string, string[]>
 }): Decision {
   if ([
     'task.create',
@@ -308,38 +293,6 @@ export function planTaskChange({
       message: operation.message,
       release: operation.op === 'task.release',
       meta,
-    })
-  }
-
-  if (operation.op === 'task.status') {
-    if (operation.status === 'done') {
-      refuseEarlyDone({
-        state,
-        card: findCard({
-          state,
-          ref: operation.task,
-        }),
-        hydraId,
-        landing,
-      })
-    }
-
-    return declareTask({
-      state,
-      ref: operation.task,
-      status: operation.status,
-      note: operation.note ?? '',
-      meta,
-      until: inField({
-        field: 'until',
-        read: () => untilTime({
-          until: operation.until,
-          now: meta.at,
-        }),
-      }),
-      hold: operation.hold,
-      waitFor: operation.waitFor,
-      readyWhen: operation.readyWhen,
     })
   }
 

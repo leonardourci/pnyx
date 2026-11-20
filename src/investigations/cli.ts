@@ -5,7 +5,6 @@ import type { Meta } from '#app/command-meta.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
-import { declareTask } from '#tasks/declarations.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import type { LandingRule } from '#tasks/delivery/model.ts'
@@ -91,11 +90,7 @@ function buildMessage({
   ]
 
   if (rule) {
-    lines.push(landingLine({
-      rule,
-      hydraId,
-      id,
-    }))
+    lines.push(landingLine({ rule }))
   }
 
   return lines.join(' ')
@@ -126,20 +121,17 @@ function reopen({
     }).columns,
     role: 'queued',
   })
-  const decision = card.sessionIds?.length
-    ? declareTask({
-      state: writer.state,
-      ref: card.id,
-      status: 'working',
-      note: 'Building from its investigation',
-      meta,
-    })
-    : decideMove({
-      state: writer.state,
-      ref: card.id,
-      column: queued ?? card.column,
-      meta,
-    })
+
+  if (card.sessionIds?.length) {
+    return
+  }
+
+  const decision = decideMove({
+    state: writer.state,
+    ref: card.id,
+    column: queued ?? card.column,
+    meta,
+  })
 
   if ('event' in decision) {
     writer.append({ event: decision.event })

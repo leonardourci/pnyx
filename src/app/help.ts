@@ -55,7 +55,7 @@ commands:
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
   firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the Hydra, once or on every change
 worker:
-  A worker reads any task or Hydra and writes only its own task (task status|ask|report|report-review|refresh-links|inbox|source, link, hydra send --task); any other write fails with WORKER_SCOPE
+  A worker reads any task or Hydra and writes only its own task (task ask|report|report-review|refresh-links|inbox|source, link, hydra send --task); any other write fails with WORKER_SCOPE
 flags:
   --hydra <name>     Hydra to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
@@ -102,7 +102,7 @@ pnyx-axi settings set --json '{"logs":"detailed","logDays":3,"logMaxMB":200}'.
 `,
   apply: `usage: pnyx-axi apply --file <path|-> [--check [--full]] [--event-id <id>] [--hydra <hydra>]
 Read one version: 1 JSON document with changes and optional expected.tasks revisions.
-Operations: task.create, task.brief, task.owner-ask, task.depend, task.undepend, task.status,
+Operations: task.create, task.brief, task.owner-ask, task.depend, task.undepend,
 task.hold, task.release, link and outcome. Unknown operations and fields are rejected.
 task.create/task.brief accept intent for the card goal; task.owner-ask saves exact owner words.
 A task.create as alias can be referenced later as $alias. References stay in this Hydra.
@@ -274,17 +274,9 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project assigns a repository name/path; an empty value returns the task to Ideas.
 Unmatched legacy values stay as plain tags in Ideas.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold | --wait-for <task> [--ready-when task-done|pr-opened|pr-merged]]
-Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
-Default columns put completed held tasks in Done; the hold still applies if the task reopens.
-Before pausing with a ready result, run hydra send --task <id> --text "<result with links>" without --kind progress.
-Questions use task ask; blocked/needs_you wake Hydra but do not confirm owner delivery. Needs you holds only an open owner question; ready results, reminders and declarations without questions are updates.
-A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
---hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
---wait-for records a dependency wait (default task-done); pr-opened accepts an open or merged linked PR, and pr-merged requires one or more non-closed linked PRs, all merged. Pnyx resumes the waiting worker once with the dependency and PR link, preserving holds and open decisions. These waits never expire on a timer.
-done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
-or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
-Ready owner-merge questions include the PR title, link, latest worker report or status note, and check counts.
+Workers append <code>: <text> lines to $PNYX_TASK_DIR/worker.log: needs-you, blocked, done, link and note.
+Running and idle come from hosted turns or installed hooks. Notes update the latest line without changing status.
+Pull requests are discovered from the task's recorded branches.
 pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
 Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
 pnyx-axi task report <id> [--file <path>]
@@ -301,7 +293,7 @@ pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <nu
 pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
 Worker inbox reads return pending instructions in order and record read acknowledgements, stopping reminders. Owner and Hydra inspection is read-only.
 An ack means read, never completed work. The default outcome is read; legacy incorporated/blocked outcomes remain accepted (blocked requires --note).
-Reads return the active session/generation claim. Report progress and blockers through task status, and questions through task ask. Use read --all for recovery history.
+Reads return the active session/generation claim. Report progress and blockers through worker.log, and questions through task ask. Use read --all for recovery history.
 Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
 pnyx-axi task build <id>
 Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
@@ -374,7 +366,7 @@ attach moves an interactive session to the task; an occupied destination is reje
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
 task create accepts --project <name|path>; task project assigns an existing task to an attached project.
-task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start or working declaration stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, keeps reminders as updates, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
+task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, keeps reminders as updates, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.

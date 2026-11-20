@@ -102,21 +102,6 @@ export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       'on',
     ],
   },
-  'task.status': {
-    fields: {
-      task: 'text',
-      status: 'text',
-      note: 'string',
-      until: 'text',
-      hold: 'boolean',
-      waitFor: 'text',
-      readyWhen: 'text',
-    },
-    required: [
-      'task',
-      'status',
-    ],
-  },
   'task.hold': {
     fields: { task: 'text' },
     required: ['task'],

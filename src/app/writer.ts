@@ -9,7 +9,6 @@ import { query, storable, type QueryTimings } from '#store/postgres.ts'
 import { privateDir } from '#store/storage.ts'
 import { hydraDir } from './home-migration.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
-import { declareTask } from '#tasks/declarations.ts'
 import { agentActor } from '#hydra/hydra.ts'
 import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/leases.ts'
 import { helperGrant } from '#routine-helper/route.ts'
@@ -18,7 +17,7 @@ import { randomInt } from 'node:crypto'
 import { replayOwned } from './reducer.ts'
 import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
 import { reconcileAsks, retireableReviewQuestions } from '#tasks/delivery/merge-questions.ts'
-import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
+import { lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
 import { log } from './diagnostics.ts'
@@ -479,6 +478,8 @@ export function eventWriter({
 
       if (event.type === 'card.pushed' && event.data.agent) {
         agent = event.data.agent
+      } else if (event.type === 'session.observed') {
+        agent = event.data.fields.agent
       }
 
       if (event.type === 'task.session' && event.data.started) {
@@ -566,31 +567,6 @@ export function eventWriter({
               seq: state.seq + 1,
             },
           })
-        }
-
-        for (const declaration of operationDeclarations({
-          before,
-          state,
-          event,
-        })) {
-          const declared = declareTask({
-            state,
-            ref: declaration.cardId,
-            status: declaration.status,
-            note: declaration.note,
-            until: declaration.until,
-            waitingFor: declaration.waitingFor,
-            restores: declaration.restores,
-            meta: {
-              id: `${event.id}:${declaration.cardId}:declaration`,
-              at: event.at,
-              actor: 'pnyx',
-            },
-          })
-
-          if ('event' in declared) {
-            writer.append({ event: declared.event })
-          }
         }
 
         switch (event.type) {

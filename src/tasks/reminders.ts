@@ -203,7 +203,7 @@ export function stopReminders({
 
     const workerStarted = (event.type === 'task.launched' && event.cardId === card.id)
       || (event.type === 'task.session' && event.data.after === card.id && (event.data.working || event.data.handoff))
-      || (event.type === 'task.declared' && event.cardId === card.id && event.data.state === 'working')
+
     const question = card.asks?.find(ask => ask.id === repeat.question)
     const answered = repeat.until === 'question-answered' && (!question || question.answered || question.closed)
     const done = repeat.until === 'task-done' && reminderDone({

@@ -696,7 +696,9 @@ export function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
-    case 'session.observed': return `Session ${event.data.session} activity updated`
+    case 'task.branch': return `Branch ${event.data.repository}:${event.data.branch}`
+    case 'session.observed': return 'fields' in event.data ? `Session ${event.data.fields.agent.sessionId}: ${event.data.fields.activity ?? 'updated'}` : `Session ${event.data.session} activity updated`
+    case 'task.worker-line': return `${event.data.code}: ${event.data.text}`
     case 'task.wait-resumed': return event.data.message.text
     case 'hydra.context-delivered': return 'Context notes delivered to Hydra'
     case 'diagnostic.retry': return `Message recovery attempt ${event.data.number}: ${event.data.status}`

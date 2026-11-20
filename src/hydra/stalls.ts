@@ -226,47 +226,6 @@ export function createStallChecks({
     ]
   }
 
-  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; this repeats the turn-ended wake while it lasts.
-  const idleStall = ({
-    state,
-    card,
-    now,
-  }: {
-    state: HydraState
-    card: Card & { agent: AgentRef }
-    now: number
-  }): StallItem[] => {
-    const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
-    const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
-    const asking = card.attention.some(a => a.blocking && !a.answered)
-      || ownerGates({ card }).length > 0
-
-    if (!turnEnded || !declaresWorking || asking || !liveTask({ card })) {
-      return []
-    }
-
-    const session = state.sessions?.[sessionId({ agent: card.agent })]
-
-    if (!session) {
-      return []
-    }
-
-    const seen = seenAt({ session })
-
-    if (!seen || now - seen < stallDelay) {
-      return []
-    }
-
-    return [
-      {
-        id: `stall:${card.id}:idle:${seen}`,
-        card: card.id,
-        kind: 'turn ended',
-        detail: `the worker ended its turn ${Math.round((now - seen) / 1000)} s ago and still declares working`,
-      },
-    ]
-  }
-
   // A paused worker's wait that ended wakes Hydra once, whoever runs the worker.
   const endedWaits = ({
     state,
@@ -350,14 +309,9 @@ export function createStallChecks({
       }
 
       const worker = card as Card & { agent: AgentRef }
-      const idle = idleStall({
-        state,
-        card: worker,
-        now,
-      })
 
-      if (idle.length || card.agent.host !== 'pnyx') {
-        return idle
+      if (card.agent.host !== 'pnyx') {
+        return []
       }
 
       return workerStalls({

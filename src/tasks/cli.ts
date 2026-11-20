@@ -15,7 +15,6 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { liveTask, rankOf } from './select.ts'
 import { socketPath } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
-import { reminderTime } from './time.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from './push-rules.ts'
 import { taskSessions } from '#workers/session-history.ts'
@@ -256,24 +255,6 @@ export const push = guard({
     })
   },
 })
-
-// A paused worker's --until takes the same times as a reminder.
-export function untilTime({
-  until,
-  now,
-}: {
-  until?: string
-  now: string
-}): string | undefined {
-  if (until === undefined) {
-    return undefined
-  }
-
-  return reminderTime({
-    when: until,
-    now,
-  })
-}
 
 export const TASK_FIELDS = [
   'attention',

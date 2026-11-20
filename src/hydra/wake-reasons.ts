@@ -6,7 +6,6 @@ import { roleColumn } from '#tasks/column-rules.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'
 import { agentActor, hostedHydra, pnyxRunsHydra, reportActor } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { ownerGates } from '#tasks/owner-gates.ts'
 import { hydraConfig } from './config.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -140,7 +139,7 @@ export function mergeApproved({
     projects: state.projects ?? [],
   })
 
-  return card.status?.state !== 'working' && rule?.merge === 'hydra'
+  return (card.sessionActivity ?? card.activity) !== 'working' && rule?.merge === 'hydra'
 }
 
 const checksDetail = ({ link }: { link: Link }) =>
@@ -250,20 +249,6 @@ function pushReasons({
     card: card.id,
     detail: `${a.key}: ${quote({ text: a.text ?? a.questions?.map(q => q.question).join(' ') ?? a.kind })}`,
   }))
-  const asking = card.attention.some(a => a.blocking && !a.answered)
-    || ownerGates({ card }).length > 0
-  const silent = !card.status || card.status.state === 'working'
-
-  if (activity === 'finished' && card.turnEndedSeq === event.seq && silent && !asking) {
-    reasons.push({
-      kind: 'turn ended',
-      card: card.id,
-      detail: card.status
-        ? 'the worker finished its turn still declaring working'
-        : 'the worker finished its turn without declaring anything',
-    })
-  }
-
   const unwatched = unwatchedPullRequests({ card })
 
   if (activity === 'ended' && unwatched.length) {
@@ -384,6 +369,25 @@ function ordinaryReasons({
           detail: `${event.data.path}: ${event.data.reason}. The pull request remains confirmed merged.`,
         },
       ] : []
+    case 'task.worker-line': {
+      const {
+        code,
+        text,
+      } = event.data
+
+      return [
+        'needs-you',
+        'blocked',
+        'done',
+        'invalid',
+      ].includes(code) ? [
+          {
+            kind: 'declared',
+            card: card.id,
+            detail: `${code}: ${text}`,
+          },
+        ] : []
+    }
     case 'task.declared': {
       const {
         state: declared,
@@ -530,6 +534,28 @@ export function eventReasons({
   state: HydraState
   event: HydraEvent
 }): WakeReason[] {
+  if (event.type === 'session.observed') {
+    const card = state.cards[event.cardId]
+
+    if (!card) {
+      return []
+    }
+
+    return eventReasons({
+      state,
+      event: {
+        ...event,
+        type: 'card.pushed',
+        data: {
+          ...event.data.fields,
+          key: card.key,
+          attention: card.attention,
+          before: event.data.before,
+        },
+      },
+    })
+  }
+
   if (event.type === 'task.steering.recovery' && event.data.recovery.result === 'exhausted') {
     const card = state.cards[event.cardId]
     const message = card?.steering?.find(message => message.id === event.data.message)
