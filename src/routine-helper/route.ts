@@ -98,7 +98,6 @@ export function helperAgent({
   }
 }
 
-// A task waiting on the owner gets the narrower owner scope; held and automatic tasks get none.
 export function helperScope({
   state,
   task,

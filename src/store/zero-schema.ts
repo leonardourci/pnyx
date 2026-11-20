@@ -81,7 +81,6 @@ const cards = table('cards')
     kind: enumeration<TaskKind>().optional(),
     status: enumeration<TaskStatus>().optional(),
     hidden: boolean(),
-    automatic_task: boolean(),
     done_at: string().optional(),
     created_seq: number(),
     updated_seq: number(),
@@ -529,10 +528,6 @@ export const queries = defineQueries({
           'hidden',
           false,
         )
-        .where(
-          'automatic_task',
-          false,
-        )
         .orderBy(
           'updated_seq',
           'desc',
@@ -646,10 +641,6 @@ export const queries = defineQueries({
         .where(
           'hydra_id',
           args.hydraId,
-        )
-        .where(
-          'automatic_task',
-          false,
         )
         .orderBy(
           'updated_seq',

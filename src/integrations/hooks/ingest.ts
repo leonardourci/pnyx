@@ -276,7 +276,7 @@ function ingest({
 
       const recorded = writer.state.sessions?.[session]
 
-      if (recorded && (!recorded.taskId || writer.state.cards[recorded.taskId]?.automaticTask)) {
+      if (recorded && (!recorded.taskId || recorded.taskId === HYDRA_CARD)) {
         applyDecision({
           writer,
           decision: hydraEvent({

@@ -13,7 +13,6 @@ export interface TaskDraft {
   brief: string
 }
 
-// Only the fields that changed are sent; automatic tasks have no brief to edit.
 export function TaskEditor({
   hydraId,
   card,
@@ -99,7 +98,7 @@ export function TaskEditor({
           ],
         }),
       ] : []),
-      ...(!card.automaticTask && nextBrief !== (card.brief ?? '').trim() ? [
+      ...(nextBrief !== (card.brief ?? '').trim() ? [
         command({
           name: 'task',
           args: [
@@ -153,18 +152,14 @@ export function TaskEditor({
           }
         }}
       />
-      {!card.automaticTask && (
-        <>
-          <span className="eyebrow">Brief</span>
-          <ComposerField
-            ref={briefField}
-            label="Brief"
-            placeholder="Add a brief…"
-            value={brief}
-            change={({ text }) => setBrief(text)}
-          />
-        </>
-      )}
+      <span className="eyebrow">Brief</span>
+      <ComposerField
+        ref={briefField}
+        label="Brief"
+        placeholder="Add a brief…"
+        value={brief}
+        change={({ text }) => setBrief(text)}
+      />
       <div className="row">
         <Button type="submit" variant="primary" disabled={blocked}>Save</Button>
         <Button onClick={close}>Cancel</Button>

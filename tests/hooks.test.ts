@@ -1,3 +1,4 @@
+import { base as eventBase } from '#app/command-meta.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
@@ -209,6 +210,90 @@ test(
       title: 'Fix the flaky login test',
       activity: 'working',
     })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: {
+          event: {
+            ...eventBase({
+              state: writer.state,
+              cardId: 'legacy-hook-observation',
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'hook:claude',
+                id: 'legacy-outside-observation',
+              },
+            }),
+            type: 'card.pushed',
+            data: {
+              key: 'claude:outside-1',
+              agent: working.agent,
+              terminal: { tty: '/dev/ttys99998' },
+              settings: { fast: 'on' },
+              activity: 'working',
+              source: {
+                adapter: 'hooks',
+                instanceId: 'claude',
+                objectId: 'outside-1',
+                observedAt: new Date().toISOString(),
+              },
+            },
+          },
+        },
+      }),
+    })
+    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({
+      terminal: { tty: '/dev/ttys99998' },
+      settings: { fast: 'true' },
+    })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: {
+          event: {
+            ...eventBase({
+              state: writer.state,
+              cardId: 'legacy-hook-observation',
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'hook:claude',
+                id: 'legacy-outside-settings',
+              },
+            }),
+            type: 'card.pushed',
+            data: {
+              key: 'claude:outside-1',
+              settings: {
+                model: 'recorded-hook-model',
+                fast: 'off',
+              },
+              source: {
+                adapter: 'transcript',
+                objectId: base.transcript_path,
+                observedAt: new Date().toISOString(),
+              },
+            },
+          },
+        },
+      }),
+    })
+    expect((await sessionFacts({ session: 'outside-1' })).settings).toMatchObject({
+      model: 'recorded-hook-model',
+      fast: 'false',
+    })
+    const allCards = parsed(await pnyxAxi({
+      args: [
+        'page',
+        '--hidden',
+        '--full',
+        '--hydra',
+        'default',
+      ],
+      env: process.env,
+    })).page.cards
+    expect(allCards).not.toHaveProperty('legacy-hook-observation')
     await hook({
       event: 'PreToolUse',
       payload: {

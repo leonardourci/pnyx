@@ -182,7 +182,7 @@ export function refreshTasks({
   for (const card of cards) {
     permissionAttention({ card })
 
-    if (card.automaticTask || card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
+    if (card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
       card.hidden = true
     }
 
