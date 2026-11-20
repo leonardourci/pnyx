@@ -1158,13 +1158,13 @@ test.each([
         return attempts.length === expectedAttempts && latest?.answered === latest?.received.length
       },
     })
-    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
-      .filter(input => input.includes(text))
-    expect(attempts).toHaveLength(expectedAttempts)
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
     await row.getByRole('alert').waitFor({ state: 'hidden' })
+    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
+      .filter(input => input.includes(text))
+    expect(attempts).toHaveLength(expectedAttempts)
     expect(await row.locator('time').count()).toBe(1)
   },
 )

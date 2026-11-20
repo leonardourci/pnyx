@@ -3741,7 +3741,7 @@ test(
 )
 
 test(
-  'held owner messages stay visible without taking the active turn folds or timing',
+  'held and refused owner messages stay visible without taking the active turn folds or timing',
   () => {
     const at = ({ second }: { second: number }) => `2026-01-01T00:00:0${second}.000Z`
     const messages = [
@@ -3754,6 +3754,12 @@ test(
         id: 'held',
         text: 'held request',
         at: at({ second: 3 }),
+      },
+      {
+        id: 'refused',
+        text: 'refused request',
+        at: at({ second: 4 }),
+        failure: 'The agent refused the interrupt',
       },
     ].map(message => ({
       ...message,
@@ -3800,6 +3806,7 @@ test(
     expect(conversation.entries.map(entry => entry.id)).toEqual([
       'active',
       'held',
+      'refused',
       'reply',
     ])
     expect(conversation.folds.get('reply')?.notes).toEqual([

@@ -222,7 +222,9 @@ export function hydraConversation({
   const heldEntries: ThreadEntry[] = []
 
   for (const entry of reconciled) {
-    if (ownMessage({ entry }) && held.has(entry.reference ?? '')) {
+    const undelivered = held.has(entry.reference ?? '') || entry.receipt === 'failed'
+
+    if (ownMessage({ entry }) && undelivered) {
       if (!entry.hidden) {
         heldEntries.push(entry)
       }
