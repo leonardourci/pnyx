@@ -78,6 +78,12 @@ export interface TurnPlan {
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean
+  // Claude calls this tool first and is still running it until the turn's release.
+  tool?: {
+    id: string
+    name: string
+    input: Record<string, unknown>
+  }
 }
 
 interface Plan extends TurnPlan {
@@ -142,6 +148,7 @@ export function fakeClaude() {
   const recordedReply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
+  const recordedAssistant = claudeRecording.turn.find(m => m.type === 'assistant')!
 
   const query = (({
     prompt,
@@ -403,6 +410,23 @@ export function fakeClaude() {
           if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
             && recorded.event.delta.type === 'text_delta') {
             const partial = plan?.partial ?? ''
+
+            if (plan?.tool) {
+              yield {
+                ...recordedAssistant,
+                session_id: id,
+                uuid: randomUUID(),
+                message: {
+                  ...recordedAssistant.message,
+                  content: [
+                    {
+                      type: 'tool_use' as const,
+                      ...plan.tool,
+                    },
+                  ],
+                },
+              } as SDKMessage
+            }
 
             if (partial) {
               yield {
