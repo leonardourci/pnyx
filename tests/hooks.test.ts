@@ -229,6 +229,7 @@ test(
             data: {
               key: 'claude:outside-1',
               agent: working.agent,
+              terminal: { tty: '/dev/ttys99998' },
               activity: 'working',
               source: {
                 adapter: 'hooks',
@@ -241,6 +242,37 @@ test(
         },
       }),
     })
+    expect((await sessionFacts({ session: 'outside-1' })).terminal).toMatchObject({ tty: '/dev/ttys99998' })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: {
+          event: {
+            ...eventBase({
+              state: writer.state,
+              cardId: 'legacy-hook-observation',
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'hook:claude',
+                id: 'legacy-outside-settings',
+              },
+            }),
+            type: 'card.pushed',
+            data: {
+              key: 'claude:outside-1',
+              settings: { model: 'recorded-hook-model' },
+              source: {
+                adapter: 'transcript',
+                objectId: base.transcript_path,
+                observedAt: new Date().toISOString(),
+              },
+            },
+          },
+        },
+      }),
+    })
+    expect((await sessionFacts({ session: 'outside-1' })).settings).toMatchObject({ model: 'recorded-hook-model' })
     const allCards = parsed(await pnyxAxi({
       args: [
         'page',
