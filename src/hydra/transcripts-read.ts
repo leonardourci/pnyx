@@ -187,6 +187,22 @@ export function recordEntries({
   })
 }
 
+// Whether a page that shows these traces holds rows of this kind.
+export function showsKind({
+  kind,
+  tools,
+  thinking,
+}: {
+  kind: ThreadEntry['kind']
+  tools: boolean
+  thinking: boolean
+}): boolean {
+  const hiddenTool = kind === 'tool' && !tools
+  const hiddenThinking = kind === 'thinking' && !thinking
+
+  return !hiddenTool && !hiddenThinking
+}
+
 export function transcriptEntries({
   parsed,
   offset,
@@ -218,7 +234,11 @@ export function transcriptEntries({
   })
 
   for (const trace of parsed.traces) {
-    if ((trace.kind === 'tool' && !tools) || (trace.kind === 'thinking' && !thinking)) {
+    if (!showsKind({
+      kind: trace.kind,
+      tools,
+      thinking,
+    })) {
       continue
     }
 

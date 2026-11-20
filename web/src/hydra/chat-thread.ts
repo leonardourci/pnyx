@@ -41,6 +41,8 @@ export function useChatThread({
   useLayoutEffect(() => {
     loaded.current = page
   })
+  // An older read beside a restoring opening read would supersede it and land on a subscription without rows.
+  const opening = useRef<Promise<void>>(Promise.resolve())
 
   useEffect(
     () => {
@@ -76,7 +78,7 @@ export function useChatThread({
         }
       }
 
-      open()
+      opening.current = open()
 
       return () => {
         cancelled = true
@@ -121,6 +123,7 @@ export function useChatThread({
     setLoadingEarlier(true)
 
     try {
+      await opening.current
       await loadEarlierMessages({
         page: loaded.current,
         until,

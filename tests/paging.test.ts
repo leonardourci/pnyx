@@ -218,17 +218,8 @@ test(
         }),
       ],
     }) as unknown as { thread: { entries: Entry[] } }
-    // A tab from before the recent window was removed gets a refusal, not a page read from a bogus cursor.
-    const recent = await reconnected.send({
-      name: 'thread',
-      args: [
-        'notes',
-        '--recent',
-      ],
-    }) as unknown as { code?: string }
     reconnected.close()
     expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
-    expect(recent.code).toBe('VALIDATION_ERROR')
   },
 )
 

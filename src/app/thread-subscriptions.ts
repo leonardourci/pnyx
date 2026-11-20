@@ -8,7 +8,7 @@ import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { readThread, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { readThread, showsKind, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { paseoHistory } from '#integrations/paseo/history.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import type { Card } from '#tasks/model.ts'
@@ -172,6 +172,32 @@ export function createThreadSubscriptions({
     },
   })
 
+  // A task's loaded pages were each read with the traces its view showed then, so its page keeps only those shown now.
+  const shownRows = ({
+    card,
+    page,
+  }: {
+    card: Card
+    page: ThreadPage
+  }): ThreadPage => {
+    const {
+      tools,
+      thinking,
+    } = traces({
+      view: effectiveView({ state: state() }),
+      card: card.id,
+    })
+
+    return {
+      ...page,
+      entries: page.entries.filter(entry => showsKind({
+        kind: entry.kind,
+        tools,
+        thinking,
+      })),
+    }
+  }
+
   const prepareThread = ({
     sub,
     page,
@@ -208,7 +234,10 @@ export function createThreadSubscriptions({
     if (page.card !== HYDRA_CARD) {
       return versionThread({
         sub,
-        prepared: visible,
+        prepared: shownRows({
+          card,
+          page: visible,
+        }),
         push,
       })
     }
@@ -343,7 +372,10 @@ export function createThreadSubscriptions({
       sub.base = {
         signature,
         // Hydra's view merges the latest page into its loaded history itself; a task's page is that history.
-        page: card.id === HYDRA_CARD ? page : sub.history,
+        page: card.id === HYDRA_CARD ? page : shownRows({
+          card,
+          page: sub.history,
+        }),
         project: card.id === HYDRA_CARD ? createHydraThreadView({
           state: state(),
           page: sub.history!,
