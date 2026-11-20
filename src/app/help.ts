@@ -22,6 +22,7 @@ commands:
   task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task send <task> --text <text> --harness claude|codex Start or message a worker directly
+  task intake [<task>] --ask <words> --event-id <id> File an owner ask and start its worker, or record why it waits
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
   rule; account list|set|remove              Heads dispatch rules and worker login folders
@@ -236,6 +237,13 @@ pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--m
 Create work with --project, or put it in Ideas when no project applies. Use --parent for related work or a PR stack, one level deep.
 --project names a project attached to the Hydra (see project list).
 Add --start --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] to create and send directly to its worker.
+Hydra (actor hydra) files work with task intake; its plain create is refused unless it holds the task (--hold).
+pnyx-axi task intake [<task>] --ask <owner-words> [--message <owner-message-id>] [--title <title> --brief <text>] [--project <name|path>] [--intent <text>] [--kind build|investigation] [--parent <task>] [--folder <path>] --event-id <id> [--reason <text>] [start flags | --hold | --behind <task|session> | --on <task>...]
+Saves the owner's ask and the brief on a new task (--title and --brief) or on <task>, then starts its worker through the dispatch rules, taking task start's flags.
+On a <task> that already has a worker, the ask (and any new --brief) goes to that worker instead.
+--hold, --behind or --on records the hold, queue or dependency instead of starting. Repeating the same --event-id never files or starts anything twice.
+The receipt names the task and its launch: started (worker, rule, harness), requested through Firstmate, steered, pending while its session opens,
+blocked with the blocker and the command that clears it (also saved as a note on the task), or held, queued or waiting.
 pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]
 Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
 Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing

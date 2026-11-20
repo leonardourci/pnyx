@@ -29,6 +29,7 @@ import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
+import { intakeCommand } from '#workers/intake.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, startFlags, sessionRef, afterAttach } from '#workers/cli.ts'
@@ -221,6 +222,15 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return local
+  }
+
+  if (action === 'intake') {
+    return intakeCommand({
+      hydraId,
+      positionals,
+      values,
+      meta: m,
+    })
   }
 
   if (action === 'tools') {
@@ -1220,7 +1230,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, intake, list, show, status, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }
