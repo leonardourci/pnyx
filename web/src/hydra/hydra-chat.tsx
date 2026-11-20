@@ -211,7 +211,6 @@ export function HydraChat({
     upgradeRunning,
     working,
   } = chatQueue
-  // From the Hydra's own state, so a first send shows its working dots before the server's queue arrives.
   const hosted = hostedHydra({ state })
   const inFlight = pending.filter(item => item.failed === undefined)
   // An unsent message stays in the chat even while Hydra holds new input in the queue box.
@@ -522,7 +521,6 @@ export function HydraChat({
     }
   }
 
-  // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const status = observedStatus({
     card,
     state,
@@ -539,9 +537,7 @@ export function HydraChat({
       state.view?.customColumns,
     ],
   )
-  // A send counts from the owner's message until the server says the turn began.
-  const since = (working ? card?.workingSince : undefined)
-    ?? inFlight.at(-1)?.at ?? null
+  const since = running ? card?.workingSince ?? inFlight.at(-1)?.at ?? null : null
 
   const sendAgain = async ({
     task,

@@ -9,6 +9,7 @@ interface TurnSend {
   card: string
   message?: string
   afterSeq: number
+  wasWorking: boolean
   turnStartedAt?: string
   stoppedAt?: string
 }
@@ -31,7 +32,7 @@ const observedTurn = ({
   }
 
   const working = (card.sessionActivity ?? card.activity) === 'working'
-  const started = working && card.turnStartedAt !== send.turnStartedAt
+  const started = working && (!send.wasWorking || card.turnStartedAt !== send.turnStartedAt)
   const ended = (card.turnEndedSeq ?? 0) > send.afterSeq
   const stopped = card.stoppedAt !== undefined && card.stoppedAt !== send.stoppedAt
 
@@ -110,6 +111,7 @@ export function pendingTurns({
     const activity = card?.sessionActivity ?? card?.activity
     const hydraFailed = intent.patch.card === HYDRA_CARD && hydraStatus?.state === 'down'
       && hydraStatus.seq > intent.patch.afterSeq && activity !== 'working'
+      && (card?.turnEndedSeq ?? 0) <= hydraStatus.seq
 
     if (hydraFailed) {
       pending[intent.patch.card] = { error: hydraStatus.detail ?? 'Hydra could not start a turn' }

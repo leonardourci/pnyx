@@ -333,19 +333,23 @@ export function createConnectionRequests({
         if (existing?.stage === 'refused' || existing?.stage === 'unknown') {
           scope.turns.retry({ id })
         } else if (!existing) {
+          const card = state.cards[target]
+          const message = name === 'reply' ? args[2] : argument({
+            args,
+            flag: '--event-id',
+          })
+          const wasWorking = (card?.sessionActivity ?? card?.activity) === 'working'
           scope.turns.enqueue({
             id,
             targets: [target],
             delivery: 'idempotent',
             patch: {
               card: target,
-              message: name === 'reply' ? args[2] : argument({
-                args,
-                flag: '--event-id',
-              }),
+              message,
               afterSeq: state.seq,
-              turnStartedAt: state.cards[target]?.turnStartedAt,
-              stoppedAt: state.cards[target]?.stoppedAt,
+              wasWorking,
+              turnStartedAt: card?.turnStartedAt,
+              stoppedAt: card?.stoppedAt,
             },
           })
         }

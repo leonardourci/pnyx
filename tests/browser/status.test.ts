@@ -94,7 +94,7 @@ async function recordBadges({ selector }: { selector: string }) {
 }
 
 test(
-  'live badges show thinking at turn start, working through tools and idle at turn end in Focus mode',
+  'live badges show Starting… on Send, Thinking at turn start, Working through tools and Idle at turn end',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.startTask({ key: 'live-badges' })
@@ -184,19 +184,20 @@ test(
                 pill: frames.slice(window.sendFrames.worker).filter(frame => !active.includes(frame.pill)),
                 task: frames.slice(window.sendFrames.worker).filter(frame => !active.includes(frame.task)),
               },
-              tools: document.querySelectorAll('.action-bubble').length,
+              workerDisagreements: frames.slice(window.sendFrames.worker).filter(frame => frame.pill !== frame.task),
             };
           })));
         `,
         })
         const sample = JSON.parse(sampled)
-        expect(sample.tools).toBe(0)
         expect(sample.frames).toBeGreaterThan(0)
+        expect(sample.workerDisagreements).toEqual([])
         expect(sample.interrupted).toEqual({
           hydra: [],
           pill: [],
           task: [],
         })
+        expect((await hydra.task({ key: 'live-badges' })).status).toBe('running')
       } finally {
         hydraTurn.release()
         workerTurn.release()
