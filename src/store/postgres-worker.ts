@@ -1,3 +1,4 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
 import { errorDetails } from './error-details.ts'
@@ -63,7 +64,18 @@ if (!PAGE_PUBLICATION) {
   throw new Error('schema.sql has no pnyx_page publication')
 }
 
-const REMOVE_AUTOMATIC_TASK = 'alter table cards drop column if exists automatic_task'
+const REMOVE_AUTOMATIC_TASK = `with retired as (
+    delete from cards where to_jsonb(cards)->>'automatic_task' = 'true' and id <> '${HYDRA_CARD}'
+    returning hydra_id, id
+  )
+  update sessions set task_id = null, data = jsonb_set(data::jsonb, '{taskId}', 'null'::jsonb)::json
+    from retired where sessions.hydra_id = retired.hydra_id
+      and (sessions.task_id = retired.id or sessions.data->>'taskId' = retired.id);
+  update card_bodies set data = (data::jsonb - 'automaticTask')::json
+    where data::jsonb ? 'automaticTask';
+  update card_references set data = (data::jsonb - 'automaticTask')::json
+    where data::jsonb ? 'automaticTask';
+  alter table cards drop column if exists automatic_task`
 
 const ADD_HYDRA_REMOVAL = 'alter table hydras add column if not exists removed boolean not null default false'
 
