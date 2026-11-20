@@ -13,7 +13,6 @@ import { asRecord } from '#app/command-validation.ts'
 
 type Command = ReturnType<typeof guard>
 
-// Memory visibility and agent notices share the native command context.
 export function agentNotices<T extends Record<string, Command>>({
   commands,
   env = requestEnv(),

@@ -44,7 +44,6 @@ function releaseReason({
 
 export type Settle = 'check' | 'safe' | 'discard'
 
-// Copy removal keeps work whose landing cannot be proved.
 export async function settleCopy({
   hydraId,
   ref,

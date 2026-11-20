@@ -24,7 +24,6 @@ export function cardFacts({
   // A pull request closed without merging was abandoned; the work landed through the ones that merged.
   const live = prs.filter(link => link.state !== 'closed')
   const allMerged = live.length > 0 && live.every(link => link.state === 'merged')
-  // Automatic completion waits for the report’s decision inventory.
   const done = card.status?.state === 'done' || (allMerged && !reportReviewGaps({
     state,
     card,

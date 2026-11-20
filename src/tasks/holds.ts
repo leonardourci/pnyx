@@ -81,10 +81,6 @@ export function decideHold({
     })
   }
 
-  if (!card.hold) {
-    return { skipped: 'unchanged' as const }
-  }
-
   const source = state.hydraMessages?.find(entry => entry.id === message)
 
   if (message && !source) {
@@ -94,7 +90,11 @@ export function decideHold({
     })
   }
 
-  const ownerGo = source && ownerActor({ actor: source.actor })
+  if (!card.hold) {
+    return { skipped: 'unchanged' as const }
+  }
+
+  const ownerGo = source?.action === 'send' && ownerActor({ actor: source.actor })
     && Date.parse(source.at) > Date.parse(card.hold.at)
     && !clarificationMessage({ message: source })
 

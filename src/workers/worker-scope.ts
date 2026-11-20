@@ -220,7 +220,6 @@ function checkWorkerScope({
 // eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
 type Command = (args: string[]) => unknown
 
-// Scope notices share the command's receipt and event collection.
 export function workerScoped<T extends Record<string, Command>>({ commands }: { commands: T }): T {
   return Object.fromEntries(Object.entries(commands).map(([
     name,

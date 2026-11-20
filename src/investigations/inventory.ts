@@ -61,7 +61,9 @@ export function requireReportReview({
     inform({
       task: card.id,
       reason: gaps.join('; '),
-      clear: `Use pnyx-axi task report-review ${card.id} --report ${card.report?.id} --none or --call <task>/<question>`,
+      clear: card.report
+        ? `Use pnyx-axi task report-review ${card.id} --report ${card.report.id} --none or --call <task>/<question>`
+        : `Use pnyx-axi task report ${card.id} --file <path> to store the report`,
     })
   }
 }

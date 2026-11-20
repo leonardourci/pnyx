@@ -367,6 +367,15 @@ test(
       })
       expect(released.notices).toBeDefined()
       expect((await hydra.task({ key: 'still-held' })).hold).toBeUndefined()
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'release',
+          'still-held',
+          '--from-message',
+          'missing-release-message',
+        ],
+      })).code).toBe('NOT_FOUND')
       await hydra.owner({
         args: [
           'task',

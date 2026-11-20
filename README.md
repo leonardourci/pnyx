@@ -63,7 +63,7 @@ Choose a unique `<name>.pnyx` for each trial and share the URL portless prints. 
 
 Use the same `PNYX_HOME` for every command in that trial, including `stop`. A separate home still uses your normal harness logins and global skill folders.
 
-Setup commands change user-wide configuration and require an explicit override for custom homes. See [data and privacy](docs/data.md) before sharing a data folder or removing it.
+Setup commands change user-wide configuration and report the selected home when it differs from the default. See [data and privacy](docs/data.md) before sharing a data folder or removing it.
 
 ### 2. Attach a project
 

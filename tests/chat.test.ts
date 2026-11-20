@@ -1644,6 +1644,14 @@ test(
     })
 
     expect(waited.notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('returns immediately') })]))
+    expect((await hosted.refused({
+      args: [
+        'hydra',
+        'check',
+        '--wait',
+        '3601',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
   },
 )
 

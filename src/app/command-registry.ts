@@ -3,7 +3,6 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 
 type Args = { args: string[] }
 
-// Command routing, default agent scope and page behavior.
 type Entry = {
   // The page may run it through the server.
   page?: true
@@ -11,7 +10,6 @@ type Entry = {
   agent?: true
   // The page may send it again after a lost answer: repeating it changes nothing.
   repeatable?: true
-  // Default worker scope, reported when an explicit command goes beyond it.
   scope?: {
     reads?: string[]
     own?: string[]
@@ -29,7 +27,6 @@ type Entry = {
     positionals: string[]
     values: Record<string, unknown>
   }): boolean
-  // Actions worth highlighting when an agent requests them.
   agentNotices?({ args }: Args): boolean
 }
 
@@ -417,5 +414,4 @@ export function readOnlyCommand({
   }) ?? false
 }
 
-// Native permission prompts still apply to tools outside Pnyx commands.
 export const HYDRA_COMMANDS = ['pnyx-axi']

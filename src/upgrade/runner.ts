@@ -170,7 +170,6 @@ async function unknownOnFailure<T>({ read }: { read(): Promise<T> }) {
   }
 }
 
-// Facts to report before updating the current checkout.
 async function upgradeFacts({ root }: { root: string }): Promise<string[]> {
   const branch = await unknownOnFailure({
     read: () => git({

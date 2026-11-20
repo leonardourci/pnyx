@@ -94,8 +94,9 @@ export async function hydraCheck({
     flag: '--wait',
   }) ?? 0
 
-  // A shell call inside a turn holds every message to Hydra until it returns; Pnyx wakes the Hydra it runs instead.
-  if (wait > 0 && requestEnv().PNYX_HOSTED === 'hydra') {
+  const maxWaitSeconds = 3600
+
+  if (wait > 0 && wait <= maxWaitSeconds && requestEnv().PNYX_HOSTED === 'hydra') {
     inform({
       reason: 'Hosted Hydra check returns immediately so its turn can finish',
       clear: 'Use pnyx-axi hydra check without --wait; Pnyx wakes Hydra when work changes',
@@ -103,7 +104,7 @@ export async function hydraCheck({
     wait = 0
   }
 
-  if (wait > 3600) {
+  if (wait > maxWaitSeconds) {
     throw new AxiError(
       '--wait is at most 3600 seconds',
       'VALIDATION_ERROR',

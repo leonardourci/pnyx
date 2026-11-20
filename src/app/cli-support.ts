@@ -230,7 +230,6 @@ export function meta({ values }: { values: Record<string, string | boolean | und
   return m
 }
 
-// Returns the trimmed reason, which is empty only for writes that are not Hydra's.
 export function explained({ meta }: { meta: Meta }): string {
   const reason = meta.reason?.trim() ?? ''
 
@@ -646,7 +645,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.reminder': return event.data.after ? `Reminder set for ${event.data.after}` : 'Reminder cleared'
     case 'task.reminder-due': return event.data.message.text
     case 'task.held': return `Held for discussion: ${event.data.reason}`
-    case 'task.released': return `Released on owner message ${event.data.message.id}`
+    case 'task.released': return 'Discussion hold released'
     case 'task.owner-ask':
     case 'task.intent': return 'Owner ask added'
     case 'task.brief': return briefChange({ data: event.data })
