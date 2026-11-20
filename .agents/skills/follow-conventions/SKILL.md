@@ -39,7 +39,7 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 
 - Write a rule the code checks in more than one place once, as a named helper every site imports.
 - Throw a `HydraError` with its code at the failure site; `guard()` turns it into the CLI's structured error. A `catch` that doesn't recognize an error rethrows it.
-- Never drop an error to make code tidy. Name a deliberate fire-and-forget so the code says losing its failure is safe: with a helper or named step.
+- Never drop an error to make code tidy. Give a deliberate fire-and-forget a helper or named step whose name says losing its failure is safe.
 - A derived cache that several processes read, such as the Oracle's `oracle.db` read by the server and its search workers, resolves corrections and deletions against the saved event log and cursors, never against one process's memory.
 
 ## Provider boundaries
