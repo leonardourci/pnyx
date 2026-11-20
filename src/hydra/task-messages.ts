@@ -88,11 +88,13 @@ export function deliveredInputs({
   provider?: string
 }): Set<ThreadEntry> {
   const inputs = entries.filter(entry => ownMessage({ entry }))
-  const injected = joinMessageParts({ entries: inputs }).filter(message => steeringText({ text: message.text })
+  const messages = joinMessageParts({ entries: inputs })
+  const pnyxWords = ({ message }: { message: ThreadEntry }) => steeringText({ text: message.text })
     || injectedInstructions({
       entry: message,
       provider,
-    }))
+    })
+  const injected = messages.filter(message => pnyxWords({ message }))
   const injectedMessages = new Set(injected.map(message => messageOf({ entry: message })))
 
   return new Set(inputs.filter(entry => {
