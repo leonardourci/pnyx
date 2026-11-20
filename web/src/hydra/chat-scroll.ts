@@ -115,10 +115,15 @@ export function useChatScroll() {
       }
     },
     onScroll: ({ currentTarget }: React.UIEvent<HTMLElement>) => {
+      const {
+        scrollTop,
+        scrollHeight,
+        clientHeight,
+      } = currentTarget
       follow.scrolled({
         at: performance.now(),
-        top: currentTarget.scrollTop,
-        remaining: currentTarget.scrollHeight - currentTarget.scrollTop - currentTarget.clientHeight,
+        top: scrollTop,
+        remaining: scrollHeight - scrollTop - clientHeight,
       })
     },
   }

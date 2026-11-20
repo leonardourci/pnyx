@@ -74,7 +74,6 @@ export function useWorkspaceWindow({
       }
 
       const observer = new IntersectionObserver(
-
         entries => {
           setVisible(entries.some(entry => entry.isIntersecting && entry.intersectionRect.width > 0
             && entry.intersectionRect.height > 0))
