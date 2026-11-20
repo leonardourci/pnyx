@@ -7,7 +7,6 @@ import { log } from './log.ts'
 // outlasts two of the default 5 s waits.
 const PING_TIMEOUT_MS = 10_000
 
-// The page's one Zero client while the connection runs; the connection's views and every useQuery read through it.
 let current: Zero | undefined
 
 // zero-cache is on the page's own origin behind the token cookie; each installation keeps its own cached rows.
