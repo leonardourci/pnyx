@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { readOnlyCommand } from '#app/command-registry.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
@@ -34,7 +35,12 @@ export function requireHydraCapability({
   }
 
   if (!caller) {
-    unavailable()
+    inform({
+      reason: 'Acting without a caller Hydra memory context',
+      clear: 'Use pnyx-axi with --hydra <hydra> to select the target explicitly',
+    })
+
+    return
   }
 
   const state = loadHydra({ hydraId: caller }).state
@@ -73,7 +79,10 @@ export function requireHydraCapability({
     poleis,
     polis,
   }))) {
-    unavailable()
+    inform({
+      reason: `Acting on Hydra ${hydraId} outside the caller’s memory read scope`,
+      clear: `Use pnyx-axi hydra set --hydra ${caller} --read-poleis <poleis> to change the caller’s memory scope`,
+    })
   }
 }
 

@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { loadHydra } from '#app/store.ts'
 import { findProject } from '#projects/read.ts'
 import { requireProjectMemory } from './poleis.ts'
@@ -227,9 +228,11 @@ export async function projectFacts({ path }: { path: string }): Promise<ProjectF
 export async function projectMemoryView({
   path,
   hydraId,
+  writing = false,
 }: {
   path: string
   hydraId: string
+  writing?: boolean
 }) {
   const facts = await projectFacts({ path })
 
@@ -237,6 +240,7 @@ export async function projectMemoryView({
     fn: () => projectMemoryViewUnderLock({
       facts,
       hydraId,
+      writing,
     }),
   })
 }
@@ -265,9 +269,11 @@ export async function readableProjectMemory({
 export function projectMemoryViewUnderLock({
   facts,
   hydraId,
+  writing = false,
 }: {
   facts: ProjectFacts
   hydraId: string
+  writing?: boolean
 }) {
   const {
     identity,
@@ -281,6 +287,7 @@ export function projectMemoryViewUnderLock({
   requireProjectMemory({
     hydraId,
     id: identity.id,
+    writing,
   })
   const memory = readProjectMemoryLog(identity)
   const changed = [
@@ -337,6 +344,7 @@ export async function writeProjectMemory({
   return withRegistryLock({
     fn: () => {
       const view = projectMemoryViewUnderLock({
+        writing: true,
         facts,
         hydraId,
       })
@@ -496,10 +504,9 @@ export function checkProjectMemoryBudget({
   const used = current - (memory.documents[key]?.length ?? 0) + (after?.length ?? 0)
 
   if (after !== null && used > PROJECT_MEMORY_BUDGET && used > current) {
-    throw new HydraError({
-      message: `Project memory would use ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
-      code: 'MEMORY_FULL',
-      help: [`Load ${INSCRIBE_SKILL}: merge, shorten or forget project entries, then save again`],
+    inform({
+      reason: `Project memory uses ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
+      clear: `Use pnyx-axi project memory forget, or ${INSCRIBE_SKILL}, to curate it`,
     })
   }
 

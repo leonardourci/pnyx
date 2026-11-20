@@ -1,8 +1,8 @@
+import { inform } from '#app/command-notices.ts'
 import { HydraError } from '#store/errors.ts'
 import { widensPolisReaders } from '#memory/access-changes.ts'
 import { checkMemoryApproval, memoryPermission, memoryCaller, memoryAgent } from '#memory/poleis.ts'
 import { patchSettings } from './settings.ts'
-import { hydraActor } from '#app/request-context.ts'
 import { canRead } from '#memory/polis-policy.ts'
 import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
@@ -97,31 +97,11 @@ export const settings = guard({
     })
     const memoryPatch = patch !== null && typeof patch === 'object' && ('poleis' in patch || 'projectPoleis' in patch) ? patch : undefined
 
-    if (!duplicate && memoryPatch && (memoryAgent() || hydraActor({ actor: change.actor }))) {
-      const state = loadHydra({ hydraId }).state
-
-      if ('projectPoleis' in memoryPatch) {
-        throw new HydraError({
-          message: 'Use project move to change the polis of an attached project',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      if ('poleis' in memoryPatch && memoryPatch.poleis && typeof memoryPatch.poleis === 'object') {
-        for (const polis of Object.keys(memoryPatch.poleis)) {
-          if (!canRead({
-            hydraId,
-            state,
-            poleis: read.settings.poleis,
-            polis,
-          })) {
-            throw new HydraError({
-              message: 'Memory is unavailable',
-              code: 'NOT_FOUND',
-            })
-          }
-        }
-      }
+    if (memoryPatch && memoryAgent()) {
+      inform({
+        reason: 'Memory visibility settings changed by an agent',
+        clear: 'Use pnyx-axi settings set --json <patch> to change visibility',
+      })
     }
 
     if (!duplicate && (memoryPatch || values.propose)) {

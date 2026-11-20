@@ -1,6 +1,6 @@
+import { inform } from '#app/command-notices.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError } from '#store/errors.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -14,16 +14,16 @@ export function checkWorkerNotes({
   reason?: string
 }): void {
   if (!reason?.trim()) {
-    throw new HydraError({
-      message: 'Standing worker instruction changes need --reason <why>',
-      code: 'VALIDATION_ERROR',
+    inform({
+      reason: 'Worker instructions changed without a reason',
+      clear: 'Use pnyx-axi hydra worker-notes set --text "<instructions>" --reason "<why>"',
     })
   }
 
   if (text !== null && text.length > WORKER_NOTES_BUDGET) {
-    throw new HydraError({
-      message: `Standing worker instructions exceed ${WORKER_NOTES_BUDGET} characters`,
-      code: 'MEMORY_FULL',
+    inform({
+      reason: `Standing worker instructions exceed ${WORKER_NOTES_BUDGET} characters`,
+      clear: 'Use pnyx-axi hydra worker-notes set --text "<shorter instructions>" --reason "<why>"',
     })
   }
 }

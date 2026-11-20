@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
 import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
@@ -568,6 +569,7 @@ export async function moveOwnerLearning({
       }
 
       const project = projectMemoryViewUnderLock({
+        writing: true,
         facts,
         hydraId,
       })
@@ -679,9 +681,9 @@ export function moveOwnerPolis({
         poleis: readSettings().settings.poleis,
         polis: destination,
       })) {
-        throw new HydraError({
-          message: 'Memory is unavailable',
-          code: 'NOT_FOUND',
+        inform({
+          reason: `Moving owner memory to ${destination} outside the caller’s read scope`,
+          clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> to change visibility`,
         })
       }
 
