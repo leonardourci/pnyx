@@ -287,6 +287,8 @@ export function createServerTick({
         // One settle at a time; it reads the copies with git, off the event loop.
         if (!settling && Object.values(state().cards).some(card => settles({ card }))) {
           const settle = async () => {
+            const startingSeq = state().seq
+
             try {
               await settleDone({ hydraId })
             } catch (error) {
@@ -301,10 +303,14 @@ export function createServerTick({
               return
             } finally {
               settling = undefined
-            }
 
-            if (!closed()) {
-              pump()
+              if (!closed()) {
+                pump()
+
+                if (state().seq > startingSeq) {
+                  kick()
+                }
+              }
             }
           }
 
