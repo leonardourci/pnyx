@@ -378,7 +378,7 @@ export function createThreadSubscriptions({
         }),
         project: card.id === HYDRA_CARD ? createHydraThreadView({
           state: state(),
-          page: sub.history!,
+          page: sub.history,
           ...selected,
         }) : undefined,
       }

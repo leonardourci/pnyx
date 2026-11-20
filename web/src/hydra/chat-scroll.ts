@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type UIEvent } from 'react'
 import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 
@@ -98,7 +98,7 @@ export function useChatScroll() {
 
   const handlers = {
     onWheel: ownerInput,
-    onKeyDown: ({ target }: React.KeyboardEvent) => {
+    onKeyDown: ({ target }: KeyboardEvent) => {
       ownerInput()
       expandRow({ target })
     },
@@ -107,7 +107,7 @@ export function useChatScroll() {
     onPointerDown: ({
       target,
       currentTarget,
-    }: React.PointerEvent) => {
+    }: PointerEvent) => {
       expandRow({ target })
 
       // The scrollbar belongs to the scroller itself.
@@ -115,12 +115,12 @@ export function useChatScroll() {
         ownerInput()
       }
     },
-    onPointerMove: ({ buttons }: React.PointerEvent) => {
+    onPointerMove: ({ buttons }: PointerEvent) => {
       if (buttons) {
         ownerInput()
       }
     },
-    onScroll: ({ currentTarget }: React.UIEvent<HTMLElement>) => {
+    onScroll: ({ currentTarget }: UIEvent<HTMLElement>) => {
       const {
         scrollTop,
         scrollHeight,
