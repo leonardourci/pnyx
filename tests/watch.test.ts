@@ -12,7 +12,7 @@ test(
       process.env.TMPDIR!,
       'reconciled-file',
     )
-    let attempts = 0
+    let failNext = false
     let observed: string | undefined
     writeFileSync(
       path,
@@ -22,10 +22,10 @@ test(
     const watcher = watchPath({
       path,
       interval: 20,
+      poll: true,
       changed: () => {
-        attempts++
-
-        if (attempts === 1) {
+        if (failNext) {
+          failNext = false
           throw new Error('writer temporarily unavailable')
         }
 
@@ -41,6 +41,12 @@ test(
         path,
         'one append',
       )
+      await until({
+        what: 'the first write to be observed without a native notification',
+        check: () => observed === 'one append',
+      })
+      observed = undefined
+      failNext = true
       native.change({ path })
       await until({
         what: 'the unchanged file to be reconciled',
