@@ -26,6 +26,7 @@ export const columnsFor = ({ state }: { state: HydraState }) => {
 export function filterCards({
   state,
   query = '',
+  actions,
 }: {
   state: HydraState
   query?: string
@@ -41,6 +42,7 @@ export function filterCards({
       observedStatus({
         card: c,
         state,
+        action: actions?.[c.id],
       }).text,
       ...c.tags,
       ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`),
@@ -60,6 +62,7 @@ export function cardState({
   hours,
   now,
   state,
+  action,
 }: {
   card: Card
   hours?: DoneAfterHours
@@ -71,6 +74,7 @@ export function cardState({
   const status = observedStatus({
     card,
     state,
+    action,
   })
 
   if (status.kind === 'done' && card.doneAt) {

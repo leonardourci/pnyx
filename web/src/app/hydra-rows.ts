@@ -56,6 +56,18 @@ function cardFromRow({
   }
 
   const body = row.body?.data
+  const replies = new Map(row.replies.map(reply => [
+    reply.id,
+    reply,
+  ]))
+
+  for (const reply of row.latestReply) {
+    replies.set(
+      reply.id,
+      reply,
+    )
+  }
+
   // Zero types json columns as plain JSON; the body and the list rows hold the card's parts as the server stored them.
   const card = {
     ...body,
@@ -70,7 +82,7 @@ function cardFromRow({
       name: 'statusLog',
     }),
     replies: stored({
-      rows: inPosition({ rows: row.replies }).map(reply => reply.data),
+      rows: inPosition({ rows: [...replies.values()] }).map(reply => reply.data),
       body,
       name: 'replies',
     }),
