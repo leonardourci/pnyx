@@ -69,7 +69,6 @@ export async function sendTaskMessage({
           text: request.text,
         }),
         id: card.id,
-        title: card.title,
         agent: known?.route ? known.route !== 'hydra' : !!card.agent,
         session: card.sessionIds?.[0],
         receipt: known?.route && known.route !== 'hydra' ? known : undefined,
