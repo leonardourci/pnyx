@@ -141,17 +141,23 @@ const textOf = ({ message }: { message: SDKUserMessage }) => {
   return typeof content === 'string' ? content : content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
 
+function assistantRecord() {
+  const found = claudeRecording.turn.find(m => m.type === 'assistant')
+
+  if (!found) {
+    throw new Error('The recorded Claude turn holds no assistant message')
+  }
+
+  return found
+}
+
 export function fakeClaude() {
   const sessions: AgentSession[] = []
   const turns = plans()
   const recordedReply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
-  const recordedAssistant = claudeRecording.turn.find(m => m.type === 'assistant')
-
-  if (!recordedAssistant) {
-    throw new Error('The recorded Claude turn holds no assistant message')
-  }
+  const recordedAssistant = assistantRecord()
 
   const query = (({
     prompt,
