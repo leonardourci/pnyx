@@ -69,8 +69,8 @@ function askBlocker({
   const owner = ask.audience === 'owner'
   const choice = ask.kind ? ` --choice ${QUESTION_CHOICES[ask.kind]}` : ''
   const answer = owner
-    ? `Run \`pnyx-axi task answer ${card.id} ${ask.id}${choice} --from-message <owner-message-id>\` once the owner answers`
-    : `Run \`pnyx-axi task answer ${card.id} ${ask.id} --text "<answer>"\``
+    ? `Run \`pnyx-axi task answer ${card.id} ${ask.id}${choice} --from-message <owner-message-id> --reason "<why>"\` once the owner answers`
+    : `Run \`pnyx-axi task answer ${card.id} ${ask.id} --text "<answer>" --reason "<why>"\``
 
   return {
     reason: `waiting for ${owner ? 'the owner' : 'Hydra'} to answer question ${ask.id}: ${ask.question}`,

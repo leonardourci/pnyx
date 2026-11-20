@@ -111,9 +111,14 @@ export function validateLocalTaskFlags({
     ...ACTION_FLAGS[action]!,
   ]
 
-  if (action === 'create' && values.start && values['no-start']) {
+  const unstarted = [
+    'no-start',
+    'hold',
+  ].find(flag => values[flag])
+
+  if (action === 'create' && values.start && unstarted) {
     throw new HydraError({
-      message: '--start sends the ask to a worker, and --no-start leaves the task unstarted; choose one',
+      message: `--start sends the ask to a worker, and --${unstarted} leaves the task unstarted; choose one`,
       code: 'VALIDATION_ERROR',
     })
   }
