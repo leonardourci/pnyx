@@ -13,6 +13,16 @@ type NoticeScope = {
 
 let current: AsyncLocalStorage<NoticeScope> | undefined
 
+function sameNotice({
+  left,
+  right,
+}: {
+  left: CommandNotice
+  right: CommandNotice
+}): boolean {
+  return left.task === right.task && left.reason === right.reason && left.clear === right.clear
+}
+
 export function inform({
   task,
   reason,
@@ -29,7 +39,10 @@ export function inform({
 
   const scope = current?.getStore()
 
-  const duplicate = scope?.notices.some(saved => JSON.stringify(saved) === JSON.stringify(notice))
+  const duplicate = scope?.notices.some(saved => sameNotice({
+    left: saved,
+    right: notice,
+  }))
 
   if (scope?.active && !duplicate) {
     scope.notices.push(notice)
@@ -70,13 +83,23 @@ export function withCommandNotices<T>({ run }: { run(): T }): T {
 
     if (scope.notices.length && result !== null && typeof result === 'object') {
       const prior = (result as { notices?: CommandNotice[] }).notices
+      const notices: CommandNotice[] = []
+
+      for (const notice of [
+        ...(Array.isArray(prior) ? prior : []),
+        ...scope.notices,
+      ]) {
+        if (!notices.some(saved => sameNotice({
+          left: saved,
+          right: notice,
+        }))) {
+          notices.push(notice)
+        }
+      }
 
       return {
         ...result,
-        notices: [
-          ...(Array.isArray(prior) ? prior : []),
-          ...scope.notices,
-        ],
+        notices,
       }
     }
 

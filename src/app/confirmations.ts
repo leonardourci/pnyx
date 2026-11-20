@@ -122,7 +122,7 @@ export const approval = guard({
 
     if (action !== 'confirm' && action !== 'dismiss') {
       throw new HydraError({
-        message: 'Use approval confirm|dismiss <token> [--confirm <token>]',
+        message: 'Use approval confirm|dismiss <token>',
         code: 'VALIDATION_ERROR',
       })
     }
@@ -155,19 +155,15 @@ export const approval = guard({
           })
         }
 
-        if (action === 'confirm' && values.confirm !== token) {
-          return proposal
-        }
-
         if (action === 'confirm' && context({
           state: writer.state,
           target: JSON.parse(proposal.value) as Target,
           dispatch,
           memory,
         }) !== proposal.before) {
-          throw new HydraError({
-            message: 'The target changed; dismiss this question and ask Hydra to propose it again',
-            code: 'CONFLICT',
+          inform({
+            reason: 'Applying a saved action after its target changed',
+            clear: `Use pnyx-axi ${confirming?.name ?? 'task'} --help to inspect its current commands`,
           })
         }
 

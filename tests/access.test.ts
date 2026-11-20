@@ -845,3 +845,79 @@ test(
     expect(result).not.toContainEqual(expect.objectContaining({ id: target.id }))
   },
 )
+
+test(
+  'a saved command approval runs once without another confirmation and records its applying claim',
+  async () => {
+    const id = 'legacy-approval'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        seq: 1,
+        id: 'saved-proposal',
+        at: '2026-01-01T00:00:00Z',
+        actor: 'hydra',
+        cardId: '$hydra',
+        type: 'hydra.dispatch-proposed',
+        data: {
+          token: 'saved-command',
+          kind: 'command',
+          shared: false,
+          before: 'old-context',
+          value: JSON.stringify({
+            name: 'task',
+            args: [
+              'create',
+              '--no-start',
+              '--title',
+              'Saved command task',
+              '--key',
+              'saved-command-task',
+            ],
+            cwd: process.cwd(),
+          }),
+          summary: 'Create the saved task',
+        },
+      })}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    const result = await hydra.owner({
+      args: [
+        'approval',
+        'confirm',
+        'saved-command',
+      ],
+    })
+    expect(result.state).toBe('confirmed')
+    expect(result.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('target changed') }))
+    const progress = rows<{ status: string }>({
+      text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress'",
+      values: [id],
+    })
+    expect(progress).toEqual([{ status: 'applying' }])
+    expect((await hydra.task({ key: 'saved-command-task' })).title).toBe('Saved command task')
+    expect(await hydra.owner({
+      args: [
+        'approval',
+        'confirm',
+        'saved-command',
+      ],
+    })).toMatchObject({ event: 'none: proposal already resolved or missing' })
+  },
+)

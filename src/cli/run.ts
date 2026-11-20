@@ -24,7 +24,7 @@ import { RESTART_HELP, restart } from '#upgrade/restart.ts'
 import { UPGRADE_HELP, upgrade } from '#upgrade/cli.ts'
 
 const HELP: Record<string, string> = {
-  approval: 'usage: pnyx-axi approval confirm|dismiss <token> [--confirm <token>]\nOwner-only questions appear in Hydra’s chat.',
+  approval: 'usage: pnyx-axi approval confirm|dismiss <token>\nApplies or dismisses an existing saved approval directly.',
   oracle: ORACLE_HELP,
   project: PROJECT_HELP,
   reply: REPLY_HELP,
