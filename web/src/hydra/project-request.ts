@@ -4,7 +4,7 @@ import { displayAt, draftView, replaceDisplay } from './draft.ts'
 import type { MentionItem } from './mention-picker.tsx'
 
 // Add project asks Hydra in the composer: the @ opens the project and folder picker, and the goal is an optional blank.
-export const GOAL_SLOT = reference({
+const GOAL_SLOT = reference({
   kind: 'slot',
   value: 'goal',
   label: 'what you want done',
@@ -48,7 +48,7 @@ export const GOALS = [
 ] as const
 
 // The request goes on its own line under any draft, with the caret right after its @.
-export function withProjectRequest({ text }: { text: string }): {
+function withProjectRequest({ text }: { text: string }): {
   text: string
   caret: number
 } {

@@ -1,18 +1,3 @@
-import type { Link } from '#tasks/delivery/model.ts'
-
-export function safeLink({ link }: { link: Link }): string | undefined {
-  try {
-    const url = new URL(link.url)
-
-    return [
-      'https:',
-      'http:',
-    ].includes(url.protocol) ? url.href : undefined
-  } catch {
-    return undefined
-  }
-}
-
 export function slashPrefix({
   text,
   cursor,

@@ -32,7 +32,7 @@ export interface ComposerSources {
 
 const Sources = createContext<ComposerSources | null>(null)
 
-export function ComposerSourcesProvider({
+function ComposerSourcesProvider({
   sources,
   children,
 }: {

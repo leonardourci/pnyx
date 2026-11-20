@@ -1,7 +1,7 @@
 import type { Suggestion } from '#hydra/transcripts-catalog.ts'
 import { isServerCommand } from '#upgrade/model.ts'
 
-export function knownCommands({
+function knownCommands({
   text,
   suggestions,
 }: {

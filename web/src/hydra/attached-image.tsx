@@ -7,7 +7,7 @@ import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 // A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
-export function attachmentSource({ path }: { path: string }) {
+function attachmentSource({ path }: { path: string }) {
   const served = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
   const route = served?.[2]
@@ -20,30 +20,6 @@ export function attachmentSource({ path }: { path: string }) {
     ? `/hydra/${encodeURIComponent(served[1]!)}/${route.split('/').map(encodeURIComponent)
       .join('/')}?token=${encodeURIComponent(token)}`
     : undefined
-}
-
-export function AttachedImage({ path }: { path: string }) {
-  const [
-    failed,
-    setFailed,
-  ] = useState(false)
-  const src = attachmentSource({ path })
-
-  if (failed || !src) {
-    return <>{imageLine({ path })}</>
-  }
-
-  return (
-    <a
-      className="attached-image inline-block max-w-full [&>img]:block [&>img]:max-w-full [&>img]:max-h-60 [&>img]:border [&>img]:border-line [&>img]:rounded-md"
-      href={src}
-      target="_blank"
-      rel="noreferrer noopener"
-      contentEditable={false}
-    >
-      <img src={src} alt="Attached image" onError={() => setFailed(true)} />
-    </a>
-  )
 }
 
 // Every clipboard takes PNG, so another format is redrawn as PNG; an animated GIF keeps its first frame.

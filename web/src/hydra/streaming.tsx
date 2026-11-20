@@ -20,7 +20,6 @@ import {
 
 type MarkdownProps = ComponentProps<typeof Markdown>
 
-export { REDUCED_MOTION } from '#web-shared/motion.ts'
 const FRAME = 1000 / 60
 
 const lex = ({ text }: { text: string }) => markdown.lexer(text)

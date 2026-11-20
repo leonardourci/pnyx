@@ -13,7 +13,7 @@ import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
 // Tokens become React elements; raw HTML remains visible text.
-export function markdownHref({ href }: { href: string }): string | undefined {
+function markdownHref({ href }: { href: string }): string | undefined {
   try {
     const url = new URL(decodeEntities({ text: href }))
 
@@ -289,7 +289,7 @@ function Table({
   )
 }
 
-export interface MarkdownBlock {
+interface MarkdownBlock {
   index: number
   offset: number
   quote: string
