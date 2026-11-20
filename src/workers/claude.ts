@@ -2,7 +2,7 @@ import { claudeTools } from './claude-tools.ts'
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
 import { blockText, foundSettings, injectedDigest, fastSetting, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
@@ -23,6 +23,7 @@ export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const RECORDED_UUID = /"uuid":"([0-9a-f-]{36})"/
 let permissionWarningLogged = false
 
 function startQuery({
@@ -359,7 +360,7 @@ export function claudeProvider({
       let closed = false, interrupted = false, active = false
       let inputGeneration = 0
       const nativeInputs = new Map<string, string>()
-      const sentUuids = new Set<string>()
+      let sentUuids: Set<string> | undefined
       let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
       const native: NativeSession = {
@@ -425,6 +426,10 @@ export function claudeProvider({
 
               if (!compact) {
                 fresh = false
+              }
+
+              if (!sentUuids) {
+                sentUuids = recordedUuids({ path })
               }
 
               const uuid = unsentUuid({
@@ -1290,6 +1295,29 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
     default:
       return []
   }
+}
+
+function recordedUuids({ path }: { path: string }): Set<string> {
+  const uuids = new Set<string>()
+
+  if (!existsSync(path)) {
+    return uuids
+  }
+
+  for (const line of readFileSync(
+    path,
+    'utf8',
+  ).split('\n')) {
+    const [
+      , uuid,
+    ] = line.includes('"type":"user"') ? RECORDED_UUID.exec(line) ?? [] : []
+
+    if (uuid) {
+      uuids.add(uuid)
+    }
+  }
+
+  return uuids
 }
 
 function unsentUuid({
