@@ -85,7 +85,7 @@ Choose a unique `<name>.pnyx` for each trial and share the stable URL portless p
 
 Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull request: `Tests` runs only on pull requests, and deslop waits for its checks. See [deslop's README](https://github.com/leonardourci/deslop#readme) for tool usage and proof details.
 
-`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full integration and browser suite runs in CI. `checkFixAttempts` is 0: check failures return to the caller for a fix and a new run.
+`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full test suite runs in CI. `checkFixAttempts` is 0: check failures return to the caller for a fix and a new run.
 
 | Kind | Local commands | CI check | Review instructions |
 |---|---|---|---|

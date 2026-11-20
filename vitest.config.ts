@@ -13,7 +13,6 @@ export default defineConfig({
   },
   test: {
     include: ['tests/*.test.ts'],
-    // Each file runs a server, git and pnyx-axi processes; half the cores leave room for their children.
     maxWorkers: '50%',
     pool: 'forks',
     execArgv: [
