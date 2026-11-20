@@ -73,6 +73,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Unused code and dependencies
+        run: pnpm run knip
+
       - name: Lint and build
         run: |
           pnpm run typecheck & typecheck=$!
