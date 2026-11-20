@@ -654,7 +654,9 @@ export function HydraView({
           element: kanban,
           horizontal: true,
         }) - scrollerOffset
-        const left = projectsOffset + finalColumnOffset - revealPadding
+        const expectedTargetLeft = projectsOffset + finalColumnOffset
+        const availablePadding = Math.max(0, scroller.clientWidth - finalColumnWidth)
+        const left = expectedTargetLeft - Math.min(revealPadding, availablePadding)
         scroller.scrollTo({
           left,
           behavior: 'instant',
@@ -665,7 +667,7 @@ export function HydraView({
           horizontal: true,
         }) - scrollerOffset
         const targetRight = targetLeft + target.offsetWidth
-        const settledPosition = Math.abs(targetLeft - left - revealPadding) <= 1
+        const settledPosition = Math.abs(targetLeft - expectedTargetLeft) <= 1
         const settledWidth = Math.abs(target.offsetWidth - finalColumnWidth) <= 1
         const fits = targetLeft >= scroller.scrollLeft - 1
           && targetRight <= scroller.scrollLeft + scroller.clientWidth + 1

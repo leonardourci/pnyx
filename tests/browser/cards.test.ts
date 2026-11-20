@@ -328,6 +328,43 @@ test(
           return box.left >= 0 && box.right <= innerWidth
         }),
     })
+    const finalColumn = workspace.locator('[data-column]').last()
+    await finalColumn.evaluate(column => {
+      const axis = column.closest<HTMLElement>('.workspace-axis')
+
+      if (!axis) {
+        throw new Error('The project column has no horizontal scroller')
+      }
+
+      axis.style.width = `${column.getBoundingClientRect().width}px`
+      axis.scrollLeft = 0
+    })
+    await page.getByRole(
+      'button',
+      {
+        name: 'Project-7',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the requested project to fit when it fills the scroller',
+      check: () => finalColumn.evaluate(column => {
+        const axis = column.closest<HTMLElement>('.workspace-axis')
+
+        if (!axis) {
+          return false
+        }
+
+        const left = axis.getBoundingClientRect().left + axis.clientLeft
+        const bounds = column.getBoundingClientRect()
+
+        return Math.abs(bounds.left - left) <= 1
+          && Math.abs(bounds.right - left - axis.clientWidth) <= 1
+      }),
+    })
+    await finalColumn.evaluate(column => {
+      column.closest<HTMLElement>('.workspace-axis')?.style.removeProperty('width')
+    })
     await workspace.getByRole(
       'button',
       {
@@ -619,6 +656,9 @@ test(
       what: 'every burst update without replacing history',
       check: async () => await updates.count() === 197,
     })
+    const updateIds = await updates.evaluateAll(elements => elements.map(element => element.getAttribute('data-update')))
+    expect(updateIds).not.toContain(null)
+    expect(new Set(updateIds).size).toBe(197)
     expect(await page.evaluate(
       nodes => nodes.every(node => node.isConnected),
       originals,
