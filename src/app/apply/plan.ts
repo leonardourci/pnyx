@@ -9,6 +9,7 @@ import { findCard, checkRevision } from '#tasks/push-rules.ts'
 import { planTaskChange } from '#tasks/plans.ts'
 import { planDeliveryChange } from '#tasks/delivery/plans.ts'
 import { refuseEarlyDone } from '#tasks/delivery/done.ts'
+import { recordsWhyUnstarted, requireStartOrReason } from '#tasks/intake.ts'
 import { ApplyError, type ApplyDocument, type ApplyIssue, type Operation } from './schema.ts'
 
 const RECEIPT_HINT_LIMIT = 5
@@ -57,6 +58,10 @@ export function planDocument({
   const events: HydraEvent[] = []
   const aliases: Record<string, string> = Object.create(null)
   const operations: Output[] = []
+  const created: {
+    index: number
+    task: string
+  }[] = []
   let current = state
   const base: Record<string, number> = {}
 
@@ -234,6 +239,13 @@ export function planDocument({
         writer.append({ event: decision.event })
       }
 
+      if (operation.op === 'task.create' && 'event' in decision) {
+        created.push({
+          index,
+          task: decision.event.cardId,
+        })
+      }
+
       if (operation.op === 'task.create' && operation.as && 'event' in decision) {
         aliases[operation.as] = decision.event.cardId
       }
@@ -310,6 +322,33 @@ export function planDocument({
       }
     }
   })
+
+  // apply never starts a task, so a task Hydra creates here must end held or waiting on other work.
+  for (const {
+    index,
+    task,
+  } of created) {
+    try {
+      requireStartOrReason({
+        actor: meta.actor,
+        waits: recordsWhyUnstarted({ card: current.cards[task]! }),
+      })
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+
+      errors.push({
+        operation: index,
+        path: `/changes/${index}/op`,
+        code: error.code,
+        reason: [
+          error.message,
+          ...error.help,
+        ].join('; '),
+      })
+    }
+  }
 
   if (errors.length) {
     throw new ApplyError({ errors })
