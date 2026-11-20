@@ -235,7 +235,6 @@ test(
       sessions: [worker],
       text: 'Use semicolons as separators',
     })).toBe(1)
-    // Claude Code took the reply under the owner's own id.
     expect(worker.uuids).toContain(REPLY_ID)
 
     const { thread } = await hydra.owner({
@@ -245,7 +244,6 @@ test(
         'export',
       ],
     })
-    // Only the owner's words show as theirs: never the copy Pnyx delivered, its wrapper or the start prompt.
     expect((thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
       expect.objectContaining({
         role: 'You',
@@ -365,7 +363,7 @@ test(
 )
 
 test(
-  'a worker turn a restart cuts resumes in the same session, and the owner\'s message sent meanwhile waits in its inbox once',
+  'a worker turn a restart cuts resumes in the same session, the owner\'s message sent meanwhile waits in its inbox once, and the chat shows only that message as the owner\'s, with or without the session named',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'migration' })
@@ -434,6 +432,29 @@ test(
 
     expect(resumed.id).toBe(cut.id)
     expect(resumed.received[0]).toContain('Pnyx restarted')
+
+    for (const named of [
+      [],
+      [
+        '--session',
+        `claude-code:${resumed.id}`,
+      ],
+    ]) {
+      const { thread } = await hydra.owner({
+        args: [
+          'task',
+          'chat',
+          'migration',
+          ...named,
+        ],
+      })
+      expect((thread.entries as {
+        role: string
+        text: string
+      }[]).filter(entry => entry.role === 'You' || entry.role === 'user')
+        .map(entry => entry.text)).toEqual(['Also migrate the archive'])
+    }
+
     const sessions = pnyx.claude.sessions.filter(session => session.cwd === folder)
     expect(sessions).toHaveLength(2)
     expect(times({
@@ -468,7 +489,6 @@ test(
       what: 'the reply to reach Codex',
       check: () => worker.answered === 2,
     })
-    // Codex's transcript holds the start prompt, the delivered reply and its own injected context; only the reply is the owner's.
     expect(((await hydra.owner({
       args: [
         'task',

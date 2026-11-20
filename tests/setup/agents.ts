@@ -42,8 +42,7 @@ export interface AgentSession {
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
-  // Claude: the uuid each received message was sent with.
-  uuids: string[]
+  uuids: (string | undefined)[]
   // Received messages whose turn ended.
   answered: number
   closed: boolean
@@ -225,7 +224,6 @@ export function fakeClaude() {
       dirname(transcript),
       { recursive: true },
     )
-    // Claude Code records a user message under the uuid it was sent with.
     const record = ({
       role,
       text,
@@ -264,7 +262,7 @@ export function fakeClaude() {
         const taken = waiting.shift()!
         const text = textOf({ message: taken })
         session.received.push(text)
-        session.uuids.push(taken.uuid!)
+        session.uuids.push(taken.uuid)
         folded.push({
           text,
           uuid: taken.uuid,
@@ -333,7 +331,7 @@ export function fakeClaude() {
 
         const text = textOf({ message })
         session.received.push(text)
-        session.uuids.push(message.uuid!)
+        session.uuids.push(message.uuid)
         record({
           role: 'user',
           text,

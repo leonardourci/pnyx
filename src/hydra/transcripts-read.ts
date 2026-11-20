@@ -604,7 +604,6 @@ type ThreadSource = {
   session?: string
   path?: string
   index?: number
-  // The agent that wrote this transcript, which decides whose its user lines are.
   agent?: Card['agent']
 }
 
@@ -655,6 +654,7 @@ function threadSources({
       {
         session,
         path: threadPath({ card }),
+        agent: card.agent,
       },
     ]
   }
@@ -994,16 +994,15 @@ function readThreadPage(
       continue
     }
 
-    // A task's owner messages show from Pnyx's record, so the input Pnyx gave its worker never shows as the owner's.
     const typed = ({ item }: Candidate) => !deliveredInput({
       entry: item,
       echoes,
       hosted: source.agent?.host === 'pnyx',
       provider: source.agent?.provider,
     })
-    const found = card.id === HYDRA_CARD ? read.found : read.found.filter(typed)
+    const kept = card.id === HYDRA_CARD ? read.found : read.found.filter(typed)
     candidates = [
-      ...found.map(candidate => ({
+      ...kept.map(candidate => ({
         ...candidate,
         native: `${label}${candidate.native}`,
       })),

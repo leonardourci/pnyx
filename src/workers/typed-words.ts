@@ -55,7 +55,16 @@ export function typedWords({
       session,
       boundaries: false,
     }).filter(entry => {
-      if (entry.role !== 'user' || entry.pnyx || echoes.take({ text: entry.text })) {
+      if (entry.role !== 'user' || entry.pnyx) {
+        return false
+      }
+
+      const echo = echoes.take({
+        text: entry.text,
+        at: entry.at,
+      })
+
+      if (echo) {
         return false
       }
 

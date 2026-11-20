@@ -1294,8 +1294,6 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Claude Code records a user message under the uuid it is sent with, so the owner's message id becomes the transcript
-// line's. An id this session already sent gets a fresh uuid.
 function inputUuid({
   owner,
   sent,

@@ -2660,11 +2660,10 @@ test(
       ],
     })
 
-    // The first "yes" takes its own copy; the second, not taken yet, shows on its own.
     expect(rows.toSorted((
       a,
       b,
-    ) => a.reference!.localeCompare(b.reference!)).map(row => [
+    ) => a.id.localeCompare(b.id)).map(row => [
       row.id,
       row.reference,
       row.text,
@@ -2675,14 +2674,14 @@ test(
         'yes',
       ],
       [
-        second.id,
-        second.id,
-        'yes',
-      ],
-      [
         '20:m0',
         redacted.id,
         'the key is hunter2',
+      ],
+      [
+        second.id,
+        second.id,
+        'yes',
       ],
     ])
   },

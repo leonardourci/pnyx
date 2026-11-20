@@ -3,8 +3,6 @@ import type { HydraEvent } from '#app/model.ts'
 import { injectedInstructions, ownMessage } from './chat-messages.ts'
 import { splitEntry, type ThreadEntry } from './transcripts-read.ts'
 
-// The copies of a task's replies its transcript can hold, as Pnyx sent them: words and context, in transport parts.
-// Each copy accounts for one transcript line, so words the owner typed again in the terminal still show.
 export function replyEchoes({
   card,
   events,
@@ -12,13 +10,20 @@ export function replyEchoes({
   card: string
   events: HydraEvent[]
 }) {
-  const sent = new Map<string, number>()
+  const sentTimes = new Map<string, number[]>()
+  const counted = new Set<string>()
 
   for (const event of events) {
     if (event.type !== 'card.replied' || event.cardId !== card || !event.data.text) {
       continue
     }
 
+    if (counted.has(event.data.reply)) {
+      continue
+    }
+
+    counted.add(event.data.reply)
+    const sentAt = Date.parse(event.at)
     const parts = splitEntry({
       entry: {
         id: event.data.reply,
@@ -32,24 +37,35 @@ export function replyEchoes({
     })
 
     for (const part of parts) {
-      sent.set(
+      sentTimes.set(
         part.text,
-        (sent.get(part.text) ?? 0) + 1,
+        [
+          ...sentTimes.get(part.text) ?? [],
+          sentAt,
+        ],
       )
     }
   }
 
   return {
-    take({ text }: { text: string }): boolean {
-      const left = sent.get(text) ?? 0
+    take({
+      text,
+      at,
+    }: {
+      text: string
+      at?: string
+    }): boolean {
+      const times = sentTimes.get(text) ?? []
+      const writtenAt = at === undefined ? Infinity : Date.parse(at)
+      const echoed = times.findIndex(sentAt => sentAt <= writtenAt)
 
-      if (!left) {
+      if (echoed < 0) {
         return false
       }
 
-      sent.set(
-        text,
-        left - 1,
+      times.splice(
+        echoed,
+        1,
       )
 
       return true
@@ -57,9 +73,6 @@ export function replyEchoes({
   }
 }
 
-// A user line Pnyx or the harness put in a task's transcript, not words the owner typed into the agent's terminal:
-// every user line of a session Pnyx runs, and elsewhere a copy of a reply, a steering notice, a start prompt or Codex's
-// AGENTS.md block.
 export function deliveredInput({
   entry,
   echoes,
@@ -71,7 +84,7 @@ export function deliveredInput({
   hosted: boolean
   provider?: string
 }): boolean {
-  if (!ownMessage({ entry }) || entry.replyId !== undefined) {
+  if (!ownMessage({ entry })) {
     return false
   }
 
@@ -79,6 +92,10 @@ export function deliveredInput({
     entry,
     provider,
   })
+  const pnyxInput = hosted || entry.pnyx === true || injected
 
-  return hosted || entry.pnyx === true || injected || echoes.take({ text: entry.text })
+  return pnyxInput || echoes.take({
+    text: entry.text,
+    at: entry.at,
+  })
 }

@@ -42,9 +42,6 @@ import type { createSteeringDelivery } from './steering-delivery.ts'
 import { liveReplies } from './streaming.ts'
 import type { createUsageTracker } from './usage-tracker.ts'
 
-// One provider process per hosted session: opening it, feeding it input, following what it does, and retiring it.
-// The one owner message an input carries for the first time: a Hydra message the agent has not taken yet, or a task reply
-// delivered in its own words. Its id can become the harness's id for the input.
 function firstOwnerMessage({
   state,
   card,
@@ -58,19 +55,24 @@ function firstOwnerMessage({
 }): string | undefined {
   if (steering) {
     const [only] = steering
-    const replies = state.cards[card]?.steering ?? []
-    const reply = steering.length === 1 ? replies.find(message => message.id === only) : undefined
+    const reply = steering.length === 1
+      ? state.cards[card]?.steering?.find(message => message.id === only)
+      : undefined
 
     return reply && ownerActor({ actor: reply.source }) ? reply.id : undefined
   }
 
-  const messages = card === HYDRA_CARD ? state.hydraMessages ?? [] : []
-  const message = messages.find(message => message.id === input)
+  if (card !== HYDRA_CARD) {
+    return undefined
+  }
+
+  const message = state.hydraMessages?.find(message => message.id === input)
   const untaken = message && ownerActor({ actor: message.actor }) && !message.received
 
   return untaken ? message.id : undefined
 }
 
+// One provider process per hosted session: opening it, feeding it input, following what it does, and retiring it.
 export function createLiveSessions({
   hydraId,
   live,

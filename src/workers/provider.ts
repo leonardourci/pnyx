@@ -112,7 +112,6 @@ export type HostedInput = {
   id: string
   text: string
   images: HostedImage[]
-  // The one owner message this input carries for the first time.
   ownerMessageId?: string
 }
 export type InputReceipt = {

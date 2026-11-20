@@ -605,7 +605,6 @@ test(
       { name: 'Task lakes conversation' },
     )
     await chat.waitFor()
-    // Every frame from the send on counts the owner rows that hold the message.
     await page.evaluate(() => {
       const counts: number[] = []
       Object.assign(

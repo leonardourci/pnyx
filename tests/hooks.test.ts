@@ -111,7 +111,7 @@ const card = async ({ session }: { session: string }) => {
 }
 
 test(
-  'an outside session\'s hooks keep its card: the prompt names it, Stop ends its turn, and every hook exits 0 at once',
+  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s, Stop ends its turn, and every hook exits 0 at once',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -141,7 +141,6 @@ test(
       ),
     }
 
-    // The owner typed the prompt into the agent's own terminal, so the session's chat shows it as theirs.
     mkdirSync(
       cwd,
       { recursive: true },
