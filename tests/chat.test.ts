@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
@@ -9,7 +9,8 @@ import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { HYDRA_SKILLS, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
+import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
+import { parse } from 'yaml'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
@@ -1397,17 +1398,19 @@ test(
     )
 
     for (const skill of HYDRA_SKILLS) {
-      expect(
-        readFileSync(
-          join(
-            session.cwd,
-            '.agents',
-            'skills',
-            skill,
-            'SKILL.md',
-          ),
-          'utf8',
+      const installed = readFileSync(
+        join(
+          session.cwd,
+          '.agents',
+          'skills',
+          skill,
+          'SKILL.md',
         ),
+        'utf8',
+      )
+
+      expect(
+        installed,
         skill,
       ).toBe(readFileSync(
         join(
@@ -1417,6 +1420,14 @@ test(
         ),
         'utf8',
       ))
+      // Harnesses and Pnyx's own skill catalog read the frontmatter as YAML.
+      expect(
+        parse(/^---\n([\s\S]*?)\n---/.exec(installed)?.[1] ?? ''),
+        skill,
+      ).toMatchObject({
+        name: skill,
+        description: expect.any(String),
+      })
     }
 
     const contract = readFileSync(
@@ -1443,26 +1454,43 @@ test(
 )
 
 test(
-  'a reference the shipped skill dropped is gone from Hydra\'s folder by its next turn',
+  'a reference the shipped skill dropped is gone from Hydra\'s folder by its next turn, even for a skill that ships none',
   async () => {
     const hydra = await pnyx.hydra()
     const first = await hydra.chat({ text: 'hello' })
-    const installed = join(
+    const references = ({ skill }: { skill: string }) => join(
       first.cwd,
       '.agents',
       'skills',
-      ORCHESTRATE_SKILL,
+      skill,
       'references',
     )
-    writeFileSync(
-      join(
-        installed,
-        'dropped.md',
-      ),
-      'old guidance',
+    const installed = references({ skill: ORCHESTRATE_SKILL })
+    const withoutReferences = references({ skill: MANAGE_WORKERS_SKILL })
+    mkdirSync(
+      withoutReferences,
+      { recursive: true },
     )
 
+    for (const folder of [
+      installed,
+      withoutReferences,
+    ]) {
+      writeFileSync(
+        join(
+          folder,
+          'dropped.md',
+        ),
+        'old guidance',
+      )
+    }
+
     await hydra.chat({ text: 'hello again' })
+
+    expect(existsSync(join(
+      withoutReferences,
+      'dropped.md',
+    ))).toBe(false)
 
     expect(readdirSync(installed).sort()).toEqual(readdirSync(join(
       import.meta.dirname,
