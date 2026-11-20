@@ -3149,6 +3149,7 @@ test(
       id: 'claude:observed',
       title: 'none',
     }))
+    expect((await hydra.task({ key: 'observed' })).title).toBe('observed')
   },
 )
 

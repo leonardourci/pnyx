@@ -65,7 +65,7 @@ export function decidePush({
     fields.rank = rank
   }
 
-  const title = optionalText({
+  const title = input.title === null ? null : optionalText({
     value: input.title,
     what: 'title',
   })
@@ -82,7 +82,7 @@ export function decidePush({
     what: 'folder',
   })
 
-  if (title) {
+  if (title !== undefined) {
     fields.title = title
   }
 
