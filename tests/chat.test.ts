@@ -473,7 +473,7 @@ test(
 )
 
 test(
-  'worker report overflow spans several pages without clipping owner messages',
+  '300 queued worker reports stay bounded, preserve owner messages and support complete pagination',
   async () => {
     const hydra = await pnyx.hydra()
     const turn = pnyx.claude.plan({
@@ -490,7 +490,7 @@ test(
     })
 
     try {
-      for (let index = 0; index < 48; index++) {
+      for (let index = 0; index < 300; index++) {
         const receipt = await page.send({
           name: 'hydra',
           args: [
@@ -605,13 +605,13 @@ test(
         reports.push(...pending.map((change: { summary: string }) => change.summary))
         cursor = String(rest.through)
 
-        if (reports.some(text => text.includes('Report 47:'))) {
+        if (reports.some(text => text.includes('Report 299:'))) {
           break
         }
       }
 
-      expect(reports).toHaveLength(41)
-      expect(reports.at(-1)).toContain('Report 47:')
+      expect(reports).toHaveLength(293)
+      expect(reports.at(-1)).toContain('Report 299:')
       wakeTurn.release()
       await until({
         what: 'the overflow-reading turn to finish',
@@ -627,7 +627,7 @@ test(
         env: process.env,
       })).stdout
       expect(digest).not.toContain('Report 7:')
-      expect(digest).not.toContain('Report 47:')
+      expect(digest).not.toContain('Report 299:')
     } finally {
       turn.release()
       page.close()
