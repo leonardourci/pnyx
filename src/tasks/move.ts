@@ -160,20 +160,6 @@ export function moveRefusal({
     })
   }
 
-  if (hydraConfig({ state: target }).hydra.kind === 'firstmate') {
-    return refuse({
-      message: `Hydra ${to} follows a Firstmate home, which owns its own tasks`,
-      help: 'Run `pnyx-axi hydra list` and choose a Hydra that is not linked to Firstmate',
-    })
-  }
-
-  if (card.mirror || card.sourceRefs.some(ref => ref.adapter === 'firstmate')) {
-    return refuse({
-      message: `${card.id} mirrors a Firstmate task, which Firstmate would recreate on Hydra ${hydraId}`,
-      help: 'Move the work in Firstmate itself',
-    })
-  }
-
   const project = card.project && projectOnTarget({
     source,
     target,

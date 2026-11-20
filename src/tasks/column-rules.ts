@@ -22,21 +22,6 @@ export const ROLE_STATUS: Partial<Record<NonNullable<HydraColumn['role']>, TaskS
 
 const legacyColumn = ({ id }: { id: Column }) => LEGACY_COLUMNS.some(legacy => legacy === id)
 
-export const LOCKED_DELETE = "Can't delete: this column is tied to Firstmate's records"
-
-// A Firstmate-linked Hydra's default columns follow Firstmate's records by role, so they can be renamed but not deleted.
-export function lockedColumn({
-  state,
-  id,
-}: {
-  state: HydraState
-  id: string
-}): boolean {
-  const role = state.config?.columns.find(c => c.id === id)?.role
-
-  return state.config?.hydra.kind === 'firstmate' && DEFAULT_COLUMNS.some(c => c.role === role)
-}
-
 // A column named by its id or its role.
 export function columnByRef({
   columns,
@@ -132,18 +117,8 @@ function statusRole({ card }: { card: Card }): Role | undefined {
   return undefined
 }
 
-// Rebuilt only for a legacy layout, or a Firstmate-linked Hydra missing a default role; the owner's own columns follow.
-function withDefaultColumns({
-  columns,
-  locked,
-}: {
-  columns: HydraColumn[]
-  locked: boolean
-}): HydraColumn[] {
-  const legacy = columns.some(c => legacyColumn({ id: c.id }) || c.role === LEGACY_IN_PROGRESS)
-  const missing = locked && DEFAULT_COLUMNS.some(d => !columns.some(c => c.role === d.role))
-
-  if (!legacy && !missing) {
+function withDefaultColumns({ columns }: { columns: HydraColumn[] }): HydraColumn[] {
+  if (!columns.some(c => legacyColumn({ id: c.id }) || c.role === LEGACY_IN_PROGRESS)) {
     return columns
   }
 
@@ -165,10 +140,7 @@ export function migrateColumns({
   meta: Meta
 }): Decision {
   const before = hydraConfig({ state }).columns
-  const layout = withDefaultColumns({
-    columns: before,
-    locked: state.config?.hydra.kind === 'firstmate',
-  })
+  const layout = withDefaultColumns({ columns: before })
   const updated = layout.map(column => migrateDefaultRule({ column }))
   const rulesChanged = updated.some((
     column,
@@ -181,7 +153,7 @@ export function migrateColumns({
       const staleNeedsYou = columns.some(column => column.id === card.column && column.role === 'needs_you')
         && !ownerGates({ card }).length
 
-      if (staleNeedsYou && !card.hidden && !isManagedTask({ card }) && state.config?.hydra.kind !== 'firstmate') {
+      if (staleNeedsYou && !card.hidden && !isManagedTask({ card })) {
         const after = placeCard({
           card: cardFacts({
             card,
@@ -204,8 +176,7 @@ export function migrateColumns({
       }
 
       if (columns.some(c => c.id === card.column)) {
-        if (!rulesChanged || card.hidden || isManagedTask({ card })
-          || state.config?.hydra.kind === 'firstmate') {
+        if (!rulesChanged || card.hidden || isManagedTask({ card })) {
           return []
         }
 

@@ -3,7 +3,6 @@ import type { Question, AgentRef, AgentLaunch, TaskQueue, AgentSettings, Termina
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { TaskReport } from '#investigations/model.ts'
-import type { FirstmateRecord } from '#integrations/firstmate/model.ts'
 import type { TaskCopy } from '#projects/model.ts'
 import type { SourceRef } from '#app/model.ts'
 import type { ExternalSource } from '#task-sources/model.ts'
@@ -250,12 +249,10 @@ export interface Card {
   tracking?: 'declared'
   status?: TaskDeclaration
   statusLog?: TaskDeclaration[]
-  mirror?: FirstmateRecord
   settings?: AgentSettings
   terminal?: TerminalFacts
   copy?: TaskCopy
-  // The working folder a source assigned, such as a Firstmate task's worktree; a
-  // hook session started in it joins this card.
+  // A hook session started in the assigned working folder joins this card.
   folder?: string
   attention: Attention[]
   permissions?: PermissionRequest[]
@@ -377,7 +374,6 @@ export type RepliedEvent = EventBase & {
     route: string
     text?: string
     context?: string
-    resolveKey?: string
     decision?: {
       questionId?: string
       fromMessage?: AnswerMessage

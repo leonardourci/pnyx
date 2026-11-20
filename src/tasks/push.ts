@@ -155,7 +155,6 @@ export function decidePush({
 
   const sessionSource = !source || [
     'hooks',
-    'paseo',
     'pnyx',
     'transcript',
   ].includes(source.adapter)

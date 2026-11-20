@@ -23,10 +23,6 @@ export function followedLinks({ state }: { state: HydraState }): {
   card: Card
   link: Link
 }[] {
-  if (state.config?.hydra.kind === 'firstmate') {
-    return []
-  }
-
   return Object.values(state.cards)
     .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
     .flatMap(card => card.links
@@ -38,10 +34,6 @@ export function followedLinks({ state }: { state: HydraState }): {
 }
 
 export function needsPullRequestFollow({ state }: { state: HydraState }): boolean {
-  if (state.config?.hydra.kind === 'firstmate') {
-    return false
-  }
-
   if (followedLinks({ state }).length > 0) {
     return true
   }
@@ -117,7 +109,6 @@ async function tellWorker({
         text,
         actor: 'pnyx',
         id,
-        homes: [],
       },
     })
   } catch (error) {
@@ -150,7 +141,7 @@ export async function followPullRequests({
 }): Promise<void> {
   const state = loadHydra({ hydraId }).state
 
-  if (!active() || state.config?.hydra.kind === 'firstmate') {
+  if (!active()) {
     return
   }
 

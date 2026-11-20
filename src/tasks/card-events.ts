@@ -40,7 +40,6 @@ export function applyCardEvent({
         sourceRefs: [],
         ...(fields.agent && (!source || [
           'hooks',
-          'paseo',
           'pnyx',
         ].includes(source.adapter)) ? { automaticTask: true } : {}),
         column: newCardColumn({ state }),
@@ -269,8 +268,7 @@ export function applyCardEvent({
       const before = event.data.before, after = event.data.after
       const changed = before?.state !== after?.state || before?.note !== after?.note
         || before?.closed !== after?.closed || before?.source !== after?.source
-      const manual = !after?.source && before?.source !== 'firstmate'
-        && !(!after && before?.source === 'hooks')
+      const manual = !after?.source && !(!after && before?.source === 'hooks')
 
       const undone = event.undoes ? card.statusLog?.findIndex(d => d.id === event.undoes) ?? -1 : -1
 

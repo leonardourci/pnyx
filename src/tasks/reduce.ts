@@ -326,43 +326,39 @@ export function applyTask({
     return true
   }
 
-  if (event.type === 'task.declared' || event.type === 'task.mirrored') {
+  if (event.type === 'task.declared') {
     const card = state.cards[event.cardId]
 
     if (card) {
       card.tracking = 'declared'
 
-      if (event.type === 'task.declared') {
-        const restored = card.statusLog?.find(entry => entry.id === event.data.restores)
-        const wait = event.data.wait ?? restored?.wait
-        const declaration = {
-          ...event.data,
+      const restored = card.statusLog?.find(entry => entry.id === event.data.restores)
+      const wait = event.data.wait ?? restored?.wait
+      const declaration = {
+        ...event.data,
+        id: event.id,
+        at: event.at,
+        actor: event.actor,
+      }
+
+      if (wait) {
+        declaration.wait = { ...wait }
+      }
+
+      card.statusLog = [
+        ...(card.statusLog ?? []),
+        declaration,
+      ]
+      card.status = declaration
+
+      if (wait) {
+        card.wait = {
+          ...wait,
           id: event.id,
           at: event.at,
-          actor: event.actor,
         }
-
-        if (wait) {
-          declaration.wait = { ...wait }
-        }
-
-        card.statusLog = [
-          ...(card.statusLog ?? []),
-          declaration,
-        ]
-        card.status = declaration
-
-        if (wait) {
-          card.wait = {
-            ...wait,
-            id: event.id,
-            at: event.at,
-          }
-        } else if (!event.data.waitingFor?.length) {
-          delete card.wait
-        }
-      } else {
-        card.mirror = structuredClone(event.data)
+      } else if (!event.data.waitingFor?.length) {
+        delete card.wait
       }
 
       touch({
