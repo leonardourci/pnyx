@@ -240,8 +240,8 @@ Add --start --harness claude|codex [--account <name>] [--model <model>] [--effor
 Hydra (actor hydra) files work with task intake; its plain create is refused unless it holds the task (--hold).
 pnyx-axi task intake [<task>] --ask <owner-words> [--message <owner-message-id>] [--title <title> --brief <text>] [--project <name|path>] [--intent <text>] [--kind build|investigation] [--parent <task>] [--folder <path>] --event-id <id> [--reason <text>] [start flags | --hold | --behind <task|session> | --on <task>...]
 Saves the owner's ask and the brief on a new task (--title and --brief) or on <task>, then starts its worker through the dispatch rules, taking task start's flags.
-On a <task> that already has a worker, the ask (and any new --brief) goes to that worker instead.
---hold, --behind or --on records the hold, queue or dependency instead of starting. Repeating the same --event-id never files or starts anything twice.
+On a <task> that already has a worker, the ask (and any new --brief) goes to that worker instead; on a <task> without one, --folder is the folder its worker starts in.
+--hold, --behind or --on records the hold, queue or dependency instead of starting, and is refused on a task that already has a worker. Repeating the same --event-id never files or starts anything twice.
 The receipt names the task and its launch: started (worker, rule, harness), requested through Firstmate, steered, pending while its session opens,
 blocked with the blocker and the command that clears it (also saved as a note on the task), or held, queued or waiting.
 pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]

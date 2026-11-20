@@ -480,10 +480,13 @@ test(
 )
 
 test(
-  'an intake on a task with a worker sends the owner ask to that worker, and a refused queue behind it names why and files nothing',
+  'an intake on a task with a worker sends the owner ask to that worker and its replay starts none after the worker leaves, while a wait on it or a refused queue behind it names why and files nothing',
   async () => {
     const hydra = await pnyx.hydra()
-    const { worker } = await hydra.startTask({ key: 'export' })
+    const {
+      folder,
+      worker,
+    } = await hydra.startTask({ key: 'export' })
     const sent = await hydra.owner({
       args: [
         'hydra',
@@ -492,23 +495,22 @@ test(
         'The export should also include refunds, and then do the import',
       ],
     })
-    const steered = await hydra.owner({
-      args: [
-        'task',
-        'intake',
-        'export',
-        '--ask',
-        'The export should also include refunds',
-        '--message',
-        sent.message,
-        '--actor',
-        'hydra',
-        '--reason',
-        'The owner widened the export',
-        '--event-id',
-        'export-refunds',
-      ],
-    })
+    const steer = [
+      'task',
+      'intake',
+      'export',
+      '--ask',
+      'The export should also include refunds',
+      '--message',
+      sent.message,
+      '--actor',
+      'hydra',
+      '--reason',
+      'The owner widened the export',
+      '--event-id',
+      'export-refunds',
+    ]
+    const steered = await hydra.owner({ args: steer })
     expect(steered).toMatchObject({
       launch: 'steered',
       worker: (await hydra.task({ key: 'export' })).worker,
@@ -517,6 +519,27 @@ test(
       what: 'the worker to hear the new ask',
       check: () => worker.received.some(text => text.includes('The export should also include refunds')),
     })
+
+    const held = await hydra.ownerRefused({
+      args: [
+        'task',
+        'intake',
+        'export',
+        '--ask',
+        'The export should also include refunds',
+        '--message',
+        sent.message,
+        '--hold',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner wants to talk about refunds',
+        '--event-id',
+        'export-hold',
+      ],
+    })
+    expect(held.code).toBe('CONFLICT')
+    expect(held.error).toContain(steered.worker)
 
     const queued = await hydra.ownerRefused({
       args: [
@@ -550,6 +573,16 @@ test(
       ],
     })).tasks as { title: string }[]
     expect(listed.some(task => task.title === 'Build the import')).toBe(false)
+
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'export',
+      ],
+    })
+    expect(await hydra.owner({ args: steer })).toMatchObject({ launch: 'steered' })
+    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
   },
 )
 
@@ -659,7 +692,7 @@ test(
 )
 
 test(
-  'a start blocked by an open question names it and the command that answers it, and an intake on that task records the blocker once',
+  'a start blocked by an open question names it and the command that answers it, and an intake on that task records the blocker once and starts the worker when retried after the answer',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'blocked' })
@@ -671,8 +704,6 @@ test(
         'Archive invoices',
         '--key',
         'archive',
-        '--folder',
-        folder,
         '--brief',
         'Archive the old invoices',
       ],
@@ -757,6 +788,29 @@ test(
       ],
     })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:intake' })])
     expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
+
+    await hydra.owner({
+      args: [
+        'task',
+        'answer',
+        'archive',
+        asked.ask,
+        '--choice',
+        '1',
+      ],
+    })
+    expect(await hydra.owner({
+      args: [
+        ...intake,
+        '--folder',
+        folder,
+      ],
+    })).toMatchObject({
+      task: card.id,
+      launch: 'started',
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    expect(worker.received[0]).toContain('archive the invoices now')
   },
 )
 

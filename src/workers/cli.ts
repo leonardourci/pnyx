@@ -65,7 +65,6 @@ export const START_FLAGS = [
   'paseo-url',
 ]
 
-// The task start flags as startTask takes them.
 export function startFlags({ values }: { values: Record<string, unknown> }) {
   return {
     via: values.via as string | undefined,

@@ -5,7 +5,6 @@ import { INTERRUPTED } from '#workers/session-attachments.ts'
 import { PERMISSION_PREFIX, pendingPermissions } from '#workers/permission-rules.ts'
 import { openAsks } from './ask-state.ts'
 
-// What keeps a task from starting, and the command that clears it.
 export interface Blocker {
   reason: string
   clear: string
@@ -79,7 +78,6 @@ function askBlocker({
   }
 }
 
-// Each open question, permission or prompt on the task, by id, with the command that answers it.
 export function questionBlockers({ card }: { card: Card }): Blocker[] {
   const attention = waitingAttention({ card })
   const prompts = attention.filter(a => !a.key.startsWith(PERMISSION_PREFIX))

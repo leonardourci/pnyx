@@ -24,7 +24,6 @@ const TASK_FLAGS = [
   'intent',
   'kind',
   'parent',
-  'folder',
 ]
 const INTAKE_FLAGS = [
   'hydra',
@@ -35,6 +34,7 @@ const INTAKE_FLAGS = [
   'ask',
   'message',
   'brief',
+  'folder',
   'behind',
   'on',
   'hold',
@@ -76,7 +76,13 @@ function requireIntakeFlags({
   }
 }
 
-function chooseDisposition({ values }: { values: Values }): Disposition {
+function chooseDisposition({
+  values,
+  reuse,
+}: {
+  values: Values
+  reuse: boolean
+}): Disposition {
   const waits: Wait[] = []
 
   if (values.hold) {
@@ -99,7 +105,11 @@ function chooseDisposition({ values }: { values: Values }): Disposition {
   }
 
   const wait = waits[0]
-  const startFlag = START_FLAGS.find(name => values[name] !== undefined)
+  const startOnly = reuse ? [
+    ...START_FLAGS,
+    'folder',
+  ] : START_FLAGS
+  const startFlag = startOnly.find(name => values[name] !== undefined)
 
   if (wait && startFlag) {
     throw new HydraError({
@@ -111,7 +121,6 @@ function chooseDisposition({ values }: { values: Values }): Disposition {
   return wait ?? 'start'
 }
 
-// Saves the owner's ask and the brief on a new task, or on the named one, under the operation's event ids.
 function recordTask({
   writer,
   hydraId,
@@ -238,7 +247,10 @@ function recordTask({
     })
   }
 
-  return writer.state.cards[card.id]!
+  return findCard({
+    state: writer.state,
+    ref: card.id,
+  })
 }
 
 function recordWait({
@@ -306,25 +318,35 @@ const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
   }),
 }
 
-// A start under this id was already recorded, by whichever route ran it.
-function startRecorded({
+function recordedLaunch({
   state,
   id,
 }: {
   state: HydraState
   id: string
-}): boolean {
-  return [
-    id,
+}): 'started' | 'requested' | undefined {
+  const attached = [
     `${id}:attach`,
     `${id}:started`,
   ].some(recorded => Object.hasOwn(
     state.eventIds,
     recorded,
   ))
+
+  if (attached) {
+    return 'started'
+  }
+
+  if (Object.hasOwn(
+    state.eventIds,
+    id,
+  )) {
+    return 'requested'
+  }
+
+  return undefined
 }
 
-// The same blocker always gets the same note, so a retry that hits it again adds nothing.
 function noteBlocker({
   hydraId,
   card,
@@ -367,7 +389,6 @@ function noteBlocker({
   })
 }
 
-// A related ask reaches the task's live worker instead of starting another.
 async function steerWorker({
   hydraId,
   card,
@@ -375,7 +396,7 @@ async function steerWorker({
   ask,
   values,
   meta,
-  operation,
+  id,
 }: {
   hydraId: string
   card: Card
@@ -383,7 +404,7 @@ async function steerWorker({
   ask: string
   values: Values
   meta: Meta
-  operation: string
+  id: string
 }): Promise<Output> {
   const brief = values.brief as string | undefined
   const parts = [`The owner asked: ${ask}`]
@@ -392,15 +413,16 @@ async function steerWorker({
     parts.push(`Updated instructions:\n${brief}`)
   }
 
+  const home = loadHydra({ hydraId }).state.config?.hydra.home
   const sent = await sendReply({
     hydraId,
     request: {
       card: card.id,
       text: parts.join('\n\n'),
-      homes: [],
+      homes: home ? [home] : [],
       actor: meta.actor,
       reason: meta.reason,
-      id: `${operation}:steer`,
+      id,
     },
   })
 
@@ -413,8 +435,6 @@ async function steerWorker({
   }
 }
 
-// Files the owner's ask and brief on a task and starts its worker through the normal dispatch rules, or records the
-// hold, queue or dependency it waits on instead. Repeating the same --event-id never files or starts anything twice.
 export async function intakeCommand({
   hydraId,
   positionals,
@@ -422,12 +442,12 @@ export async function intakeCommand({
   meta,
 }: {
   hydraId: string
-  // The action, then the existing task to reuse, if any.
   positionals: string[]
   values: Values
   meta: Meta
 }): Promise<Output> {
   const ref = positionals[1]
+  const reuse = ref !== undefined
 
   if (positionals.length > 2) {
     throw new HydraError({
@@ -438,7 +458,7 @@ export async function intakeCommand({
 
   requireIntakeFlags({
     values,
-    reuse: ref !== undefined,
+    reuse,
   })
   const operation = required({
     value: meta.id,
@@ -449,9 +469,13 @@ export async function intakeCommand({
     value: values.ask as string | undefined,
     what: '--ask <the owner\'s exact words>',
   })
-  const disposition = chooseDisposition({ values })
+  const disposition = chooseDisposition({
+    values,
+    reuse,
+  })
   const start = startFlags({ values })
   const startId = `${operation}:start`
+  const steerId = `${operation}:steer`
 
   const card = withWriter({
     hydraId,
@@ -467,6 +491,16 @@ export async function intakeCommand({
         meta,
         operation,
       })
+      const attached = recorded.sessionIds?.[0]
+
+      if (reuse && disposition !== 'start' && attached) {
+        throw new HydraError({
+          message: `task ${recorded.id} already has worker ${attached}; a ${WAIT_NOUNS[disposition]} applies only to work that has not started`,
+          code: 'CONFLICT',
+          help: ['Repeat without --hold, --behind or --on to send the ask to that worker'],
+        })
+      }
+
       recordWait({
         writer,
         card: recorded,
@@ -476,7 +510,10 @@ export async function intakeCommand({
         operation,
       })
 
-      return writer.state.cards[recorded.id]!
+      return findCard({
+        state: writer.state,
+        ref: recorded.id,
+      })
     },
   })
 
@@ -487,12 +524,27 @@ export async function intakeCommand({
     }
   }
 
-  const worker = card.sessionIds?.[0]
-
-  if (startRecorded({
+  const resend = `Run \`pnyx-axi task start ${card.id} --event-id ${startId}\` if Firstmate did not get the request; the same id never asks twice`
+  const launched = recordedLaunch({
     state: loadHydra({ hydraId }).state,
     id: startId,
-  })) {
+  })
+
+  if (launched === 'requested') {
+    return {
+      task: card.id,
+      launch: 'requested',
+      message: startId,
+      help: [
+        'This intake already asked Firstmate for its worker; nothing was asked again',
+        resend,
+      ],
+    }
+  }
+
+  const worker = card.sessionIds?.[0]
+
+  if (launched === 'started') {
     return {
       task: card.id,
       launch: 'started',
@@ -501,34 +553,49 @@ export async function intakeCommand({
     }
   }
 
-  if (worker) {
+  const steered = card.replies?.some(reply => reply.id === steerId)
+
+  if (worker || steered) {
     return steerWorker({
       hydraId,
       card,
-      worker,
+      worker: worker ?? 'none',
       ask,
       values,
       meta,
-      operation,
+      id: steerId,
     })
   }
 
   const retry = `Retry with --event-id ${operation} once it clears; the same id never starts a second worker`
+  const startFolder = reuse ? values.folder as string : undefined
 
   try {
     const started = await startTask({
       hydraId,
       task: card.id,
       ...start,
+      folder: startFolder,
       meta: {
         ...meta,
         id: startId,
       },
     })
 
+    if (started.via === 'firstmate') {
+      const help = started.sent === 'failed' ? [resend] : started.help
+
+      return {
+        task: card.id,
+        launch: 'requested',
+        ...started,
+        help,
+      }
+    }
+
     return {
       task: card.id,
-      launch: started.via === 'firstmate' ? 'requested' : 'started',
+      launch: 'started',
       worker: loadHydra({ hydraId }).state.cards[card.id]?.sessionIds?.[0] ?? 'none',
       ...started,
     }

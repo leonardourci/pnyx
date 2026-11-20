@@ -323,7 +323,6 @@ export function planDocument({
     }
   })
 
-  // apply never starts a task, so a task Hydra creates here must end held or waiting on other work.
   for (const {
     index,
     task,
@@ -331,7 +330,12 @@ export function planDocument({
     try {
       requireStartOrReason({
         actor: meta.actor,
-        waits: recordsWhyUnstarted({ card: current.cards[task]! }),
+        waits: recordsWhyUnstarted({
+          card: findCard({
+            state: current,
+            ref: task,
+          }),
+        }),
       })
     } catch (error) {
       if (!(error instanceof HydraError)) {

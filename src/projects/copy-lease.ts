@@ -1,5 +1,4 @@
-import { COPY_LEASE_PREFIX, taskLeasePresent } from '#routine-helper/leases.ts'
-import { HydraError } from '#store/errors.ts'
+import { COPY_LEASE_PREFIX, copySettlingRefusal, taskLeasePresent } from '#routine-helper/leases.ts'
 
 export { COPY_LEASE_PREFIX }
 
@@ -28,10 +27,9 @@ export function requireCopyAvailable({
     hydraId,
     task,
   })) {
-    throw new HydraError({
-      message: `Task ${task} is settling its copy; try again when cleanup finishes`,
+    throw copySettlingRefusal({
+      task,
       code: 'CONFLICT',
-      help: [`\`pnyx-axi task copy ${task}\` shows the copy's state`],
     })
   }
 }

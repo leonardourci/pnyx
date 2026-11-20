@@ -4,12 +4,10 @@ import type { Card } from './model.ts'
 
 const INTAKE_HINT = 'Run `pnyx-axi task intake --title "<what>" --project <project> --ask "<owner words>" --message <owner-message-id> --brief "<instructions>" --reason "<why>" --event-id <stable-id>` to create and start it; add --behind <task> to queue it, --on <task> for a dependency, or --hold to hold it for the owner'
 
-// Held for the owner, queued behind a worker, or waiting on another task.
 export function recordsWhyUnstarted({ card }: { card: Card }): boolean {
   return Boolean(card.hold || card.queue || card.wait || card.prerequisites?.length)
 }
 
-// Hydra starts the work it files, or records why it waits.
 export function requireStartOrReason({
   actor,
   waits,
