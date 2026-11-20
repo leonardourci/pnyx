@@ -96,7 +96,8 @@ async function backToSchema1({
   })
   await sql({
     database: legacy,
-    text: `${SCHEMA_1}; alter table hydras add column removed boolean not null default false`,
+    text: `${SCHEMA_1}; alter table hydras add column removed boolean not null default false;
+      alter table cards alter column automatic_task set default false`,
   })
   const data = execFileSync(
     join(
@@ -132,7 +133,7 @@ async function backToSchema1({
   )
   await sql({
     database: legacy,
-    text: 'alter table hydras drop column removed',
+    text: 'alter table hydras drop column removed; alter table cards alter column automatic_task drop default',
   })
   const [{ last }] = await sql({
     database: legacy,
@@ -306,7 +307,7 @@ test(
 )
 
 test(
-  'upgrading removes per-card widths while preserving project widths, heights and history',
+  'upgrading removes retired card sizing and session flags while preserving tasks, layout and history',
   async () => {
     const hydra = await pnyx.hydra()
     const task = await hydra.owner({
@@ -397,6 +398,30 @@ test(
       ],
     })
     expect(refused.code).toBe('VALIDATION_ERROR')
+    const beforeSessionUpgrade = await hydra.task({ key: task.card.id })
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        await sql({
+          database: homeDatabase(),
+          text: `alter table cards add column if not exists automatic_task boolean not null default false;
+            alter table cards alter column automatic_task drop default;
+            delete from schema_version;
+            insert into schema_version (version) values (8)`,
+        })
+      },
+    })
+    expect(await hydra.task({ key: task.card.id })).toEqual(beforeSessionUpgrade)
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Write after the session flag upgrade',
+      ],
+    })
+    expect(await hydra.task({ key: created.card.id })).toMatchObject({ title: 'Write after the session flag upgrade' })
   },
 )
 

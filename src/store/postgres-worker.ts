@@ -63,6 +63,8 @@ if (!PAGE_PUBLICATION) {
   throw new Error('schema.sql has no pnyx_page publication')
 }
 
+const REMOVE_AUTOMATIC_TASK = 'alter table cards drop column if exists automatic_task'
+
 const ADD_HYDRA_REMOVAL = 'alter table hydras add column if not exists removed boolean not null default false'
 
 // Saved view rows drop the retired per-card widths; the events keep them, and replay ignores them.
@@ -132,7 +134,7 @@ async function requireSchema({
           'create publication pnyx_page for table',
           'alter publication pnyx_page set table',
         )};
-        ${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+        ${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')
@@ -142,7 +144,7 @@ async function requireSchema({
     return
   }
 
-  if ((current === 5 || current === 6 || current === 7) && migrate) {
+  if ((current === 5 || current === 6 || current === 7 || current === 8) && migrate) {
     await client.query('begin')
 
     try {
@@ -153,7 +155,7 @@ async function requireSchema({
         'alter publication pnyx_page set table',
       ))
 
-      await client.query(`${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+      await client.query(`${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')
