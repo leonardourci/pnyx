@@ -11,9 +11,6 @@ importers:
 
   .:
     dependencies:
-      '@toon-format/toon':
-        specifier: 2.3.1
-        version: 2.3.1
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.285
         version: 0.3.285(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
@@ -23,9 +20,9 @@ importers:
       '@rocicorp/zero':
         specifier: 1.11.5
         version: 1.11.5(patch_hash=96ad8bdf09ec47b45c5ef6d5ec5b2de293f49e2bc5749294d96a80f8318a0c13)(@opentelemetry/core@2.12.1(@opentelemetry/api@1.9.1))
-      '@tanstack/react-virtual':
-        specifier: ^3.14.26
-        version: 3.14.26(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@toon-format/toon':
+        specifier: 2.3.1
+        version: 2.3.1
       axi-sdk-js:
         specifier: ^0.1.13
         version: 0.1.13
@@ -1394,15 +1391,6 @@ packages:
     resolution: {integrity: sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
-
-  '@tanstack/react-virtual@3.14.26':
-    resolution: {integrity: sha512-HUDlfsrYH6ko5xH56L62Mcl/uzT+AGVNMHFuDNqDJMdZWc1AQa2oeVKNUvZ/RWBZQ4TYtyQerFrNvLnp39h65A==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
-  '@tanstack/virtual-core@3.19.11':
-    resolution: {integrity: sha512-/5iHb0RHBvj8Di59FDs4ESNm45jls33aZAi4zccVXZjc/6ZvwQP6nzEYeT6weXjTf9E6/vrp2JhYWRyO+ZP13A==}
 
   '@toon-format/toon@2.3.1':
     resolution: {integrity: sha512-sWqEMeAJGMda9qRrfPKrX3C4c33CO9SJuvJzzrcBEn5sbDB+k6pSLkDsfN0rVnLQwR97MV3sDgVbcxQNsq8xVw==}
@@ -5022,14 +5010,6 @@ snapshots:
       '@tailwindcss/oxide': 4.3.3
       tailwindcss: 4.3.3
       vite: 8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1)
-
-  '@tanstack/react-virtual@3.14.26(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
-    dependencies:
-      '@tanstack/virtual-core': 3.19.11
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-
-  '@tanstack/virtual-core@3.19.11': {}
 
   '@toon-format/toon@2.3.1': {}
 
