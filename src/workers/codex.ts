@@ -1375,7 +1375,12 @@ export function codexProvider({
 
               const previousContext = carriedContext.get(message.id)
               carriedContext.delete(message.id)
-              const currentContext = context && !manualCompact ? await context({ compacted }) : undefined
+              let currentContext: string | undefined
+
+              if (context && !manualCompact) {
+                currentContext = await context({ compacted })
+              }
+
               const text = [
                 compacted ? undefined : previousContext,
                 currentContext,
