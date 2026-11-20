@@ -8,9 +8,85 @@ import { parse } from 'yaml'
 import { afterEach, expect, test } from 'vitest'
 import { git } from './setup/upgrade.ts'
 import { stagedBuild } from '../scripts/build/staged.ts'
+import { ESLint } from 'eslint'
 
 const temporaryFolders: string[] = []
 const CHILD_PROCESS_TIMEOUT_MS = 30_000
+
+test(
+  'web lint rejects one-off styles and unsorted classes while accepting tokens and runtime geometry',
+  async () => {
+    const linter = new ESLint()
+    const cases = [
+      {
+        source: '<div className="bg-[#123456]/50" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="w-[317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="hover:w-[317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="[color:red]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'const ITEM_CLASSES = "w-[317px]"; <div className={ITEM_CLASSES} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'const narrow = "w-[317px]"; <div className={narrow} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div style={{ width: 317 }} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'const style = { width: 317 }; <div style={style} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style={runtimeStyle({ width: 317 })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div className="text-ink flex" />',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+    ]
+
+    for (const {
+      source,
+      rule,
+    } of cases) {
+      const [result] = await linter.lintText(
+        source,
+        { filePath: 'web/src/lint-policy.tsx' },
+      )
+      expect(
+        result!.messages.map(message => message.ruleId),
+        source,
+      ).toContain(rule)
+    }
+
+    const valid = 'const width = window.innerWidth; <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width })} />'
+    const [result] = await linter.lintText(
+      valid,
+      { filePath: 'web/src/lint-policy.tsx' },
+    )
+    const policyRules = new Set([
+      'better-tailwindcss/no-restricted-classes',
+      'better-tailwindcss/enforce-consistent-class-order',
+      'no-restricted-syntax',
+    ])
+    expect(result!.messages.filter(message => policyRules.has(message.ruleId!))).toEqual([])
+  },
+)
 
 afterEach(() => {
   for (const folder of temporaryFolders.splice(0)) {
