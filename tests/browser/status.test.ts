@@ -266,6 +266,7 @@ test(
     } of turns) {
       const turn = pnyx.claude.plan({
         hydra: hydra.id,
+        match: ({ text: prompt }) => prompt.includes(text),
         tool,
         hold: true,
       })

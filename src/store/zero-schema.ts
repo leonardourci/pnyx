@@ -456,8 +456,7 @@ const answering = (query: ReturnType<typeof zql.replies.where>) => query.where(
   )
   .limit(LIST_LIMIT)
 
-// eslint-disable-next-line pnyx/object-params -- Zero owns related query callbacks.
-const latestReply = (query: ReturnType<typeof zql.replies.where>) => query.orderBy(
+const latestReply = ({ query }: { query: ReturnType<typeof zql.replies.where> }) => query.orderBy(
   'position',
   'desc',
 ).limit(1)
@@ -555,7 +554,7 @@ export const queries = defineQueries({
         )
         .related(
           'latestReply',
-          latestReply,
+          query => latestReply({ query }),
         )
         .related(
           'questions',
@@ -616,7 +615,7 @@ export const queries = defineQueries({
         )
         .related(
           'latestReply',
-          latestReply,
+          query => latestReply({ query }),
         )
         .related(
           'questions',

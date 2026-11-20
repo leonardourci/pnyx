@@ -473,7 +473,8 @@ export function createConnectionRequests({
       const replyFailed = reply && 'state' in reply && reply.state === 'failed'
 
       if (message.state === 'failed' || replyFailed) {
-        const reason = replyFailed && 'detail' in reply ? reply.detail : message.detail
+        const replyDetail = replyFailed && 'detail' in reply ? reply.detail : undefined
+        const reason = typeof replyDetail === 'string' ? replyDetail : message.detail
         const detail = typeof reason === 'string' ? reason : 'Turn could not start'
         scope.turns.refuse({
           id: request.id,

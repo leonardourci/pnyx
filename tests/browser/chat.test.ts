@@ -426,9 +426,14 @@ test(
       await until({
         what: 'both working lines to stop naming the tool',
         check: async () => {
-          const texts = await Promise.all(working.map(line => line.textContent()))
+          const labelsOnly = await Promise.all(working.map(async line => {
+            const text = await line.textContent()
+            const labelVisible = await line.getByText('Working', { exact: true }).isVisible()
 
-          return texts.every(text => text !== null && !text.includes('Running a command'))
+            return labelVisible && text !== null && !text.includes('Running a command')
+          }))
+
+          return labelsOnly.every(Boolean)
         },
       })
     } finally {
