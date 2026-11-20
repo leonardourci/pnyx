@@ -191,7 +191,6 @@ export type HydraChange = EventBase & (
     }
   }
   | {
-    // Retired task kinds and reports remain readable in existing event logs.
     type: 'task.kind'
     data: {
       before: 'build' | 'investigation'

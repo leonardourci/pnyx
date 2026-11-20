@@ -187,6 +187,16 @@ test(
         exact: true,
       },
     )
+    const draft = 'Keep this draft when Enter repeats'
+    await composer.fill(draft)
+    await composer.dispatchEvent(
+      'keydown',
+      {
+        key: 'Enter',
+        repeat: true,
+      },
+    )
+    expect(await composer.inputValue()).toBe(draft)
     await composer.fill(unmatched)
     await page.getByText(
       'Nothing in this Hydra matches.',

@@ -283,7 +283,10 @@ export function Composer({
   const draftKey = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
-      void send()
+
+      if (!e.repeat) {
+        void send()
+      }
 
       return
     }
