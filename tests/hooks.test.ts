@@ -1,3 +1,6 @@
+import { eventReasons } from '#hydra/wake-reasons.ts'
+import { readEvents } from '#app/event-log.ts'
+import { loadHydra } from '#app/store.ts'
 import { flushLogs } from '#app/diagnostics.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
@@ -352,6 +355,10 @@ test(
         session_id: 'broken-transcript',
         transcript_path: brokenTranscript,
       },
+    })
+    await until({
+      what: 'the unreadable transcript session to be registered',
+      check: () => sessionFacts({ session: 'broken-transcript' }),
     })
     const settingsTranscript = join(
       cwd,
@@ -861,6 +868,25 @@ test(
         'list',
       ],
     })).tasks).toHaveLength(1)
+    const settingsOnly = await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        assigned.id,
+        '--actor',
+        'pnyx',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'root-agent',
+          agentId: 'child-agent',
+        },
+        settings: { model: 'test-model' },
+      }),
+    })
     await hook({
       event: 'PermissionRequest',
       payload: {
@@ -912,9 +938,34 @@ test(
         '0',
       ],
     })
-    expect(changes.changes).toContainEqual(expect.objectContaining({
+    expect.soft(changes.changes).toContainEqual(expect.objectContaining({
       type: 'session.observed',
+      summary: expect.stringContaining('inspect-package'),
     }))
+    const stateAfterQuestion = loadHydra({ hydraId: hydra.id }).state
+    const settingsEvent = readEvents({
+      hydraId: hydra.id,
+      seqs: [settingsOnly.event.seq],
+    })[0]!
+    expect(eventReasons({
+      state: stateAfterQuestion,
+      event: settingsEvent,
+    })).toEqual([])
+    const questionEvent = readEvents({
+      hydraId: hydra.id,
+      after: settingsOnly.event.seq,
+    })
+      .find(event => event.type === 'session.observed'
+        && event.data.fields.attention?.some(item => item.text?.includes('inspect-package')))!
+    expect(eventReasons({
+      state: stateAfterQuestion,
+      event: questionEvent,
+    })).toContainEqual(
+      expect.objectContaining({
+        kind: 'asked',
+        detail: expect.stringContaining('inspect-package'),
+      }),
+    )
     first.release()
     await until({
       what: 'Hydra to hear the native question',

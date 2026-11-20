@@ -143,6 +143,26 @@ export function sessionTask({
   return state.config?.hydra.session === parent ? state.cards[HYDRA_CARD] : undefined
 }
 
+export function projectedAttention({
+  agent,
+  attention,
+}: {
+  agent: AgentRef
+  attention: Attention[]
+}): Attention[] {
+  return attention.map(item => ({
+    ...item,
+    key: agent.agentId ? `hook:child:${sessionId({ agent })}:${item.key}` : item.key,
+  }))
+}
+
+export function observedQuestions({ event }: { event: HydraEvent }): Attention[] {
+  const attention = event.type === 'session.observed' ? event.data.fields.attention
+    : event.type === 'card.pushed' ? event.data.attention : undefined
+
+  return attention?.filter(item => item.blocking && !item.answered) ?? []
+}
+
 export function sessionAttention({
   state,
   session,
@@ -157,10 +177,10 @@ export function sessionAttention({
 
   return [
     ...session.attention,
-    ...children.flatMap(child => child.attention.map(item => ({
-      ...item,
-      key: `hook:child:${child.id}:${item.key}`,
-    }))),
+    ...children.flatMap(child => projectedAttention({
+      agent: child.agent,
+      attention: child.attention,
+    })),
   ]
 }
 

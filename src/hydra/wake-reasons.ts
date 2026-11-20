@@ -1,5 +1,5 @@
 import { agentActivity } from '#workers/activity.ts'
-import { sessionTask } from '#workers/session-attachments.ts'
+import { projectedAttention, sessionTask } from '#workers/session-attachments.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
@@ -565,7 +565,10 @@ export function eventReasons({
         data: {
           ...event.data.fields,
           key: card.key,
-          attention: card.attention,
+          attention: event.data.fields.attention && projectedAttention({
+            agent: event.data.fields.agent,
+            attention: event.data.fields.attention,
+          }),
           before: event.data.before,
         },
       },

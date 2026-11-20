@@ -1,3 +1,4 @@
+import { observedQuestions } from './session-attachments.ts'
 import { readMemoryContext } from '#memory/context.ts'
 import { memoryCaller, readableProjects } from '#memory/poleis.ts'
 import { memoryConditions } from '#memory/conditions.ts'
@@ -178,9 +179,7 @@ export async function hydraCheck({
 
         const task = current.cards[e.cardId]
         const worker = task?.tracking === 'declared' && !isManagedTask({ card: task })
-        const attention = e.type === 'session.observed' ? e.data.fields.attention
-          : e.type === 'card.pushed' ? e.data.attention : undefined
-        const question = worker && attention?.some(a => a.blocking && !a.answered)
+        const question = worker && observedQuestions({ event: e }).length > 0
         const owner = e.type === 'card.replied' && e.cardId !== '$hydra' && e.data.state === 'queued' && Boolean(e.data.text?.trim()) && !e.data.control && e.actor !== HYDRA_ACTOR
 
         if (e.type === 'task.worker-line' && [
@@ -324,10 +323,9 @@ export async function hydraCheck({
 
     if (note) {
       summary = note.text
-    } else if (e.type === 'card.pushed') {
-      summary = e.data.attention?.filter(a => a.blocking && !a.answered)
-        .map(a => a.text ?? a.kind)
-        .join('; ') ?? 'Agent needs an answer'
+    } else if (observedQuestions({ event: e }).length) {
+      summary = observedQuestions({ event: e }).map(a => a.text ?? a.kind)
+        .join('; ')
     } else {
       summary = summarize({ event: e })
     }
