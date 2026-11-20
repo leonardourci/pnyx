@@ -172,11 +172,6 @@ function checkWorkerScope({
     return
   }
 
-  // Without --file, `task report` reads the latest stored report of any task.
-  if (name === 'task' && words[0] === 'report' && values.file === undefined) {
-    return
-  }
-
   if (!scope?.own?.some(path => startsWith({
     words,
     path,

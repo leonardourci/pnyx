@@ -52,7 +52,6 @@ const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       brief: 'string',
       intent: 'text',
       folder: 'text',
-      kind: 'text',
       hold: 'boolean',
       noStart: 'boolean',
       parent: 'text',

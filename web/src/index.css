@@ -91,7 +91,6 @@
   --ease-linear: linear;
   --animate-spin: spin var(--transition-duration-ambient) var(--ease-linear) infinite;
   --ease-ui: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --tracking-keymap: .04em;
   --tracking-eyebrow: .13em;
   --radius-compact: var(--radius-sm);
   --shadow-range: 0 1px 3px var(--color-shadow);

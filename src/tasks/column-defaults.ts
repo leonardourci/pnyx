@@ -111,6 +111,19 @@ export function columnRule({ column }: { column: HydraColumn }): ColumnRule {
 }
 
 export function migrateDefaultRule({ column }: { column: HydraColumn }): HydraColumn {
+  const usesRetiredKind = column.rule?.some(row => row.some(condition =>
+    condition.replace(
+      /^!/,
+      '',
+    ).startsWith('kind:')))
+
+  if (usesRetiredKind) {
+    return {
+      ...column,
+      rule: [],
+    }
+  }
+
   const role = column.role ?? ''
   const holdRule = PREVIOUS_HOLD_RULES[role]
   const previous = holdRule ? withReminderExclusion({ rule: holdRule }) : undefined

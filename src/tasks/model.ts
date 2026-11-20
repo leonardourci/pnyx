@@ -2,7 +2,6 @@ import type { LandingRule, Link, Outcome } from '#tasks/delivery/model.ts'
 import type { Question, AgentRef, AgentLaunch, TaskQueue, AgentSettings, TerminalFacts, Attention, PermissionRequest, Reply, SteeringMessage, ReplyState, CardWorkerInput } from '#workers/model.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
-import type { TaskReport } from '#investigations/model.ts'
 import type { TaskCopy } from '#projects/model.ts'
 import type { SourceRef } from '#app/model.ts'
 import type { ExternalSource } from '#task-sources/model.ts'
@@ -68,10 +67,7 @@ export interface Ask {
   at: string
   actor: string
   audience: AskAudience
-  origin?: {
-    task: string
-    report: string
-  }
+
   kind?: 'merge' | 'go'
   hold?: TaskHold
   url?: string
@@ -105,14 +101,6 @@ export interface Ask {
   deferredUntil?: string
   deferredFromMessage?: AnswerMessage
 }
-
-// An investigation's answer is its stored report; a build task's is its landed work.
-export const TASK_KINDS = [
-  'build',
-  'investigation',
-] as const
-
-export type TaskKind = (typeof TASK_KINDS)[number]
 
 export interface TaskReminder {
   id: string
@@ -213,8 +201,6 @@ export interface Card {
   progress?: TaskProgress
   initialPrompt?: string
   project?: string
-  kind?: TaskKind
-  report?: TaskReport
   // A rule the owner chose for this task only, over its project's.
   landing?: LandingRule
   reminder?: TaskReminder

@@ -37,7 +37,6 @@ export const requestExitCode = () => current.getStore()?.exitCode
 // The variables a client sends with each command: who it is, and the terminal or task it runs in.
 export const IDENTITY = [
   'PNYX_ACTOR',
-  'PNYX_MEMORY_ACCESS',
   'PNYX_TASK',
   'PNYX_HYDRA',
   'PNYX_STEERING_WORKER',
@@ -111,4 +110,11 @@ export function readInput({ file }: { file: string }): string {
     ),
     'utf8',
   )
+}
+
+export function agentRequest(): boolean {
+  const env = requestEnv()
+  const actor = env.PNYX_ACTOR ?? ''
+
+  return actor === 'hydra' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.PNYX_TASK)
 }

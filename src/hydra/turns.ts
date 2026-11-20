@@ -1,4 +1,5 @@
-import { readMemoryContext } from '#memory/context.ts'
+import { projectsFor } from '#projects/read.ts'
+
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
 import { hydraDeliveryId } from './received.ts'
@@ -28,7 +29,6 @@ import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { projectDigest } from '#projects/context.ts'
-import { readableProjects } from '#memory/poleis.ts'
 import { activeHelperBatches, failedBatches, helperLeases, outcomeLines, ownerOutcomes } from '#routine-helper/state.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
@@ -216,107 +216,74 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    const result = await readMemoryContext({
-      read: async () => {
-        const owner = ownerMemory({ hydraId })
-        const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
-        const state = loadHydra({ hydraId }).state
-        const readable = await readableProjects({
-          state,
-          hydraId,
-        })
-        const readablePaths = readable.map(project => project.path)
+    const owner = ownerMemory({})
+    const ownerWrite = writableOwnerMemory({ hydraId }).memory
+    const state = loadHydra({ hydraId }).state
+    const readable = projectsFor({ state })
 
-        if (onlyTasks) {
-          const digest = hydraDigest({
-            hydraId,
-            state,
-            owner,
-            ownerWrite,
-            readable: readablePaths,
-            onlyTasks,
-            previousDigest,
-            checkpointed,
-            conditions: memoryConditions(),
-          })
-
-          return {
-            digest,
-            stamp: undefined,
-          }
-        }
-
-        const [
-          projects,
-          items,
-        ] = await Promise.all([
-          projectDigest({
-            hydraId,
-            readable,
-          }),
-          setupCheck({
-            hydraId,
-            readable,
-          }),
-        ])
-
-        const stamp = remember
-          ? JSON.stringify({
-            owner,
-            ownerWrite,
-            hydra: state.hydraMemory,
-            projects,
-          })
-          : undefined
-
-        const digest = hydraDigest({
-          previousDigest,
-          checkpointed,
-          conditions: memoryConditions(),
-          hydraId,
-          state,
-          owner,
-          ownerWrite,
-          projects,
-          readable: readablePaths,
-          setup: setupDigest({ items }),
-        })
-
-        return {
-          digest,
-          stamp,
-        }
-      },
-    })
-
-    if (result.stamp !== undefined) {
-      memoryStamp = result.stamp
+    if (onlyTasks) {
+      return hydraDigest({
+        hydraId,
+        state,
+        owner,
+        ownerWrite,
+        onlyTasks,
+        previousDigest,
+        checkpointed,
+        conditions: memoryConditions(),
+      })
     }
 
-    return result.digest
+    const [
+      projects,
+      items,
+    ] = await Promise.all([
+      projectDigest({
+        hydraId,
+        readable,
+      }),
+      setupCheck({
+        hydraId,
+        readable,
+      }),
+    ])
+
+    if (remember) {
+      memoryStamp = JSON.stringify({
+        owner,
+        ownerWrite,
+        hydra: state.hydraMemory,
+        projects,
+      })
+    }
+
+    return hydraDigest({
+      previousDigest,
+      checkpointed,
+      conditions: memoryConditions(),
+      hydraId,
+      state,
+      owner,
+      ownerWrite,
+      projects,
+      setup: setupDigest({ items }),
+    })
   }
 
   const memoryChangeNote = async () => {
-    const stamp = await readMemoryContext({
-      read: async () => {
-        const owner = ownerMemory({ hydraId })
-        const ownerWrite = writableOwnerMemory({ hydraId })?.memory ?? {}
-        const state = loadHydra({ hydraId }).state
-        const readable = await readableProjects({
-          state,
-          hydraId,
-        })
-
-        return JSON.stringify({
-          owner,
-          ownerWrite,
-          hydra: state.hydraMemory,
-          projects: await projectDigest({
-            hydraId,
-            readable,
-          }),
-        })
-      },
+    const owner = ownerMemory({})
+    const ownerWrite = writableOwnerMemory({ hydraId }).memory
+    const state = loadHydra({ hydraId }).state
+    const readable = projectsFor({ state })
+    const projects = await projectDigest({
+      hydraId,
+      readable,
+    })
+    const stamp = JSON.stringify({
+      owner,
+      ownerWrite,
+      hydra: state.hydraMemory,
+      projects,
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp

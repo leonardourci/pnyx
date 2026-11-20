@@ -16,8 +16,6 @@ import { AgentKinds } from '#web-workers/agent-kinds.tsx'
 import type { DoneAfterHours } from '#settings/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command } from '#web-app/connection.ts'
-import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
-import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { changedIds, resetPatch } from '#web-settings/changed.ts'
 import { SETTING_ICONS, type SettingsMatch } from '#web-settings/catalog.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
@@ -183,16 +181,12 @@ function ProjectPreview({
 }
 
 function ActionPreview({ action }: { action: OracleAction }) {
-  const { label } = useKeyboard()
-  const keys = action.run === 'key' ? label({ id: action.key }) : ''
-
   return (
     <>
       <PreviewTitle>
         <Icon name={ACTION_ICONS[action.run]} size={ICON_SIZE.control} />{action.label}
       </PreviewTitle>
       <p>{action.does}</p>
-      {keys && <p className="muted small">Its shortcut: <kbd>{keys}</kbd></p>}
     </>
   )
 }
@@ -240,10 +234,6 @@ export function FilterPreview({
 }
 
 export interface SettingProps {
-  hydras: {
-    id: string
-    name: string
-  }[]
   view: ViewPreferences
   connected: boolean
   save({ patch }: { patch: unknown }): Promise<boolean>
@@ -338,7 +328,6 @@ function SettingResult({
         saveHydra={saveHydra}
         dispatchError={dispatchError}
       />
-      {entry.id === 'keyboard' && <KeyRows prefs={settings.view.keyboard} save={settings.save} query="" />}
     </SettingRow>
   )
 }

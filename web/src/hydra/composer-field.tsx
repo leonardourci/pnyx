@@ -9,7 +9,6 @@ import { MentionPicker,type MentionItem } from './mention-picker.tsx'
 import { completePath } from './path-completion.ts'
 import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } from './project-request.ts'
 import { slashState,type SlashState } from './view.ts'
-import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { useFolders } from '#web-projects/folders.ts'
 import { useAutoHeight } from './auto-height.ts'
 import { Textarea } from '#web-shared/ui/controls.tsx'
@@ -62,7 +61,6 @@ export function ComposerField({
   placeholder,
   className = '',
   standalone = true,
-  keyScope,
   onKeyDown,
   onBlur,
   projectRequests = false,
@@ -78,7 +76,6 @@ export function ComposerField({
   className?: string
   // A field on its own is a compact box; the Hydra composer draws its own box, menu and controls around it.
   standalone?: boolean
-  keyScope?: string
   // Runs after the pickers had their turn with the key.
   onKeyDown?({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }): void
   onBlur?(): void
@@ -636,19 +633,6 @@ export function ComposerField({
     }),
   )
 
-  useKeyAction({
-    id: 'cancel',
-    handler: ({ context: { target } }) => {
-      if (!input.current?.contains(target) || prefix === null && mention === null) {
-        return false
-      }
-
-      closePickers()
-
-      return true
-    },
-  })
-
   return (
     <div
       className={`composer-field group/composer-field [&.comment-note]:flex-1 ${standalone ? 'composer-compact relative min-w-0 rounded-md border border-control bg-surface focus-within:border-gold-line' : 'contents'} ${className}`}
@@ -752,7 +736,6 @@ export function ComposerField({
           className="composer-text group-[.comment-note]/composer-field:select-text h-auto max-h-[min(50vh,var(--spacing-composer-max))] resize-none overflow-y-auto bg-transparent outline-none group-data-[standalone=true]/composer-field:max-h-[min(40vh,12lh)] in-[.task-editor]:max-h-[min(50vh,24lh)] group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
           ref={input}
           rows={1}
-          data-key-scope={keyScope}
           id={id}
           defaultValue={display}
           placeholder={placeholder}
@@ -882,6 +865,14 @@ export function ComposerField({
               return
             }
 
+            if (e.key === 'Escape' && (prefix !== null || mention !== null)) {
+              e.preventDefault()
+              e.stopPropagation()
+              closePickers()
+
+              return
+            }
+
             if (goal !== null && !e.metaKey && !e.ctrlKey && !e.altKey) {
               const chosen = goal >= 0 ? GOALS[goal] : undefined
 
@@ -954,6 +945,7 @@ export function ComposerField({
             && (e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.altKey) {
               setMention(null)
               dismissSlash()
+              onKeyDown?.({ event: e })
 
               return
             }

@@ -1,4 +1,4 @@
-import { inform } from '#app/command-notices.ts'
+import { findProject } from '#projects/read.ts'
 import { readOwnerLogs } from './owner-memory-log.ts'
 import { memorySize, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
 import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
@@ -12,8 +12,7 @@ import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
-import { findReadableProject, memoryCaller } from './poleis.ts'
-import { POLIS_NAME } from './polis-policy.ts'
+import { POLIS_NAME } from './owner-polis.ts'
 
 function memoryList({
   memory,
@@ -167,7 +166,6 @@ export const owner = guard({
         text: { type: 'string' },
         project: { type: 'string' },
         to: { type: 'string' },
-        propose: { type: 'boolean' },
         'if-destination-revision': { type: 'string' },
         kind: { type: 'string' },
         until: { type: 'string' },
@@ -185,13 +183,6 @@ export const owner = guard({
 
     const action = positionals[1] ?? 'list'
 
-    if (action !== 'list' && !memoryCaller({ hydraId })) {
-      inform({
-        reason: `Writing memory for Hydra ${hydraId} from another Hydra`,
-        clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> to change memory scope`,
-      })
-    }
-
     const learning = learningChange({
       action,
       kind: values.kind as string | undefined,
@@ -201,15 +192,12 @@ export const owner = guard({
     })
 
     if (action === 'list') {
-      if (memoryCaller({ hydraId })) {
-        migrateOwnerMemory()
-      }
+      migrateOwnerMemory()
 
       return withRegistryLock({
         fn: () => {
           const logs = readOwnerLogs()
           const memory = ownerMemory({
-            hydraId,
             migrate: false,
             logs,
           })
@@ -221,16 +209,13 @@ export const owner = guard({
           return {
             ...memoryList({
               memory,
-              budgetMemory: writable?.memory ?? {},
+              budgetMemory: writable.memory,
               budget: OWNER_MEMORY_BUDGET,
               empty: 'none: no owner memory yet',
             }),
-            revision: writable?.revision,
-            writable: writable?.memory,
-            archived: ownerArchive({
-              hydraId,
-              logs,
-            }),
+            revision: writable.revision,
+            writable: writable.memory,
+            archived: ownerArchive({logs}),
           }
         },
       })
@@ -266,8 +251,6 @@ export const owner = guard({
     if (action === 'move' && documentMove) {
       return moveOwnerPolis({
         hydraId,
-        args,
-        propose: Boolean(values.propose),
         ifDestinationRevision: integer({
           value: values['if-destination-revision'],
           flag: '--if-destination-revision',
@@ -282,9 +265,7 @@ export const owner = guard({
     }
 
     if (action === 'move') {
-      const project = await findReadableProject({
-        writing: true,
-        hydraId,
+      const project = findProject({
         state: loadHydra({ hydraId }).state,
         ref: required({
           value: values.project as string | undefined,
@@ -294,8 +275,6 @@ export const owner = guard({
       })
 
       return moveOwnerLearning({
-        args,
-        propose: Boolean(values.propose),
         ifDestinationRevision: integer({
           value: values['if-destination-revision'],
           flag: '--if-destination-revision',
@@ -360,7 +339,7 @@ export const owner = guard({
       memory: key,
       state: after === null ? 'forgotten' : 'saved',
       revision: entry.revision,
-      used: `${memorySize({ memory: writableOwnerMemory({ hydraId })?.memory ?? {} })} of ${OWNER_MEMORY_BUDGET} characters`,
+      used: `${memorySize({ memory: writableOwnerMemory({ hydraId }).memory })} of ${OWNER_MEMORY_BUDGET} characters`,
     } : {
       memory: key,
       skipped: 'unchanged',
@@ -378,21 +357,6 @@ export function hydraMemory({
   hydraId: string
 }): Output {
   const action = positionals[1] ?? 'list'
-
-  if (!memoryCaller({ hydraId })) {
-    if (action === 'list') {
-      return memoryList({
-        memory: {},
-        budget: HYDRA_MEMORY_BUDGET,
-        empty: 'none: no Hydra memory yet',
-      })
-    }
-
-    inform({
-      reason: `Writing Hydra ${hydraId} memory from another Hydra`,
-      clear: `Use pnyx-axi hydra memory list --hydra ${hydraId} in its own context to inspect it`,
-    })
-  }
 
   if (action === 'list') {
     const state = loadHydra({ hydraId }).state

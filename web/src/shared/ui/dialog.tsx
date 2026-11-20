@@ -66,7 +66,6 @@ export function Dialog({
       ref={dialog}
       aria-labelledby={heading}
       className={className}
-      data-key-scope="overlay"
       // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
       onKeyDown={e => {
         if (e.key === 'Tab') {

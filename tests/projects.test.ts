@@ -926,7 +926,7 @@ test(
 )
 
 test(
-  'a pull-request task is done only once GitHub reports its pull request merged, and one with an unreviewed report waits for its review',
+  'a pull-request task is done only once GitHub reports its pull request merged',
   async () => {
     const hydra = await pnyx.hydra()
     await createProject({
@@ -935,7 +935,7 @@ test(
       remote: 'https://github.com/o/shop.git',
     })
     // Merges wake only a Hydra that Pnyx runs.
-    const main = await hydra.chat({ text: 'Watch the shop' })
+    await hydra.chat({ text: 'Watch the shop' })
     await hydra.owner({
       args: [
         'task',
@@ -947,23 +947,6 @@ test(
         'notes',
         '--project',
         'shop',
-      ],
-    })
-    const reportFile = join(
-      hydra.folder({ name: 'notes' }),
-      'report.md',
-    )
-    writeFileSync(
-      reportFile,
-      'The cart keeps its items for a week.\n',
-    )
-    await hydra.owner({
-      args: [
-        'task',
-        'report',
-        'notes',
-        '--file',
-        reportFile,
       ],
     })
     pullRequest({
@@ -1040,12 +1023,6 @@ test(
         ],
       })).task.links[0]?.state === 'merged',
     })
-    await until({
-      what: 'Hydra to hear the merge waits for the report review',
-      check: () => main.received.some(text => text.split('\n').some(line => line.includes('https://github.com/o/shop/pull/8')
-        && line.includes('task report-review'))),
-    })
-
     // The cart pull request below must still be followed once this merge is recorded.
     pullRequest({
       number: 7,
@@ -1069,36 +1046,8 @@ test(
     expect(done.column).toBe(await hydra.column({ role: 'done' }))
     expect(merges({ number: 7 })).toBe(0)
 
-    // A full follow pass has run since the notes merge, and its report still waits for review.
-    const { task: notes } = await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'notes',
-      ],
-    })
-    expect(notes.status).not.toMatch(/^done/)
-    expect(notes.column).not.toBe(await hydra.column({ role: 'done' }))
-
-    const { id: report } = await hydra.owner({
-      args: [
-        'task',
-        'report',
-        'notes',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'task',
-        'report-review',
-        'notes',
-        '--report',
-        report,
-        '--none',
-      ],
-    })
     const reviewed = await until({
-      what: 'the reviewed report to let the merge finish its task',
+      what: 'the second merge to finish its task',
       check: async () => {
         const { task } = await hydra.owner({
           args: [
@@ -4055,190 +4004,6 @@ test(
         'second-helper',
       ],
     })).code).toBe('NOT_FOUND')
-  },
-)
-
-test(
-  'attachment management survives an empty memory read list without revealing memory',
-  async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
-    const path = source.folder({ name: 'hidden-memory-project' })
-    await source.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
-    })
-    await source.owner({
-      args: [
-        'project',
-        'memory',
-        'set',
-        '--project',
-        path,
-        '--key',
-        'preferences',
-        '--text',
-        'Private memory sentinel',
-      ],
-    })
-    await source.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        '',
-      ],
-    })
-    const attached = await target.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
-    })
-    expect(attached.notices).toBeDefined()
-    expect(JSON.stringify(attached)).not.toContain('Private memory sentinel')
-    expect((await source.owner({
-      args: [
-        'project',
-        'list',
-      ],
-    })).projects).toEqual([
-      expect.objectContaining({
-        path,
-        state: 'attached',
-      }),
-    ])
-    const shown = await source.owner({
-      args: [
-        'project',
-        'show',
-        path,
-      ],
-    })
-    expect(shown.memory).toBe('none: project memory is filtered')
-    expect(shown.notices).toBeDefined()
-    expect(shown.attachment).toEqual(expect.objectContaining({
-      path,
-      state: 'attached',
-    }))
-    const filtered = await source.owner({
-      args: [
-        'project',
-        'memory',
-        'list',
-        '--project',
-        path,
-      ],
-    })
-    expect(filtered.memory).toBe('none: project memory is filtered')
-    expect(filtered.notices).toBeDefined()
-    const env = {
-      ...process.env,
-      PNYX_ACTOR: 'hydra',
-      PNYX_HYDRA: source.id,
-      PNYX_TASK: undefined,
-    }
-    const foreignHydra = {
-      ...env,
-      PNYX_HYDRA: target.id,
-    }
-    const foreignProjects = parsed(await pnyxAxi({
-      env: foreignHydra,
-      args: [
-        'project',
-        'list',
-        '--hydra',
-        source.id,
-      ],
-    }))
-    expect(foreignProjects.projects).toBe('none: no projects attached')
-    expect(foreignProjects.help ?? []).not.toContainEqual(expect.stringContaining('project add'))
-    const foreignShown = parsed(await pnyxAxi({
-      env: foreignHydra,
-      args: [
-        'project',
-        'show',
-        path,
-        '--hydra',
-        source.id,
-      ],
-    }))
-    expect(foreignShown.memory).toBe('none: project memory is filtered')
-    expect(foreignShown.notices).toBeDefined()
-    const foreignRemoved = await pnyxAxi({
-      env: foreignHydra,
-      args: [
-        'project',
-        'remove',
-        path,
-        '--hydra',
-        source.id,
-      ],
-    })
-    expect(foreignRemoved.status).toBe(0)
-    expect(parsed(foreignRemoved).notices).toBeDefined()
-    await source.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
-    })
-    expect(parsed(await pnyxAxi({
-      env,
-      args: [
-        'project',
-        'list',
-        '--hydra',
-        source.id,
-      ],
-    })).projects).toEqual([expect.objectContaining({ path })])
-    const shownToHydra = parsed(await pnyxAxi({
-      env,
-      args: [
-        'project',
-        'show',
-        path,
-        '--hydra',
-        source.id,
-      ],
-    }))
-    expect(shownToHydra.attachment).toEqual(expect.objectContaining({ path }))
-    expect(shownToHydra.memory).toBe('none: project memory is filtered')
-    expect(shownToHydra.notices).toBeDefined()
-    const removed = await pnyxAxi({
-      env,
-      args: [
-        'project',
-        'remove',
-        path,
-        '--reason',
-        'Detach attachment without memory access',
-        '--hydra',
-        source.id,
-      ],
-    })
-    expect(removed.status).toBe(0)
-    await target.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
-    })
-    expect((await target.owner({
-      args: [
-        'project',
-        'memory',
-        'list',
-        '--project',
-        path,
-      ],
-    })).memory.preferences).toBe('Private memory sentinel')
   },
 )
 

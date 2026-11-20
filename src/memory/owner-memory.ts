@@ -1,8 +1,5 @@
-import { POLIS_NAME } from './polis-policy.ts'
-import { inform } from '#app/command-notices.ts'
+import { POLIS_NAME, ownerPolis } from './owner-polis.ts'
 import { checkWorkerNotes } from './workers.ts'
-import { readSettings } from '#settings/store.ts'
-import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, readOwnerLogs, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
@@ -398,19 +395,13 @@ function tryMigrate(): void {
 
 // Reading first moves any owner documents still held by a Hydra, so read a Hydra's state after this.
 export function ownerMemory({
-  hydraId,
   migrate = true,
   logs,
 }: {
-  hydraId: string
   migrate?: boolean
   logs?: ReturnType<typeof readOwnerLogs>
 }): Memory {
   const memory: Memory = Object.create(null) as Memory
-
-  if (!memoryCaller({ hydraId })) {
-    return memory
-  }
 
   if (migrate) {
     tryMigrate()
@@ -418,7 +409,7 @@ export function ownerMemory({
 
   const snapshot = logs ?? readOwnerLogs()
 
-  for (const polis of polisAccess({ hydraId }).reads) {
+  for (const polis of snapshot.keys()) {
     for (const [
       key,
       entry,
@@ -453,13 +444,11 @@ export function ownerMemory({
 }
 
 export function ownerArchive({
-  hydraId,
   logs = readOwnerLogs(),
 }: {
-  hydraId: string
   logs?: ReturnType<typeof readOwnerLogs>
 }): ArchivedLine[] {
-  return polisAccess({ hydraId }).reads.flatMap(polis => readLog({
+  return [...logs.keys()].flatMap(polis => readLog({
     polis,
     logs,
   }).archived)
@@ -472,11 +461,7 @@ export function writableOwnerMemory({
   hydraId: string
   logs?: ReturnType<typeof readOwnerLogs>
 }) {
-  const { writablePolis } = polisAccess({ hydraId })
-
-  if (writablePolis === undefined) {
-    return undefined
-  }
+  const writablePolis = ownerPolis({ state: loadHydra({ hydraId }).state })
 
   const log = readLog({
     polis: writablePolis,
@@ -511,7 +496,7 @@ export function saveOwnerMemory({
 
   return withRegistryLock({
     fn: () => {
-      const polis = polisAccess({ hydraId }).write()
+      const polis = ownerPolis({ state: loadHydra({ hydraId }).state })
       const entry = append({
         polis,
         key,
@@ -534,16 +519,12 @@ export function saveOwnerMemory({
 }
 
 export async function moveOwnerLearning({
-  args,
-  propose = false,
   ifDestinationRevision,
   path,
   hydraId,
   text,
   meta,
 }: {
-  args: string[]
-  propose?: boolean
   ifDestinationRevision?: number
   path: string
   hydraId: string
@@ -555,7 +536,7 @@ export async function moveOwnerLearning({
 
   return withRegistryLock({
     fn: () => {
-      const polis = polisAccess({ hydraId }).write()
+      const polis = ownerPolis({ state: loadHydra({ hydraId }).state })
       const owner = readLog({ polis })
 
       checkOwnerRevision({
@@ -575,14 +556,13 @@ export async function moveOwnerLearning({
       }
 
       const project = projectMemoryViewUnderLock({
-        writing: true,
         facts,
         hydraId,
       })
 
       if (ifDestinationRevision !== undefined && project.revision !== ifDestinationRevision) {
         throw new HydraError({
-          message: 'Destination memory changed; propose the move again',
+          message: 'Destination memory changed; read it again before moving',
           code: 'REVISION_CONFLICT',
         })
       }
@@ -603,19 +583,6 @@ export async function moveOwnerLearning({
         key: 'learnings',
         after: projectAfter,
       })
-      const proposal = memoryMovePermission({
-        hydraId,
-        args,
-        propose,
-        actor: meta.actor,
-        revision: owner.revision,
-        destinationRevision: project.revision,
-        destination: readSettings().settings.projectPoleis[facts.identity.id] ?? 'shared',
-      })
-
-      if (proposal) {
-        return proposal
-      }
 
       const projectEvent: ProjectMemoryEvent = {
         v: 1,
@@ -658,16 +625,12 @@ export async function moveOwnerLearning({
 }
 
 export function moveOwnerPolis({
-  args,
-  propose = false,
   ifDestinationRevision,
   hydraId,
   destination,
   key,
   meta,
 }: {
-  args: string[]
-  propose?: boolean
   ifDestinationRevision?: number
   hydraId: string
   destination: string
@@ -685,21 +648,7 @@ export function moveOwnerPolis({
 
   return withRegistryLock({
     fn: () => {
-      const polis = polisAccess({ hydraId }).write()
-      const state = loadHydra({ hydraId }).state
-
-      if (!canRead({
-        hydraId,
-        state,
-        poleis: readSettings().settings.poleis,
-        polis: destination,
-      })) {
-        inform({
-          reason: `Moving owner memory to ${destination} outside the caller’s read scope`,
-          clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> to change visibility`,
-        })
-      }
-
+      const polis = ownerPolis({ state: loadHydra({ hydraId }).state })
       const logs = readOwnerLogs()
       const source = readLog({
         polis,
@@ -720,7 +669,7 @@ export function moveOwnerPolis({
 
       if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
         throw new HydraError({
-          message: 'Destination memory changed; propose the move again',
+          message: 'Destination memory changed; read it again before moving',
           code: 'REVISION_CONFLICT',
         })
       }
@@ -767,19 +716,6 @@ export function moveOwnerPolis({
         budget: OWNER_MEMORY_BUDGET,
         layer: 'Owner',
       })
-      const proposal = memoryMovePermission({
-        hydraId,
-        destination,
-        args,
-        propose,
-        actor: meta.actor,
-        revision: source.revision,
-        destinationRevision: target.revision,
-      })
-
-      if (proposal) {
-        return proposal
-      }
 
       const entry = append({
         polis,

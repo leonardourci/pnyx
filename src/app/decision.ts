@@ -3,8 +3,6 @@ import type { HydraState, HydraEvent, Decision } from './model.ts'
 import type { PushedEvent } from '#tasks/model.ts'
 import type { Meta } from './command-meta.ts'
 import type { Writer } from './writer.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { informReportReviewGaps } from '#investigations/inventory.ts'
 import { checkRevision, strip } from '#tasks/push-rules.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { observationKey, sessionFacts } from '#tasks/observations.ts'
@@ -92,22 +90,11 @@ export function decided({
     return { skipped: 'duplicate' }
   }
 
-  const card = state.cards[event.cardId]
-  const movedToDone = event.type === 'card.moved'
-    && hydraConfig({ state }).columns.find(column => column.id === event.data.after)?.role === 'done'
-  const completed = event.type === 'card.outcome' && event.data.after?.state === 'done'
-
-  if (card && (movedToDone || completed)) {
-    informReportReviewGaps({
-      state,
-      card,
-    })
-  }
-
   checkRevision({
     card: state.cards[event.cardId],
     ifRevision: meta.ifRevision,
   })
+  const card = state.cards[event.cardId]
   const repeated = event.type === 'card.pushed' && event.data.source
   const cache = reportCache({ state })
   const key = repeated ? observationKey({

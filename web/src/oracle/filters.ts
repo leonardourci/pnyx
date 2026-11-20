@@ -75,7 +75,7 @@ export interface Candidate {
   at?: string
 }
 
-export const SETTINGS_FILTER: Filter = {
+const SETTINGS_FILTER: Filter = {
   id: 'kind:settings',
   type: 'kind',
   label: 'Settings',

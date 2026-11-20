@@ -1,10 +1,6 @@
 import { inform } from '#app/command-notices.ts'
 import { childRepositories, attachProjectGroup, projectGroupCommand } from './group-cli.ts'
 import { keepProject } from './ownership.ts'
-import { sharesWithMore } from '#memory/access-changes.ts'
-import { canRead, memoryCaller, findReadableProject, readableProjectDetails, requireProjectMemory, memoryHydras, memoryPermission } from '#memory/poleis.ts'
-import { readSettings, saveSettings } from '#settings/store.ts'
-import { projectIdentity } from './sources.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { sameProjectPath } from './identity.ts'
 import { PROJECT_MEMORY_BUDGET } from '#memory/project-memory.ts'
@@ -18,7 +14,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { findProject, projectFolder, projectName, projectRows, projectsFor, sharingHydras } from './read.ts'
+import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
@@ -56,8 +52,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       copy: { type: 'string' },
       landing: { type: 'string' },
       merge: { type: 'string' },
-      polis: { type: 'string' },
-      propose: { type: 'boolean' },
     },
     positionals: 2,
   })
@@ -102,97 +96,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
-  if (action === 'move') {
-    const project = await findReadableProject({
-      writing: true,
-      hydraId,
-      state: current,
-      ref: required({
-        value: ref,
-        what: 'project',
-      }),
-      attached: true,
-    })
-    const identity = await projectIdentity(project)
-    const state = loadHydra({ hydraId }).state
-    findProject({
-      state,
-      ref: project.path,
-      attached: true,
-    })
-    const read = readSettings()
-    const settings = read.settings
-    const source = settings.projectPoleis[identity.id] ?? 'shared'
-    const polis = required({
-      value: values.polis as string | undefined,
-      what: '--polis',
-    })
-
-    if (![
-      source,
-      polis,
-    ].every(polis => canRead({
-      hydraId,
-      state,
-      poleis: settings.poleis,
-      polis,
-    }))) {
-      inform({
-        reason: 'Moving a project outside the caller’s memory read scope',
-        clear: 'Use pnyx-axi project move <project> --polis <polis> to change its visibility',
-      })
-    }
-
-    const proposalArgs = values['if-revision'] !== undefined ? args : [
-      ...args,
-      '--if-revision',
-      String(read.revision),
-    ]
-
-    const saved = saveSettings({
-      beforeSave: () => {
-        memoryPermission({
-          hydraId,
-          name: 'project',
-          args: proposalArgs,
-          propose: Boolean(values.propose),
-          actor: m.actor,
-          widening: sharesWithMore({
-            source,
-            destination: polis,
-            before: settings,
-            hydras: memoryHydras(),
-          }),
-        })
-      },
-      hydraId,
-      patch: {
-        projectPoleis: {
-          [identity.id]: polis,
-        },
-      },
-      meta: {
-        ...m,
-        ifRevision: m.ifRevision ?? read.revision,
-      },
-    })
-
-    return {
-      project: project.name,
-      state: 'moved',
-      revision: saved.revision,
-    }
-  }
-
-  const ownAttachments = memoryCaller({ hydraId })
-
-  if ((action === 'show' || action === 'remove') && !ownAttachments) {
-    inform({
-      reason: 'Explicit project action from another Hydra',
-      clear: `Use pnyx-axi project list --hydra ${hydraId} to inspect attachments`,
-    })
-  }
-
   if (action === 'show') {
     const project = findProject({
       state: current,
@@ -218,7 +121,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
           throw error
         }
-        // Attachment metadata remains visible when memory access is denied.
       }
     }
 
@@ -240,32 +142,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
-    const details = ownAttachments ? await readableProjectDetails({
-      state: current,
-      hydraId,
-    }) : []
-    const detailsByPath = new Map(details.map(detail => [
-      detail.project.path,
-      detail,
-    ]))
     const listedState = loadHydra({ hydraId }).state
-    const attachments = ownAttachments ? projectsFor({ state: listedState }) : []
-    const projects = projectRows({
-      state: listedState,
-      projects: attachments,
-    }).map(project => {
-      const detail = detailsByPath.get(project.path)
-
-      if (!detail) {
-        return project
-      }
-
-      return {
-        ...project,
-        polis: detail.polis,
-        readPoleis: detail.readPoleis,
-      }
-    })
+    const projects = projectRows({ state: listedState })
 
     const listed: Output = {
       hydraId,
@@ -273,7 +151,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       projects: projects.length ? projects : 'none: no projects attached',
     }
 
-    if (ownAttachments && projects.length === 0) {
+    if (projects.length === 0) {
       listed.help = [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`]
     }
 
@@ -295,19 +173,12 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'set') {
-    const project = await findReadableProject({
-      writing: true,
-      hydraId,
+    const project = findProject({
       state: current,
       ref: required({
         value: ref,
         what: 'project',
       }),
-    })
-    requireProjectMemory({
-      writing: true,
-      hydraId,
-      ...(await projectIdentity(project)),
     })
 
     if (values.clone || values.into || (!settings && !rules && values.copy === undefined)) {
@@ -477,14 +348,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     const repositories = childRepositories({ path })
 
     if (repositories.length) {
-      for (const repository of repositories) {
-        requireProjectMemory({
-          writing: true,
-          hydraId,
-          ...(await projectIdentity({ path: repository })),
-        })
-      }
-
       return attachProjectGroup({
         hydraId,
         paths: repositories,
@@ -496,12 +359,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         attach: true,
       })
     }
-
-    requireProjectMemory({
-      writing: true,
-      hydraId,
-      ...(await projectIdentity({ path })),
-    })
   }
 
   const result = withRegistryLock({
@@ -590,11 +447,9 @@ pnyx-axi project keep <path> --hydra <keeper>
 Moves a repository’s tasks to the chosen Hydra, reporting stopped work and detached relationships.
 Relationships among tasks moving together are retained; references to tasks staying behind are cleared with notices.
 pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
-Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
+Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with every worker.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
-Project list, show and remove work independently of memory access for the owner and the Hydra that holds the attachment. Project list includes each readable project’s polis and the Hydra’s readable destinations in readPoleis.
-Each project belongs to one polis (shared by default); only attached Hydras that may read that polis see its memory. Move changes its assigned polis explicitly.
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
@@ -606,7 +461,6 @@ pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra
 pnyx-axi project add --clone <url> --into <folder> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
 pnyx-axi project show <name|path> [--hydra <id>]
-pnyx-axi project move <name|path> --polis <polis> [--propose] [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]

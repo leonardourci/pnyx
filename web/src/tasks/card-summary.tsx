@@ -121,7 +121,6 @@ export function CardSummary({
             expanded={false}
             open={open ?? (() => {})}
             data-card={card.id}
-            data-key-scope="hydra"
             tabIndex={tabIndex}
           />
         ))}

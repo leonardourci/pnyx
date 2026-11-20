@@ -279,7 +279,6 @@ function cardSummary({
     rank: nullable({ value: card.rank }),
     parent_id: nullable({ value: card.parentId }),
     project: nullable({ value: card.project }),
-    kind: nullable({ value: card.kind }),
     status: cardStatus({
       card,
       cards: state.cards,

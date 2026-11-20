@@ -162,7 +162,6 @@ export function Chat({
         <div
           className="chat-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
           ref={scroll.scroller}
-          data-key-scope="thread"
           role="region"
           aria-label={`${title} conversation`}
           data-away={scroll.reading || undefined}

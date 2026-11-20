@@ -303,7 +303,7 @@ test(
 )
 
 test(
-  'worker reports and stored results coalesce progress, wait for one wake and survive an interrupted turn',
+  'worker reports coalesce progress, wait for one wake and survive an interrupted turn',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'export' })
@@ -379,28 +379,6 @@ test(
         '--text',
         'Export works; ready for review',
       ],
-    })
-    const reportFile = join(
-      folder,
-      'findings.md',
-    )
-    writeFileSync(
-      reportFile,
-      'Stored findings: invoices have been verified.\n',
-    )
-    const storedReport = await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'report',
-        'export',
-        '--file',
-        reportFile,
-      ],
-    })
-    await until({
-      what: 'the stored report to reach the queue',
-      check: () => queueBox({ hydraId: hydra.id })?.waiting
-        .some(update => update.seq === storedReport.event.seq),
     })
     const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
     await workerLine({
@@ -497,13 +475,6 @@ test(
       reportStatus: 'unhandled',
       summary: 'blocked: Need the SFTP password',
     }))
-    expect(wake).toContain('result: Stored findings: invoices have been verified.')
-    const storedResultSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: result: Stored findings/)?.[1]
-
-    if (storedResultSeq === undefined) {
-      throw new Error('The wake did not identify the stored result')
-    }
-
     await hydra.owner({
       args: [
         'hydra',
@@ -519,13 +490,13 @@ test(
         'hydra',
         'check',
         '--after',
-        String(Number(storedResultSeq) - 1),
+        String(Number(progressSeq) - 1),
       ],
     })
     expect(pending.changes).toContainEqual(expect.objectContaining({
-      type: 'task.report',
+      type: 'hydra.message',
       reportStatus: 'unhandled',
-      summary: 'result: Stored findings: invoices have been verified.',
+      summary: 'Export works; ready for review',
     }))
     await hydra.chat({ text: 'Review the interrupted worker reports' })
     await until({
@@ -534,7 +505,6 @@ test(
     })
     const retried = session.received.find(text => text.endsWith('Review the interrupted worker reports'))!
     expect(retried).toContain('Export works; ready for review')
-    expect(retried).toContain('result: Stored findings: invoices have been verified.')
     const reportSeq = retried.match(/seq (\d+) \S+ \[unhandled\]: Export works; ready for review/)?.[1]
     expect(reportSeq).toBeDefined()
     await until({
@@ -554,24 +524,6 @@ test(
     )
     expect(report).toBeDefined()
     expect(report).not.toHaveProperty('reportStatus')
-
-    writeFileSync(
-      reportFile,
-      'Standalone result after the previous turn finished.\n',
-    )
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'report',
-        'export',
-        '--file',
-        reportFile,
-      ],
-    })
-    await until({
-      what: 'a stored result to wake Hydra on its own',
-      check: () => session.received.some(text => text.includes('result: Standalone result after the previous turn finished.')),
-    })
   },
 )
 

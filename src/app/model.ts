@@ -2,9 +2,8 @@ import type { SourceObservation } from '#tasks/observations.ts'
 import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
 import type { HydraProject, TaskCopy } from '#projects/model.ts'
-import type { ReportCall } from '#investigations/model.ts'
 import type { Column, HydraColumn } from '#tasks/columns-model.ts'
-import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
+import type { OwnerAsk, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, SessionObservedEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
 import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent } from '#hydra/model.ts'
@@ -103,10 +102,6 @@ export type HydraChange = EventBase & (
   | {
     type: 'hydra.review'
     data: {
-      memoryAccess?: {
-        poleis: string[]
-        projects: string[]
-      }
       block: string
       reminders: string[]
       flags?: string[]
@@ -179,7 +174,7 @@ export type HydraChange = EventBase & (
       rank?: number
       folder?: string
       project?: string
-      kind?: TaskKind
+      kind?: 'build' | 'investigation'
     }
   }
   | {
@@ -198,8 +193,8 @@ export type HydraChange = EventBase & (
   | {
     type: 'task.kind'
     data: {
-      before: TaskKind
-      after: TaskKind
+      before: 'build' | 'investigation'
+      after: 'build' | 'investigation'
     }
   }
   | {
@@ -212,7 +207,10 @@ export type HydraChange = EventBase & (
     type: 'task.report-reviewed'
     data: {
       report: string
-      calls: ReportCall[]
+      calls: {
+        task: string
+        ask: string
+      }[]
     }
   }
   | {

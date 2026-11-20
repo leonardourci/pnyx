@@ -12,6 +12,10 @@ export function applyView({
 }): boolean {
   if (event.type === 'board.view') {
     state.view = structuredClone(event.data.after)
+    Reflect.deleteProperty(
+      state.view,
+      'keyboard',
+    )
     state.view.workspace = workspaceLayout({ input: state.view.workspace })
     state.viewRevision = (state.viewRevision ?? 0) + 1
 

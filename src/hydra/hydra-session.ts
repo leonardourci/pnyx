@@ -1,5 +1,4 @@
 import { inform } from '#app/command-notices.ts'
-import { requireCommandMemoryAccess } from '#memory/command-access.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import { HYDRA_OPTIONS } from './cli.ts'
 import { parseArgs } from 'node:util'
@@ -45,7 +44,6 @@ export function agentNotices<T extends Record<string, Command>>({
           ...WRITE,
           ...commandOptions,
           polis: { type: 'string' },
-          'read-poleis': { type: 'string' },
           command: { type: 'string' },
           session: { type: 'string' },
           'command-name': { type: 'string' },
@@ -77,14 +75,6 @@ export function agentNotices<T extends Record<string, Command>>({
 
       // A hosted Hydra without --hydra still writes to its own chat.
       const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
-
-      requireCommandMemoryAccess({
-        name,
-        args,
-        positionals,
-        values,
-        hydraId,
-      })
 
       if (hydra && agentNoticeCommand({
         name,

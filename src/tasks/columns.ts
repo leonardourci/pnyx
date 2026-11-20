@@ -10,7 +10,6 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { permissionAttention } from '#workers/permission-rules.ts'
 import { fallbackColumn } from './column-rules.ts'
 import { columnRule } from './column-defaults.ts'
-import { reportReviewGaps } from '#investigations/inventory.ts'
 
 export function cardFacts({
   card,
@@ -24,10 +23,7 @@ export function cardFacts({
   // A pull request closed without merging was abandoned; the work landed through the ones that merged.
   const live = prs.filter(link => link.state !== 'closed')
   const allMerged = live.length > 0 && live.every(link => link.state === 'merged')
-  const done = card.status?.state === 'done' || (allMerged && !reportReviewGaps({
-    state,
-    card,
-  }).length)
+  const done = card.status?.state === 'done' || allMerged
   const open = prs.some(link => link.state === 'open')
   const session = state.sessions?.[cardSessionId({ card }) ?? '']
   const observedActivity = session?.sessionActivity ?? session?.activity
@@ -46,10 +42,7 @@ export function cardFacts({
     worker = 'worker:hydra'
   }
 
-  facts.push(
-    worker,
-    `kind:${card.kind ?? 'build'}`,
-  )
+  facts.push(worker)
 
   if (ownerGates({ card }).length) {
     facts.push('owner-question')

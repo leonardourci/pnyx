@@ -11,7 +11,6 @@ import { TaskCardDrag, TaskDragHandle } from './card-drag.tsx'
 import { CardSummary, TaskLabels, cardTint } from './card-summary.tsx'
 import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useMemo, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor } from '#tasks/model.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
@@ -34,7 +33,6 @@ import { Icon } from '#web-shared/icons.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
-import { TaskReport } from '#web-investigations/task-report.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
@@ -245,19 +243,6 @@ export const HydraCard = memo(function HydraCard({
       })
     }
   }
-
-  useKeyAction({
-    id: 'card.edit',
-    handler: ({ context }) => {
-      if (context.target.closest('.card') !== element.current || !connected || editing) {
-        return false
-      }
-
-      edit()
-
-      return true
-    },
-  })
 
   const {
     modal,
@@ -472,7 +457,6 @@ export const HydraCard = memo(function HydraCard({
     hidden: tab !== id,
     tabIndex: 0,
   })
-  // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
 
   const click = ({
@@ -758,7 +742,6 @@ export const HydraCard = memo(function HydraCard({
                         id: 'context',
                       }) : undefined}
                       data-card={card.id}
-                      data-key-scope="hydra"
                       tabIndex={tabIndex}
                     />
                   )}
@@ -899,11 +882,6 @@ export const HydraCard = memo(function HydraCard({
                         ))}
                       </CardSection>
                     )}
-                    <TaskReport
-                      card={card}
-                      command={command}
-                      connected={connected}
-                    />
                     {card.launch?.dispatch && <div className="muted small"><RichText text={card.launch.dispatch} /></div>}
                     {children}
                   </>

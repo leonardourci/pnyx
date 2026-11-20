@@ -150,6 +150,22 @@ function moveIn({
   event: Extract<HydraMoveEvent, { type: 'task.moved-in' }>
 }): void {
   const card = structuredClone(event.data.card)
+  Reflect.deleteProperty(
+    card,
+    'kind',
+  )
+  Reflect.deleteProperty(
+    card,
+    'report',
+  )
+
+  for (const ask of card.asks ?? []) {
+    Reflect.deleteProperty(
+      ask,
+      'origin',
+    )
+  }
+
   const arriving = new Set(event.data.moving?.tasks ?? [])
 
   if (card.parentId && !state.cards[card.parentId]

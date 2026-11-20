@@ -14,7 +14,6 @@ import { AxiError } from 'axi-sdk-js'
 import { WRITE, parse, meta, required, commit, explained, integer, HISTORY_LIMIT, clip, type Options, type Output } from './cli-support.ts'
 import { sourceCommand } from '#task-sources/cli.ts'
 import { inboxCommand } from '#workers/inbox-cli.ts'
-import { reportReviewCommand, reportCommand, buildCommand } from '#investigations/cli.ts'
 import { taskLandingCommand } from '#tasks/delivery/task-delivery.ts'
 import { mergeCommand } from '#tasks/delivery/merge.ts'
 import { reminderRepeat, waitingReminders } from '#tasks/reminders.ts'
@@ -118,19 +117,12 @@ export const TASK_OPTIONS: Options = {
   },
   recommend: { type: 'string' },
   'details-file': { type: 'string' },
+  kind: { type: 'string' },
   text: { type: 'string' },
   to: { type: 'string' },
   undelivered: { type: 'boolean' },
   'from-message': { type: 'string' },
-  'from-report': { type: 'string' },
-  report: { type: 'string' },
-  none: { type: 'boolean' },
-  call: {
-    type: 'string',
-    multiple: true,
-  },
   questions: { type: 'string' },
-  kind: { type: 'string' },
   file: { type: 'string' },
   url: { type: 'string' },
   landing: { type: 'string' },
@@ -190,6 +182,13 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       text: createText,
       agent: creatingWorker,
       actor: m.actor,
+    })
+  }
+
+  if (action === 'create' && values.kind !== undefined) {
+    throw new HydraError({
+      message: 'Tasks have no --kind; describe the work in --brief',
+      code: 'VALIDATION_ERROR',
     })
   }
 
@@ -273,34 +272,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       groups: groups.length ? groups : 'none: no owner questions',
       count: groups.length,
     }
-  }
-
-  if (action === 'report-review') {
-    return reportReviewCommand({
-      hydraId,
-      ref: positionals[1],
-      report: values.report as string | undefined,
-      calls: (values.call ?? []) as string[],
-      none: values.none === true,
-      meta: m,
-    })
-  }
-
-  if (action === 'report') {
-    return reportCommand({
-      hydraId,
-      ref: positionals[1],
-      file: values.file as string | undefined,
-      meta: m,
-    })
-  }
-
-  if (action === 'build') {
-    return buildCommand({
-      hydraId,
-      ref: positionals[1],
-      meta: m,
-    })
   }
 
   if (action === 'landing') {

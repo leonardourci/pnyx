@@ -1,4 +1,3 @@
-import { POLIS_NAME } from '#memory/polis-policy.ts'
 import { LOG_MODES } from '#app/log-line.ts'
 import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
@@ -30,18 +29,16 @@ export const DEFAULT_SETTINGS: Settings = {
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
   postgresUrl: '',
-  projectPoleis: {},
-  poleis: {
-    shared: { readers: ['*'] },
-    work: { readers: [] },
-    personal: { readers: [] },
-  },
+
 }
 
 // Settings stored before a key existed lack it, so each missing key reads as its default.
 export const withDefaults = ({ stored }: { stored: Partial<Settings> }): Settings => ({
   ...structuredClone(DEFAULT_SETTINGS),
-  ...structuredClone(stored),
+  ...structuredClone(Object.fromEntries(Object.entries(stored).filter(([key]) => Object.hasOwn(
+    DEFAULT_SETTINGS,
+    key,
+  )))),
 })
 
 export function pickView({ view }: { view: SharedView }): SharedView {
@@ -223,64 +220,6 @@ export function patchSettings({
       current: pickView({ view: current }),
       input: viewInput,
     }),
-  }
-
-  if ('projectPoleis' in patch) {
-    const assignments = patch.projectPoleis
-
-    if (!assignments || typeof assignments !== 'object' || Array.isArray(assignments)) {
-      return invalid({ detail: 'projectPoleis maps project memory ids to polis names' })
-    }
-
-    next.projectPoleis = { ...next.projectPoleis }
-
-    for (const [
-      id,
-      polis,
-    ] of Object.entries(assignments)) {
-      if (!/^[a-f0-9]{64}$/.test(id) || (polis !== null && (typeof polis !== 'string' || !POLIS_NAME.test(polis)))) {
-        return invalid({ detail: 'projectPoleis maps project memory ids to polis names or null for shared' })
-      }
-
-      if (polis === null) {
-        delete next.projectPoleis[id]
-      } else {
-        next.projectPoleis[id] = polis
-      }
-    }
-  }
-
-  if ('poleis' in patch) {
-    const poleis = patch.poleis
-
-    if (!poleis || typeof poleis !== 'object' || Array.isArray(poleis)) {
-      return invalid({ detail: 'poleis takes named poleis, each with a readers list' })
-    }
-
-    next.poleis = { ...next.poleis }
-
-    for (const [
-      name,
-      value,
-    ] of Object.entries(poleis)) {
-      if (!POLIS_NAME.test(name) || (name === 'shared' && value === null)) {
-        return invalid({ detail: 'polis names use lowercase letters, digits and dashes; shared cannot be removed' })
-      }
-
-      if (value === null) {
-        delete next.poleis[name]
-        continue
-      }
-
-      if (!value || typeof value !== 'object' || Array.isArray(value)
-        || Object.keys(value).some(key => key !== 'readers') || !Array.isArray(value.readers)
-        || !value.readers.every((id: unknown) => typeof id === 'string' && (id === '*' || HYDRA_ID.test(id)))
-        || new Set(value.readers).size !== value.readers.length) {
-        return invalid({ detail: 'poleis takes named poleis with unique Hydra ids in readers (* allows every Hydra)' })
-      }
-
-      next.poleis[name] = { readers: [...value.readers] }
-    }
   }
 
   if ('doneAfterHours' in patch) {

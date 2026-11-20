@@ -166,6 +166,10 @@ export function applyHydra({
 
   if (event.type === 'board.configured') {
     state.config = structuredClone(event.data)
+    Reflect.deleteProperty(
+      state.config,
+      'readPoleis',
+    )
     state.configured = true
     const session = event.data.hydra.session
 

@@ -1,7 +1,6 @@
 import type { Settings } from '#settings/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_COLUMN_WIDTH } from '#preferences/view.ts'
-import { DEFAULT_KEYBOARD } from '#preferences/keyboard.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 
 const initialOf = ({ id }: { id: string }) => DEFAULT_SETTINGS[id as keyof typeof DEFAULT_SETTINGS]
@@ -61,7 +60,6 @@ export function changedIds({
   return ids
 }
 
-// Shared maps merge; reset bindings globally and column overrides only for the visible Hydra.
 export function resetPatch({
   id,
   view,
@@ -70,15 +68,6 @@ export function resetPatch({
   view: ViewPreferences
   settings?: Settings
 }): Record<string, unknown> {
-  if (id === 'keyboard') {
-    return {
-      keyboard: {
-        characterShortcuts: DEFAULT_KEYBOARD.characterShortcuts,
-        bindings: null,
-      },
-    }
-  }
-
   if (id === 'defaultColumnWidths') {
     const widths = view.defaultColumnWidths
 

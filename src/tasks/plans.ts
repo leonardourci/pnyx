@@ -9,7 +9,6 @@ import { hydraConfig } from '#hydra/config.ts'
 import { HydraError, inField } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
-import { parseKind } from '#investigations/report.ts'
 import { findCard } from './push-rules.ts'
 import { taskBrief, taskIntent, type TaskCreated } from './cli.ts'
 import { ownerAsk } from './owner-ask.ts'
@@ -27,7 +26,6 @@ export type TaskOperation = { reason?: string } & (
     brief?: string
     intent?: string
     folder?: string
-    kind?: string
     hold?: boolean
     noStart?: boolean
     parent?: string
@@ -198,11 +196,6 @@ export function planTaskChange({
       field: 'intent',
       read: () => taskIntent({ value: operation.intent }),
     })
-    const kind = inField({
-      field: 'kind',
-      read: () => parseKind({ value: operation.kind ?? 'build' }),
-    })
-
     const reason = meta.reason?.trim()
 
     if (operation.hold) {
@@ -235,10 +228,6 @@ export function planTaskChange({
 
     if (intent !== undefined) {
       created.intent = intent
-    }
-
-    if (kind === 'investigation') {
-      created.kind = kind
     }
 
     if (operation.ask?.trim()) {

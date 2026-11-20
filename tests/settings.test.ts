@@ -123,6 +123,7 @@ test(
       '{"nope":1}',
       '{"theme":"purple"}',
       '{"logDays":0}',
+      '{"keyboard":{"bindings":{}}}',
     ]) {
       expect((await hydra.ownerRefused({
         args: [

@@ -116,7 +116,6 @@ create table cards (
   rank double precision,
   parent_id text,
   project text,
-  kind text check (kind in ('build', 'investigation')),
   status text check (status in ('working', 'needs_you', 'paused', 'blocked', 'done')),
   hidden boolean not null,
   done_at text,
@@ -277,4 +276,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (9);
+insert into schema_version (version) values (10);

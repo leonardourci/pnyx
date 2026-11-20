@@ -66,7 +66,6 @@ export function oracleResultList({
   state,
   actions,
   workspaces,
-  keys,
   now,
   choose,
   commit,
@@ -91,7 +90,6 @@ export function oracleResultList({
   state: HydraState
   actions: Record<string, CurrentAction>
   workspaces: OracleWorkspace[]
-  keys({ id }: { id: string }): string
   now: number
   choose({
     result,
@@ -149,7 +147,6 @@ export function oracleResultList({
         state: workspaces.find(workspace => workspace.hydra.id === result.hydra)?.state ?? state,
         actions: workspaces.find(workspace =>
           workspace.hydra.id === result.hydra)?.actions ?? actions,
-        keys,
         now,
       })}
       pick={() => choose({

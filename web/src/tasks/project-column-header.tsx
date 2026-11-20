@@ -11,14 +11,12 @@ type ColumnDrag = Pick<ReturnType<typeof useSortItem>, 'attributes' | 'listeners
 
 export function ProjectColumnHeader({
   column,
-  poleis,
   folded,
   hint,
   drag,
   fold,
   create,
 }: {
-  poleis?: string[]
   column: ProjectColumnData
   folded: boolean
   hint: boolean
@@ -38,10 +36,9 @@ export function ProjectColumnHeader({
           aria-disabled={undefined}
           ref={drag.setActivatorNodeRef}
           data-column-heading={column.id}
-          data-key-scope="hydra"
           aria-label={`${folded ? 'Unfold' : 'Fold'} ${column.title}`}
           onClick={fold}
-        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} /><strong>{column.title}</strong>{poleis?.map(polis => <span key={polis} className="text-meta text-muted" data-project-polis={polis}>{polis}</span>)}<ProjectCounts asks={column.asks} running={column.running} />
+        ><Icon name={folded ? 'chevron_right' : 'chevron_left'} size={ICON_SIZE.control} /><strong>{column.title}</strong><ProjectCounts asks={column.asks} running={column.running} />
         </Button>
         {!folded && <IconButton icon="plus" label={`New task in ${column.title}`} onClick={create} />}
       </div>

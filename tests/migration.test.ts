@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
@@ -360,7 +360,7 @@ test(
         })
         await sql({
           database: homeDatabase(),
-          text: 'update schema_version set version = 6 where version > 6',
+          text: 'delete from schema_version; insert into schema_version (version) values (6)',
         })
       },
     })
@@ -720,5 +720,426 @@ test(
         }
       },
     })
+  },
+)
+
+test(
+  'upgrading retires access rules, shortcuts and task reports while preserving notes, layout and event history',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Keep ordinary work',
+        '--key',
+        'ordinary',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'context',
+        '--text',
+        'Keep the Hydra note',
+      ],
+    })
+    const layout = await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        '{"workspace":{"projectWidths":{"ideas":944}},"cardHeight":420}',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'ask',
+        created.card.id,
+        '--to',
+        'owner',
+        '--question',
+        'Preserve the stored question?',
+      ],
+    })
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        await sql({
+          database: homeDatabase(),
+          text: `alter table cards add column kind text;
+      update cards set kind = 'investigation';
+      update card_bodies set data = (data::jsonb || '{"kind":"investigation","report":{"id":"old-report","chars":8}}'::jsonb)::json;
+      update card_references set data = (data::jsonb || '{"kind":"investigation","report":{"id":"old-report","chars":8}}'::jsonb)::json;
+      update card_references set data = jsonb_set(data::jsonb, '{asks}', (select jsonb_agg(question || '{"origin":{"task":"old-task","report":"old-report"}}'::jsonb) from jsonb_array_elements(data::jsonb->'asks') question))::json where jsonb_array_length(data::jsonb->'asks') > 0;
+      update questions set data = (data::jsonb || '{"origin":{"task":"old-task","report":"old-report"}}'::jsonb)::json;
+      update hydras set config = (config::jsonb || '{"readPoleis":[]}'::jsonb)::json;
+      update hydra_values set value = (value::jsonb || '{"keyboard":{"bindings":{}}}'::jsonb)::json where key = 'view';
+      update settings set value = (value::jsonb || '{"keyboard":{"bindings":{}},"poleis":{"shared":{"readers":[]}},"projectPoleis":{}}'::jsonb)::json;
+      delete from schema_version; insert into schema_version (version) values (9)`,
+        })
+        await sql({
+          database: homeDatabase(),
+          text: 'update events set data = jsonb_set(data::jsonb, \'{data,before,keyboard}\', \'{"bindings":{}}\'::jsonb)::json where hydra_id = $1 and id = $2',
+          values: [
+            hydra.id,
+            layout.event.id,
+          ],
+        })
+      },
+    })
+    expect((await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view).toMatchObject({
+      cardHeight: 420,
+      workspace: { projectWidths: { ideas: 944 } },
+    })
+    expect((await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view).not.toHaveProperty('keyboard')
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra).not.toHaveProperty('readPoleis')
+    expect(JSON.stringify((await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
+    })).memory)).toContain('Keep the Hydra note')
+    const stored = rows<{ data: object }>({
+      text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
+      values: [
+        hydra.id,
+        created.card.id,
+      ],
+    })[0]!.data
+    const storedHydra = rows<{ config: object }>({
+      text: 'select config from hydras where id = $1',
+      values: [hydra.id],
+    })[0]!.config
+    expect(storedHydra).not.toHaveProperty('readPoleis')
+    const storedView = rows<{ value: object }>({
+      text: "select value from hydra_values where hydra_id = $1 and key = 'view'",
+      values: [hydra.id],
+    })[0]!.value
+    expect(storedView).not.toHaveProperty('keyboard')
+    const storedQuestion = rows<{ data: object }>({
+      text: 'select data from questions where hydra_id = $1 and card_id = $2',
+      values: [
+        hydra.id,
+        created.card.id,
+      ],
+    })[0]!.data
+    expect(storedQuestion).toMatchObject({ question: 'Preserve the stored question?' })
+    expect(storedQuestion).not.toHaveProperty('origin')
+    const storedReferences = rows<{ data: { asks: object[] } }>({
+      text: 'select data from card_references where hydra_id = $1 and card_id = $2',
+      values: [
+        hydra.id,
+        created.card.id,
+      ],
+    })[0]!.data
+    expect(storedReferences.asks).toContainEqual(expect.objectContaining({ question: 'Preserve the stored question?' }))
+
+    for (const question of storedReferences.asks) {
+      expect(question).not.toHaveProperty('origin')
+    }
+
+    expect(stored).not.toHaveProperty('kind')
+    expect(stored).not.toHaveProperty('report')
+    expect(rows({ text: "select column_name from information_schema.columns where table_name = 'cards' and column_name = 'kind'" })).toEqual([])
+    const page = rows<{ value: object }>({ text: "select value from settings where id = 'shared'" })[0]!.value
+    expect(page).not.toHaveProperty('poleis')
+    expect(page).not.toHaveProperty('projectPoleis')
+    expect(page).not.toHaveProperty('keyboard')
+    await hydra.owner({
+      args: [
+        'undo',
+        layout.event.id,
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'view',
+        'show',
+      ],
+    })).view.cardHeight).toBe(250)
+    const history = await hydra.owner({
+      args: [
+        'history',
+        '--kind',
+        'board.view',
+        '--full',
+      ],
+    })
+    expect(history.events.find((event: { id: string }) => event.id === layout.event.id).data.before).toHaveProperty('keyboard')
+    const configuration = (await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra
+    const legacyId = `${hydra.id}-legacy-reports`
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      legacyId,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    const records = [
+      {
+        type: 'board.configured',
+        cardId: '$board',
+        data: {
+          ...configuration,
+          id: legacyId,
+          readPoleis: [],
+          columns: [
+            {
+              id: 'custom:retired-rule',
+              title: 'Research',
+              rule: [['!kind:investigation']],
+            },
+            {
+              id: 'custom:other-match',
+              title: 'Workers',
+              rule: [['worker:none']],
+            },
+            {
+              id: 'custom:old-builds',
+              title: 'Builds',
+              rule: [['kind:build']],
+            },
+            ...configuration.columns,
+          ],
+        },
+      },
+      {
+        type: 'task.created',
+        cardId: 'legacy-task',
+        data: {
+          key: 'legacy',
+          title: 'Imported findings',
+          kind: 'investigation',
+          column: 'custom:retired-rule',
+        },
+      },
+      {
+        type: 'task.report',
+        cardId: 'legacy-task',
+        data: { text: 'Historical findings stay in history' },
+      },
+      {
+        type: 'task.report-reviewed',
+        cardId: 'legacy-task',
+        data: {
+          report: 'legacy-event-3',
+          calls: [],
+        },
+      },
+      {
+        type: 'task.declared',
+        cardId: 'legacy-task',
+        data: {
+          state: 'done',
+          note: 'Investigation finished',
+        },
+      },
+      {
+        type: 'task.kind',
+        cardId: 'legacy-task',
+        data: {
+          before: 'investigation',
+          after: 'build',
+        },
+      },
+      {
+        type: 'task.asked',
+        cardId: 'legacy-task',
+        data: {
+          id: 'legacy-question',
+          audience: 'owner',
+          question: 'Keep this decision?',
+          context: 'Imported owner choice',
+          origin: {
+            task: 'legacy-task',
+            report: 'legacy-event-3',
+          },
+        },
+      },
+      {
+        type: 'task.moved-in',
+        cardId: 'moved-task',
+        data: {
+          from: hydra.id,
+          column: 'custom:retired-rule',
+          sessions: [],
+          card: {
+            ...stored,
+            id: 'moved-task',
+            key: 'moved-legacy',
+            title: 'Moved historical task',
+            kind: 'investigation',
+            report: {
+              id: 'old-report',
+              chars: 8,
+            },
+            asks: [
+              {
+                id: 'moved-question',
+                audience: 'owner',
+                question: 'Keep moved decision?',
+                context: 'Moved owner choice',
+                at: '2026-01-01T00:00:00.000Z',
+                actor: 'cli',
+                origin: {
+                  task: 'legacy-task',
+                  report: 'legacy-event-3',
+                },
+              },
+            ],
+          },
+        },
+      },
+    ]
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      records.map((
+        event,
+        index,
+      ) => `${JSON.stringify({
+        v: 1,
+        id: `legacy-event-${index + 1}`,
+        seq: index + 1,
+        at: '2026-01-01T00:00:00.000Z',
+        actor: 'cli',
+        ...event,
+      })}\n`).join(''),
+    )
+    const imported = await pnyx.hydra({
+      id: legacyId,
+      create: false,
+    })
+    await imported.owner({
+      args: [
+        'column',
+        'describe',
+        'custom:retired-rule',
+        '--description',
+        'Ordinary research tasks',
+      ],
+    })
+    const columns = (await imported.owner({
+      args: [
+        'column',
+        'list',
+      ],
+    })).columns
+    expect(columns.find((column: { id: string }) => column.id === 'custom:retired-rule').rule).toEqual([])
+    expect(columns.find((column: { id: string }) => column.id === 'custom:old-builds').rule).toEqual([])
+    const ordinary = (await imported.owner({
+      args: [
+        'task',
+        'show',
+        'legacy',
+        '--full',
+      ],
+    })).task
+    expect(ordinary.column).toBe('custom:retired-rule')
+    await imported.owner({
+      args: [
+        'column',
+        'delete',
+        'custom:other-match',
+      ],
+    })
+    expect(ordinary.status).toBeUndefined()
+    expect(ordinary.asks).toContainEqual(expect.objectContaining({
+      id: 'legacy-question',
+      question: 'Keep this decision?',
+    }))
+    const moved = (await imported.owner({
+      args: [
+        'task',
+        'show',
+        'moved-legacy',
+        '--full',
+      ],
+    })).task
+    expect(moved.asks).toContainEqual(expect.objectContaining({
+      id: 'moved-question',
+      question: 'Keep moved decision?',
+    }))
+    expect(ordinary).not.toHaveProperty('kind')
+    expect(ordinary).not.toHaveProperty('report')
+    expect(ordinary.asks[0]).not.toHaveProperty('origin')
+    expect(moved).not.toHaveProperty('kind')
+    expect(moved).not.toHaveProperty('report')
+    expect(moved.asks[0]).not.toHaveProperty('origin')
+    const importedHistory = await imported.owner({
+      args: [
+        'history',
+        '--kind',
+        'task.report',
+        '--full',
+      ],
+    })
+    expect(importedHistory.events[0].data.text).toBe('Historical findings stay in history')
+    const reportMatches = await imported.owner({
+      args: [
+        'oracle',
+        'Historical',
+        '--card',
+        'legacy',
+      ],
+    })
+    expect(reportMatches.results).toContainEqual(expect.objectContaining({
+      card: 'legacy-task',
+      snippets: expect.arrayContaining([expect.objectContaining({ snippet: expect.stringContaining('stay in history') })]),
+    }))
+    await imported.owner({
+      args: [
+        'task',
+        'close-question',
+        'legacy',
+        'legacy-question',
+        '--evidence',
+        'Historical decision completed',
+        '--reason',
+        'Imported decision retained',
+      ],
+    })
+    await imported.owner({
+      args: [
+        'outcome',
+        'legacy',
+        'done',
+        '--note',
+        'Completed as ordinary work',
+      ],
+    })
+    expect((await imported.task({ key: 'legacy' })).status).toBe('done')
   },
 )

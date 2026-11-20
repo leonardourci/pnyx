@@ -14,8 +14,7 @@ import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { requestEnv, IDENTITY } from '#app/request-context.ts'
-import { memoryAgent, memoryAccessRevision } from '#memory/poleis.ts'
+import { requestEnv, IDENTITY, agentRequest } from '#app/request-context.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -37,27 +36,15 @@ const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' |
   ? effectiveDispatch()
   : undefined
 
-function memoryRulesFor({ target }: { target: Target }): string | undefined {
-  const changesPolis = target.args.some(arg => /^--polis(?:=|$)/.test(arg))
-  const changesReads = target.args.some(arg => /^--read-poleis(?:=|$)/.test(arg))
-  const memoryCommand = target.name === 'settings' || target.name === 'owner'
-    || (target.name === 'project' && changesPolis)
-    || (target.name === 'hydra' && (changesPolis || changesReads))
-
-  return memoryCommand ? memoryAccessRevision() : undefined
-}
-
 function context({
   state,
   target,
   dispatch,
-  memory,
   removalSeq,
 }: {
   state: HydraState
   target: Target
   dispatch?: EffectiveDispatch
-  memory?: string
   removalSeq?: number
 }): string {
   const {
@@ -79,10 +66,9 @@ function context({
   const removal = removalId ? removalSeq ?? loadHydra({ hydraId: removalId }).state.seq : undefined
 
   return createHash('sha256').update(JSON.stringify({
-    config: name === 'hydra' || name === 'setup' || memory ? state.config : undefined,
+    config: name === 'hydra' || name === 'setup' ? state.config : undefined,
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
-    memory,
     removal,
     card: card && {
       agent: card.agent,
@@ -110,7 +96,7 @@ export const approval = guard({
       id: undefined,
     }
 
-    if (actor.actor === 'hydra' || memoryAgent()) {
+    if (actor.actor === 'hydra' || agentRequest()) {
       inform({
         reason: 'Approval question answered by an agent',
         clear: 'Use pnyx-axi approval dismiss <token> to dismiss a pending approval',
@@ -134,7 +120,6 @@ export const approval = guard({
     const confirming = action === 'confirm' && asked?.kind === 'command'
       ? JSON.parse(asked.value) as Target : undefined
     const dispatch = confirming ? dispatchFor({ target: confirming }) : undefined
-    const memory = confirming ? memoryRulesFor({ target: confirming }) : undefined
     const selected = withWriter({
       hydraId,
       fn: ({ writer }) => {
@@ -162,7 +147,6 @@ export const approval = guard({
           state: writer.state,
           target: JSON.parse(proposal.value) as Target,
           dispatch,
-          memory,
         }) !== proposal.before) {
           inform({
             reason: 'Applying a saved action after its target changed',
@@ -219,7 +203,7 @@ export const approval = guard({
 
     ownerEnv.PNYX_HOME = pnyxHome()
     const caller = requestEnv()
-    const fromAgent = !ownerActor({ actor: actor.actor }) || memoryAgent()
+    const fromAgent = !ownerActor({ actor: actor.actor }) || agentRequest()
 
     if (fromAgent) {
       for (const name of IDENTITY) {
@@ -238,10 +222,6 @@ export const approval = guard({
         '--confirm',
         token,
       )
-    }
-
-    if (memory) {
-      ownerEnv.PNYX_MEMORY_ACCESS = memory
     }
 
     try {
@@ -305,7 +285,7 @@ export const approval = guard({
 
       const code = /^code: ([A-Z_]+)$/m.exec(stdout)?.[1]
 
-      if (removesHydra) {
+      if (removesHydra || code) {
         if (error instanceof HydraError) {
           throw error
         }
@@ -313,13 +293,6 @@ export const approval = guard({
         throw new HydraError({
           message: detail,
           code: code ?? 'UNKNOWN',
-        })
-      }
-
-      if (memory && (code === 'CONFLICT' || code === 'REVISION_CONFLICT')) {
-        throw new HydraError({
-          message: 'Memory changed; propose the action again',
-          code,
         })
       }
 

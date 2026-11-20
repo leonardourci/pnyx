@@ -925,3 +925,92 @@ test(
     })).toMatchObject({ event: 'none: proposal already resolved or missing' })
   },
 )
+
+test(
+  'a saved non-removal approval keeps the child revision-conflict refusal code',
+  async () => {
+    const id = 'stale-command-approval'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        seq: 1,
+        id: 'stale-proposal',
+        at: '2026-01-01T00:00:00Z',
+        actor: 'hydra',
+        cardId: '$hydra',
+        type: 'hydra.dispatch-proposed',
+        data: {
+          token: 'stale-command',
+          kind: 'command',
+          shared: false,
+          before: 'old-context',
+          value: JSON.stringify({
+            name: 'owner',
+            args: [
+              'memory',
+              'set',
+              '--key',
+              'preferences',
+              '--text',
+              'Stale replacement',
+              '--if-revision',
+              '0',
+            ],
+            cwd: process.cwd(),
+          }),
+          summary: 'Replace the owner preference',
+        },
+      })}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Keep the current preference',
+      ],
+    })
+    const result = await hydra.ownerRefused({
+      args: [
+        'approval',
+        'confirm',
+        'stale-command',
+      ],
+    })
+    expect(result.code).toBe('REVISION_CONFLICT')
+    expect((await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })).writable.preferences.text).toBe('Keep the current preference')
+    expect(rows<{ status: string }>({
+      text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress' order by seq",
+      values: [id],
+    })).toEqual([
+      { status: 'applying' },
+      { status: 'failed' },
+    ])
+  },
+)

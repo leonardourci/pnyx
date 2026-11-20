@@ -1,5 +1,3 @@
-import { readMemoryContext } from '#memory/context.ts'
-import { memoryCaller } from '#memory/poleis.ts'
 import { migrateOwnerMemory } from '#memory/owner-memory.ts'
 import { Worker } from 'node:worker_threads'
 import { log } from '#app/diagnostics.ts'
@@ -18,7 +16,6 @@ const searchQueues = new Map<string, Promise<ReturnType<typeof search>>>()
 export interface SearchInput {
   hydraId: string
   query: Query
-  includeMemory?: boolean
 }
 
 export type SearchAnswer = { result: ReturnType<typeof search> } | {
@@ -50,16 +47,12 @@ export async function searchInBackground({
       })
     }
 
-    if (memoryCaller({ hydraId })) {
-      migrateOwnerMemory()
-    }
+    migrateOwnerMemory()
 
-    return readMemoryContext({
-      read: () => runSearch({
-        hydraId,
-        query,
-        signal,
-      }),
+    return runSearch({
+      hydraId,
+      query,
+      signal,
     })
   }
 
@@ -94,7 +87,6 @@ function runSearch({
         workerData: {
           hydraId,
           query,
-          includeMemory: memoryCaller({ hydraId }),
         },
       },
     )

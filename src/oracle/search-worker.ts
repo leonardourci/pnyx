@@ -1,4 +1,3 @@
-import { readableProjects } from '#memory/poleis.ts'
 import { loadHydra } from '#app/store.ts'
 import { readProjectMemory } from '#memory/project-memory.ts'
 import { projectIdentity } from '#projects/sources.ts'
@@ -12,10 +11,7 @@ const input: SearchInput = workerData
 
 try {
   const state = loadHydra({ hydraId: input.hydraId }).state
-  const projects = input.includeMemory === false ? [] : (await readableProjects({
-    hydraId: input.hydraId,
-    state,
-  })).filter(project => !project.detached)
+  const projects = (projectsFor({ state })).filter(project => !project.detached)
   const memoryDocuments = (await Promise.all(projects.map(async project => {
     const { id } = await projectIdentity(project)
     const current = loadHydra({ hydraId: input.hydraId }).state
@@ -26,27 +22,15 @@ try {
       return []
     }
 
-    try {
-      const memory = readProjectMemory({
-        id,
-        hydraId: input.hydraId,
-      })
+    const memory = readProjectMemory({id})
 
-      return Object.values(memory.documents).map(text => ({
-        card: '$board',
-        project: project.path,
-        kind: 'note' as const,
-        at: memory.events.at(-1)?.at ?? '',
-        text: `${project.name}: ${text}`,
-      }))
-    } catch (error) {
-      // Access may change while Oracle resolves the project identity.
-      if (error instanceof HydraError && error.code === 'NOT_FOUND') {
-        return []
-      }
-
-      throw error
-    }
+    return Object.values(memory.documents).map(text => ({
+      card: '$board',
+      project: project.path,
+      kind: 'note' as const,
+      at: memory.events.at(-1)?.at ?? '',
+      text: `${project.name}: ${text}`,
+    }))
   }))).flat()
   parentPort?.postMessage({
     result: search({

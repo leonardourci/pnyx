@@ -1,5 +1,5 @@
 import { HydraError } from '#store/errors.ts'
-import { POLIS_NAME } from './polis-policy.ts'
+import { POLIS_NAME } from './owner-polis.ts'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Learning, LearningChange } from './learnings.ts'

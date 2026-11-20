@@ -13,7 +13,6 @@ export const SETTING_ICONS: Record<string, string> = {
   toolDetails: 'tool',
   thinkingDetails: 'thinking',
   headsDispatch: 'dispatch',
-  keyboard: 'keyboard',
   version: 'about',
   doneAfterHours: 'done',
   reviewMinutes: 'reminder',
@@ -27,11 +26,6 @@ export const SETTING_ICONS: Record<string, string> = {
 
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
 export const SETTINGS_SECTIONS = [
-  {
-    id: 'poleis',
-    label: 'Poleis',
-    icon: 'columns',
-  },
   {
     id: 'appearance',
     label: 'Appearance',
@@ -83,12 +77,6 @@ export const SETTINGS_SECTIONS = [
     note: 'Which agent and which login each worker gets. Hydra can update these settings and records each change in chat.',
   },
   {
-    id: 'keyboard',
-    label: 'Keyboard',
-    icon: 'keyboard',
-    note: 'An action can have several keys. Press + on a row to add one, or ✕ on a key to drop it.',
-  },
-  {
     id: 'logs',
     label: 'Logs',
     icon: 'logs',
@@ -130,28 +118,6 @@ const TEXT_SIZE = [
 ]
 
 export const SETTINGS_CATALOG: CatalogEntry[] = [
-  {
-    id: 'poleis',
-    section: 'poleis',
-    label: 'Poleis',
-    description: '',
-    related: [
-      'memory',
-      'readers',
-      'access',
-    ],
-  },
-  {
-    id: 'hydraPoleis',
-    section: 'hydra',
-    label: 'Polis',
-    description: '',
-    related: [
-      'memory',
-      'reads',
-      'lives',
-    ],
-  },
   {
     id: 'theme',
     section: 'appearance',
@@ -362,18 +328,6 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'logins',
       'quota',
       'routing',
-    ],
-  },
-  {
-    id: 'keyboard',
-    section: 'keyboard',
-    label: 'Character shortcuts',
-    description: 'Single-letter keys such as j and k. Text fields always keep normal typing.',
-    related: [
-      'keyboard',
-      'keys',
-      'hotkeys',
-      'bindings',
     ],
   },
   {

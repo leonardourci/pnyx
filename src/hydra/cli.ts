@@ -1,9 +1,8 @@
+import { POLIS_NAME, ownerPolis } from '#memory/owner-polis.ts'
+import { projectsFor } from '#projects/read.ts'
 import { inform } from '#app/command-notices.ts'
 import { removeHydraCommand } from './remove.ts'
-import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
-import { readMemoryContext } from '#memory/context.ts'
 import { projectRows } from '#projects/read.ts'
-import { checkMemoryApproval, readableProjects, polisAccess, hydraPolisConfig, memoryPermission, memoryAgent } from '#memory/poleis.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -28,40 +27,14 @@ import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
 import { startHydra } from './start.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { checkSettings, readSettings, saveSettings, settingsReceipt, shownSettings } from '#settings/store.ts'
-import { SETTING_FLAGS, sharedSettingFlags, visibleSettings } from '#settings/cli.ts'
+import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
+import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
 import { workerIdentity } from '#workers/worker-identity.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
-
-function visibleHydraConfig({
-  config,
-  hydraId,
-}: {
-  config: HydraConfig
-  hydraId: string
-}): Output {
-  const shown: Output = {
-    ...config,
-    ...hydraPolisConfig({ state: { config } }),
-  }
-
-  if (memoryAgent()) {
-    const access = polisAccess({ hydraId })
-    shown.readPoleis = access.reads
-
-    if (access.writablePolis === undefined) {
-      delete shown.polis
-    } else {
-      shown.polis = access.writablePolis
-    }
-  }
-
-  return shown
-}
 
 async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output> {
   const {
@@ -73,9 +46,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     options: {
       ...WRITE,
       name: { type: 'string' },
-      'read-poleis': { type: 'string' },
       'polis': { type: 'string' },
-      propose: { type: 'boolean' },
       icon: { type: 'string' },
       position: { type: 'string' },
       identity: { type: 'string' },
@@ -147,41 +118,33 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'show') {
-    return readMemoryContext({
-      read: async () => {
-        const state = loadHydra({ hydraId: id }).state
-        const hydra = structuredClone(hydraConfig({
-          state,
-          id,
-        }))
-        // Legacy config still carries values now owned by shared settings.
-        delete hydra.doneAfterHours
-        delete hydra.reviewMinutes
-        delete hydra.helper
-        const shared = readSettings().settings
-        const projects = await readableProjects({
-          state,
-          hydraId: id,
-        })
+    const state = loadHydra({ hydraId: id }).state
+    const hydra = structuredClone(hydraConfig({
+      state,
+      id,
+    }))
+    delete hydra.doneAfterHours
+    delete hydra.reviewMinutes
+    delete hydra.helper
+    const shared = readSettings().settings
+    const projects = projectsFor({ state })
 
-        return {
-          hydra: visibleHydraConfig({
-            config: hydra,
-            hydraId: id,
-          }),
-          settings: {
-            doneAfterHours: shared.doneAfterHours,
-            reviewMinutes: shared.reviewMinutes,
-            helper: shared.helper,
-          },
-          projects: projectRows({
-            state,
-            projects,
-          }),
-          revision: state.configRevision ?? 0,
-        }
+    return {
+      hydra: {
+        ...hydra,
+        polis: ownerPolis({ state }),
       },
-    })
+      settings: {
+        doneAfterHours: shared.doneAfterHours,
+        reviewMinutes: shared.reviewMinutes,
+        helper: shared.helper,
+      },
+      projects: projectRows({
+        state,
+        projects,
+      }),
+      revision: state.configRevision ?? 0,
+    }
   }
 
   if (action !== 'create' && action !== 'set') {
@@ -247,26 +210,10 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       }
     },
     decide: ({ state }) => {
-      checkMemoryApproval()
-
-      const previousAccess = hydraPolisConfig({ state })
-      const nextAccess = requestedPolisAccess({
-        current: previousAccess,
-        reads: values['read-poleis'],
-        polis: values.polis,
-      })
-
-      if (nextAccess) {
-        memoryPermission({
-          hydraId: id,
-          name: 'hydra',
-          args,
-          propose: false,
-          actor: m.actor,
-          widening: widensPolisReads({
-            before: previousAccess,
-            after: nextAccess,
-          }),
+      if (values.polis !== undefined && !POLIS_NAME.test(String(values.polis))) {
+        throw new HydraError({
+          message: 'Invalid owner memory polis name',
+          code: 'VALIDATION_ERROR',
         })
       }
 
@@ -328,12 +275,8 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         hydra,
       }
 
-      if (nextAccess && values.polis !== undefined) {
-        data.polis = nextAccess.polis
-      }
-
-      if (nextAccess && values['read-poleis'] !== undefined) {
-        data.readPoleis = nextAccess.readPoleis
+      if (values.polis !== undefined) {
+        data.polis = String(values.polis)
       }
 
       if (named) {
@@ -421,22 +364,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     },
   })
 
-  if (committed && memoryAgent() && 'hydra' in committed) {
-    committed.hydra = visibleHydraConfig({
-      config: hydraConfig({
-        state: loadHydra({ hydraId: id }).state,
-        id,
-      }),
-      hydraId: id,
-    })
-  }
-
   if (!shared) {
     return committed!
   }
 
   const saved = saveSettings({
-    beforeSave: onlySettings ? checkMemoryApproval : undefined,
     // A combined edit gets one chat notice from its Hydra receipt.
     hydraId: onlySettings ? id : undefined,
     patch: shared,
@@ -446,13 +378,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     },
   })
   const settings = settingsReceipt({ saved })
-
-  if (memoryAgent()) {
-    settings.settings = visibleSettings({
-      settings: shownSettings({ settings: readSettings().settings }),
-      hydraId: id,
-    })
-  }
 
   if (committed) {
     return {

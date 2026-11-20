@@ -12,7 +12,7 @@ import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
-import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
+import { composing } from '#web-shared/ime.ts'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
@@ -178,7 +178,6 @@ export function Composer({
     ],
   )
 
-  const { label } = useKeyboard()
   const insertBlock = ({ block }: { block: string }) => field.current!.insertBlock({ block })
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
@@ -282,26 +281,21 @@ export function Composer({
     [],
   )
 
-  useKeyAction({
-    id: 'send',
-    handler: ({
-      context: {
-        scope,
-        target,
-      },
-    }) => {
-      if (scope !== 'composer' || !form.current?.contains(target)) {
-        return false
+  const draftKey = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
+    if (composing({ event: e.nativeEvent })) {
+      return
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+      e.preventDefault()
+
+      if (!e.repeat) {
+        void send()
       }
 
-      void send()
+      return
+    }
 
-      return true
-    },
-  })
-
-  // Up from the start of the draft leaves for what sits above the composer: an open question, then the last reply.
-  const leaveUp = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
     const plainUp = e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
       && e.currentTarget.selectionEnd === 0
 
@@ -369,12 +363,11 @@ export function Composer({
           ref={field}
           standalone={false}
           id={`reply-${card}`}
-          keyScope="composer"
           value={drafts.read().text}
           change={setDraft}
           label={fieldLabel ?? `Reply to ${title}`}
           placeholder={placeholder ?? (title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…')}
-          onKeyDown={leaveUp}
+          onKeyDown={draftKey}
           projectRequests
           projectRequest={projectRequest}
           projectRequested={projectRequested}
@@ -491,7 +484,7 @@ export function Composer({
             type="submit"
             variant="primary"
             aria-label={sendLabel}
-            title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
+            title={sending ? 'Sending…' : `Send · Enter${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={unavailable || sending || disabled}
           >
             <Icon name="send" size={ICON_SIZE.toolbar} />

@@ -1,6 +1,6 @@
 import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#hydra/images.ts'
-import { isEditing } from '#web-preferences/keyboard-registry.tsx'
+import { isEditing } from '#web-shared/ui/focus.ts'
 import {
   useEffect,
   type ClipboardEvent as PasteEvent,

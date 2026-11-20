@@ -20,7 +20,6 @@ const ACTION_FLAGS: Record<string, string[]> = {
     'parent',
     'column',
     'before',
-    'kind',
     'hold',
     'no-start',
   ],
