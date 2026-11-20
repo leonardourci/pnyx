@@ -28,7 +28,8 @@
         "kill-ai-slop",
         "write-ci-workflow"
       ],
-      "ciRequired": true
+      "ciRequired": true,
+      "try": "code"
     },
     {
       "name": "fixture",
@@ -51,7 +52,8 @@
         "audit-tests",
         "kill-ai-slop"
       ],
-      "ciRequired": true
+      "ciRequired": true,
+      "try": "code"
     },
     {
       "name": "skill text",
@@ -67,7 +69,8 @@
         "follow-conventions",
         "kill-ai-slop"
       ],
-      "ciRequired": true
+      "ciRequired": true,
+      "try": "code"
     },
     {
       "name": "docs",
@@ -83,7 +86,8 @@
         "project",
         "follow-conventions",
         "kill-ai-slop"
-      ]
+      ],
+      "try": "code"
     },
     {
       "name": "tests",
@@ -104,7 +108,8 @@
         "follow-conventions",
         "audit-tests"
       ],
-      "ciRequired": true
+      "ciRequired": true,
+      "try": "code"
     },
     {
       "name": "UI",
@@ -128,7 +133,8 @@
         "kill-ai-slop",
         "write-front-end"
       ],
-      "ciRequired": true
+      "ciRequired": true,
+      "try": "ui"
     },
     {
       "name": "back-end",
@@ -151,7 +157,8 @@
         "audit-tests",
         "kill-ai-slop"
       ],
-      "ciRequired": true
+      "ciRequired": true,
+      "try": "code"
     }
   ],
   "instructions": {
@@ -160,6 +167,7 @@
     "write-ci-workflow": ".agents/skills/write-ci-workflow/SKILL.md",
     "follow-conventions": ".agents/skills/follow-conventions/SKILL.md"
   },
-  "checkFixAttempts": 0,
-  "agentTimeoutMinutes": 45
+  "checkFixAttempts": 1,
+  "agentTimeoutMinutes": 45,
+  "tryNotes": "Run the web app with `PNYX_HOME=<scratch dir> pnpm dev` (Vite prints the URL; the dev server uses port 4319, set `PNYX_DEV_PORT` to change it) or an isolated `pnyx-axi serve --port 0`. Never touch the live install at pnyx.localhost or `~/.pnyx`; open the page in a headless browser with its own profile."
 }
