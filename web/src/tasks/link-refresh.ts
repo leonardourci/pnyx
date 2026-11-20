@@ -5,7 +5,7 @@ import { log } from '#web-app/log.ts'
 const refreshing = new Map<string, Promise<void>>()
 
 // An open task and its review panel both ask on mount and on reconnect; one request per task runs at a time.
-export function refreshLinks({
+function refreshLinks({
   task,
   command,
 }: {
