@@ -268,6 +268,10 @@ const cardRelationships = relationships(
       ...ofCard,
       destSchema: replies,
     }),
+    latestReply: many({
+      ...ofCard,
+      destSchema: replies,
+    }),
     questions: many({
       ...ofCard,
       destSchema: questions,
@@ -452,6 +456,12 @@ const answering = (query: ReturnType<typeof zql.replies.where>) => query.where(
   )
   .limit(LIST_LIMIT)
 
+// eslint-disable-next-line pnyx/object-params -- Zero owns related query callbacks.
+const latestReply = (query: ReturnType<typeof zql.replies.where>) => query.orderBy(
+  'position',
+  'desc',
+).limit(1)
+
 // The only reads zero-cache serves, so they are the page's permissions: the page asks for one by name and the
 // server's query endpoint builds it. Every write stays a server command. Every query is bounded, so the page never
 // syncs a history that grows with time: each list a card relates holds its newest LIST_LIMIT rows, which the page
@@ -544,6 +554,10 @@ export const queries = defineQueries({
           answering,
         )
         .related(
+          'latestReply',
+          latestReply,
+        )
+        .related(
           'questions',
           query => query.orderBy(
             'position',
@@ -599,6 +613,10 @@ export const queries = defineQueries({
         .related(
           'replies',
           answering,
+        )
+        .related(
+          'latestReply',
+          latestReply,
         )
         .related(
           'questions',
