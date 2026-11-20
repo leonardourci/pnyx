@@ -544,7 +544,7 @@ export function eventReasons({
   event: HydraEvent
 }): WakeReason[] {
   if (event.type === 'session.observed') {
-    if (event.data.cursor) {
+    if (!('fields' in event.data) || event.data.cursor) {
       return []
     }
 
