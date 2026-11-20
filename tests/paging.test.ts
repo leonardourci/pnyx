@@ -172,7 +172,7 @@ test(
 )
 
 test(
-  'a task\'s chat keeps the older page it read back, in order, when its worker writes more, and Focus mode hides its tool calls',
+  'a task\'s chat keeps the older page it read back, in order, when its worker writes more, and its tool calls follow Focus mode',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'notes' })
@@ -184,10 +184,9 @@ test(
         JSON.stringify({ focusMode: on }),
       ],
     })
-    await focusMode({ on: false })
 
     try {
-      // A tool call older than the first page, so only the page read back holds it.
+      // A tool call older than the first page, so only the page read back holds it; Focus mode is on while it loads.
       await appendToolCalls({
         session: worker,
         tools: 1,
@@ -243,11 +242,16 @@ test(
         what: 'the note written after reading back',
         check: () => notes().includes('note after reading back'),
       })
-      expect(toolRows().length).toBeGreaterThan(0)
+      expect(toolRows()).toEqual([])
 
+      await focusMode({ on: false })
+      await until({
+        what: 'the tool call of the page read back to show once Focus mode is off',
+        check: () => toolRows().length > 0,
+      })
       await focusMode({ on: true })
       await until({
-        what: 'Focus mode to hide the tool call of the page read back',
+        what: 'Focus mode to hide it again',
         check: () => toolRows().length === 0,
       })
       page.close()
@@ -276,12 +280,12 @@ test(
           }),
         ],
       }) as unknown as { thread: { entries: Entry[] } }
-      // An option the server no longer knows reads the latest page instead of being refused.
+      // An option the server does not know reads the latest page instead of being refused.
       const recent = await reconnected.send({
         name: 'thread',
         args: [
           'notes',
-          '--recent',
+          '--future-option',
         ],
       }) as unknown as { thread?: { entries: Entry[] } }
       reconnected.close()

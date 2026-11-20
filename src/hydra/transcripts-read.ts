@@ -855,6 +855,8 @@ type ThreadRead = {
   homes: string[]
   before?: string
   selectedSession?: boolean
+  // Every tool and thinking row, for a page kept open that shows them by the view each time it is sent.
+  allTraces?: boolean
 }
 
 // A conversation page from the task's transcript and saved events, with a log line for how long the read took.
@@ -865,6 +867,7 @@ export function readThread({
   homes,
   before,
   selectedSession,
+  allTraces,
 }: ThreadRead): ThreadPage {
   const started = performance.now()
   const page = readThreadPage({
@@ -874,6 +877,7 @@ export function readThread({
     homes,
     before,
     selectedSession,
+    allTraces,
   })
   log({
     operation: 'history.read',
@@ -895,6 +899,7 @@ function readThreadPage(
     homes,
     before,
     selectedSession,
+    allTraces,
   }: ThreadRead,
 ): ThreadPage {
   const found = replyRoute({
@@ -923,8 +928,8 @@ function readThreadPage(
     view: effectiveView({ state }),
     card: card.id,
   })
-  const tools = card.id === HYDRA_CARD || selected.tools
-  const thinking = selected.thinking
+  const tools = allTraces || card.id === HYDRA_CARD || selected.tools
+  const thinking = allTraces || selected.thinking
   const sources = threadSources({
     hydraId,
     state,

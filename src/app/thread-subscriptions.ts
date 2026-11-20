@@ -355,6 +355,7 @@ export function createThreadSubscriptions({
     if (!sub.base || sub.base.signature !== signature) {
       const page = readThread({
         hydraId,
+        allTraces: true,
         state: state(),
         card,
         homes: homes(),
@@ -480,6 +481,7 @@ export function createThreadSubscriptions({
                 conversation: { read: async ({ before }) => (await native).read({ before }) },
                 readSaved: ({ before }) => readThread({
                   hydraId,
+                  allTraces: true,
                   state: state(),
                   card,
                   homes: homes(),
@@ -667,6 +669,7 @@ export function createThreadSubscriptions({
           conversation: { read: async ({ before }) => (await native).read({ before }) },
           readSaved: ({ before }) => readThread({
             hydraId,
+            allTraces: true,
             state: state(),
             card,
             homes: homes(),
@@ -678,6 +681,7 @@ export function createThreadSubscriptions({
 
       const page = readThread({
         hydraId,
+        allTraces: true,
         state: state(),
         card,
         homes: homes(),
