@@ -1,10 +1,14 @@
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { Command } from '#web-app/connection.ts'
+import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ChatComment } from './chat.ts'
 import type { ChatScroll } from './chat-scroll.ts'
 import type { OlderRows } from './chat-view.tsx'
 import { loadEarlierMessages, threadArgs } from './conversation-history.ts'
+
+const replacedByNewerRead = ({ error }: { error: unknown }) =>
+  error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED'
 
 export function useChatThread({
   card,
@@ -63,8 +67,10 @@ export function useChatThread({
             setError('')
           }
         } catch (failure) {
+          const failedHere = !replacedByNewerRead({ error: failure })
+
           if (!cancelled) {
-            setError((failure as Error).message)
+            setError(failedHere ? (failure as Error).message : '')
           }
         } finally {
           if (!cancelled) {
@@ -102,7 +108,13 @@ export function useChatThread({
   const older: OlderRows | undefined = connected && opened ? {
     cursor: page?.older,
     load: async ({ cursor }) => {
-      await read({ before: cursor })
+      try {
+        await read({ before: cursor })
+      } catch (error) {
+        if (!replacedByNewerRead({ error })) {
+          throw error
+        }
+      }
     },
   } : undefined
 

@@ -1,6 +1,5 @@
 import { Button, InlineButton } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
-import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ChatScroll } from './chat-scroll.ts'
 
@@ -70,12 +69,6 @@ function OlderSentinel({
           try {
             await latestOlder.current?.load({ cursor })
           } catch (error) {
-            const superseded = error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED'
-
-            if (superseded) {
-              return
-            }
-
             setFailure({
               cursor,
               text: (error as Error).message,
