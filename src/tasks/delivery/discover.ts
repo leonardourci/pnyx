@@ -179,6 +179,10 @@ export async function discoverPullRequests({
       repository,
       branch,
     } of branches) {
+      if (!active()) {
+        return
+      }
+
       const result = await runProcess({
         command: process.env.PNYX_GH_AXI || 'gh-axi',
         args: [

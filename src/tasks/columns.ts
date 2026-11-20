@@ -33,7 +33,8 @@ export function cardFacts({
   const session = state.sessions?.[cardSessionId({ card }) ?? '']
   const observedActivity = session?.sessionActivity ?? session?.activity
   const activity = observedActivity ?? card.sessionActivity ?? card.activity
-  const status = card.workerLog?.status?.code === 'blocked' ? 'blocked' : card.status?.state
+  const workerStatus = card.workerLog?.status?.code
+  const status = workerStatus ?? card.status?.state
   let worker: CardFact = 'worker:none'
 
   if (activity === 'ended' || (!activity && card.stoppedAt)) {
