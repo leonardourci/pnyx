@@ -383,8 +383,7 @@ export function claudeProvider({
             return
           }
 
-          // SessionStart fires too early for an SDK hook on startup and resume, so the context leads the first message.
-          let fresh = true, manualCompact = false
+          let manualCompact = false
           let unsentContext: string | undefined
 
           publish = emit
@@ -399,7 +398,7 @@ export function claudeProvider({
               const compact = compactCommand({ text })
               manualCompact ||= compact
               const generation = inputGeneration
-              const rendered = fresh && context && !compact ? await context({}) : undefined
+              const rendered = context && !compact ? await context({}) : undefined
               const prefix = [
                 unsentContext,
                 rendered,
@@ -423,10 +422,6 @@ export function claudeProvider({
               }
 
               unsentContext = undefined
-
-              if (!compact) {
-                fresh = false
-              }
 
               if (!sentUuids) {
                 sentUuids = recordedUuids({ path })

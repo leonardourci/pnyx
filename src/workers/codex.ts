@@ -1304,13 +1304,9 @@ export function codexProvider({
               throw await rpc.ended
             }
 
-            // ponytail: Codex has no session hooks here, so the context leads the first turn and the turn after a compaction; a compaction mid-turn waits for the next turn.
-            let fresh = true
             // One read of the next message is always open, so a message that arrives mid-turn joins the running turn.
             let incoming = messages.next()
             let inputDone = false
-            // Messages that could not join the running turn, because it was ending or being stopped; each opens a turn of its own.
-
             const turnInput = ({
               text,
               message,
@@ -1376,11 +1372,7 @@ export function codexProvider({
                 compacted = rpc.compacted()
               }
 
-              const text = context && !manualCompact && (compacted || fresh) ? `${await context({ compacted })}\n\n${said}` : said
-
-              if (!manualCompact) {
-                fresh = false
-              }
+              const text = context && !manualCompact ? `${await context({ compacted })}\n\n${said}` : said
 
               if (manualCompact && said.trim() !== '/compact') {
                 yield 'working'
@@ -1589,13 +1581,14 @@ export function codexProvider({
                   }
 
                   try {
+                    const text = context ? `${await context({})}\n\n${message.text}` : message.text
                     await rpc.request({
                       method: 'turn/steer',
                       params: {
                         threadId: id,
                         expectedTurnId: runningTurn,
                         input: turnInput({
-                          text: message.text,
+                          text,
                           message,
                         }),
                       },
