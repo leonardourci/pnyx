@@ -100,11 +100,11 @@ export default tseslint.config(
           },
           restrict: [
             {
-              pattern: '(?:^|:)(?:!?[a-zA-Z0-9-]+-\\[.*\\]|\\[[a-zA-Z-]+:[^\\]]+\\])(?:/[^:]+)?!?$',
+              pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[.*\\]|\\[[a-zA-Z-]+:.+\\])(?:/[^:]+)?!?$',
               message: 'Use a theme token or a shared utility instead of an arbitrary value.',
             },
             {
-              pattern: '(?:^|:)(?:!?[a-zA-Z0-9-]+-\\[[^\\[\\]]*|\\[[a-zA-Z-]+:[^\\[\\]]*)$',
+              pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[[^\\[\\]]*|\\[[a-zA-Z-]+:[^\\[\\]]*)$',
               message: 'Keep class names complete; computed values belong in runtimeStyle.',
             },
           ],

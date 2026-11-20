@@ -61,7 +61,7 @@ export function Dialog({
       onLayoutAnimationComplete={() => setAnimating(false)}
       initial={false}
       exit={{ opacity: 0 }}
-      // eslint-disable-next-line no-restricted-syntax -- The dialog forwards its caller's runtimeStyle to the animated host.
+      // eslint-disable-next-line no-restricted-syntax
       style={style}
       ref={dialog}
       aria-labelledby={heading}

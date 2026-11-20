@@ -21,7 +21,7 @@ The web UI uses Tailwind v4 tokens in `web/src/index.css` and the shared control
 
 The migration stack enables these rules for shared UI first, then each converted screen through `STYLED_WEB` in `eslint.config.js`. The final screen change covers all web source except the marked chat rebuild scope.
 
-Measured geometry and owner-selected font sizes use `runtimeStyle`, which accepts a closed set of dimensions, transforms and named variables. It stores computed values in CSS variables and assigns their references to the corresponding properties. For example, `style={runtimeStyle({ width: measuredWidth })}` follows a measured width; a fixed width belongs in the theme and a class. Literal values in `runtimeStyle` fail lint. The animated card host and dialog forward these styles to their DOM hosts. The chat implementation under `web/src/hydra/` and the task chat have a marked temporary lint exception for their separate rebuild; remove that exception with the rebuild.
+Measured geometry and owner-selected font sizes use `runtimeStyle`, which accepts a closed set of dimensions, transforms and named CSS variables. Use `style={runtimeStyle({ width: measuredWidth })}` for a measured width and a theme class for a fixed width. ESLint rejects literals in `runtimeStyle` object arguments.
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 

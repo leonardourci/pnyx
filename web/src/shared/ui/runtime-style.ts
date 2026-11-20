@@ -1,13 +1,13 @@
 import type { CSSProperties } from 'react'
 
-const LENGTH_PROPERTIES = [
+const DIMENSIONS = [
   'width',
   'height',
   'left',
   'top',
   'fontSize',
 ] as const
-const STRING_PROPERTIES = [
+const TRANSFORMS = [
   'translate',
   'transformOrigin',
   'transform',
@@ -20,33 +20,21 @@ const VARIABLES = {
   sliderFill: '--fill',
 } as const
 
-type LengthProperty = typeof LENGTH_PROPERTIES[number]
-type StringProperty = typeof STRING_PROPERTIES[number]
+type Dimension = typeof DIMENSIONS[number]
+type Transform = typeof TRANSFORMS[number]
 type Variable = keyof typeof VARIABLES
 
-export type RuntimeStyle = Partial<Record<LengthProperty, number | string>>
-  & Partial<Record<StringProperty | Variable, string>>
+export type RuntimeStyle = Partial<Record<Dimension, number | string>>
+  & Partial<Record<Transform | Variable, string>>
 
 export function runtimeStyle({ ...values }: RuntimeStyle): CSSProperties {
-  const style: Record<string, string> = {}
+  const style: Record<string, number | string> = {}
 
-  for (const property of LENGTH_PROPERTIES) {
+  for (const property of [...DIMENSIONS, ...TRANSFORMS]) {
     const value = values[property]
 
     if (value !== undefined) {
-      const variable = `--runtime-${property}`
-      style[variable] = typeof value === 'number' ? `${value}px` : value
-      style[property] = `var(${variable})`
-    }
-  }
-
-  for (const property of STRING_PROPERTIES) {
-    const value = values[property]
-
-    if (value !== undefined) {
-      const variable = `--runtime-${property}`
-      style[variable] = value
-      style[property] = `var(${variable})`
+      style[property] = value
     }
   }
 

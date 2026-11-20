@@ -17,7 +17,6 @@
   --spacing-resize-handle: calc(50% - --spacing(8));
   --spacing-resize-grip: calc(50% - --spacing(5.5));
   --spacing-settings: max(--spacing(5), calc((100% - var(--spacing-settings-content)) / 2));
-  --radius-inherit: inherit;
   --background-image-preview-image: linear-gradient(135deg, var(--color-gold-wash), var(--color-blue));
   --background-image-preview-theme: linear-gradient(135deg, var(--color-tile-light) 50%, var(--color-tile-dark) 50%);
   --background-image-settings-fade: linear-gradient(var(--color-background) 82%, transparent);
@@ -453,6 +452,7 @@ kbd {
   @apply my-1.25 mx-0 py-4 px-2 text-center border-0 rounded-control text-muted text-ui; } }
 
 @utility writing-horizontal { writing-mode: horizontal-tb; }
+@utility rounded-inherit { border-radius: inherit; }
 @utility writing-vertical { writing-mode: vertical-rl; }
 @utility font-inherit { font-family: inherit; }
 @utility font-inherit-all { font: inherit; }

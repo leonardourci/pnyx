@@ -55,6 +55,14 @@ test(
         rule: 'better-tailwindcss/no-restricted-classes',
       },
       {
+        source: '<div className="![color:red]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="[grid-template-columns:[start]_1fr_[end]]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
         source: 'const ITEM_CLASSES = "w-[317px]"; <div className={ITEM_CLASSES} />',
         rule: 'better-tailwindcss/no-restricted-classes',
       },
@@ -107,7 +115,7 @@ test(
     ])
     const messages = reports.flatMap(report => report.messages)
     const violations = messages.filter(message =>
-      message.ruleId !== null && policyRules.has(message.ruleId))
+      message.fatal || (message.ruleId !== null && policyRules.has(message.ruleId)))
     expect(violations).toEqual([])
   },
 )

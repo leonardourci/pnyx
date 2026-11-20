@@ -64,10 +64,10 @@ try {
 }
 ```
 
-Run `pnpm verify` for deterministic checks and `pnpm deslop` on committed work pushed to an open PR. Use before and after screenshots from an isolated headless browser at desktop and phone widths to verify appearance, including light and dark themes. Behavior tests follow [Testing](../../../docs/testing.md); the removed browser journeys are not validation evidence.
+Run `pnpm verify` and follow [Testing](../../../docs/testing.md) for behavior tests.
 
 ## Pull requests with visible changes
 
-Show before and after screenshots of each changed view side by side in a `Before | After` table, at a reduced width (`<img src="..." width="360">`), in both light and dark themes. Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/`, never in the PR's diff or a gist, and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
+Capture each changed view in an isolated headless browser at desktop and phone widths in light and dark themes. Show before and after screenshots side by side in a `Before | After` table at a reduced width (`<img src="..." width="360">`). Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/` and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
 
 Long lists in Activity and chat use @tanstack/react-virtual over Zero’s paged queries for variable row heights; zero-virtual needs fixed row heights.

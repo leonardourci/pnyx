@@ -10,7 +10,7 @@ const closedMinimumWidth = parseFloat(styles?.getPropertyValue('--spacing-card-m
 const subtaskIndent = parseFloat(styles?.getPropertyValue('--spacing-subtask-indent') ?? '')
 
 export const WORKSPACE_SIZING = {
-  subtaskIndent: Number.isFinite(subtaskIndent) ? subtaskIndent : unit * 6.5,
+  subtaskIndent: Number.isFinite(subtaskIndent) ? subtaskIndent : 26,
   cardGap: unit * 2,
   columnGap: unit * 2.5,
   inset: unit * 4 + 2,
@@ -27,8 +27,8 @@ export const WORKSPACE_SIZING = {
 
 export const CARD_SIZING = {
   closed: {
-    minWidth: Number.isFinite(closedMinimumWidth) ? closedMinimumWidth : unit * 65,
-    minHeight: unit * 24,
+    minWidth: Number.isFinite(closedMinimumWidth) ? closedMinimumWidth : 260,
+    minHeight: 96,
   },
   nest: {
     hoverScale: 0.84,
