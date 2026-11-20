@@ -122,7 +122,11 @@ export function boardReview({
     const recorded = state.sessions?.[session]?.lastSeen
     const observed = workerSeenAt[session] ?? 0
     const latest = currentState({ card })
-    const workerTimes = [recorded, latest?.at, card.workingSince]
+    const workerTimes = [
+      recorded,
+      latest?.at,
+      card.workingSince,
+    ]
       .flatMap(at => at ? [Date.parse(at)] : [])
       .filter(Number.isFinite)
 
