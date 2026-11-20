@@ -1213,8 +1213,6 @@ test(
       what: 'main to see the escalated report',
       check: () => main.received.some(text => text.includes('[unhandled]: Invoice scope needs a decision')),
     })
-    const escalated = main.received.find(text => text.includes('[unhandled]: Invoice scope needs a decision'))!
-    expect(escalated).toContain('[unhandled]')
   },
 )
 
@@ -1325,6 +1323,33 @@ test(
     expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
     expect(recoveredReport).toContain('hydra messages --after <seq minus one> --limit 1')
     expect(recoveredReport).toContain('Open decisions')
+    const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g))
+    const recoveredOwnerMessages = []
+
+    for (const [, seq, after] of ownerReads) {
+      if (after === undefined) {
+        throw new Error('The recovery command did not provide an owner message cursor')
+      }
+
+      expect(Number(after) + 1).toBe(Number(seq))
+      const { messages } = await hydra.owner({
+        args: [
+          'hydra',
+          'messages',
+          '--after',
+          after,
+          '--limit',
+          '1',
+        ],
+      })
+      recoveredOwnerMessages.push(messages[0]?.text)
+    }
+
+    expect(recoveredOwnerMessages).toEqual([
+      'plan the migration',
+      'also check the indexes',
+      'and the backups',
+    ])
 
     const { messages } = await hydra.owner({
       args: [

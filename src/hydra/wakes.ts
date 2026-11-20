@@ -370,9 +370,7 @@ export function findHydraTurnToResume({
     lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
-  let unansweredMessages = 0
-  let firstMessageSeq: number | undefined
-  let lastMessageSeq: number | undefined
+  const unansweredMessages: number[] = []
 
   for (const event of scanEvents({
     hydraId,
@@ -383,27 +381,15 @@ export function findHydraTurnToResume({
       continue
     }
 
-    unansweredMessages++
-
-    if (firstMessageSeq === undefined) {
-      firstMessageSeq = event.seq
-    }
-
-    lastMessageSeq = event.seq
+    unansweredMessages.push(event.seq)
   }
 
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
   const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)
   const unfinishedWork: string[] = []
 
-  if (unansweredMessages) {
-    let unansweredMessagesPhrase = `messages seq ${firstMessageSeq}`
-
-    if (unansweredMessages > 1) {
-      unansweredMessagesPhrase = `messages seq ${firstMessageSeq} to ${lastMessageSeq}`
-    }
-
-    unfinishedWork.push(unansweredMessagesPhrase)
+  if (unansweredMessages.length) {
+    unfinishedWork.push('the owner messages listed below')
   }
 
   if (wakeThroughSeq) {
@@ -416,23 +402,17 @@ export function findHydraTurnToResume({
     unfinishedWork.push(stallCheckPhrase)
   }
 
-  const cutTurnHasNoRecordedWork = unansweredMessages === 0
-    && wakeThroughSeq === undefined && !isStallCheck
-  const unrecordedCutTurnPhrase = 'a turn'
-  let interruptedWork: string
-
-  if (cutTurnHasNoRecordedWork) {
-    interruptedWork = unrecordedCutTurnPhrase
-  } else {
-    interruptedWork = unfinishedWork.join(' and ')
-  }
+  const interruptedWork = unfinishedWork.join(' and ') || 'a turn'
+  const ownerReads = unansweredMessages.map(seq =>
+    `Read owner message ${seq} in full with \`pnyx-axi hydra messages --after ${seq - 1} --limit 1 --hydra ${hydraId}\`.`,
+  )
 
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${decisionsText({
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[...ownerReads, decisionsText({
       state,
       now: Date.now(),
-    })}\n${REPLY_RULES}</pnyx-wake>`,
+    })].join('\n')}\n${REPLY_RULES}</pnyx-wake>`,
   }
 }
