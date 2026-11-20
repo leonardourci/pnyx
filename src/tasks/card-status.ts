@@ -3,6 +3,7 @@ import { ownerQuestions, type OwnerQuestion } from './questions.ts'
 import { reportActor } from '#hydra/hydra.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
+import { readyForReview } from '#tasks/delivery/model.ts'
 
 export interface CardStatus {
   state?: TaskStatus
