@@ -124,7 +124,10 @@ test(
 
           const currentColumnTop = column.getBoundingClientRect().top
 
-          for (const [card, offset] of taskOffsets) {
+          for (const [
+            card,
+            offset,
+          ] of taskOffsets) {
             const currentOffset = card.getBoundingClientRect().top - currentColumnTop + column.scrollTop
 
             if (Math.abs(currentOffset - offset) > 1) {
