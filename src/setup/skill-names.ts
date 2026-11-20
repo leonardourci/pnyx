@@ -17,7 +17,3 @@ export const GLOBAL_SKILLS = [
   REPORT_PROGRESS_SKILL,
   CLI_SKILL,
 ] as const
-export const PNYX_SKILLS = [
-  ...HYDRA_SKILLS,
-  ...GLOBAL_SKILLS,
-] as const
