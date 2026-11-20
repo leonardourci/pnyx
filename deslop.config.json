@@ -169,5 +169,5 @@
   },
   "checkFixAttempts": 1,
   "agentTimeoutMinutes": 45,
-  "tryNotes": "Run the web app with `PNYX_HOME=<scratch dir> pnpm dev` (Vite prints the URL; the dev server uses port 4319, set `PNYX_DEV_PORT` to change it) or an isolated `pnyx-axi serve --port 0`. Never touch the live install at pnyx.localhost or `~/.pnyx`; open the page in a headless browser with its own profile."
+  "tryNotes": "Run this branch's code, never the global `pnyx-axi`, which is the owner's install. Run the web app with `PNYX_DEV_HOME=<scratch dir> pnpm dev` and open the URL Vite prints; `pnpm dev` sets `PNYX_HOME` from `PNYX_DEV_HOME` and ignores a `PNYX_HOME` you pass, and its server uses port 4319 unless `PNYX_DEV_PORT` names another. For the built server, run `PNYX_HOME=<scratch dir> node dist/cli/pnyx-axi.js serve --port 0` after `pnpm build`. Never touch the live install at pnyx.localhost or `~/.pnyx`, or the owner's `~/.pnyx-dev`; open the page in a headless browser with its own profile."
 }
