@@ -5,7 +5,6 @@ import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
 import { refreshTasks } from '#tasks/columns.ts'
 import { touch } from '#tasks/touch.ts'
-import { HydraError } from '#store/errors.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 
@@ -53,21 +52,13 @@ export function decideSessionFacts({
   session,
 }: {
   state: HydraState
-  fields: PushFields
+  fields: PushFields & { agent: AgentSession['agent'] }
   source?: SourceRef
   meta: Meta
   task?: Card
   session?: AgentSession
 }): Decision {
-  const agent = fields.agent ?? session?.agent
-
-  if (!agent) {
-    throw new HydraError({
-      code: 'VALIDATION_ERROR',
-      message: 'A session observation requires an agent',
-    })
-  }
-
+  const agent = fields.agent
   const owner = task ?? sessionTask({
     state,
     agent,

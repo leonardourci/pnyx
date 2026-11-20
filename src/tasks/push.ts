@@ -160,10 +160,15 @@ export function decidePush({
     'transcript',
   ].includes(source.adapter)
 
-  if (sessionSource && (fields.agent || session)) {
+  const agent = fields.agent ?? session?.agent
+
+  if (sessionSource && agent) {
     return decideSessionFacts({
       state,
-      fields,
+      fields: {
+        ...fields,
+        agent,
+      },
       source,
       meta,
       task: card,
