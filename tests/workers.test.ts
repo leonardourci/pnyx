@@ -1,3 +1,4 @@
+import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,6 +10,7 @@ import { replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { inbox } from '#hydra/update-queue.ts'
+import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
 import { codexProcesses } from '#workers/codex-processes.ts'
@@ -421,6 +423,11 @@ test(
       check: () => main.answered === 1,
     })
     await hydra.startTask({ key: 'routine-scope' })
+    await workerLine({
+      hydra,
+      key: 'routine-scope',
+      line: 'blocked: Check the worker scope',
+    })
     const helper = await until({
       what: 'server-started Codex routine helper',
       check: () => pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === hydra.id
@@ -1103,6 +1110,7 @@ test(
         'stoppable',
       ],
     })).stopped).toMatch(/^task-/)
+    expect((await hydra.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
       what: 'the owner\'s reply to read as not delivered',
       check: async () => (await hydra.owner({
@@ -1861,5 +1869,283 @@ test(
       what: 'the resumed thread\'s count',
       check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
     })
+  },
+)
+
+test(
+  'hosted turns and worker.log keep status factual across idle turns and restarts',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'facts' })
+    await until({
+      what: 'idle worker status',
+      check: async () => (await hydra.task({ key: 'facts' })).status === 'idle',
+    })
+    const full = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })
+    expect(full.task.status).toBeUndefined()
+    expect(full.task.statusLog).toEqual([])
+    const held = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Another factual turn'),
+      reply: 'Finished another turn',
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'reply',
+        'facts',
+        '--text',
+        'Another factual turn',
+      ],
+    })
+    await until({
+      what: 'running worker status',
+      check: async () => (await hydra.task({ key: 'facts' })).status === 'running',
+    })
+    held.release()
+    await until({
+      what: 'idle after the second turn',
+      check: async () => (await hydra.task({ key: 'facts' })).status === 'idle',
+    })
+    const path = join(
+      worker.env.PNYX_TASK_DIR!,
+      'worker.log',
+    )
+    writeFileSync(
+      path,
+      'blocked: waiting for access\n',
+    )
+    await until({
+      what: 'worker log block',
+      check: async () => (await hydra.task({ key: 'facts' })).status === 'blocked',
+    })
+    writeFileSync(
+      path,
+      'note: reviewed café failure\nneeds-you: choose an account',
+      { flag: 'a' },
+    )
+    const blocked = await until({
+      what: 'note folded without a partial status line',
+      check: async () => {
+        const result = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'facts',
+            '--full',
+          ],
+        })
+
+        return result.task.workerLog?.latest.text === 'reviewed café failure' && result.task
+      },
+    })
+    expect(blocked.workerLog.status.code).toBe('blocked')
+    writeFileSync(
+      path,
+      '\n',
+      { flag: 'a' },
+    )
+    await until({
+      what: 'completed needs-you line',
+      check: async () => (await hydra.task({ key: 'facts' })).status === 'needs you',
+    })
+    expect((await hydra.task({ key: 'facts' })).latest).toBe('choose an account')
+    writeFileSync(
+      path,
+      'link: https://example.com/preview Preview\ndone: implementation complete\n',
+      { flag: 'a' },
+    )
+    await until({
+      what: 'done worker log',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'facts',
+          '--full',
+        ],
+      })).task.workerLog?.status.code === 'done',
+    })
+    const done = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })
+    expect(done.task.links).toContainEqual({
+      kind: 'url',
+      url: 'https://example.com/preview',
+      title: 'Preview',
+      src: 'worker',
+    })
+    expect(done.task.workerLog.latest.off).toBe(Buffer.byteLength(readFileSync(
+      path,
+      'utf8',
+    )))
+    await pnyx.restart({
+      whileStopped: () => writeFileSync(
+        path,
+        'note: completed offline\nnote: partial',
+        { flag: 'a' },
+      ),
+    })
+    const restored = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })
+    expect(restored.task.workerLog.status).toEqual(done.task.workerLog.status)
+    expect(restored.task.workerLog.latest.text).toBe('completed offline')
+    writeFileSync(
+      path,
+      ' suffix\n',
+      { flag: 'a' },
+    )
+    await until({
+      what: 'partial offline line to complete',
+      check: async () => (await hydra.task({ key: 'facts' })).latest === 'partial suffix',
+    })
+    const history = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        'facts',
+        '--limit',
+        '100',
+      ],
+    })
+    const lines = history.events.filter((event: { type: string }) => event.type === 'task.worker-line')
+    expect(lines).toHaveLength(7)
+    expect(new Set(lines.map((event: { id: string }) => event.id)).size).toBe(7)
+    await workerLine({
+      hydra,
+      key: 'facts',
+      line: 'unknown: visible warning',
+    })
+    const invalid = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })
+    expect(invalid.task.workerLog.latest).toMatchObject({
+      code: 'invalid',
+      text: 'unknown: visible warning',
+    })
+    expect(invalid.task.workerLog.status.code).toBe('done')
+    expect((await hydra.task({ key: 'facts' })).latest).toContain('Invalid worker.log line')
+    await workerLine({
+      hydra,
+      key: 'facts',
+      line: 'link: javascript:alert(1)',
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'facts',
+        '--full',
+      ],
+    })).task.links).toHaveLength(1)
+
+    expect((await hydra.task({ key: 'facts' })).status).toBe('idle')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'status',
+        'facts',
+        'working',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'completed-worker',
+        '--title',
+        'Completed outside work',
+      ],
+    })
+    await workerLine({
+      hydra,
+      key: 'completed-worker',
+      line: 'done: outside work complete',
+    })
+    expect((await hydra.task({ key: 'completed-worker' })).status).toBe('done')
+  },
+)
+
+test(
+  'native turn facts ignore compact summaries and root-sidechain records',
+  () => {
+    for (const [
+      type,
+      activity,
+    ] of [
+        [
+          'task_started',
+          'working',
+        ],
+        [
+          'task_complete',
+          'finished',
+        ],
+        [
+          'turn_aborted',
+          'finished',
+        ],
+      ]) {
+      expect(readTranscriptRecord({
+        record: {
+          type: 'event_msg',
+          timestamp: '2026-11-19T10:00:00Z',
+          payload: { type },
+        },
+      }).activity).toBe(activity)
+    }
+
+    const assistant = {
+      type: 'assistant',
+      message: {
+        stop_reason: 'end_turn',
+        content: [],
+      },
+    }
+    expect(readTranscriptRecord({ record: assistant }).activity).toBe('finished')
+    expect(readTranscriptRecord({
+      record: {
+        ...assistant,
+        isSidechain: true,
+      },
+    }).activity).toBeUndefined()
+    expect(readTranscriptRecord({
+      record: {
+        ...assistant,
+        isSidechain: true,
+      },
+      subagent: true,
+    }).activity).toBe('finished')
+    expect(readTranscriptRecord({
+      record: {
+        type: 'user',
+        isCompactSummary: true,
+        message: { content: 'Context summary' },
+      },
+    }).activity).toBeUndefined()
   },
 )

@@ -1,3 +1,5 @@
+import { DEFAULT_COLUMNS, migrateDefaultRule } from '#tasks/column-defaults.ts'
+import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -81,7 +83,7 @@ test(
     const worker = await hydra.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('Write the CSV export')
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
 
     expect((await hydra.ownerRefused({
       args: [
@@ -157,12 +159,11 @@ test(
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
+    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
 
-    await hydra.as({ session: worker }).run({
+    await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'build',
         'done',
         '--note',
@@ -171,7 +172,7 @@ test(
     })
     expect(await hydra.task({ key: 'build' })).toMatchObject({
       column: board.done,
-      status: 'done: Export written',
+      status: 'done',
     })
     expect((await hydra.task({ key: 'ship' })).readiness).toEqual({
       ready: true,
@@ -1153,8 +1154,7 @@ test(
     })
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'family',
         'done',
         '--note',
@@ -1175,8 +1175,7 @@ test(
     ])
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'part',
         'done',
         '--note',
@@ -1197,8 +1196,7 @@ test(
     ])
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'second-part',
         'done',
         '--note',
@@ -1214,12 +1212,9 @@ test(
     })[0]?.done_at).toBeTypeOf('string')
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'part',
-        'working',
-        '--note',
-        'Child resumed',
+        '--clear',
       ],
     })
     expect(rows({
@@ -1251,7 +1246,7 @@ test(
 )
 
 test(
-  'a retried write answers for its own declaration from the task as it is now, and with the task id alone once the task moved to another Hydra',
+  'a retried rename answers for its own operation from the task as it is now, and with the task id alone once the task moved to another Hydra',
   async () => {
     const hydra = await pnyx.hydra()
     const other = await pnyx.hydra()
@@ -1269,33 +1264,28 @@ test(
     const taskId = created.card.id as string
     const declare = [
       'task',
-      'status',
+      'rename',
       'retried',
-      'working',
-      '--note',
+      '--title',
       'First pass',
       '--event-id',
       'retried-declaration',
     ]
     const first = await hydra.owner({ args: declare })
-    expect(first.notification).toContain('No Hydra wake')
     const later = await hydra.owner({
       args: [
         'task',
-        'status',
+        'rename',
         taskId,
-        'blocked',
-        '--note',
+        '--title',
         'Waiting on access',
       ],
     })
-    expect(later.notification).toContain('Hydra wake eligible')
     expect(later.card.revision).toBeGreaterThan(first.card.revision)
 
     const retried = await hydra.owner({ args: declare })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
-    expect(retried.notification).toBe(first.notification)
     expect(retried.card).toEqual(later.card)
 
     await hydra.owner({
@@ -1381,7 +1371,7 @@ test(
 )
 
 test(
-  'untracked and hook pushes refuse grandchildren before persisting them',
+  'untracked pushes refuse grandchildren and hook observations remain separate sessions',
   async () => {
     const id = 'unconfigured-depth'
     const folder = join(
@@ -1444,7 +1434,7 @@ test(
         parent: 'untracked-child',
       }),
     })).code).toBe('VALIDATION_ERROR')
-    expect((await hydra.ownerRefused({
+    await hydra.owner({
       args: [
         'push',
         '--key',
@@ -1465,7 +1455,7 @@ test(
           observedAt: '2026-11-17T00:00:00Z',
         },
       }),
-    })).code).toBe('VALIDATION_ERROR')
+    })
     expect((await hydra.ownerRefused({
       args: [
         'task',
@@ -2006,17 +1996,12 @@ test(
       })).code).toBe('VALIDATION_ERROR')
     }
 
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'questions',
-        'needs_you',
-        '--note',
-        'Ready for review',
-      ],
+    await workerLine({
+      hydra,
+      key: 'questions',
+      line: 'needs-you: Ready for review',
     })
-    const inProgress = await hydra.column({ role: 'in_progress' })
+    const inProgress = await hydra.column({ role: 'queued' })
     expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
     const beforeReminder = await hydra.owner({
       args: [
@@ -2026,7 +2011,7 @@ test(
         '--full',
       ],
     })
-    expect(beforeReminder.task.status).toMatchObject({ state: 'needs_you' })
+    expect(beforeReminder.task.workerLog.status).toMatchObject({ code: 'needs-you' })
 
     const confirmColumnChange = async ({ args }: { args: string[] }) => {
       const preview = await hydra.owner({ args })
@@ -2106,7 +2091,7 @@ test(
         '--full',
       ],
     })
-    expect(afterReminder.task.status).toEqual(beforeReminder.task.status)
+    expect(afterReminder.task.workerLog).toEqual(beforeReminder.task.workerLog)
     const updates = await hydra.owner({
       args: [
         'task',
@@ -2899,5 +2884,31 @@ test(
         'questions',
       ],
     })).count).toBe(0)
+  },
+)
+
+test(
+  'the preceding default working rule is removed without changing custom placement rules',
+  () => {
+    const current = DEFAULT_COLUMNS.find(column => column.role === 'in_progress')!
+    const previous = {
+      ...current,
+      rule: [
+        [
+          '!owner-question',
+          '!done',
+          '!held',
+          '!queued',
+          'worker:working',
+        ],
+        ...current.rule,
+      ],
+    } as typeof current
+    expect(migrateDefaultRule({ column: previous }).rule).toEqual(current.rule)
+    const custom = {
+      ...previous,
+      rule: [['worker:working']],
+    } as typeof current
+    expect(migrateDefaultRule({ column: custom }).rule).toEqual([['worker:working']])
   },
 )

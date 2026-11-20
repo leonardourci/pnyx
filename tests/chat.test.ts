@@ -1,3 +1,4 @@
+import { workerLine } from './setup/worker-log.ts'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -354,16 +355,7 @@ test(
         'Invoices ready to upload',
       ],
     })
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'export',
-        'working',
-        '--note',
-        'Upload started',
-      ],
-    })
+    await workerLine({ hydra, key: 'export', line: 'note: Upload started' })
     await hydra.as({ session: worker }).run({
       args: [
         'hydra',
@@ -391,15 +383,17 @@ test(
         reportFile,
       ],
     })
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'export',
-        'blocked',
-        '--note',
-        'Need the SFTP password',
-      ],
+    const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'note: Quiet latest line',
+    })
+    expect(queueBox({ hydraId: hydra.id })?.waiting).toHaveLength(beforeNote ?? 0)
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'blocked: Need the SFTP password',
     })
     const waiting = await until({
       what: 'the report and the status to wait for Hydra',
@@ -1028,6 +1022,11 @@ test(
       ],
     })
     await hydra.agent({ cwd: folder })
+    await workerLine({
+      hydra,
+      key: 'invoices',
+      line: 'blocked: Retry the export',
+    })
     const helper = await until({
       what: 'the routine helper to take the worker\'s update',
       check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === hydra.id

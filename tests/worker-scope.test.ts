@@ -1,3 +1,4 @@
+import { workerLine } from './setup/worker-log.ts'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -67,47 +68,51 @@ test(
     const { fontSize } = await settingsOf()
 
     const refused = {
-      'status on another task': [
+      'question on another task': [
         'task',
-        'status',
+        'ask',
         'other',
-        'done',
-        '--note',
-        'not mine',
+        '--question',
+        'May I continue?',
+
       ],
-      'status on another task by id': [
+      'question on another task by id': [
         'task',
-        'status',
+        'ask',
         other.id,
-        'done',
+        '--question',
+        'May I continue?',
       ],
-      'status on another task claiming to be Hydra': [
+      'question on another task claiming to be Hydra': [
         'task',
-        'status',
+        'ask',
         'other',
-        'done',
+        '--question',
+        'May I continue?',
         '--actor',
         'hydra',
         '--reason',
         'not mine',
       ],
-      'status on another task claiming to be its worker': [
+      'question on another task claiming to be its worker': [
         'task',
-        'status',
+        'ask',
         'other',
-        'done',
+        '--question',
+        'May I continue?',
         '--actor',
         `worker:${other.id}`,
       ],
-      'status on its own task claiming to be the owner': [
+      'question on its own task claiming to be the owner': [
         'task',
-        'status',
+        'ask',
         'mine',
-        'done',
+        '--question',
+        'May I continue?',
         '--actor',
         'web',
       ],
-      'status through apply': [
+      'a question through apply': [
         'apply',
         '--json',
         '{}',
@@ -213,30 +218,18 @@ test(
 )
 
 test(
-  'a worker\'s own status, question, link, progress message, report, report review and sources work, and it reads any task, Hydra and setting',
+  'a worker\'s own question, link, progress message, report, report review and sources work, and it reads any task, Hydra and setting',
   async () => {
-    await asWorker.run({
-      args: [
-        'task',
-        'status',
-        'mine',
-        'working',
-        '--note',
-        'On it',
-      ],
+    await workerLine({
+      hydra,
+      key: 'mine',
+      line: 'note: On it',
     })
-    expect((await hydra.task({ key: 'mine' })).status).toBe('working: On it')
-    await asWorker.run({
-      args: [
-        'task',
-        'status',
-        mine.id,
-        'working',
-        '--note',
-        'Still on it',
-        '--actor',
-        `worker:${mine.id}`,
-      ],
+    expect((await hydra.task({ key: 'mine' })).status).toBe('idle')
+    await workerLine({
+      hydra,
+      key: 'mine',
+      line: 'note: Still on it',
     })
     await asWorker.run({
       args: [
@@ -466,11 +459,11 @@ test(
     const run = await pnyxAxi({
       args: [
         'task',
-        'status',
+        'ask',
         'mine',
-        'done',
-        '--note',
-        'not mine',
+        '--question',
+        'May I continue?',
+
       ],
       env: worker.env,
     })
@@ -494,9 +487,10 @@ test(
     for (const args of [
       [
         'task',
-        'status',
+        'ask',
         'other',
-        'done',
+        '--question',
+        'May I continue?',
       ],
       [
         'settings',
@@ -548,12 +542,10 @@ test(
 
     await asCommand.run({
       args: [
-        'task',
-        'status',
+        'link',
         'mine',
-        'working',
-        '--note',
-        'From the command',
+        '--url',
+        'https://example.com/command',
       ],
     })
     const history = await hydra.owner({
@@ -563,10 +555,10 @@ test(
         'mine',
       ],
     })
-    expect(history.events[0]).toMatchObject({
-      type: 'task.declared',
+    expect(history.events).toContainEqual(expect.objectContaining({
+      type: 'card.linked',
       actor: `worker:${mine.id}`,
-    })
+    }))
   },
 )
 
@@ -584,9 +576,10 @@ test(
     const elsewhere = await asUnnamed.refused({
       args: [
         'task',
-        'status',
+        'ask',
         'other',
-        'done',
+        '--question',
+        'May I continue?',
         '--actor',
         'cli',
       ],
@@ -595,9 +588,10 @@ test(
     const unnamed = await asUnnamed.refused({
       args: [
         'task',
-        'status',
+        'ask',
         'mine',
-        'working',
+        '--question',
+        'May I continue?',
       ],
     })
     expect(unnamed.code).toBe('WORKER_SCOPE')
@@ -606,14 +600,12 @@ test(
 
     await asUnnamed.run({
       args: [
-        'task',
-        'status',
+        'link',
         'mine',
-        'working',
+        '--url',
+        'https://example.com/unnamed',
         '--actor',
         `worker:${mine.id}`,
-        '--note',
-        'Named again',
       ],
     })
   },
@@ -625,9 +617,10 @@ test(
     const unknown = await asWorker.refused({
       args: [
         'task',
-        'status',
+        'ask',
         'nope',
-        'done',
+        '--question',
+        'May I continue?',
       ],
     })
     expect(unknown.code).toBe('NOT_FOUND')
@@ -663,7 +656,7 @@ test(
     })
     expect(logs.code).toBe('WORKER_SCOPE')
     expect(logs.error).toContain('refused for a worker')
-    expect(logs.help?.[0]).toContain('A worker may run on its own task: task status, ')
+    expect(logs.help?.[0]).toContain('A worker may run on its own task: task ask, ')
   },
 )
 
@@ -738,16 +731,13 @@ test(
     await asHydra.run({
       args: [
         'task',
-        'status',
+        'hold',
         'other',
-        'paused',
-        '--note',
-        'Hydra paused it',
         '--reason',
-        'the owner asked',
+        'Hydra paused it',
       ],
     })
-    expect(await statusOfOther()).toBe('paused: Hydra paused it')
+    expect(await statusOfOther()).toBe('on hold')
     await asHydra.run({
       args: [
         'settings',
@@ -762,13 +752,12 @@ test(
     await hydra.owner({
       args: [
         'task',
-        'status',
+        'hold',
         'other',
-        'paused',
-        '--note',
+        '--reason',
         'Owner paused it',
       ],
     })
-    expect(await statusOfOther()).toBe('paused: Owner paused it')
+    expect(await statusOfOther()).toBe('on hold')
   },
 )

@@ -1,3 +1,4 @@
+import { workerLine } from './setup/worker-log.ts'
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import { connect } from 'node:net'
@@ -157,7 +158,7 @@ const raw = ({
 })
 
 test(
-  'a worker acts as itself: its declaration lands on its own card, and owner-only commands are refused without effect',
+  'a worker acts as itself: its worker line lands on its own task, and owner-only commands are refused without effect',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'app' })
@@ -185,15 +186,10 @@ test(
     expect(worker.env.PNYX_ACTOR).toMatch(/^worker:task-/)
     expect(worker.env.PNYX_HOME).toBe(process.env.PNYX_HOME)
 
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'export',
-        'working',
-        '--note',
-        'Reproduced the bad export',
-      ],
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'note: Reproduced the bad export',
     })
     expect((await hydra.owner({
       args: [
@@ -201,7 +197,7 @@ test(
         'show',
         'export',
       ],
-    })).task.status).toBe('working: Reproduced the bad export')
+    })).task.status).toBe('idle')
 
     for (const args of [
       ['upgrade'],
@@ -598,15 +594,10 @@ test(
         steering,
       ],
     })
-    await hydra.owner({
-      args: [
-        'task',
-        'status',
-        'parked',
-        'blocked',
-        '--note',
-        'Waiting on the owner',
-      ],
+    await workerLine({
+      hydra,
+      key: 'parked',
+      line: 'blocked: Waiting on the owner',
     })
     await hydra.owner({
       args: [
@@ -653,14 +644,14 @@ test(
       check: async () => {
         const read = await readRows<{
           id: string
-          reference?: { data: { status?: { state: string } } }
+          reference?: { data: { workerLog?: { status?: { code: string } } } }
         }[]>({
           url: `${origin}/zero`,
           cookie,
           query: ({ zero }) => zero.materialize(queries.cards.references({ hydraId: hydra.id })),
         })
 
-        return read.rows.find(row => row.id === parked)?.reference?.data.status?.state === 'blocked' && read
+        return read.rows.find(row => row.id === parked)?.reference?.data.workerLog?.status?.code === 'blocked' && read
       },
     })
     expect(references.frames.some(frame => frame.includes(steering))).toBe(false)

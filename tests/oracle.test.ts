@@ -1,3 +1,4 @@
+import { workerLine } from './setup/worker-log.ts'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { loadHydra } from '#app/store.ts'
@@ -95,21 +96,16 @@ test(
       what: 'the worker\'s turn',
       check: () => worker.answered === 1,
     })
-    await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'status',
-        'export',
-        'working',
-        '--note',
-        'Found the cron drift in the scheduler',
-      ],
+    await workerLine({
+      hydra,
+      key: 'export',
+      line: 'note: Found the cron drift in the scheduler',
     })
 
-    expect((await search({
+    expect(await search({
       hydra,
       args: ['cron drift'],
-    }) as Result[]).map(result => result.title)).toEqual(['Invoice export nightly'])
+    })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
     expect(await search({
       hydra,
       args: ['zebracorn'],
@@ -142,8 +138,7 @@ test(
 
     await hydra.owner({
       args: [
-        'task',
-        'status',
+        'outcome',
         'closed',
         'done',
       ],
@@ -349,27 +344,27 @@ test(
         'preview-family',
       ],
     })
+    const held = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes(`<pnyx-worker task="${child.card.id}"`),
+      reply: 'Child turn complete',
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        child.card.id,
+        '--folder',
+        hydra.folder({ name: 'preview-child' }),
+      ],
+    })
+    await until({
+      what: 'the child turn to start',
+      check: async () => (await hydra.task({ key: child.card.id })).status === 'running',
+    })
     const state = structuredClone(loadHydra({ hydraId: hydra.id }).state)
-    const actions: Record<string, CurrentAction> = {
-      [child.card.id]: {
-        calls: [],
-        done: false,
-        work: {
-          runningTurns: ['live-turn'],
-          runningTools: [],
-          unsettledInputs: [],
-          pendingControls: [],
-          queue: {
-            knowledge: 'known',
-            count: 0,
-          },
-          background: {
-            knowledge: 'known',
-            tasks: [],
-          },
-        },
-      },
-    }
+    const actions: Record<string, CurrentAction> = {}
     // Web modules are source-only; a runtime import keeps them out of the CLI's TypeScript emit graph.
     const resultsModule: string = '#web-oracle/results.ts'
     const previewModule: string = '#web-oracle/oracle-preview.tsx'
@@ -408,5 +403,6 @@ test(
     ))
     expect(markup).toContain('activity-working')
     expect(markup).toContain('Running')
+    held.release()
   },
 )
