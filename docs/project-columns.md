@@ -147,7 +147,7 @@ Open: profile the dense view before and after the performance changes, using Chr
 
 ### Large-workspace stress findings
 
-The 628-task, six-Hydra stress run blocks the merge. Every Hydra, project column, card and loaded task update stays mounted while scrolling. Project columns and cards render normally without paint skipping. Update rows use `content-visibility: auto` with intrinsic sizes so the browser can skip their off-screen rendering. Activity reads all update pages when opened. Drafts, selection, family folds and scroll offsets remain in their existing stores.
+The 628-task, six-Hydra stress run blocks the merge. Every Hydra, project column, card and loaded task update stays mounted while scrolling. Project columns and cards render normally without paint skipping. Update rows use `content-visibility: auto` with intrinsic sizes so the browser can skip their off-screen rendering. Activity reads all update pages when opened. Selecting a project unfolds its column immediately before scrolling it into view. Drafts, selection, family folds and scroll offsets remain in their existing stores.
 
 Scrolling uses one shared Lenis frame loop. A task's modal action selects it without waiting for inline-card scrolling. The addressed Hydra stays anchored as other Hydra widths load. Open: validate and fix the stress findings, then await Hydra's stress-complete signal before the single final deslop and CI approval.
 
