@@ -862,7 +862,6 @@ type ThreadRead = {
   hydraId: string
   state: HydraState
   card: Card
-  homes: string[]
   before?: string
   selectedSession?: boolean
   allTraces?: boolean
@@ -873,7 +872,6 @@ export function readThread({
   hydraId,
   state,
   card,
-  homes,
   before,
   selectedSession,
   allTraces,
@@ -883,7 +881,6 @@ export function readThread({
     hydraId,
     state,
     card,
-    homes,
     before,
     selectedSession,
     allTraces,
@@ -905,16 +902,12 @@ function readThreadPage(
     hydraId,
     state,
     card,
-    homes,
     before,
     selectedSession,
     allTraces,
   }: ThreadRead,
 ): ThreadPage {
-  const found = replyRoute({
-    card,
-    homes,
-  })
+  const found = replyRoute({ card })
   const session = cardSessionId({ card })
   const result: ThreadPage = {
     card: card.id,

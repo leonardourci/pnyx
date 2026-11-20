@@ -413,7 +413,7 @@ test(
 )
 
 test(
-  'removal refuses the caller and Firstmate, and Settings uses the same confirmation',
+  'removal refuses the caller, and Settings uses the same confirmation',
   async () => {
     const caller = await pnyx.hydra()
     expect((await caller.ownerRefused({
@@ -421,22 +421,6 @@ test(
         'hydra',
         'remove',
         caller.id,
-      ],
-    })).code).toBe('CONFLICT')
-    const firstmate = await pnyx.hydra()
-    await firstmate.owner({
-      args: [
-        'hydra',
-        'set',
-        '--firstmate',
-        firstmate.folder({ name: 'home' }),
-      ],
-    })
-    expect((await caller.ownerRefused({
-      args: [
-        'hydra',
-        'remove',
-        firstmate.id,
       ],
     })).code).toBe('CONFLICT')
     const target = await pnyx.hydra()

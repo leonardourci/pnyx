@@ -6,7 +6,6 @@ import { checkMemoryApproval, readableProjects, polisAccess, hydraPolisConfig, m
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { basename } from 'node:path'
 import { parse, WRITE, required, meta, commit, guard, type Options, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { hydraIds, hydraDir } from '#app/home-migration.ts'
@@ -14,9 +13,7 @@ import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
 import { hydraConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
-import { firstmateHomes } from '#integrations/cli.ts'
 import { HydraError } from '#store/errors.ts'
-import { canonical } from '#store/paths.ts'
 import { findSession } from '#workers/session-attachments.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
@@ -27,7 +24,7 @@ import { hydraMessages, hydraSend } from './send-cli.ts'
 import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
 import { startHydra } from './start.ts'
-import { HYDRA_CARD, homeHydraId } from './identity.ts'
+import { HYDRA_CARD } from './identity.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt, shownSettings } from '#settings/store.ts'
 import { SETTING_FLAGS, sharedSettingFlags, visibleSettings } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
@@ -80,10 +77,8 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       position: { type: 'string' },
       identity: { type: 'string' },
       session: { type: 'string' },
-      firstmate: { type: 'string' },
       command: { type: 'string' },
       'command-folder': { type: 'string' },
-      base: { type: 'string' },
       'done-after-hours': { type: 'string' },
       'review-minutes': { type: 'string' },
       helper: { type: 'string' },
@@ -95,10 +90,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     positionals: 2,
   })
   const action = positionals[0]
-
-  if (action === 'homes') {
-    return firstmateHomes({ base: values.base as string | undefined })
-  }
 
   if (action === 'list') {
     const hydras = hydraIds()
@@ -130,7 +121,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           id,
           name: config.name,
           hydra: config.hydra.id,
-          kind: config.hydra.kind,
           tasks,
         }
       }),
@@ -140,11 +130,10 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   const id = action !== 'create'
     ? hydraId
-    : positionals[1]
-      ?? (values.firstmate ? homeHydraId({ name: basename(String(values.firstmate)) }) : required({
-        value: undefined,
-        what: 'Hydra id',
-      }))
+    : required({
+      value: positionals[1],
+      what: 'Hydra id',
+    })
   hydraDir({ hydraId: id })
 
   if (loadHydra({ hydraId: id }).state.config?.removed) {
@@ -194,7 +183,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'create' && action !== 'set') {
     throw new HydraError({
-      message: 'Use hydra create <id>, list, homes, show or set',
+      message: 'Use hydra create <id>, list, show or set',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -204,9 +193,8 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     values,
     hydraId: id,
   })
-  // --base only shapes hydra homes, so on set it changes nothing in the Hydra.
   const hydraFlags = Object.keys(values).some(flag => values[flag] !== undefined
-    && !SETTING_FLAGS.includes(flag) && !(flag in WRITE) && flag !== 'base')
+    && !SETTING_FLAGS.includes(flag) && !(flag in WRITE))
   const onlySettings = shared !== undefined && action === 'set' && !hydraFlags
 
   if (shared) {
@@ -291,14 +279,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         what: '--identity',
       })
       const kept = identity === current.hydra.id ? current.hydra : undefined
-      const home = canonical({ path: values.firstmate })
-
-      if (values.firstmate && !home) {
-        throw new HydraError({
-          message: '--firstmate must be an absolute home path',
-          code: 'VALIDATION_ERROR',
-        })
-      }
 
       const session = values.session ? findSession({
         state,
@@ -330,19 +310,13 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
       const hydra: HydraIdentity = {
         name: 'Hydra',
-        kind: 'agent',
         ...kept,
         id: identity,
-        ...(home ? {
-          kind: 'firstmate',
-          home,
-        } : {}),
         ...(session ? { session: session.id } : {}),
       }
 
       const command = values.command === undefined ? current.command : String(values.command).trim()
-      // A new Hydra without a name takes a Greek one and its icon; a Firstmate Hydra keeps its home's name.
-      const named = action === 'create' && values.name === undefined && !home && !state.config
+      const named = action === 'create' && values.name === undefined && !state.config
         ? pickName({ taken: otherHydraNames({ id }) })
         : undefined
       const data: HydraConfig = {
@@ -492,7 +466,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
   }
 }
 
-// What `hydra send` and Hydra's other commands take; create, list, homes, show and set take their own.
 export const HYDRA_OPTIONS: Options = {
   ...WRITE,
   ...MESSAGE_LOOKUP_OPTIONS,
@@ -513,12 +486,9 @@ export const HYDRA_OPTIONS: Options = {
   full: { type: 'boolean' },
   inscribe: { type: 'boolean' },
   via: { type: 'string' },
-  rule: { type: 'string' },
   harness: { type: 'string' },
   prompt: { type: 'string' },
   folder: { type: 'string' },
-  home: { type: 'string' },
-  'paseo-url': { type: 'string' },
 }
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
@@ -544,7 +514,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if ([
     'create',
     'list',
-    'homes',
     'show',
     'set',
   ].includes(args[0] ?? '')) {
@@ -621,12 +590,9 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return startHydra({
       hydraId,
       via: values.via as string | undefined,
-      rule: values.rule as string | undefined,
       harness: values.harness as string | undefined,
       prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
-      home: values.home as string | undefined,
-      url: values['paseo-url'] as string | undefined,
       meta: meta({ values }),
     })
   }
