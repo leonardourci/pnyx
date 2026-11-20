@@ -1,8 +1,5 @@
 import { kept } from '#web-shared/stable.ts'
-import { useSessionView, sessionViewKey } from '#web-app/session-view.ts'
-import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -12,12 +9,11 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import { VIEW_SIZE_LIMITS, traces } from '#preferences/view.ts'
 import { knownCards } from '#tasks/select.ts'
-import { RECENT_THREAD_PAGES, pageCount } from '#hydra/thread-history.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
-import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
+import { InlineButton } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { InlineQuestions } from '#web-tasks/questions.tsx'
@@ -31,18 +27,18 @@ import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
-import { flushSync } from 'react-dom'
 import { ActionBubble } from './action-bubble.tsx'
 import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { compactionRuns,hydraDown,keepStreamedKeys,noticesInTimeline,quoteInto,withTimedRows,type ChatComment } from './chat.ts'
-import { createChatFollow, watchHistoryFocus } from './chat-follow.ts'
-import { MESSAGE_SCROLL, centerMessage } from './comment-motion.ts'
+import { compactionRuns,hydraDown,keepStreamedKeys,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
+import { useChatScroll } from './chat-scroll.ts'
+import { useChatThread } from './chat-thread.ts'
+import { CHAT_FRAME, Chat } from './chat-view.tsx'
+import { centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
-import { historyRead, loadEarlierMessages, receiveConversation, retainArgs, stillFailed, type FailedRead, type HistoryMode } from './conversation-history.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { HydraHead } from './hydra-head.tsx'
 import { type HydraIdentity } from './hydra-title.tsx'
@@ -50,17 +46,6 @@ import { Messages,type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
 import { HYDRA_SEND_SETTLED,readUnsent,saveUnsent } from './outbox.ts'
 import { Running } from './running-indicator.tsx'
-import { motionDuration } from '#web-shared/motion.ts'
-
-// The share of the distance to the bottom that following covers per frame.
-const GLIDE = 0.3
-// How far above the screen the top of the conversation is when the next older page starts loading.
-const OLDER_MARGIN = '600px 0px 0px 0px'
-const UP_KEYS = new Set([
-  'PageUp',
-  'ArrowUp',
-  'Home',
-])
 
 // What the chat shows until the server's first queue arrives.
 const EMPTY_CHAT_QUEUE: HydraChatQueue = {
@@ -113,7 +98,7 @@ export function HydraChat({
   view,
   save,
   drafts,
-  liveThread,
+  liveThread: page,
   queue,
   identity,
   editHydra,
@@ -160,11 +145,13 @@ export function HydraChat({
   } = useDraftSnapshot({ drafts })
   const { setDraft } = drafts
   const waitingButton = useRef<HTMLButtonElement>(null)
+  const scroll = useChatScroll()
 
   useEffect(
     () => {
       if (new URLSearchParams(location.search).has('new-chat')) {
-        stream.current?.parentElement?.parentElement?.querySelector<HTMLTextAreaElement>('.composer textarea')?.focus()
+        scroll.scroller.current?.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+          ?.focus()
         const url = new URL(location.href)
         url.searchParams.delete('new-chat'); history.replaceState(
           null,
@@ -175,10 +162,6 @@ export function HydraChat({
     },
     [],
   )
-  const [
-    page,
-    setPage,
-  ] = useState<ThreadPage | null>(liveThread)
   const [
     width,
     setWidth,
@@ -193,135 +176,20 @@ export function HydraChat({
     ...item,
     confirmed: false,
   })))
-  const [
-    away,
-    setAway,
-  ] = useSessionView({
-    key: sessionViewKey({
-      scope: 'hydra',
-      id: storageIdentity,
-      field: 'chatAway',
-    }),
-    initial: false,
-  })
-  const rememberedScroll = useRememberedScroll({
-    key: sessionViewKey({
-      scope: 'hydra',
-      id: storageIdentity,
-      field: 'chatScroll',
-    }),
-  })
-  const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const [chatFollow] = useState(() => createChatFollow({
-    away,
-    changed: ({ away }) => setAway(away),
-  }))
-  const streamRef = useCallback(
-    // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
-    (node: HTMLDivElement | null) => {
-      stream.current = node
-      rememberedScroll.ref(node)
-    },
-    [rememberedScroll.ref],
-  )
-  const glide = useRef(0)
-  const touchY = useRef<number | undefined>(undefined)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
-  const selectionInHistory = useRef(false)
-  const [
-    selectedHistory,
-    setSelectedHistory,
-  ] = useState(false)
-  useEffect(
-    () => watchHistoryFocus({
-      host: () => content.current?.querySelector('.messages'),
-      changed: ({ selected }) => {
-        selectionInHistory.current = selected
-        setSelectedHistory(selected)
-      },
-    }),
-    [],
-  )
-  // The owner is reading while the chat is away or the messages hold their focus or selection. Handlers read the
-  // refs here; effects check the away and selectedHistory state instead, so they rerun when either changes.
-  const readingNow = () => !chatFollow.following() || selectionInHistory.current
-  const receivePage = ({
-    before,
-    latest,
-  }: {
-    before: ThreadPage | null
-    latest: ThreadPage
-  }) =>
-    receiveConversation({
-      before,
-      latest,
-      reading: readingNow(),
-    })
-  const retainedPage = useRef(page)
-  useLayoutEffect(
-    () => {
-      retainedPage.current = page
-    },
-    [page],
-  )
-  useEffect(
-    () => {
-      if (!connected || !card) {
-        return
-      }
-
-      let cancelled = false
-      const retained = retainedPage.current
-      const oldest = retained?.entries[0]
-      const args = retained && oldest ? retainArgs({
-        page: retained,
-        oldest,
-      }) : [HYDRA_CARD]
-
-      void command({
-        name: 'thread',
-        args,
-      }).then(result => {
-        if (!cancelled) {
-          setPage(before => receivePage({
-            before,
-            latest: result.thread as ThreadPage,
-          }))
-        }
-      })
-        .catch(() => {
-          if (!cancelled) {
-            notify({ text: 'Could not load the conversation. Reconnect to try again.' })
-          }
-        })
-
-      return () => {
-        cancelled = true
-      }
-    },
-    [
-      connected,
-      command,
-      card?.agent?.sessionId,
-      !!card,
-    ],
-  )
-  useEffect(
-    () => {
-      if (liveThread) {
-        setPage(before => receivePage({
-          before,
-          latest: liveThread,
-        }))
-      }
-    },
-    [liveThread],
-  )
+  const thread = useChatThread({
+    card: HYDRA_CARD,
+    session: card?.agent?.sessionId,
+    page,
+    command,
+    connected: connected && !!card,
+    scroll,
+  })
   const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
   const held = new Set(chatQueue.held)
   const pending = sending.filter(item => {
@@ -478,14 +346,7 @@ export function HydraChat({
       sending.length,
     ],
   )
-  const [
-    loadingEarlier,
-    setLoadingEarlier,
-  ] = useState(false)
   const olderCursor = page?.older
-  const olderMarker = useRef<HTMLDivElement>(null)
-  // The older page whose read failed, which is not read again on its own.
-  const failedOlder = useRef<string>(undefined)
   const conversation = page?.conversation
   const chat = {
     entries: conversation?.entries ?? [],
@@ -633,266 +494,15 @@ export function HydraChat({
     [hydraId],
   )
 
-  const threadSession = useRef(card?.agent?.sessionId)
-  useLayoutEffect(
-    () => {
-      threadSession.current = card?.agent?.sessionId
-    },
-    [card?.agent?.sessionId],
-  )
-
-  const historyRequest = useRef<{
-    id: number
-    mode: HistoryMode
-  } | null>(null)
-  const historyGeneration = useRef(0)
-  // The server keeps only the recent pages, or a read asking it to is on its way.
-  const serverTrims = () => page?.recent === true || liveThread?.recent === true
-    || historyRequest.current?.mode === 'recent'
-  const failedHistory = useRef<FailedRead>(undefined)
-  useEffect(
-    () => {
-      failedHistory.current = stillFailed({
-        failed: failedHistory.current,
-        away,
-        selected: selectedHistory,
-        connected,
-      })
-
-      if (!connected || !page || loadingEarlier) {
-        return
-      }
-
-      const mode = historyRead({
-        page,
-        reading: away || selectedHistory,
-        serverTrims: serverTrims(),
-        pending: historyRequest.current?.mode,
-        failed: failedHistory.current?.mode,
-      })
-
-      if (!mode) {
-        return
-      }
-
-      const id = ++historyGeneration.current
-      historyRequest.current = {
-        id,
-        mode,
-      }
-      const session = threadSession.current
-
-      const recentArgs = [
-        HYDRA_CARD,
-        '--recent',
-      ]
-      // A retaining read only comes for a page that holds entries.
-      const oldest = page.entries[0]
-      const args = mode === 'retain' && oldest ? retainArgs({
-        page,
-        oldest,
-      }) : recentArgs
-
-      const read = async () => {
-        try {
-          const result = await command({
-            name: 'thread',
-            args,
-          })
-
-          const current = historyRequest.current?.id === id
-          const reading = readingNow()
-
-          if (threadSession.current === session && current && (mode !== 'recent' || !reading)) {
-            const latest = result.thread as ThreadPage
-            setPage(before => receivePage({
-              before,
-              latest,
-            }))
-          }
-        } catch (error) {
-          if (!(error instanceof CommandFailure && error.code === 'THREAD_SUPERSEDED')) {
-            failedHistory.current = {
-              mode,
-              away,
-              selected: selectedHistory,
-              connected,
-            }
-            notify({ text: (error as Error).message })
-          }
-        } finally {
-          if (historyRequest.current?.id === id) {
-            historyRequest.current = null
-          }
-        }
-      }
-
-      read()
-    },
-    [
-      connected,
-      page,
-      away,
-      selectedHistory,
-      liveThread,
-      loadingEarlier,
-      command,
-    ],
-  )
-
-  const loadEarlier = async ({
-    until,
-    message,
-    keepFollowing = false,
-  }: {
-    until?: string
-    message?: string
-    // The owner at the bottom of the chat stays there while older messages join above.
-    keepFollowing?: boolean
-  }) => {
-    if (!keepFollowing) {
-      stopFollowing()
-    }
-
-    const session = threadSession.current
-    let current = page
-
-    const oldest = page?.entries[0]
-
-    if (page && oldest && serverTrims()) {
-      const restored = await command({
-        name: 'thread',
-        args: retainArgs({
-          page,
-          oldest,
-        }),
-      })
-      current = restored.thread as ThreadPage
-    }
-
-    const earlier = await loadEarlierMessages({
-      past: current,
-      cursor: current?.older,
-      until,
-      message,
-      load: async ({ before }) => {
-        const result = await command({
-          name: 'thread',
-          args: [
-            HYDRA_CARD,
-            before,
-          ],
-        })
-
-        return result.thread as ThreadPage
-      },
-    })
-
-    if (threadSession.current === session) {
-      if (earlier) {
-        // The source row must be committed before its caller reads the note and passage from the DOM.
-        flushSync(() => setPage(before => receivePage({
-          before,
-          latest: earlier,
-        })))
-      }
-    }
-  }
-
-  // The next older page loads when the top of the conversation nears the screen, and the messages the owner reads stay
-  // where they are.
-  const loadOlder = async () => {
-    const scroller = stream.current
-
-    if (!scroller || loadingEarlier || !connected || failedOlder.current === olderCursor) {
-      return
-    }
-
-    setLoadingEarlier(true)
-
-    try {
-      await loadEarlier({ keepFollowing: true })
-    } catch (error) {
-      failedOlder.current = olderCursor
-      notify({ text: (error as Error).message })
-    } finally {
-      setLoadingEarlier(false)
-    }
-  }
-
-  useEffect(
-    () => {
-      const marker = olderMarker.current
-
-      if (!connected) {
-        failedOlder.current = undefined
-      }
-
-      // At the bottom the chat keeps only the recent pages, so an older page read there would be trimmed again.
-      const reading = away || selectedHistory
-      const windowFull = !reading && !!page && pageCount({ page }) >= RECENT_THREAD_PAGES
-      const idle = !olderCursor || loadingEarlier || !connected || windowFull
-
-      if (!marker || !stream.current || idle) {
-        return
-      }
-
-      const observer = new IntersectionObserver(
-        // eslint-disable-next-line pnyx/object-params -- IntersectionObserver owns this callback's signature.
-        async reached => {
-          if (reached.some(entry => entry.isIntersecting)) {
-            await loadOlder()
-          }
-        },
-        {
-          root: stream.current,
-          rootMargin: OLDER_MARGIN,
-        },
-      )
-      observer.observe(marker)
-
-      return () => observer.disconnect()
-    },
-    [
-      olderCursor,
-      loadingEarlier,
-      connected,
-      away,
-      selectedHistory,
-      page?.pages,
-    ],
-  )
-
-  const loadComment = async ({ comment }: { comment: ChatComment }) => {
-    stopFollowing()
-    const selector = `[data-comment-id="${CSS.escape(comment.id)}"] textarea`
-
-    if (content.current?.querySelector(selector)) {
-      return
-    }
-
-    setLoadingEarlier(true)
-
-    try {
-      await loadEarlier({
-        until: comment.at,
-        message: comment.messageId,
-      })
-    } finally {
-      setLoadingEarlier(false)
-    }
-  }
-
   const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
-    stopFollowing()
-    setLoadingEarlier(true)
+    scroll.read()
 
     try {
       const selector = `[data-entry-id="${CSS.escape(decision.id)}"]`
-      const target = () => stream.current?.querySelector<HTMLElement>(selector)
+      const target = () => scroll.scroller.current?.querySelector<HTMLElement>(selector)
 
       if (!target()) {
-        await loadEarlier({ until: decision.at })
+        await thread.loadEarlier({ until: decision.at })
       }
 
       requestAnimationFrame(() => {
@@ -905,8 +515,6 @@ export function HydraChat({
       })
     } catch (error) {
       notify({ text: (error as Error).message })
-    } finally {
-      setLoadingEarlier(false)
     }
   }
 
@@ -924,109 +532,6 @@ export function HydraChat({
   // A send counts from the owner's message until the server says the turn began.
   const since = (working ? card?.workingSince : undefined)
     ?? inFlight.at(-1)?.at ?? null
-
-  const bottom = () => {
-    const element = stream.current
-
-    if (element) {
-      element.scrollTop = element.scrollHeight
-    }
-  }
-
-  // Following eases toward the bottom; any input of the owner's stops it at once.
-  const settle = () => {
-    const element = stream.current
-    glide.current = 0
-
-    if (!element || !chatFollow.following()) {
-      return
-    }
-
-    const left = element.scrollHeight - element.clientHeight - element.scrollTop
-
-    if (left >= 1) {
-      element.scrollTop += Math.ceil(left * GLIDE)
-      glide.current = requestAnimationFrame(settle)
-    }
-  }
-
-  const stopGlide = () => {
-    cancelAnimationFrame(glide.current)
-    glide.current = 0
-  }
-
-  const ownerScroll = () => {
-    chatFollow.input({ at: performance.now() })
-    stopGlide()
-  }
-
-  const stopFollowing = () => {
-    chatFollow.stop()
-    stopGlide()
-  }
-
-  // A chat too short to scroll has no scroll event to leave the bottom, so an upward wheel, key or touch at its top does.
-  const reachOlder = () => {
-    if (stream.current?.scrollTop === 0 && olderCursor) {
-      stopFollowing()
-    }
-  }
-
-  const expandRow = ({ target }: { target: EventTarget }) => {
-    if (target instanceof Element && target.closest('summary')) {
-      chatFollow.expand({ at: performance.now() })
-      stopGlide()
-    }
-  }
-
-  useLayoutEffect(
-    () => {
-      const element = content.current
-
-      if (!element || !stream.current) {
-        return
-      }
-
-      const scroller = stream.current
-      const observer = new ResizeObserver(() => {
-        // One side of the stream's scrollbar gutter (0 with overlay scrollbars), for --chat-inset in index.css.
-        scroller.closest<HTMLElement>('.hydra-chat')?.style.setProperty(
-          '--chat-scrollbar',
-          `${(scroller.offsetWidth - scroller.clientWidth) / 2}px`,
-        )
-
-        if (!chatFollow.following() || glide.current) {
-          return
-        }
-
-        const left = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
-
-        // A page load or a jump of more than a screen snaps; only a growing reply glides.
-        if (left > scroller.clientHeight || motionDuration() === 0) {
-          bottom()
-        } else {
-          glide.current = requestAnimationFrame(settle)
-        }
-      })
-      observer.observe(element)
-      observer.observe(scroller)
-
-      scroller.addEventListener(
-        MESSAGE_SCROLL,
-        stopFollowing,
-      )
-
-      return () => {
-        observer.disconnect()
-        cancelAnimationFrame(glide.current)
-        scroller.removeEventListener(
-          MESSAGE_SCROLL,
-          stopFollowing,
-        )
-      }
-    },
-    [],
-  )
 
   const sendAgain = async ({
     task,
@@ -1100,7 +605,7 @@ export function HydraChat({
         })
       }
 
-      chatFollow.resume()
+      scroll.toEnd()
       streamingAtSend.current = new Set(previousEntries.current.filter(entry => entry.streaming)
         .map(entry => entry.id))
       lastSend.current = id
@@ -1119,8 +624,6 @@ export function HydraChat({
           confirmed: false,
         },
       ])
-      requestAnimationFrame(bottom)
-
       const result = await command({
         name: 'hydra',
         args: [
@@ -1206,10 +709,28 @@ export function HydraChat({
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const down = hosted ? hydraDown({ status: state.hydraStatus }) : undefined
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
+  const showsTools = traces({
+    view,
+    card: HYDRA_CARD,
+  }).tools
+  const statusLine = running && !compacting ? (
+    <TaskReferencesProvider references={references} openTask={openTask}>
+      <Running
+        since={since}
+        running={running}
+        label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
+        reading={queue.reading}
+        waiting={queue.waiting}
+        state={state}
+      >
+        {showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
+      </Running>
+    </TaskReferencesProvider>
+  ) : null
 
   return (
     <aside
-      className="hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-70 max-phone:basis-70 [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto"
+      className={`hydra-chat relative flex-none min-h-0 flex flex-col border border-line rounded-xl bg-surface overflow-visible max-phone:w-70 max-phone:basis-70 ${CHAT_FRAME}`}
       aria-label="Hydra’s chat"
       style={{
         width: width ?? view.hydraWidth,
@@ -1226,199 +747,104 @@ export function HydraChat({
       >
         {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
       </HydraHead>
-      <div className="hydra-body relative flex-1 min-h-0 flex flex-col">
-        <div
-          className="hydra-messages thread flex-1 min-w-0 min-h-0 overflow-auto pt-2.5 px-(--chat-pad) pb-(--chat-end) block [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] focus-visible:-outline-offset-3"
-          ref={streamRef}
-          data-key-scope="thread"
-          role="region"
-          aria-label="Hydra conversation"
-          data-away={away || undefined}
-          tabIndex={0}
-          onWheel={event => {
-            ownerScroll()
+      <Chat
+        title="Hydra"
+        scroll={scroll}
+        older={thread.older}
+        loadingEarlier={thread.loadingEarlier}
+        error={thread.error}
+        status={statusLine}
+        notify={notify}
+      >
+        <Messages
+          catalog={catalog}
+          labelColors={state.labelColors}
+          folds={chat.folds}
+          trailing={chat.trailing}
+          timings={chat.timings}
+          inline={inline}
+          entries={entries}
+          lookup={lookup}
+          assistantLabel="Hydra"
+          notify={notify}
+          openTask={openTask}
+          taskReferences={references}
+          answerLeads={leads}
+          comments={comments}
+          drafts={drafts}
+          quote={({ text }) => setDraft({
+            text: quoteInto({
+              draft: drafts.read().text,
+              text,
+            }),
+          })}
+          toolDetails={view.toolDetails}
+          thinkingDetails={view.thinkingDetails}
+          sendAgain={sendAgain}
+          sendableNow={({ entry }) => {
+            if (!entry.replyId) {
+              return hosted && working && !holding
+            }
 
-            if (event.deltaY < 0) {
-              reachOlder()
+            const worker = entry.task ? state.cards[entry.task] : undefined
+
+            return worker?.agent?.host === 'pnyx'
+              && (worker.sessionActivity ?? worker.activity) === 'working'
+          }}
+          sendNow={async ({
+            id,
+            task,
+          }) => {
+            try {
+              await command({
+                name: task ? 'task' : 'hydra',
+                args: task ? [
+                  'send-now',
+                  task,
+                  id,
+                ] : [
+                  'send-now',
+                  id,
+                ],
+              })
+            } catch (error) {
+              notify({ text: (error as Error).message })
             }
           }}
-          onTouchStart={event => {
-            touchY.current = event.touches[0]?.clientY
-          }}
-          onTouchMove={event => {
-            ownerScroll()
-
-            const y = event.touches[0]?.clientY
-
-            if (y !== undefined && touchY.current !== undefined && y > touchY.current) {
-              reachOlder()
-            }
-
-            touchY.current = y
-          }}
-          onKeyDown={event => {
-            ownerScroll()
-
-            if (UP_KEYS.has(event.key)) {
-              reachOlder()
-            }
-
-            expandRow({ target: event.target })
-          }}
-          onPointerDown={event => {
-            expandRow({ target: event.target })
-
-            if (event.target === event.currentTarget) {
-              ownerScroll()
-            }
-          }}
-          onPointerMove={event => {
-            if (event.buttons) {
-              ownerScroll()
-            }
-          }}
-          onScroll={e => {
-            const el = e.currentTarget
-            chatFollow.scrolled({
-              at: performance.now(),
-              top: el.scrollTop,
-              remaining: el.scrollHeight - el.scrollTop - el.clientHeight,
-            })
-          }}
-        >
-          <div className="hydra-stream max-w-(--chat-max) mx-auto" ref={content}>
-            <div ref={olderMarker} className="hydra-older h-7">
-              {loadingEarlier && (
-                <div className="hydra-loading h-full flex items-center justify-center pointer-events-none" role="status" aria-label="Loading earlier messages">
-                  <span className="hydra-spinner size-4 border-2 border-line border-t-muted rounded-full animate-hydra-spin motion-reduce:animate-hydra-spin-reduced" aria-hidden="true" />
-                </div>
-              )}
-            </div>
-            <Messages
-              identity={`hydra:${storageIdentity}`}
-              catalog={catalog}
-              labelColors={state.labelColors}
-              folds={chat.folds}
-              trailing={chat.trailing}
-              timings={chat.timings}
-              inline={inline}
-              entries={entries}
-              lookup={lookup}
-              assistantLabel="Hydra"
-              notify={notify}
-              openTask={openTask}
-              taskReferences={references}
-              answerLeads={leads}
-              comments={comments}
-              drafts={drafts}
-              quote={({ text }) => setDraft({
-                text: quoteInto({
-                  draft: drafts.read().text,
-                  text,
-                }),
-              })}
-              toolDetails={view.toolDetails}
-              thinkingDetails={view.thinkingDetails}
-              sendAgain={sendAgain}
-              sendableNow={({ entry }) => {
-                if (!entry.replyId) {
-                  return hosted && working && !holding
-                }
-
-                const worker = entry.task ? state.cards[entry.task] : undefined
-
-                return worker?.agent?.host === 'pnyx'
-                  && (worker.sessionActivity ?? worker.activity) === 'working'
-              }}
-              sendNow={async ({
-                id,
-                task,
-              }) => {
-                try {
-                  await command({
-                    name: task ? 'task' : 'hydra',
-                    args: task ? [
-                      'send-now',
-                      task,
-                      id,
-                    ] : [
-                      'send-now',
-                      id,
-                    ],
-                  })
-                } catch (error) {
-                  notify({ text: (error as Error).message })
-                }
-              }}
-              retry={retry}
-            />
-            <DispatchProposals
-              state={state}
-              command={command}
-              connected={connected}
-              notify={notify}
-            />
-            {!entries.length && (
-              <p className="hydra-empty mt-3 text-muted text-ui">
-                What are we working on?
-                {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
-              </p>
-            )}
-            {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={ICON_SIZE.control} />{a.text}</p>)}
-            {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
-            {card && (
-              <InlinePermissions
-                card={{
-                  ...card,
-                  permissions: card.permissions?.filter(p => p.status === 'pending' || p.delivery === 'needs_reentry' || p.delivery === 'unknown'),
-                }}
-                command={command}
-                notify={notify}
-              />
-            )}
-            {card && (
-              <InlineQuestions
-                card={card}
-                command={command}
-                notify={notify}
-              />
-            )}
-          </div>
-        </div>
-        {running && !compacting && (
-          <TaskReferencesProvider references={references} openTask={openTask}>
-            <Running
-              since={running ? since : null}
-              running={running}
-              label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
-              reading={queue.reading}
-              waiting={queue.waiting}
-              state={state}
-            >
-              {running && <ActionBubble action={action} since={since} lookup={lookup} />}
-            </Running>
-          </TaskReferencesProvider>
+          retry={retry}
+        />
+        <DispatchProposals
+          state={state}
+          command={command}
+          connected={connected}
+          notify={notify}
+        />
+        {!entries.length && (
+          <p className="hydra-empty mt-3 text-muted text-ui">
+            What are we working on?
+            {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
+          </p>
         )}
-        {away && (
-          <>
-            <div className="chat-fade absolute inset-x-0 bottom-0 z-2 h-(--chat-end) pointer-events-none bg-linear-to-b/srgb from-transparent to-surface animate-chat-fade motion-reduce:animate-none" aria-hidden="true" />
-            <Button
-              className="jump absolute bottom-2.5 left-[calc(50%-var(--spacing-jump)/2)] z-3 size-jump p-0 justify-center border border-line rounded-full bg-surface text-ink shadow-jump animate-chat-fade enabled:hover:bg-raised motion-reduce:animate-none"
-              aria-label="Jump to latest"
-              title="Jump to latest"
-              onClick={() => {
-                chatFollow.resume()
-                stream.current?.scrollTo({
-                  top: stream.current.scrollHeight,
-                  behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-                })
-              }}
-            >
-              <Icon name="chevron_down" size={ICON_SIZE.toolbar} />
-            </Button>
-          </>
+        {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={ICON_SIZE.control} />{a.text}</p>)}
+        {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
+        {card && (
+          <InlinePermissions
+            card={{
+              ...card,
+              permissions: card.permissions?.filter(p => p.status === 'pending' || p.delivery === 'needs_reentry' || p.delivery === 'unknown'),
+            }}
+            command={command}
+            notify={notify}
+          />
         )}
-      </div>
+        {card && (
+          <InlineQuestions
+            card={card}
+            command={command}
+            notify={notify}
+          />
+        )}
+      </Chat>
       <WaitingDecisions
         hydraId={hydraId}
         command={command}
@@ -1435,7 +861,7 @@ export function HydraChat({
             openTask({ id: decision.card.id })
           }
         }}
-        loading={loadingEarlier}
+        loading={thread.loadingEarlier}
       />
       <AgentChangeChoice
         state={state}
@@ -1478,7 +904,7 @@ export function HydraChat({
       <Composer
         hydraId={hydraId}
         storageIdentity={storageIdentity}
-        loadComment={loadComment}
+        loadComment={thread.loadComment}
         compacting={compactionRunning}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {

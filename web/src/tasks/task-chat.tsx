@@ -1,5 +1,3 @@
-import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
-import { taskViewKey } from './task-view.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
@@ -7,12 +5,22 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
+import type { ViewPreferences } from '#preferences/model.ts'
+import { traces } from '#preferences/view.ts'
 import { stored, save as saveLocal } from '#web-app/connection-storage.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Messages, type ChatEntry } from '#web-hydra/messages.tsx'
+import { ActionBubble } from '#web-hydra/action-bubble.tsx'
+import { useChatScroll } from '#web-hydra/chat-scroll.ts'
+import { CHAT_FRAME, Chat } from '#web-hydra/chat-view.tsx'
+import { useComposerSources } from '#web-hydra/composer-sources.tsx'
+import { useChatThread } from '#web-hydra/chat-thread.ts'
+import { Running } from '#web-hydra/running-indicator.tsx'
 import { Composer } from '#web-hydra/composer.tsx'
 import { useChatDrafts, useDraftSnapshot } from '#web-hydra/chat-drafts.ts'
 import { pnyxLookup } from '#web-hydra/pnyx-action.ts'
+import { quoteInto } from '#web-hydra/chat.ts'
 import { Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { CommandFailure, createPendingResource } from '#web-shared/pending-intents.ts'
@@ -21,13 +29,18 @@ type WorkerMessage = ChatEntry & { targetAgent?: AgentConfig }
 
 type ReplyResource = ReturnType<typeof createPendingResource<WorkerMessage[], WorkerMessage>>
 const replies = new Map<string, ReplyResource>()
+// Workers have no wake queue; only Hydra's status line counts queued updates.
+const NO_UPDATES: [] = []
 
-export function WorkerChat({
+// A task's conversation with its worker: the same chat as Hydra's, sending to the task.
+export function TaskChat({
   hydraId,
   storageIdentity,
   card,
   state,
   live,
+  action,
+  view,
   command,
   connected,
   notify,
@@ -37,17 +50,14 @@ export function WorkerChat({
   card: Card
   state: HydraState
   live: ThreadPage | null | undefined
+  action?: CurrentAction
+  view: ViewPreferences
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
 }) {
-  const scroll = useRememberedScroll({
-    key: taskViewKey({
-      hydraId,
-      id: card.id,
-      field: 'workerScroll',
-    }),
-  })
+  const scroll = useChatScroll()
+  const { catalog } = useComposerSources()
   const {
     agent,
     settings,
@@ -169,10 +179,6 @@ export function WorkerChat({
     resource.subscribe,
     resource.snapshot,
   )
-  const [
-    error,
-    setError,
-  ] = useState('')
   const drafts = useChatDrafts({
     identity: `${location.origin}:${installation}:${hydraId}:${card.key}`,
     text: stored({
@@ -197,37 +203,14 @@ export function WorkerChat({
       resource,
     ],
   )
-  useEffect(
-    () => {
-      if (!connected) {
-        return
-      }
-
-      let cancelled = false
-      command({
-        name: 'thread',
-        args: [card.id],
-      }).then(() => {
-        if (!cancelled) {
-          setError('')
-        }
-      })
-        .catch((error: Error) => {
-          if (!cancelled) {
-            setError(error.message)
-          }
-        })
-
-      return () => {
-        cancelled = true
-      }
-    },
-    [
-      card.id,
-      command,
-      connected,
-    ],
-  )
+  const thread = useChatThread({
+    card: card.id,
+    session: card.agent?.sessionId,
+    page: live,
+    command,
+    connected,
+    scroll,
+  })
   const lookup = useMemo(
     () => pnyxLookup({ state: () => state }),
     [state],
@@ -312,7 +295,6 @@ export function WorkerChat({
         }),
       })
       resource.accept({ id })
-      setError('')
     } catch (error) {
       const failure = error instanceof CommandFailure ? error : new CommandFailure({
         message: String(error),
@@ -355,23 +337,59 @@ export function WorkerChat({
     ],
   )
 
+  const working = (card.sessionActivity ?? card.activity) === 'working'
+  const showsTools = traces({
+    view,
+    card: card.id,
+  }).tools
+  const since = card.workingSince ?? null
+  const statusLine = working ? (
+    <Running
+      since={since}
+      running
+      label="Worker is working"
+      reading={NO_UPDATES}
+      waiting={NO_UPDATES}
+      state={state}
+    >
+      {showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
+    </Running>
+  ) : null
+
   return (
-    <section className="worker-chat flex min-h-0 min-w-0 flex-col border-l border-line pl-3 [&>.composer]:mt-2 [&>.composer]:shrink-0" aria-label={`Worker chat for ${card.title}`} data-key-scope="thread">
-      <div ref={scroll.ref} className="worker-messages min-h-0 flex-1 overflow-auto text-chat">
-        {error && <p role="alert">{error}</p>}
+    <section className={`task-chat flex min-h-0 min-w-0 flex-col border-l border-line ${CHAT_FRAME}`} aria-label={`Worker chat for ${card.title}`}>
+      <Chat
+        title={card.title}
+        scroll={scroll}
+        older={thread.older}
+        loadingEarlier={thread.loadingEarlier}
+        error={thread.error}
+        status={statusLine}
+        notify={notify}
+      >
         {live?.unavailable && card.agent && <Tooltip content={live.unavailable}><span aria-label="Conversation unavailable"><Icon name="warning" /></span></Tooltip>}
         <Messages
-          identity={`task:${card.key}`}
+          catalog={catalog}
+          labelColors={state.labelColors}
           entries={entries}
           lookup={lookup}
           drafts={drafts}
           comments={draft.comments}
-          quote={({ text }) => drafts.setDraft({ text: `${draft.text}\n${text}` })}
+          quote={({ text }) => drafts.setDraft({
+            text: quoteInto({
+              draft: drafts.read().text,
+              text,
+            }),
+          })}
           timings={new Map(Object.entries(live?.conversation?.timings ?? {}))}
           folds={new Map(Object.entries(live?.conversation?.folds ?? {}))}
+          trailing={new Map(Object.entries(live?.conversation?.trailing ?? {}))}
+          toolDetails={view.toolDetails}
+          thinkingDetails={view.thinkingDetails}
           assistantLabel="Worker"
           notify={notify}
           retry={({ id }) => {
+            scroll.toEnd()
             const intent = resource.snapshot().intents.find(intent => intent.id === id)
 
             if (intent) {
@@ -394,36 +412,38 @@ export function WorkerChat({
             }
           }}
         />
-      </div>
+      </Chat>
       {showRepository && (
-        <RepositoryPicker
-          value={chosenRepository}
-          repositories={repositories}
-          disabled={!connected || assigning || card.createdSeq === 0}
-          change={async ({ value }) => {
-            chooseRepository(value)
-            setAssigning(true)
+        <div className="mx-(--chat-inset)">
+          <RepositoryPicker
+            value={chosenRepository}
+            repositories={repositories}
+            disabled={!connected || assigning || card.createdSeq === 0}
+            change={async ({ value }) => {
+              chooseRepository(value)
+              setAssigning(true)
 
-            try {
-              await command({
-                name: 'task',
-                args: [
-                  'project',
-                  card.id,
-                  '--project',
-                  value,
-                  '--event-id',
-                  crypto.randomUUID(),
-                ],
-              })
-            } catch (error) {
-              chooseRepository('')
-              notify({ text: error instanceof Error ? error.message : String(error) })
-            } finally {
-              setAssigning(false)
-            }
-          }}
-        />
+              try {
+                await command({
+                  name: 'task',
+                  args: [
+                    'project',
+                    card.id,
+                    '--project',
+                    value,
+                    '--event-id',
+                    crypto.randomUUID(),
+                  ],
+                })
+              } catch (error) {
+                chooseRepository('')
+                notify({ text: error instanceof Error ? error.message : String(error) })
+              } finally {
+                setAssigning(false)
+              }
+            }}
+          />
+        </div>
       )}
       <Composer
         hydraId={hydraId}
@@ -448,12 +468,7 @@ export function WorkerChat({
         placeholder="Message worker…"
         sendLabel="Send to worker"
         unavailable={!connected || assigning || needsRepository || card.createdSeq === 0}
-        loadComment={async () => {
-          await command({
-            name: 'thread',
-            args: [card.id],
-          })
-        }}
+        loadComment={thread.loadComment}
         command={async ({
           name,
           args,
@@ -467,6 +482,7 @@ export function WorkerChat({
             })
           }
 
+          scroll.toEnd()
           await send({
             id: args[2]!,
             text: args[1]!,
