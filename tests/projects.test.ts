@@ -770,9 +770,9 @@ test(
         '--rule',
         'no-such-rule',
       ],
-      NO_ROUTE: [
+      VALIDATION_ERROR: [
         '--via',
-        'firstmate',
+        'unknown',
       ],
     }
 

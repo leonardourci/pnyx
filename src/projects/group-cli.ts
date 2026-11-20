@@ -60,13 +60,6 @@ export function attachProjectGroup({
       fn: ({ writer }) => {
         const state = writer.state
 
-        if (state.config?.hydra.kind === 'firstmate') {
-          throw new HydraError({
-            message: 'Firstmate manages this Hydra’s projects',
-            code: 'READ_ONLY',
-          })
-        }
-
         if (commandMeta.id && Object.hasOwn(
           state.eventIds,
           commandMeta.id,
