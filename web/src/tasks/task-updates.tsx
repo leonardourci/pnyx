@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -23,7 +23,6 @@ export function TaskUpdates({
     list,
     loading,
     error,
-    loadOlder,
     retry,
   } = useCardUpdates({
     task: card.id,
@@ -32,18 +31,6 @@ export function TaskUpdates({
     through: card.revision,
   })
   const events = list?.events ?? []
-  useEffect(
-    () => {
-      if (connected && list?.older !== undefined && !error) {
-        loadOlder()
-      }
-    },
-    [
-      list?.older,
-      error,
-      connected,
-    ],
-  )
   const [
     oldestFirst,
     setOldestFirst,
@@ -116,8 +103,9 @@ export function TaskUpdates({
         >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}
         </Button>
       </div>
+      {error && <p role="alert">{error} <Button onClick={retry}>Try again</Button></p>}
       {shown.length > 0 && (
-        <ul>
+        <ul role="list">
           {rows.map(item => (
             <UpdateRow
               key={item.update.id}
@@ -133,7 +121,6 @@ export function TaskUpdates({
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
       {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
-      {error && <p role="alert">{error} <Button onClick={retry}>Try again</Button></p>}
     </div>
   )
 }

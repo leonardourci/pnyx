@@ -607,8 +607,12 @@ export function HydraView({
       card: state.cards[revealing]!,
     }) : columnRequest?.id
   const revealIndex = columns.findIndex(column => column.id === revealingColumn)
+  const revealTarget = columns[revealIndex]
   // From the model, so a column that is still animating its width lands where it ends up.
-  const revealLeft = revealIndex < 0 ? undefined : projectSnaps[revealIndex]! - projectSnaps[0]!
+  const projectStart = projectSnaps[0] ?? 0
+  const targetStart = projectSnaps[revealIndex]
+  const revealLeft = targetStart === undefined ? undefined : targetStart - projectStart
+  const revealWidth = revealTarget ? columnWidth({ item: revealTarget }) : 0
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
   useLayoutEffect(
@@ -632,7 +636,12 @@ export function HydraView({
           behavior: 'instant',
         })
 
-        if (Math.abs(scroller.scrollLeft - left) <= 1) {
+        const targetRight = left + revealPadding + revealWidth
+        const reachedStart = Math.abs(scroller.scrollLeft - left) <= 1
+        const fitsAtScrollLimit = scroller.scrollLeft < left
+          && targetRight <= scroller.scrollLeft + scroller.clientWidth
+
+        if (reachedStart || fitsAtScrollLimit || left <= 0) {
           observer.disconnect()
         }
       }
@@ -655,6 +664,7 @@ export function HydraView({
       columnRequest?.key,
       revealLeft,
       revealPadding,
+      revealWidth,
     ],
   )
 
@@ -1417,8 +1427,7 @@ export function HydraView({
                                               actions={actions}
                                               selected={expandedIds}
                                               preview={preview}
-                                              // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
-                                              renderCard={family => renderCard({
+                                              renderCard={({ ...family }) => renderCard({
                                                 ...family,
                                                 column: c,
                                               })}

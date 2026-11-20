@@ -147,7 +147,7 @@ test(
 
         const observer = new MutationObserver(sample)
         observer.observe(
-          axis,
+          workspace,
           {
             childList: true,
             subtree: true,
@@ -168,6 +168,10 @@ test(
           const maximum = horizontal ? element.scrollWidth - element.clientWidth
             : element.scrollHeight - element.clientHeight
           const step = (horizontal ? element.clientWidth : element.clientHeight) / 2
+
+          if (step === 0) {
+            throw new Error('The scroller has no visible area')
+          }
 
           for (const direction of [
             1,
@@ -287,7 +291,7 @@ test(
         'Persistent history',
       ],
     })
-    await hydra.owner({
+    const applyHistory = ({ label }: { label: string }) => hydra.owner({
       args: [
         'apply',
         '--file',
@@ -303,16 +307,18 @@ test(
           ) => ({
             op: 'task.brief',
             task: 'history',
-            brief: `History revision ${index}`,
+            brief: `${label} ${index}`,
           }),
         ),
       }),
     })
+    await applyHistory({ label: 'Initial history' })
+    await applyHistory({ label: 'Recent history' })
+    let refuseOlder = true
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
       beforeLoad: async ({ page }) => {
-        let refusedOlder = false
         await page.routeWebSocket(
           /\/ws(\?|$)/,
           socket => {
@@ -322,8 +328,8 @@ test(
               const older = sent.name === 'task' && sent.args?.[0] === 'updates'
               && sent.args.includes('--before')
 
-              if (older && !refusedOlder) {
-                refusedOlder = true
+              if (older && refuseOlder) {
+                refuseOlder = false
                 socket.send(JSON.stringify({
                   type: 'error',
                   scope: sent.scope,
@@ -375,7 +381,7 @@ test(
     ).click()
     await until({
       what: 'every update loaded without scrolling',
-      check: async () => await updates.count() === 66,
+      check: async () => await updates.count() === 131,
     })
     expect(await page.evaluate(
       nodes => nodes.every(node => node.isConnected),
@@ -432,32 +438,22 @@ test(
     })
     await until({
       what: 'the live update',
-      check: async () => await updates.count() === 67,
+      check: async () => await updates.count() === 132,
     })
-    await hydra.owner({
-      args: [
-        'apply',
-        '--file',
-        '-',
-      ],
-      input: JSON.stringify({
-        version: 1,
-        changes: Array.from(
-          { length: HISTORY_EDITS },
-          (
-            _,
-            index,
-          ) => ({
-            op: 'task.brief',
-            task: 'history',
-            brief: `Live burst ${index}`,
-          }),
-        ),
-      }),
-    })
+    refuseOlder = true
+    await applyHistory({ label: 'Live burst' })
+    await region.getByRole('alert').waitFor()
+    expect(await updates.count()).toBe(132)
+    await region.getByRole(
+      'button',
+      {
+        name: 'Try again',
+        exact: true,
+      },
+    ).click()
     await until({
       what: 'every burst update without replacing history',
-      check: async () => await updates.count() === 132,
+      check: async () => await updates.count() === 197,
     })
     expect(await page.evaluate(
       nodes => nodes.every(node => node.isConnected),
