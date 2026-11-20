@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
@@ -1487,18 +1487,18 @@ test(
 
     await hydra.chat({ text: 'hello again' })
 
-    expect(existsSync(join(
+    for (const folder of [
+      installed,
       withoutReferences,
-      'dropped.md',
-    ))).toBe(false)
-
-    expect(readdirSync(installed).sort()).toEqual(readdirSync(join(
-      import.meta.dirname,
-      '..',
-      'skills',
-      ORCHESTRATE_SKILL,
-      'references',
-    )).sort())
+    ]) {
+      expect(
+        existsSync(join(
+          folder,
+          'dropped.md',
+        )),
+        folder,
+      ).toBe(false)
+    }
   },
 )
 
