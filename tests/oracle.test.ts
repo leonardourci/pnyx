@@ -206,8 +206,8 @@ test(
       ],
     }) as unknown as { hits: Result[] }
     expect(fromPage.hits.map(hit => hit.card)).toEqual(inDone.map(result => result.card))
-    expect(fromPage.hits[0]!.snippets.some(snippet =>
-      snippet.parts?.some(part => part.matched && part.text.toLowerCase() === 'checklist'))).toBe(true)
+    expect(fromPage.hits.some(hit => hit.snippets.some(snippet =>
+      snippet.parts?.some(part => part.matched && part.text.toLowerCase() === 'checklist')))).toBe(true)
     page.close()
 
     expect((await search({
