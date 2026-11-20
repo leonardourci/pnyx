@@ -4841,13 +4841,6 @@ test(
         'claude:outside-discovery',
       ],
     })
-    await hydra.owner({
-      args: [
-        'task',
-        'refresh-links',
-        'discovered',
-      ],
-    })
     await until({
       what: 'a PR from the new worker clone despite the removed copy record',
       check: async () => (await hydra.owner({

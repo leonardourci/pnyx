@@ -3244,6 +3244,26 @@ test(
       title: 'none',
     }))
     expect((await hydra.task({ key: 'observed' })).title).toBe('observed')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+        autoTitle: {
+          from: 'prompt',
+          text: 'Read the export settings',
+        },
+      }),
+    })
+    expect((await hydra.task({ key: 'observed' })).title).toBe('Read the export settings')
   },
 )
 

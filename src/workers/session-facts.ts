@@ -262,6 +262,13 @@ export function applySessionFacts({
         task.titleSet = title !== null
       }
 
+      if (fields.autoTitle) {
+        offerTitle({
+          card: task,
+          next: fields.autoTitle,
+        })
+      }
+
       if (workspace !== undefined) {
         task.workspace = workspace
       }
