@@ -2,53 +2,33 @@ import { appendFileSync } from 'node:fs'
 import { transcriptPath } from '#workers/claude.ts'
 import type { AgentSession } from './agents.ts'
 
-// Appends a long working stretch to a Claude session's transcript, and waits out its timestamps so the next message sorts after it.
-export async function appendToolCalls({
+const clockPast = ({ time }: { time: number }) => new Promise(resolve => setTimeout(
+  resolve,
+  time - Date.now() + 1,
+))
+
+export async function appendRecords({
   session,
-  tools,
+  records,
 }: {
   session: AgentSession
-  tools: number
+  records: {
+    type: 'assistant' | 'user'
+    content: unknown
+  }[]
 }) {
-  const lines: string[] = []
-  let time = Date.now()
-  const stamp = () => new Date(time += 1).toISOString()
-
-  for (let tool = 0; tool < tools; tool++) {
-    const id = `toolu_${tool}`
-    lines.push(
-      JSON.stringify({
-        type: 'assistant',
-        timestamp: stamp(),
-        message: {
-          role: 'assistant',
-          content: [
-            {
-              type: 'tool_use',
-              id,
-              name: 'Bash',
-              input: { command: `echo ${tool}` },
-            },
-          ],
-        },
-      }),
-      JSON.stringify({
-        type: 'user',
-        timestamp: stamp(),
-        message: {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: id,
-              content: 'ok',
-            },
-          ],
-        },
-      }),
-    )
-  }
-
+  const start = Date.now()
+  const lines = records.map((
+    record,
+    index,
+  ) => JSON.stringify({
+    type: record.type,
+    timestamp: new Date(start + index + 1).toISOString(),
+    message: {
+      role: record.type,
+      content: record.content,
+    },
+  }))
   appendFileSync(
     transcriptPath({
       cwd: session.cwd,
@@ -57,8 +37,43 @@ export async function appendToolCalls({
     }),
     `${lines.join('\n')}\n`,
   )
-  await new Promise(resolve => setTimeout(
-    resolve,
-    time - Date.now() + 1,
-  ))
+  await clockPast({ time: start + records.length })
+}
+
+export async function appendToolCalls({
+  session,
+  tools,
+}: {
+  session: AgentSession
+  tools: number
+}) {
+  await appendRecords({
+    session,
+    records: Array.from({ length: tools }).flatMap((
+      _,
+      tool,
+    ) => [
+      {
+        type: 'assistant' as const,
+        content: [
+          {
+            type: 'tool_use',
+            id: `toolu_${tool}`,
+            name: 'Bash',
+            input: { command: `echo ${tool}` },
+          },
+        ],
+      },
+      {
+        type: 'user' as const,
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: `toolu_${tool}`,
+            content: 'ok',
+          },
+        ],
+      },
+    ]),
+  })
 }

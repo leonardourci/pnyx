@@ -3,12 +3,12 @@ import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
-import { mergeThreadPages, nextRecentCursor, pageCount, retainThreadPages, recentThreadPages, threadSize, RECENT_THREAD_ENTRIES, THREAD_PAGE_LIMIT, type ThreadBoundary } from '#hydra/thread-history.ts'
+import { joinLatest, mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { readThread, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { readThread, showsKind, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { paseoHistory } from '#integrations/paseo/history.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import type { Card } from '#tasks/model.ts'
@@ -54,25 +54,7 @@ export type Subscription = {
   sent?: string
   // The last page versioned for the tab, which the next delta is computed from.
   versioned?: ThreadPage
-  // Whether Hydra's window keeps only its recent pages, how many entries its last reset kept, and a count of
-  // explicit reads, so a read or refresh that a newer read overtook is dropped.
-  recent?: boolean
-  recentLimit?: number
   readVersion?: number
-}
-
-// A recent window resets once arrivals have grown it a page past what its last reset kept,
-// so each reset rereads the recent pages once per page of arrivals, not on every one.
-function overRecentLimit({
-  sub,
-  page,
-}: {
-  sub: Subscription
-  page: ThreadPage
-}): boolean {
-  const limit = (sub.recentLimit ?? RECENT_THREAD_ENTRIES) + THREAD_PAGE_LIMIT
-
-  return sub.recent === true && threadSize({ page }) > limit
 }
 
 // The events that can change what hydraThreadView shows: anything on Hydra's own card, its messages,
@@ -189,6 +171,31 @@ export function createThreadSubscriptions({
     },
   })
 
+  const shownRows = ({
+    card,
+    page,
+  }: {
+    card: Card
+    page: ThreadPage
+  }): ThreadPage => {
+    const {
+      tools,
+      thinking,
+    } = traces({
+      view: effectiveView({ state: state() }),
+      card: card.id,
+    })
+
+    return {
+      ...page,
+      entries: page.entries.filter(entry => showsKind({
+        kind: entry.kind,
+        tools,
+        thinking,
+      })),
+    }
+  }
+
   const prepareThread = ({
     sub,
     page,
@@ -203,27 +210,10 @@ export function createThreadSubscriptions({
     // A push the tab did not ask for is skipped when the page has not changed.
     push?: boolean
   }): PreparedThread | undefined => {
-    if (page.card !== HYDRA_CARD) {
-      return versionThread({
-        sub,
-        prepared: page,
-        push,
-      })
-    }
-
-    const current = state()
     sub.history = mergeThreadPages({
       before: sub.history ?? null,
       latest: page,
       olderPage: older,
-    })
-
-    const {
-      tools,
-      thinking,
-    } = traces({
-      view: effectiveView({ state: current }),
-      card: HYDRA_CARD,
     })
     let visible = sub.history
 
@@ -238,6 +228,25 @@ export function createThreadSubscriptions({
       })
     }
 
+    if (page.card !== HYDRA_CARD) {
+      return versionThread({
+        sub,
+        prepared: shownRows({
+          card,
+          page: visible,
+        }),
+        push,
+      })
+    }
+
+    const current = state()
+    const {
+      tools,
+      thinking,
+    } = traces({
+      view: effectiveView({ state: current }),
+      card: HYDRA_CARD,
+    })
     const prepared = hydraThreadView({
       state: current,
       page: visible,
@@ -292,8 +301,6 @@ export function createThreadSubscriptions({
       ...prepared,
       stream: sub.view.id,
       version: ++sub.view.version,
-      pages: pageCount({ page: prepared }),
-      recent: sub.recent === true,
     }
 
     if (thread.conversation) {
@@ -345,64 +352,47 @@ export function createThreadSubscriptions({
     if (!sub.base || sub.base.signature !== signature) {
       const page = readThread({
         hydraId,
+        allTraces: true,
         state: state(),
         card,
         homes: homes(),
       })
 
-      if (card.id === HYDRA_CARD) {
-        sub.history = mergeThreadPages({
-          before: sub.history ?? null,
-          latest: page,
-        })
-
-        if (overRecentLimit({
-          sub,
-          page: sub.history,
-        })) {
-          let recent = page
-          const seen = new Set<string>()
-
-          let cursor = nextRecentCursor({
-            page: recent,
-            seen,
-          })
-
-          while (cursor) {
-            recent = mergeThreadPages({
-              before: recent,
-              latest: readThread({
-                hydraId,
-                state: state(),
-                card,
-                homes: homes(),
-                before: cursor,
-              }),
-              olderPage: true,
-            })
-            cursor = nextRecentCursor({
-              page: recent,
-              seen,
-            })
-          }
-
-          sub.history = recent
-          sub.recentLimit = threadSize({ page: recent })
-        }
-      }
-
-      const selected = traces({
-        view: effectiveView({ state: state() }),
-        card: HYDRA_CARD,
-      })
-      sub.base = {
-        signature,
-        page,
-        project: card.id === HYDRA_CARD ? createHydraThreadView({
+      sub.history = joinLatest({
+        history: sub.history,
+        latest: page,
+        read: ({ before }) => readThread({
+          hydraId,
+          allTraces: true,
           state: state(),
-          page: sub.history!,
-          ...selected,
-        }) : undefined,
+          card,
+          homes: homes(),
+          before,
+        }),
+      })
+
+      if (card.id === HYDRA_CARD) {
+        const selected = traces({
+          view: effectiveView({ state: state() }),
+          card: HYDRA_CARD,
+        })
+        sub.base = {
+          signature,
+          page,
+          project: createHydraThreadView({
+            state: state(),
+            page: sub.history,
+            ...selected,
+          }),
+        }
+      } else {
+        sub.base = {
+          signature,
+          page: shownRows({
+            card,
+            page: sub.history,
+          }),
+        }
       }
     }
 
@@ -497,42 +487,21 @@ export function createThreadSubscriptions({
           name: 'native conversation refresh',
           run: async () => {
             try {
-              const read = ({ before }: { before?: string }) => paseoHistory({
+              const page = await paseoHistory({
                 card: card.id,
                 conversation: { read: async ({ before }) => (await native).read({ before }) },
                 readSaved: ({ before }) => readThread({
                   hydraId,
+                  allTraces: true,
                   state: state(),
                   card,
                   homes: homes(),
                   before,
                 }),
-                before,
               })
-              let page = await read({})
-              const merged = mergeThreadPages({
-                before: sub.history ?? null,
-                latest: page,
-              })
-              const recent = overRecentLimit({
-                sub,
-                page: merged,
-              })
-
-              if (recent) {
-                page = await recentThreadPages({
-                  page,
-                  read,
-                })
-              }
 
               if (map.get(ws) !== sub || ws.readyState !== ws.OPEN || version !== sub.readVersion) {
                 return
-              }
-
-              if (recent) {
-                sub.history = undefined
-                sub.recentLimit = threadSize({ page })
               }
 
               const prepared = prepareThread({
@@ -670,33 +639,25 @@ export function createThreadSubscriptions({
     card,
     before,
     retain,
-    recent = false,
     receipt,
   }: {
     sub: Subscription
     card: Card
     before?: string
     retain?: ThreadBoundary
-    recent?: boolean
     receipt?: string
   }): Promise<ThreadPage> => {
     sub.base = undefined
 
-    if (recent || before || retain) {
+    if (before || retain) {
       sub.readVersion = (sub.readVersion ?? 0) + 1
     }
 
     const version = sub.readVersion
 
-    if (recent) {
-      sub.recent = true
-    } else if (before || retain) {
-      sub.recent = false
-    }
-
     const native = sub.native
 
-    if (!native && before === undefined && !retain && !recent) {
+    if (!native && before === undefined && !retain) {
       const prepared = versionThread({
         sub,
         prepared: currentThread({
@@ -719,6 +680,7 @@ export function createThreadSubscriptions({
           conversation: { read: async ({ before }) => (await native).read({ before }) },
           readSaved: ({ before }) => readThread({
             hydraId,
+            allTraces: true,
             state: state(),
             card,
             homes: homes(),
@@ -730,6 +692,7 @@ export function createThreadSubscriptions({
 
       const page = readThread({
         hydraId,
+        allTraces: true,
         state: state(),
         card,
         homes: homes(),
@@ -742,19 +705,12 @@ export function createThreadSubscriptions({
       })
     }
 
-    if (retain || recent) {
+    if (retain) {
       sub.restoring = (sub.restoring ?? 0) + 1
     }
 
     try {
       let page = await readPage({ before })
-
-      if (recent) {
-        page = await recentThreadPages({
-          page,
-          read: readPage,
-        })
-      }
 
       if (retain && !before) {
         page = await retainThreadPages({
@@ -767,18 +723,11 @@ export function createThreadSubscriptions({
         })
       }
 
-      if ((recent || before || retain) && version !== sub.readVersion) {
+      if ((before || retain) && version !== sub.readVersion) {
         throw new HydraError({
           code: 'THREAD_SUPERSEDED',
           message: 'A newer conversation read replaced this one',
         })
-      }
-
-      if (recent) {
-        sub.history = undefined
-        sub.versioned = undefined
-        sub.sent = undefined
-        sub.recentLimit = threadSize({ page })
       }
 
       sub.base = undefined
@@ -795,7 +744,7 @@ export function createThreadSubscriptions({
         receipt,
       })
     } finally {
-      if (retain || recent) {
+      if (retain) {
         sub.restoring = (sub.restoring ?? 1) - 1
 
         if (!sub.restoring && sub.refreshPending && sub.client) {

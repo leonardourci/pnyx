@@ -22,6 +22,7 @@ import { CardTitle } from './card-title.tsx'
 import { CardShell, CardContent, AnimatedCardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
 import { CARD_SIZING } from '#web-shared/card-sizing.ts'
+import { useColumnHeight } from './card-height.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -105,6 +106,9 @@ function ContextIndex({
     </nav>
   )
 }
+
+const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
+const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
 
 export const HydraCard = memo(function HydraCard({
   card,
@@ -328,9 +332,14 @@ export const HydraCard = memo(function HydraCard({
     }),
     active: selected && tab === 'activity',
   })
+  const openLayout = chatOnly ? CHAT_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
+  const columnHeight = useColumnHeight({
+    element: inlineElement,
+    active: selected && !modal,
+  })
   const height = Math.max(
     CARD_SIZING.open.minHeight,
-    view.cardHeights[card.id] ?? CARD_SIZING.open.height,
+    view.cardHeights[card.id] ?? columnHeight ?? CARD_SIZING.open.height,
   )
   const [
     reminding,
@@ -847,7 +856,7 @@ export const HydraCard = memo(function HydraCard({
           )}
         </header>
         {selected && (
-          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'}`}>
+          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${openLayout}`}>
             <div hidden={chatOnly} className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto [&[hidden]]:hidden">
               <CardPanel ref={contextScroll.ref} {...panel({ id: 'context' })}>
                 {card.copy?.state === 'flagged' && <div className="copy-warning text-meta text-gold"><RichText text={card.copy.reason ?? ''} /></div>}

@@ -16,6 +16,11 @@ const arrayCallbacks = new Set([
   'forEach',
   'from',
 ])
+const playwrightCallbacks = [
+  'evaluate',
+  'routeWebSocket',
+  'onMessage',
+]
 const externalCallbacks = new Set([
   'then',
   'catch',
@@ -35,6 +40,7 @@ const externalCallbacks = new Set([
   'beforeEach',
   // Zero's query builder
   'related',
+  ...playwrightCallbacks,
 ])
 const callbackCalls = new Set([
   'test',
@@ -171,6 +177,7 @@ const boundary = ({
       'Promise',
       'MutationObserver',
       'ResizeObserver',
+      'IntersectionObserver',
     ].includes(callName({ node: parent.callee }))
   }
 

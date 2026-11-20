@@ -82,11 +82,10 @@ export function observedStatus({
     reasons.push(wait)
   }
 
-  if (work?.runningTools.length || (connected && !work && base.kind === 'working' && action && !action.done && action.calls.length)) {
-    const names = [...new Set(action?.calls.map(call => call.tool) ?? [])]
+  if (work?.runningTools.length) {
     add({
       kind: 'working',
-      text: `running ${names.join(', ') || 'tool'}`,
+      text: 'working',
     })
   }
 

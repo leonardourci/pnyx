@@ -1,8 +1,12 @@
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Compaction } from '#workers/compaction/model.ts'
+import { createThreadReceiver } from '#hydra/thread-receive.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
+import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { appendRecords, appendToolCalls } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
 
@@ -19,6 +23,8 @@ interface Entry {
 
 interface ThreadReceipt {
   thread: {
+    card: string
+    session?: string
     older?: string
     conversation: { entries: Entry[] }
   }
@@ -34,11 +40,13 @@ interface UpdatesReceipt {
 }
 
 const EXCHANGES = 30
+const BURST = 130
+const NOTES_PAST_FIRST_PAGE = 70
 // A reply larger than one transport part, which the page must still read whole.
 const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End of notes.`
 
 test(
-  'chat opens on its newest 20 entries, and reading older pages reaches every message once, in order, with a long reply whole',
+  'chat opens on its newest 20 entries, reading older pages reaches every message once, in order, with a long reply whole, and revealing an older message reads back only until it',
   async () => {
     const hydra = await pnyx.hydra()
     let session
@@ -128,6 +136,187 @@ test(
         index + 1 === 5 ? LONG_REPLY : `answer ${index + 1}`,
       ],
     ).flat())
+
+    const commented = loaded.conversation.entries.find(entry => entry.text === 'question 15')
+    const freshTab = await hydra.page()
+
+    const readPage = async ({ args }: { args: string[] }) => {
+      const receipt = await freshTab.send({
+        name: 'thread',
+        args: [
+          '$hydra',
+          ...args,
+        ],
+      }) as unknown as { thread: ThreadPage }
+
+      return receipt.thread
+    }
+
+    let revealed = await readPage({ args: [] })
+    await loadEarlierMessages({
+      page: revealed,
+      until: commented?.at,
+      message: commented?.id,
+      load: async ({ before }) => {
+        revealed = await readPage({ args: [before] })
+
+        return revealed
+      },
+    })
+    freshTab.close()
+    const revealedTexts = revealed.conversation?.entries.map(entry => entry.text)
+    expect(revealedTexts).toContain('question 15')
+    expect(revealedTexts).not.toContain('question 1')
+  },
+)
+
+test(
+  'a task\'s chat keeps the older page it read back, in order, when its worker writes more, and its tool calls follow Focus mode',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'notes' })
+    const focusMode = ({ on }: { on: boolean }) => hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ focusMode: on }),
+      ],
+    })
+
+    try {
+      await appendToolCalls({
+        session: worker,
+        tools: 1,
+      })
+      await appendRecords({
+        session: worker,
+        records: Array.from(
+          { length: NOTES_PAST_FIRST_PAGE },
+          (
+            _,
+            index,
+          ) => ({
+            type: 'assistant' as const,
+            content: `note ${index + 1}`,
+          }),
+        ),
+      })
+      const threads = createThreadReceiver()
+      const page = await openPage({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+        receive: ({ message }) => {
+          threads.receive({ message })
+        },
+      })
+      const first = await page.send({
+        name: 'thread',
+        args: ['notes'],
+      }) as unknown as ThreadReceipt
+      const olderCursor = first.thread.older
+
+      if (!olderCursor) {
+        throw new Error('The task\'s first page has no older page')
+      }
+
+      await page.send({
+        name: 'thread',
+        args: [
+          'notes',
+          olderCursor,
+        ],
+      })
+
+      await appendRecords({
+        session: worker,
+        records: [
+          {
+            type: 'assistant',
+            content: 'note after reading back',
+          },
+        ],
+      })
+      const loaded = () => threads.read({ card: first.thread.card })?.entries ?? []
+      const notes = () => loaded().map(entry => entry.text)
+        .filter(text => text.startsWith('note '))
+      const toolRows = () => loaded().filter(entry => entry.kind === 'tool')
+      await until({
+        what: 'the note written after reading back',
+        check: () => notes().includes('note after reading back'),
+      })
+      expect(toolRows()).toEqual([])
+
+      await appendRecords({
+        session: worker,
+        records: Array.from(
+          { length: BURST },
+          (
+            _,
+            index,
+          ) => ({
+            type: 'assistant' as const,
+            content: `burst ${index + 1}`,
+          }),
+        ),
+      })
+      const burst = () => loaded().map(entry => entry.text)
+        .filter(text => text.startsWith('burst '))
+      await until({
+        what: 'the last line of the burst',
+        check: () => burst().includes(`burst ${BURST}`),
+      })
+      expect(burst()).toHaveLength(BURST)
+      expect(burst()[0]).toBe('burst 1')
+
+      await focusMode({ on: false })
+      await until({
+        what: 'the tool call of the page read back to show once Focus mode is off',
+        check: () => toolRows().length > 0,
+      })
+      await focusMode({ on: true })
+      await until({
+        what: 'Focus mode to hide it again',
+        check: () => toolRows().length === 0,
+      })
+      page.close()
+      const everyNote = [
+        ...Array.from(
+          { length: NOTES_PAST_FIRST_PAGE },
+          (
+            _,
+            index,
+          ) => `note ${index + 1}`,
+        ),
+        'note after reading back',
+      ]
+      expect(notes()).toEqual(everyNote)
+
+      const reconnected = await hydra.page()
+      const restored = await reconnected.send({
+        name: 'thread',
+        args: [
+          'notes',
+          '--retain',
+          JSON.stringify({
+            session: first.thread.session,
+            oldest: loaded()[0]?.id,
+          }),
+        ],
+      }) as unknown as { thread: { entries: Entry[] } }
+      const unknownOption = await reconnected.send({
+        name: 'thread',
+        args: [
+          'notes',
+          '--future-option',
+        ],
+      }) as unknown as { thread?: { entries: Entry[] } }
+      reconnected.close()
+      expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+      expect(unknownOption.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
+    } finally {
+      await focusMode({ on: true })
+    }
   },
 )
 

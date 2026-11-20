@@ -41,7 +41,7 @@ function* messageText({
 }
 
 export const conversationMessages = ({ from }: { from: Element }) => from
-  .closest('.detail, .hydra-chat')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
+  .closest('.detail, .chat-frame')?.querySelector<HTMLElement>(`[${CARET_HOST}]`) ?? null
 
 export const latestAgentMessage = ({ host }: { host: HTMLElement }) =>
   [...host.querySelectorAll('.message:not(.mine, .tool, .thinking)')].at(-1) ?? null
@@ -160,7 +160,7 @@ export function placeMessageCaret({
 }
 
 export function focusComposer({ host }: { host: HTMLElement }) {
-  const input = host.closest('.detail, .hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
+  const input = host.closest('.detail, .chat-frame')?.querySelector<HTMLTextAreaElement>('.composer textarea')
   input?.focus(); input?.setSelectionRange(
     input.value.length,
     input.value.length,

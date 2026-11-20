@@ -78,6 +78,11 @@ export interface TurnPlan {
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean
+  tool?: {
+    id: string
+    name: string
+    input: Record<string, unknown>
+  }
 }
 
 interface Plan extends TurnPlan {
@@ -136,12 +141,23 @@ const textOf = ({ message }: { message: SDKUserMessage }) => {
   return typeof content === 'string' ? content : content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
 
+function assistantRecord() {
+  const found = claudeRecording.turn.find(m => m.type === 'assistant')
+
+  if (!found) {
+    throw new Error('The recorded Claude turn holds no assistant message')
+  }
+
+  return found
+}
+
 export function fakeClaude() {
   const sessions: AgentSession[] = []
   const turns = plans()
   const recordedReply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
+  const recordedAssistant = assistantRecord()
 
   const query = (({
     prompt,
@@ -403,6 +419,23 @@ export function fakeClaude() {
           if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
             && recorded.event.delta.type === 'text_delta') {
             const partial = plan?.partial ?? ''
+
+            if (plan?.tool) {
+              yield {
+                ...recordedAssistant,
+                session_id: id,
+                uuid: randomUUID(),
+                message: {
+                  ...recordedAssistant.message,
+                  content: [
+                    {
+                      type: 'tool_use' as const,
+                      ...plan.tool,
+                    },
+                  ],
+                },
+              } as SDKMessage
+            }
 
             if (partial) {
               yield {

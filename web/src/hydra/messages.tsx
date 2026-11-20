@@ -1,5 +1,4 @@
 import { MessageBubble, MessageFooter } from './message-surface.tsx'
-import { MeasuredList } from '#web-shared/ui/measured-list.tsx'
 import type { ChatDrafts } from './chat-drafts.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { upgradeMilestoneIcon } from '#upgrade/model.ts'
@@ -424,7 +423,6 @@ const MessageRow = memo(function MessageRow({
 })
 
 export function Messages({
-  identity,
   entries,
   lookup,
   comments,
@@ -448,7 +446,6 @@ export function Messages({
   retry,
   answerLeads,
 }: {
-  identity: string
   sendNow?({
     id,
     task,
@@ -754,7 +751,7 @@ export function Messages({
 
         if (focused === host) {
           event.preventDefault(); focusComposer({ host })
-        } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .hydra-chat')?.contains(host)) {
+        } else if (focused?.matches('.composer textarea') && focused.closest('.detail, .chat-frame')?.contains(host)) {
           event.preventDefault(); placeMessageCaret({
             host,
             target: latestAgentMessage({ host }),
@@ -992,7 +989,7 @@ export function Messages({
       return false
     }
 
-    const scroller = root.current.closest<HTMLElement>('.hydra-messages, .column-cards')
+    const scroller = root.current.closest<HTMLElement>('.chat-messages, .column-cards')
     scroller?.scrollBy({ top: scroller.clientHeight * direction })
 
     return !!scroller
@@ -1057,7 +1054,7 @@ export function Messages({
         }))}) { background-color: var(--comment-highlight); }`).join('')}
       </style>
       <div
-        className="messages [&_:is(a,img):not(.composer-field_*)]:[-webkit-user-drag:none] relative flex flex-col gap-message-gap pt-2 in-[.hydra-chat]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))] [&_.measured-row]:flex [&_.measured-row]:flex-col [&_.measured-row]:gap-(--message-gap) [&_.measured-row]:pb-(--message-gap)"
+        className="messages [&_:is(a,img):not(.composer-field_*)]:[-webkit-user-drag:none] relative flex flex-col gap-message-gap pt-2 in-[.chat-frame]:gap-(--chat-gap) data-caret-host:outline-none data-caret-host:caret-gold [--message-gap:var(--chat-gap,var(--spacing-message-gap))]"
         data-highlight={highlight}
         ref={root}
         contentEditable={CARET_SUPPORTED}
@@ -1121,22 +1118,19 @@ export function Messages({
           }
         }}
       >
-        <MeasuredList
-          identity={identity}
-          items={entries}
-          itemKey={({ item }) => item.renderKey ?? item.id}
-          render={({ item: entry }) => {
-            const messageId = entry.messageId ?? entry.id
-            const activeHere = isMessageBlockKey({
-              key: active,
-              messageId,
-            }) ? active : null
-            const task = leadingTask({ entry })
-            const timedTask = timings.get(entry.id)?.task
+        {entries.map(entry => {
+          const messageId = entry.messageId ?? entry.id
+          const activeHere = isMessageBlockKey({
+            key: active,
+            messageId,
+          }) ? active : null
+          const task = leadingTask({ entry })
+          const timedTask = timings.get(entry.id)?.task
+          const rowKey = entry.renderKey ?? entry.id
 
-            return (
+          return (
+            <div key={rowKey} className="message-row flex flex-col gap-(--message-gap) [content-visibility:auto] [contain-intrinsic-size:auto_var(--spacing-chat-row)] [overflow-clip-margin:var(--message-gap)]">
               <MessageRow
-                key={entry.renderKey ?? entry.id}
                 entry={entry}
                 fold={folds?.get(entry.id)}
                 trailing={trailing?.get(entry.id)}
@@ -1164,9 +1158,9 @@ export function Messages({
                 canRetry={retry !== undefined}
                 canSendNow={sendNow !== undefined && (sendableNow?.({ entry }) ?? true)}
               />
-            )
-          }}
-        />
+            </div>
+          )
+        })}
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
         {selection && (
           <div

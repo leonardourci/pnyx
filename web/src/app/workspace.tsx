@@ -43,7 +43,7 @@ import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
 import { HydraCard } from '#web-tasks/card.tsx'
 import { ProjectCounts } from '#web-tasks/project-counts.tsx'
 import { ProjectColumn } from '#web-tasks/project-column.tsx'
-import { WorkerChat } from '#web-tasks/worker-chat.tsx'
+import { TaskChat } from '#web-tasks/task-chat.tsx'
 import { TaskFamily, type FamilyCard } from '#web-tasks/task-family.tsx'
 import { motion } from 'motion/react'
 import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
@@ -1010,12 +1010,14 @@ export function HydraView({
         connected={connected}
         tabIndex={0}
         chat={opened && (
-          <WorkerChat
+          <TaskChat
             storageIdentity={hydra.storageHydra}
             hydraId={navigation.hydraId}
             card={item}
             state={state}
             live={hydra.taskThreads[item.id]}
+            action={actions[item.id]}
+            view={cardView}
             command={command}
             connected={connected}
             notify={notify}

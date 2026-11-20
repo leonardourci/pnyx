@@ -85,8 +85,6 @@ export interface ThreadPage {
   session?: string
   stream?: string
   version?: number
-  pages?: number
-  recent?: boolean
   entries: ThreadEntry[]
   conversation?: {
     through: number
@@ -189,6 +187,21 @@ export function recordEntries({
   })
 }
 
+export function showsKind({
+  kind,
+  tools,
+  thinking,
+}: {
+  kind: ThreadEntry['kind']
+  tools: boolean
+  thinking: boolean
+}): boolean {
+  const hiddenTool = kind === 'tool' && !tools
+  const hiddenThinking = kind === 'thinking' && !thinking
+
+  return !hiddenTool && !hiddenThinking
+}
+
 export function transcriptEntries({
   parsed,
   offset,
@@ -220,7 +233,11 @@ export function transcriptEntries({
   })
 
   for (const trace of parsed.traces) {
-    if ((trace.kind === 'tool' && !tools) || (trace.kind === 'thinking' && !thinking)) {
+    if (!showsKind({
+      kind: trace.kind,
+      tools,
+      thinking,
+    })) {
       continue
     }
 
@@ -838,6 +855,7 @@ type ThreadRead = {
   homes: string[]
   before?: string
   selectedSession?: boolean
+  allTraces?: boolean
 }
 
 // A conversation page from the task's transcript and saved events, with a log line for how long the read took.
@@ -848,6 +866,7 @@ export function readThread({
   homes,
   before,
   selectedSession,
+  allTraces,
 }: ThreadRead): ThreadPage {
   const started = performance.now()
   const page = readThreadPage({
@@ -857,6 +876,7 @@ export function readThread({
     homes,
     before,
     selectedSession,
+    allTraces,
   })
   log({
     operation: 'history.read',
@@ -878,6 +898,7 @@ function readThreadPage(
     homes,
     before,
     selectedSession,
+    allTraces,
   }: ThreadRead,
 ): ThreadPage {
   const found = replyRoute({
@@ -906,8 +927,8 @@ function readThreadPage(
     view: effectiveView({ state }),
     card: card.id,
   })
-  const tools = card.id === HYDRA_CARD || selected.tools
-  const thinking = selected.thinking
+  const tools = allTraces || card.id === HYDRA_CARD || selected.tools
+  const thinking = allTraces || selected.thinking
   const sources = threadSources({
     hydraId,
     state,
