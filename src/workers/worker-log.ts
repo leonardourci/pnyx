@@ -83,6 +83,7 @@ export function foldWorkerLog({
         taskId: task,
         error: 'worker.log must be a regular file',
       })
+
       return
     }
 
