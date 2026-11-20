@@ -7,6 +7,7 @@ import { workerLine } from '../setup/worker-log.ts'
 import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
+const EXITED_PROCESS_PID = '2147483647'
 beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
 })
@@ -53,6 +54,45 @@ async function status({
   expect(result).toBe(label)
 }
 
+async function recordBadges({ selector }: { selector: string }) {
+  await chrome({
+    script: `
+    await page.eval(() => {
+      window.badgeFrames = [];
+      window.sendFrames = {};
+      window.heldSends = [];
+      window.sendSocketMessage = WebSocket.prototype.send;
+      WebSocket.prototype.send = function(message) {
+        const command = JSON.parse(message);
+        if (command.type === 'command' && command.args?.[0] === 'send' && (command.name === 'hydra' || command.name === 'task')) {
+          window.heldSends.push({ socket: this, message });
+        } else {
+          window.sendSocketMessage.call(this, message);
+        }
+      };
+      const readBadges = () => ({
+        hydra: document.querySelector('.hydra-chat [aria-label="Hydra status"]')?.textContent,
+        pill: document.querySelector(${JSON.stringify(`${selector} .activity-text`)})?.textContent,
+        task: document.querySelector(${JSON.stringify(`${selector} [aria-label="Worker status"]`)})?.textContent,
+      });
+      document.addEventListener('click', event => {
+        const button = event.target.closest?.('button');
+        const send = button?.matches('[aria-label="Send reply"], [aria-label="Send to worker"]');
+        if (!send) return;
+        const target = button.closest('.hydra-chat') ? 'hydra' : 'worker';
+        window.sendFrames[target] = window.badgeFrames.length;
+        window.firstSentFrame = new Promise(resolve => requestAnimationFrame(() => resolve(readBadges())));
+      }, true);
+      const sample = () => {
+        window.badgeFrames.push(readBadges());
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+  `,
+  })
+}
+
 test(
   'live badges show thinking at turn start, working through tools and idle at turn end in Focus mode',
   async () => {
@@ -67,32 +107,7 @@ test(
       hydraId: hydra.id,
       taskId: task.id,
     })
-    await chrome({
-      script: `
-      await page.eval(() => {
-        window.badgeFrames = [];
-        window.heldSends = [];
-        window.sendSocketMessage = WebSocket.prototype.send;
-        WebSocket.prototype.send = function(message) {
-          const command = JSON.parse(message);
-          if (command.type === 'command' && command.args?.[0] === 'send' && (command.name === 'hydra' || command.name === 'task')) {
-            window.heldSends.push({ socket: this, message });
-          } else {
-            window.sendSocketMessage.call(this, message);
-          }
-        };
-        const sample = () => {
-          window.badgeFrames.push({
-            hydra: document.querySelector('.hydra-chat [aria-label="Hydra status"]')?.textContent,
-            pill: document.querySelector(${JSON.stringify(`${selector} .activity-text`)})?.textContent,
-            task: document.querySelector(${JSON.stringify(`${selector} [aria-label="Worker status"]`)})?.textContent,
-          });
-          requestAnimationFrame(sample);
-        };
-        requestAnimationFrame(sample);
-      });
-    `,
-    })
+    await recordBadges({ selector })
 
     for (const {
       text,
@@ -133,26 +148,21 @@ test(
           await page.eval(() => { window.badgeFrames = []; });
           await page.fill('[aria-label="Reply to Hydra"]', ${JSON.stringify(text)});
           await page.click('.hydra-chat [aria-label="Send reply"]');
-          await page.eval(() => new Promise(requestAnimationFrame));
-          console.log(await page.eval(() => document.querySelector('.hydra-chat [aria-label="Hydra status"]')?.textContent));
+          console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
         `,
         })
-        expect(started).toBe('Starting…')
+        expect(JSON.parse(started).hydra).toBe('Starting…')
         const workerStarted = await chrome({
           script: `
           await page.fill('[aria-label="Message worker"]', ${JSON.stringify(`Worker: ${text}`)});
           await page.click('[aria-label="Send to worker"]');
-          await page.eval(() => new Promise(requestAnimationFrame));
-          console.log(JSON.stringify(await page.eval(() => ({
-            pill: document.querySelector(${JSON.stringify(`${selector} .activity-text`)})?.textContent,
-            task: document.querySelector(${JSON.stringify(`${selector} [aria-label="Worker status"]`)})?.textContent,
-          }))));
+          console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
           await page.eval(() => {
             for (const {socket, message} of window.heldSends.splice(0)) window.sendSocketMessage.call(socket, message);
           });
           `,
         })
-        expect(JSON.parse(workerStarted)).toEqual({
+        expect(JSON.parse(workerStarted)).toMatchObject({
           pill: 'Starting…',
           task: 'Starting…',
         })
@@ -166,10 +176,14 @@ test(
           await page.eval(() => new Promise(requestAnimationFrame));
           console.log(JSON.stringify(await page.eval(() => {
             const frames = window.badgeFrames;
-            const started = frames.findIndex(frame => frame.hydra === 'Starting…');
+            const active = ['Starting…', 'Thinking', 'Working'];
             return {
               frames: frames.filter(frame => frame.hydra === ${JSON.stringify(label)} && frame.pill === ${JSON.stringify(label)} && frame.task === ${JSON.stringify(label)}).length,
-              interrupted: frames.slice(started).filter(frame => !['Starting…', 'Thinking', 'Working'].includes(frame.hydra)),
+              interrupted: {
+                hydra: frames.slice(window.sendFrames.hydra).filter(frame => !active.includes(frame.hydra)),
+                pill: frames.slice(window.sendFrames.worker).filter(frame => !active.includes(frame.pill)),
+                task: frames.slice(window.sendFrames.worker).filter(frame => !active.includes(frame.task)),
+              },
               tools: document.querySelectorAll('.action-bubble').length,
             };
           })));
@@ -178,7 +192,11 @@ test(
         const sample = JSON.parse(sampled)
         expect(sample.tools).toBe(0)
         expect(sample.frames).toBeGreaterThan(0)
-        expect(sample.interrupted).toEqual([])
+        expect(sample.interrupted).toEqual({
+          hydra: [],
+          pill: [],
+          task: [],
+        })
       } finally {
         hydraTurn.release()
         workerTurn.release()
@@ -246,6 +264,118 @@ test(
     `,
     })
     expect(result).toBe('0')
+
+    const resumed = pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Resume worker from CLI'),
+      hold: true,
+    })
+
+    try {
+      await hydra.owner({
+        args: [
+          'reply',
+          'refused-badges',
+          '--text',
+          'Resume worker from CLI',
+        ],
+      })
+      await status({
+        selector,
+        label: 'Thinking',
+      })
+    } finally {
+      resumed.release()
+    }
+
+    await status({
+      selector,
+      label: 'Idle',
+    })
+    const recovery = pnyx.codex.plan({
+      hydra: hydra.id,
+      text: 'Recover Hydra badge turn',
+      hold: true,
+    })
+
+    try {
+      await chrome({
+        script: `
+        await page.fill('[aria-label="Reply to Hydra"]', 'Recover Hydra badge turn');
+        await page.click('.hydra-chat [aria-label="Send reply"]');
+        await page.wait('.hydra-chat [data-status="Thinking"]', 5000);
+      `,
+      })
+    } finally {
+      recovery.release()
+    }
+
+    await chrome({ script: 'await page.wait(\'.hydra-chat [data-status="Idle"]\', 5000);' })
+  },
+)
+
+test(
+  'an exited outside worker shows its delivery error on the pill and chat',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'outside-refusal',
+        '--title',
+        'Exited outside session',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-session',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Exited outside session',
+        activity: 'finished',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'exited-outside-session',
+        },
+        // The impossible PID fails the identity check before any terminal adapter runs.
+        terminal: {
+          tty: '/dev/ttys9999',
+          pid: EXITED_PROCESS_PID,
+          program: 'Apple_Terminal',
+        },
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'attach',
+        'outside-refusal',
+        '--session',
+        'claude-code:exited-outside-session',
+      ],
+    })
+    const outside = await hydra.task({ key: 'outside-refusal' })
+    const outsideSelector = await openChat({
+      hydraId: hydra.id,
+      taskId: outside.id,
+    })
+    const outsideFailure = await chrome({
+      script: `
+      await page.fill('[aria-label="Message worker"]', 'Try the outside route');
+      await page.click('[aria-label="Send to worker"]');
+      await page.wait(${JSON.stringify(`${outsideSelector} .agent-activity[aria-label*="process exited"]`)}, 5000);
+      await page.wait(${JSON.stringify(`${outsideSelector} [aria-label="Worker status"][data-status*="process exited"]`)}, 5000);
+      console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${outsideSelector} .working-dots`)}).length));
+    `,
+    })
+    expect(outsideFailure).toBe('0')
   },
 )
 
