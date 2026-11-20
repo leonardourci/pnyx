@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { copyFingerprint, removalWork } from './removal-work.ts'
 import { hydraPool, protectedCopiesFolder, removeHydraPool } from '#projects/remove-pool.ts'
 import { requestEnv } from '#app/request-context.ts'
@@ -6,11 +7,8 @@ import { parse, WRITE, required, meta, type Output } from '#app/cli-support.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { ownerActor } from '#app/actors.ts'
-import { approvedHydraRemoval, proposeOwnerCommand } from '#app/confirmations.ts'
 import { hydraRemoval } from '#app/server-state.ts'
 import { HydraError } from '#store/errors.ts'
-import { isManagedTask } from '#tasks/select.ts'
 import { checkCopy, removeCopy } from '#projects/copy-check.ts'
 import { hydraConfig } from './config.ts'
 import { hydraEvent } from './hydra.ts'
@@ -47,16 +45,16 @@ function removalTarget({
     && !loadHydra({ hydraId: otherId }).state.config?.removing)
 
   if (!state.config?.removing && !hasSurvivor) {
-    throw new HydraError({
-      message: 'Cannot remove the last Hydra',
-      code: 'CONFLICT',
+    inform({
+      reason: 'Removing the last Hydra; create a Hydra to resume work',
+      clear: 'Use pnyx-axi hydra create <name> to create one',
     })
   }
 
   if (id === caller) {
-    throw new HydraError({
-      message: 'Cannot remove the caller’s own Hydra',
-      code: 'CONFLICT',
+    inform({
+      reason: 'Removing the caller’s Hydra; its agent will stop',
+      clear: 'Use pnyx-axi hydra create <name> to create another Hydra',
     })
   }
 
@@ -82,7 +80,9 @@ async function prepareRemoval({
     state,
   })
   const pool = await hydraPool({ hydraId: id })
-  const recorded = new Set(copies.map(copy => copy.path))
+  const cards = Object.values(state.cards)
+  const previousCopies = cards.flatMap(card => card.copy ? [card.copy.path] : [])
+  const recorded = new Set(previousCopies)
   const paths = new Set([
     ...recorded,
     ...pool.slots.map(slot => slot.path),
@@ -94,48 +94,6 @@ async function prepareRemoval({
     recorded,
     paths,
   }
-}
-
-async function removalPreview({
-  id,
-  state,
-  plan,
-}: {
-  id: string
-  state: ReturnType<typeof removalTarget>
-  plan: Awaited<ReturnType<typeof prepareRemoval>>
-}): Promise<string> {
-  const cards = Object.values(state.cards)
-  const tasks = cards.filter(card => !isManagedTask({ card }))
-  const unlanded: string[] = []
-
-  for (const card of cards) {
-    if (card.copy && card.copy.state !== 'removed') {
-      const check = await checkCopy({
-        card,
-        copy: card.copy,
-      })
-
-      if (!check.clean || !check.landed) {
-        unlanded.push(card.copy.path)
-      }
-    }
-  }
-
-  for (const slot of plan.pool.slots) {
-    if (!plan.recorded.has(slot.path)) {
-      unlanded.push(`${slot.path} (unrecorded checkout; landing unknown)`)
-    }
-  }
-
-  const openLinks = tasks.flatMap(card => card.links).filter(link => link.kind === 'github_pr' && link.state === 'open')
-  const prs = [...new Set(openLinks.map(link => link.url))]
-
-  const name = state.config?.name ?? id
-  const unlandedPaths = unlanded.length ? unlanded.join(', ') : 'none'
-  const openPullRequests = prs.length ? prs.join(', ') : 'none'
-
-  return `Remove ${name}? Tasks: ${tasks.length}. Copies: ${plan.paths.size}. Copies with unlanded work: ${unlandedPaths}. Removal discards these copies in full, including ignored files. Open PRs: ${openPullRequests} (kept on GitHub). Projects are detached. History stays in the event log and Oracle.`
 }
 
 function removalCopies({
@@ -184,36 +142,41 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     caller: hydraId,
   })
   const actor = meta({ values })
-  const token = values.confirm
-  const approved = ownerActor({ actor: actor.actor }) && typeof token === 'string'
-    && approvedHydraRemoval({
-      hydraId,
-      id,
-      token,
-    })
+  const plan = await prepareRemoval({
+    id,
+    state,
+  })
 
-  if (!approved) {
-    const plan = await prepareRemoval({
-      id,
-      state,
-    })
+  for (const card of Object.values(state.cards)) {
+    const copy = card.copy
 
-    return proposeOwnerCommand({
-      name: 'hydra',
-      args: [
-        'remove',
-        id,
-      ],
-      hydraId,
-      removalSeq: state.seq,
-      removalWork: await removalWork({ paths: plan.paths }),
-      summary: await removalPreview({
-        id,
-        state,
-        plan,
-      }),
+    if (copy && plan.paths.has(copy.path)) {
+      const check = await checkCopy({
+        card,
+        copy,
+      })
+
+      if (!check.gone && (!check.clean || !check.landed)) {
+        throw new HydraError({
+          message: `Copy ${copy.path} contains unlanded work`,
+          code: 'CONFLICT',
+          help: ['Land its work before removing this Hydra'],
+        })
+      }
+    }
+  }
+
+  const unknown = plan.pool.slots.find(slot => !plan.recorded.has(slot.path))
+
+  if (unknown) {
+    throw new HydraError({
+      message: `Copy ${unknown.path} has no recorded landing proof`,
+      code: 'CONFLICT',
+      help: ['Land and record the copy’s work before removing this Hydra'],
     })
   }
+
+  const recordedWork = await removalWork({ paths: plan.paths })
 
   requireRemovalIdle()
 
@@ -231,17 +194,6 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   })
   requireRemovalIdle()
 
-  if (!approvedHydraRemoval({
-    hydraId,
-    id,
-    token,
-  })) {
-    throw new HydraError({
-      message: 'Removal approval is no longer available',
-      code: 'CONFLICT',
-    })
-  }
-
   withWriter({
     hydraId: id,
     removal: true,
@@ -258,7 +210,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
               id,
             }),
             removing: true,
-            removalWork: approved,
+            removalWork: recordedWork,
           },
         },
       })
@@ -326,7 +278,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     })
 
     throw new HydraError({
-      message: 'Checkout work changed. Propose removal again for a fresh preview',
+      message: 'Checkout work changed; land its new work and run hydra remove again',
       code: 'CONFLICT',
     })
   }

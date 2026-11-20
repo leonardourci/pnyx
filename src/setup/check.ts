@@ -257,6 +257,6 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
   return {
     hydraId,
     missing: items,
-    help: [`Hydra runs the hydra rows itself and asks you to confirm the owner rows; see the ${SET_UP_SKILL} skill`],
+    help: [`Hydra runs setup commands directly; login rows need the owner’s credentials; see the ${SET_UP_SKILL} skill`],
   }
 }

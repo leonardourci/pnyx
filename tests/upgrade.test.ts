@@ -303,66 +303,88 @@ test(
 )
 
 test(
-  'a folder on another branch, on a detached HEAD or with local changes is refused with every reason, and nothing is pulled',
+  'upgrades keep feature and detached checkouts and save local edits with a restore command',
   async () => {
-    const hydra = await pnyx.hydra()
-    const previous = folder.head()
-    folder.publish({
-      files: { 'build.sh': building({ version: 'refused' }) },
-      message: 'refused',
-    })
-    writeFileSync(
-      join(
-        folder.install,
-        'build.sh',
-      ),
-      'echo local edit\n',
-    )
-
-    const refusal = async ({ reasons }: { reasons: unknown[] }) => {
-      const before = upgrades({ hydra }).length
-      await upgrade({ hydra })
-      const refused = await until({
-        what: 'the refusal',
-        check: () => upgrades({ hydra }).slice(before)
-          .find(upgrade => upgrade.state === 'refused'),
+    for (const mode of [
+      'main',
+      'feature',
+      'detached',
+    ]) {
+      folder.reset()
+      const hydra = await pnyx.hydra()
+      const next = folder.publish({
+        files: { 'build.sh': building({ version: mode }) },
+        message: mode,
       })
-      expect(refused.reasons).toEqual(reasons)
-      expect(folder.head()).toBe(previous)
+
+      if (mode === 'feature') {
+        git({
+          cwd: folder.install,
+          args: [
+            'checkout',
+            '-b',
+            'feature',
+          ],
+        })
+      } else if (mode === 'detached') {
+        git({
+          cwd: folder.install,
+          args: [
+            'checkout',
+            '--detach',
+          ],
+        })
+      }
+
+      const local = 'echo saved local edit\n'
+      writeFileSync(
+        join(
+          folder.install,
+          'build.sh',
+        ),
+        local,
+      )
+      await upgrade({ hydra })
+      const built = await until({
+        what: 'the upgrade build to settle',
+        check: () => upgrades({ hydra }).find(operation => [
+          'restarting',
+          'failed',
+          'refused',
+          'current',
+        ].includes(operation.state)),
+      })
+      expect(built.state).toBe('restarting')
+      await pnyx.restart()
+      const result = await settled({
+        hydra,
+        state: 'done',
+      })
+      expect(folder.head()).toBe(next)
+      const notices = result.reasons?.join(' ') ?? ''
+      expect(notices).toContain('git stash apply')
+
+      if (mode !== 'main') {
+        expect(notices).toContain(mode === 'detached' ? 'Detached HEAD' : 'feature')
+      }
+
+      expect(git({
+        cwd: folder.install,
+        args: [
+          'show',
+          'refs/stash:build.sh',
+        ],
+      })).toBe(local.trim())
+      const branch = git({
+        cwd: folder.install,
+        args: [
+          'rev-parse',
+          '--abbrev-ref',
+          'HEAD',
+        ],
+      })
+      expect(branch).toBe(mode === 'detached' ? 'HEAD' : mode)
     }
-
-    await refusal({ reasons: [expect.stringContaining('build.sh')] })
-
-    git({
-      cwd: folder.install,
-      args: [
-        'checkout',
-        '-q',
-        '-b',
-        'feature',
-      ],
-    })
-    await refusal({
-      reasons: [
-        expect.stringContaining('feature'),
-        expect.stringContaining('build.sh'),
-      ],
-    })
-
-    git({
-      cwd: folder.install,
-      args: [
-        'checkout',
-        '-q',
-        '--detach',
-      ],
-    })
-    await refusal({
-      reasons: [
-        expect.stringContaining('Detached HEAD'),
-        expect.stringContaining('build.sh'),
-      ],
-    })
   },
 )
 

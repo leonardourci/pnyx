@@ -170,8 +170,8 @@ async function unknownOnFailure<T>({ read }: { read(): Promise<T> }) {
   }
 }
 
-// Every reason the folder cannot be upgraded as it is; Pnyx never stashes or switches for the owner.
-export async function refusals({ root }: { root: string }): Promise<string[]> {
+// Facts to report before updating the current checkout.
+async function upgradeFacts({ root }: { root: string }): Promise<string[]> {
   const branch = await unknownOnFailure({
     read: () => git({
       root,
@@ -296,7 +296,7 @@ async function upgrade({
   signal?: AbortSignal
 }): Promise<UpgradeResult> {
   const steps: UpgradeStep[] = []
-  const reasons = await refusals({ root })
+  const reasons = await upgradeFacts({ root })
   const head = await unknownOnFailure({
     read: () => git({
       root,
@@ -306,16 +306,6 @@ async function upgrade({
       ],
     }),
   })
-
-  if (reasons.length) {
-    return {
-      state: 'refused',
-      steps,
-      reasons,
-      from: head,
-      to: await unknownOnFailure({ read: () => remoteMain({ root }) }),
-    }
-  }
 
   if (signal?.aborted) {
     return {
@@ -358,7 +348,10 @@ async function upgrade({
       )
     }
 
-    return result
+    return {
+      ...result,
+      reasons,
+    }
   }
 
   let to: string | undefined
@@ -398,6 +391,36 @@ async function upgrade({
     await step({
       name: 'pull',
       work: async () => {
+        const changes = await git({
+          root,
+          args: [
+            'status',
+            '--porcelain',
+            '--untracked-files=all',
+          ],
+        })
+
+        if (changes) {
+          await git({
+            root,
+            args: [
+              'stash',
+              'push',
+              '--include-untracked',
+              '-m',
+              'Pnyx upgrade saved local work',
+            ],
+          })
+          const saved = await git({
+            root,
+            args: [
+              'rev-parse',
+              'refs/stash',
+            ],
+          })
+          reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Pnyx folder to restore it.`)
+        }
+
         await git({
           root,
           args: [

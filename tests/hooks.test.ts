@@ -130,6 +130,54 @@ test(
   'outside hooks keep facts without an implicit card, and the assigned chat shows its typed prompt without a steering notice',
   async () => {
     const hydra = await pnyx.hydra()
+    const customSkill = join(
+      process.env.HOME!,
+      '.agents',
+      'skills',
+      'pnyx-cli',
+    )
+    mkdirSync(
+      customSkill,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        customSkill,
+        'SKILL.md',
+      ),
+      'Keep my local skill',
+    )
+    const installed = await pnyxAxi({
+      args: [
+        'setup',
+        'skills',
+      ],
+      env: process.env,
+    })
+    expect(
+      installed.status,
+      installed.stdout,
+    ).toBe(0)
+    expect(parsed(installed).notices).toBeDefined()
+    expect(readFileSync(
+      join(
+        customSkill,
+        'SKILL.md',
+      ),
+      'utf8',
+    )).toBe('Keep my local skill')
+    const setupPreview = await pnyxAxi({
+      args: [
+        'setup',
+        '--preview',
+      ],
+      env: process.env,
+    })
+    expect(
+      setupPreview.status,
+      setupPreview.stdout,
+    ).toBe(0)
+    expect(parsed(setupPreview).notices).toBeDefined()
     await hydra.owner({
       args: [
         'settings',
@@ -299,6 +347,98 @@ test(
     }[])
       .filter(entry => entry.role === 'user' || entry.role === 'You')
       .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
+
+    const replacement = {
+      ...working.agent,
+      sessionId: 'outside-replacement',
+    }
+    await assignedHydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-replacement',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: replacement,
+        terminal: { tty: '/dev/ttys99998' },
+      }),
+    })
+    const replacementId = (await sessionFacts({ session: 'outside-replacement' })).id
+    const replaced = await assignedHydra.owner({
+      args: [
+        'task',
+        'attach',
+        'outside-hook-chat',
+        '--session',
+        replacementId,
+      ],
+    })
+    expect(replaced.notices).toBeDefined()
+    expect((await assignedHydra.task({ key: 'outside-hook-chat' })).worker).toBe(replacementId)
+    const sessions = await assignedHydra.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })
+    expect(sessions.sessions).toContainEqual(expect.objectContaining({
+      id: working.id,
+      task: 'none',
+    }))
+    const project = assignedHydra.folder({ name: 'queued-attachment' })
+    await assignedHydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'task',
+        'rename',
+        'outside-hook-chat',
+        '--project',
+        project,
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'queued-attachment',
+        '--title',
+        'Queued work',
+        '--project',
+        project,
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'task',
+        'queue',
+        'queued-attachment',
+        '--behind',
+        'outside-hook-chat',
+      ],
+    })
+    expect((await assignedHydra.task({ key: 'queued-attachment' })).queue).toBeDefined()
+    const attached = await assignedHydra.owner({
+      args: [
+        'task',
+        'attach',
+        'queued-attachment',
+        '--session',
+        replacementId,
+      ],
+    })
+    expect(attached.notices).toBeDefined()
+    expect((await assignedHydra.task({ key: 'queued-attachment' })).queue).toBeUndefined()
+    expect((await assignedHydra.task({ key: 'queued-attachment' })).worker).toBe(replacementId)
 
     await flushLogs()
     const onLogs = logFiles().map(file => readFileSync(

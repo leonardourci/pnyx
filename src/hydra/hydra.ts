@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { reportActor } from '#app/actors.ts'
 import type { HydraState, HydraChange, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -37,9 +38,10 @@ export function hydraEvent({
       })
 
       if (openAsks({ card }).some(ask => ask.origin)) {
-        throw new HydraError({
-          message: 'answer or evidence-close the report question before hiding its task',
-          code: 'OWNER_DECISION_PENDING',
+        inform({
+          task: card.id,
+          reason: 'Task hidden with an open report question',
+          clear: `Use pnyx-axi task questions ${card.id} to inspect it`,
         })
       }
     }

@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
@@ -200,9 +201,9 @@ export function inscribeOperation({
   const active = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
 
   if (action === 'start' && active && active.id !== id) {
-    throw new HydraError({
-      message: 'An inscribe pass is already running; resume it with hydra inscribe start',
-      code: 'CONFLICT',
+    inform({
+      reason: `Inscribe pass ${active.id} is still open; started another pass`,
+      clear: `Use pnyx-axi hydra inscribe fail --key ${active.id} --error "<why>" to close it`,
     })
   }
 
@@ -222,9 +223,9 @@ export function inscribeOperation({
   }
 
   if (action === 'finish' && through !== previous?.through) {
-    throw new HydraError({
-      message: 'Read every history page before finishing; --through must equal the pass snapshot',
-      code: 'INSCRIBE_INCOMPLETE',
+    inform({
+      reason: 'Inscribe finished without confirming its history snapshot',
+      clear: 'Use pnyx-axi hydra history to read the remaining history',
     })
   }
 

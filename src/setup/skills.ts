@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { log } from '#app/diagnostics.ts'
 import {
   ORCHESTRATE_SKILL,
@@ -445,10 +446,9 @@ export function setupSkills(
   const conflict = !remove && links.find(link => link.status === 'conflict')
 
   if (conflict) {
-    throw new HydraError({
-      message: `cannot replace existing skill at ${conflict.path}`,
-      code: 'SKILL_CONFLICT',
-      help: ['Move the existing skill aside, then rerun `pnyx-axi setup skills`'],
+    inform({
+      reason: `Kept the existing skill at ${conflict.path}`,
+      clear: 'Move that skill aside and run pnyx-axi setup skills to install the Pnyx link',
     })
   }
 
@@ -509,7 +509,8 @@ export function setupSkills(
   }
 
   const skills = links.map(link => {
-    const change = remove ? (link.owned ? 'removed' : 'unchanged') : link.status === 'ready' ? 'unchanged' : 'installed'
+    const keep = link.status === 'ready' || link.status === 'conflict'
+    const change = remove ? (link.owned ? 'removed' : 'unchanged') : keep ? 'unchanged' : 'installed'
 
     if (!preview && change === 'installed') {
       mkdirSync(
