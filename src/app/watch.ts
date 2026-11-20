@@ -11,7 +11,10 @@ type SharedWatch = {
   users: Map<symbol, Changed>
   close(): void
 }
-const shared = new Map<string, SharedWatch & { poll(): void }>()
+const shared = new Map<string, SharedWatch & {
+  poll(): void
+  notify(): void
+}>()
 const polls = new Map<string, SharedWatch>()
 
 export interface PathWatch {
@@ -94,7 +97,10 @@ function follow({
 }: {
   path: string
   interval: number
-}): SharedWatch & { poll(): void } {
+}): SharedWatch & {
+  poll(): void
+  notify(): void
+} {
   const users = new Map<symbol, Changed>()
   let closed = false
   let file: FSWatcher | undefined
@@ -250,6 +256,7 @@ function follow({
   return {
     users,
     poll,
+    notify,
     close() {
       closed = true
       release()
@@ -268,7 +275,7 @@ export function watchPath({
   changed: Changed
   interval?: number
   poll?: boolean
-}): PathWatch {
+}): PathWatch & { reconcile(): void } {
   path = resolve(path)
   let record = shared.get(path)
 
@@ -297,6 +304,7 @@ export function watchPath({
   )
 
   return {
+    reconcile: record.notify,
     close() {
       if (!record.users.delete(id)) {
         return
