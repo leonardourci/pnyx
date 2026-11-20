@@ -2883,21 +2883,21 @@ test.each([
       page,
       agent: { harness },
     })
-    page.close()
     await hydra.startTask({ key: 'review-page' })
     await hydra.startTask({ key: 'unchanged-card' })
 
     for (let index = 0; index < 41; index++) {
-      await hydra.owner({
+      expect((await page.send({
+        name: 'task',
         args: [
-          'push',
+          'create',
           '--key',
           `snapshot-${index}`,
-          '--file',
-          '-',
+          '--title',
+          `Snapshot card ${index}`,
+          '--no-start',
         ],
-        input: JSON.stringify({ title: `Snapshot card ${index}` }),
-      })
+      })).type).toBe('receipt')
     }
 
     const session = await hydra.chat({ text: 'Read the initial cards' })
@@ -2953,16 +2953,15 @@ test.each([
     })
 
     for (let index = 0; index < 41; index++) {
-      await hydra.owner({
+      expect((await page.send({
+        name: 'task',
         args: [
-          'push',
-          '--key',
+          'rename',
           `snapshot-${index}`,
-          '--file',
-          '-',
+          '--title',
+          `Changed snapshot card ${index}`,
         ],
-        input: JSON.stringify({ title: `Changed snapshot card ${index}` }),
-      })
+      })).type).toBe('receipt')
     }
 
     await hydra.chat({ text: 'Read the capped changes' })
@@ -3002,6 +3001,7 @@ test.each([
       await hydra.chat({ text: 'Read the update during this turn' })
       const steering = session.received.find(text => text.endsWith('Read the update during this turn'))!
       expect(steering).toContain('https://example.com/active-review')
+
     } finally {
       held.release()
     }
@@ -3010,6 +3010,7 @@ test.each([
       what: 'the held turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
+
     provider.plan({
       hydra: hydra.id,
       text: 'Compact task context',
@@ -3036,13 +3037,13 @@ test.each([
     })
 
     for (let index = 0; index < 41; index++) {
-      await hydra.owner({
+      expect((await page.send({
+        name: 'task',
         args: [
-          'task',
           'hide',
           `snapshot-${index}`,
         ],
-      })
+      })).type).toBe('receipt')
     }
 
     await hydra.chat({ text: 'Read the hidden-card changes' })
@@ -3056,6 +3057,7 @@ test.each([
     await hydra.chat({ text: 'Read the last hidden-card change' })
     const lastHidden = session.received.find(text => text.endsWith('Read the last hidden-card change'))!
     expect(lastHidden.match(/is no longer listed/g)).toHaveLength(1)
+    page.close()
   },
 )
 
