@@ -16,11 +16,17 @@ export function useChatScroll() {
   // A selection or focus inside the messages would scroll away under the owner, so the end is not kept meanwhile.
   const selecting = useRef(false)
 
-  const keepEnd = () => {
+  const scrollToEnd = () => {
     const element = scroller.current
 
-    if (element && follow.following() && !selecting.current) {
+    if (element) {
       element.scrollTop = element.scrollHeight
+    }
+  }
+
+  const keepEnd = () => {
+    if (follow.following() && !selecting.current) {
+      scrollToEnd()
     }
   }
 
@@ -133,10 +139,10 @@ export function useChatScroll() {
     content,
     reading,
     handlers,
-    // Back to bottom mode, as after a send or on Jump.
+    // Back to bottom mode, as after a send or on Jump: the owner asked for the end, so a selection does not hold it back.
     toEnd() {
       follow.resume()
-      keepEnd()
+      scrollToEnd()
     },
     // Reading mode without owner input, for moves Pnyx makes, such as showing a comment's message.
     read: follow.stop,

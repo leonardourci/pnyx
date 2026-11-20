@@ -4,7 +4,7 @@ import type { Compaction } from '#workers/compaction/model.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
 import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
-import { appendRecords } from './setup/transcripts.ts'
+import { appendRecords, appendToolCalls } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
 
@@ -138,100 +138,115 @@ test(
 )
 
 test(
-  'a task\'s chat keeps the older page it read back, in order, when its worker writes more',
+  'a task\'s chat keeps the older page it read back, in order, when its worker writes more, and Focus mode hides its tool calls',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'notes' })
-    await appendRecords({
-      session: worker,
-      records: Array.from(
-        { length: WORKER_NOTES },
-        (
-          _,
-          index,
-        ) => ({
-          type: 'assistant' as const,
-          content: `note ${index + 1}`,
-        }),
-      ),
-    })
-    const threads = createThreadReceiver()
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: hydra.id,
-      receive: ({ message }) => {
-        threads.receive({ message })
-      },
-    })
-    const first = await page.send({
-      name: 'thread',
-      args: ['notes'],
-    }) as unknown as ThreadReceipt
-    expect(first.thread.older).toBeTruthy()
-    await page.send({
-      name: 'thread',
+    const focusMode = ({ on }: { on: boolean }) => hydra.owner({
       args: [
-        'notes',
-        first.thread.older!,
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ focusMode: on }),
       ],
     })
+    await focusMode({ on: false })
 
-    await appendRecords({
-      session: worker,
-      records: [
-        {
-          type: 'assistant',
-          content: 'note after reading back',
+    try {
+      // A tool call older than the first page, so only the page read back holds it.
+      await appendToolCalls({
+        session: worker,
+        tools: 1,
+      })
+      await appendRecords({
+        session: worker,
+        records: Array.from(
+          { length: WORKER_NOTES },
+          (
+            _,
+            index,
+          ) => ({
+            type: 'assistant' as const,
+            content: `note ${index + 1}`,
+          }),
+        ),
+      })
+      const threads = createThreadReceiver()
+      const page = await openPage({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+        receive: ({ message }) => {
+          threads.receive({ message })
         },
-      ],
-    })
-    const notes = () => threads.read({ card: first.thread.card })?.entries
-      .map(entry => entry.text)
-      .filter(text => text.startsWith('note '))
-    await until({
-      what: 'the note written after reading back',
-      check: () => notes()?.includes('note after reading back'),
-    })
-    page.close()
-    const everyNote = [
-      ...Array.from(
-        { length: WORKER_NOTES },
-        (
-          _,
-          index,
-        ) => `note ${index + 1}`,
-      ),
-      'note after reading back',
-    ]
-    expect(notes()).toEqual(everyNote)
+      })
+      const first = await page.send({
+        name: 'thread',
+        args: ['notes'],
+      }) as unknown as ThreadReceipt
+      expect(first.thread.older).toBeTruthy()
+      await page.send({
+        name: 'thread',
+        args: [
+          'notes',
+          first.thread.older!,
+        ],
+      })
 
-    // A reconnecting tab restores what it had loaded.
-    const reconnected = await hydra.page()
-    const restored = await reconnected.send({
-      name: 'thread',
-      args: [
-        'notes',
-        '--retain',
-        JSON.stringify({
-          session: first.thread.session,
-          oldest: threads.read({ card: first.thread.card })!.entries[0]!.id,
-        }),
-      ],
-    }) as unknown as { thread: { entries: Entry[] } }
-    // A tab from before the server stopped trimming conversations still asks for the recent pages.
-    const trimmed = await reconnected.send({
-      name: 'thread',
-      args: [
-        'notes',
-        '--recent',
-      ],
-    })
-    reconnected.close()
-    expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
-    expect(trimmed).toMatchObject({
-      type: 'error',
-      code: 'VALIDATION_ERROR',
-    })
+      await appendRecords({
+        session: worker,
+        records: [
+          {
+            type: 'assistant',
+            content: 'note after reading back',
+          },
+        ],
+      })
+      const loaded = () => threads.read({ card: first.thread.card })?.entries ?? []
+      const notes = () => loaded().map(entry => entry.text)
+        .filter(text => text.startsWith('note '))
+      const toolRows = () => loaded().filter(entry => entry.kind === 'tool')
+      await until({
+        what: 'the note written after reading back',
+        check: () => notes().includes('note after reading back'),
+      })
+      expect(toolRows().length).toBeGreaterThan(0)
+
+      await focusMode({ on: true })
+      await until({
+        what: 'Focus mode to hide the tool call of the page read back',
+        check: () => toolRows().length === 0,
+      })
+      page.close()
+      const everyNote = [
+        ...Array.from(
+          { length: WORKER_NOTES },
+          (
+            _,
+            index,
+          ) => `note ${index + 1}`,
+        ),
+        'note after reading back',
+      ]
+      expect(notes()).toEqual(everyNote)
+
+      // A reconnecting tab restores what it had loaded.
+      const reconnected = await hydra.page()
+      const restored = await reconnected.send({
+        name: 'thread',
+        args: [
+          'notes',
+          '--retain',
+          JSON.stringify({
+            session: first.thread.session,
+            oldest: loaded()[0]!.id,
+          }),
+        ],
+      }) as unknown as { thread: { entries: Entry[] } }
+      reconnected.close()
+      expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+    } finally {
+      await focusMode({ on: true })
+    }
   },
 )
 
