@@ -52,6 +52,16 @@ export function informReportReviewGaps({
   state: HydraState
   card: Card
 }): void {
+  if (card.kind === 'investigation' && !card.report) {
+    inform({
+      task: card.id,
+      reason: 'Investigation has no stored report',
+      clear: `Use pnyx-axi task report ${card.id} --file <path> to store one`,
+    })
+
+    return
+  }
+
   const gaps = reportReviewGaps({
     state,
     card,

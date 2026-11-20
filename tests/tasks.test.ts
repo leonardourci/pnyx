@@ -353,7 +353,16 @@ test(
     for (const message of [
       before.message,
       byHydra.message,
+      undefined,
     ]) {
+      const source = message ?? (await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Proceed with the rename',
+        ],
+      })).message
       const go = await hydra.owner({
         args: [
           'task',
@@ -373,7 +382,7 @@ test(
           'release',
           'still-held',
           '--from-message',
-          message,
+          source,
           '--reason',
           'Released',
         ],
@@ -3852,5 +3861,35 @@ test(
         '--full',
       ],
     })).task.reminder).toBeUndefined()
+
+    const investigation = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--kind',
+        'investigation',
+        '--title',
+        'Investigation without a report',
+      ],
+    })
+    const completed = await hydra.owner({
+      args: [
+        'outcome',
+        investigation.card.id,
+        'done',
+        '--note',
+        'Closed by explicit request',
+      ],
+    })
+    expect(completed.notices).toContainEqual(expect.objectContaining({
+      task: investigation.card.id,
+      reason: 'Investigation has no stored report',
+    }))
+    const saved = await hydra.task({ key: investigation.card.id })
+    expect(saved.status).toBe('done')
+    expect(saved.notices).toContainEqual(expect.objectContaining({
+      reason: 'Investigation has no stored report',
+    }))
   },
 )

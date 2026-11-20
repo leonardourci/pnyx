@@ -94,8 +94,11 @@ export function decideHold({
     return { skipped: 'unchanged' as const }
   }
 
+  const question = openAsks({ card }).find(ask => ask.kind === 'go' && ask.hold?.id === card.hold?.id)
+  const askedAt = question?.reaskedAt ?? question?.escalated?.at ?? question?.at
   const ownerGo = source?.action === 'send' && ownerActor({ actor: source.actor })
     && Date.parse(source.at) > Date.parse(card.hold.at)
+    && (askedAt === undefined || Date.parse(source.at) > Date.parse(askedAt))
     && !clarificationMessage({ message: source })
 
   if (!ownerGo) {
@@ -115,8 +118,6 @@ export function decideHold({
     text: reason,
     at: meta.at,
   }
-
-  const question = openAsks({ card }).find(ask => ask.kind === 'go' && ask.hold?.id === card.hold?.id)
 
   if (question) {
     askAnswer({

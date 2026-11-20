@@ -1460,7 +1460,6 @@ export function HydraView({
                     notify={notify}
                     upgrade={upgrade}
                     startUpgrade={startUpgrade}
-
                   />
                 </ProfileSurface>
               </div>,

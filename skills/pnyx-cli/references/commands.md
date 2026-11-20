@@ -81,4 +81,4 @@ Ordinary memory reads use the caller’s native `PNYX_HYDRA` and may return filt
 
 `pnyx-axi hydra remove <id> --hydra <caller>` runs directly. Every caller is refused deletion of copies containing unlanded work. Removing the caller or last Hydra produces a notice. Settings runs the same command. See the [CLI guide](../../../docs/pnyx-axi.md) for cleanup, retention, safeguards and recovery.
 
-Use `project list`, `project show <path>` and `project remove <path>` to manage the Hydra's own attachments even when `readPoleis` is empty. Memory commands still require polis read access.
+Use `project list`, `project show <path>` and `project remove <path>` to manage the Hydra's own attachments even when `readPoleis` is empty. Ordinary memory reads require polis read access.

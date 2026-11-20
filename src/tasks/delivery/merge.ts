@@ -55,7 +55,6 @@ function pullRequest({
   return chosen[0]!
 }
 
-// Green means open, not a draft, no failed check and none still running.
 function mergeNotices({ status }: { status: PullRequestStatus }): void {
   const reasons: string[] = []
 
@@ -245,10 +244,7 @@ export async function mergeCommand({
           }
           commit({
             hydraId,
-            meta: {
-              ...meta,
-              id: meta.id ? `${meta.id}:rejected` : undefined,
-            },
+            meta: rejectedMeta,
             intent: {
               type: 'card.linked',
               card: card.id,

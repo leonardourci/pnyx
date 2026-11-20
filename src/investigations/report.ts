@@ -160,14 +160,6 @@ export function decideBuild({
     return { skipped: 'unchanged' as const }
   }
 
-  if (!card.report) {
-    inform({
-      task: card.id,
-      reason: 'Build started without a stored investigation report',
-      clear: `Use pnyx-axi task report ${card.id} --file <path> to store one`,
-    })
-  }
-
   informReportReviewGaps({
     state,
     card,

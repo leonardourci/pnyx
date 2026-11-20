@@ -200,7 +200,7 @@ test(
 )
 
 test(
-  'a task keeps one card through worker attachment and displays persisted command notices',
+  'starting a task attaches its worker without creating a second card',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'single-task' })
