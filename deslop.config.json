@@ -64,6 +64,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "kill-ai-slop"
       ],
       "ciRequired": true
@@ -80,6 +81,7 @@
       ],
       "instructions": [
         "project",
+        "follow-conventions",
         "kill-ai-slop"
       ]
     },

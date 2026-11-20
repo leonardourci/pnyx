@@ -74,6 +74,7 @@ test(
         instructions: [
           'kill-ai-slop',
           'project',
+          'follow-conventions',
         ],
       },
       {
@@ -82,6 +83,7 @@ test(
         instructions: [
           'kill-ai-slop',
           'project',
+          'follow-conventions',
         ],
       },
       {

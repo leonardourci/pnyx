@@ -91,8 +91,8 @@ Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull reques
 |---|---|---|---|
 | Workflow | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop, write-ci-workflow |
 | Fixture | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop |
-| Shipped skill text | None | Lint, build and tests | Project, kill-ai-slop |
-| Docs | None | Test scope | Project, kill-ai-slop |
+| Shipped skill text | None | Lint, build and tests | Project, conventions, kill-ai-slop |
+| Docs | None | Test scope | Project, conventions, kill-ai-slop |
 | Tests | Code commands | Lint, build and tests | Project, conventions, audit-tests |
 | UI | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop, write-front-end |
 | Back-end | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop |
