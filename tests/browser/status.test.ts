@@ -369,7 +369,8 @@ test(
     const result = await chrome({
       script: `
       await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Refuse worker badge turn');
-      await page.click('[aria-label="Send to worker"]');
+      await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+      await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
       await page.wait('${hydraChat} [aria-label="Hydra status"][data-status*="refused this turn"]', 5000);
       await page.wait(${JSON.stringify(`${selector} .agent-activity[aria-label*="refused this turn"]`)}, 5000);
       await page.wait(${JSON.stringify(`${selector} [aria-label="Worker status"][data-status*="refused this turn"]`)}, 5000);
@@ -481,8 +482,9 @@ test(
     })
     const outsideFailure = await chrome({
       script: `
-      await page.fill('[aria-label="Message worker"]', 'Try the outside route');
-      await page.click('[aria-label="Send to worker"]');
+      await page.fill(${JSON.stringify(`${outsideSelector} [aria-label="Message worker"]`)}, 'Try the outside route');
+      await page.wait(${JSON.stringify(`${outsideSelector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+      await page.click(${JSON.stringify(`${outsideSelector} [aria-label="Send to worker"]`)});
       await page.wait(${JSON.stringify(`${outsideSelector} .agent-activity[aria-label*="process exited"]`)}, 5000);
       await page.wait(${JSON.stringify(`${outsideSelector} [aria-label="Worker status"][data-status*="process exited"]`)}, 5000);
       console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${outsideSelector} .working-dots`)}).length));
