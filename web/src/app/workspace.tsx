@@ -1,3 +1,4 @@
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { MOTION_EASING } from '#web-shared/motion.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceWindow } from './workspace-window.ts'
@@ -58,7 +59,7 @@ import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
-import { useCallback,useEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from 'react'
+import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useHydra } from './connection.ts'
 import { useHydraEdits } from './hydra-edits.ts'
 import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
@@ -98,7 +99,7 @@ function HydraDragName({
       data-sort-id={id}
       data-sort-kind="hydra"
       data-sort-scope="hydras"
-      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex min-w-0 max-w-workspace-title flex-none touch-none cursor-grab items-center gap-1.5 font-brand text-workspace font-bold [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate group-data-[collapsed=true]/workspace:[writing-mode:vertical-rl]`}
+      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex max-w-workspace-title min-w-0 flex-none cursor-grab touch-none items-center gap-1.5 font-brand text-workspace font-bold group-data-[collapsed=true]/workspace:writing-vertical [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate`}
     >{children}
     </div>
   )
@@ -1063,7 +1064,7 @@ export function HydraView({
             },
           }}
           ref={setLayer}
-          className="app hydra-workspace group/workspace flex h-full w-max flex-none flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal snap-start max-phone:p-1.5"
+          className="app hydra-workspace group/workspace flex h-full w-max flex-none snap-start flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal max-phone:p-1.5"
           data-ui-surface="workspace"
           data-hydra-workspace={navigation.hydraId}
           data-active={active}
@@ -1072,12 +1073,12 @@ export function HydraView({
           data-collapsed={view.workspace.collapsed}
           data-seq={state.seq}
           data-connected={connected}
-          style={{
+          style={runtimeStyle({
             width: workspaceWindow.width,
-            '--text-ui': `${view.fontSize}px`,
-            '--text-chat': `${view.chatFontSize}px`,
-            '--text-code': `${view.codeFontSize}px`,
-          } as CSSProperties}
+            uiFont: `${view.fontSize}px`,
+            chatFont: `${view.chatFontSize}px`,
+            codeFont: `${view.codeFontSize}px`,
+          })}
         >
           <Panel
             shown={active}
@@ -1152,7 +1153,7 @@ export function HydraView({
               }}
             />
           </Panel>
-          <motion.header layoutRoot className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 [&>.button]:flex-none group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col">
+          <motion.header layoutRoot className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col [&>.button]:flex-none">
             <HydraDragName id={navigation.hydraId} name={shownHydra?.name ?? 'Hydra'} disabled={!connected}>
               {view.workspace.collapsed && (
                 <ProjectCounts
@@ -1248,7 +1249,7 @@ export function HydraView({
                     onClick={toggleChat}
                     icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                   />
-                  <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&[hidden]]:hidden [&>.hydra-chat]:h-full [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:max-h-none [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
+                  <FoldContent open={!view.workspace.chatCollapsed} axis="none" className="chat-content h-full [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate [&>.hydra-chat]:h-full [&>.hydra-chat]:max-h-none [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat! [&[hidden]]:hidden">
                     <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                       <HydraChat
                         hydraId={navigation.hydraId}
@@ -1289,7 +1290,7 @@ export function HydraView({
 
                 <TaskReferencesProvider references={references} openTask={revealTask}>
                   <div className="hydra-main flex min-h-0 w-max flex-none flex-col">
-                    <div className="work-area inline relative flex h-full min-h-0 min-w-0 flex-1 overflow-visible">
+                    <div className="work-area relative flex inline h-full min-h-0 min-w-0 flex-1 overflow-visible">
                       <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
                         <div data-sort-surface={`project-columns:${navigation.hydraId}`} className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0" aria-label="Work columns">
                           <SortGroup id={`project-columns:${navigation.hydraId}`} items={columns.map(column => column.id)}>
@@ -1454,15 +1455,15 @@ export function HydraView({
             )}
             {active && page === 'settings' && createPortal(
               <div
-                className="settings-route fixed inset-x-0 top-topbar-height bottom-0 z-65 flex bg-background [&[hidden]]:hidden [&>.settings-page]:w-full [&>.settings-page]:min-w-0"
+                className="settings-route fixed inset-x-0 top-topbar-height bottom-0 z-65 flex bg-background [&>.settings-page]:w-full [&>.settings-page]:min-w-0 [&[hidden]]:hidden"
                 data-ui-surface="settings"
                 data-settings-hydra={navigation.hydraId}
                 hidden={!active || page !== 'settings'}
-                style={{
-                  '--text-ui': `${view.fontSize}px`,
-                  '--text-chat': `${view.chatFontSize}px`,
-                  '--text-code': `${view.codeFontSize}px`,
-                } as CSSProperties}
+                style={runtimeStyle({
+                  uiFont: `${view.fontSize}px`,
+                  chatFont: `${view.chatFontSize}px`,
+                  codeFont: `${view.codeFontSize}px`,
+                })}
               >
                 <ProfileSurface name="settings" hydraId={navigation.hydraId}>
                   <SettingsPage
