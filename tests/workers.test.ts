@@ -1972,6 +1972,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'unreadable-log',
         '--title',
@@ -1995,6 +1996,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Unavailable worker log directory',
       ],
@@ -2152,6 +2154,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'completed-worker',
         '--title',
@@ -2231,6 +2234,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'command-worker',
         '--title',
@@ -2336,6 +2340,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'migration',
         '--title',

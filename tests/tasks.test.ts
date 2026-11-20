@@ -3004,6 +3004,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'parent',
         '--title',
@@ -3014,6 +3015,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'observed',
         '--title',
@@ -3313,6 +3315,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'research',
         '--title',
@@ -3396,6 +3399,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'dependent',
         '--title',

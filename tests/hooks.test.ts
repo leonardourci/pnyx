@@ -811,6 +811,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'attached',
         '--title',

@@ -4466,6 +4466,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'discovered',
         '--title',
