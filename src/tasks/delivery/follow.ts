@@ -73,7 +73,7 @@ export function workerNews({
   const news: string[] = []
 
   if (status.checks.failed > failedChecks({ checks: link.checks })) {
-    news.push(`Checks failed on ${link.url}: ${status.checks.summary}. Read them with \`gh-axi pr checks ${number}${repo}\`, fix them on your branch and push. If you cannot fix them, declare blocked with what you found.`)
+    news.push(`Checks failed on ${link.url}: ${status.checks.summary}. Read them with \`gh-axi pr checks ${number}${repo}\`, fix them on your branch and push. If you cannot fix them, append a blocked line to worker.log with what you found.`)
   }
 
   if (link.comments !== undefined && status.comments > link.comments) {

@@ -19,7 +19,7 @@ commands:
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|group|keep|list|set|remove      Attach repositories, group projects or choose a keeper
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks (create starts a worker) and one level of subtasks
+  task create|list|show|rename|parent|arrange|history|updates|permission Tasks (create starts a worker) and one level of subtasks
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task send <task> --text <text> --harness claude|codex Start or message a worker directly
   task start|continue <task>                  Start a worker or host an ended outside session
