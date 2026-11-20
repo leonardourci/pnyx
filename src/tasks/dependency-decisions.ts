@@ -6,6 +6,40 @@ import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { isManagedTask } from './select.ts'
 import { requireNoDependencyCycle } from './dependencies.ts'
+import type { Card } from './model.ts'
+
+const TASK_CARDS_ONLY = 'dependencies must name task cards in this Hydra'
+
+export function prerequisiteCards({
+  state,
+  prerequisites,
+  meta,
+}: {
+  state: HydraState
+  prerequisites: string[]
+  meta: Meta
+}): Card[] {
+  if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
+    throw new HydraError({
+      message: 'only Hydra or the owner manages prerequisites',
+      code: 'OWNER_ONLY',
+    })
+  }
+
+  const targets = prerequisites.map(ref => findCard({
+    state,
+    ref,
+  }))
+
+  if (targets.some(task => isManagedTask({ card: task }))) {
+    throw new HydraError({
+      message: TASK_CARDS_ONLY,
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return targets
+}
 
 export function decideDependencies({
   state,
@@ -20,28 +54,19 @@ export function decideDependencies({
   remove: boolean
   meta: Meta
 }): Decision {
-  if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
-    throw new HydraError({
-      message: 'only Hydra or the owner manages prerequisites',
-      code: 'OWNER_ONLY',
-    })
-  }
-
+  const targets = prerequisiteCards({
+    state,
+    prerequisites,
+    meta,
+  })
   const card = findCard({
     state,
     ref,
   })
-  const targets = prerequisites.map(ref => findCard({
-    state,
-    ref,
-  }))
 
-  if ([
-    card,
-    ...targets,
-  ].some(task => isManagedTask({ card: task }))) {
+  if (isManagedTask({ card })) {
     throw new HydraError({
-      message: 'dependencies must name task cards in this Hydra',
+      message: TASK_CARDS_ONLY,
       code: 'VALIDATION_ERROR',
     })
   }

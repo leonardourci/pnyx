@@ -5,13 +5,13 @@ import { applyDecision } from '#app/decision.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { HydraError } from '#store/errors.ts'
-import { decideDependencies } from '#tasks/dependency-decisions.ts'
+import { decideDependencies, prerequisiteCards } from '#tasks/dependency-decisions.ts'
 import type { Card } from '#tasks/model.ts'
 import { decideNote, noteId } from '#tasks/notes.ts'
-import { goQuestionCommand, type Blocker } from '#tasks/owner-gates.ts'
+import { goQuestionCommand } from '#tasks/owner-gates.ts'
 import { localTaskCommand } from '#tasks/plans-cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { START_FLAGS, startFlags } from './cli.ts'
+import { flagGiven, START_FLAGS, startFlags } from './cli.ts'
 import { decideQueue, queueAnchor, queueGap } from './queue-decisions.ts'
 import { findSession } from './session-attachments.ts'
 import { startRecorded, startRoute, startTask } from './start.ts'
@@ -27,11 +27,8 @@ type Values = Record<string, string | boolean | string[] | undefined>
 type Wait = keyof typeof WAIT_FLAGS
 
 function chooseWait({ values }: { values: Values }): Wait | undefined {
-  const given = (Object.keys(WAIT_FLAGS) as Wait[]).filter(wait => {
-    const value = values[WAIT_FLAGS[wait]]
-
-    return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== false
-  })
+  const given = (Object.keys(WAIT_FLAGS) as Wait[])
+    .filter(wait => flagGiven({ value: values[WAIT_FLAGS[wait]] }))
 
   if (given.length > 1) {
     throw new HydraError({
@@ -57,18 +54,19 @@ function requireWaitTargets({
   state,
   wait,
   values,
+  meta,
 }: {
   state: HydraState
   wait?: Wait
   values: Values
+  meta: Meta
 }): void {
   if (wait === 'depend') {
-    for (const ref of values.on as string[]) {
-      findCard({
-        state,
-        ref,
-      })
-    }
+    prerequisiteCards({
+      state,
+      prerequisites: values.on as string[],
+      meta,
+    })
   }
 
   if (wait !== 'queue') {
@@ -331,7 +329,7 @@ export async function createCommand({
   meta: Meta
 }): Promise<Output> {
   const state = loadHydra({ hydraId }).state
-  let wait = chooseWait({ values })
+  const chosen = chooseWait({ values })
   const flags = startFlags({ values })
   startRoute({
     state,
@@ -342,8 +340,9 @@ export async function createCommand({
   })
   requireWaitTargets({
     state,
-    wait,
+    wait: chosen,
     values,
+    meta,
   })
 
   const created = (await localTaskCommand({
@@ -355,19 +354,12 @@ export async function createCommand({
   }))!
   const task = (created.card as { id: string }).id
   const operation = meta.id ?? task
-  let notQueued: Blocker | undefined
-
-  if (wait === 'queue') {
-    notQueued = queueGap({
-      state: loadHydra({ hydraId }).state,
-      task,
-      behind: values.behind as string,
-    })
-  }
-
-  if (notQueued) {
-    wait = undefined
-  }
+  const notQueued = chosen === 'queue' ? queueGap({
+    state: loadHydra({ hydraId }).state,
+    task,
+    behind: values.behind as string,
+  }) : undefined
+  const wait = notQueued ? undefined : chosen
 
   if (wait === 'queue' || wait === 'depend') {
     recordWait({

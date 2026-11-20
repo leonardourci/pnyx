@@ -65,6 +65,9 @@ export const START_FLAGS = [
   'paseo-url',
 ]
 
+export const flagGiven = ({ value }: { value: unknown }) =>
+  Array.isArray(value) ? value.length > 0 : value !== undefined && value !== false
+
 export function startFlags({ values }: { values: Record<string, unknown> }) {
   return {
     via: values.via as string | undefined,

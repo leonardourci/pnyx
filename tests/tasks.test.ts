@@ -381,7 +381,7 @@ test(
 )
 
 test(
-  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, and a task left unstarted shows why or that no reason was given',
+  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, and one set to wait on Hydra itself files nothing',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'ring' })
@@ -498,11 +498,28 @@ test(
       }),
     })).status).toBe(0)
     expect((await hydra.task({ key: 'legend' })).worker).toBe('none: not started, no reason given')
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Wait for Hydra',
+        '--on',
+        '$hydra',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'list',
+      ],
+    })).tasks.some((task: { title: string }) => task.title === 'Wait for Hydra')).toBe(false)
   },
 )
 
 test(
-  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target or start route files nothing, and a queue that cannot happen explains instead of refusing',
+  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, and a queue that cannot happen explains instead of refusing',
   async () => {
     const hydra = await pnyx.hydra()
     const { folder } = await hydra.startTask({ key: 'export' })
@@ -541,6 +558,15 @@ test(
         flags: [
           '--via',
           'nowhere',
+        ],
+        code: 'VALIDATION_ERROR',
+      },
+      {
+        flags: [
+          '--start',
+          '--harness',
+          'claude',
+          '--no-start',
         ],
         code: 'VALIDATION_ERROR',
       },

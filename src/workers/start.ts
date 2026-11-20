@@ -39,6 +39,7 @@ import { taskPrompt } from './worker-brief.ts'
 import { namedProjectCommand, startCommand } from './start-command.ts'
 import { decideQueue } from './queue-decisions.ts'
 import { sendReply } from './reply.ts'
+import { flagGiven } from './cli.ts'
 
 const VIAS = [
   'pnyx',
@@ -221,11 +222,7 @@ type StartFlag = keyof typeof START_FLAG_NAMES
 
 function unappliedFlags({ given }: { given: Record<StartFlag, unknown> }): string[] {
   return Object.entries(START_FLAG_NAMES)
-    .filter(([name]) => {
-      const value = given[name as StartFlag]
-
-      return Array.isArray(value) ? value.length > 0 : value !== undefined && value !== false
-    })
+    .filter(([name]) => flagGiven({ value: given[name as StartFlag] }))
     .map(([
       , flag,
     ]) => flag)
