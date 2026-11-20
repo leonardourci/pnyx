@@ -1541,7 +1541,7 @@ test(
 )
 
 test(
-  'hydra check never points a Hydra that Pnyx runs at the wait it refuses',
+  'hydra check returns immediately with a notice when a hosted Hydra requests a wait',
   async () => {
     const hydra = await pnyx.hydra()
     const session = await hydra.chat({ text: 'hello' })
@@ -1574,7 +1574,7 @@ test(
 
     expect(outside.help.join('\n')).toContain('--wait')
 
-    const waited = await hosted.refused({
+    const waited = await hosted.run({
       args: [
         'hydra',
         'check',
@@ -1583,7 +1583,7 @@ test(
       ],
     })
 
-    expect(waited.code).toBe('VALIDATION_ERROR')
+    expect(waited.notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('returns immediately') })]))
   },
 )
 

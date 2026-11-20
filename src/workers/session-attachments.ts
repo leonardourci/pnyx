@@ -278,8 +278,28 @@ export function applyAttachment({
     return false
   }
 
-  if (target && target.id !== event.data.before && cardSessionId({ card: target })) {
-    return false
+  const attached = target && cardSessionId({ card: target })
+
+  if (target && target.id !== event.data.before && attached) {
+    if (event.data.replaces !== attached || !session || session.taskId !== event.data.before) {
+      return false
+    }
+
+    const detached = applyAttachment({
+      state,
+      event: {
+        ...event,
+        data: {
+          session: attached,
+          before: target.id,
+          after: null,
+        },
+      },
+    })
+
+    if (!detached) {
+      return false
+    }
   }
 
   if (started) {
@@ -371,6 +391,11 @@ export function applyAttachment({
         }
       }
     }
+  }
+
+  if (target?.queue && !handoff) {
+    delete target.queue
+    delete target.queueNote
   }
 
   session.taskId = event.data.after

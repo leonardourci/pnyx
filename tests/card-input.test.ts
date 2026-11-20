@@ -28,6 +28,13 @@ test(
         folder,
       ],
     })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'quick',
+      ],
+    })
     const args = [
       'task',
       'send',
@@ -39,7 +46,9 @@ test(
       '--event-id',
       'direct-start',
     ]
-    expect(await hydra.owner({ args })).toMatchObject({ state: 'queued' })
+    const sent = await hydra.owner({ args })
+    expect(sent).toMatchObject({ state: 'queued' })
+    expect(sent.notices).toBeDefined()
     const worker = await hydra.agent({ cwd: folder })
     await until({
       what: 'direct start reaches the worker',

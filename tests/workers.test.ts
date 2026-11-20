@@ -578,6 +578,17 @@ test(
       column: needsYou,
     })
 
+    const asWorker = hydra.as({ session: worker })
+    expect((await asWorker.refused({
+      args: [
+        'task',
+        'permission',
+        'cleanup',
+        request.id,
+        'allow',
+      ],
+    })).code).toBe('NO_ROUTE')
+
     await hydra.owner({
       args: [
         'task',
@@ -625,6 +636,17 @@ test(
         ],
       })).task.permissions.find((pending: { status: string }) => pending.status === 'pending'),
     })
+    expect((await asWorker.refused({
+      args: [
+        'task',
+        'permission',
+        'cleanup',
+        second.id,
+        'allow',
+        '--actor',
+        'cli',
+      ],
+    })).code).toBe('NO_ROUTE')
     await hydra.owner({
       args: [
         'task',
@@ -1024,7 +1046,7 @@ test(
 )
 
 test(
-  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Hydra\'s steering, marks the card stopped, and refuses a worker asking to Stop',
+  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Hydra\'s steering, marks the card stopped, and permits a worker asking to Stop with a notice',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'stoppable' })
@@ -1080,38 +1102,22 @@ test(
       ],
     })
 
-    for (const args of [
-      [
+    const stopped = await hydra.as({ session: worker }).run({
+      args: [
         'task',
         'stop',
         'stoppable',
       ],
-      [
-        'task',
-        'send-now',
-        'stoppable',
-        'anything',
-      ],
-      [
-        'hydra',
-        'stop',
-      ],
-      [
-        'hydra',
-        'cancel',
-        'anything',
-      ],
-    ]) {
-      expect((await hydra.as({ session: worker }).refused({ args })).code).toBe('OWNER_ONLY')
-    }
-
+    })
+    expect(stopped.notices).toBeDefined()
+    expect(stopped.stopped).toMatch(/^task-/)
     expect((await hydra.owner({
       args: [
         'task',
         'stop',
         'stoppable',
       ],
-    })).stopped).toMatch(/^task-/)
+    })).stopped).toMatch(/^(task-|none:)/)
     expect((await hydra.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
       what: 'the owner\'s reply to read as not delivered',

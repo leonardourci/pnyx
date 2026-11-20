@@ -1,3 +1,4 @@
+import { inform, withCommandNotices } from '#app/command-notices.ts'
 import { parseArgs } from 'node:util'
 import { workerScope } from '#app/command-registry.ts'
 import { commandHydra, guard, type Options } from '#app/cli-support.ts'
@@ -10,7 +11,7 @@ import { SOURCE_OPTIONS } from '#task-sources/cli.ts'
 import { LINK_OPTIONS } from '#tasks/delivery/cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { INBOX_OPTIONS } from './inbox-cli.ts'
-import { workerIdentity, workerRefusal } from './worker-identity.ts'
+import { workerIdentity } from './worker-identity.ts'
 
 // The task subcommands that name their task one word later, and the options each of them takes.
 const NESTED_TASK_COMMANDS = new Map<string, Options>([
@@ -107,7 +108,12 @@ function requireOwnTask({
   what: string
 }): void {
   if (!ref) {
-    throw workerRefusal({ message: `${what} needs your own task id (${task})` })
+    inform({
+      reason: `${what} has no worker task target`,
+      clear: `Use pnyx-axi ${what} --help for its target syntax`,
+    })
+
+    return
   }
 
   const card = findCard({
@@ -116,7 +122,11 @@ function requireOwnTask({
   })
 
   if (card.id !== task) {
-    throw workerRefusal({ message: `${what} on ${card.id} is not yours; a worker writes only to its own task (${task})` })
+    inform({
+      task: card.id,
+      reason: `Worker ${task} changed another task`,
+      clear: `Use pnyx-axi task history ${card.id} to inspect the change`,
+    })
   }
 }
 
@@ -146,7 +156,10 @@ function checkWorkerScope({
   }
 
   if (declared !== undefined && identity.task !== undefined && declared !== `worker:${identity.task}`) {
-    throw workerRefusal({ message: `--actor ${declared} is refused: this worker writes as worker:${identity.task}` })
+    inform({
+      reason: `Worker ${identity.task} declared actor ${declared}`,
+      clear: `Use pnyx-axi with --actor worker:${identity.task} to retain the worker identity`,
+    })
   }
 
   const scope = workerScope({ name })
@@ -168,15 +181,28 @@ function checkWorkerScope({
     words,
     path,
   }))) {
-    throw workerRefusal({ message: `${command} is not a worker's command` })
+    inform({
+      reason: `${command} is outside the worker’s default commands`,
+      clear: `Use pnyx-axi ${command} --help to inspect the action`,
+    })
+
+    return
   }
 
   if (name === 'hydra' && values.action !== undefined) {
-    throw workerRefusal({ message: 'hydra send --action is Hydra\'s: a worker sends progress with hydra send --task <its task> --kind progress' })
+    inform({
+      reason: 'Worker requested a Hydra action',
+      clear: 'Use pnyx-axi hydra send --task <task> --kind progress --text "<progress>" for a progress report',
+    })
   }
 
   if (!identity.task) {
-    throw workerRefusal({ message: `${command} needs your own task, but PNYX_ACTOR is missing from your environment; restore it or pass --actor worker:<your task>` })
+    inform({
+      reason: 'Worker has no recorded task identity',
+      clear: 'Use pnyx-axi with --actor worker:<task> to record the task identity',
+    })
+
+    return
   }
 
   requireOwnTask({
@@ -211,9 +237,13 @@ export function workerScoped<T extends Record<string, Command>>({ commands }: { 
       name,
       // eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
       (args: string[]) => {
-        check(args)
+        return withCommandNotices({
+          run: () => {
+            check(args)
 
-        return run(args)
+            return run(args)
+          },
+        })
       },
     ]
   })) as T

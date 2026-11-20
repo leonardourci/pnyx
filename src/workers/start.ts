@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
@@ -20,7 +21,6 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { paseoUrl } from '#integrations/paseo/url.ts'
-import { liveTask } from '#tasks/select.ts'
 import { taskFolder } from '#projects/copy-create.ts'
 import { fmNote } from '#integrations/firstmate/reply.ts'
 import { startAgent } from '#integrations/paseo/launch.ts'
@@ -33,7 +33,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import type { Output } from '#app/cli-support.ts'
 import { requestCwd } from '#app/request-context.ts'
-import { requireOwnerToRaise } from './permission-level.ts'
+import { noticePermissionIncrease } from './permission-level.ts'
 import { applyDecision } from '#app/decision.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { namedProjectCommand, startCommand } from './start-command.ts'
@@ -145,11 +145,19 @@ function requireLiveTask({
   card: Card
   ref: string
 }): void {
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+  if (card.automaticTask || card.id === HYDRA_CARD) {
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
       help: ['Run `pnyx-axi task list`'],
+    })
+  }
+
+  if (card.hidden) {
+    inform({
+      task: card.id,
+      reason: 'Worker action requested on a hidden task',
+      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
     })
   }
 }
@@ -664,7 +672,7 @@ export async function startTask({
 
     // The host checks a Pnyx start when it receives it; a Paseo start is checked here.
     if (how === 'paseo' && agent) {
-      requireOwnerToRaise({
+      noticePermissionIncrease({
         state,
         actor: meta.actor,
         harness: agent.harness,

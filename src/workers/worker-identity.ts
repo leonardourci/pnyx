@@ -1,5 +1,3 @@
-import { AxiError } from 'axi-sdk-js'
-import { WORKER_OWN_COMMANDS } from '#app/command-registry.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
@@ -43,16 +41,4 @@ export function defaultActor(): string {
   const identity = workerIdentity()
 
   return identity?.task ? `${WORKER_PREFIX}${identity.task}` : 'cli'
-}
-
-// The refusal of a command a worker may not run, listing what it may.
-export function workerRefusal({ message }: { message: string }): AxiError {
-  return new AxiError(
-    message,
-    'WORKER_SCOPE',
-    [
-      `A worker may run on its own task: ${WORKER_OWN_COMMANDS.join(', ')}; it reads any task or Hydra`,
-      'Ask Hydra with `pnyx-axi task ask <task> --question "<what you need>"` for anything else',
-    ],
-  )
 }

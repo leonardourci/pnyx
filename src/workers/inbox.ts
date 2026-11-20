@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { randomUUID } from 'node:crypto'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -53,9 +54,10 @@ export function requireSteeringWorker({
   worker?: string
 }): void {
   if (actor !== `worker:${card.id}`) {
-    throw new HydraError({
-      message: 'Only this task’s worker can acknowledge steering',
-      code: 'NOT_ALLOWED',
+    inform({
+      task: card.id,
+      reason: 'Steering acknowledged by another actor',
+      clear: `Use pnyx-axi task inbox read ${card.id} to inspect its steering`,
     })
   }
 
@@ -261,9 +263,10 @@ export function acknowledgeSteering({
   })
 
   if (meta.actor !== `worker:${card.id}` || ack.actor !== meta.actor) {
-    throw new HydraError({
-      message: 'Only this task’s worker can acknowledge steering',
-      code: 'NOT_ALLOWED',
+    inform({
+      task: card.id,
+      reason: 'Steering acknowledged by another actor',
+      clear: `Use pnyx-axi task inbox read ${card.id} to inspect its steering`,
     })
   }
 

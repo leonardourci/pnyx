@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { observedQuestions } from './session-attachments.ts'
 import { readMemoryContext } from '#memory/context.ts'
 import { memoryCaller, readableProjects } from '#memory/poleis.ts'
@@ -89,18 +90,18 @@ export async function hydraCheck({
     },
     positionals: 1,
   })
-  const wait = integer({
+  let wait = integer({
     value: values.wait,
     flag: '--wait',
   }) ?? 0
 
   // A shell call inside a turn holds every message to Hydra until it returns; Pnyx wakes the Hydra it runs instead.
   if (wait > 0 && requestEnv().PNYX_HOSTED === 'hydra') {
-    throw new AxiError(
-      '--wait would block your turn, and the owner\'s messages with it; Pnyx wakes you when something changes',
-      'VALIDATION_ERROR',
-      ['Run `pnyx-axi hydra check` without --wait, then end your turn'],
-    )
+    inform({
+      reason: 'Hosted Hydra check returns immediately so its turn can finish',
+      clear: 'Use pnyx-axi hydra check without --wait; Pnyx wakes Hydra when work changes',
+    })
+    wait = 0
   }
 
   if (wait > 3600) {
