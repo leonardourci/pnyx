@@ -31,6 +31,7 @@ export function requireCopyAvailable({
     throw new HydraError({
       message: `Task ${task} is settling its copy; try again when cleanup finishes`,
       code: 'CONFLICT',
+      help: [`\`pnyx-axi task copy ${task}\` shows the copy's state`],
     })
   }
 }
