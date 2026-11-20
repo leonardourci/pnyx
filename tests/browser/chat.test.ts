@@ -404,11 +404,11 @@ test(
       const working = [
         page.locator('.hydra-chat').getByRole(
           'status',
-          { name: /^Running(?:\.|$)/ },
+          { name: /^Working(?:\.|$)/ },
         ),
         page.locator('[data-task]').getByRole(
           'status',
-          { name: /^Running(?:\.|$)/ },
+          { name: /^Working(?:\.|$)/ },
         ),
       ]
 
@@ -417,7 +417,7 @@ test(
       }
 
       await page.locator('[data-task] .agent-activity').focus()
-      expect(await page.getByRole('tooltip').textContent()).toBe('running')
+      expect(await page.getByRole('tooltip').textContent()).toBe('working')
 
       await setFocusMode({
         hydra,

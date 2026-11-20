@@ -388,7 +388,7 @@ test(
       actions,
       keys: () => '',
       now: Date.now(),
-    })).toContain('Running')
+    })).toContain('Thinking')
     const markup = renderToStaticMarkup(createElement(
       ResultPreview,
       {
@@ -402,7 +402,7 @@ test(
       },
     ))
     expect(markup).toContain('activity-working')
-    expect(markup).toContain('Running')
+    expect(markup).toContain('Thinking')
     held.release()
   },
 )
