@@ -1,16 +1,17 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx-axi`, the page through its WebSocket and its Zero reads.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx-axi`, the page through its WebSocket and its Zero reads. A few small browser checks open the real page in Chrome.
 
 ```text
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
+├── browser/            small checks of what only a real page shows, and the headless Chrome they open
 └── setup/              the shared setup: Postgres, the server, fake agents, fixtures
 ```
 
 ## Running
 
-Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`). Then:
+Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`) and Google Chrome. Then:
 
 ```sh
 pnpm test                                   # builds, then runs everything
@@ -68,6 +69,7 @@ Rules:
 - Edge cases of tricky logic go in the same area file, calling the function directly only when the server cannot reach the case cheaply.
 - No duplicate, cosmetic or snapshot tests, and none that break on a rename that keeps behaviour. A new case that fits an existing test becomes assertions in it, and a flow that differs only in its input runs once with an assertion per input.
 - A file starts one server. A test starts a server of its own only when starting or stopping that server is what it proves.
+- A browser check in `browser/` earns its place only for what needs a real page, such as rendering or scrolling, and guards one behaviour. It waits on real state: the page's rows, its socket frames or a number of painted frames, never a timer.
 - A wait on one of the server's intervals shortens that interval through the server's option (`followDelay`, `queueDelay`), never by raising the wait's bound.
 - Nothing outside the test's scratch folders: never a real home, agent, terminal or GitHub.
 - A test that pins a known bug is wrong; skip it with a note naming the task that fixes the bug. `tests/hooks.test.ts` holds one such skipped case.
@@ -75,7 +77,7 @@ Rules:
 
 ## The fakes
 
-`setup/agents.ts` replays one real recorded turn of Claude Code (through the Agent SDK) and Codex (its app-server) from `setup/fixtures/agents/`, so Pnyx's provider code runs over what the agents really send. `pnyx.claude.plan({ hydra, text, reply, partial, hold })` shapes the next turn whose prompt ends with `text` (or the one `match` accepts): its reply, a streamed prefix and whether it waits for `release()`. `pnyx.codex.plan` also takes `refuse`, which makes the app-server answer that turn's start with an error, so Pnyx sees the agent refuse the message. `compactTo` compacts a turn to that many tokens: a Claude turn planned with `compacting` finishes the compaction at once and ends as `/compact` does once released, and a Codex turn compacts just before it ends. A Claude plan's `window` is the context window Claude Code reports from that turn on, as after a model switch. `pnyx.claude.context` and `pnyx.codex.context` hold the context the recorded turn reports. A held Claude turn also ends when Pnyx stops it. A fake Claude session's `useTool({ tool, input })` asks for a tool's permission as Claude Code does mid-turn. After upgrading the Agent SDK or Codex, run `pnpm refresh-agent-fixtures` to record a fresh turn of each.
+`setup/agents.ts` replays one real recorded turn of Claude Code (through the Agent SDK) and Codex (its app-server) from `setup/fixtures/agents/`, so Pnyx's provider code runs over what the agents really send. `pnyx.claude.plan({ hydra, text, reply, partial, hold })` shapes the next turn whose prompt ends with `text` (or the one `match` accepts): its reply, a streamed prefix and whether it waits for `release()`. `pnyx.codex.plan` also takes `refuse`, which makes the app-server answer that turn's start with an error, so Pnyx sees the agent refuse the message. `compactTo` compacts a turn to that many tokens: a Claude turn planned with `compacting` finishes the compaction at once and ends as `/compact` does once released, and a Codex turn compacts just before it ends. A Claude plan's `window` is the context window Claude Code reports from that turn on, as after a model switch. `pnyx.claude.context` and `pnyx.codex.context` hold the context the recorded turn reports. A held Claude turn also ends when Pnyx stops it. A fake Claude session's `useTool({ tool, input })` asks for a tool's permission as Claude Code does mid-turn, and a Claude plan's `tool` makes the turn call that tool first and keep running it until the turn's release. `setup/transcripts.ts` appends records to a Claude session's transcript, as Claude Code writes them. After upgrading the Agent SDK or Codex, run `pnpm refresh-agent-fixtures` to record a fresh turn of each.
 
 `setup/fixtures/gh-axi.mjs` stands in for `gh-axi`: set `PNYX_GH_AXI` to it and `PNYX_FAKE_GITHUB` to a folder holding `<owner>/<repo>/<number>.json` pull requests (`state`, `checks`, `head`, `draft` and `mergeBehavior`, `merged` or `queued`). It answers merge requests too and logs every call in `calls.jsonl`. The quota fake reports a login folder holding a file named `exhausted` as out of quota, and a missing folder as signed out. `setup/upgrade.ts` makes a throwaway Pnyx folder with its own origin, whose commits decide whether install, build or the data check fails.
 
@@ -96,3 +98,4 @@ Rules:
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
+- `browser/chat.test.ts`: Hydra's chat and a task's chat open on their latest row and hold still, older rows load without moving the ones being read, and Focus mode keeps tool names out of the working line.

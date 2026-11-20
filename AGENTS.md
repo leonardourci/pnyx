@@ -52,7 +52,7 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `inscribe`, `pnyx-set-up`) |
 | `scripts/build/` | `pnpm run build`, which builds beside `dist` and replaces it only after the build passed |
 | `scripts/fixtures/` | `pnpm refresh-agent-fixtures`, which records the agent sessions the fakes replay |
-| `tests/` | the test suite: one `<area>.test.ts` per area driving a real server through `pnyx-axi` and the page's data calls, and the shared setup, fakes and fixtures in `setup/` |
+| `tests/` | the test suite: one `<area>.test.ts` per area driving a real server through `pnyx-axi` and the page's data calls, a few checks of the real page in `browser/`, and the shared setup, fakes and fixtures in `setup/` |
 | `docs/media/` | the README's demo GIF |
 
 Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it. For pull requests, follow [write-pull-request](.agents/skills/write-pull-request/SKILL.md). Run `pnpm deslop` on committed work pushed to an open PR before readiness. It reviews and fixes the branch with the instructions in `deslop.config.json`, runs the quick local checks, waits for required CI and marks the commit; see [Development](docs/development.md#verification).

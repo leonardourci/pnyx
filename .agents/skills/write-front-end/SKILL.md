@@ -70,4 +70,4 @@ Run `pnpm verify` and follow [Testing](../../../docs/testing.md) for behavior te
 
 Capture each changed view in an isolated headless browser at desktop and phone widths in light and dark themes. Show before and after screenshots side by side in a `Before | After` table at a reduced width (`<img src="..." width="360">`). Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/` and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
 
-Long lists in Activity and chat use @tanstack/react-virtual over Zero’s paged queries for variable row heights; zero-virtual needs fixed row heights.
+Long lists in Activity use @tanstack/react-virtual over Zero’s paged queries for variable row heights; zero-virtual needs fixed row heights. Chats render real rows with `content-visibility: auto`, through the one `Chat` component, which owns their scroll position.
