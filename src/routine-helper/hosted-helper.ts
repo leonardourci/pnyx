@@ -92,7 +92,7 @@ export function createHostedHelper({
   // A failed batch sends routine work to main until main has seen the failure.
   // An automatic helper has no account, so its openness never reads the dispatch file.
   const helperOpen = ({ state }: { state: HydraState }) => {
-    const choice = helperChoice({ state })
+    const choice = helperChoice()
 
     return choice !== undefined
       && (choice === 'auto' || accountKept({ candidate: choice }))
