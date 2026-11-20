@@ -10,6 +10,7 @@ import type { AgentRef } from '#workers/model.ts'
 import { readEvents, scanEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
+import { hydraInputDispatched } from './received.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import type { HydraChatQueue } from './chat-queue.ts'
 
@@ -231,8 +232,12 @@ export function recapText({
   const sent = (state.hydraMessages ?? []).filter(message =>
     (state.eventIds[message.id] ?? 0) > after)
   // A message whose turn started has been read; worker reports reach Hydra in their own wake.
-  const unread = sent.filter(message => !message.stopped && ownerActor({ actor: message.actor })
-    && !(`${message.id}:hosted` in state.eventIds))
+  const unread = sent.filter(message => !message.stopped && !message.failure
+    && ownerActor({ actor: message.actor })
+    && !hydraInputDispatched({
+      state,
+      message,
+    }))
   const unreadLines = unread.map(message => {
     const card = message.task ? state.cards[message.task] : undefined
     const task = card ? ` on ${taskMention({

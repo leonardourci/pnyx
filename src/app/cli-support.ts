@@ -680,6 +680,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.input-stopped': return 'Messages not delivered: stopped'
+    case 'hydra.input': return `Hydra input ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.received': return `Hydra received ${event.data.message}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`

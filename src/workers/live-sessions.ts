@@ -13,7 +13,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
-import { receivedWith } from '#hydra/received.ts'
+import { failHydraInput, receivedWith } from '#hydra/received.ts'
 import type { createHydraTurns } from '#hydra/turns.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
@@ -711,6 +711,25 @@ export function createLiveSessions({
         // A refused input is never confirmed, so nothing will take the owner's messages it carried.
         if (refused) {
           const carried = entry.carried.get(receipt.inputId) ?? []
+
+          if (card.id === HYDRA_CARD && !receipt.stopped) {
+            note({
+              fn: ({ writer }) => {
+                for (const input of [
+                  receipt.inputId,
+                  ...carried,
+                ]) {
+                  failHydraInput({
+                    writer,
+                    input,
+                    error: receipt.error ?? 'The agent refused this message; nothing was delivered',
+                    at: at(),
+                  })
+                }
+              },
+            })
+          }
+
           const steering = entry.delivered.get(receipt.inputId) ?? []
           entry.carried.delete(receipt.inputId)
           entry.delivered.delete(receipt.inputId)
@@ -768,6 +787,7 @@ export function createLiveSessions({
             phase: activity.receipt.phase,
             taken: activity.receipt.at,
             stopped: activity.receipt.stopped,
+            error: activity.receipt.error,
           })
         }
 

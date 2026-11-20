@@ -6,17 +6,9 @@ import { isRoutineMessage, type HydraMessage } from './model.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { ownerActor } from '#app/actors.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
+import { hydraInputDispatched } from './received.ts'
 
 const STARTED_RECEIPTS = 32
-
-// A message whose Hydra turn started has been taken.
-const taken = ({
-  state,
-  message,
-}: {
-  state: HydraState
-  message: HydraMessage
-}) => `${message.id}:hosted` in state.eventIds
 
 // Messages sent to this Hydra after an operation or a waiting agent change began holding them, that no turn has taken and Stop has not cancelled.
 function heldMessages({ state }: { state: HydraState }) {
@@ -33,7 +25,8 @@ function heldMessages({ state }: { state: HydraState }) {
     (state.eventIds[message.id] ?? 0) > stopSeq
 
   return (state.hydraMessages ?? []).filter(message => message.hydra === hydra
-    && !isRoutineMessage({ message }) && !message.stopped && sentSince({ message }) && !taken({
+    && !isRoutineMessage({ message }) && !message.stopped && !message.failure
+    && sentSince({ message }) && !hydraInputDispatched({
     state,
     message,
   }))
@@ -74,7 +67,6 @@ function hydraQueueView({
 
   const cancelled = new Set(state.hydraMessages?.filter(message => message.stopped)
     .map(message => message.id))
-  // A queued /upgrade waits in the same box, with the same Send now.
   const compactInputs = [
     ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })
       && !cancelled.has(input.id)) ?? []),
@@ -146,7 +138,7 @@ export function hydraChatQueue({ state }: { state: HydraState }) {
   while (index >= 0 && started.length < STARTED_RECEIPTS) {
     const message = messages[index]!
 
-    if (ownerActor({ actor: message.actor }) && taken({
+    if (ownerActor({ actor: message.actor }) && hydraInputDispatched({
       state,
       message,
     })) {

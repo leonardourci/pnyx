@@ -1,6 +1,7 @@
 import { readMemoryContext } from '#memory/context.ts'
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
+import { hydraDeliveryId } from './received.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { contextNoteBlock, contextTurnNotes, contextReportStatus, type ContextNote } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
@@ -446,7 +447,11 @@ export function createHydraTurns({
         dispatch: effectiveDispatch().dispatch,
       }),
     })
-    const deliveryId = release ? `${id}:compact:hosted` : `${id}:hosted`
+    const message = queuedState.hydraMessages?.find(message => message.id === id) ?? { id }
+    const deliveryId = hydraDeliveryId({
+      message,
+      release,
+    })
 
     if (queuedHydra.has(id)) {
       return Promise.resolve({ state: 'queued' })

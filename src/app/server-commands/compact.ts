@@ -2,7 +2,6 @@ import { HydraError } from '#store/errors.ts'
 import type { createHost } from '#app/host.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `compact <card> [<queued message id>]`: compacts the card's session, then sends the queued message if one is named.
 export function compactCommand({
   ws,
   id,
@@ -13,16 +12,15 @@ export function compactCommand({
 }: CommandRequest & {
   agents: ReturnType<typeof createHost>
 }) {
-  if (args.length < 1 || args.length > 2) {
+  if (args.length !== 1) {
     throw new HydraError({
-      message: 'compact expects a card and an optional queued message ID',
+      message: 'compact expects a card',
       code: 'VALIDATION_ERROR',
     })
   }
 
   void agents.compact({
     card: args[0]!,
-    sendNow: args[1],
   }).then(
     result => send({
       ws,

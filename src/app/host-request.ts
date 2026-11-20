@@ -89,11 +89,6 @@ export async function hostRequestUnlocked({
           body,
           name: 'card',
         })!,
-        sendNow: field({
-          body,
-          name: 'sendNow',
-          optional: true,
-        }),
       })
     case 'hydra':
       return host.hydra({
@@ -108,14 +103,9 @@ export async function hostRequestUnlocked({
         actor,
       })
 
-    case 'send-now':
     case 'cancel':
     case 'stop':
       return host.stop({
-        sendNow: body.action === 'send-now' ? field({
-          body,
-          name: 'message',
-        }) : undefined,
         cancel: body.action === 'cancel' ? field({
           body,
           name: 'message',

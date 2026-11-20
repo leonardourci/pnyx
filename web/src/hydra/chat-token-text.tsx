@@ -5,6 +5,7 @@ import type { PreparedChatTokens } from './chat-tokens.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import type { SkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SPACE } from './draft.ts'
+import { TaskReferenceText } from '#web-tasks/task-reference.tsx'
 
 export const ChatTokensContext = createContext<{
   suggestions?: Suggestion[]
@@ -38,20 +39,32 @@ export function ChatTokenText({
     <>{parts.map((
       part,
       index,
-    ) => 'item' in part && part.item ? (
-      <Fragment key={index}>
-        {CHIP_SPACE}<SkillBadge
-          skill={{
-            name: part.item.command.slice(1),
-            builtin: part.item.builtin,
-            command: part.item.command,
-            project: part.item.project,
-            projectPath: part.item.projectPath,
-          }}
-          colors={colors}
-        />{CHIP_SPACE}
-      </Fragment>
-    ) : <Fragment key={index}>{part.text}</Fragment>)}
+    ) => {
+      if ('item' in part && part.item) {
+        return (
+          <Fragment key={index}>
+            {CHIP_SPACE}<SkillBadge
+              skill={{
+                name: part.item.command.slice(1),
+                builtin: part.item.builtin,
+                command: part.item.command,
+                project: part.item.project,
+                projectPath: part.item.projectPath,
+              }}
+              colors={colors}
+            />{CHIP_SPACE}
+          </Fragment>
+        )
+      }
+
+      const literal = part.text ?? ''
+
+      return (
+        <Fragment key={index}>
+          {code ? literal : <TaskReferenceText text={literal} />}
+        </Fragment>
+      )
+    })}
     </>
   )
 }

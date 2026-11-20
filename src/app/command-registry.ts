@@ -127,7 +127,6 @@ export const COMMAND_REGISTRY = {
         'tools',
         'move',
         'stop',
-        'send-now',
       ],
       own: [
         'ask',
@@ -197,7 +196,6 @@ export const COMMAND_REGISTRY = {
         'digest',
         'memory list',
         'stop',
-        'send-now',
         'cancel',
       ],
       own: ['send'],

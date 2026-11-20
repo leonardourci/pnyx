@@ -2,7 +2,6 @@ import { statusLabel } from '#tasks/card-status.ts'
 import { observedStatus } from '#web-tasks/observed-status.ts'
 import type { PendingTurn } from '#web-workers/pending-turns.ts'
 import { kept } from '#web-shared/stable.ts'
-import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -24,7 +23,7 @@ import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { WaitingDecisions } from '#web-tasks/waiting-decisions.tsx'
 import { UpgradeRow } from '#web-upgrade/upgrade-row.tsx'
-import { CompactionQueue,CompactionRow,CompactionRun } from '#web-workers/compaction.tsx'
+import { CompactionRow,CompactionRun } from '#web-workers/compaction.tsx'
 import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
@@ -37,7 +36,8 @@ import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { compactionRuns,hydraDown,keepStreamedKeys,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
 import { useChatScroll } from './chat-scroll.ts'
 import { useChatThread } from './chat-thread.ts'
-import { CHAT_FRAME, Chat, ChatError } from './chat-view.tsx'
+import { CHAT_FRAME, Chat } from './chat-view.tsx'
+import { sendChatMessage } from './chat-send.ts'
 import { centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -195,36 +195,20 @@ export function HydraChat({
     scroll,
   })
   const chatQueue = queue.chat ?? EMPTY_CHAT_QUEUE
-  const held = new Set(chatQueue.held)
   const pending = sending.filter(item => {
     return !page?.conversation?.entries.some(entry =>
       entry.reference === item.id || entry.id === item.id)
   })
   const {
     compacting,
-    upgrades,
     compactOperations,
     shownUpgrades,
-    holding,
     runningChange,
     compactionRunning,
     upgradeRunning,
     working,
   } = chatQueue
   const inFlight = pending.filter(item => item.failed === undefined)
-  // An unsent message stays in the chat even while Hydra holds new input in the queue box.
-  const shownSends = pending.filter(item => item.failed !== undefined
-    || (!holding && !held.has(item.id)))
-  const removable = new Set(chatQueue.compactInputs.filter(input => input.text !== UPGRADE_COMMAND)
-    .map(input => input.id))
-  const compactInputs = [
-    ...chatQueue.compactInputs,
-    ...inFlight.filter(item => holding && !held.has(item.id)).map(item => ({
-      ...item,
-      actor: 'web',
-      route: 'hydra' as const,
-    })),
-  ]
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
   const stop = async () => {
@@ -351,7 +335,10 @@ export function HydraChat({
   const olderCursor = page?.older
   const conversation = page?.conversation
   const chat = {
-    entries: conversation?.entries ?? [],
+    entries: (conversation?.entries ?? []).map<ChatEntry>(entry => ({
+      ...entry,
+      unsent: entry.receipt === 'failed' && entry.waiting !== 'stopped' ? entry.waiting : undefined,
+    })),
     folds: new Map(Object.entries(conversation?.folds ?? {})),
     timings: new Map(Object.entries(conversation?.timings ?? {})),
     trailing: new Map(Object.entries(conversation?.trailing ?? {})),
@@ -457,7 +444,7 @@ export function HydraChat({
         text: '',
         at: decision.at,
       })),
-      ...shownSends.map(s => ({
+      ...pending.map(s => ({
         id: s.id,
         kind: 'message' as const,
         role: 'user',
@@ -538,34 +525,6 @@ export function HydraChat({
   )
   const since = running ? card?.workingSince ?? inFlight.at(-1)?.at ?? null : null
 
-  const sendAgain = async ({
-    task,
-    text,
-  }: {
-    task?: string
-    text: string
-  }) => {
-    try {
-      await command({
-        name: task ? 'reply' : 'hydra',
-        args: task ? [
-          task,
-          text,
-          crypto.randomUUID(),
-        ]
-          : [
-            'send',
-            '--text',
-            text,
-            '--event-id',
-            crypto.randomUUID(),
-          ],
-      })
-    } catch (error) {
-      notify({ text: (error as Error).message })
-    }
-  }
-
   const deliver = useCallback<Command>(
     async ({
       name,
@@ -629,14 +588,11 @@ export function HydraChat({
           confirmed: false,
         },
       ])
-      const result = await command({
-        name: 'hydra',
-        args: [
-          'send',
-          `--text=${args[1] ?? ''}`,
-          '--event-id',
-          id,
-        ],
+      const result = await sendChatMessage({
+        command,
+        card: HYDRA_CARD,
+        text,
+        id,
         onChecking,
       }).catch((error: Error) => {
         markFailed({ reason: error.message })
@@ -663,22 +619,19 @@ export function HydraChat({
     ],
   )
 
-  // A retry keeps the message's id, so a copy the server did record is never sent twice.
-  const retry = ({ id }: { id: string }) => {
-    const message = sending.find(item => item.id === id)
-
-    if (message) {
-      deliver({
-        name: 'reply',
-        args: [
-          HYDRA_CARD,
-          message.text,
-          id,
-        ],
-      }).catch(() => {
-        // The message stays marked not sent with the new reason.
-      })
-    }
+  const retry = ({
+    id,
+    reference,
+    text,
+  }: ChatEntry) => {
+    deliver({
+      name: 'reply',
+      args: [
+        HYDRA_CARD,
+        text,
+        reference ?? id,
+      ],
+    }).catch((error: Error) => notify({ text: error.message }))
   }
 
   const route: ThreadPage = {
@@ -713,7 +666,6 @@ export function HydraChat({
   )
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const down = hydraDown({ status: state.hydraStatus })
-  const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   const showsTools = traces({
     view,
     card: HYDRA_CARD,
@@ -785,37 +737,7 @@ export function HydraChat({
           })}
           toolDetails={view.toolDetails}
           thinkingDetails={view.thinkingDetails}
-          sendAgain={sendAgain}
-          sendableNow={({ entry }) => {
-            if (!entry.replyId) {
-              return working && !holding
-            }
 
-            const worker = entry.task ? state.cards[entry.task] : undefined
-
-            return worker?.agent?.host === 'pnyx'
-              && (worker.sessionActivity ?? worker.activity) === 'working'
-          }}
-          sendNow={async ({
-            id,
-            task,
-          }) => {
-            try {
-              await command({
-                name: task ? 'task' : 'hydra',
-                args: task ? [
-                  'send-now',
-                  task,
-                  id,
-                ] : [
-                  'send-now',
-                  id,
-                ],
-              })
-            } catch (error) {
-              notify({ text: (error as Error).message })
-            }
-          }}
           retry={retry}
         />
         <DispatchProposals
@@ -830,7 +752,6 @@ export function HydraChat({
             {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
           </p>
         )}
-        {errors.map(a => <ChatError key={a.key} text={a.text} />)}
         {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
         {card && (
           <InlinePermissions
@@ -873,38 +794,6 @@ export function HydraChat({
         command={command}
         connected={connected}
         notify={notify}
-      />
-      <CompactionQueue
-        inputs={compactInputs}
-        removable={removable}
-        connected={connected}
-        disabled={!connected || (!compacting && !upgrades.some(operation => operation.state === 'queued'))}
-        sendNow={async ({ id }) => {
-          try {
-            await command({
-              name: 'compact',
-              args: [
-                HYDRA_CARD,
-                id,
-              ],
-            })
-          } catch (error) {
-            notify({ text: (error as Error).message })
-          }
-        }}
-        remove={async ({ id }) => {
-          try {
-            await command({
-              name: 'hydra',
-              args: [
-                'cancel',
-                id,
-              ],
-            })
-          } catch (error) {
-            notify({ text: (error as Error).message })
-          }
-        }}
       />
       <Composer
         hydraId={hydraId}

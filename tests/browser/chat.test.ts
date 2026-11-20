@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import type { Page } from 'playwright-core'
 import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 import { appendRecords } from '../setup/transcripts.ts'
@@ -63,7 +63,7 @@ function recordPaintedChats() {
       const shown = loaded.filter(({ bounds }) => bounds.bottom > box.top
         && bounds.top < box.bottom)
 
-      if (shown.length) {
+      if (loaded.length) {
         frames.push({
           label: chat.getAttribute('aria-label'),
           fromBottom: chat.scrollHeight - chat.clientHeight - chat.scrollTop,
@@ -138,6 +138,91 @@ const movedRows = ({ frames }: { frames: Frame[] }) => frames.slice(1).flatMap((
 const offEnd = ({ frames }: { frames: Frame[] }) => frames.map(frame => frame.fromBottom)
   .filter(distance => distance > 1)
 
+test(
+  'plain task ids, exact titles and card links open live task chips in both chats',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'mentions' })
+    const task = await hydra.task({ key: 'mentions' })
+    const prose = `Check ${task.id}, Task mentions and [the card](pnyx-task:${task.id}).`
+    const text = `${prose}\n\n\`Task mentions\`\n\n\`\`\`\n${task.id}\n\`\`\``
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Show the references',
+      reply: text,
+    })
+    await hydra.chat({ text: 'Show the references' })
+    await appendRecords({
+      session: worker,
+      records: [
+        {
+          type: 'assistant',
+          content: text,
+        },
+      ],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const hydraChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      'region',
+      { name: 'Hydra conversation' },
+    )
+    await hydraChat.getByText(
+      'Check',
+      { exact: false },
+    ).waitFor()
+    expect(await hydraChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
+    const copied = await hydraChat.evaluate(chat => {
+      const paragraph = [...chat.querySelectorAll('p')].find(p => p.textContent?.startsWith('Check'))!
+      const range = document.createRange()
+      range.selectNodeContents(paragraph)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      const clipboard = new DataTransfer()
+      paragraph.dispatchEvent(new ClipboardEvent(
+        'copy',
+        {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: clipboard,
+        },
+      ))
+      selection.removeAllRanges()
+
+      return clipboard.getData('text/plain')
+    })
+    expect(copied).toBe(prose)
+    await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()
+      .click()
+    const taskChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      'region',
+      { name: 'Task mentions conversation' },
+    )
+    await taskChat.getByText(
+      'Check',
+      { exact: false },
+    ).waitFor()
+    expect(await taskChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
+    expect(await taskChat.locator(`[data-task-ref="${task.id}"]`).first()
+      .getAttribute('aria-label')).toContain('Task mentions;')
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        task.id,
+        '--title',
+        'Renamed task',
+      ],
+    })
+    await hydraChat.locator(`[data-task-ref="${task.id}"][aria-label^="Open task Renamed task;"]`)
+      .first()
+      .waitFor()
+  },
+)
+
 const nextFrames = ({
   page,
   count,
@@ -189,10 +274,10 @@ const exchange = async ({
   })
 }
 
-async function hydraWithLongConversation() {
+async function hydraWithLongConversation({ exchanges = EXCHANGES }: { exchanges?: number } = {}) {
   const hydra = await pnyx.hydra()
 
-  for (let number = 1; number <= EXCHANGES; number++) {
+  for (let number = 1; number <= exchanges; number++) {
     await exchange({
       hydra,
       number,
@@ -448,7 +533,15 @@ test(
 test(
   'reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest',
   async () => {
-    const hydra = await hydraWithLongConversation()
+    const hydra = await hydraWithLongConversation({ exchanges: 32 })
+    const { worker } = await hydra.startTask({ key: 'older-notes' })
+    await appendRecords({
+      session: worker,
+      records: workerNotes({
+        from: 1,
+        count: 190,
+      }),
+    })
     let refusedFirstOlderRead = false
     const olderReads = new Set<string>()
     const heldOlderAnswers: (() => void)[] = []
@@ -507,136 +600,264 @@ test(
     await shownText({
       page,
       chat: 'Hydra conversation',
-      text: `answer ${EXCHANGES}`,
+      text: 'answer 32',
     })
-    const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
-      'region',
-      { name: 'Hydra conversation' },
-    )
-    const loadedFirst = await conversation.locator('[data-entry-id]').first()
-      .getAttribute('data-entry-id')
-    await conversation.hover()
-    const pastTheTop = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
-    await page.mouse.wheel(
-      0,
-      -pastTheTop,
-    )
-    await conversation.getByRole('alert')
-      .filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
-      .getByRole(
-        'button',
-        { name: 'Retry' },
-      )
-      .click()
-    await until({
-      what: 'the older page to be read again',
-      check: () => heldOlderAnswers.length > 0,
-    })
-    await until({
-      what: 'the reading position to paint',
-      check: async () => (await latestFrame({
-        page,
-        label: 'Hydra conversation',
-      })).fromBottom > 1,
-    })
-    const reading = (await framesOf({
-      page,
-      label: 'Hydra conversation',
-    })).length - 1
-    heldOlderAnswers.splice(0).forEach(release => release())
-    await until({
-      what: 'older messages to load above',
-      check: async () => (await latestFrame({
-        page,
-        label: 'Hydra conversation',
-      })).firstLoaded !== loadedFirst,
-    })
-    await nextFrames({
-      page,
-      count: SETTLING_FRAMES,
-    })
-    const frames = (await framesOf({
-      page,
-      label: 'Hydra conversation',
-    })).slice(reading)
-    const [readingFrame] = frames
-    const settledFrame = frames.at(-1)
-    const stillShown = Object.keys(readingFrame?.shownFromBottom ?? {})
-      .filter(id => settledFrame?.shownFromBottom[id] !== undefined)
-    expect(stillShown.length).toBeGreaterThan(0)
-    expect(movedRows({ frames })).toEqual([])
-    expect(await page.getByText('The transcript is unavailable').count()).toBe(0)
 
-    await page.getByRole(
-      'button',
-      { name: 'Jump to latest' },
-    ).click()
-    await nextFrames({
-      page,
-      count: ARRIVAL_FRAMES,
-    })
-    expect((await latestFrame({
-      page,
-      label: 'Hydra conversation',
-    })).fromBottom).toBeLessThanOrEqual(1)
+    for (const label of [
+      'Hydra conversation',
+      'Task older-notes conversation',
+    ]) {
+      if (label === 'Task older-notes conversation') {
+        await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
+          'Task older-notes',
+          { exact: true },
+        )
+          .click()
+        await shownText({
+          page,
+          chat: label,
+          text: 'worker note 190',
+        })
+      }
+
+      const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+        'region',
+        { name: label },
+      )
+
+      let totalMovement = 0
+
+      for (let olderPage = 0; olderPage < 3; olderPage++) {
+        const loadedFirst = await conversation.locator('[data-entry-id]').first()
+          .getAttribute('data-entry-id')
+        await conversation.hover()
+        const pastTheTop = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
+        await page.mouse.wheel(
+          0,
+          -pastTheTop,
+        )
+
+        if (label === 'Hydra conversation' && olderPage === 0) {
+          await conversation.getByRole('alert').filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
+            .getByRole(
+              'button',
+              { name: 'Retry' },
+            )
+            .click()
+        }
+
+        await until({
+          what: 'the older page response',
+          check: () => heldOlderAnswers.length > 0,
+        })
+
+        if (olderPage === 0) {
+          await conversation.locator('..').getByRole(
+            'button',
+            { name: 'Jump to latest' },
+          )
+            .click()
+          await conversation.evaluate(chat => {
+            chat.scrollTop = 0
+            const row = chat.querySelector('[data-entry-id]')
+
+            if (!row) {
+              throw new Error('No message to select')
+            }
+
+            const range = document.createRange()
+            range.selectNodeContents(row)
+            window.getSelection()?.removeAllRanges()
+            window.getSelection()?.addRange(range)
+            document.dispatchEvent(new Event('selectionchange'))
+          })
+        }
+
+        await nextFrames({
+          page,
+          count: ARRIVAL_FRAMES,
+        })
+        const reading = (await framesOf({
+          page,
+          label,
+        })).length - 1
+        const anchorId = await conversation.evaluate(chat => {
+          const top = chat.getBoundingClientRect().top
+          const firstVisible = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')]
+            .find(row => row.getBoundingClientRect().bottom > top)
+
+          return firstVisible?.dataset.entryId
+        })
+
+        if (!anchorId) {
+          throw new Error('No visible message before loading older history')
+        }
+
+        const anchor = conversation.locator(`[data-entry-id="${anchorId}"]`)
+        const anchorBefore = await anchor.evaluate(row => row.getBoundingClientRect().top)
+        heldOlderAnswers.splice(0).forEach(release => release())
+        await until({
+          what: 'older messages above the reading position',
+          check: async () => (await latestFrame({
+            page,
+            label,
+          })).firstLoaded !== loadedFirst,
+        })
+        await nextFrames({
+          page,
+          count: SETTLING_FRAMES,
+        })
+        const frames = (await framesOf({
+          page,
+          label,
+        })).slice(reading)
+        expect(
+          movedRows({ frames }),
+          JSON.stringify(frames),
+        ).toEqual([])
+        expect(frames.length).toBeGreaterThan(0)
+        expect(frames.every(frame => frame.shownFromBottom[anchorId] !== undefined)).toBe(true)
+        const anchorAfter = await anchor.evaluate(row => row.getBoundingClientRect().top)
+        const movement = anchorAfter - anchorBefore
+        totalMovement += movement
+        // scrollTop rounds fractional geometry; total drift stays within one pixel across prepends.
+        expect(Math.abs(totalMovement)).toBeLessThanOrEqual(1)
+
+        if (olderPage === 0) {
+          await page.evaluate(() => {
+            window.getSelection()?.removeAllRanges()
+
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur()
+            }
+          })
+        }
+      }
+
+      expect(await conversation.getByText('The transcript is unavailable').count()).toBe(0)
+      await conversation.locator('..').getByRole(
+        'button',
+        { name: 'Jump to latest' },
+      )
+        .click()
+      await nextFrames({
+        page,
+        count: ARRIVAL_FRAMES,
+      })
+      expect((await latestFrame({
+        page,
+        label,
+      })).fromBottom).toBeLessThanOrEqual(1)
+    }
   },
 )
 
-test(
-  'a message sent from a task\'s card shows as one owner row from the send until the worker has answered',
-  async () => {
+test.each([
+  { target: 'Hydra' },
+  { target: 'worker' },
+] as const)(
+  'a $target sent message stays as one owner row while held and through its answer',
+  async ({ target }) => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'lakes' })
+    const compact = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/compact',
+      compacting: true,
+      hold: true,
+    })
+    onTestFinished(() => compact.release())
+    let session = worker
+
+    if (target === 'Hydra') {
+      session = await hydra.chat({ text: '/compact' })
+    } else {
+      await hydra.owner({
+        args: [
+          'reply',
+          'lakes',
+          '--text',
+          '/compact',
+        ],
+      })
+      await until({
+        what: 'the worker to begin compaction',
+        check: () => worker.received.some(text => text.endsWith('/compact')),
+      })
+    }
+
+    const label = target === 'Hydra' ? 'Hydra conversation' : 'Task lakes conversation'
+    const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
     const answer = pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('List three lakes'),
       reply: 'Titicaca, Baikal and Victoria.',
       hold: true,
     })
+    onTestFinished(() => answer.release())
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
       reducedMotion: true,
     })
-    await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
-      'Task lakes',
-      { exact: true },
-    )
-      .click()
-    const chat = page.getByRole(
+
+    if (target === 'worker') {
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
+        'Task lakes',
+        { exact: true },
+      )
+        .click()
+    }
+
+    const chat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
-      { name: 'Task lakes conversation' },
+      { name: label },
     )
     await chat.waitFor()
-    await page.evaluate(() => {
-      const counts: number[] = []
-      Object.assign(
-        window,
-        { ownerRows: counts },
-      )
+    await page.evaluate(
+      ({ label }) => {
+        const counts: number[] = []
+        Object.assign(
+          window,
+          { ownerRows: counts },
+        )
 
-      const frame = () => {
-        const chat = document.querySelector('[aria-label="Task lakes conversation"]')
-        const rows = [...chat?.querySelectorAll('[data-entry-id][aria-label="You"]') ?? []]
-        counts.push(rows.filter(row => row.textContent?.includes('List three lakes')).length)
+        const frame = () => {
+          const chat = document.querySelector(`[data-hydra-workspace][data-active=true] [aria-label="${label}"]`)
+          const rows = [...chat?.querySelectorAll('[data-entry-id][aria-label="You"]') ?? []]
+          counts.push(rows.filter(row => row.textContent?.includes('List three lakes')).length)
+          requestAnimationFrame(frame)
+        }
+
         requestAnimationFrame(frame)
-      }
-
-      requestAnimationFrame(frame)
-    })
-    await page.getByRole(
+      },
+      { label },
+    )
+    await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'textbox',
-      { name: 'Message worker' },
-    ).fill('List three lakes')
+      { name: field },
+    )
+      .fill('List three lakes')
     await page.keyboard.press('Enter')
-    await until({
-      what: 'the worker to take the message',
-      check: () => worker.received.some(text => text.includes('List three lakes')),
+    await chat.getByText(
+      'List three lakes',
+      { exact: true },
+    ).waitFor()
+    await nextFrames({
+      page,
+      count: SETTLING_FRAMES,
     })
-    expect(await page.getByRole(
+    expect(session.received.some(text => text.includes('List three lakes'))).toBe(false)
+    compact.release()
+    await until({
+      what: 'the agent to take the message',
+      check: () => session.received.some(text => text.includes('List three lakes')),
+    })
+    expect(await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
-      { name: 'Task lakes conversation' },
-    ).locator('[data-entry-id][aria-label="You"]')
+      { name: label },
+    )
+      .locator('[data-entry-id][aria-label="You"]')
       .filter({ hasText: 'List three lakes' })
       .count()).toBe(1)
     answer.release()
@@ -651,5 +872,299 @@ test(
     const sent = counts.findIndex(count => count > 0)
     expect(sent).toBeGreaterThanOrEqual(0)
     expect(new Set(counts.slice(sent))).toEqual(new Set([1]))
+  },
+)
+
+test.each([
+  { harness: 'claude' },
+  { harness: 'codex' },
+] as const)(
+  '$harness sends in either chat interrupt the turn and Stop adds no conversation text',
+  async ({ harness }) => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({
+      key: 'interrupt',
+      harness,
+    })
+    const socket = await hydra.page()
+    await socket.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness })],
+    })
+    socket.close()
+    const turn = pnyx[harness].plan({
+      hydra: hydra.id,
+      text: 'Keep working',
+      partial: 'Working on it',
+      hold: true,
+    })
+    const hydraSession = await hydra.chat({ text: 'Keep working' })
+    const workerTurn = pnyx[harness].plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Keep working too'),
+      partial: 'Working too',
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'interrupt',
+        '--harness',
+        harness,
+        '--text',
+        'Keep working too',
+      ],
+    })
+    onTestFinished(() => {
+      turn.release()
+      workerTurn.release()
+    })
+    await until({
+      what: 'the worker to take its first held input',
+      check: () => worker.received.some(input => input.includes('Keep working too')),
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
+      'Task interrupt',
+      { exact: true },
+    )
+      .click()
+
+    for (const [
+      field,
+      chat,
+      session,
+      text,
+      stop,
+    ] of [
+        [
+          'Reply to Hydra',
+          'Hydra conversation',
+          hydraSession,
+          'Answer this instead',
+          'Stop Hydra',
+        ],
+        [
+          'Message worker',
+          'Task interrupt conversation',
+          worker,
+          'Answer this too',
+          'Stop worker',
+        ],
+      ] as const) {
+      const nextTurn = pnyx[harness].plan({
+        hydra: hydra.id,
+        match: ({ text: input }) => input.includes(text),
+        partial: 'New reply',
+        reply: 'Must not finish after Stop',
+        hold: true,
+      })
+      onTestFinished(() => nextTurn.release())
+      const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+        'region',
+        { name: chat },
+      )
+      await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+        'textbox',
+        {
+          name: field,
+          exact: true,
+        },
+      )
+        .fill(text)
+      await page.keyboard.press('Enter')
+      await until({
+        what: 'the new input to reach the interrupted session',
+        check: () => session.received.some(input => input.includes(text)),
+      })
+      await conversation.getByText(
+        text,
+        { exact: true },
+      ).waitFor()
+      await nextFrames({
+        page,
+        count: ARRIVAL_FRAMES,
+      })
+      expect(await conversation.getByRole(
+        'button',
+        { name: 'Send now' },
+      ).count()).toBe(0)
+      expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
+        .count()).toBe(1)
+      const rows = await conversation.locator('[data-entry-id]').count()
+      const stopButton = page.locator('[data-hydra-workspace][data-active=true] .composer').getByRole(
+        'button',
+        {
+          name: stop,
+          exact: true,
+        },
+      )
+      await stopButton.click()
+      await until({
+        what: 'the stopped turn to end',
+        check: () => session.answered === session.received.length,
+      })
+      await stopButton.waitFor({ state: 'hidden' })
+      await nextFrames({
+        page,
+        count: SETTLING_FRAMES,
+      })
+      expect(await conversation.locator('[data-entry-id]').count()).toBe(rows)
+      expect(await conversation.locator('.chat-error').count()).toBe(0)
+      expect(await conversation.getByText('Must not finish after Stop').count()).toBe(0)
+      expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
+        .count()).toBe(1)
+    }
+  },
+)
+
+test.each([
+  { target: 'Hydra' },
+  { target: 'worker' },
+])(
+  'a refused $target send shows its error on the same bubble and Retry delivers the same id once',
+  async ({ target }) => {
+    const hydra = await pnyx.hydra()
+    await hydra.startTask({
+      key: 'retry-input',
+      harness: 'codex',
+    })
+    const socket = await hydra.page()
+    await socket.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    socket.close()
+    const text = `Retry the ${target} input`
+
+    if (target === 'Hydra') {
+      const turn = pnyx.codex.plan({
+        hydra: hydra.id,
+        text: 'Keep working before refusal',
+        hold: true,
+      })
+      onTestFinished(() => turn.release())
+      await hydra.chat({ text: 'Keep working before refusal' })
+      pnyx.codex.refuseNextInterrupt()
+    } else {
+      pnyx.codex.plan({
+        hydra: hydra.id,
+        match: ({ text: input }) => input.includes(text),
+        refuse: true,
+      })
+    }
+
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+
+    if (target === 'worker') {
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
+        'Task retry-input',
+        { exact: true },
+      )
+        .click()
+    }
+
+    const label = target === 'Hydra' ? 'Hydra conversation' : 'Task retry-input conversation'
+    const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
+    const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      'region',
+      { name: label },
+    )
+    await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+      'textbox',
+      {
+        name: field,
+        exact: true,
+      },
+    )
+      .fill(text)
+    await page.keyboard.press('Enter')
+    const row = conversation.locator('.message-row').filter({ hasText: text })
+    await row.getByRole(
+      'button',
+      {
+        name: 'Retry',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await row.getByRole('alert').textContent()).toContain('refused')
+    const id = await row.locator('[data-entry-id]').getAttribute('data-entry-id')
+
+    if (target === 'Hydra') {
+      await pnyx.restart()
+      await row.getByRole(
+        'button',
+        {
+          name: 'Retry',
+          exact: true,
+        },
+      ).waitFor()
+      expect(await row.getByRole('alert').textContent()).toContain('refused')
+    }
+
+    const bubble = await row.locator('[data-entry-id]').elementHandle()
+
+    if (!bubble) {
+      throw new Error('No sent bubble before Retry')
+    }
+
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text: input }) => input.includes(text),
+      refuse: true,
+      refusalReason: 'the app-server refused the retry',
+    })
+    await row.getByRole(
+      'button',
+      {
+        name: 'Retry',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the repeated refusal to reach the provider',
+      check: () => pnyx.codex.sessions.flatMap(session => session.received)
+        .filter(input => input.includes(text)).length === (target === 'Hydra' ? 1 : 2),
+    })
+    await row.getByRole('alert').filter({ hasText: 'refused the retry' })
+      .waitFor()
+    expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
+    await row.getByRole(
+      'button',
+      {
+        name: 'Retry',
+        exact: true,
+      },
+    ).click()
+    const expectedAttempts = target === 'Hydra' ? 2 : 3
+    await until({
+      what: 'the successful Retry turn to finish',
+      check: () => {
+        const sessions = pnyx.codex.sessions.filter(session => session.received
+          .some(input => input.includes(text)))
+        const attempts = sessions.flatMap(session => session.received)
+          .filter(input => input.includes(text))
+        const latest = sessions.at(-1)
+
+        return attempts.length === expectedAttempts && latest?.answered === latest?.received.length
+      },
+    })
+    expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
+    expect(await row.count()).toBe(1)
+    expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
+    await row.getByRole('alert').waitFor({ state: 'hidden' })
+    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
+      .filter(input => input.includes(text))
+    expect(attempts).toHaveLength(expectedAttempts)
+    expect(await row.locator('time').count()).toBe(1)
   },
 )

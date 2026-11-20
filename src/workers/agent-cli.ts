@@ -79,7 +79,6 @@ export const agent = guard({
       actor: { type: 'string' },
       'idempotency-key': { type: 'string' },
       'cancel-compact': { type: 'boolean' },
-      'send-now': { type: 'string' },
     }
     const {
       values,
@@ -95,7 +94,7 @@ export const agent = guard({
       what: 'card id',
     })
 
-    if (values['cancel-compact'] || values['send-now']) {
+    if (values['cancel-compact']) {
       if (positionals.length !== 1) {
         throw new AxiError(
           'Compaction controls take only the card ID',
@@ -108,7 +107,6 @@ export const agent = guard({
         body: {
           action: 'compact',
           card: ref,
-          sendNow: values['send-now'],
           actor: meta({ values }).actor,
         },
       })
@@ -245,7 +243,7 @@ export const agent = guard({
   },
 })
 
-export const AGENT_HELP = `usage: pnyx-axi agent <id> [<setting> <value>] [--cancel-compact | --send-now <message-id>] [--idempotency-key <key>]
+export const AGENT_HELP = `usage: pnyx-axi agent <id> [<setting> <value>] [--cancel-compact] [--idempotency-key <key>]
 Without a setting, lists the card's harness, settings and the ones Pnyx can change, with values.
 With one, types what the harness's own interface takes into the session, on the card's reply
 route (receipts as for reply), then reads the setting back from the transcript:

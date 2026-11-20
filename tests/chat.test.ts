@@ -1,3 +1,11 @@
+import { randomUUID } from 'node:crypto'
+import { loadHydra } from '#app/store.ts'
+import { applyDecision } from '#app/decision.ts'
+import { hydraSend } from '#hydra/send-cli.ts'
+import { failHydraInput } from '#hydra/received.ts'
+import { operationEvent } from '#hydra/operations.ts'
+import { recordCompaction } from '#workers/compaction/record.ts'
+import { hydraConversation } from '#hydra/conversation.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,7 +16,7 @@ import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { beforeAll, expect, test, vi } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -89,16 +97,10 @@ test(
     })
 
     await until({
-      what: 'the queue to show Hydra working',
-      check: () => queue({ hydraId: hydra.id })?.working === true,
-    })
-    expect(session.answered).toBe(0)
-
-    turn.release()
-    await until({
-      what: 'Hydra to answer all three messages',
+      what: 'Hydra to interrupt and answer the new messages without releasing the old turn',
       check: () => session.answered === 3,
     })
+    turn.release()
     await until({
       what: 'the queue to show Hydra idle',
       check: () => queue({ hydraId: hydra.id })?.working === false,
@@ -586,7 +588,7 @@ test(
     const page = await hydra.page()
     const wakeTurn = pnyx.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('more worker reports'),
+      match: ({ text }) => text.includes('Why you are woken') && text.includes('more worker reports'),
       hold: true,
     })
     const replacementTurn = pnyx.claude.plan({
@@ -617,14 +619,6 @@ test(
         })
       }
 
-      await hydra.owner({
-        args: [
-          'hydra',
-          'send',
-          '--text',
-          'Keep the owner message intact under the report cap',
-        ],
-      })
       await hydra.owner({
         args: [
           'task',
@@ -687,6 +681,14 @@ test(
         what: 'the timed review to join the report wake',
         check: () => queueBox({ hydraId: hydra.id })?.waiting.some(update => update.kind === 'timed review'),
       })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Keep the owner message intact under the report cap',
+        ],
+      })
       turn.release()
       await until({
         what: 'owner and bounded wake delivered',
@@ -694,7 +696,7 @@ test(
           && queue({ hydraId: hydra.id })?.working === true,
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
-      const wake = session.received.find(text => text.includes('more worker reports'))!
+      const wake = session.received.find(text => text.includes('Why you are woken') && text.includes('more worker reports'))!
       expect(wake).toContain('- report: from worker:burst-0,')
       expect(wake).not.toContain('- report: from worker:burst-299,')
       expect(wake).toContain('Some wake details were shortened or omitted.')
@@ -1375,6 +1377,13 @@ test(
     })
     await hydra.chat({ text: 'plan the migration' })
 
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'and the backups',
+      partial: 'Checking backups',
+      hold: true,
+    })
+
     for (const text of [
       'also check the indexes',
       'and the backups',
@@ -1457,11 +1466,7 @@ test(
       recoveredOwnerMessages.push(messages[0]?.text)
     }
 
-    expect(recoveredOwnerMessages).toEqual([
-      'plan the migration',
-      'also check the indexes',
-      'and the backups',
-    ])
+    expect(recoveredOwnerMessages).toEqual(['and the backups'])
 
     const { messages } = await hydra.owner({
       args: [
@@ -1690,7 +1695,7 @@ test(
 )
 
 test(
-  'Send now ends a running compaction and delivers the message held behind it at once, and only once',
+  'cancelling compaction delivers held input once',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'compactable' })
@@ -1734,10 +1739,7 @@ test(
     const page = await hydra.page()
     expect(await page.send({
       name: 'compact',
-      args: [
-        id,
-        held.reply.reply,
-      ],
+      args: [id],
     })).toMatchObject({ stopped: 'compaction' })
     page.close()
 
@@ -1784,11 +1786,11 @@ test(
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
       hydra: hydra.id,
-      text: 'draft the notes',
-      partial: 'Draft',
+      text: '/compact',
+      compacting: true,
       hold: true,
     })
-    const session = await hydra.chat({ text: 'draft the notes' })
+    const session = await hydra.chat({ text: '/compact' })
     await hydra.owner({
       args: [
         'hydra',
@@ -1848,11 +1850,11 @@ test(
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
       hydra: hydra.id,
-      text: 'draft the notes',
-      partial: 'Draft',
+      text: '/compact',
+      compacting: true,
       hold: true,
     })
-    const session = await hydra.chat({ text: 'draft the notes' })
+    const session = await hydra.chat({ text: '/compact' })
     await hydra.owner({
       args: [
         'hydra',
@@ -3160,73 +3162,39 @@ test.each([
       what: 'the remaining-change turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
-    const provider = harness === 'claude' ? pnyx.claude : pnyx.codex
-    const held = provider.plan({
-      hydra: hydra.id,
-      text: 'Hold a task-aware turn',
-      partial: 'Working',
-      folds: true,
-      hold: true,
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/active-review Active review',
     })
-    await hydra.chat({ text: 'Hold a task-aware turn' })
-
-    try {
-      await workerLine({
-        hydra,
-        key: 'review-page',
-        line: 'link: https://example.com/active-review Active review',
-      })
-      await hydra.chat({ text: 'Read the update during this turn' })
-      const steering = session.received.find(text => text.endsWith('Read the update during this turn'))!
-      expect(steering).toContain('https://example.com/active-review')
-
-      if (harness === 'codex') {
-        await workerLine({
-          hydra,
-          key: 'review-page',
-          line: 'link: https://example.com/carried-review Carried review',
-        })
-        pnyx.codex.plan({
-          hydra: hydra.id,
-          text: 'Read the carried update',
-          refuse: true,
-        })
-        await hydra.chat({ text: 'Read the carried update' })
-        await until({
-          what: 'Codex to receive the steering attempt',
-          check: () => session.received.some(text => text.endsWith('Read the carried update')),
-        })
-        await workerLine({
-          hydra,
-          key: 'review-page',
-          line: 'note: Review page was updated after steering',
-        })
-      }
-    } finally {
-      held.release()
-    }
-
+    await hydra.chat({ text: 'Read the first review update' })
+    const firstUpdate = session.received.find(text => text.endsWith('Read the first review update'))!
+    expect(firstUpdate).toContain('https://example.com/active-review')
     await until({
-      what: 'the held turn to finish',
+      what: 'the first review update turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
 
-    if (harness === 'codex') {
-      await until({
-        what: 'the refused input to carry into a new turn',
-        check: () => session.received.filter(text => text.endsWith('Read the carried update')).length === 2,
-      })
-      const carried = session.received.filter(text => text.endsWith('Read the carried update')).at(-1)
-      expect(carried).toContain('https://example.com/carried-review')
-      expect(carried?.indexOf('Review page was updated after steering')).toBeGreaterThan(
-        carried?.indexOf('https://example.com/carried-review') ?? -1,
-      )
-      await until({
-        what: 'the carried turn to finish',
-        check: () => !queue({ hydraId: hydra.id })?.working,
-      })
-    }
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/second-review Second review',
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'note: Review page was updated after the first turn',
+    })
+    await hydra.chat({ text: 'Read the second review update' })
+    const secondUpdate = session.received.find(text => text.endsWith('Read the second review update'))!
+    expect(secondUpdate).toContain('https://example.com/second-review')
+    expect(secondUpdate).toContain('Review page was updated after the first turn')
+    await until({
+      what: 'the second review update turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
 
+    const provider = harness === 'claude' ? pnyx.claude : pnyx.codex
     provider.plan({
       hydra: hydra.id,
       text: 'Compact task context',
@@ -3524,5 +3492,327 @@ test(
         undefined,
       ],
     ])
+  },
+)
+
+test(
+  'a failed Hydra input remains retryable while its host is down and concurrent retries deliver once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await page.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    page.close()
+    const text = 'retry this saved input'
+    const id = randomUUID()
+    const args = [
+      'hydra',
+      'send',
+      '--text',
+      text,
+      '--event-id',
+      id,
+    ]
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      text,
+      refuse: true,
+    })
+    await hydra.owner({ args })
+
+    const message = () => {
+      const state = loadHydra({ hydraId: hydra.id }).state
+
+      return state.hydraMessages!.find(input => input.id === id)!
+    }
+
+    await until({
+      what: 'the refusal to be saved',
+      check: () => message().failure,
+    })
+    const failure = message().failure
+    let stoppedMessage: ReturnType<typeof message> | undefined
+    await pnyx.restart({
+      whileStopped: async () => {
+        await hydraSend({
+          hydraId: hydra.id,
+          values: {
+            text,
+            'event-id': id,
+          },
+        })
+        stoppedMessage = { ...message() }
+      },
+    })
+    expect(stoppedMessage?.failure).toBe(failure)
+    expect(stoppedMessage?.attempt).toBeUndefined()
+    const turn = pnyx.codex.plan({
+      hydra: hydra.id,
+      text,
+      hold: true,
+    })
+    onTestFinished(() => turn.release())
+    await Promise.all([
+      hydra.owner({ args }),
+      hydra.owner({ args }),
+    ])
+    await until({
+      what: 'the retry to be taken',
+      check: () => message().received,
+    })
+    expect(message().attempt).toBe(1)
+    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
+      .filter(input => input.endsWith(text))
+    expect(attempts).toHaveLength(2)
+  },
+)
+
+test(
+  'a refused recovery recap fails every owner message it carries',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await page.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    page.close()
+    const messages: string[] = []
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('first held request') && text.includes('second held request'),
+      refuse: true,
+    })
+    await pnyx.restart({
+      whileStopped: async () => {
+        withWriter({
+          hydraId: hydra.id,
+          fn: ({ writer }) => applyDecision({
+            writer,
+            decision: operationEvent({
+              state: writer.state,
+              operation: {
+                id: randomUUID(),
+                kind: 'restart',
+                state: 'started',
+              },
+              meta: {
+                actor: 'pnyx',
+                at: new Date().toISOString(),
+              },
+            }),
+          }),
+        })
+
+        for (const text of [
+          'first held request',
+          'second held request',
+        ]) {
+          const id = randomUUID()
+          messages.push(id)
+          await hydraSend({
+            hydraId: hydra.id,
+            values: {
+              text,
+              'event-id': id,
+            },
+          })
+        }
+      },
+    })
+    await until({
+      what: 'both carried messages to show the refusal',
+      check: () => {
+        const saved = loadHydra({ hydraId: hydra.id }).state.hydraMessages!
+
+        return messages.every(id => saved.find(message => message.id === id)?.failure?.includes('refused'))
+      },
+    })
+
+    for (const text of [
+      'first held request',
+      'second held request',
+    ]) {
+      expect(await chatEntry({
+        hydra,
+        text,
+      })).toMatchObject({ receipt: 'failed' })
+    }
+  },
+)
+
+test(
+  'recovery drains a retried compaction input and the input after it exactly once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'prepare compaction recovery' })
+    await until({
+      what: 'the preparation to finish',
+      check: () => session.answered === 1,
+    })
+    const texts = [
+      'retried compaction request',
+      'next compaction request',
+    ]
+    await pnyx.restart({
+      whileStopped: async () => {
+        for (const text of texts) {
+          const id = randomUUID()
+          await hydraSend({
+            hydraId: hydra.id,
+            values: {
+              text,
+              'event-id': id,
+            },
+          })
+          withWriter({
+            hydraId: hydra.id,
+            fn: ({ writer }) => {
+              const at = new Date().toISOString()
+
+              if (text === texts[0]) {
+                failHydraInput({
+                  writer,
+                  input: id,
+                  error: 'The agent refused this input',
+                  at,
+                })
+                applyDecision({
+                  writer,
+                  decision: hydraEvent({
+                    state: writer.state,
+                    cardId: HYDRA_CARD,
+                    meta: {
+                      actor: 'web',
+                      at,
+                    },
+                    change: {
+                      type: 'hydra.input',
+                      data: {
+                        message: id,
+                        state: 'retrying',
+                      },
+                    },
+                  }),
+                })
+              }
+
+              recordCompaction({
+                writer,
+                card: HYDRA_CARD,
+                at,
+                change: {
+                  kind: 'held',
+                  input: {
+                    id,
+                    text,
+                    actor: 'web',
+                    route: 'hydra',
+                    accepted: true,
+                    at,
+                  },
+                },
+              })
+            },
+          })
+        }
+      },
+    })
+    await until({
+      what: 'both compaction inputs to drain',
+      check: () => compactionInputs({ hydraId: hydra.id })?.length === 0,
+    })
+
+    for (const text of texts) {
+      await until({
+        what: 'the drained input to be confirmed',
+        check: async () => (await chatEntry({
+          hydra,
+          text,
+        }))?.receipt === 'delivered',
+      })
+      const delivered = pnyx.claude.sessions.flatMap(session => session.received)
+        .filter(input => input.endsWith(text))
+      expect(delivered).toHaveLength(1)
+    }
+  },
+)
+
+test(
+  'held and refused owner messages stay visible without taking the active turn folds or timing',
+  () => {
+    const at = ({ second }: { second: number }) => `2026-01-01T00:00:0${second}.000Z`
+    const messages = [
+      {
+        id: 'active',
+        text: 'active request',
+        at: at({ second: 1 }),
+      },
+      {
+        id: 'held',
+        text: 'held request',
+        at: at({ second: 3 }),
+      },
+      {
+        id: 'refused',
+        text: 'refused request',
+        at: at({ second: 4 }),
+        failure: 'The agent refused the interrupt',
+      },
+    ].map(message => ({
+      ...message,
+      action: 'send' as const,
+      actor: 'web',
+      hydra: 'hydra',
+    }))
+    const before = {
+      id: 'before',
+      kind: 'tool' as const,
+      role: 'assistant',
+      text: 'earlier work',
+      at: at({ second: 2 }),
+    }
+    const after = {
+      id: 'after',
+      kind: 'tool' as const,
+      role: 'assistant',
+      text: 'later work',
+      at: at({ second: 4 }),
+    }
+    const reply = {
+      id: 'reply',
+      kind: 'message' as const,
+      role: 'assistant',
+      text: 'finished active request',
+      final: true,
+      at: at({ second: 5 }),
+    }
+    const conversation = hydraConversation({
+      messages,
+      transcript: [
+        before,
+        after,
+        reply,
+      ],
+      held: new Set(['held']),
+      actions: [],
+      columns: [],
+      working: false,
+      tools: true,
+      thinking: false,
+    })
+    expect(conversation.entries.map(entry => entry.id)).toEqual([
+      'active',
+      'held',
+      'refused',
+      'reply',
+    ])
+    expect(conversation.folds.get('reply')?.notes).toEqual([
+      before,
+      after,
+    ])
+    expect(conversation.timings.get('reply')?.start).toBe(at({ second: 1 }))
   },
 )

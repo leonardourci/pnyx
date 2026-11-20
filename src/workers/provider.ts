@@ -116,6 +116,7 @@ export type HostedInput = {
 }
 export type InputReceipt = {
   inputId: string
+  error?: string
   // refused: the provider did not give this input to the agent; stopped says an owner Stop cancelled it.
   phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string
@@ -244,7 +245,6 @@ export interface HostedSession {
     value: string
   }): Promise<void>
   // Ends the running turn early; the session stays open for the next message.
-  // cancelQueued also cancels the inputs the agent has not taken; Send now keeps them.
   interrupt({ cancelQueued }: { cancelQueued: boolean }): Promise<void>
   commands?(): Promise<{
     name: string

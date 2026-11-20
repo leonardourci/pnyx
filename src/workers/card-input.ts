@@ -16,12 +16,10 @@ import type { Card } from '#tasks/model.ts'
 import { candidateIssues } from './dispatch-check.ts'
 import type { AgentConfig, Reply } from './model.ts'
 import { harnessOf } from './providers.ts'
-import { nativeIdle } from './native-session.ts'
 import { decideReply } from './reply-rules.ts'
 import { sessionId } from './session-attachments.ts'
 import { startTask } from './start.ts'
 
-// A card send waits here until a session takes it at its turn boundary.
 export const waitingCardInput = ({ reply }: { reply: Reply }) =>
   !!reply.worker && !reply.worker.session && reply.state === 'queued'
 
@@ -264,6 +262,12 @@ export function createCardInputs({
         agent,
       })
 
+      const running = current && live.get(sessionId({ agent: current }))
+
+      if (change !== 'none' && running?.session) {
+        await running.session.interrupt({ cancelQueued: false })
+      }
+
       if (change === 'session') {
         const previous = current && sessionId({ agent: current })
         const history = previous
@@ -364,20 +368,6 @@ export function createCardInputs({
       const reply = card.replies?.find(saved => waitingCardInput({ reply: saved }))
 
       if (!reply || sending.has(card.id)) {
-        continue
-      }
-
-      const running = card.agent && live.get(sessionId({ agent: card.agent }))
-      const working = (card.sessionActivity ?? card.activity) === 'working'
-      const pending = running && (running.activity === 'working' || !running.session
-        || !nativeIdle({ work: running.session.snapshot().work }) || running.input.pending())
-
-      const changesAgent = agentChange({
-        card,
-        agent: reply.worker!.agent,
-      }) !== 'none'
-
-      if (changesAgent && (working || pending)) {
         continue
       }
 

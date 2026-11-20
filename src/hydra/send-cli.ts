@@ -2,7 +2,7 @@ import { meta, required, commit, integer, HISTORY_LIMIT, HISTORY_MAX, type Outpu
 import { loadHydra } from '#app/store.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { readServer, askHost } from '#app/server-state.ts'
-import { HYDRA_ACTOR } from '#app/actors.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { liveTask } from '#tasks/select.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -12,14 +12,18 @@ import { hydraCandidate } from './agent-choice.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
+import { withWriter } from '#app/writer.ts'
+import { applyDecision } from '#app/decision.ts'
+import { HYDRA_CARD } from './identity.ts'
+import { failHydraInput } from './received.ts'
 
-export function hydraSend({
+export async function hydraSend({
   values,
   hydraId,
 }: {
   values: Record<string, string | boolean | undefined>
   hydraId: string
-}): Output | Promise<Output> {
+}): Promise<Output> {
   const m = meta({ values })
 
   const ref = values.task === undefined ? undefined : required({
@@ -132,34 +136,98 @@ export function hydraSend({
     },
   })
 
-  if (progress && result.event !== 'none: duplicate') {
+  if (progress && !result.duplicate) {
     return {
       ...result,
       help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use worker.log'],
     }
   }
 
-  if (m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
+  if (m.actor === HYDRA_ACTOR || typeof result.message !== 'string') {
     return result
   }
 
   const message = loadHydra({ hydraId }).state.hydraMessages
     ?.find(message => message.id === result.message)
-  const text = message ? hydraDelivery({ message }) : String(values.text ?? '')
 
-  return readServer({ hydraId }).then(server => server ? askHost({
-    hydraId,
-    body: {
-      action: 'hydra',
-      id: String(result.message),
-      text,
-      actor: m.actor,
-    },
-  }).then(hosted => ({
-    ...result,
-    ...hosted,
-    help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'],
-  })) : result)
+  if (!message) {
+    return result
+  }
+
+  if (result.duplicate && (!message.failure || !ownerActor({ actor: m.actor }))) {
+    return result
+  }
+
+  if (!await readServer({ hydraId })) {
+    return result
+  }
+
+  if (result.duplicate) {
+    const claimed = withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const current = writer.state.hydraMessages?.find(input => input.id === message.id)
+
+        if (!current?.failure || current.stopped) {
+          return false
+        }
+
+        applyDecision({
+          writer,
+          decision: hydraEvent({
+            state: writer.state,
+            cardId: HYDRA_CARD,
+            meta: {
+              actor: m.actor,
+              at: m.at,
+            },
+            change: {
+              type: 'hydra.input',
+              data: {
+                message: message.id,
+                state: 'retrying',
+              },
+            },
+          }),
+        })
+
+        return true
+      },
+    })
+
+    if (!claimed) {
+      return result
+    }
+  }
+
+  try {
+    const hosted = await askHost({
+      hydraId,
+      body: {
+        action: 'hydra',
+        id: message.id,
+        text: hydraDelivery({ message }),
+        actor: m.actor,
+      },
+    })
+
+    return {
+      ...result,
+      ...hosted,
+      help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'],
+    }
+  } catch (error) {
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => failHydraInput({
+        writer,
+        input: message.id,
+        error: (error as Error).message,
+        at: new Date().toISOString(),
+      }),
+    })
+    throw error
+  }
 }
 
 export function hydraMessages({

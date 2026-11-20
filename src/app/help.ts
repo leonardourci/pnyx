@@ -142,11 +142,10 @@ pnyx-axi hydra ask --question <question> --context <text> --choice <label> --cho
 Hydra asks an owner decision with no task in chat. Supply at least two choices. Task decisions use task ask --to owner on their card.
 pnyx-axi hydra stop
 hydra stop ends Hydra's turn, or an agent change waiting for the owner, and cancels unread messages; routine wakes wait for the owner's next message.
-pnyx-axi hydra send-now <message-id> interrupts the current step to take a queued message.
 pnyx-axi hydra cancel <message-id> cancels one message held behind a compaction, an upgrade or an agent change.
 pnyx-axi task stop <task> stops that worker and cancels unread messages.
-pnyx-axi task send-now <task> <message-id> interrupts its step to take a queued message.
-Stopped messages stay visible as Not delivered: stopped and offer Send again.
+Sending to a busy hosted agent interrupts its turn and delivers the message as its next input.
+Sent chat bubbles keep the message and time. Stop changes only status, without adding conversation text.
 An owner message denies pending permission prompts on its recipient with that message.
 pnyx-axi hydra usage
 hydra usage prints current context, recorded task totals and plan windows. --task <id> reads a task session.
@@ -236,7 +235,7 @@ pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>
 Every actor may send directly. The same event ID never launches or delivers twice. With no worker,
 Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing
 harness or account starts a fresh session with the prior conversation available through task chat.
-A busy worker finishes its turn before an agent change. Stop first for an immediate change.
+Sending to a hosted worker interrupts its current turn and delivers the message with the selected agent.
 Outside sessions keep their reply route and require Continue in Pnyx before an agent change.
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> [--reason <topic>]
@@ -364,7 +363,7 @@ and settings on the task. Replies and setting changes from the Hydra or \`pnyx-a
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts and
 questions wait on the task for task permission. Codex mode is its approval policy (untrusted, on-request or
-never) with its sandbox: never, or bypassPermissions, runs with full access, the others write only in the folder and Pnyx's home. Codex applies picker changes on the next turn and queues messages during a turn.
+never) with its sandbox: never, or bypassPermissions, runs with full access, the others write only in the folder and Pnyx's home. Owner messages interrupt the running turn and begin the next with the selected settings.
 --rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness,
 --account or --model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.

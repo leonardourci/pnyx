@@ -41,8 +41,6 @@ import { useCommentDrafts } from './comment-drafts.ts'
 import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
-import { MessageReceipt } from './message-receipt.tsx'
-import { sentTime } from './receipt-lines.ts'
 import {
   MESSAGE_DECORATIONS,blockPassage,isMessageBlockKey,messageBlock,messageBlockKey,samePassage,
   selectedPassage,type CommentPassage,
@@ -131,21 +129,14 @@ interface MessageActions {
   remove({ id }: { id: string }): void
   release({ id }: { id: string }): void
   focus({ key }: { key: string }): void
-  sendNow?({
+  retry?({
     id,
-    task,
-  }: {
-    id: string
-    task?: string
-  }): void
-  retry?({ id }: { id: string }): void
-  sendAgain?({
-    task,
     text,
-  }: {
-    task?: string
-    text: string
-  }): void
+    reference,
+    replyId,
+    targetAgent,
+  }: ChatEntry): void
+
 }
 const NO_COMMENTS: RowComment[] = []
 
@@ -173,9 +164,7 @@ const MessageRow = memo(function MessageRow({
   leadingTitle,
   timingTitle,
   openTask,
-  canSendAgain,
   canRetry,
-  canSendNow,
 }: {
   entry: ChatEntry
   fold?: TurnActions
@@ -200,16 +189,10 @@ const MessageRow = memo(function MessageRow({
   leadingTitle?: string
   timingTitle?: string
   openTask?({ id }: { id: string }): void
-  canSendAgain: boolean
   canRetry: boolean
-  canSendNow: boolean
 }) {
-  const state = entry.delivery?.agent?.state ?? entry.receipt
-  const stopped = state === 'failed' && (entry.delivery?.agent?.detail ?? entry.waiting) === 'stopped'
-  const canResend = canSendAgain && (stopped && !entry.sentAgain || entry.task && state === 'delivery_unknown')
-  const deliverNow = canSendNow && state === 'queued'
-  const retryMessage = canRetry && (entry.unsent !== undefined || state === 'failed' && !!entry.targetAgent)
-  const sentAt = sentTime({ entry })
+  const retryMessage = canRetry && entry.unsent !== undefined
+  const sentAt = entry.sent ?? entry.at
 
   return entry.kind === 'divider' ? (
     <div
@@ -342,28 +325,6 @@ const MessageRow = memo(function MessageRow({
       </MessageBubble>
       {ownMessage({ entry }) && !entry.continued && (
         <MessageFooter variant="owner" contentEditable={false}>
-          <MessageReceipt entry={entry} />
-          {deliverNow && (
-            <InlineButton
-              onClick={() => actions.current.sendNow?.({
-                id: entry.replyId ?? entry.reference ?? entry.id,
-                task: entry.replyId ? entry.task : undefined,
-              })}
-            >
-              Send now
-            </InlineButton>
-          )}
-          {canResend && (
-            <InlineButton
-              aria-label="Send this message again"
-              onClick={() => actions.current.sendAgain?.({
-                task: entry.replyId ? entry.task : undefined,
-                text: entry.text,
-              })}
-            >
-              Send again
-            </InlineButton>
-          )}
           {entry.checking && <span className="muted" role="status">Checking…</span>}
           {entry.unsent !== undefined && (
             <span className="unsent inline-flex items-center gap-1 px-1 py-0 text-red" role="alert">
@@ -371,7 +332,7 @@ const MessageRow = memo(function MessageRow({
             </span>
           )}
           {retryMessage && (
-            <InlineButton onClick={() => actions.current.retry?.({ id: entry.id })}>
+            <InlineButton onClick={() => actions.current.retry?.(entry)}>
               Retry
             </InlineButton>
           )}
@@ -440,32 +401,18 @@ export function Messages({
   timings,
   catalog,
   labelColors,
-  sendAgain,
-  sendNow,
-  sendableNow,
   retry,
   answerLeads,
 }: {
-  sendNow?({
+  retry?({
     id,
-    task,
-  }: {
-    id: string
-    task?: string
-  }): void
-  // Whether Send now can work for this message: its agent is Pnyx's own and running a turn.
-  sendableNow?({ entry }: { entry: ChatEntry }): boolean
-  retry?({ id }: { id: string }): void
+    text,
+    reference,
+    replyId,
+    targetAgent,
+  }: ChatEntry): void
   // The question each answering owner message carries, by message id.
   answerLeads?: Map<string, AnswerLead>
-  // Sends a task message that may not have arrived again, as a new message with its own id.
-  sendAgain?({
-    task,
-    text,
-  }: {
-    task?: string
-    text: string
-  }): void
   catalog?: Catalog | null
   labelColors?: SavedLabelColor[]
   timings: Map<string, TurnTiming>
@@ -587,8 +534,6 @@ export function Messages({
     release,
     focus: ({ key }) => focusBlock({ element: blockFor({ key }) }),
     retry,
-    sendAgain,
-    sendNow,
   }
   const actions = useRef(handlers)
   actions.current = handlers
@@ -1154,9 +1099,7 @@ export function Messages({
                 leadingTitle={task ? taskReferences?.[task]?.title : undefined}
                 timingTitle={timedTask ? taskReferences?.[timedTask]?.title : undefined}
                 openTask={openTask ? open : undefined}
-                canSendAgain={sendAgain !== undefined}
                 canRetry={retry !== undefined}
-                canSendNow={sendNow !== undefined && (sendableNow?.({ entry }) ?? true)}
               />
             </div>
           )

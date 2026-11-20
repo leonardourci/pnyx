@@ -158,7 +158,9 @@ export function hydraConversation({
   oldest,
   currentTurn,
   receipts = true,
+  held = new Set<string>(),
 }: {
+  held?: Set<string>
   messages: HydraMessage[]
   transcript: ThreadEntry[]
   provider?: string
@@ -217,7 +219,19 @@ export function hydraConversation({
     entries: ThreadEntry[]
   }[] = [{ entries: [] }]
 
+  const heldEntries: ThreadEntry[] = []
+
   for (const entry of reconciled) {
+    const undelivered = held.has(entry.reference ?? '') || entry.receipt === 'failed'
+
+    if (ownMessage({ entry }) && undelivered) {
+      if (!entry.hidden) {
+        heldEntries.push(entry)
+      }
+
+      continue
+    }
+
     if (ownMessage({ entry })) {
       turns.push({
         input: entry,
@@ -407,6 +421,7 @@ export function hydraConversation({
     }
   }
 
+  entries.push(...heldEntries)
   entries.sort((
     first,
     second,

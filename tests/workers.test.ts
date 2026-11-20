@@ -903,7 +903,7 @@ else {
 )
 
 test(
-  'a worker turn a restart cuts resumes in the same session, the owner\'s message sent meanwhile waits in its inbox once, and the chat shows only that message as the owner\'s, with or without the session named',
+  'a worker turn a restart cuts resumes in the same session, the owner\'s message interrupts and is delivered once, and the chat shows only that message as the owner\'s, with or without the session named',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'migration' })
@@ -935,6 +935,12 @@ test(
       ],
     })
     const cut = await hydra.agent({ cwd: folder })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Also migrate the archive'),
+      partial: 'Archive migration',
+      hold: true,
+    })
     await hydra.owner({
       args: [
         'reply',
@@ -944,14 +950,14 @@ test(
       ],
     })
 
+    await until({
+      what: 'the worker to take the owner input',
+      check: () => cut.received.some(text => text.includes('Also migrate the archive')),
+    })
     await pnyx.restart()
     const resumed = await until({
       what: 'the worker to resume after the restart',
       check: () => pnyx.claude.sessions.find(session => session.cwd === folder && session.resumed),
-    })
-    await until({
-      what: 'the resumed worker to hear of the unread message',
-      check: () => resumed.received.some(message => message.includes('inbox')),
     })
     const inbox = await hydra.as({ session: resumed }).run({
       args: [
@@ -1288,7 +1294,7 @@ test(
 )
 
 test(
-  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Hydra\'s steering, marks the card stopped, and permits a worker asking to Stop with a notice',
+  'Stop on a worker keeps delivered owner input and unread Hydra steering, marks the card stopped, and permits a worker asking to Stop with a notice',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'stoppable' })
@@ -1327,6 +1333,12 @@ test(
     })
     const hydraSession = await hydra.chat({ text: 'look at the stoppable task' })
 
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('owner follow-up'),
+      partial: 'Following up',
+      hold: true,
+    })
     await hydra.owner({
       args: [
         'reply',
@@ -1344,6 +1356,11 @@ test(
       ],
     })
 
+    await until({
+      what: 'the worker to take the owner follow-up before Stop',
+      check: () => worker.received.some(text => text.includes('owner follow-up')),
+    })
+
     const stopped = await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -1355,7 +1372,7 @@ test(
     expect(stopped.stopped).toMatch(/^task-/)
     expect((await hydra.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
-      what: 'the owner\'s reply to read as not delivered',
+      what: 'the owner\'s reply to remain delivered',
       check: async () => (await hydra.owner({
         args: [
           'task',
@@ -1366,7 +1383,7 @@ test(
         text: string
         receipt?: string
       }) =>
-        entry.text === 'owner follow-up' && entry.receipt === 'failed'),
+        entry.text === 'owner follow-up' && entry.receipt === 'delivered'),
     })
     expect(JSON.stringify((await hydra.task({ key: 'stoppable' })).attention)).toContain('interrupted')
 
@@ -1383,7 +1400,7 @@ test(
     expect(times({
       sessions: [worker],
       text: 'owner follow-up',
-    })).toBe(0)
+    })).toBe(1)
   },
 )
 
@@ -1438,7 +1455,9 @@ test(
 async function driven({
   session,
   onEnd,
+  owner = false,
 }: {
+  owner?: boolean
   session: HostedSession
   onEnd({ end }: { end(): Promise<void> }): void
 }) {
@@ -1451,6 +1470,7 @@ async function driven({
         id: message.id!,
         text: message.text,
         images: [],
+        ownerMessageId: owner ? message.id : undefined,
       }
     }
   }
@@ -3139,5 +3159,102 @@ test(
         })
       },
     })
+  },
+)
+
+test.each([
+  { opening: false },
+  { opening: true },
+])(
+  'owner input interrupts the previous Codex turn even when its start is pending: $opening',
+  async ({ opening }) => {
+    const codex = fakeCodex()
+    let start = () => {}
+    const starting = new Promise<void>(resolve => {
+      start = resolve
+    })
+    const first = codex.plan({
+      text: 'first owner input',
+      hold: true,
+      acknowledgeStartAfter: starting,
+    })
+    const second = codex.plan({
+      text: 'second owner input',
+      hold: true,
+    })
+    onTestFinished(() => {
+      start()
+      first.release()
+      second.release()
+    })
+    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
+      cwd: process.env.TMPDIR!,
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
+    })
+    const {
+      input,
+      events,
+    } = await driven({
+      session,
+      owner: true,
+      onEnd: ({ end }) => onTestFinished(end),
+    })
+
+    if (!opening) {
+      start()
+    }
+
+    input.push({
+      id: 'first-owner',
+      text: 'first owner input',
+    })
+    await until({
+      what: 'the first input to reach the agent',
+      check: () => codex.sessions[0]?.received.includes('first owner input'),
+    })
+
+    if (!opening) {
+      await until({
+        what: 'the first turn to start',
+        check: () => session.snapshot().work.runningTurns.length === 1,
+      })
+    }
+
+    input.push({
+      id: 'second-owner',
+      text: 'second owner input',
+    })
+    await until({
+      what: 'the next owner input to be queued',
+      check: () => session.snapshot().work.unsettledInputs.includes('second-owner'),
+    })
+    start()
+    const ended = await until({
+      what: 'the first owner turn to be interrupted',
+      check: () => events.flatMap(event => typeof event === 'object' && event.type === 'turn-ended'
+        && event.outcome.inputIds.includes('first-owner') && event.outcome.status === 'interrupted' ? [event.outcome] : []).at(-1),
+    })
+    const next = await until({
+      what: 'the second input to start its own turn',
+      check: () => events.flatMap(event => typeof event === 'object' && event.type === 'input'
+        && event.receipt.inputId === 'second-owner' && event.receipt.phase === 'confirmed' ? [event.receipt] : []).at(-1),
+    })
+    expect(next.turn).not.toBe(ended.turn)
+    first.release()
+    second.release()
+    await until({
+      what: 'the second owner turn to finish',
+      check: () => events.some(event => typeof event === 'object' && event.type === 'turn-ended'
+        && event.outcome.turn === next.turn && event.outcome.status === 'completed'),
+    })
+    const firstOutcomes = events.filter(event => typeof event === 'object' && event.type === 'turn-ended'
+      && event.outcome.turn === ended.turn)
+    expect(firstOutcomes).toHaveLength(1)
+    expect(codex.sessions[0]?.received).toEqual([
+      'first owner input',
+      'second owner input',
+    ])
   },
 )

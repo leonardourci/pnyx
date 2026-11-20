@@ -14,17 +14,16 @@ export function useChatScroll() {
     reading,
     setReading,
   ] = useState(false)
-  const firstRowAtTop = useRef<{
+  const scrollRemainder = useRef(0)
+  const anchor = useRef<{
     id: string
     offset: number
   }>(undefined)
 
-  const rememberFirstRowAtTop = () => {
+  const rememberAnchor = () => {
     const element = scroller.current
 
-    if (element?.scrollTop !== 0) {
-      firstRowAtTop.current = undefined
-
+    if (!element) {
       return
     }
 
@@ -32,39 +31,42 @@ export function useChatScroll() {
     const rows = element.querySelectorAll<HTMLElement>('[data-entry-id]')
     const first = [...rows].find(row => row.getBoundingClientRect().bottom > top)
     const id = first?.dataset.entryId
-    firstRowAtTop.current = first && id !== undefined ? {
+    anchor.current = first && id !== undefined ? {
       id,
       offset: first.getBoundingClientRect().top - top,
     } : undefined
   }
 
+  const selectionOrFocusInside = useRef(false)
   const [follow] = useState(() => createChatFollow({
     changed: ({ away }) => {
       setReading(away)
 
-      if (!away) {
-        firstRowAtTop.current = undefined
-      } else if (!firstRowAtTop.current) {
-        rememberFirstRowAtTop()
+      if (!away && !selectionOrFocusInside.current) {
+        anchor.current = undefined
+        scrollRemainder.current = 0
+      } else if (!anchor.current) {
+        rememberAnchor()
       }
     },
   }))
-  const selectionOrFocusInside = useRef(false)
+  const writtenTop = useRef<number>(undefined)
 
   const scrollToEnd = () => {
     const element = scroller.current
 
     if (element) {
       element.scrollTop = element.scrollHeight
+      writtenTop.current = element.scrollTop
     }
   }
 
-  const keepFirstRowAtTop = () => {
+  const keepAnchor = () => {
     const element = scroller.current
-    const held = firstRowAtTop.current
+    const held = anchor.current
     const row = held && element?.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(held.id)}"]`)
 
-    if (!element || !held || !row || element.scrollTop !== 0) {
+    if (!element || !held || !row) {
       return
     }
 
@@ -72,14 +74,19 @@ export function useChatScroll() {
     const moved = row.getBoundingClientRect().top - top - held.offset
 
     if (Math.abs(moved) >= 1) {
-      element.scrollTop += moved
+      // Carry rounding across reading anchors so successive prepends do not accumulate drift.
+      const requestedTop = element.scrollTop + moved + scrollRemainder.current
+      element.scrollTop = requestedTop
+      const rounding = requestedTop - element.scrollTop
+      scrollRemainder.current = Math.abs(rounding) < 1 ? rounding : 0
+      writtenTop.current = element.scrollTop
     }
   }
 
   const keepPlace = () => {
-    if (!follow.following()) {
-      keepFirstRowAtTop()
-    } else if (!selectionOrFocusInside.current) {
+    if (!follow.following() || selectionOrFocusInside.current) {
+      keepAnchor()
+    } else {
       scrollToEnd()
     }
   }
@@ -128,6 +135,10 @@ export function useChatScroll() {
     () => watchHistoryFocus({
       host: () => content.current?.querySelector('.messages'),
       changed: ({ selected }) => {
+        if (selected && !selectionOrFocusInside.current) {
+          rememberAnchor()
+        }
+
         selectionOrFocusInside.current = selected
 
         if (!selected) {
@@ -182,14 +193,17 @@ export function useChatScroll() {
         scrollHeight,
         clientHeight,
       } = currentTarget
+      const programmatic = writtenTop.current === scrollTop
+      writtenTop.current = undefined
       follow.scrolled({
         at: performance.now(),
         top: scrollTop,
         remaining: scrollHeight - scrollTop - clientHeight,
+        programmatic,
       })
 
-      if (!follow.following()) {
-        rememberFirstRowAtTop()
+      if (!programmatic && (!follow.following() || selectionOrFocusInside.current)) {
+        rememberAnchor()
       }
     },
   }

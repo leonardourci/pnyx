@@ -1,7 +1,8 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { createContext, Fragment, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { InlineButton } from '#web-shared/ui/controls.tsx'
 import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
 import { CHIP_SPACE } from '#web-hydra/draft.ts'
+import { CHIP_SOURCE } from '#web-hydra/message-selection.ts'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 
 const stateIcons: Record<string, string> = {
@@ -26,6 +27,8 @@ type OpenTask = ({ id }: { id: string }) => void
 const TaskReferences = createContext<{
   references: Record<string, TaskReferenceData>
   openTask?: OpenTask
+  names: Map<string, string>
+  pattern?: RegExp
 } | undefined>(undefined)
 export const SavedTaskLabels = createContext(false)
 
@@ -38,6 +41,7 @@ export function TaskReferencesProvider({
   openTask?: OpenTask
   children: ReactNode
 }) {
+  const parent = useContext(TaskReferences)
   const current = useRef(openTask)
   useLayoutEffect(
     () => {
@@ -49,21 +53,85 @@ export function TaskReferencesProvider({
   const value = useMemo(
     () => {
       if (!references) {
-        return undefined
+        return parent
       }
+
+      const names = new Map(Object.keys(references).map(id => [
+        id,
+        id,
+      ]))
+      const titles = new Map<string, string[]>()
+
+      for (const [
+        id,
+        reference,
+      ] of Object.entries(references)) {
+        const matches = titles.get(reference.title) ?? []
+        matches.push(id)
+        titles.set(
+          reference.title,
+          matches,
+        )
+      }
+
+      for (const [
+        title,
+        ids,
+      ] of titles) {
+        if (title && ids.length === 1 && !names.has(title)) {
+          names.set(
+            title,
+            ids[0]!,
+          )
+        }
+      }
+
+      const literals = [...names.keys()].sort((
+        a,
+        b,
+      ) => b.length - a.length || a.localeCompare(b))
+        .map(name => name.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          '\\$&',
+        ))
+      const pattern = literals.length ? new RegExp(
+        `(?<![\\p{L}\\p{N}_-])(${literals.join('|')})(?![\\p{L}\\p{N}_-])`,
+        'gu',
+      ) : undefined
 
       return {
         references,
+        names,
+        pattern,
         openTask: canOpen ? ({ id }: { id: string }) => current.current?.({ id }) : undefined,
       }
     },
     [
       references,
       canOpen,
+      parent,
     ],
   )
 
   return <TaskReferences.Provider value={value}>{children}</TaskReferences.Provider>
+}
+
+export function TaskReferenceText({ text }: { text: string }) {
+  const context = useContext(TaskReferences)
+
+  if (!context?.pattern) {
+    return text
+  }
+
+  return text.split(context.pattern).map((
+    part,
+    index,
+  ) => {
+    const id = index % 2 === 1 ? context.names.get(part) : undefined
+
+    return id ? <span key={index} {...{ [CHIP_SOURCE]: part }}><TaskReference id={id} /></span>
+      : <Fragment key={index}>{part}</Fragment>
+  })
 }
 
 export function TaskReference({

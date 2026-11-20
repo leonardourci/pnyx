@@ -110,12 +110,28 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'hydra.input') {
+    const message = state.hydraMessages?.find(item => item.id === event.data.message)
+
+    if (message && !message.received) {
+      if (event.data.state === 'failed') {
+        message.failure = event.data.error
+      } else {
+        message.attempt = (message.attempt ?? 0) + 1
+        delete message.failure
+      }
+    }
+
+    return true
+  }
+
   if (event.type === 'hydra.received') {
     const message = state.hydraMessages?.find(item => item.id === event.data.message)
 
     if (message) {
       message.received = event.data.at
       delete message.stopped
+      delete message.failure
     }
 
     return true

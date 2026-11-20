@@ -68,11 +68,9 @@ export interface Host {
   resendHeldMessages(): void
   stop({
     card,
-    sendNow,
     cancel }
   ?: {
     card?: string
-    sendNow?: string
     // One message the queued messages list for Hydra, cancelled as Stop cancels them all.
     cancel?: string
   }): Promise<Record<string, unknown>>
@@ -86,10 +84,8 @@ export interface Host {
   }): { operation: import('#upgrade/model.ts').UpgradeOperation }
   compact({
     card,
-    sendNow,
   }: {
     card: string
-    sendNow?: string
   }): Promise<Record<string, unknown>>
   usage({
     card,
