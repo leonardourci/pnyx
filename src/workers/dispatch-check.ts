@@ -884,28 +884,6 @@ const keysOf = ({ path }: { path: string }) => path.split('/').slice(1)
     '~',
   ))
 
-// The patch that makes exactly these changes, so confirming one never rewrites a value it did not show.
-export function patchOf({ changes }: { changes: DispatchChange[] }): Fields {
-  const patch: Fields = {}
-
-  for (const change of changes) {
-    const keys = keysOf({ path: change.path })
-    let at = patch
-
-    for (const key of keys.slice(
-      0,
-      -1,
-    )) {
-      at[key] = asRecord({ value: at[key] }) ?? {}
-      at = at[key] as Fields
-    }
-
-    at[keys.at(-1)!] = change.after === undefined ? null : structuredClone(change.after)
-  }
-
-  return patch
-}
-
 function valueAt({
   document,
   path,

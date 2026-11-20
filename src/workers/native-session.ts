@@ -37,32 +37,6 @@ export interface NativeSession extends Omit<HostedSession, 'run' | 'attach' | 's
 const MAX_PENDING_EVENTS = 1024
 const INTERRUPT_SETTLE_MS = 30_000
 
-type EventType = Exclude<HostedEvent, string>['type']
-type CriticalType = HostedFact['type'] | 'structured' | 'compaction'
-const EVENT_CLASSES: { [Type in EventType]: Type extends CriticalType ? 'critical' : 'view' } = {
-  input: 'critical',
-  permission: 'critical',
-  answer: 'critical',
-  'permission-ended': 'critical',
-  'turn-ended': 'critical',
-  ended: 'critical',
-  structured: 'critical',
-  compaction: 'critical',
-  text: 'view',
-  usage: 'view',
-  tool: 'view',
-  thinking: 'view',
-  work: 'view',
-}
-
-export function eventClass({ event }: { event: HostedEvent }): 'critical' | 'view' {
-  if (typeof event === 'string') {
-    return 'view'
-  }
-
-  return EVENT_CLASSES[event.type]
-}
-
 // Execution has one owner. Readers can leave without returning the provider's iterator.
 export function nativeSession({ native }: { native: NativeSession }): HostedSession {
   const work: NativeWork = {
