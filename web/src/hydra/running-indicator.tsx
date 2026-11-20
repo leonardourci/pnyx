@@ -85,7 +85,13 @@ export function Running({
           })}
           </span>
         )}
-        <span className="chat-status-label min-w-0 break-words" role={labelName ? 'status' : undefined} aria-label={labelName} data-status={label}>{label}</span>
+        <span
+          className="chat-status-label min-w-0 break-words"
+          role={labelName ? 'status' : undefined}
+          aria-label={labelName}
+          data-status={label}
+        >{label}
+        </span>
         {children}
         {words && (
           <Tooltip
