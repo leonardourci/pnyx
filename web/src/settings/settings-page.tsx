@@ -2,6 +2,7 @@ import { HydraRemoval } from './hydra-removal.tsx'
 import { Poleis, HydraPoleis } from './poleis.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
+import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -690,10 +691,19 @@ export function SettingsPage({
         return
       }
 
-      const measure = () => surface.current?.style.setProperty(
-        '--settings-search-height',
-        `${header.offsetHeight}px`,
-      )
+      const measure = () => {
+        const element = surface.current
+
+        if (!element) {
+          return
+        }
+
+        applyRuntimeStyle({
+          element,
+          values: { settingsSearchHeight: `${header.offsetHeight}px` },
+        })
+      }
+
       const observer = new ResizeObserver(measure)
       observer.observe(header)
       measure()
