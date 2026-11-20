@@ -30,7 +30,10 @@ beforeAll(async () => {
 // What the page's queue box reads for this Hydra: updates waiting for it, and its chat.
 const queueBox = ({ hydraId }: { hydraId: string }) => rows<{
   value: {
-    waiting: { kind: string }[]
+    waiting: {
+      seq: number
+      kind: string
+    }[]
     chat: {
       working: boolean
       compactInputs: { text: string }[]
@@ -378,7 +381,7 @@ test(
       reportFile,
       'Stored findings: invoices have been verified.\n',
     )
-    await hydra.as({ session: worker }).run({
+    const storedReport = await hydra.as({ session: worker }).run({
       args: [
         'task',
         'report',
@@ -387,26 +390,46 @@ test(
         reportFile,
       ],
     })
+    await until({
+      what: 'the stored report to reach the queue',
+      check: () => queueBox({ hydraId: hydra.id })?.waiting
+        .some(update => update.seq === storedReport.event.seq),
+    })
     const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
     await workerLine({
       hydra,
       key: 'export',
       line: 'note: Quiet latest line',
     })
-    expect(queueBox({ hydraId: hydra.id })?.waiting).toHaveLength(beforeNote ?? 0)
     await workerLine({
       hydra,
       key: 'export',
       line: 'blocked: Need the SFTP password',
     })
+    const taskHistory = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        'export',
+        '--full',
+      ],
+    })
+    const statusEvent = taskHistory.events.find((event: {
+      type: string
+      data?: { text?: string }
+    }) =>
+      event.type === 'task.worker-line' && event.data?.text === 'Need the SFTP password')
     const waiting = await until({
       what: 'the report and the status to wait for Hydra',
       check: () => {
-        const kinds = queueBox({ hydraId: hydra.id })?.waiting.map(update => update.kind)
+        const updates = queueBox({ hydraId: hydra.id })?.waiting
 
-        return kinds?.includes('declared') && kinds
+        const processed = updates?.some(update => update.seq === statusEvent.seq)
+
+        return processed && updates.map(update => update.kind)
       },
     })
+    expect(waiting).toHaveLength((beforeNote ?? 0) + 1)
     expect(waiting).toContain('report')
     expect(waiting).not.toContain('progress')
     expect(session.received).toHaveLength(1)
