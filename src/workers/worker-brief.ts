@@ -1,11 +1,7 @@
-import { projectsFor } from '#projects/read.ts'
 import { workerTaskDir } from './worker-log.ts'
 import { runForClient, requestEnv, requestCwd } from '#app/request-context.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
-import { matchesProject } from '#projects/identity.ts'
-import { projectIdentity } from '#projects/sources.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
-import { readProjectMemory } from '#memory/project-memory.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 import { projectWorkerContext } from '#projects/context.ts'
 import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
@@ -128,30 +124,18 @@ export async function taskPrompt({
       })
       const ownerNotes = ownerMemory({}).workers?.text
       const state = loadHydra({ hydraId }).state
-      const attachedProject = (projectsFor({ state })).find(project => !project.detached
-        && matchesProject({
-          project,
-          ref: card.project,
-        }))
-      const [
-        identity,
-        project,
-      ] = await Promise.all([
-        attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
-        projectWorkerContext({
-          hydraId,
-          state,
-          project: card.project,
-        }),
-      ])
-      const projectNotes = identity ? readProjectMemory({...identity}).documents.workers ?? '' : ''
+      const project = await projectWorkerContext({
+        hydraId,
+        state,
+        project: card.project,
+      })
 
       const header = workerHeader({
         hydraId,
         id: card.id,
         ownerNotes,
         hydraNotes: state.hydraMemory?.workers?.text,
-        projectNotes,
+        projectNotes: project.workers,
         stops: taskStops({
           state,
           card,
@@ -169,7 +153,7 @@ export async function taskPrompt({
 
       return [
         header,
-        project,
+        project.context,
         taskInstructions({ card }),
         instructions,
         progress,

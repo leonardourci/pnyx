@@ -64,7 +64,14 @@ export async function projectWorkerContext({
   hydraId: string
   state: HydraState
   project?: string
-}): Promise<string> {
+}): Promise<{
+  context: string
+  workers: string
+}> {
+  const empty = {
+    context: '',
+    workers: '',
+  }
   const project = (projectsFor({ state })).filter(project => !project.detached)
     .find(project => matchesProject({
       project,
@@ -72,7 +79,7 @@ export async function projectWorkerContext({
     }))
 
   if (!project) {
-    return ''
+    return empty
   }
 
   const view = await readableProjectMemory({
@@ -81,37 +88,40 @@ export async function projectWorkerContext({
   })
 
   if (!view) {
-    return ''
+    return empty
   }
 
-  return [
-    `Project ${project.name}: shared memory (${view.status}).`,
-    ...Object.entries(PROJECT_MEMORY_DOCUMENTS).flatMap(([
-      key,
-      title,
-    ]) => {
-      if (key === 'workers') {
-        return []
-      }
+  return {
+    workers: view.documents.workers ?? '',
+    context: [
+      `Project ${project.name}: shared memory (${view.status}).`,
+      ...Object.entries(PROJECT_MEMORY_DOCUMENTS).flatMap(([
+        key,
+        title,
+      ]) => {
+        if (key === 'workers') {
+          return []
+        }
 
-      const document = key === 'learnings' && view.learnings?.length ? learningDigest({
-        lines: view.learnings,
-        conditions: memoryConditions(),
-        now: new Date().toISOString(),
-      }) : view.documents[key as keyof typeof PROJECT_MEMORY_DOCUMENTS]
-      const text = document?.replace(
-        /\s+/g,
-        ' ',
-      ).trim()
+        const document = key === 'learnings' && view.learnings?.length ? learningDigest({
+          lines: view.learnings,
+          conditions: memoryConditions(),
+          now: new Date().toISOString(),
+        }) : view.documents[key as keyof typeof PROJECT_MEMORY_DOCUMENTS]
+        const text = document?.replace(
+          /\s+/g,
+          ' ',
+        ).trim()
 
-      return text ? [
-        `${title}: ${text.length > WORKER_DOCUMENT_LIMIT ? `${text.slice(
-          0,
-          WORKER_DOCUMENT_LIMIT,
-        )}…` : text}`,
-      ] : []
-    }),
-    'Read the project conventions in your current copy before starting; the shared profile may need refreshing.',
-    `Full memory: pnyx-axi project show ${JSON.stringify(project.path)} --hydra ${hydraId}.`,
-  ].join('\n')
+        return text ? [
+          `${title}: ${text.length > WORKER_DOCUMENT_LIMIT ? `${text.slice(
+            0,
+            WORKER_DOCUMENT_LIMIT,
+          )}…` : text}`,
+        ] : []
+      }),
+      'Read the project conventions in your current copy before starting; the shared profile may need refreshing.',
+      `Full memory: pnyx-axi project show ${JSON.stringify(project.path)} --hydra ${hydraId}.`,
+    ].join('\n'),
+  }
 }

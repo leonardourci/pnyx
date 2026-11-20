@@ -480,6 +480,7 @@ const hydraDigestHandler = guard({
 
     const owner = ownerMemory({})
     const state = loadHydra({ hydraId }).state
+    const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const readable = projectsFor({ state })
     const [
       projects,
@@ -498,7 +499,7 @@ const hydraDigestHandler = guard({
       conditions: memoryConditions(),
       hydraId,
       owner,
-      ownerWrite: writableOwnerMemory({ hydraId }).memory,
+      ownerWrite,
       state,
       projects,
       setup: setupDigest({ items }),
