@@ -613,15 +613,22 @@ export function HydraView({
   ]))
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
+  const requestedColumnId = columns.find(column => column.id === columnRequest?.id)?.id
   useLayoutEffect(
     () => {
-      const scroller = viewport.axis.current
+      if (!active) {
+        cancelProjectReveal()
 
-      if (!columnRequest || !kanban || !scroller) {
         return
       }
 
-      const target = kanban.querySelector<HTMLElement>(`[data-column="${CSS.escape(columnRequest.id)}"]`)
+      const scroller = viewport.axis.current
+
+      if (!columnRequest || !requestedColumnId || !kanban || !scroller) {
+        return
+      }
+
+      const target = kanban.querySelector<HTMLElement>(`[data-column="${CSS.escape(requestedColumnId)}"]`)
 
       if (!target) {
         return
@@ -664,8 +671,10 @@ export function HydraView({
       return () => controller.abort()
     },
     [
+      active,
       kanban,
       columnRequest,
+      requestedColumnId,
       revealPadding,
     ],
   )

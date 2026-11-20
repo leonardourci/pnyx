@@ -1,16 +1,203 @@
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from './page.ts'
-import { rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
 const PROJECTS = 8
 const HISTORY_EDITS = 65
+const REVEAL_PROJECTS = 4
+const REVEAL_FRAMES = 120
 
 let pnyx: Pnyx
 
 beforeAll(async () => {
   pnyx = await startPnyx({ zeroCache: true })
 })
+
+async function addRevealProjects({ hydra }: { hydra: Hydra }) {
+  const projects: string[] = []
+
+  for (let index = 0; index < REVEAL_PROJECTS; index++) {
+    const folder = hydra.folder({ name: `Reveal-${index}` })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+      ],
+    })
+    projects.push(folder)
+  }
+
+  return projects
+}
+
+test(
+  'a pending project reveal resumes when its column arrives',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await addRevealProjects({ hydra })
+    const arriving = hydra.folder({ name: 'Arriving project' })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    await until({
+      what: 'the initial project columns',
+      check: async () => await workspace.locator('[data-column]').count() === REVEAL_PROJECTS + 1,
+    })
+    await workspace.evaluate(
+      async (
+        element,
+        detail,
+      ) => {
+        element.closest<HTMLElement>('.workspace-axis')!.scrollLeft = 0
+        dispatchEvent(new CustomEvent(
+          'pnyx:workspace-target',
+          { detail },
+        ))
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      },
+      {
+        hydra: hydra.id,
+        path: arriving,
+      },
+    )
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        arriving,
+      ],
+    })
+    const column = workspace.locator(`[data-column="${arriving}"]`)
+    await column.waitFor()
+    await until({
+      what: 'the arriving project to reveal itself',
+      check: () => column.evaluate(element => {
+        const bounds = element.getBoundingClientRect()
+
+        return bounds.left >= 0 && bounds.right <= innerWidth
+      }),
+    })
+  },
+)
+
+test(
+  'an inactive Hydra cannot finish a project reveal over the selected Hydra',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const projects = await addRevealProjects({ hydra })
+    const other = await pnyx.hydra()
+    const project = projects.at(-1)!
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    const column = workspace.locator(`[data-column="${project}"]`)
+    await column.waitFor()
+    await page.locator(`[data-hydra-workspace="${other.id}"]`).waitFor()
+    const expandedWidth = await column.evaluate(element => element.getBoundingClientRect().width)
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({
+          workspace: {
+            foldedProjects: { [project]: true },
+          },
+        }),
+      ],
+    })
+    await until({
+      what: 'the project to finish folding',
+      check: () => column.evaluate(element => element.getBoundingClientRect().width <= 49),
+    })
+    const switched = await column.evaluate(
+      async (
+        element,
+        detail,
+      ) => {
+        const foldedWidth = element.getBoundingClientRect().width
+        const destination = document.querySelector<HTMLElement>(
+          `[data-hydra-workspace="${CSS.escape(detail.other)}"]`,
+        )!
+        const chip = document.querySelector<HTMLButtonElement>(
+          `button[data-sort-kind="hydra"][data-sort-id="${CSS.escape(detail.other)}"]`,
+        )!
+        dispatchEvent(new CustomEvent(
+          'pnyx:workspace-target',
+          {
+            detail: {
+              hydra: detail.hydra,
+              path: detail.project,
+            },
+          },
+        ))
+        let selected = false
+        let seen = false
+        let settled = 0
+        const missing: number[] = []
+
+        for (let frame = 0; frame < detail.frames; frame++) {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+          const width = element.getBoundingClientRect().width
+          const unfolding = width > foldedWidth + 1 && width < detail.expandedWidth - 1
+
+          if (!selected && unfolding) {
+            chip.click()
+            selected = true
+          }
+
+          if (!selected || destination.dataset.active !== 'true') {
+            continue
+          }
+
+          const bounds = destination.getBoundingClientRect()
+          const visible = bounds.left >= -1 && bounds.right <= innerWidth + 1
+
+          if (visible) {
+            seen = true
+          }
+
+          if (seen && !visible) {
+            missing.push(bounds.left)
+          }
+
+          settled = Math.abs(width - detail.expandedWidth) <= 1 ? settled + 1 : 0
+
+          if (seen && settled >= 10) {
+            break
+          }
+        }
+
+        return {
+          selected,
+          seen,
+          settled,
+          missing,
+          active: destination.dataset.active,
+        }
+      },
+      {
+        hydra: hydra.id,
+        project,
+        other: other.id,
+        expandedWidth,
+        frames: REVEAL_FRAMES,
+      },
+    )
+    expect(switched.selected).toBe(true)
+    expect(switched.active).toBe('true')
+    expect(switched.seen).toBe(true)
+    expect(switched.settled).toBeGreaterThanOrEqual(10)
+    expect(switched.missing).toEqual([])
+  },
+)
 
 test(
   'scrolling across projects and a full column keeps every column and task mounted without gaps',
@@ -373,6 +560,9 @@ test(
     await finalColumn.evaluate(column => {
       column.closest<HTMLElement>('.workspace-axis')?.style.removeProperty('width')
     })
+    const unfoldingProject = workspace.locator(`[data-column="${projectPaths[0]}"]`)
+    const expandedProjectWidth = await unfoldingProject.evaluate(element =>
+      element.getBoundingClientRect().width)
     await workspace.getByRole(
       'button',
       {
@@ -461,15 +651,22 @@ test(
 
     await assertRequestedTaskVisible()
     await page.evaluate(
-      ({
+      async ({
         hydra,
         project,
         task,
+        expandedWidth,
+        frames,
       }) => {
         if (document.activeElement instanceof HTMLElement) {
           document.activeElement.blur()
         }
 
+        const workspace = document.querySelector<HTMLElement>(
+          `[data-hydra-workspace="${CSS.escape(hydra)}"]`,
+        )!
+        const column = workspace.querySelector<HTMLElement>(`[data-column="${CSS.escape(project)}"]`)!
+        const foldedWidth = column.getBoundingClientRect().width
         dispatchEvent(new CustomEvent(
           'pnyx:workspace-target',
           {
@@ -479,22 +676,47 @@ test(
             },
           },
         ))
-        dispatchEvent(new CustomEvent(
-          'pnyx:workspace-target',
-          {
-            detail: {
-              hydra,
-              id: task,
-            },
-          },
-        ))
+
+        for (let frame = 0; frame < frames; frame++) {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+          const width = column.getBoundingClientRect().width
+
+          if (width > foldedWidth + 1 && width < expandedWidth - 1) {
+            dispatchEvent(new CustomEvent(
+              'pnyx:workspace-target',
+              {
+                detail: {
+                  hydra,
+                  id: task,
+                },
+              },
+            ))
+
+            return
+          }
+        }
+
+        throw new Error('The project did not begin unfolding before the task request')
       },
       {
         hydra: hydra.id,
         project: projectPaths[0],
         task: referenced.id,
+        expandedWidth: expandedProjectWidth,
+        frames: REVEAL_FRAMES,
       },
     )
+    await until({
+      what: 'the interrupted project to finish unfolding',
+      check: () => unfoldingProject.evaluate(
+        (
+          element,
+          width,
+        ) =>
+          Math.abs(element.getBoundingClientRect().width - width) <= 1,
+        expandedProjectWidth,
+      ),
+    })
     await assertRequestedTaskVisible()
   },
 )
