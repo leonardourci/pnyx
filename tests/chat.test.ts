@@ -1,4 +1,4 @@
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
@@ -1417,6 +1417,35 @@ test(
         ),
         'utf8',
       ))
+    }
+  },
+)
+
+// The contract keeps only the main path and links the rest, so every link must open in Hydra's folder.
+test(
+  'Hydra\'s contract links only references its folder holds',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'hello' })
+    const contract = readFileSync(
+      join(
+        session.cwd,
+        'AGENTS.md',
+      ),
+      'utf8',
+    )
+    const links = [...contract.matchAll(/\]\(([^)]+\.md)\)/g)].map(match => match[1])
+
+    expect(links.length).toBeGreaterThan(0)
+
+    for (const link of links) {
+      expect(
+        existsSync(join(
+          session.cwd,
+          link,
+        )),
+        link,
+      ).toBe(true)
     }
   },
 )
