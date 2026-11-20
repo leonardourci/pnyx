@@ -93,12 +93,12 @@ function UpdateIcon({
   label?: string
 }) {
   const tones: Partial<Record<UpdateKind, string>> = {
-    ask: 'text-gold bg-gold-wash',
-    decision: 'text-gold bg-gold-wash',
-    hydra: 'text-teal bg-update-hydra',
-    told: 'text-blue bg-update-told',
-    link: 'text-purple bg-update-link',
-    done: 'text-green bg-update-done',
+    ask: 'bg-gold-wash text-gold',
+    decision: 'bg-gold-wash text-gold',
+    hydra: 'bg-update-hydra text-teal',
+    told: 'bg-update-told text-blue',
+    link: 'bg-update-link text-purple',
+    done: 'bg-update-done text-green',
   }
   const appearance = tones[kind] ?? 'bg-raised text-muted'
 

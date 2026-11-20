@@ -23,7 +23,7 @@ export function CardShell({
   return (
     <article
       {...props}
-      // eslint-disable-next-line no-restricted-syntax -- Motion forwards its own animation styles through this host component.
+      // eslint-disable-next-line no-restricted-syntax
       style={style}
       data-nest-armed={nesting}
       data-label-color={tint}
