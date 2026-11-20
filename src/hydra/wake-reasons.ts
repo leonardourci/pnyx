@@ -343,7 +343,7 @@ function ordinaryReasons({
       } : {
         kind: 'report',
         card: task,
-        detail: `from ${event.actor}, in its envelope below`,
+        detail: `from ${event.actor}, in the since-last-turn report lines`,
       },
     ]
   }
@@ -356,6 +356,17 @@ function ordinaryReasons({
         kind: 'not confirmed',
         card: card.id,
         detail: event.data.detail,
+      },
+    ]
+  }
+
+  if (event.type === 'task.report' && card && !card.automaticTask && card.id !== HYDRA_CARD
+    && reportActor({ actor: event.actor }) && pnyxRunsHydra({ state })) {
+    return [
+      {
+        kind: 'report',
+        card: card.id,
+        detail: `stored result at seq ${event.seq}. Read it with task history ${card.id} --full`,
       },
     ]
   }

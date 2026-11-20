@@ -1,7 +1,7 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { askWording } from '#tasks/ask-state.ts'
-import { ownerActor } from '#app/actors.ts'
-import { needsMain } from '#routine-helper/state.ts'
+import { ownerActor, reportActor } from '#app/actors.ts'
+import { activeHelperBatches, needsMain } from '#routine-helper/state.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { historyCommand } from './history-command.ts'
 
@@ -17,11 +17,14 @@ export interface ContextNote {
   text: string
   task?: string
   ownerAnswer?: boolean
+  report?: boolean
+  handled?: boolean
+  progress?: number
 }
 
 // Older snapshots recorded owner answers without metadata.
 const isOwnerAnswer = ({ note }: { note: ContextNote }) => note.ownerAnswer === true
-  || note.text.startsWith('Owner answered ')
+  || (!note.report && note.text.startsWith('Owner answered '))
 
 function line({
   text,
@@ -60,13 +63,17 @@ export function applyContextNotes({
   const add = ({
     id = event.id,
     text,
-    task = event.cardId,
+    task = event.type === 'hydra.message' ? event.data.task : event.cardId,
     ownerAnswer = false,
+    report = false,
+    progress = false,
   }: {
     id?: string
     text: string
     task?: string
     ownerAnswer?: boolean
+    report?: boolean
+    progress?: boolean
   }) => {
     const notes = state.contextNotes ?? []
 
@@ -74,8 +81,16 @@ export function applyContextNotes({
       return
     }
 
-    const retained = notes.filter(note => ownerAnswer || isOwnerAnswer({ note })
-      || note.task !== task)
+    let progressCount = 1
+    const retained = notes.filter(note => {
+      if (progress && task && note.task === task && note.progress) {
+        progressCount += note.progress
+
+        return false
+      }
+
+      return report || ownerAnswer || note.report || isOwnerAnswer({ note }) || note.task !== task
+    })
     const next: ContextNote = {
       id,
       seq: event.seq,
@@ -87,14 +102,42 @@ export function applyContextNotes({
       next.ownerAnswer = true
     }
 
+    if (report) {
+      next.report = true
+    }
+
+    if (progress) {
+      next.progress = progressCount
+    }
+
     const pending = [
       ...retained,
       next,
     ]
-    const routine = pending.filter(note => !isOwnerAnswer({ note }))
+    const routine = pending.filter(note => !note.report && !isOwnerAnswer({ note }))
       .slice(-CONTEXT_NOTE_LIMIT)
-    state.contextNotes = pending.filter(note => isOwnerAnswer({ note })
+    state.contextNotes = pending.filter(note => note.report || isOwnerAnswer({ note })
       || routine.includes(note))
+  }
+
+  if (reportActor({ actor: event.actor })) {
+    if (event.type === 'hydra.message') {
+      add({
+        text: event.data.text,
+        report: true,
+        progress: event.data.kind === 'progress',
+      })
+    } else if (event.type === 'task.declared') {
+      add({
+        text: event.data.note ? `declared ${event.data.state}: ${event.data.note}` : `declared ${event.data.state}`,
+        report: true,
+      })
+    } else if (event.type === 'task.report') {
+      add({
+        text: `result: ${event.data.text}`,
+        report: true,
+      })
+    }
   }
 
   const answered = ({
@@ -151,6 +194,19 @@ export function applyContextNotes({
 
   if (event.type === 'task.wait-resumed' && card?.wait?.id === event.data.wait) {
     add({ text: `${card.title}: worker resume queued. ${event.data.message.text}` })
+  }
+
+  if (event.type === 'hydra.helper-finished') {
+    const batch = state.helper?.runs[event.data.batch]
+
+    for (const note of state.contextNotes ?? []) {
+      if (!note.report || !batch?.seqs.includes(note.seq)) {
+        continue
+      }
+
+      const outcome = event.data.outcomes.find(outcome => outcome.task === note.task)
+      note.handled = !event.data.error && outcome !== undefined && !needsMain({ outcome })
+    }
   }
 
   if (event.type === 'hydra.helper-finished' && !event.data.error) {
@@ -229,33 +285,89 @@ export function contextTurnNotes({ notes }: { notes: ContextNote[] }): ContextNo
   )
 }
 
+export function contextReportStatus({
+  note,
+  state,
+}: {
+  note: ContextNote
+  state: HydraState
+}): 'handled' | 'helper handling' | 'unhandled' {
+  if (note.handled) {
+    return 'handled'
+  }
+
+  const leased = activeHelperBatches({ state }).some(batch =>
+    batch.seqs.includes(note.seq) || (note.task !== undefined && batch.tasks.includes(note.task)))
+
+  return leased ? 'helper handling' : 'unhandled'
+}
+
 export function contextNoteBlock({
   notes,
   hydraId,
+  state,
 }: {
   notes: ContextNote[]
   hydraId: string
+  state: HydraState
 }): string {
   if (!notes.length) {
     return ''
   }
 
   const shown = contextTurnNotes({ notes })
-  const lines = shown.map(note => `- ${note.text.replace(
-    /</g,
-    '&lt;',
-  )}`)
-  const omitted = notes.length - shown.length
+  const lines = shown.map(note => {
+    const text = line({
+      text: note.text.replace(
+        /</g,
+        '&lt;',
+      ),
+    })
 
-  if (omitted) {
-    lines.push(`- and ${omitted} more; read \`${historyCommand({
+    if (!note.report) {
+      return `- ${text}`
+    }
+
+    const status = contextReportStatus({
+      note,
+      state,
+    })
+
+    let count = ''
+
+    if (note.progress) {
+      count = ' (progress)'
+
+      if (note.progress > 1) {
+        count = ` (${note.progress} progress reports, latest)`
+      }
+    }
+
+    return `- seq ${note.seq} ${note.task ?? 'no task'} [${status}]${count}: ${text}`
+  })
+  const omitted = notes.slice(shown.length)
+  const lastOmitted = omitted.at(-1)
+  const reports = omitted.filter(note => note.report)
+  const firstReport = reports[0]
+  const overflow = []
+
+  if (firstReport) {
+    overflow.push(`${reports.length} more worker reports; read \`pnyx-axi hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` and follow its \`through\` cursor when it offers another page.`)
+  }
+
+  const otherNotes = omitted.length - reports.length
+
+  if (otherNotes && lastOmitted) {
+    overflow.push(`${otherNotes} more context notes; read \`${historyCommand({
       hydraId,
       since: 'origin',
-      through: notes.at(-1)!.seq,
+      through: lastOmitted.seq,
     })}\` for the rest.`)
   }
 
-  const text = lines.join('\n')
+  if (overflow.length) {
+    lines.push(`- ${overflow.join(' ')}`)
+  }
 
-  return `<pnyx-context>Since your last turn (context only; these facts need no action or reply):\n${text}\n</pnyx-context>`
+  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Reports marked handled or helper handling and other notes are context. To read a full report, use task history <task> --full or hydra messages --after <seq minus one> --limit 1.\n${lines.join('\n')}\n</pnyx-context>`
 }

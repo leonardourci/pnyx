@@ -2,7 +2,8 @@ import type { HydraState } from '#app/model.ts'
 import { decisionsBlock } from '#tasks/decisions.ts'
 import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
-import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
+import { clip } from './digest.ts'
+import { ownerActor } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
 import { readEvents, scanEvents } from '#app/event-log.ts'
@@ -77,10 +78,11 @@ export const decisionsText = ({
   }),
 })
 
+const WAKE_UPDATE_CHARS = 6000
+
 // Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
 const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
 
-// One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 export function wakeText({
   hydraId,
   state,
@@ -103,29 +105,81 @@ export function wakeText({
   pick?: Parameters<typeof decisionsText>[0]['pick']
 }): string {
   const lines: string[] = []
+  let overflow = false
+  let reviewOverflow = false
+  let used = 0
 
   if (reasons.length) {
-    lines.push(
-      'Why you are woken:',
-      ...reasons.map(line => sealed({ text: line })),
-    )
+    const heading = 'Why you are woken:'
+    lines.push(heading)
+    used = heading.length + 1
+
+    for (const reason of reasons) {
+      const escaped = sealed({ text: reason })
+
+      if (!pick && used + escaped.length + 1 > WAKE_UPDATE_CHARS) {
+        overflow = true
+        continue
+      }
+
+      lines.push(escaped)
+      used += escaped.length + 1
+    }
   }
 
   if (reports.length) {
     const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
-    lines.push(`${count} arrived while you were busy. Handle them together and answer once.`)
+    const notice = pick
+      ? `${count} arrived while you were busy. Handle them together and answer once.`
+      : `${count} arrived while you were busy.`
 
-    for (const message of reports) {
-      lines.push(sealed({ text: hydraDelivery({ message }) }))
+    if (pick || used + notice.length + 1 <= WAKE_UPDATE_CHARS) {
+      lines.push(notice)
+      used += notice.length + 1
+    } else {
+      overflow = true
+    }
+
+    if (pick) {
+      for (const message of reports) {
+        lines.push(sealed({ text: hydraDelivery({ message }) }))
+      }
     }
   }
 
-  if (check) {
-    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+  if (review) {
+    const reviewText = sealed({ text: review })
+    const remaining = WAKE_UPDATE_CHARS - used - 1
+
+    if (pick || reviewText.length <= remaining) {
+      lines.push(reviewText)
+    } else {
+      overflow = true
+
+      if (remaining > 1) {
+        lines.push(clip({
+          text: reviewText,
+          size: remaining,
+        }))
+      }
+
+      reviewOverflow = true
+    }
   }
 
-  if (review) {
-    lines.push(sealed({ text: review }))
+  if (overflow) {
+    lines.push('Some wake details were shortened or omitted.')
+  }
+
+  if (pick && check) {
+    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+  } else if (check || overflow) {
+    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
+  }
+
+  if (reviewOverflow) {
+    const reviewedThrough = state.hydraReview?.seq ?? state.seq
+    lines.push(`Read \`pnyx-axi history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
   }
 
   lines.push(decisionsText({
@@ -316,40 +370,26 @@ export function findHydraTurnToResume({
     lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
-  let unansweredMessages = 0
-  let firstMessageSeq: number | undefined
-  let lastMessageSeq: number | undefined
+  const unansweredMessages: number[] = []
 
   for (const event of scanEvents({
     hydraId,
     types: ['hydra.message'],
     after: lastFinishedTurnSeq,
   })) {
-    if (event.type !== 'hydra.message' || event.actor === HYDRA_ACTOR || event.data.kind === 'progress') {
+    if (event.type !== 'hydra.message' || !ownerActor({ actor: event.actor })) {
       continue
     }
 
-    unansweredMessages++
-
-    if (firstMessageSeq === undefined) {
-      firstMessageSeq = event.seq
-    }
-
-    lastMessageSeq = event.seq
+    unansweredMessages.push(event.seq)
   }
 
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
   const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)
   const unfinishedWork: string[] = []
 
-  if (unansweredMessages) {
-    let unansweredMessagesPhrase = `messages seq ${firstMessageSeq}`
-
-    if (unansweredMessages > 1) {
-      unansweredMessagesPhrase = `messages seq ${firstMessageSeq} to ${lastMessageSeq}`
-    }
-
-    unfinishedWork.push(unansweredMessagesPhrase)
+  if (unansweredMessages.length) {
+    unfinishedWork.push('the owner messages listed below')
   }
 
   if (wakeThroughSeq) {
@@ -362,20 +402,19 @@ export function findHydraTurnToResume({
     unfinishedWork.push(stallCheckPhrase)
   }
 
-  const cutTurnHasNoRecordedWork = unansweredMessages === 0
-    && wakeThroughSeq === undefined && !isStallCheck
-  const unrecordedCutTurnPhrase = 'a turn'
-  let interruptedWork: string
-
-  if (cutTurnHasNoRecordedWork) {
-    interruptedWork = unrecordedCutTurnPhrase
-  } else {
-    interruptedWork = unfinishedWork.join(' and ')
-  }
+  const interruptedWork = unfinishedWork.join(' and ') || 'a turn'
+  const ownerReads = unansweredMessages.map(seq =>
+    `Read owner message ${seq} in full with \`pnyx-axi hydra messages --after ${seq - 1} --limit 1 --hydra ${hydraId}\`.`)
 
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.\n${REPLY_RULES}</pnyx-wake>`,
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
+      ...ownerReads,
+      decisionsText({
+        state,
+        now: Date.now(),
+      }),
+    ].join('\n')}\n${REPLY_RULES}</pnyx-wake>`,
   }
 }

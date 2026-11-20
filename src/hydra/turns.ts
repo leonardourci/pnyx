@@ -2,7 +2,7 @@ import { readMemoryContext } from '#memory/context.ts'
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
-import { contextNoteBlock, contextTurnNotes } from './context-notes.ts'
+import { contextNoteBlock, contextTurnNotes, contextReportStatus, type ContextNote } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -21,6 +21,7 @@ import { applyDecision } from '#app/decision.ts'
 import { hydraAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
+import type { HydraState } from '#app/model.ts'
 import type { Writer } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
@@ -169,6 +170,35 @@ export function createHydraTurns({
 
   let outcomesPresented = 0
   const contextPresented = new Map<string, number>()
+
+  const readContextNote = ({
+    note,
+    state,
+  }: {
+    note: ContextNote
+    state: HydraState
+  }) => {
+    if (note.report) {
+      const status = contextReportStatus({
+        note,
+        state,
+      })
+
+      if (status === 'helper handling') {
+        return
+      }
+
+      if (note.task && status === 'unhandled') {
+        mainTasks.add(note.task)
+      }
+    }
+
+    contextPresented.set(
+      note.id,
+      note.seq,
+    )
+  }
+
   const helperBatchesPresented = new Set<string>()
   const hydraInstructions = () =>
     `You are Hydra for Pnyx Hydra "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
@@ -858,18 +888,20 @@ export function createHydraTurns({
           `${memoryNote}\n${REPLY_RULES}`,
         ) : text)
         const continuingTurn = joinsTurn && running?.activity === 'working'
-        const pendingNotes = loadHydra({ hydraId }).state.contextNotes ?? []
+        const contextState = loadHydra({ hydraId }).state
+        const pendingNotes = contextState.contextNotes ?? []
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
         const context = contextNoteBlock({
           notes,
           hydraId,
+          state: contextState,
         })
 
         for (const note of contextTurnNotes({ notes })) {
-          contextPresented.set(
-            note.id,
-            note.seq,
-          )
+          readContextNote({
+            note,
+            state: contextState,
+          })
         }
 
         entry.activity = 'working'
@@ -1039,6 +1071,15 @@ export function createHydraTurns({
         contextPresented.clear()
       }
 
+      for (const note of writer.state.contextNotes ?? []) {
+        if (note.report && contextReportStatus({
+          note,
+          state: writer.state,
+        }) === 'helper handling') {
+          contextPresented.delete(note.id)
+        }
+      }
+
       if (contextPresented.size && outcome?.status === 'completed') {
         applyDecision({
           writer,
@@ -1103,6 +1144,49 @@ export function createHydraTurns({
     }
   }
 
+  const reportTurn = (): string | undefined => {
+    const agent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
+    const entry = agent && live.get(sessionId({ agent }))
+
+    if (!entry || entry.activity !== 'working' || entry.stopping || closing()) {
+      return undefined
+    }
+
+    const turns = entry.session?.snapshot().work.runningTurns
+
+    if (turns?.length !== 1) {
+      return undefined
+    }
+
+    return `${sessionId({ agent })}:${turns[0]}`
+  }
+
+  const reportsRead = ({
+    turn,
+    seqs,
+  }: {
+    turn: string
+    seqs: number[]
+  }) => {
+    if (turn !== reportTurn()) {
+      return false
+    }
+
+    const state = loadHydra({ hydraId }).state
+    const selected = new Set(seqs)
+
+    for (const note of state.contextNotes ?? []) {
+      if (note.report && selected.has(note.seq)) {
+        readContextNote({
+          note,
+          state,
+        })
+      }
+    }
+
+    return true
+  }
+
   return {
     cancel: () => {
       stopGeneration += 1
@@ -1112,6 +1196,8 @@ export function createHydraTurns({
       await hydraTurn
     },
     digest,
+    reportTurn,
+    reportsRead,
     hydraSession,
     hydra,
     startedByOwner,

@@ -1,3 +1,5 @@
+import { hostedHydraRequest } from './request-context.ts'
+import { HYDRA_ACTOR } from './actors.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { toolNames } from '#workers/tools.ts'
 import type { Host, UsageInputs } from './host-types.ts'
@@ -39,6 +41,47 @@ export async function hostRequestUnlocked({
   }) ?? 'cli'
 
   switch (body.action) {
+    case 'report-turn':
+    case 'reports-read': {
+      if (actor !== HYDRA_ACTOR || !hostedHydraRequest({ hydraId: host.hydraId })) {
+        throw new HydraError({
+          code: 'VALIDATION_ERROR',
+          message: 'Report reads belong to the hosted Hydra turn',
+        })
+      }
+
+      if (body.action === 'report-turn') {
+        return { turn: host.reportTurn() ?? null }
+      }
+
+      const turn = field({
+        body,
+        name: 'turn',
+        optional: true,
+      })
+      const seqs = body.seqs
+
+      if (!turn) {
+        throw new HydraError({
+          code: 'VALIDATION_ERROR',
+          message: 'Report reads need a hosted Hydra turn',
+        })
+      }
+
+      if (!Array.isArray(seqs) || !seqs.every(seq => Number.isSafeInteger(seq) && seq > 0)) {
+        throw new HydraError({
+          code: 'VALIDATION_ERROR',
+          message: 'Report reads need event sequence numbers',
+        })
+      }
+
+      const accepted = host.reportsRead({
+        turn,
+        seqs,
+      })
+
+      return { read: accepted ? seqs.length : 0 }
+    }
     case 'compact':
       return host.compact({
         card: field({

@@ -53,6 +53,13 @@ export const requestEnv = (): NodeJS.ProcessEnv => current.getStore()?.env ?? pr
 export const hydraActor = ({ actor }: { actor?: string }) =>
   actor === HYDRA_ACTOR || requestEnv().PNYX_ACTOR === HYDRA_ACTOR
 
+export function hostedHydraRequest({ hydraId }: { hydraId: string }): boolean {
+  const identity = requestEnv()
+
+  return identity.PNYX_ACTOR === HYDRA_ACTOR && identity.PNYX_HOSTED === 'hydra'
+    && identity.PNYX_HYDRA === hydraId
+}
+
 export const requestCwd = (): string => current.getStore()?.cwd ?? process.cwd()
 
 export function runForClient<T>({

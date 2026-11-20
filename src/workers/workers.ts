@@ -5,12 +5,13 @@ import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { queuePosition } from './queue.ts'
 import { projectRows } from '#projects/read.ts'
+import { contextNoteBlock, contextReportStatus } from '#hydra/context-notes.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
-import { HYDRA_ACTOR, OWNER_ACTORS } from '#app/actors.ts'
+import { HYDRA_ACTOR, OWNER_ACTORS, reportActor } from '#app/actors.ts'
 import type { HydraEvent, EventType } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
@@ -26,7 +27,8 @@ import { askWording, openAsks } from '#tasks/ask-state.ts'
 import { lifecycleMove } from '#tasks/lifecycle.ts'
 import { COMMON, guard, integer, parse, type Output, summarize } from '#app/cli-support.ts'
 import { commands } from '#app/cli.ts'
-import { requestEnv } from '#app/request-context.ts'
+import { askHost } from '#app/server-state.ts'
+import { requestEnv, hostedHydraRequest } from '#app/request-context.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { pendingPermissions } from './permission-rules.ts'
 import { typedWords, type TypedWords } from './typed-words.ts'
@@ -106,6 +108,15 @@ export async function hydraCheck({
     )
   }
 
+  const hosted = hostedHydraRequest({ hydraId })
+  const reading = hosted ? await askHost({
+    hydraId,
+    body: {
+      action: 'report-turn',
+      actor: HYDRA_ACTOR,
+    },
+  }) : undefined
+  const reportTurn = typeof reading?.turn === 'string' ? reading.turn : undefined
   const after = integer({
     value: values.after,
     flag: '--after',
@@ -202,11 +213,28 @@ export async function hydraCheck({
     ))
   } while (!woken)
 
-  const page = changes.slice(
+  const agents = await checkAttachments({
+    state: loadHydra({ hydraId }).state,
+    connect,
+  })
+  const state = loadHydra({ hydraId }).state
+  const pendingReports = new Map(
+    (state.contextNotes ?? []).filter(note => note.report).map(note => [
+      note.seq,
+      note,
+    ] as const),
+  )
+  const visibleChanges = hosted ? changes.filter(event => {
+    const progress = event.type === 'hydra.message' && event.data.kind === 'progress'
+      && reportActor({ actor: event.actor })
+
+    return !progress || pendingReports.has(event.seq)
+  }) : changes
+  const page = visibleChanges.slice(
     0,
     CHECK_LIMIT,
   )
-  const paged = changes.length > CHECK_LIMIT
+  const paged = visibleChanges.length > CHECK_LIMIT
   const through = paged ? page.at(-1)!.seq : last
 
   if (paged) {
@@ -276,21 +304,56 @@ export async function hydraCheck({
     typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`)
   }
 
-  const row = ({ e }: { e: HydraEvent }) => ({
-    seq: e.seq,
-    id: e.id,
-    type: e.type,
-    task: e.cardId === '$board' ? 'none' : e.cardId,
-    action: e.type === 'hydra.message' ? e.data.action : 'none',
-    actor: OWNER_ACTORS.includes(e.actor) ? `owner (${e.actor})` : e.actor,
-    summary: compact({
-      text: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered)
+  const readReports: number[] = []
+  const changesWithReportStatus = page.map(e => {
+    const task = e.type === 'hydra.message' ? e.data.task : e.cardId
+    const note = pendingReports.get(e.seq)
+    let summary: string
+
+    if (note) {
+      summary = note.text
+    } else if (e.type === 'card.pushed') {
+      summary = e.data.attention?.filter(a => a.blocking && !a.answered)
         .map(a => a.text ?? a.kind)
-        .join('; ') ?? 'Agent needs an answer' : summarize({ event: e }),
-    }),
+        .join('; ') ?? 'Agent needs an answer'
+    } else {
+      summary = summarize({ event: e })
+    }
+
+    const change = {
+      seq: e.seq,
+      id: e.id,
+      type: e.type,
+      task: task && task !== '$board' ? task : 'none',
+      action: e.type === 'hydra.message' ? e.data.action : 'none',
+      actor: OWNER_ACTORS.includes(e.actor) ? `owner (${e.actor})` : e.actor,
+      summary: compact({ text: summary }),
+    }
+
+    if (!note) {
+      return change
+    }
+
+    const reportStatus = contextReportStatus({
+      note,
+      state,
+    })
+
+    if (reportStatus !== 'helper handling') {
+      readReports.push(e.seq)
+    }
+
+    const reportChange = {
+      ...change,
+      reportStatus,
+    }
+
+    return note.progress === undefined ? reportChange : {
+      ...reportChange,
+      progressCount: note.progress,
+    }
   })
 
-  const state = loadHydra({ hydraId }).state
   const requests = Object.values(state.cards).flatMap(card => pendingPermissions({ card })
     .map(p => ({
       id: p.id,
@@ -320,10 +383,18 @@ export async function hydraCheck({
     )}s`,
   })))
 
-  return {
+  const paginationHelp: string[] = []
+
+  if (paged) {
+    paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --hydra ${hydraId}\` for the next page`)
+  } else if (requestEnv().PNYX_HOSTED !== 'hydra') {
+    paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
+  }
+
+  const output: Output = {
     hydraId,
     projects: projectRows({ state }),
-    changes: page.length ? page.map(e => row({ e })) : `none: nothing Hydra tracks changed after seq ${after}`,
+    changes: page.length ? changesWithReportStatus : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
     queues: Object.values(state.cards).filter(card => card.queue)
       .map(card => ({
@@ -335,19 +406,30 @@ export async function hydraCheck({
       })),
     requests: requests.length ? requests : 'none: no open permission requests',
     questions: asks.length ? asks : 'none: no open questions',
-    agents: await checkAttachments({
-      state,
-      connect,
-    }),
+    agents,
     ...(digest.size ? { conversations: [...digest.values()] } : {}),
     help: [
       ...directWordsHelp,
       ...typedHelp,
       ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
-      `Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`,
+      ...paginationHelp,
     ],
   }
+
+  if (reportTurn && readReports.length) {
+    await askHost({
+      hydraId,
+      body: {
+        action: 'reports-read',
+        actor: HYDRA_ACTOR,
+        turn: reportTurn,
+        seqs: readReports,
+      },
+    })
+  }
+
+  return output
 }
 
 function compact({ text }: { text: string }): string {
@@ -412,7 +494,7 @@ const hydraDigestHandler = guard({
           }),
         ])
 
-        return hydraDigest({
+        const digest = hydraDigest({
           conditions: memoryConditions(),
           hydraId,
           owner,
@@ -422,6 +504,15 @@ const hydraDigestHandler = guard({
           readable: readable.map(project => project.path),
           setup: setupDigest({ items }),
         })
+
+        return [
+          digest,
+          contextNoteBlock({
+            notes: (state.contextNotes ?? []).filter(note => note.report),
+            hydraId,
+            state,
+          }),
+        ].filter(Boolean).join('\n')
       },
     })
   },

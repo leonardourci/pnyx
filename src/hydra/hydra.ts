@@ -1,3 +1,4 @@
+import { reportActor } from '#app/actors.ts'
 import type { HydraState, HydraChange, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
@@ -80,11 +81,7 @@ export function hydraEvent({
 // Hydra ends a turn that needs nothing from the owner with only this reply, which its chat hides.
 export const QUIET_REPLY = 'NO_REPLY'
 
-// Pnyx itself, a hook, a session or a worker: an agent's write, never the owner's or Hydra's.
-export const agentActor = ({ actor }: { actor: string }) => /^(pnyx$|hook:|session:|worker:)/.test(actor)
-
-// A worker's or session's message to Hydra is its report, never the owner's words.
-export const reportActor = ({ actor }: { actor: string }) => actor !== 'pnyx' && agentActor({ actor })
+export { agentActor, reportActor } from '#app/actors.ts'
 
 // The exact text Hydra receives, so its transcript copy of a report is known by identity, never by markup.
 export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 'actor' | 'task' | 'kind' | 'text' | 'details' | 'context'> }) {

@@ -1,13 +1,17 @@
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { withWriter } from '#app/writer.ts'
+import { runForClient } from '#app/request-context.ts'
+import { hydraCheck } from '#workers/workers.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
@@ -274,7 +278,7 @@ test(
 )
 
 test(
-  'a worker\'s report and status wait in Hydra\'s queue while it works, then reach it once as one wake, and progress wakes nobody',
+  'worker reports and stored results coalesce progress, wait for one wake and survive an interrupted turn',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'export' })
@@ -329,8 +333,47 @@ test(
         'send',
         '--task',
         'export',
+        '--kind',
+        'progress',
+        '--text',
+        'Invoices ready to upload',
+      ],
+    })
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'status',
+        'export',
+        'working',
+        '--note',
+        'Upload started',
+      ],
+    })
+    await hydra.as({ session: worker }).run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'export',
         '--text',
         'Export works; ready for review',
+      ],
+    })
+    const reportFile = join(
+      folder,
+      'findings.md',
+    )
+    writeFileSync(
+      reportFile,
+      'Stored findings: invoices have been verified.\n',
+    )
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'report',
+        'export',
+        '--file',
+        reportFile,
       ],
     })
     await hydra.as({ session: worker }).run({
@@ -355,17 +398,562 @@ test(
     expect(waiting).not.toContain('progress')
     expect(session.received).toHaveLength(1)
 
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Export works; ready for review'),
+      hold: true,
+    })
     turn.release()
     await until({
-      what: 'Hydra to handle the wake',
-      check: () => session.answered === 2 && queueBox({ hydraId: hydra.id })?.waiting.length === 0
-      && queue({ hydraId: hydra.id })?.working === false,
+      what: 'Hydra to read the report wake',
+      check: () => session.received.length === 2 && queue({ hydraId: hydra.id })?.working === true,
     })
     const wake = session.received[1]!
     expect(wake.split('Export works; ready for review')).toHaveLength(2)
-    expect(wake).toContain('Halfway through the invoices')
+    expect(wake).not.toContain('Halfway through the invoices')
+    expect(wake).toContain('Invoices ready to upload')
+    expect(wake).toContain('2 progress reports')
+    const progressSeq = wake.match(/seq (\d+) \S+ \[unhandled\] \(2 progress reports, latest\): Invoices ready to upload/)?.[1]
+
+    if (progressSeq === undefined) {
+      throw new Error('The wake did not identify the collapsed progress report')
+    }
+
+    const progressPage = await hydra.as({ session }).run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+    expect(progressPage.changes).not.toContainEqual(expect.objectContaining({
+      summary: expect.stringContaining('Halfway through the invoices'),
+    }))
+    expect(progressPage.changes).toContainEqual(expect.objectContaining({
+      seq: Number(progressSeq),
+      reportStatus: 'unhandled',
+      progressCount: 2,
+      summary: 'Invoices ready to upload',
+    }))
+    expect(wake).toContain('Upload started')
     expect(wake).toContain('Need the SFTP password')
-    expect(session.received).toHaveLength(2)
+    expect(wake).toContain('result: Stored findings: invoices have been verified.')
+    const storedResultSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: result: Stored findings/)?.[1]
+
+    if (storedResultSeq === undefined) {
+      throw new Error('The wake did not identify the stored result')
+    }
+
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    await until({
+      what: 'the interrupted report turn to stop',
+      check: () => queue({ hydraId: hydra.id })?.working === false,
+    })
+    const pending = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(storedResultSeq) - 1),
+      ],
+    })
+    expect(pending.changes).toContainEqual(expect.objectContaining({
+      type: 'task.report',
+      reportStatus: 'unhandled',
+      summary: 'result: Stored findings: invoices have been verified.',
+    }))
+    await hydra.chat({ text: 'Review the interrupted worker reports' })
+    await until({
+      what: 'the report to be delivered after interruption',
+      check: () => session.received.length >= 3,
+    })
+    const retried = session.received.find(text => text.endsWith('Review the interrupted worker reports'))!
+    expect(retried).toContain('Export works; ready for review')
+    expect(retried).toContain('result: Stored findings: invoices have been verified.')
+    const reportSeq = retried.match(/seq (\d+) \S+ \[unhandled\]: Export works; ready for review/)?.[1]
+    expect(reportSeq).toBeDefined()
+    await until({
+      what: 'the retried report turn to finish',
+      check: () => queue({ hydraId: hydra.id })?.working === false,
+    })
+    const checked = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(reportSeq) - 1),
+      ],
+    })
+    const report = checked.changes.find(
+      (change: { seq: number }) => change.seq === Number(reportSeq),
+    )
+    expect(report).toBeDefined()
+    expect(report).not.toHaveProperty('reportStatus')
+
+    writeFileSync(
+      reportFile,
+      'Standalone result after the previous turn finished.\n',
+    )
+    await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'report',
+        'export',
+        '--file',
+        reportFile,
+      ],
+    })
+    await until({
+      what: 'a stored result to wake Hydra on its own',
+      check: () => session.received.some(text => text.includes('result: Standalone result after the previous turn finished.')),
+    })
+  },
+)
+
+test(
+  '300 queued worker reports stay bounded, preserve owner messages and support complete pagination',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Hold the report burst',
+      hold: true,
+    })
+    const session = await hydra.chat({ text: 'Hold the report burst' })
+    const page = await hydra.page()
+    const wakeTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('more worker reports'),
+      hold: true,
+    })
+    const replacementTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Resume after the interrupted read',
+      hold: true,
+    })
+    const overflowTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Read the remaining reports',
+      hold: true,
+    })
+    let releaseRead = () => {}
+
+    try {
+      for (let index = 0; index < 300; index++) {
+        const body = index === 0 ? '<'.repeat(500) : 'Long report body '.repeat(100)
+
+        await page.send({
+          name: 'hydra',
+          args: [
+            'send',
+            '--actor',
+            `worker:burst-${index}`,
+            '--text',
+            `Report ${index}: ${body}`,
+          ],
+        })
+      }
+
+      await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Keep the owner message intact under the report cap',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Export format',
+          '--key',
+          'budget-decision',
+        ],
+      })
+      const decisionTask = await hydra.task({ key: 'budget-decision' })
+      await hydra.as({ session }).run({
+        args: [
+          'task',
+          'ask',
+          'budget-decision',
+          '--to',
+          'owner',
+          '--question',
+          'Which export format?',
+          '--context',
+          `The format determines the export implementation. [Export format](pnyx-task:${decisionTask.id})`,
+          '--choice',
+          'CSV',
+          '--choice',
+          'JSON',
+          '--recommend',
+          '1',
+          '--reason',
+          'The format needs an owner choice',
+        ],
+      })
+      withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => {
+          const decision = hydraEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            cardId: HYDRA_CARD,
+            change: {
+              type: 'hydra.review',
+              data: {
+                block: `Timed review:\n${'Timed review evidence. '.repeat(1000)}End of timed review evidence`,
+                reminders: [],
+                flags: ['oversized review fixture'],
+                wake: true,
+              },
+            },
+          })
+
+          if ('event' in decision) {
+            writer.append({ event: decision.event })
+          }
+        },
+      })
+      await until({
+        what: 'the timed review to join the report wake',
+        check: () => queueBox({ hydraId: hydra.id })?.waiting.some(update => update.kind === 'timed review'),
+      })
+      turn.release()
+      await until({
+        what: 'owner and bounded wake delivered',
+        check: () => session.received.some(text => text.includes('more worker reports'))
+          && queue({ hydraId: hydra.id })?.working === true,
+      })
+      expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
+      const wake = session.received.find(text => text.includes('more worker reports'))!
+      expect(wake).toContain('- report: from worker:burst-0,')
+      expect(wake).not.toContain('- report: from worker:burst-299,')
+      expect(wake).toContain('Some wake details were shortened or omitted.')
+      expect(wake.length).toBeLessThan(12_000)
+      expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
+      expect(wake).not.toContain('Long report body '.repeat(30))
+      expect(wake).toContain('Open decisions (1):')
+      expect(wake).toContain('Which export format?')
+
+      const reviewBefore = wake.match(/history --kind hydra.review --before (\d+) --limit 1 --full/)?.[1]
+
+      if (reviewBefore === undefined) {
+        throw new Error('The wake did not provide the timed review history cursor')
+      }
+
+      expect(wake).not.toContain('End of timed review evidence')
+      const fullReview = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--before',
+          reviewBefore,
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
+      const detailsAfter = wake.match(/Run `pnyx-axi hydra check --after (\d+)/)?.[1]
+
+      if (detailsAfter === undefined) {
+        throw new Error('The bounded wake did not provide its remaining updates cursor')
+      }
+
+      const remainingUpdates = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          detailsAfter,
+        ],
+      })
+      expect(remainingUpdates.through).toBeGreaterThan(Number(detailsAfter))
+      expect(remainingUpdates.help).toContainEqual(expect.stringContaining('for the next page'))
+
+      const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
+
+      if (after === undefined) {
+        throw new Error('The report wake did not give an overflow cursor')
+      }
+
+      const ownerPage = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          after,
+        ],
+      })
+      expect(ownerPage.changes[0]).toMatchObject({ reportStatus: 'unhandled' })
+
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'attachment-probe',
+          '--title',
+          'Attachment probe',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          'attachment-probe',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          title: 'Attachment probe',
+          agent: {
+            provider: 'claude',
+            sessionId: 'attachment-probe',
+            paseoAgentId: 'attachment-probe',
+            paseoUrl: 'ws://127.0.0.1:1/ws',
+          },
+          activity: 'finished',
+        }),
+      })
+      let checkingAttachments = false
+      const interruptedRead = runForClient({
+        identity: {
+          PNYX_ACTOR: session.env.PNYX_ACTOR,
+          PNYX_HOSTED: session.env.PNYX_HOSTED,
+          PNYX_HYDRA: session.env.PNYX_HYDRA,
+        },
+        cwd: session.cwd,
+        run: () => hydraCheck({
+          args: [
+            '--after',
+            after,
+            '--hydra',
+            hydra.id,
+          ],
+          connect: () => new Promise((
+            resolve,
+            reject,
+          ) => {
+            checkingAttachments = true
+            releaseRead = () => reject(new Error('The attachment probe ended'))
+          }),
+        }),
+      })
+      await until({
+        what: 'the report read to wait for attachment presence',
+        check: () => checkingAttachments,
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'detach',
+          'attachment-probe',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'stop',
+        ],
+      })
+      await until({
+        what: 'the turn with the pending read to stop',
+        check: () => queue({ hydraId: hydra.id })?.working === false,
+      })
+      await hydra.chat({ text: 'Resume after the interrupted read' })
+      await until({
+        what: 'the replacement turn to be running before the discarded read returns',
+        check: () => session.received.some(text => text.endsWith('Resume after the interrupted read'))
+          && queue({ hydraId: hydra.id })?.working === true,
+      })
+      releaseRead()
+      const discardedPage = await interruptedRead
+      expect(discardedPage.changes).toContainEqual(expect.objectContaining({
+        summary: expect.stringContaining('Report 7:'),
+        reportStatus: 'unhandled',
+      }))
+      replacementTurn.release()
+      await until({
+        what: 'the replacement turn to finish without consuming discarded output',
+        check: () => queue({ hydraId: hydra.id })?.working === false,
+      })
+      await hydra.chat({ text: 'Read the remaining reports' })
+      const recovered = session.received.find(text => text.endsWith('Read the remaining reports'))!
+      expect(recovered.split('Report 7:')).toHaveLength(2)
+
+      let cursor = after
+      const reports: {
+        summary: string
+        reportStatus?: string
+      }[] = []
+
+      for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
+        const rest = await hydra.as({ session }).run({
+          args: [
+            'hydra',
+            'check',
+            '--after',
+            cursor,
+          ],
+        })
+        expect(rest.through).toBeGreaterThan(Number(cursor))
+        const pending = rest.changes.filter((change: { actor: string }) => change.actor.startsWith('worker:burst-'))
+        reports.push(...pending)
+        cursor = String(rest.through)
+
+        if (reports.some(report => report.summary.startsWith('Report 299:'))) {
+          break
+        }
+      }
+
+      expect(reports).toEqual(Array.from(
+        { length: 293 },
+        (
+          _,
+          index,
+        ) => expect.objectContaining({
+          reportStatus: 'unhandled',
+          summary: expect.stringMatching(new RegExp(`^Report ${index + 7}:`)),
+        }),
+      ))
+      overflowTurn.release()
+      await until({
+        what: 'the overflow-reading turn to finish',
+        check: () => queue({ hydraId: hydra.id })?.working === false,
+      })
+      const digest = (await pnyxAxi({
+        args: [
+          'hydra',
+          'digest',
+          '--hydra',
+          hydra.id,
+        ],
+        env: process.env,
+      })).stdout
+      expect(digest).not.toMatch(/\[unhandled\]: Report \d+:/)
+      await hydra.chat({ text: 'Confirm the report burst is consumed' })
+      const confirmed = session.received.find(text => text.endsWith('Confirm the report burst is consumed'))!
+      expect(confirmed).not.toContain('Report 7:')
+    } finally {
+      releaseRead()
+      turn.release()
+      page.close()
+      wakeTurn.release()
+      replacementTurn.release()
+      overflowTurn.release()
+    }
+  },
+)
+
+test(
+  'reports in an owner turn reserve their tasks while the helper takes other work',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const first = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Hold reservation setup',
+      hold: true,
+    })
+    const main = await hydra.chat({ text: 'Hold reservation setup' })
+    const reserved = await hydra.startTask({ key: 'reserved-report' })
+    const available = await hydra.startTask({ key: 'available-report' })
+    const reservedTask = await hydra.task({ key: 'reserved-report' })
+    const availableTask = await hydra.task({ key: 'available-report' })
+    await hydra.as({ session: reserved.worker }).run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        reservedTask.id,
+        '--text',
+        'Reserved owner-turn report',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    first.release()
+    const ownerTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Review reserved owner report',
+      hold: true,
+    })
+    const helperTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Granted tasks:'),
+      hold: true,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: availableTask.id,
+            status: 'still_waiting',
+            summary: 'No action needed.',
+          },
+        ],
+      }),
+    })
+
+    try {
+      await hydra.chat({ text: 'Review reserved owner report' })
+      await until({
+        what: 'main to read the owner-turn report',
+        check: () => main.received.some(text => text.includes('Reserved owner-turn report')),
+      })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'auto',
+        ],
+      })
+      await hydra.as({ session: available.worker }).run({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          availableTask.id,
+          '--text',
+          'Available helper report',
+        ],
+      })
+      const granted = await until({
+        what: 'helper to take available work',
+        check: () => rows<{ tasks: string[] }>({
+          text: "select data->'data'->'tasks' as tasks from events where hydra_id = $1 and type = 'hydra.helper-started' order by seq desc limit 1",
+          values: [hydra.id],
+        })[0]?.tasks,
+      })
+      expect(granted).toEqual([availableTask.id])
+    } finally {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'off',
+        ],
+      })
+      helperTurn.release()
+      ownerTurn.release()
+    }
   },
 )
 
@@ -476,7 +1064,155 @@ test(
     })
     expect(helper.answered).toBe(0)
 
+    const reportHelperTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice report handled in background'),
+      hold: true,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: id,
+            status: 'handled',
+            summary: 'Invoice report is ready.',
+          },
+        ],
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'invoices',
+        '--actor',
+        `worker:${id}`,
+        '--text',
+        `Invoice report handled in background\n${'Supporting invoice detail. '.repeat(100)}End of invoice evidence`,
+      ],
+    })
     helperTurn.release()
+    await until({
+      what: 'helper to hold the report',
+      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_ACTOR?.startsWith('helper:')
+        && session.received.some(text => text.includes('End of invoice evidence'))),
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'invoices',
+        '--actor',
+        `worker:${id}`,
+        '--kind',
+        'progress',
+        '--text',
+        'New invoice progress during the helper lease',
+      ],
+    })
+    await hydra.chat({ text: 'Check the invoice report while the helper works' })
+    await until({
+      what: 'main to finish reading the leased report',
+      check: () => main.received.some(text => text.includes('Check the invoice report while the helper works'))
+        && queue({ hydraId: hydra.id })?.working === false,
+    })
+    expect(main.received.find(text => text.includes('Check the invoice report while the helper works')))
+      .toMatch(/\[helper handling\] \(progress\): New invoice progress during the helper lease/)
+    reportHelperTurn.release()
+    await until({
+      what: 'helper to finish the worker report',
+      check: () => rows<{ count: number }>({
+        text: "select count(*)::int as count from events where hydra_id = $1 and type = 'hydra.helper-finished'",
+        values: [hydra.id],
+      })[0]!.count >= 2,
+    })
+    const digest = (await pnyxAxi({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        hydra.id,
+      ],
+      env: process.env,
+    })).stdout
+    expect(digest).toContain('Invoice report handled in background')
+    expect(digest).toMatch(/\[unhandled\] \(progress\): New invoice progress during the helper lease/)
+    const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice report handled in background/)?.[1]
+    expect(reportSeq).toBeDefined()
+    const checked = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(reportSeq) - 1),
+      ],
+    })
+    expect(checked.changes).toContainEqual(expect.objectContaining({
+      seq: Number(reportSeq),
+      task: id,
+      reportStatus: 'handled',
+    }))
+    const scopeTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice scope needs a decision'),
+      hold: true,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: id,
+            status: 'needs_main',
+            summary: 'Invoice scope needs a decision.',
+          },
+        ],
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'invoices',
+        '--actor',
+        `worker:${id}`,
+        '--text',
+        'Invoice scope needs a decision',
+      ],
+    })
+    await until({
+      what: 'a later helper batch to hold the same task',
+      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_ACTOR?.startsWith('helper:')
+        && session.received.some(text => text.includes('Invoice scope needs a decision'))),
+    })
+
+    try {
+      const earlierReport = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          String(Number(reportSeq) - 1),
+        ],
+      })
+      expect(earlierReport.changes).toContainEqual(expect.objectContaining({
+        seq: Number(reportSeq),
+        reportStatus: 'handled',
+      }))
+      await hydra.chat({ text: 'Summarize the invoice status' })
+      await until({
+        what: 'main to read the handled report',
+        check: () => main.received.some(text => text.includes('Summarize the invoice status')),
+      })
+      const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
+      expect(delivered).toContain('[handled]')
+      expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
+    } finally {
+      scopeTurn.release()
+    }
+
+    await until({
+      what: 'main to see the escalated report',
+      check: () => main.received.some(text => text.includes('[unhandled]: Invoice scope needs a decision')),
+    })
   },
 )
 
@@ -544,8 +1280,31 @@ test(
       })
     }
 
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Restart report',
+        '--key',
+        'restart-report',
+      ],
+    })
+    const restartTask = await hydra.task({ key: 'restart-report' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        restartTask.id,
+        '--actor',
+        `worker:${restartTask.id}`,
+        '--text',
+        'Worker report awaiting restart',
+      ],
+    })
+
     await pnyx.restart()
-    // Hydra resumes its session once and is pointed at the messages it did not answer.
     const resumed = await until({
       what: 'Hydra to resume its session after the restart',
       check: () => pnyx.claude.sessions.find(s => s.env.PNYX_HYDRA === hydra.id && s.resumed),
@@ -555,6 +1314,45 @@ test(
       check: () => resumed.received.some(text => text.includes('restart cut your last turn')),
     })
     expect(resumed.received.filter(text => text.includes('restart cut your last turn'))).toHaveLength(1)
+    await until({
+      what: 'the pending worker report to survive restart',
+      check: () => resumed.received.some(text => text.includes('Worker report awaiting restart')),
+    })
+
+    const recoveredReport = resumed.received.find(text => text.includes('Worker report awaiting restart'))!
+    expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
+    expect(recoveredReport).toContain('hydra messages --after <seq minus one> --limit 1')
+    expect(recoveredReport).toContain('Open decisions')
+    const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g))
+    const recoveredOwnerMessages = []
+
+    for (const [
+      , seq,
+      after,
+    ] of ownerReads) {
+      if (after === undefined) {
+        throw new Error('The recovery command did not provide an owner message cursor')
+      }
+
+      expect(Number(after) + 1).toBe(Number(seq))
+      const { messages } = await hydra.owner({
+        args: [
+          'hydra',
+          'messages',
+          '--after',
+          after,
+          '--limit',
+          '1',
+        ],
+      })
+      recoveredOwnerMessages.push(messages[0]?.text)
+    }
+
+    expect(recoveredOwnerMessages).toEqual([
+      'plan the migration',
+      'also check the indexes',
+      'and the backups',
+    ])
 
     const { messages } = await hydra.owner({
       args: [
@@ -566,6 +1364,7 @@ test(
       'plan the migration',
       'also check the indexes',
       'and the backups',
+      'Worker report awaiting restart',
     ])
   },
 )
