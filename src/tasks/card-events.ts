@@ -1,3 +1,4 @@
+import { applySessionFacts, isSessionSource } from '#workers/session-facts.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { observeSession, sessionId } from '#workers/session-attachments.ts'
 import { applyReplyReceipt } from '#workers/reduce.ts'
@@ -24,6 +25,26 @@ export function applyCardEvent({
     } = event.data
     delete fields.before
 
+    if (!card && fields.agent && isSessionSource({ source })) {
+      applySessionFacts({
+        state,
+        event: {
+          ...event,
+          type: 'session.observed',
+          data: {
+            key,
+            source,
+            fields: {
+              ...fields,
+              agent: fields.agent,
+            },
+          },
+        },
+      })
+
+      return true
+    }
+
     if (!card) {
       if (key in state.keys) {
         return false
@@ -38,11 +59,6 @@ export function applyCardEvent({
         attention: [],
         links: [],
         sourceRefs: [],
-        ...(fields.agent && (!source || [
-          'hooks',
-          'paseo',
-          'pnyx',
-        ].includes(source.adapter)) ? { automaticTask: true } : {}),
         column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
