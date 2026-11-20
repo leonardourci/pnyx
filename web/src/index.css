@@ -4,6 +4,36 @@
 @font-face { font-family: "GFS Neohellenic"; src: url("/fonts/gfs-neohellenic/GFSNeohellenicBold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono/JetBrainsMono-Variable.ttf") format("truetype"); font-weight: 100 800; font-display: swap; }
 @theme {
+  --spacing: .25rem;
+  --spacing-line: 1lh;
+  --spacing-card-min: 260px;
+  --spacing-subtask-indent: 26px;
+  --spacing-disclosure: 3lh;
+  --spacing-picker-badge: 42%;
+  --spacing-option-meta: 45%;
+  --spacing-decision-summary: 58%;
+  --spacing-control-menu: calc(100% + --spacing(1.25));
+  --spacing-field-menu: calc(100% + --spacing(1));
+  --spacing-resize-handle: calc(50% - --spacing(8));
+  --spacing-resize-grip: calc(50% - --spacing(5.5));
+  --spacing-settings: max(--spacing(5), calc((100% - var(--spacing-settings-content)) / 2));
+  --radius-inherit: inherit;
+  --background-image-preview-image: linear-gradient(135deg, var(--color-gold-wash), var(--color-blue));
+  --background-image-preview-theme: linear-gradient(135deg, var(--color-tile-light) 50%, var(--color-tile-dark) 50%);
+  --background-image-settings-fade: linear-gradient(var(--color-background) 82%, transparent);
+  --background-image-slider-fill: linear-gradient(var(--color-gold-fill), var(--color-gold-fill));
+  --grid-template-columns-icon-content: auto minmax(0, 1fr);
+  --grid-template-columns-label-content: max-content minmax(0, 1fr);
+  --grid-template-columns-content-action: minmax(0, 1fr) auto;
+  --grid-template-columns-oracle: minmax(0, 2fr) minmax(0, 3fr);
+  --grid-template-rows-oracle: minmax(0, 3fr) minmax(0, 2fr);
+  --grid-template-columns-update: --spacing(5.5) minmax(0, 1fr);
+  --grid-template-columns-picker: var(--spacing-picker-label) minmax(0, 1fr);
+  --grid-template-columns-permission: var(--spacing-permission-label) minmax(0, 1fr);
+  --grid-template-columns-setting-label: var(--spacing-setting-label) minmax(0, 1fr);
+  --grid-template-columns-setting: var(--spacing-setting-icon) minmax(0, 1fr);
+  --grid-template-columns-setting-preview: var(--spacing-setting-icon) minmax(0, 1fr) var(--spacing-setting-preview);
+  --grid-template-columns-dispatch-issue: var(--spacing-dispatch-issue) minmax(0, 1fr);
   --breakpoint-phone: 760px;
   --spacing-workspace-title: calc(100vw - --spacing(40));
   --spacing-workspace-bar: calc(100vw - --spacing(14));
@@ -97,7 +127,7 @@
   --spacing-usage-tooltip: min(360px, calc(100vw - 16px));
   --font-weight-label: 650;
   --spacing-card-details: 220px;
-  --spacing-card-chat: 260px;
+  --spacing-card-chat: var(--spacing-card-min);
   --spacing-settings-content: 880px;
   --spacing-setting-label: 90px;
   --spacing-picker-label: 54px;
@@ -171,9 +201,10 @@
   --container-task-details: 35rem;
   --shadow-window: 0 18px 70px var(--color-shadow);
   --shadow-actions: 0 3px 10px var(--color-shadow);
-  --control-h: 30px;
-  --composer-control-h: 30px;
-  --spacing-composer-control: max(30px, calc(var(--text-ui) * 2));
+  --spacing-control: 30px;
+  --control-h: var(--spacing-control);
+  --composer-control-h: var(--spacing-control);
+  --spacing-composer-control: max(var(--spacing-control), calc(var(--text-ui) * 2));
   --spacing-composer-line: calc(var(--text-chat) * var(--chat-line) + 8px);
   --text-usage-ring: 8px;
   --text-usage-percent: 6.5px;
@@ -188,7 +219,7 @@
   --shadow-chip-reference: inset 0 0 0 1px var(--color-gold-line);
   --shadow-draft-path: 0 0 0 1px var(--color-gold-line);
   --shadow-suggestions: 0 8px 20px var(--color-shadow);
-  --radius-panel: 7px;
+  --radius-panel: var(--radius-control);
   --spacing-composer-max: 480px;
   --transition-duration-composer: var(--transition-duration-fast);
   --spacing-attachment-gap: .375em;
@@ -300,7 +331,8 @@ h3 {
 :focus-visible {
   @apply outline-2 outline-gold outline-offset-3; }
 kbd {
-  @apply [font:var(--text-meta)_var(--font-mono)] border border-line rounded-sm py-0.75 px-1.25 bg-background text-muted whitespace-nowrap; }
+  font: var(--text-meta) var(--font-mono);
+  @apply border border-line rounded-sm py-0.75 px-1.25 bg-background text-muted whitespace-nowrap; }
 * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 }
 
@@ -387,15 +419,15 @@ kbd {
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
 
-.message .attachment-card:not(.composer-field *) { @apply m-[0_1px] select-auto; }
+.message .attachment-card:not(.composer-field *) { @apply my-0 mx-px select-auto; }
 
 @keyframes hydra-spin { to { transform: rotate(360deg); } }
 
 /* The overlay and editable text need identical metrics to keep chips on their text. */
 .composer-text {
-  @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word [scrollbar-gutter:stable] group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:[font-family:inherit];
+  @apply m-0 border-0 px-2 py-1 font-chat text-chat leading-(--chat-line) tracking-normal whitespace-pre-wrap wrap-break-word scrollbar-stable group-data-[standalone=true]/composer-field:py-1.25 group-data-[standalone=true]/composer-field:font-inherit;
   @supports selector(::-webkit-scrollbar) {
-    @apply [scrollbar-width:auto] [scrollbar-color:auto];
+    scrollbar-width: auto; scrollbar-color: auto;
   }
 }
 /* Utility aliases keep shared layout on semantic elements owned by their callers. */
@@ -415,6 +447,49 @@ kbd {
  .gold{
   @apply text-gold; }
  .count{
-  @apply font-sans text-meta leading-[normal] font-normal not-italic text-muted; }
+  @apply font-sans text-meta leading-browser font-normal not-italic text-muted; }
  .empty{
   @apply my-1.25 mx-0 py-4 px-2 text-center border-0 rounded-control text-muted text-ui; } }
+
+@utility writing-horizontal { writing-mode: horizontal-tb; }
+@utility writing-vertical { writing-mode: vertical-rl; }
+@utility font-inherit { font-family: inherit; }
+@utility font-inherit-all { font: inherit; }
+@utility text-inherit-size { font-size: inherit; }
+@utility gap-inherit { gap: inherit; }
+@utility gap-x-normal { column-gap: normal; }
+@utility tab-code { tab-size: 2; }
+@utility scrollbar-none { scrollbar-width: none; }
+@utility grid-area-stack { grid-area: 1 / 1; }
+@utility stroke-dashed { stroke-dasharray: 4 4; }
+@utility stroke-round { stroke-linecap: round; }
+@utility transition-width { transition-property: width; }
+@utility content-label { --tw-content: attr(data-l); content: var(--tw-content); }
+@utility flex-chip { flex: 0 1 auto; }
+@utility flex-task { flex: 1 1 var(--closed-card-min); }
+@utility task-family-sizing { --closed-card-min: var(--spacing-card-min); --subtask-indent: var(--spacing-subtask-indent); }
+@utility flex-search { flex: 1 1 var(--spacing-search-basis); }
+@utility align-update-icon { vertical-align: --spacing(.25); }
+@utility align-update-chevron { vertical-align: calc(--spacing(.5) * -1); }
+@utility settings-columns { --settings-column-gap: --spacing(3.5); }
+@utility agent-controls { --agent-control-h: calc(var(--control-h) + var(--text-meta)); }
+@utility usage-normal { --usage-tone: var(--color-surface); }
+@utility usage-warning { --usage-tone: var(--color-gold); }
+@utility usage-critical { --usage-tone: var(--color-red); }
+@utility transition-dispatch-closed { transition: var(--transition-dispatch-closed); }
+@utility transition-dispatch-open { transition: var(--transition-dispatch-open); }
+@utility clip-dispatch-closed { clip-path: inset(calc(-1 * var(--spacing)) 0 calc(-1 * var(--spacing)) calc(100% - var(--agent-control-h))); }
+@utility clip-dispatch-open { clip-path: inset(calc(-1 * var(--spacing)) 0 calc(-1 * var(--spacing)) calc(-6 * var(--spacing))); }
+@utility bg-slider-fill { background: var(--background-image-slider-fill) 0 / var(--fill, 50%) 100% no-repeat, var(--color-line); }
+@utility grid-cols-* { grid-template-columns: --value(--grid-template-columns-*); }
+@utility grid-rows-* { grid-template-rows: --value(--grid-template-rows-*); }
+@utility whitespace-inherit { white-space: inherit; }
+
+@theme inline {
+  --spacing-subtask: calc(var(--subtask-indent) - --spacing(.25));
+  --spacing-settings-scroll: calc(var(--settings-search-height, --spacing(30)) + --spacing(2));
+  --grid-template-columns-dispatch: repeat(4, max-content minmax(calc(var(--settings-column-gap) / 2), 1fr)) max-content;
+}
+@utility leading-browser { --tw-leading: normal; line-height: normal; }
+
+@utility scrollbar-stable { scrollbar-gutter: stable; }
