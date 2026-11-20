@@ -147,14 +147,23 @@ export function copySkills({
       dirname(source),
       'references',
     )
+    const installedReferences = join(
+      dir,
+      'references',
+    )
+    // A reference the shipped skill dropped must not linger beside the new ones.
+    rmSync(
+      installedReferences,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
 
     if (existsSync(references)) {
       cpSync(
         references,
-        join(
-          dir,
-          'references',
-        ),
+        installedReferences,
         { recursive: true },
       )
     }

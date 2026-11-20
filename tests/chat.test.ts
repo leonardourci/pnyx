@@ -1443,6 +1443,30 @@ test(
 )
 
 test(
+  'a reference the shipped skill dropped is gone from Hydra\'s folder by its next turn',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const first = await hydra.chat({ text: 'hello' })
+    const stale = join(
+      first.cwd,
+      '.agents',
+      'skills',
+      HYDRA_SKILLS[0],
+      'references',
+      'dropped.md',
+    )
+    writeFileSync(
+      stale,
+      'old guidance',
+    )
+
+    await hydra.chat({ text: 'hello again' })
+
+    expect(existsSync(stale)).toBe(false)
+  },
+)
+
+test(
   'Send now ends a running compaction and delivers the message held behind it at once, and only once',
   async () => {
     const hydra = await pnyx.hydra()
