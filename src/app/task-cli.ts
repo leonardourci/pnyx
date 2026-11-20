@@ -31,7 +31,7 @@ import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
-import { startOverride, sessionRef, afterAttach } from '#workers/cli.ts'
+import { startOverride, startFlags, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
@@ -563,16 +563,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       hydraId,
       task: ref,
       replacement: values['replace-session'] as string | undefined,
-      commandName: values.command as string | undefined,
-      via: values.via as string | undefined,
-      rule: values.rule as string | undefined,
-      harness: values.harness as string | undefined,
-      override: startOverride({ values }),
-      tools: values.tool as string[] | undefined,
-      prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
-      inPlace: Boolean(values['in-place']),
-      url,
+      ...startFlags({ values }),
       meta: m,
     })
 
