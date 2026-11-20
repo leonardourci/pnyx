@@ -12,7 +12,7 @@ import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
+import { PROVIDERS, knownProvider } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
@@ -41,7 +41,8 @@ import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, AgentSession, Attention, SessionObservation } from '#workers/model.ts'
-import { base } from './command-meta.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
+import { sessionTask } from '#workers/session-attachments.ts'
 import type { HydraAgentChange } from '#hydra/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { INTERRUPTED, sessionId } from '#workers/session-attachments.ts'
@@ -215,8 +216,6 @@ export function createHost({
     return result
   }
 
-  const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
-
   const folderOf = ({ card }: { card: Card & { agent: AgentRef } }): string => {
     const { cwd } = card.agent
 
@@ -363,50 +362,26 @@ export function createHost({
     details?: string
   }) => {
     const session = writer.state.sessions?.[sessionId({ agent })]
-
-    if (session?.launchId && !session.taskId) {
-      applyDecision({
-        writer,
-        decision: {
-          event: {
-            ...base({
-              state: writer.state,
-              cardId: '$sessions',
-              meta: {
-                at: at(),
-                actor,
-                id: eventId,
-                details,
-              },
-            }),
-            type: 'session.observed',
-            data: {
-              session: session.id,
-              ...input,
-            },
-          },
-        },
-      })
-
-      return
-    }
-
-    const card = session && writer.state.cards[session.taskId ?? session.originCardId]
+    const card = sessionTask({
+      state: writer.state,
+      agent,
+    })
     const finished = input.activity === 'finished' && card?.sessionActivity !== 'finished'
 
     applyDecision({
       writer,
-      decision: decidePush({
+      decision: decideSessionFacts({
         state: writer.state,
-        key: card?.key ?? sessionKey({ agent }),
-        input: {
+        session,
+        task: card,
+        fields: {
           agent: session?.agent ?? agent,
           ...input,
-          source: {
-            adapter: 'pnyx',
-            objectId: agent.sessionId,
-            observedAt: at(),
-          },
+        },
+        source: {
+          adapter: 'pnyx',
+          objectId: agent.sessionId,
+          observedAt: at(),
         },
         meta: {
           at: at(),
@@ -868,7 +843,6 @@ export function createHost({
     helperPending,
     providerOf,
     environment,
-    sessionKey,
     open,
     retire,
     back,

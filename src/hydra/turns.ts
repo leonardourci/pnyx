@@ -42,6 +42,7 @@ import { compactCommand } from '#workers/compaction/state.ts'
 import { accountEnvironment } from '#workers/dispatch.ts'
 import { effectiveDispatch, loginFolder } from '#workers/dispatch-config.ts'
 import { HYDRA_TURN_POLL_MS, sameChosenSettings } from '#workers/host.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
 import type { AgentRef, SessionObservation } from '#workers/model.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
 import { harnessOf, providerIdOf } from '#workers/providers.ts'
@@ -68,7 +69,6 @@ export function createHydraTurns({
   helperPending,
   providerOf,
   environment,
-  sessionKey,
   open,
   retire,
   back,
@@ -118,7 +118,6 @@ export function createHydraTurns({
     taskId?: string
   }): Provider
   environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
-  sessionKey({ agent }: { agent: AgentRef }): string
   open({
     card,
     session,
@@ -746,27 +745,20 @@ export function createHydraTurns({
             })
             applyDecision({
               writer,
-              decision: decidePush({
+              decision: decideSessionFacts({
                 state: writer.state,
-                key: sessionKey({ agent: ref }),
-                input: {
+                session: writer.state.sessions?.[sessionId({ agent: ref })],
+                fields: {
                   agent: ref,
                   title: 'Hydra',
-                  settings: {
-                    ...Object.fromEntries(Object.keys(card?.settings ?? {})
-                      .map(key => [
-                        key,
-                        null,
-                      ])),
-                    ...settings,
-                  },
+                  settings,
                   activity: 'working',
                   attention: [],
-                  source: {
-                    adapter: 'pnyx',
-                    objectId: ref.sessionId,
-                    observedAt: at(),
-                  },
+                },
+                source: {
+                  adapter: 'pnyx',
+                  objectId: ref.sessionId,
+                  observedAt: at(),
                 },
                 meta,
               }),

@@ -58,7 +58,6 @@ function pageSession({
 }): boolean {
   const card = session.taskId && state.cards[session.taskId]
 
-  // Hydra's own session sits on a hidden hook card, and Hydra's card is projected from it.
   if (session.id === state.config?.hydra.session) {
     return true
   }
