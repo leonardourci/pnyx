@@ -125,6 +125,12 @@ export async function discoverPullRequests({
               return false
             }
 
+            const currentWorkerFolder = current.agent?.cwd ?? (current.launch ? current.folder : undefined)
+
+            if (!copy && (current.copy || currentWorkerFolder !== cwd)) {
+              return false
+            }
+
             writer.append({
               event: {
                 v: 1,

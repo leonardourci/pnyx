@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
@@ -10,6 +10,7 @@ import type { WorkerCode } from '#tasks/model.ts'
 import { parseLink, decideLink } from '#tasks/delivery/links.ts'
 import { applyDecision } from '#app/decision.ts'
 import { HydraError } from '#store/errors.ts'
+import { log } from '#app/diagnostics.ts'
 
 const CODES = new Set<WorkerCode>([
   'needs-you',
@@ -62,7 +63,7 @@ export function foldWorkerLog({
   try {
     fd = openSync(
       path,
-      'r',
+      constants.O_RDONLY | constants.O_NONBLOCK,
     )
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -74,6 +75,17 @@ export function foldWorkerLog({
 
   try {
     const stat = fstatSync(fd)
+
+    if (!stat.isFile()) {
+      log({
+        level: 'warn',
+        operation: 'read worker log',
+        taskId: task,
+        error: 'worker.log must be a regular file',
+      })
+      return
+    }
+
     const identity = `${stat.dev}:${stat.ino}`
     const previous = card.workerLog?.latest
     const off = previous?.identity === identity ? previous.off : 0
@@ -260,7 +272,10 @@ export function followWorkerLogs({
       watches.set(
         card.id,
         watchPath({
-          path: dir,
+          path: join(
+            dir,
+            'worker.log',
+          ),
           changed: read,
           poll: true,
         }),

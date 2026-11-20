@@ -2134,8 +2134,6 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
       }
     }
 
-    parsed.activity = parsed.final ? 'finished' : 'working'
-
     const content = payload.content
 
     if (payload.role === 'user') {

@@ -2199,6 +2199,18 @@ test(
       }).activity).toBe(activity)
     }
 
+    expect(readTranscriptRecord({
+      record: {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          phase: 'final_answer',
+          content: [],
+        },
+      },
+    }).activity).toBeUndefined()
+
     const assistant = {
       type: 'assistant',
       message: {
