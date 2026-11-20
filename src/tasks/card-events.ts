@@ -38,6 +38,10 @@ export function applyCardEvent({
         })?.agent
 
         if (agent) {
+          if (fields.settings) {
+            fields.settings = currentSettings({ settings: fields.settings })
+          }
+
           applySessionFacts({
             state,
             event: {
