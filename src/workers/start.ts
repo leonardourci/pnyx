@@ -229,24 +229,42 @@ async function steerAttached({
   }
 
   const home = loadHydra({ hydraId }).state.config?.hydra.home
-  const sent = await sendReply({
-    hydraId,
-    request: {
-      card: card.id,
-      expectedSession: worker,
-      text: prompt,
-      homes: home ? [home] : [],
-      actor: meta.actor,
-      reason: meta.reason,
-      id: meta.id ? `${meta.id}:steer` : randomUUID(),
-    },
-  })
 
-  return {
-    ...receipt,
-    launch: 'steered',
-    delivery: sent.state,
-    help,
+  try {
+    const sent = await sendReply({
+      hydraId,
+      request: {
+        card: card.id,
+        expectedSession: worker,
+        text: prompt,
+        homes: home ? [home] : [],
+        actor: meta.actor,
+        reason: meta.reason,
+        id: meta.id ? `${meta.id}:steer` : randomUUID(),
+      },
+    })
+
+    return {
+      ...receipt,
+      launch: 'steered',
+      delivery: sent.state,
+      help,
+    }
+  } catch (error) {
+    if (!(error instanceof HydraError) || error.code !== 'NO_ROUTE') {
+      throw error
+    }
+
+    return {
+      ...receipt,
+      launch: 'running',
+      delivery: 'not sent',
+      blocker: error.message,
+      help: [
+        ...error.help,
+        ...help,
+      ],
+    }
   }
 }
 
