@@ -1,10 +1,11 @@
-import { recordCompaction } from '#workers/compaction/record.ts'
-import { failHydraInput } from '#hydra/received.ts'
-import { operationEvent } from '#hydra/operations.ts'
+import { randomUUID } from 'node:crypto'
+import { loadHydra } from '#app/store.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
-import { loadHydra } from '#app/store.ts'
-import { randomUUID } from 'node:crypto'
+import { failHydraInput } from '#hydra/received.ts'
+import { operationEvent } from '#hydra/operations.ts'
+import { recordCompaction } from '#workers/compaction/record.ts'
+import { hydraConversation } from '#hydra/conversation.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -3167,5 +3168,75 @@ test(
         .filter(input => input.endsWith(text))
       expect(delivered).toHaveLength(1)
     }
+  },
+)
+
+test(
+  'held owner messages stay visible without taking the active turn folds or timing',
+  () => {
+    const at = ({ second }: { second: number }) => `2026-01-01T00:00:0${second}.000Z`
+    const messages = [
+      {
+        id: 'active',
+        text: 'active request',
+        at: at({ second: 1 }),
+      },
+      {
+        id: 'held',
+        text: 'held request',
+        at: at({ second: 3 }),
+      },
+    ].map(message => ({
+      ...message,
+      action: 'send' as const,
+      actor: 'web',
+      hydra: 'hydra',
+    }))
+    const before = {
+      id: 'before',
+      kind: 'tool' as const,
+      role: 'assistant',
+      text: 'earlier work',
+      at: at({ second: 2 }),
+    }
+    const after = {
+      id: 'after',
+      kind: 'tool' as const,
+      role: 'assistant',
+      text: 'later work',
+      at: at({ second: 4 }),
+    }
+    const reply = {
+      id: 'reply',
+      kind: 'message' as const,
+      role: 'assistant',
+      text: 'finished active request',
+      final: true,
+      at: at({ second: 5 }),
+    }
+    const conversation = hydraConversation({
+      messages,
+      transcript: [
+        before,
+        after,
+        reply,
+      ],
+      held: new Set(['held']),
+      actions: [],
+      columns: [],
+      working: false,
+      tools: true,
+      thinking: false,
+    })
+    expect(conversation.entries.map(entry => entry.id)).toEqual([
+      'active',
+      'held',
+      'reply',
+    ])
+    expect(conversation.folds.get('reply')?.notes).toEqual([
+      before,
+      after,
+    ])
+    expect(conversation.timings.get('reply')?.start).toBe(at({ second: 1 }))
   },
 )
