@@ -428,7 +428,10 @@ test(
         check: async () => {
           const labelsOnly = await Promise.all(working.map(async line => {
             const text = await line.textContent()
-            const labelVisible = await line.getByText('Working', { exact: true }).isVisible()
+            const labelVisible = await line.getByText(
+              'Working',
+              { exact: true },
+            ).isVisible()
 
             return labelVisible && text !== null && !text.includes('Running a command')
           }))
