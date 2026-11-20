@@ -69,6 +69,8 @@ export interface TurnPlan {
   // Streams this prefix of the reply, then waits for release (or an interrupt) before finishing the turn.
   partial?: string
   hold?: boolean
+  // Codex can wait before acknowledging that a turn started.
+  start?: Promise<void>
   // Claude reports a compaction that lasts until the turn's release, as /compact does; with compactTo it finishes at once.
   compacting?: boolean
   // Compacts to this many tokens: Claude (with compacting) then ends the turn as /compact does once released or stopped; Codex compacts just before the turn ends.
@@ -616,6 +618,8 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     .join('')
   const started = codexRecording.session.find(entry => 'method' in entry && entry.method === 'thread/start') as { result: Message }
   const recordedThread = (started.result.thread as Message).id as string
+  const turnStart = codexRecording.session.find(entry => 'method' in entry && entry.method === 'turn/start') as { result: Message }
+  const recordedTurn = (turnStart.result.turn as Message).id as string
   const recordedUsage = notifications.find(n => n.method === 'thread/tokenUsage/updated')!
   const recordedUsageParams = recordedUsage.params as Message & {
     tokenUsage: Message & {
@@ -665,6 +669,10 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     const stdout = new PassThrough()
     const stderr = new PassThrough()
     let exited = false
+    let activeReplay: {
+      id: string
+      cancelled: boolean
+    } | undefined
     const child = Object.assign(
       new EventEmitter(),
       {
@@ -688,12 +696,23 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
       },
     )
 
-    const send = ({ message }: { message: Message }) => {
+    const send = ({
+      message,
+      turn = activeReplay?.id,
+    }: {
+      message: Message
+      turn?: string
+    }) => {
       if (!exited) {
-        stdout.write(`${JSON.stringify(message).replaceAll(
+        const threadMessage = JSON.stringify(message).replaceAll(
           recordedThread,
           session.id,
-        )}\n`)
+        )
+        const turnMessage = turn ? threadMessage.replaceAll(
+          recordedTurn,
+          turn,
+        ) : threadMessage
+        stdout.write(`${turnMessage}\n`)
       }
     }
 
@@ -819,6 +838,10 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         }
 
         if (message.method === 'turn/interrupt') {
+          if (activeReplay && activeReplay.id === params.turnId) {
+            activeReplay.cancelled = true
+          }
+
           session.answered = session.received.length
           send({
             message: {
@@ -870,23 +893,45 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           return
         }
 
+        const replay = message.method === 'turn/start' ? {
+          id: randomUUID(),
+          cancelled: false,
+        } : undefined
+
+        if (replay) {
+          activeReplay = replay
+          await plan?.start
+        }
+
         send({
           message: {
             id: message.id,
             result: found.result,
           },
+          turn: replay?.id,
         })
 
         for (const notification of found.notifications) {
+          if (replay?.cancelled) {
+            return
+          }
+
           if (notification.method === 'item/agentMessage/delta' || notification.method === 'turn/completed') {
             await plan?.wait
+          }
+
+          if (replay?.cancelled) {
+            return
           }
 
           if (notification.method === 'turn/completed' && plan?.compactTo !== undefined) {
             compact({ tokens: plan.compactTo })
           }
 
-          send({ message: notification })
+          send({
+            message: notification,
+            turn: replay?.id,
+          })
 
           if (notification.method === 'turn/completed') {
             session.answered = session.received.length

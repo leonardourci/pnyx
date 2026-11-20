@@ -1239,7 +1239,9 @@ test(
 async function driven({
   session,
   onEnd,
+  owner = false,
 }: {
+  owner?: boolean
   session: HostedSession
   onEnd({ end }: { end(): Promise<void> }): void
 }) {
@@ -1252,6 +1254,7 @@ async function driven({
         id: message.id!,
         text: message.text,
         images: [],
+        ownerMessageId: owner ? message.id : undefined,
       }
     }
   }
@@ -2940,5 +2943,102 @@ test(
         })
       },
     })
+  },
+)
+
+test.each([
+  { opening: false },
+  { opening: true },
+])(
+  'owner input interrupts the previous Codex turn even when its start is pending: $opening',
+  async ({ opening }) => {
+    const codex = fakeCodex()
+    let start = () => {}
+    const starting = new Promise<void>(resolve => {
+      start = resolve
+    })
+    const first = codex.plan({
+      text: 'first owner input',
+      hold: true,
+      start: starting,
+    })
+    const second = codex.plan({
+      text: 'second owner input',
+      hold: true,
+    })
+    onTestFinished(() => {
+      start()
+      first.release()
+      second.release()
+    })
+    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
+      cwd: process.env.TMPDIR!,
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
+    })
+    const {
+      input,
+      events,
+    } = await driven({
+      session,
+      owner: true,
+      onEnd: ({ end }) => onTestFinished(end),
+    })
+
+    if (!opening) {
+      start()
+    }
+
+    input.push({
+      id: 'first-owner',
+      text: 'first owner input',
+    })
+    await until({
+      what: 'the first input to reach the agent',
+      check: () => codex.sessions[0]?.received.includes('first owner input'),
+    })
+
+    if (!opening) {
+      await until({
+        what: 'the first turn to start',
+        check: () => session.snapshot().work.runningTurns.length === 1,
+      })
+    }
+
+    input.push({
+      id: 'second-owner',
+      text: 'second owner input',
+    })
+    await until({
+      what: 'the next owner input to be queued',
+      check: () => session.snapshot().work.unsettledInputs.includes('second-owner'),
+    })
+    start()
+    const ended = await until({
+      what: 'the first owner turn to be interrupted',
+      check: () => events.flatMap(event => typeof event === 'object' && event.type === 'turn-ended'
+        && event.outcome.inputIds.includes('first-owner') && event.outcome.status === 'interrupted' ? [event.outcome] : []).at(-1),
+    })
+    const next = await until({
+      what: 'the second input to start its own turn',
+      check: () => events.flatMap(event => typeof event === 'object' && event.type === 'input'
+        && event.receipt.inputId === 'second-owner' && event.receipt.phase === 'confirmed' ? [event.receipt] : []).at(-1),
+    })
+    expect(next.turn).not.toBe(ended.turn)
+    first.release()
+    second.release()
+    await until({
+      what: 'the second owner turn to finish',
+      check: () => events.some(event => typeof event === 'object' && event.type === 'turn-ended'
+        && event.outcome.turn === next.turn && event.outcome.status === 'completed'),
+    })
+    const firstOutcomes = events.filter(event => typeof event === 'object' && event.type === 'turn-ended'
+      && event.outcome.turn === ended.turn)
+    expect(firstOutcomes).toHaveLength(1)
+    expect(codex.sessions[0]?.received).toEqual([
+      'first owner input',
+      'second owner input',
+    ])
   },
 )

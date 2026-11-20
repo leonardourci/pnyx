@@ -575,6 +575,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
       const messages = async function* () {
         for await (const message of input) {
           const generation = inputGeneration
+          const earlierInput = work.unsettledInputs.length > 0
           work.unsettledInputs.push(message.id)
           emit({
             event: {
@@ -586,7 +587,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
             },
           })
 
-          if (message.ownerMessageId && work.runningTurns.length) {
+          if (message.ownerMessageId && (work.runningTurns.length > 0 || earlierInput)) {
             emit({ event: 'carried' })
 
             try {
