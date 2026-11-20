@@ -85,7 +85,7 @@ PNYX_HOME=/path/to/trial portless trial.pnyx pnyx-axi serve
 
 Choose a unique `<name>.pnyx` for each trial and share the stable URL portless prints. Leave `--port` unset: Pnyx reads the `PORT` supplied by portless. Use the same `PNYX_HOME` for every trial command, including `stop`. Without portless, use `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0` and share the printed URL. Automated tests continue using random ports; do not wrap them in portless.
 
-Schema 9 retires saved session-only task rows and drops their obsolete flag. Their session facts remain, with membership cleared only for retired rows. Actual tasks and Hydra’s canonical record remain.
+Schema 9 removes session-only cards and their obsolete flag. It detaches sessions from the deleted cards and preserves their facts, existing task attachments and Hydra’s `$hydra` card.
 
 ## Verification
 
