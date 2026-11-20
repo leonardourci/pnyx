@@ -1,3 +1,4 @@
+import { runtimeStyle } from './runtime-style.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 import { useScrollOffset, observeCurrentScroll } from './scroll-offset.ts'
@@ -106,7 +107,7 @@ export function WindowedStrip<T>({
       data-scroll-margin={margin}
       data-scroll-offset={virtual.scrollOffset}
       className="relative h-full flex-none"
-      style={{ width: virtual.getTotalSize() }}
+      style={runtimeStyle({ width: virtual.getTotalSize() })}
     >
       {visible.map(item => (
         <div
@@ -114,7 +115,7 @@ export function WindowedStrip<T>({
           data-index={item.index}
           ref={virtual.measureElement}
           className="absolute top-0 h-full w-max"
-          style={{ left: item.start - margin }}
+          style={runtimeStyle({ left: item.start - margin })}
         >{render({ item: items[item.index]! })}
         </div>
       ))}

@@ -262,7 +262,7 @@ export function HoverActions({
     <div
       ref={panel}
       popover="manual"
-      className="card-menu fixed inset-auto m-0 hidden w-max max-w-menu-viewport items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 shadow-actions opacity-0 pointer-events-none transition-opacity duration-fast open:flex open:opacity-100 open:pointer-events-auto starting:open:opacity-0 motion-reduce:transition-none [&_.tooltip-anchor]:inline-flex"
+      className="card-menu pointer-events-none fixed inset-auto m-0 hidden w-max max-w-menu-viewport items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-0 shadow-actions transition-opacity duration-fast open:pointer-events-auto open:flex open:opacity-100 motion-reduce:transition-none starting:open:opacity-0 [&_.tooltip-anchor]:inline-flex"
     >{mounted && children}
     </div>
   )

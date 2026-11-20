@@ -78,7 +78,7 @@ export function Resize({
       aria-valuetext={max === undefined ? `${preview ?? value} pixels` : undefined}
       aria-valuenow={preview ?? value}
       data-resizing={preview !== null}
-      className={`resize resize-${axis} absolute z-6 touch-none outline-none after:absolute after:block after:rounded-sm after:bg-muted after:opacity-70 after:transition-colors after:duration-fast hover:after:bg-gold hover:after:opacity-100 data-[resizing=true]:after:bg-gold data-[resizing=true]:after:opacity-100 ${axis === 'x' ? 'top-[calc(50%-_--spacing(8))] -right-1.25 h-16 w-2.25 cursor-col-resize after:top-[calc(50%-_--spacing(5.5))] after:left-0.75 after:h-11 after:w-0.5' : 'inset-x-0 -bottom-0.75 h-2.25 cursor-row-resize after:top-0.5 after:left-[calc(50%-_--spacing(5.5))] after:h-0.5 after:w-11'} ${className}`}
+      className={`resize resize-${axis} absolute z-6 touch-none outline-none after:absolute after:block after:rounded-sm after:bg-muted after:opacity-70 after:transition-colors after:duration-fast hover:after:bg-gold hover:after:opacity-100 data-[resizing=true]:after:bg-gold data-[resizing=true]:after:opacity-100 ${axis === 'x' ? 'top-resize-handle -right-1.25 h-16 w-2.25 cursor-col-resize after:top-resize-grip after:left-0.75 after:h-11 after:w-0.5' : 'inset-x-0 -bottom-0.75 h-2.25 cursor-row-resize after:top-0.5 after:left-resize-grip after:h-0.5 after:w-11'} ${className}`}
       onPointerDown={e => {
         if (e.button !== 0 || !e.isPrimary) {
           return

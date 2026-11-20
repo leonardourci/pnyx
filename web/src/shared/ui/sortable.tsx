@@ -1,9 +1,10 @@
+import { runtimeStyle, type RuntimeStyle } from './runtime-style.ts'
 import { layoutBox } from './scroll-offset.ts'
 import { useKept } from '#web-shared/stable.ts'
 import { trackUIDrag } from '#web-app/ui-metrics.ts'
 import { CARD_SIZING, WORKSPACE_SIZING, liftedCardSize } from '#web-shared/card-sizing.ts'
 import { motionDuration, MOTION_EASING, MOTION_CSS_EASING } from '#web-shared/motion.ts'
-import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler, type CSSProperties } from 'react'
+import { createContext, useContext, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type PointerEventHandler } from 'react'
 import { createPortal } from 'react-dom'
 import {
   DndContext,
@@ -70,7 +71,7 @@ export interface SortItem {
   }
   overlay?: ReactNode
   open?: boolean
-  overlayStyle?: CSSProperties
+  overlayStyle?: RuntimeStyle
   size?: {
     width: number
     height: number
@@ -475,7 +476,7 @@ export function DragNestHint() {
     return null
   }
 
-  return <span data-drag-nest-hint data-shift={shift} className="inline-flex max-w-full items-center whitespace-nowrap rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium text-muted transition-colors data-[shift=true]:border-gold-line data-[shift=true]:bg-gold-wash data-[shift=true]:text-gold">⇧ Sub-task</span>
+  return <span data-drag-nest-hint data-shift={shift} className="inline-flex max-w-full items-center rounded border border-line bg-surface px-1.5 py-0.5 text-meta font-medium whitespace-nowrap text-muted transition-colors data-[shift=true]:border-gold-line data-[shift=true]:bg-gold-wash data-[shift=true]:text-gold">⇧ Sub-task</span>
 }
 
 function DragGhost({
@@ -532,18 +533,18 @@ function DragGhost({
       animate={sizing}
       data-grab-x={item.grab?.x ?? 0}
       data-grab-y={item.grab?.y ?? 0}
-      style={{
+      style={runtimeStyle({
         width: item.kind === 'task' ? initialSize?.width : undefined,
         height: item.kind === 'task' ? initialSize?.height : undefined,
         ...item.overlayStyle,
         translate: anchor,
-      }}
-      className={`physical-ghost pointer-events-none relative w-full select-none opacity-95 ${item.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`}
+      })}
+      className={`physical-ghost pointer-events-none relative w-full opacity-95 select-none ${item.kind === 'task' ? 'overflow-visible' : 'h-full overflow-hidden'}`}
       inert
     >
       <motion.div
         data-drag-preview
-        style={{ transformOrigin: item.grab ? `${item.grab.x * 100}% ${item.grab.y * 100}%` : undefined }}
+        style={runtimeStyle({ transformOrigin: item.grab ? `${item.grab.x * 100}% ${item.grab.y * 100}%` : undefined })}
         initial={false}
         animate={{ scale: inside ? CARD_SIZING.nest.hoverScale : 1 }}
         transition={{
@@ -951,10 +952,10 @@ export function SortableWorkspace({
       pointerDrag,
       grab,
       overlayStyle: {
-        '--text-ui': styles?.getPropertyValue('--text-ui'),
-        '--text-chat': styles?.getPropertyValue('--text-chat'),
-        '--text-code': styles?.getPropertyValue('--text-code'),
-      } as CSSProperties,
+        uiFont: styles?.getPropertyValue('--text-ui'),
+        chatFont: styles?.getPropertyValue('--text-chat'),
+        codeFont: styles?.getPropertyValue('--text-code'),
+      },
       size,
       origin: box ? {
         left: box.left,
@@ -1292,15 +1293,15 @@ export function SortableWorkspace({
         {createPortal(
           <DragOverlay
             adjustScale={false}
+            className="pointer-events-none"
             transition={dragTransition}
             modifiers={[liftedPosition]}
-            style={{
+            style={runtimeStyle({
               left: active?.origin?.left,
               top: active?.origin?.top,
-              pointerEvents: 'none',
               width: active?.kind === 'task' ? active.size?.width : undefined,
               height: active?.kind === 'task' ? active.size?.height : undefined,
-            }}
+            })}
             zIndex={1000}
             dropAnimation={reducedMotion ? null : animateDrop}
           >

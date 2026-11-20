@@ -36,7 +36,7 @@ export function SearchBadgeLabel({
 }: ComponentProps<'span'> & { kind?: string }) {
   const color = BADGE_COLORS[kind ?? ''] ?? 'bg-raised text-ink'
 
-  return <span {...props} data-kind={kind} className={`search-badge inline-flex items-center gap-1.25 h-6 pl-2 pr-1 py-0 border border-transparent rounded-md text-meta font-semibold whitespace-nowrap data-marked:border-red data-marked:ring-2 data-marked:ring-red/22 ${color} ${className}`} />
+  return <span {...props} data-kind={kind} className={`search-badge inline-flex h-6 items-center gap-1.25 rounded-md border border-transparent py-0 pr-1 pl-2 text-meta font-semibold whitespace-nowrap data-marked:border-red data-marked:ring-2 data-marked:ring-red/22 ${color} ${className}`} />
 }
 
 function Badge({
@@ -54,7 +54,7 @@ function Badge({
       {badge.label}
       <button
         type="button"
-        className="search-badge-remove inline-flex items-center justify-center size-4.5 rounded-sm text-inherit opacity-60 hover:opacity-100 hover:bg-hover"
+        className="search-badge-remove inline-flex size-4.5 items-center justify-center rounded-sm text-inherit opacity-60 hover:bg-hover hover:opacity-100"
         aria-label={`Remove ${badge.label}`}
         tabIndex={-1}
         onClick={remove}
@@ -99,7 +99,7 @@ export function SearchBar({
   const markedId = marked === undefined ? undefined : badges[marked]?.id
 
   return (
-    <div className="search-bar flex items-center flex-wrap gap-1.5 min-h-10.5 px-2.5 py-1.5 border border-line rounded-card bg-surface focus-within:border-gold-line focus-within:shadow-search-focus" role="search" aria-label={label}>
+    <div className="search-bar flex min-h-10.5 flex-wrap items-center gap-1.5 rounded-card border border-line bg-surface px-2.5 py-1.5 focus-within:border-gold-line focus-within:shadow-search-focus" role="search" aria-label={label}>
       <span className="search-bar-eye inline-flex flex-none text-gold"><Icon name="oracle" size={ICON_SIZE.heading} /></span>
       {badges.map(badge => (
         <Badge
@@ -111,7 +111,7 @@ export function SearchBar({
       ))}
       <input
         ref={inputRef}
-        className="search-bar-input flex-[1_1_var(--spacing-search-basis)] min-w-25 border-0 outline-0 bg-transparent text-ink text-ui px-0.5 py-0.75 placeholder:text-muted"
+        className="search-bar-input min-w-25 flex-search border-0 bg-transparent px-0.5 py-0.75 text-ui text-ink outline-0 placeholder:text-muted"
         aria-label={label}
         role={combobox ? 'combobox' : undefined}
         aria-expanded={combobox?.expanded}
@@ -150,7 +150,7 @@ export function SearchBar({
         }}
         onBlur={() => setMarked(undefined)}
       />
-      {count && <span className="search-bar-count text-meta text-muted whitespace-nowrap" aria-live="polite">{count}</span>}
+      {count && <span className="search-bar-count text-meta whitespace-nowrap text-muted" aria-live="polite">{count}</span>}
       {hint && <Keycap className="search-bar-key px-1.25 py-0">{hint}</Keycap>}
     </div>
   )

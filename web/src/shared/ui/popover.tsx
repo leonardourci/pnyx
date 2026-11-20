@@ -173,7 +173,7 @@ export function Popover({
         <FloatingPanel
           ref={panel}
           id={id}
-          className="popover-panel p-3.5 w-floating-panel max-h-popover-height rounded-card"
+          className="popover-panel max-h-popover-height w-floating-panel rounded-card p-3.5"
           popover="manual"
           role="dialog"
           aria-label={label}

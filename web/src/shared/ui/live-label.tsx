@@ -1,10 +1,11 @@
+import { runtimeStyle } from './runtime-style.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 // Each label stays at least this long, so a burst of quick changes never flashes.
 const MIN_SHOWN_MS = 1000
 
 // Swaps labels with a short rise and eases its width to the new one.
-const ITEM_CLASS = 'live-label-item [grid-area:1/1] inline-flex items-center gap-1.25 min-w-0 max-w-full whitespace-nowrap transition-opacity duration-slow ease-ui animate-live-label data-leaving:animate-live-label-out motion-reduce:animate-live-label-reduced motion-reduce:data-leaving:animate-live-label-fade-out'
+const ITEM_CLASS = 'live-label-item inline-flex max-w-full min-w-0 animate-live-label items-center gap-1.25 whitespace-nowrap transition-opacity duration-slow ease-ui grid-area-stack data-leaving:animate-live-label-out motion-reduce:animate-live-label-reduced motion-reduce:data-leaving:animate-live-label-fade-out'
 
 export function LiveLabel<Value>({
   value,
@@ -116,7 +117,7 @@ export function LiveLabel<Value>({
   const dim = current !== null && !!dimmed?.({ value: current })
 
   return (
-    <span className="live-label inline-grid grid-cols-[minmax(0,1fr)] items-center min-w-0 max-w-full overflow-hidden transition-[width] duration-base ease-live-label [&[data-done]>.live-label-item:not([data-leaving])]:opacity-50 motion-reduce:transition-none" data-done={dim || undefined} style={{ width }}>
+    <span className="live-label inline-grid max-w-full min-w-0 grid-cols-1 items-center overflow-hidden transition-width duration-base ease-live-label motion-reduce:transition-none [&[data-done]>.live-label-item:not([data-leaving])]:opacity-50" data-done={dim || undefined} style={runtimeStyle({ width })}>
       {leaving !== null && (
         <span
           key={`leaving:${keyOf({ value: leaving })}`}

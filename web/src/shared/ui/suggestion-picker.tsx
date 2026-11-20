@@ -180,7 +180,7 @@ export function SuggestionPicker<T extends PickerItem>({
     <FloatingPanel
       ref={root}
       popover="manual"
-      className={`mention-menu group/suggestions max-h-80 border-gold-line! rounded-panel p-2.5 z-8 shadow-suggestions [&_mark]:p-0 [&_mark]:rounded-sm [&_mark]:text-inherit [&_mark]:bg-comment-emphasis [&_p]:text-muted [&_p]:text-meta ${className}`}
+      className={`mention-menu group/suggestions z-8 max-h-80 rounded-panel border-gold-line! p-2.5 shadow-suggestions [&_mark]:rounded-sm [&_mark]:bg-comment-emphasis [&_mark]:p-0 [&_mark]:text-inherit [&_p]:text-meta [&_p]:text-muted ${className}`}
       // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
       onMouseDown={event => event.preventDefault()}
     >
@@ -191,25 +191,25 @@ export function SuggestionPicker<T extends PickerItem>({
           index,
         ) => (
           <div key={item.key}>
-            {item.group && item.group !== matches[index - 1]?.group && <span className="picker-group block px-2.5 pt-2 pb-1 text-muted text-meta">{item.group}</span>}
+            {item.group && item.group !== matches[index - 1]?.group && <span className="picker-group block px-2.5 pt-2 pb-1 text-meta text-muted">{item.group}</span>}
             <Button
               id={`${id}-${index}`}
               role="option"
               aria-selected={index === active}
-              className={`flex flex-col items-stretch w-full gap-1 text-left p-2 group-[.slash-menu]/suggestions:gap-3 group-[.slash-menu]/suggestions:[&>span]:flex-1 group-[.slash-menu]/suggestions:[&>span]:text-ui group-[.slash-menu]/suggestions:[&>span]:text-muted ${index === active ? 'active bg-hover' : ''}`}
+              className={`flex w-full flex-col items-stretch gap-1 p-2 text-left group-[.slash-menu]/suggestions:gap-3 group-[.slash-menu]/suggestions:[&>span]:flex-1 group-[.slash-menu]/suggestions:[&>span]:text-ui group-[.slash-menu]/suggestions:[&>span]:text-muted ${index === active ? 'active bg-hover' : ''}`}
               tabIndex={-1}
               disabled={item.disabled}
               onClick={() => choose({ item })}
             >
-              <span className="mention-heading flex items-center gap-2 min-w-0 [&>strong]:flex-1 [&>strong]:min-w-0 [&>strong]:wrap-anywhere [&>small]:shrink [&>small]:min-w-0 [&>small]:max-w-[45%] [&>small]:truncate [&>small]:text-muted [&>small]:text-meta group-[.slash-menu]/suggestions:items-start group-[.slash-menu]/suggestions:[&_small]:block group-[.slash-menu]/suggestions:[&_small]:mt-0.75">
-                <span className={`mention-icon inline-flex text-(--column-color,currentColor) group-[.slash-menu]/suggestions:items-center group-[.slash-menu]/suggestions:h-[1lh] ${item.tone ?? ''}`}>
+              <span className="mention-heading flex min-w-0 items-center gap-2 group-[.slash-menu]/suggestions:items-start group-[.slash-menu]/suggestions:[&_small]:mt-0.75 group-[.slash-menu]/suggestions:[&_small]:block [&>small]:max-w-option-meta [&>small]:min-w-0 [&>small]:shrink [&>small]:truncate [&>small]:text-meta [&>small]:text-muted [&>strong]:min-w-0 [&>strong]:flex-1 [&>strong]:wrap-anywhere">
+                <span className={`mention-icon inline-flex text-(--column-color,currentColor) group-[.slash-menu]/suggestions:h-line group-[.slash-menu]/suggestions:items-center ${item.tone ?? ''}`}>
                   {(item.icons ?? ['star']).map(icon => <Icon key={icon} name={icon} size={ICON_SIZE.inline} />)}
                 </span>
-                {item.badge && <span className="picker-project flex-[0_1_auto] max-w-[42%] min-w-0 [&_.task-label]:text-meta">{item.badge}</span>}
+                {item.badge && <span className="picker-project max-w-picker-badge min-w-0 flex-chip [&_.task-label]:text-meta">{item.badge}</span>}
                 <strong><MatchedText text={item.title} query={query} /></strong>
                 <small>{item.detail}</small>
               </span>
-              {item.excerpt && <span className="mention-excerpt whitespace-normal wrap-anywhere text-muted text-meta group-[.slash-menu]/suggestions:truncate"><MatchedText text={item.excerpt} query={query} ranges={item.excerptHighlights} /></span>}
+              {item.excerpt && <span className="mention-excerpt text-meta wrap-anywhere whitespace-normal text-muted group-[.slash-menu]/suggestions:truncate"><MatchedText text={item.excerpt} query={query} ranges={item.excerptHighlights} /></span>}
             </Button>
           </div>
         ))}
