@@ -46,10 +46,18 @@ export function useCardUpdates({
   const latest = useRef(held)
 
   const read = async ({ before }: { before?: number }) => {
-    const args = ['updates', task, '--limit', String(UPDATES_PAGE)]
+    const args = [
+      'updates',
+      task,
+      '--limit',
+      String(UPDATES_PAGE),
+    ]
 
     if (before !== undefined) {
-      args.push('--before', String(before))
+      args.push(
+        '--before',
+        String(before),
+      )
     }
 
     const receipt = await command({
@@ -75,7 +83,10 @@ export function useCardUpdates({
       const previous = latest.current.task === task ? latest.current.list : undefined
 
       const publish = ({ list }: { list: UpdatesList }) => {
-        const history = { task, list }
+        const history = {
+          task,
+          list,
+        }
         latest.current = history
         setHeld(history)
       }
