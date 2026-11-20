@@ -421,6 +421,7 @@ export function setupSkills(
     userHome,
     claudeConfigDir,
   })
+
   if (!remove) {
     for (const link of links.filter(link => link.status === 'conflict')) {
       inform({
