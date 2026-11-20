@@ -706,60 +706,90 @@ test(
   },
 )
 
-test(
-  'a message sent from a task\'s card shows as one owner row from the send until the worker has answered',
-  async () => {
+test.each([
+  { target: 'Hydra' },
+  { target: 'worker' },
+] as const)(
+  'a $target sent message stays as one owner row while held and through its answer',
+  async ({ target }) => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'lakes' })
+    const compact = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: '/compact',
+      compacting: true,
+      hold: true,
+    })
+    onTestFinished(() => compact.release())
+    const session = target === 'Hydra' ? await hydra.chat({ text: '/compact' }) : worker
+    const label = target === 'Hydra' ? 'Hydra conversation' : 'Task lakes conversation'
+    const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
     const answer = pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('List three lakes'),
       reply: 'Titicaca, Baikal and Victoria.',
       hold: true,
     })
+    onTestFinished(() => answer.release())
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
       reducedMotion: true,
     })
-    await page.locator('[data-task]').getByText(
-      'Task lakes',
-      { exact: true },
-    )
-      .click()
+
+    if (target === 'worker') {
+      await page.locator('[data-task]').getByText(
+        'Task lakes',
+        { exact: true },
+      )
+        .click()
+    }
+
     const chat = page.getByRole(
       'region',
-      { name: 'Task lakes conversation' },
+      { name: label },
     )
     await chat.waitFor()
-    await page.evaluate(() => {
-      const counts: number[] = []
-      Object.assign(
-        window,
-        { ownerRows: counts },
-      )
+    await page.evaluate(
+      ({ label }) => {
+        const counts: number[] = []
+        Object.assign(
+          window,
+          { ownerRows: counts },
+        )
 
-      const frame = () => {
-        const chat = document.querySelector('[aria-label="Task lakes conversation"]')
-        const rows = [...chat?.querySelectorAll('[data-entry-id][aria-label="You"]') ?? []]
-        counts.push(rows.filter(row => row.textContent?.includes('List three lakes')).length)
+        const frame = () => {
+          const chat = document.querySelector(`[aria-label="${label}"]`)
+          const rows = [...chat?.querySelectorAll('[data-entry-id][aria-label="You"]') ?? []]
+          counts.push(rows.filter(row => row.textContent?.includes('List three lakes')).length)
+          requestAnimationFrame(frame)
+        }
+
         requestAnimationFrame(frame)
-      }
-
-      requestAnimationFrame(frame)
-    })
+      },
+      { label },
+    )
     await page.getByRole(
       'textbox',
-      { name: 'Message worker' },
+      { name: field },
     ).fill('List three lakes')
     await page.keyboard.press('Enter')
+    await chat.getByText(
+      'List three lakes',
+      { exact: true },
+    ).waitFor()
+    await nextFrames({
+      page,
+      count: SETTLING_FRAMES,
+    })
+    compact.release()
     await until({
-      what: 'the worker to take the message',
-      check: () => worker.received.some(text => text.includes('List three lakes')),
+      what: 'the agent to take the message',
+      check: () => session.received.some(text => text.includes('List three lakes')),
     })
     expect(await page.getByRole(
       'region',
-      { name: 'Task lakes conversation' },
+      { name: label },
     ).locator('[data-entry-id][aria-label="You"]')
       .filter({ hasText: 'List three lakes' })
       .count()).toBe(1)
@@ -778,19 +808,31 @@ test(
   },
 )
 
-test(
-  'sending in either chat interrupts the turn, keeps the bubble, and Stop adds no conversation text',
-  async () => {
+test.each([
+  { harness: 'claude' },
+  { harness: 'codex' },
+] as const)(
+  '$harness sends in either chat interrupt the turn and Stop adds no conversation text',
+  async ({ harness }) => {
     const hydra = await pnyx.hydra()
-    const { worker } = await hydra.startTask({ key: 'interrupt' })
-    const turn = pnyx.claude.plan({
+    const { worker } = await hydra.startTask({
+      key: 'interrupt',
+      harness,
+    })
+    const socket = await hydra.page()
+    await socket.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness })],
+    })
+    socket.close()
+    const turn = pnyx[harness].plan({
       hydra: hydra.id,
       text: 'Keep working',
       partial: 'Working on it',
       hold: true,
     })
     const hydraSession = await hydra.chat({ text: 'Keep working' })
-    const workerTurn = pnyx.claude.plan({
+    const workerTurn = pnyx[harness].plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Keep working too'),
       partial: 'Working too',
@@ -802,7 +844,7 @@ test(
         'send',
         'interrupt',
         '--harness',
-        'claude',
+        harness,
         '--text',
         'Keep working too',
       ],
@@ -843,7 +885,7 @@ test(
           'Stop worker',
         ],
       ] as const) {
-      const nextTurn = pnyx.claude.plan({
+      const nextTurn = pnyx[harness].plan({
         hydra: hydra.id,
         match: ({ text: input }) => input.includes(text),
         partial: 'New reply',
@@ -868,9 +910,13 @@ test(
         check: () => session.received.some(input => input.includes(text)),
       })
       await conversation.getByText(
-        'New reply',
+        text,
         { exact: true },
       ).waitFor()
+      await nextFrames({
+        page,
+        count: ARRIVAL_FRAMES,
+      })
       expect(await conversation.getByRole(
         'button',
         { name: 'Send now' },
