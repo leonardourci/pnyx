@@ -410,6 +410,8 @@ test(
       'hydra',
       '--reason',
       'The owner asked for the fix',
+      '--if-revision',
+      '0',
       '--event-id',
       'ring-create',
     ]
@@ -500,7 +502,7 @@ test(
 )
 
 test(
-  'a create behind a worker it cannot share starts its own worker and says why it was not queued, and a queue that cannot happen explains instead of refusing',
+  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target or start route files nothing, and a queue that cannot happen explains instead of refusing',
   async () => {
     const hydra = await pnyx.hydra()
     const { folder } = await hydra.startTask({ key: 'export' })
@@ -521,22 +523,44 @@ test(
     })
     expect(behind).toMatchObject({
       launch: 'started',
-      queued: expect.stringContaining('worker’s project'),
+      queued: expect.stringContaining('is in Ideas'),
     })
-    expect(behind.help.join('\n')).toContain('pnyx-axi task project')
+    expect(behind.help.join('\n')).toContain('pnyx-axi task sessions')
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
-    expect((await hydra.ownerRefused({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Import the refunds',
-        '--behind',
-        'no-such-task',
-      ],
-    })).code).toBe('NOT_FOUND')
+    const refusals = [
+      {
+        flags: [
+          '--behind',
+          'no-such-task',
+        ],
+        code: 'NOT_FOUND',
+      },
+      {
+        flags: [
+          '--via',
+          'nowhere',
+        ],
+        code: 'VALIDATION_ERROR',
+      },
+    ]
+
+    for (const {
+      flags,
+      code,
+    } of refusals) {
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Import the refunds',
+          ...flags,
+        ],
+      })).code).toBe(code)
+    }
+
     expect((await hydra.owner({
       args: [
         'task',

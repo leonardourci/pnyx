@@ -715,6 +715,86 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
 )
 
 test(
+  'a create behind a worker on the same project queues it, a start that fails leaves it queued, a start takes it out of the queue for a worker of its own, and once detached it is not shown as never started',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Lead',
+        '--key',
+        'lead',
+        '--project',
+        'shop',
+      ],
+    })
+    const lead = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'lead',
+      ],
+    })
+    await hydra.agent({ cwd: lead.agent.folder })
+    expect(await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Follow',
+        '--key',
+        'follow',
+        '--project',
+        'shop',
+        '--brief',
+        'Follow the lead',
+        '--behind',
+        'lead',
+      ],
+    })).toMatchObject({ launch: 'queued' })
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'follow',
+        '--rule',
+        'no-such-rule',
+      ],
+    })).code).toBe('NOT_FOUND')
+    expect((await hydra.task({ key: 'follow' })).queue).toBeDefined()
+
+    const started = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'follow',
+      ],
+    })
+    expect(started.unqueued).toContain('was queued behind worker')
+    expect((await hydra.task({ key: 'follow' })).queue).toBeUndefined()
+    expect(started.agent.folder).not.toBe(lead.agent.folder)
+    expect((await hydra.agent({ cwd: started.agent.folder })).received[0]).toContain('Follow the lead')
+
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'follow',
+      ],
+    })
+    expect((await hydra.task({ key: 'follow' })).worker).toBe('none')
+  },
+)
+
+test(
   'a pull-request task is done only once GitHub reports its pull request merged, and one with an unreviewed report waits for its review',
   async () => {
     const hydra = await pnyx.hydra()

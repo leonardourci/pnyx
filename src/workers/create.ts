@@ -14,7 +14,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import { START_FLAGS, startFlags } from './cli.ts'
 import { decideQueue, queueAnchor, queueGap } from './queue-decisions.ts'
 import { findSession } from './session-attachments.ts'
-import { startRecorded, startTask } from './start.ts'
+import { startRecorded, startRoute, startTask } from './start.ts'
 
 const WAIT_FLAGS = {
   hold: 'hold',
@@ -277,6 +277,7 @@ async function startCreated({
       meta: {
         ...meta,
         id: startId,
+        ifRevision: undefined,
       },
     })
 
@@ -329,10 +330,18 @@ export async function createCommand({
   values: Values
   meta: Meta
 }): Promise<Output> {
+  const state = loadHydra({ hydraId }).state
   let wait = chooseWait({ values })
   const flags = startFlags({ values })
+  startRoute({
+    state,
+    via: flags.via,
+    commandName: flags.commandName,
+    override: flags.override,
+    tools: flags.tools,
+  })
   requireWaitTargets({
-    state: loadHydra({ hydraId }).state,
+    state,
     wait,
     values,
   })

@@ -48,12 +48,20 @@ const VIAS = [
 ] as const
 type Via = (typeof VIAS)[number]
 
-function chooseVia({
+export function startRoute({
   state,
   via,
+  commandName,
+  replacement,
+  override,
+  tools,
 }: {
   state: HydraState
   via?: string
+  commandName?: string
+  replacement?: string
+  override?: Override
+  tools?: string[]
 }): Via {
   const chosen = via ?? (state.config?.hydra.kind === 'firstmate' ? 'firstmate' : 'pnyx')
 
@@ -65,7 +73,38 @@ function chooseVia({
     })
   }
 
-  return chosen as Via
+  const how = chosen as Via
+
+  if (commandName && how !== 'command') {
+    throw new HydraError({
+      message: '--command needs --via command',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (replacement && how !== 'pnyx') {
+    throw new HydraError({
+      message: 'starting fresh from an outside session uses Pnyx',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (override && (how === 'firstmate' || how === 'command')) {
+    throw new HydraError({
+      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
+      code: 'VALIDATION_ERROR',
+      help: ['Use --via pnyx or --via paseo'],
+    })
+  }
+
+  if (tools?.length && how !== 'pnyx') {
+    throw new HydraError({
+      message: 'Tool grants require the pnyx launch route',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return how
 }
 
 export function startRecorded({
@@ -304,24 +343,26 @@ function leaseOrWait({
   }
 }
 
-function unqueue({
+function leaveQueue({
   hydraId,
-  task,
-  session,
+  card,
   meta,
 }: {
   hydraId: string
-  task: string
-  session: string
+  card: Card
   meta: Meta
-}): string {
+}): string | undefined {
+  if (!card.queue) {
+    return undefined
+  }
+
   withWriter({
     hydraId,
     fn: ({ writer }) => applyDecision({
       writer,
       decision: decideQueue({
         state: writer.state,
-        task,
+        task: card.id,
         meta: {
           ...meta,
           id: meta.id ? `${meta.id}:unqueue` : undefined,
@@ -331,7 +372,7 @@ function unqueue({
     }),
   })
 
-  return `was queued behind worker ${session}; it now gets its own worker`
+  return `was queued behind worker ${card.queue.session}; it now gets its own worker`
 }
 
 function noteOpen({
@@ -482,48 +523,22 @@ export async function startTask({
   const release = leased.release
 
   try {
-    const how = chooseVia({
+    const how = startRoute({
       state,
       via,
+      commandName,
+      replacement,
+      override,
+      tools,
     })
 
-    if (commandName && how !== 'command') {
-      throw new HydraError({
-        message: '--command needs --via command',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (replacement && how !== 'pnyx') {
-      throw new HydraError({
-        message: 'starting fresh from an outside session uses Pnyx',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (override && (how === 'firstmate' || how === 'command')) {
-      throw new HydraError({
-        message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
-        code: 'VALIDATION_ERROR',
-        help: ['Use --via pnyx or --via paseo'],
-      })
-    }
-
-    if (tools?.length && how !== 'pnyx') {
-      throw new HydraError({
-        message: 'Tool grants require the pnyx launch route',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const unqueued = card.queue ? unqueue({
-      hydraId,
-      task: card.id,
-      session: card.queue.session,
-      meta,
-    }) : undefined
-
-    const guided = ({ started }: { started: Output }): Output => {
+    const guided = ({
+      started,
+      unqueued,
+    }: {
+      started: Output
+      unqueued?: string
+    }): Output => {
       noteOpen({
         hydraId,
         task: card.id,
@@ -539,6 +554,12 @@ export async function startTask({
     }
 
     if (how === 'firstmate') {
+      const unqueued = leaveQueue({
+        hydraId,
+        card,
+        meta,
+      })
+
       return guided({
         started: await askFirstmate({
           hydraId,
@@ -546,6 +567,7 @@ export async function startTask({
           prompt,
           meta,
         }),
+        unqueued,
       })
     }
 
@@ -644,6 +666,11 @@ export async function startTask({
     const ownsFolder = commandName
       ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
     const ownFolder = command && ownsFolder
+    const unqueued = leaveQueue({
+      hydraId,
+      card,
+      meta,
+    })
 
     const folder = replacement ? given
       : await taskFolder({
@@ -667,6 +694,7 @@ export async function startTask({
           commandName,
           meta,
         }),
+        unqueued,
       })
     }
 
@@ -717,6 +745,7 @@ export async function startTask({
         ...started,
         rule: dispatch?.rule,
       },
+      unqueued,
     })
   } catch (error) {
     if (error instanceof HydraError && error.code === 'TASK_STARTING') {

@@ -103,12 +103,19 @@ export function queueGap({
     }
   }
 
+  if (!current.project) {
+    return {
+      reason: `queued tasks use the worker’s project, and ${current.id} is in Ideas`,
+      clear: 'Queue it behind a worker on an attached project; `pnyx-axi task sessions` lists live workers',
+    }
+  }
+
   if (!sameProjectPath({
     left: card.project,
     right: current.project,
   })) {
     return {
-      reason: `queued tasks use the worker’s project: ${card.id} is in ${card.project ?? 'Ideas'}, ${current.id} in ${current.project ?? 'Ideas'}`,
+      reason: `queued tasks use the worker’s project: ${card.id} is in ${card.project ?? 'Ideas'}, ${current.id} in ${current.project}`,
       clear: `Run \`pnyx-axi task project ${card.id} --project <project>\` to match the worker’s project`,
     }
   }

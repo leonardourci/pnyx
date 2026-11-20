@@ -170,19 +170,23 @@ export function cardStatus({
 
   return {
     kind: activity ?? 'not-started',
-    text: ACTIVITY_TEXT[activity ?? ''] ?? (card.agent ? 'activity unknown' : card.mirror ? 'not started' : notStartedText({ card })),
+    text: ACTIVITY_TEXT[activity ?? ''] ?? (card.agent ? 'activity unknown' : card.mirror ? 'not started' : noWorkerText({ card })),
   }
 }
 
-export function notStartedText({ card }: { card: Card }): string {
+export function noWorkerText({ card }: { card: Card }): string {
+  if (card.launch) {
+    return 'no worker assigned'
+  }
+
   return card.unstarted ? `not started: ${card.unstarted}` : 'not started, no reason given'
 }
 
 export function workerGap({ card }: { card: Card }): string {
-  const startedBefore = Boolean(card.agent || card.mirror)
+  const startedBefore = Boolean(card.agent || card.mirror || card.launch)
   const waitShown = Boolean(card.hold || card.wait || card.queue || card.prerequisites?.length)
 
-  return startedBefore || waitShown ? 'none' : `none: ${notStartedText({ card })}`
+  return startedBefore || waitShown ? 'none' : `none: ${noWorkerText({ card })}`
 }
 
 // A later worker turn, a new question for Hydra or an owner answer makes an earlier wait note stale.
