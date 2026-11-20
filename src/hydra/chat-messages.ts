@@ -119,7 +119,7 @@ export function hydraMessages({
   }
 
   const claims = new Map<HydraMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
-  const paired = messages.filter(message => message.actor !== HYDRA_ACTOR && message.actor !== 'pnyx' && !message.stopped)
+  const pairable = messages.filter(message => message.actor !== HYDRA_ACTOR && message.actor !== 'pnyx' && !message.stopped)
   const ids = new Set(messages.map(message => message.id))
 
   const claim = ({
@@ -138,16 +138,26 @@ export function hydraMessages({
     }
   }
 
-  for (const message of paired) {
+  for (const message of pairable) {
+    const recordedLines = transcript.filter(entry => entry.inputUuid === message.id && ownCopies.has(entry))
+    const [
+      copy,
+      ...otherParts
+    ] = recordedLines
     claim({
       message,
-      copy: transcript.find(entry => entry.inputUuid === message.id && ownCopies.has(entry)
-        && !claimed.has(entry)),
+      copy,
     })
+
+    for (const part of otherParts) {
+      claimed.add(part)
+      replaced.add(part)
+    }
   }
 
-  // The newest message claims the newest copy sent after it, so a stopped one cannot take its resend's copy.
-  for (const message of paired.toReversed()) {
+  const newestFirst = pairable.toReversed()
+
+  for (const message of newestFirst) {
     if (claims.has(message)) {
       continue
     }

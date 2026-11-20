@@ -12,6 +12,8 @@ import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
 import { startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
+const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
+
 let pnyx: Pnyx
 
 beforeAll(async () => {
@@ -179,8 +181,6 @@ test(
   },
 )
 
-const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
-
 const times = ({
   sessions,
   text,
@@ -190,7 +190,7 @@ const times = ({
 }) => sessions.flatMap(session => session.received).filter(message => message.includes(text)).length
 
 test(
-  'a started worker runs in its task\'s folder with its brief, and each owner reply reaches it once with a delivered receipt',
+  'a started worker runs in its task\'s folder with its brief, and each owner reply reaches it once under the owner\'s id with a delivered receipt and shows once in the task\'s chat',
   async () => {
     const hydra = await pnyx.hydra()
     const {

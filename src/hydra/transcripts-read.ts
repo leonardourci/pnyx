@@ -945,7 +945,6 @@ function readThreadPage(
     card,
     selectedSession,
   })
-  // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
   const logged = threadEvents({
     hydraId,
     card,

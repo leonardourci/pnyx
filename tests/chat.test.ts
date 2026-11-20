@@ -11,9 +11,13 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
+import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
 import { openPage, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
+
+const DOCS_MESSAGE = '3d6b8f20-5a4c-4e1b-9f72-6c8d0e1a2b34'
+const CHANGELOG_MESSAGE = '4e7c9031-6b5d-4f2c-8a83-7d9e1f2b3c45'
 
 let pnyx: Pnyx
 
@@ -46,7 +50,7 @@ const heard = ({
 }) => received.filter(message => message.endsWith(text)).length
 
 test(
-  'messages the owner sends while Hydra works reach it once each, in order, and the queue shows Hydra working until its turn ends',
+  'messages the owner sends while Hydra works reach it once each, in order and under their own ids, and the queue shows Hydra working until its turn ends',
   async () => {
     const hydra = await pnyx.hydra()
     const turn = pnyx.claude.plan({
@@ -63,6 +67,8 @@ test(
         'send',
         '--text',
         'also check the docs',
+        '--event-id',
+        DOCS_MESSAGE,
       ],
     })
     await hydra.owner({
@@ -71,6 +77,8 @@ test(
         'send',
         '--text',
         'and the changelog',
+        '--event-id',
+        CHANGELOG_MESSAGE,
       ],
     })
 
@@ -94,6 +102,10 @@ test(
       'plan the release',
       'also check the docs',
       'and the changelog',
+    ])
+    expect(session.uuids.slice(1)).toEqual([
+      DOCS_MESSAGE,
+      CHANGELOG_MESSAGE,
     ])
     expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toHaveLength(1)
 
@@ -2613,7 +2625,7 @@ test(
 )
 
 test(
-  'a message the harness recorded under its own id is paired by that id and delivered by it, even when its words differ or a later message has the same words',
+  'a message the harness recorded under its own id is paired by that id and delivered by it, even when its words differ, a later message has the same words or its line is long enough to be split',
   () => {
     const first = {
       id: '6f1c2a4e-0b7d-4c55-9a3e-1d2b3c4d5e6f',
@@ -2634,11 +2646,18 @@ test(
       text: 'the key is hunter2',
       at: '2026-11-20T10:00:02.000Z',
     }
+    const long = {
+      ...first,
+      id: '9c4f5d71-3ea0-4f88-8d61-405e6f708192',
+      text: 'Ship the release notes. '.repeat(60),
+      at: '2026-11-20T10:00:05.000Z',
+    }
     const rows = hydraMessages({
       messages: [
         first,
         second,
         redacted,
+        long,
       ],
       transcript: [
         {
@@ -2657,6 +2676,16 @@ test(
           at: '2026-11-20T10:00:04.000Z',
           inputUuid: redacted.id,
         },
+        ...splitEntry({
+          entry: {
+            id: '30:m0',
+            kind: 'message',
+            role: 'user',
+            text: long.text,
+            at: '2026-11-20T10:00:06.000Z',
+            inputUuid: long.id,
+          },
+        }),
       ],
     })
 
@@ -2679,6 +2708,12 @@ test(
         '20:m0',
         redacted.id,
         'the key is hunter2',
+        'delivered',
+      ],
+      [
+        '30:m0.0',
+        long.id,
+        long.text,
         'delivered',
       ],
       [

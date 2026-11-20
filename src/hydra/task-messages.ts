@@ -88,6 +88,11 @@ export function deliveredInputs({
   provider?: string
 }): Set<ThreadEntry> {
   const inputs = entries.filter(entry => ownMessage({ entry }))
+
+  if (hosted) {
+    return new Set(inputs)
+  }
+
   const messages = joinMessageParts({ entries: inputs })
   const pnyxWords = ({ message }: { message: ThreadEntry }) => steeringText({ text: message.text })
     || injectedInstructions({
@@ -98,7 +103,7 @@ export function deliveredInputs({
   const injectedMessages = new Set(injected.map(message => messageOf({ entry: message })))
 
   return new Set(inputs.filter(entry => {
-    const pnyxInput = hosted || entry.pnyx === true || injectedMessages.has(messageOf({ entry }))
+    const pnyxInput = entry.pnyx === true || injectedMessages.has(messageOf({ entry }))
 
     return pnyxInput || echoes.take({
       text: entry.text,
