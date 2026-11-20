@@ -368,7 +368,10 @@ test(
     // Web modules are source-only; a runtime import keeps them out of the CLI's TypeScript emit graph.
     const resultsModule: string = '#web-oracle/results.ts'
     const previewModule: string = '#web-oracle/oracle-preview.tsx'
-    const { resultMeta } = await import(resultsModule)
+    const {
+      resultMeta,
+      oracleResults,
+    } = await import(resultsModule)
     vi.stubGlobal(
       'CSS',
       { supports: () => false },
@@ -436,6 +439,42 @@ test(
       keys: () => '',
       now: Date.now(),
     })).toContain('Working')
+    const matches = ({
+      text,
+      actions,
+    }: {
+      text: string
+      actions: Record<string, CurrentAction>
+    }) => oracleResults({
+      state,
+      hits: [],
+      projects: [],
+      actions: [],
+      cardActions: actions,
+      hydra: {
+        id: hydra.id,
+        name: 'Status search',
+      },
+      text,
+      badges: [],
+      now: Date.now(),
+    }).flatMap((group: { results: { id: string }[] }) => group.results.map(result => result.id))
+    expect(matches({
+      text: 'working',
+      actions: nativeTools,
+    })).toContain(`task:${child.card.id}`)
+    expect(matches({
+      text: 'thinking',
+      actions: nativeTools,
+    })).not.toContain(`task:${child.card.id}`)
+    expect(matches({
+      text: 'thinking',
+      actions,
+    })).toContain(`task:${child.card.id}`)
+    expect(matches({
+      text: 'working',
+      actions,
+    })).not.toContain(`task:${child.card.id}`)
     held.release()
   },
 )
