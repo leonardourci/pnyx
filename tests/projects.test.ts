@@ -3,7 +3,7 @@ import { readEvents } from '#app/event-log.ts'
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
@@ -212,14 +212,17 @@ test(
       key: 'cart',
       line: 'done: Cart implementation ready',
     })
-    expect((await hydra.owner({
+    const workerDone = await hydra.owner({
       args: [
         'task',
         'show',
         'cart',
         '--full',
       ],
-    })).task.doneAt).toBeUndefined()
+    })
+    expect(workerDone.task.workerLog.status.code).toBe('done')
+    expect(workerDone.task.doneAt).toBeUndefined()
+    expect(workerDone.task.outcome?.closed).not.toBe(true)
 
     git({
       cwd: copy,
@@ -942,7 +945,16 @@ test(
         'https://github.com/o/shop/pull/7',
       ],
     })
-    expect((await hydra.task({ key: 'cart' })).status).not.toBe('done')
+    const cart = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'cart',
+        '--full',
+      ],
+    })
+    expect(cart.task.doneAt).toBeUndefined()
+    expect(cart.task.outcome?.closed).not.toBe(true)
     await until({
       what: 'the card to read the open pull request',
       check: async () => (await hydra.owner({
@@ -3879,6 +3891,29 @@ test(
         },
       }),
     })
+    const movedTask = (await keeper.owner({
+      args: [
+        'task',
+        'show',
+        parent,
+        '--full',
+      ],
+    })).task
+    const stream = join(
+      movedTask.workerLogDir,
+      'worker.log',
+    )
+    mkdirSync(
+      join(
+        stream,
+        '..',
+      ),
+      { recursive: true },
+    )
+    appendFileSync(
+      stream,
+      'note: Immediately before the move\n',
+    )
     await keeper.owner({
       args: [
         'task',
@@ -3889,6 +3924,30 @@ test(
       ],
     })
     expect((await target.task({ key: parent })).title).toBe('Finished work')
+    expect((await target.owner({
+      args: [
+        'task',
+        'show',
+        parent,
+        '--full',
+      ],
+    })).task.workerLog.latest.text).toBe('Immediately before the move')
+    appendFileSync(
+      stream,
+      'note: Written to the same stream after the move\n',
+    )
+    await until({
+      what: 'the moved worker stream to keep following',
+      check: async () => (await target.owner({
+        args: [
+          'task',
+          'show',
+          parent,
+          '--full',
+        ],
+      })).task.workerLog?.latest.text === 'Written to the same stream after the move',
+    })
+
     expect((await keeper.owner({
       args: [
         'task',

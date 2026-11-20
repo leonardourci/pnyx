@@ -1,3 +1,5 @@
+import { join } from 'node:path'
+import { foldWorkerLog } from '#workers/worker-log.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -492,6 +494,10 @@ export function stageTaskMove({
       card: cardId,
     }),
   })
+  foldWorkerLog({
+    writer: source,
+    task: cardId,
+  })
   const current = source.state.cards[cardId]
 
   if (!current) {
@@ -530,7 +536,14 @@ export function stageTaskMove({
         target: target.state,
         card: current,
       }),
-      card: structuredClone(current),
+      card: {
+        ...structuredClone(current),
+        workerLogDir: current.workerLogDir ?? join(
+          source.dir,
+          'tasks',
+          cardId,
+        ),
+      },
       ...carried({
         hydraId,
         state: source.state,

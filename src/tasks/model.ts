@@ -183,6 +183,7 @@ export interface Card {
     repository: string
     branch: string
   }[]
+  workerLogDir?: string
   workerLog?: WorkerLog
   tools?: string[]
   toolsRevision?: string

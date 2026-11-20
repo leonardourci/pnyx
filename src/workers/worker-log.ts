@@ -1,5 +1,6 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
+import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
@@ -25,7 +26,7 @@ export function workerTaskDir({
   hydraId: string
   task: string
 }): string {
-  const dir = join(
+  const dir = loadHydra({ hydraId }).state.cards[task]?.workerLogDir ?? join(
     hydraDir({ hydraId }),
     'tasks',
     task,
@@ -49,9 +50,11 @@ export function foldWorkerLog({
   }
 
   const path = join(
-    writer.dir,
-    'tasks',
-    task,
+    card.workerLogDir ?? join(
+      writer.dir,
+      'tasks',
+      task,
+    ),
     'worker.log',
   )
   let fd: number
@@ -216,8 +219,13 @@ export function followWorkerLogs({
   changed(): void
 }) {
   const watches = new Map<string, PathWatch>()
+  let closed = false
 
   const reconcile = ({ state }: { state: HydraState }) => {
+    if (closed) {
+      return
+    }
+
     for (const [
       task,
       watcher,
@@ -264,6 +272,8 @@ export function followWorkerLogs({
   return {
     reconcile,
     close() {
+      closed = true
+
       for (const watcher of watches.values()) {
         watcher.close()
       }
