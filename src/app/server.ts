@@ -287,6 +287,7 @@ export async function mountOwnedHydra({
       const discoveryChanged = [
         'task.copy',
         'task.launched',
+        'task.worker-line',
       ].includes(event.type)
 
       if (linkedByOthers || activityChanged || discoveryChanged) {

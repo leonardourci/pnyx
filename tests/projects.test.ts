@@ -4662,12 +4662,10 @@ test(
         draft: true,
       }),
     )
-    await hydra.owner({
-      args: [
-        'task',
-        'refresh-links',
-        'discovered',
-      ],
+    await workerLine({
+      hydra,
+      key: 'discovered',
+      line: 'note: Follow-up branch ready',
     })
     await until({
       what: 'the new branch pull request',
