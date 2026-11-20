@@ -112,6 +112,7 @@ export type HostedInput = {
   id: string
   text: string
   images: HostedImage[]
+  ownerMessageId?: string
 }
 export type InputReceipt = {
   inputId: string
@@ -401,6 +402,7 @@ export interface TranscriptCall {
 export type FoundSettings = Record<string, string | null>
 
 export interface TranscriptRecord {
+  inputUuid?: string
   final?: boolean
   digest?: string
   contextReset?: true

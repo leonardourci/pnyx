@@ -8,7 +8,7 @@ import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, type UUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
@@ -18,10 +18,12 @@ import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
 import { watchIntake } from './claude-intake.ts'
+import { readTranscript } from './transcript-read.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 let permissionWarningLogged = false
 
 function startQuery({
@@ -358,6 +360,7 @@ export function claudeProvider({
       let closed = false, interrupted = false, active = false
       let inputGeneration = 0
       const nativeInputs = new Map<string, string>()
+      let sentUuids: Set<string> | undefined
       let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
       const native: NativeSession = {
@@ -425,7 +428,15 @@ export function claudeProvider({
                 fresh = false
               }
 
-              const uuid = randomUUID()
+              if (!sentUuids) {
+                sentUuids = recordedUuids({ path })
+              }
+
+              const uuid = unsentUuid({
+                owner: compact ? undefined : item.ownerMessageId,
+                sent: sentUuids,
+              })
+              sentUuids.add(uuid)
               nativeInputs.set(
                 uuid,
                 item.id,
@@ -1286,6 +1297,35 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
   }
 }
 
+function recordedUuids({ path }: { path: string }): Set<string> {
+  const read = readTranscript({
+    cursor: {
+      source: path,
+      identity: '',
+      pos: 0,
+    },
+  })
+  const uuids = (read?.lines ?? []).flatMap(({ record }) => {
+    const { uuid } = object({ value: record })
+
+    return typeof uuid === 'string' ? [uuid] : []
+  })
+
+  return new Set(uuids)
+}
+
+function unsentUuid({
+  owner,
+  sent,
+}: {
+  owner?: string
+  sent: Set<string>
+}): UUID {
+  const reusable = owner !== undefined && UUID_PATTERN.test(owner) && !sent.has(owner)
+
+  return reusable ? owner as UUID : randomUUID()
+}
+
 export const readClaudeTranscript: TranscriptReader = ({
   record,
   subagent = false,
@@ -1348,6 +1388,10 @@ export const readClaudeTranscript: TranscriptReader = ({
 
   if (entry.type === 'user' && entry.isCompactSummary !== true && entry.isSidechain !== true) {
     parsed.digest = injectedDigest({ text: textContent({ value: content }) })
+
+    if (typeof entry.uuid === 'string') {
+      parsed.inputUuid = entry.uuid
+    }
   }
 
   if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {

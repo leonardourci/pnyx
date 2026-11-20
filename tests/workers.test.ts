@@ -17,6 +17,8 @@ import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
 import { rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
+const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
+
 let pnyx: Pnyx
 
 beforeAll(async () => {
@@ -455,7 +457,7 @@ const times = ({
 }) => sessions.flatMap(session => session.received).filter(message => message.includes(text)).length
 
 test(
-  'a started worker runs in its task\'s folder with its brief, and each owner reply reaches it once with a delivered receipt',
+  'a started worker runs in its task\'s folder with its brief, and each owner reply reaches it once under the owner\'s id with a delivered receipt and shows once in the task\'s chat',
   async () => {
     const hydra = await pnyx.hydra()
     const {
@@ -484,6 +486,8 @@ test(
         'export',
         '--text',
         'Use semicolons as separators',
+        '--idempotency-key',
+        REPLY_ID,
       ],
     })
     expect(sent.reply).toMatchObject({
@@ -498,6 +502,7 @@ test(
       sessions: [worker],
       text: 'Use semicolons as separators',
     })).toBe(1)
+    expect(worker.uuids).toContain(REPLY_ID)
 
     const { thread } = await hydra.owner({
       args: [
@@ -506,11 +511,13 @@ test(
         'export',
       ],
     })
-    expect(thread.entries).toContainEqual(expect.objectContaining({
-      role: 'You',
-      text: 'Use semicolons as separators',
-      receipt: 'delivered',
-    }))
+    expect((thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
+      expect.objectContaining({
+        role: 'You',
+        text: 'Use semicolons as separators',
+        receipt: 'delivered',
+      }),
+    ])
     expect((await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -623,7 +630,7 @@ test(
 )
 
 test(
-  'a worker turn a restart cuts resumes in the same session, and the owner\'s message sent meanwhile waits in its inbox once',
+  'a worker turn a restart cuts resumes in the same session, the owner\'s message sent meanwhile waits in its inbox once, and the chat shows only that message as the owner\'s, with or without the session named',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'migration' })
@@ -693,6 +700,29 @@ test(
 
     expect(resumed.id).toBe(cut.id)
     expect(resumed.received[0]).toContain('Pnyx restarted')
+
+    for (const named of [
+      [],
+      [
+        '--session',
+        `claude-code:${resumed.id}`,
+      ],
+    ]) {
+      const { thread } = await hydra.owner({
+        args: [
+          'task',
+          'chat',
+          'migration',
+          ...named,
+        ],
+      })
+      expect((thread.entries as {
+        role: string
+        text: string
+      }[]).filter(entry => entry.role === 'You' || entry.role === 'user')
+        .map(entry => entry.text)).toEqual(['Also migrate the archive'])
+    }
+
     const sessions = pnyx.claude.sessions.filter(session => session.cwd === folder)
     expect(sessions).toHaveLength(2)
     expect(times({
@@ -727,16 +757,18 @@ test(
       what: 'the reply to reach Codex',
       check: () => worker.answered === 2,
     })
-    expect((await hydra.owner({
+    expect(((await hydra.owner({
       args: [
         'task',
         'chat',
         'codex',
       ],
-    })).thread.entries).toContainEqual(expect.objectContaining({
-      text: 'Add a test for empty input',
-      receipt: 'delivered',
-    }))
+    })).thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
+      expect.objectContaining({
+        text: 'Add a test for empty input',
+        receipt: 'delivered',
+      }),
+    ])
 
     await pnyx.restart()
     await hydra.owner({

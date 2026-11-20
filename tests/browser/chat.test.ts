@@ -578,3 +578,75 @@ test(
     })).fromBottom).toBeLessThanOrEqual(1)
   },
 )
+
+test(
+  'a message sent from a task\'s card shows as one owner row from the send until the worker has answered',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'lakes' })
+    const answer = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('List three lakes'),
+      reply: 'Titicaca, Baikal and Victoria.',
+      hold: true,
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    await page.locator('[data-task]').getByText(
+      'Task lakes',
+      { exact: true },
+    )
+      .click()
+    const chat = page.getByRole(
+      'region',
+      { name: 'Task lakes conversation' },
+    )
+    await chat.waitFor()
+    await page.evaluate(() => {
+      const counts: number[] = []
+      Object.assign(
+        window,
+        { ownerRows: counts },
+      )
+
+      const frame = () => {
+        const chat = document.querySelector('[aria-label="Task lakes conversation"]')
+        const rows = [...chat?.querySelectorAll('[data-entry-id][aria-label="You"]') ?? []]
+        counts.push(rows.filter(row => row.textContent?.includes('List three lakes')).length)
+        requestAnimationFrame(frame)
+      }
+
+      requestAnimationFrame(frame)
+    })
+    await page.getByRole(
+      'textbox',
+      { name: 'Message worker' },
+    ).fill('List three lakes')
+    await page.keyboard.press('Enter')
+    await until({
+      what: 'the worker to take the message',
+      check: () => worker.received.some(text => text.includes('List three lakes')),
+    })
+    expect(await page.getByRole(
+      'region',
+      { name: 'Task lakes conversation' },
+    ).locator('[data-entry-id][aria-label="You"]')
+      .filter({ hasText: 'List three lakes' })
+      .count()).toBe(1)
+    answer.release()
+    await chat.getByText('Titicaca, Baikal and Victoria.').filter({ visible: true })
+      .waitFor()
+    await nextFrames({
+      page,
+      count: ARRIVAL_FRAMES,
+    })
+    const counts = await page.evaluate(() => (window as unknown as { ownerRows: number[] })
+      .ownerRows)
+    const sent = counts.findIndex(count => count > 0)
+    expect(sent).toBeGreaterThanOrEqual(0)
+    expect(new Set(counts.slice(sent))).toEqual(new Set([1]))
+  },
+)

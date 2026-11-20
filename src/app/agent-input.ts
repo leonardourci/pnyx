@@ -9,11 +9,13 @@ export function agentInput({
   text,
   original,
   hydras,
+  ownerMessageId,
 }: {
   id: string
   text: string
   original: string
   hydras: string
+  ownerMessageId?: string
 }): HostedInput {
   const images = attachedImages({
     text: original,
@@ -50,5 +52,6 @@ export function agentInput({
     id,
     text,
     images,
+    ownerMessageId,
   }
 }

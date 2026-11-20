@@ -111,7 +111,7 @@ const card = async ({ session }: { session: string }) => {
 }
 
 test(
-  'an outside session\'s hooks keep its card: the prompt names it, Stop ends its turn, and every hook exits 0 at once',
+  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s and no part of a long steering notice, Stop ends its turn, and every hook exits 0 at once',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -141,6 +141,25 @@ test(
       ),
     }
 
+    const userLine = ({ content }: { content: string }) => `${JSON.stringify({
+      type: 'user',
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content,
+      },
+    })}\n`
+    mkdirSync(
+      cwd,
+      { recursive: true },
+    )
+    writeFileSync(
+      base.transcript_path,
+      [
+        userLine({ content: 'Fix the flaky login test' }),
+        userLine({ content: `New instructions for task outside, in order (Pnyx inbox IDs ["earlier"]):\n\n${'Keep the retry loop bounded. '.repeat(60)}` }),
+      ].join(''),
+    )
     const runs = [
       await hook({
         event: 'SessionStart',
@@ -165,6 +184,22 @@ test(
       title: 'Fix the flaky login test',
       activity: 'working',
     })
+    const chat = parsed(await pnyxAxi({
+      args: [
+        'task',
+        'chat',
+        'claude:outside-1',
+        '--hydra',
+        'default',
+      ],
+      env: process.env,
+    }))
+    expect((chat.thread.entries as {
+      role: string
+      text: string
+    }[])
+      .filter(entry => entry.role === 'user' || entry.role === 'You')
+      .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
 
     await flushLogs()
     const onLogs = logFiles().map(file => readFileSync(

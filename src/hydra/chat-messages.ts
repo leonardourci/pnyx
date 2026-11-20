@@ -118,22 +118,17 @@ export function hydraMessages({
     return new Set(delivered.map(copy => normalized({ text: copy })))
   }
 
-  // The newest message claims the newest copy sent after it, so a stopped one cannot take its resend's copy.
   const claims = new Map<HydraMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
+  const pairable = messages.filter(message => message.actor !== HYDRA_ACTOR && message.actor !== 'pnyx' && !message.stopped)
+  const messageIds = new Set(messages.map(message => message.id))
 
-  for (const message of messages.toReversed()) {
-    if (message.actor === HYDRA_ACTOR || message.actor === 'pnyx' || message.stopped) {
-      continue
-    }
-
-    const copies = deliveredWords({ message })
-    const copy = transcript.findLast(entry => {
-      const words = ownCopies.get(entry)
-
-      return !claimed.has(entry) && words !== undefined && copies.has(words)
-        && (entry.at === undefined || entry.at >= message.at)
-    })
-
+  const claim = ({
+    message,
+    copy,
+  }: {
+    message: HydraMessage
+    copy?: ThreadEntry
+  }) => {
     if (copy) {
       claimed.add(copy)
       claims.set(
@@ -141,6 +136,44 @@ export function hydraMessages({
         copy,
       )
     }
+  }
+
+  for (const message of pairable) {
+    const recordedLines = transcript.filter(entry => entry.inputUuid === message.id
+      && ownCopies.has(entry))
+    const [
+      copy,
+      ...otherParts
+    ] = recordedLines
+    claim({
+      message,
+      copy,
+    })
+
+    for (const part of otherParts) {
+      claimed.add(part)
+      replaced.add(part)
+    }
+  }
+
+  const newestFirst = pairable.toReversed()
+
+  for (const message of newestFirst) {
+    if (claims.has(message)) {
+      continue
+    }
+
+    const copies = deliveredWords({ message })
+    claim({
+      message,
+      copy: transcript.findLast(entry => {
+        const words = ownCopies.get(entry)
+        const othersCopy = entry.inputUuid !== undefined && messageIds.has(entry.inputUuid)
+
+        return !claimed.has(entry) && !othersCopy && words !== undefined && copies.has(words)
+          && (entry.at === undefined || entry.at >= message.at)
+      }),
+    })
   }
 
   for (const message of messages) {
@@ -237,11 +270,25 @@ export function hydraMessages({
       a,
       b,
     ) => b.entry.at.localeCompare(a.entry.at))
+  const recordedUnderId = ({
+    message,
+    entry,
+  }: ShownCopy) => entry.inputUuid === message.id
+
+  for (const {
+    message,
+    entry,
+  } of shownCopies.filter(recordedUnderId)) {
+    copyTimes.set(
+      message,
+      entry.at,
+    )
+  }
 
   for (const {
     entry,
     copy,
-  } of shownCopies) {
+  } of shownCopies.filter(item => !recordedUnderId(item))) {
     const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy)
       && item.message.at <= entry.at)
 

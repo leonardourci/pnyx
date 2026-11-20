@@ -2,6 +2,8 @@ import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { git } from './setup/upgrade.ts'
 import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
+const MODEL_SEND = '5f8d0a42-7c6e-4a3d-9b94-8e0f2a3c4d56'
+
 let pnyx: Pnyx
 
 beforeAll(async () => {
@@ -195,7 +197,7 @@ test(
 )
 
 test(
-  'same-harness model changes wait for the next turn and keep the session',
+  'same-harness model changes wait for the next turn and keep the session, and the card send reaches it under the owner\'s id',
   async () => {
     const hydra = await pnyx.hydra()
     const {
@@ -237,7 +239,7 @@ test(
         '--effort',
         'high',
         '--event-id',
-        'model-next',
+        MODEL_SEND,
       ],
     })
     expect(worker.model).toBe(before)
@@ -249,6 +251,7 @@ test(
     })
     expect(worker.model).toBe('sonnet')
     expect(worker.received[2]).toContain('Check the new model')
+    expect(worker.uuids[2]).toBe(MODEL_SEND)
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
 )

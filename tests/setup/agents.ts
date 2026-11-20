@@ -42,6 +42,7 @@ export interface AgentSession {
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
+  uuids: (string | undefined)[]
   // Received messages whose turn ended.
   answered: number
   closed: boolean
@@ -188,6 +189,7 @@ export function fakeClaude() {
       cwd: options.cwd!,
       env: options.env,
       received: [],
+      uuids: [],
       answered: 0,
       closed: false,
       model: options.model,
@@ -225,13 +227,16 @@ export function fakeClaude() {
     const record = ({
       role,
       text,
+      uuid,
     }: {
       role: string
       text: string
+      uuid?: string
     }) => appendFileSync(
       transcript,
       `${JSON.stringify({
         type: role,
+        uuid,
         timestamp: new Date().toISOString(),
         message: {
           role,
@@ -244,7 +249,10 @@ export function fakeClaude() {
 
     // Like the SDK, the fake reads Pnyx's messages as they are sent, not one turn at a time.
     const waiting: SDKUserMessage[] = []
-    const folded: string[] = []
+    const folded: {
+      text: string
+      uuid?: string
+    }[] = []
     const foldedUuids: string[] = []
     let ended = false, folding = false
     let nudge = () => {}
@@ -254,7 +262,11 @@ export function fakeClaude() {
         const taken = waiting.shift()!
         const text = textOf({ message: taken })
         session.received.push(text)
-        folded.push(text)
+        session.uuids.push(taken.uuid)
+        folded.push({
+          text,
+          uuid: taken.uuid,
+        })
         foldedUuids.push(taken.uuid!)
       }
 
@@ -319,9 +331,11 @@ export function fakeClaude() {
 
         const text = textOf({ message })
         session.received.push(text)
+        session.uuids.push(message.uuid)
         record({
           role: 'user',
           text,
+          uuid: message.uuid,
         })
         const plan = turns.take({
           text,
@@ -511,10 +525,10 @@ export function fakeClaude() {
         stop = undefined
         folding = false
 
-        for (const text of folded.splice(0)) {
+        for (const input of folded.splice(0)) {
           record({
             role: 'user',
-            text,
+            ...input,
           })
         }
 
@@ -642,6 +656,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
       cwd,
       env,
       received: [],
+      uuids: [],
       answered: 0,
       closed: false,
     }
