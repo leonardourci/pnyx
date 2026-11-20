@@ -65,6 +65,7 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
                 continue
               }
 
+              const attention = parsed.activity === 'finished' ? [] : undefined
               applyDecision({
                 writer,
                 decision: decideSessionFacts({
@@ -73,6 +74,7 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
                   fields: {
                     agent: current.agent,
                     activity: parsed.activity,
+                    attention,
                   },
                   source: {
                     adapter: 'transcript',

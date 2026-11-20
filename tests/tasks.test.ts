@@ -3088,6 +3088,24 @@ test(
     expect(cleared.task.parentId).toBeUndefined()
     expect(cleared.task.project).toBeUndefined()
     expect(cleared.task.folder).toBeUndefined()
+    expect(await hydra.ownerRefused({
+      args: [
+        'push',
+        '--key',
+        'parent',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Wrong task',
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })).toMatchObject({ code: 'CONFLICT' })
+    expect((await hydra.task({ key: 'observed' })).title).toBe('After')
+    expect((await hydra.task({ key: 'parent' })).title).toBe('Parent')
   },
 )
 

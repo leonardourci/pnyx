@@ -388,7 +388,6 @@ function ordinaryReasons({
         'needs-you',
         'blocked',
         'done',
-        'invalid',
       ].includes(code) ? [
           {
             kind: 'declared',

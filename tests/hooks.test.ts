@@ -316,12 +316,28 @@ test(
         prompt: 'Resume the outside task',
       },
     })
-    const running = await until({
+    await until({
       what: 'the outside turn to start',
       check: async () => {
         const facts = await sessionFacts({ session: 'outside-1' })
 
         return facts?.activity === 'working' && facts
+      },
+    })
+    await hook({
+      event: 'PermissionRequest',
+      payload: {
+        ...base,
+        tool_name: 'Bash',
+        tool_input: { command: 'inspect-package' },
+      },
+    })
+    const running = await until({
+      what: 'the prompt to be recorded before restart',
+      check: async () => {
+        const facts = await sessionFacts({ session: 'outside-1' })
+
+        return facts?.attention.some((item: { blocking?: boolean }) => item.blocking) && facts
       },
     })
     const brokenTranscript = join(
@@ -444,6 +460,7 @@ test(
     })
     expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({
       activity: 'working',
+      attention: [],
       turnStartedAt: nextTurnAt,
       turnEndedSeq: expect.any(Number),
       activityCursor: { pos: expect.any(Number) },

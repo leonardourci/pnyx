@@ -278,7 +278,8 @@ export async function mountOwnedHydra({
         })
       }
 
-      const linkedByOthers = event.type === 'card.linked' && event.actor !== 'pnyx'
+      const linkedByOthers = event.type === 'card.linked' && (event.actor !== 'pnyx'
+        || event.data.link?.src === 'branch')
       const changedTask = event.cardId
       const activityChanged = workChanged({ task: changedTask })
 

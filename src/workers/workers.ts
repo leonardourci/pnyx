@@ -186,6 +186,7 @@ export async function hydraCheck({
         if (e.type === 'task.worker-line' && [
           'note',
           'link',
+          'invalid',
         ].includes(e.data.code)) {
           continue
         }

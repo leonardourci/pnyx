@@ -57,10 +57,11 @@ esac
 fact paseoTerminal "${PASEO_TERMINAL_ID:-}"
 [ -z "$terminal" ] || terminal="\"terminal\":{$terminal},"
 
-hook_clock=$(node -e 'const now = new Date(); console.log(Math.floor(now.getTime() / 1000), now.toISOString())') || hook_clock=$(date -u '+%s %Y-%m-%dT%H:%M:%SZ')
-# shellcheck disable=SC2086
-set -- $hook_clock
-id="hook-$1-$$"
+hook_clock=$(node -e 'const now = new Date(); const iso = now.toISOString(); console.log(Math.floor(now.getTime() / 1000), iso, iso.slice(-4, -1))') || hook_clock=$(date -u '+%s %Y-%m-%dT%H:%M:%SZ 000')
+read -r hook_seconds hook_at hook_milliseconds <<EOF
+$hook_clock
+EOF
+id="hook-$hook_seconds$hook_milliseconds-$$"
 hydra_dir=$home/hydras/$hydra_name
 # A Hydra is a folder in hydras/, or in boards/ until an older one moves. An unknown id is dropped
 # instead of starting a new Hydra; only the default one is made on first use.
@@ -71,20 +72,20 @@ fi
 spool=$hydra_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # The writer orders the completed files by write time, even when process ids wrap.
-name=$(printf '%012d000-%010d' "$1" $$)-$id.json
+name=$(printf '%012d%s-%010d' "$hook_seconds" "$hook_milliseconds" $$)-$id.json
 tmp=$spool/.tmp-$name
 
 # The payload streams through tr into the line without the shell holding it, so a
 # large tool output costs little. JSON strings cannot hold raw newlines, so
 # flattening keeps the payload valid on one line.
 {
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":' "$id" "$2" "$harness" "$event" "$terminal" "$task"
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":' "$id" "$hook_at" "$harness" "$event" "$terminal" "$task"
   tr '\n\r' '  '
   printf '}\n'
 } >"$tmp" || exit 0
 
 if ! grep -q '"payload": *[^ }]' "$tmp"; then
-  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$2" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
+  printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$hook_at" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
 fi
 
 # The Hydra's server handles each line as soon as its newline arrives and
