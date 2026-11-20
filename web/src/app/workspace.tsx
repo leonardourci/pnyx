@@ -613,8 +613,8 @@ export function HydraView({
   ]))
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
-  const revealingProjects = columnRequest !== null
   const requestedColumnId = columns.find(column => column.id === columnRequest?.id)?.id
+  const revealingProjects = requestedColumnId !== undefined
   useLayoutEffect(
     () => {
       if (!active) {
@@ -793,6 +793,7 @@ export function HydraView({
 
   const revealProject = ({ id }: { id: string }) => {
     cancelOpen()
+    projectReveal.current?.abort()
     setColumnRequest({
       id,
       key: crypto.randomUUID(),
@@ -1406,7 +1407,8 @@ export function HydraView({
                                             }))
                                           }}
                                           submitted={({ id }) => {
-                                            setCreatingTask(null); expand({
+                                            setCreatingTask(null)
+                                            expand({
                                               id,
                                               column: c.id,
                                             })

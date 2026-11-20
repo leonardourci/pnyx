@@ -374,7 +374,7 @@ test(
       await page.wait('${hydraChat} [aria-label="Hydra status"][data-status*="refused this turn"]', 5000);
       await page.wait(${JSON.stringify(`${selector} .agent-activity[aria-label*="refused this turn"]`)}, 5000);
       await page.wait(${JSON.stringify(`${selector} [aria-label="Worker status"][data-status*="refused this turn"]`)}, 5000);
-      console.log(await page.eval(() => document.querySelectorAll('.chat-running-status .working-dots').length));
+      console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${hydraChat} .chat-running-status .working-dots, ${selector} .chat-running-status .working-dots`)}).length));
     `,
     })
     expect(result).toBe('0')

@@ -1,33 +1,12 @@
-// Motion transforms move what is painted, not where the layout puts it.
-function layoutOffset({
-  element,
-  horizontal,
-}: {
-  element: HTMLElement
-  horizontal: boolean
-}) {
-  let offset = 0
-  let parent: HTMLElement | null = element
-
-  while (parent) {
-    offset += horizontal ? parent.offsetLeft + (parent.offsetParent?.clientLeft ?? 0)
-      : parent.offsetTop + (parent.offsetParent?.clientTop ?? 0)
-    parent = parent.offsetParent as HTMLElement | null
-  }
-
-  return offset
-}
-
 // A drop lands at the layout position while Motion finishes moving the visible card.
 export function layoutBox({ element }: { element: HTMLElement }) {
-  let left = layoutOffset({
-    element,
-    horizontal: true,
-  })
-  let top = layoutOffset({
-    element,
-    horizontal: false,
-  })
+  let left = 0
+  let top = 0
+
+  for (let box: HTMLElement | null = element; box; box = box.offsetParent as HTMLElement | null) {
+    left += box.offsetLeft + (box.offsetParent?.clientLeft ?? 0)
+    top += box.offsetTop + (box.offsetParent?.clientTop ?? 0)
+  }
 
   for (let parent = element.parentElement; parent; parent = parent.parentElement) {
     left -= parent.scrollLeft

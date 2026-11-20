@@ -163,7 +163,7 @@ Streaming DOM growth is attributed to reused provider message ids retaining the 
 
 Open: the fresh stress rerun, final trace comparison and final visible media. Hydra's stress-complete signal still gates the single deslop and CI approval.
 
-On-screen windows reconcile cached scroll margins in the same observer pass. Whole-Hydra layout animation runs for explicit folding and Hydra dragging; background width changes keep the viewport anchor without a second translation. Keyboard and reference navigation scroll the mounted card after layout settles, then focus its panel when requested. A modal card has no sortable registration while its inline card returns, preserving the reverse animation and focus.
+Whole-Hydra layout animation runs for explicit folding and Hydra dragging. Background width changes keep the viewport anchor without a second translation. Keyboard and reference navigation scroll the mounted card after layout settles, then focus its panel when requested. A modal card has no sortable registration while its inline card returns, preserving the reverse animation and focus.
 
 The independent anchoring investigation separated two failures. Scroll compensation runs before Motion measures the horizontal axis; the axis uses viewport coordinates, so widening an earlier Hydra does not animate the selected Hydra’s cards. The chat surface paints above sliding project columns.
 
