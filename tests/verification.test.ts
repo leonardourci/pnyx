@@ -64,27 +64,31 @@ test(
       source,
       rule,
     } of cases) {
-      const [result] = await linter.lintText(
+      const reports = await linter.lintText(
         source,
-        { filePath: 'web/src/lint-policy.tsx' },
+        { filePath: 'web/src/shared/ui/lint-policy.tsx' },
       )
+      const messages = reports.flatMap(report => report.messages)
       expect(
-        result!.messages.map(message => message.ruleId),
+        messages.map(message => message.ruleId),
         source,
       ).toContain(rule)
     }
 
     const valid = 'const width = window.innerWidth; <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width })} />'
-    const [result] = await linter.lintText(
+    const reports = await linter.lintText(
       valid,
-      { filePath: 'web/src/lint-policy.tsx' },
+      { filePath: 'web/src/shared/ui/lint-policy.tsx' },
     )
     const policyRules = new Set([
       'better-tailwindcss/no-restricted-classes',
       'better-tailwindcss/enforce-consistent-class-order',
       'no-restricted-syntax',
     ])
-    expect(result!.messages.filter(message => policyRules.has(message.ruleId!))).toEqual([])
+    const messages = reports.flatMap(report => report.messages)
+    const violations = messages.filter(message =>
+      message.ruleId !== null && policyRules.has(message.ruleId))
+    expect(violations).toEqual([])
   },
 )
 

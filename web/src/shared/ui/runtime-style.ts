@@ -27,7 +27,6 @@ type Variable = keyof typeof VARIABLES
 export type RuntimeStyle = Partial<Record<LengthProperty, number | string>>
   & Partial<Record<StringProperty | Variable, string>>
 
-// Only measured geometry and owner-selected sizes pass through this closed set of CSS variables.
 export function runtimeStyle({ ...values }: RuntimeStyle): CSSProperties {
   const style: Record<string, string> = {}
 

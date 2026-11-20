@@ -21,6 +21,8 @@ const IMPORT_RESTRICTIONS = [
   },
 ]
 
+const STYLED_WEB = ['web/src/shared/**/*.{ts,tsx}']
+
 // Chat rebuild removes this temporary styling exception and its scoped file list.
 const CHAT_STYLES = [
   'web/src/hydra/**/*.{ts,tsx}',
@@ -55,7 +57,7 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['web/**/*.{ts,tsx}'],
+    files: STYLED_WEB,
     ignores: CHAT_STYLES,
     plugins: { 'better-tailwindcss': tailwind },
     settings: {
@@ -354,7 +356,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['web/**/*.{ts,tsx}'],
+    files: STYLED_WEB,
     ignores: CHAT_STYLES,
     rules: {
       'no-restricted-syntax': [
