@@ -10,6 +10,7 @@ import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS } from '#setup/skill-names.ts'
+import { hydraMessages } from '#hydra/chat-messages.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
 import { openPage, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
@@ -2608,5 +2609,81 @@ test(
       page.close()
       other.close()
     }
+  },
+)
+
+test(
+  'a message the harness recorded under its own id is paired by that id, even when its words differ or a later message has the same words',
+  () => {
+    const first = {
+      id: '6f1c2a4e-0b7d-4c55-9a3e-1d2b3c4d5e6f',
+      action: 'send' as const,
+      actor: 'web',
+      hydra: 'h',
+      text: 'yes',
+      at: '2026-11-20T10:00:00.000Z',
+    }
+    const second = {
+      ...first,
+      id: '7a2d3b5f-1c8e-4d66-8b4f-2e3c4d5e6f70',
+      at: '2026-11-20T10:00:01.000Z',
+    }
+    const redacted = {
+      ...first,
+      id: '8b3e4c60-2d9f-4e77-9c50-3f4d5e6f7081',
+      text: 'the key is hunter2',
+      at: '2026-11-20T10:00:02.000Z',
+    }
+    const rows = hydraMessages({
+      messages: [
+        first,
+        second,
+        redacted,
+      ],
+      transcript: [
+        {
+          id: '10:m0',
+          kind: 'message',
+          role: 'user',
+          text: 'yes',
+          at: '2026-11-20T10:00:03.000Z',
+          inputUuid: first.id,
+        },
+        {
+          id: '20:m0',
+          kind: 'message',
+          role: 'user',
+          text: 'the key is [redacted]',
+          at: '2026-11-20T10:00:04.000Z',
+          inputUuid: redacted.id,
+        },
+      ],
+    })
+
+    // The first "yes" takes its own copy; the second, not taken yet, shows on its own.
+    expect(rows.toSorted((
+      a,
+      b,
+    ) => a.reference!.localeCompare(b.reference!)).map(row => [
+      row.id,
+      row.reference,
+      row.text,
+    ])).toEqual([
+      [
+        '10:m0',
+        first.id,
+        'yes',
+      ],
+      [
+        second.id,
+        second.id,
+        'yes',
+      ],
+      [
+        '20:m0',
+        redacted.id,
+        'the key is hunter2',
+      ],
+    ])
   },
 )

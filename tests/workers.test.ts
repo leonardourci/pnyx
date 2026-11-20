@@ -179,6 +179,8 @@ test(
   },
 )
 
+const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
+
 const times = ({
   sessions,
   text,
@@ -217,6 +219,8 @@ test(
         'export',
         '--text',
         'Use semicolons as separators',
+        '--idempotency-key',
+        REPLY_ID,
       ],
     })
     expect(sent.reply).toMatchObject({
@@ -231,6 +235,8 @@ test(
       sessions: [worker],
       text: 'Use semicolons as separators',
     })).toBe(1)
+    // Claude Code took the reply under the owner's own id.
+    expect(worker.uuids).toContain(REPLY_ID)
 
     const { thread } = await hydra.owner({
       args: [
@@ -239,11 +245,14 @@ test(
         'export',
       ],
     })
-    expect(thread.entries).toContainEqual(expect.objectContaining({
-      role: 'You',
-      text: 'Use semicolons as separators',
-      receipt: 'delivered',
-    }))
+    // Only the owner's words show as theirs: never the copy Pnyx delivered, its wrapper or the start prompt.
+    expect((thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
+      expect.objectContaining({
+        role: 'You',
+        text: 'Use semicolons as separators',
+        receipt: 'delivered',
+      }),
+    ])
     expect((await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -459,16 +468,19 @@ test(
       what: 'the reply to reach Codex',
       check: () => worker.answered === 2,
     })
-    expect((await hydra.owner({
+    // Codex's transcript holds the start prompt, the delivered reply and its own injected context; only the reply is the owner's.
+    expect(((await hydra.owner({
       args: [
         'task',
         'chat',
         'codex',
       ],
-    })).thread.entries).toContainEqual(expect.objectContaining({
-      text: 'Add a test for empty input',
-      receipt: 'delivered',
-    }))
+    })).thread.entries as { role: string }[]).filter(entry => entry.role === 'You' || entry.role === 'user')).toEqual([
+      expect.objectContaining({
+        text: 'Add a test for empty input',
+        receipt: 'delivered',
+      }),
+    ])
 
     await pnyx.restart()
     await hydra.owner({

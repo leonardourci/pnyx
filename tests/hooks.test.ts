@@ -141,6 +141,23 @@ test(
       ),
     }
 
+    // The owner typed the prompt into the agent's own terminal, so the session's chat shows it as theirs.
+    mkdirSync(
+      cwd,
+      { recursive: true },
+    )
+    writeFileSync(
+      base.transcript_path,
+      `${JSON.stringify({
+        type: 'user',
+        uuid: '9c4f5d71-3eaf-4f88-8d61-4a5b6c7d8e92',
+        timestamp: new Date().toISOString(),
+        message: {
+          role: 'user',
+          content: 'Fix the flaky login test',
+        },
+      })}\n`,
+    )
     const runs = [
       await hook({
         event: 'SessionStart',
@@ -165,6 +182,22 @@ test(
       title: 'Fix the flaky login test',
       activity: 'working',
     })
+    const chat = parsed(await pnyxAxi({
+      args: [
+        'task',
+        'chat',
+        'claude:outside-1',
+        '--hydra',
+        'default',
+      ],
+      env: process.env,
+    }))
+    expect((chat.thread.entries as {
+      role: string
+      text: string
+    }[])
+      .filter(entry => entry.role === 'user' || entry.role === 'You')
+      .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
 
     await flushLogs()
     const onLogs = logFiles().map(file => readFileSync(
