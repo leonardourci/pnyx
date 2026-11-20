@@ -220,6 +220,7 @@ test(
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
 
     expect(await taskCard.evaluate(
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
       (
         element,
         original,
