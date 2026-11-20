@@ -128,7 +128,10 @@ export function findWorkerTurnToResume({
     descending: true,
   })
     .filter(event => {
-      const fields = sessionFields({ event, state })
+      const fields = sessionFields({
+        event,
+        state,
+      })
 
       return fields?.agent !== undefined
         && sessionId({ agent: fields.agent }) === sessionId({ agent })
@@ -137,7 +140,10 @@ export function findWorkerTurnToResume({
   let boundary: number | undefined
 
   for (const event of observations) {
-    const activity = sessionFields({ event, state })?.activity
+    const activity = sessionFields({
+      event,
+      state,
+    })?.activity
 
     if (activity === 'finished' || activity === 'ended' || activity === 'interrupted') {
       boundary = event.seq
@@ -155,7 +161,10 @@ export function findWorkerTurnToResume({
 
   if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)
     && (boundary === undefined || launchSeq > boundary)) {
-    lastTurn = readEvents({ hydraId, seqs: [launchSeq] })[0]
+    lastTurn = readEvents({
+      hydraId,
+      seqs: [launchSeq],
+    })[0]
   }
 
   if (!lastTurn || resumesInARow({
