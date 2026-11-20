@@ -9,21 +9,23 @@ export const WORKER_NOTES_BUDGET = 1500
 export function checkWorkerNotes({
   text,
   reason,
+  command = 'pnyx-axi hydra worker-notes set',
 }: {
   text: string | null
   reason?: string
+  command?: string
 }): void {
   if (!reason?.trim()) {
     inform({
       reason: 'Worker instructions changed without a reason',
-      clear: 'Use pnyx-axi hydra worker-notes set --text "<instructions>" --reason "<why>"',
+      clear: `Use ${command} --text "<instructions>" --reason "<why>"`,
     })
   }
 
   if (text !== null && text.length > WORKER_NOTES_BUDGET) {
     inform({
       reason: `Standing worker instructions exceed ${WORKER_NOTES_BUDGET} characters`,
-      clear: 'Use pnyx-axi hydra worker-notes set --text "<shorter instructions>" --reason "<why>"',
+      clear: `Use ${command} --text "<shorter instructions>" --reason "<why>"`,
     })
   }
 }
@@ -56,7 +58,7 @@ export function workerNotesNotice({
       data: {
         action: 'send',
         hydra: hydraConfig({ state: writer.state }).hydra.id,
-        text: `Standing worker instructions for ${target} changed: ${meta.reason}`,
+        text: `Standing worker instructions for ${target} changed${meta.reason?.trim() ? `: ${meta.reason.trim()}` : ''}`,
       },
     },
   })

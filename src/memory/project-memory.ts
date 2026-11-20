@@ -5,7 +5,7 @@ import { requireProjectMemory } from './poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { ownerProjectMoves } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
-import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange, type Learning } from './learnings.ts'
+import { archiveRemoved, dateLearnings, informReinforcement, learningText, type ArchivedLine, type LearningChange, type Learning } from './learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -334,6 +334,7 @@ export async function writeProjectMemory({
 }) {
   if (key === 'workers') {
     checkWorkerNotes({
+      command: `pnyx-axi project worker-notes set --project ${JSON.stringify(path)}`,
       text: after,
       reason: meta.reason,
     })
@@ -348,6 +349,16 @@ export async function writeProjectMemory({
         facts,
         hydraId,
       })
+
+      const readsLearning = confirmed !== undefined
+        || learning?.used !== undefined || learning?.archive !== undefined
+
+      if (readsLearning) {
+        requireProjectMemory({
+          hydraId,
+          id: view.id,
+        })
+      }
 
       const previous = view.events.find(event => event.id === meta.id)
 
@@ -419,6 +430,11 @@ export async function writeProjectMemory({
       }
 
       if (key === 'learnings') {
+        informReinforcement({
+          confirmed,
+          change: learning,
+          evidence: meta.reason,
+        })
         dateLearnings({
           before: view.learnings,
           after,

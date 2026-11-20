@@ -1,3 +1,4 @@
+import { POLIS_NAME } from './polis-policy.ts'
 import { inform } from '#app/command-notices.ts'
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
@@ -5,7 +6,7 @@ import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './pole
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, readOwnerLogs, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
-import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
+import { archiveRemoved, dateLearnings, informReinforcement, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
@@ -180,6 +181,11 @@ function append({
   }
 
   if (key === 'learnings') {
+    informReinforcement({
+      confirmed,
+      change: learning,
+      evidence: meta.reason,
+    })
     dateLearnings({
       before: log.memory[key]?.lines,
       after,
@@ -668,6 +674,13 @@ export function moveOwnerPolis({
   key: string
   meta: OwnerMeta
 }) {
+  if (!POLIS_NAME.test(destination)) {
+    throw new HydraError({
+      message: 'Invalid destination polis name',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   tryMigrate()
 
   return withRegistryLock({
@@ -741,6 +754,7 @@ export function moveOwnerPolis({
 
       if (key === 'workers') {
         checkWorkerNotes({
+          command: 'pnyx-axi owner worker-notes set',
           text: after,
           reason: meta.reason,
         })

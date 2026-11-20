@@ -213,13 +213,6 @@ export function dateLearnings({
     })
   }
 
-  if (reinforced.length && !evidence?.trim()) {
-    inform({
-      reason: 'Learning reinforced without session evidence',
-      clear: 'Use pnyx-axi owner memory confirm or project memory confirm with --reason "<session evidence>" to record why it remains useful',
-    })
-  }
-
   if (change?.used !== undefined && !change.save) {
     throw new HydraError({
       message: '--used belongs to a memory save',
@@ -393,4 +386,23 @@ export function learningDigest({
   }
 
   return text.join('\n')
+}
+
+export function informReinforcement({
+  confirmed,
+  change,
+  evidence,
+}: {
+  confirmed?: string
+  change?: LearningChange
+  evidence?: string
+}): void {
+  const reinforced = confirmed !== undefined || Boolean(change?.used?.trim())
+
+  if (reinforced && !evidence?.trim()) {
+    inform({
+      reason: 'Learning reinforced without session evidence',
+      clear: 'Use pnyx-axi owner memory confirm or project memory confirm with --reason "<session evidence>" to record why it remains useful',
+    })
+  }
 }

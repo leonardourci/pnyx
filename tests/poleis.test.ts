@@ -1087,8 +1087,32 @@ test(
         'w'.repeat(1600),
       ],
     ]) {
-      const overBudget = await work.owner({ args })
-      expect(overBudget.notices).toBeDefined()
+      const overBudget = await work.owner({
+        args: [
+          ...args,
+          '--reason',
+          'Save explicit budget example',
+        ],
+      })
+      expect(overBudget.notices).toContainEqual(expect.objectContaining({ reason: expect.stringMatching(/uses (1600 of 1500|25000 of 24000)|exceed|budget/i) }))
+      const readArgs = args[0] === 'hydra' ? [
+        'hydra',
+        'memory',
+        'list',
+        '--key',
+        'scope',
+      ] : args[1] === 'worker-notes' ? [
+        'owner',
+        'memory',
+        'list',
+      ] : [
+        'owner',
+        'memory',
+        'list',
+        '--key',
+        'preferences',
+      ]
+      expect(JSON.stringify(await work.owner({ args: readArgs }))).toContain(args[args.length - 1])
     }
 
     const savedBudget = JSON.stringify(await work.owner({
@@ -1411,6 +1435,26 @@ test(
         'Explicit hidden-project update',
       ],
     })).notices).toBeDefined()
+
+    for (const text of [
+      'Project pulsar learning',
+      'Unknown private learning',
+    ]) {
+      expect((await hidden.ownerRefused({
+        args: [
+          'project',
+          'memory',
+          'confirm',
+          '--project',
+          path,
+          '--text',
+          text,
+          '--reason',
+          'Explicit confirmation',
+        ],
+      })).code).toBe('NOT_FOUND')
+    }
+
     expect((await pnyxAxi({
       args: [
         'hydra',
@@ -2151,12 +2195,13 @@ test(
         'direct-memory',
       ],
     })
-    expect(JSON.stringify(await hydra.owner({
+    const movedProjects = await hydra.owner({
       args: [
         'project',
         'list',
       ],
-    }))).toContain('direct-memory')
+    })
+    expect(movedProjects.projects.find((entry: { path: string }) => entry.path === project)?.polis).toBe('direct-memory')
     await hydra.owner({
       args: [
         'owner',
@@ -2217,6 +2262,41 @@ test(
       ],
     })
     expect(reinforced.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('without session evidence') }))
+    const evidenced = await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'confirm',
+        '--text',
+        'Direct project learning',
+        '--reason',
+        'Confirmed in this session',
+      ],
+    })
+    expect(evidenced.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('without session evidence') }))
+    expect((await hydra.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'Invalid',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Still readable after invalid move',
+      ],
+    })
+
     await run({
       args: [
         'owner',
@@ -3021,6 +3101,14 @@ test(
         'bypassPermissions',
       ],
     })
+    const beforeGrant = (await target.owner({
+      args: [
+        'task',
+        'show',
+        task.id,
+        '--full',
+      ],
+    })).task.toolsRevision
     await run({
       args: [
         'task',
@@ -3042,7 +3130,8 @@ test(
           ],
         })
 
-        return full.task.toolsRevision === full.task.toolsApplied
+        return full.task.tools.includes('browser') && full.task.toolsRevision !== beforeGrant
+          && full.task.toolsRevision === full.task.toolsApplied
       },
     })
 

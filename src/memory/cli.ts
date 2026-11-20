@@ -342,6 +342,7 @@ export const owner = guard({
 
     if (key === 'workers') {
       checkWorkerNotes({
+        command: 'pnyx-axi owner worker-notes set',
         text: after,
         reason: m.reason,
       })
