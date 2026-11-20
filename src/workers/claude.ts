@@ -8,7 +8,7 @@ import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, type UUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
@@ -358,6 +358,8 @@ export function claudeProvider({
       let closed = false, interrupted = false, active = false
       let inputGeneration = 0
       const nativeInputs = new Map<string, string>()
+      // Claude Code writes a uuid once per transcript and links what follows a repeat to the first record.
+      const sentUuids = new Set<string>()
       let publish: Parameters<NativeSession['run']>[0]['emit'] | undefined
 
       const native: NativeSession = {
@@ -425,7 +427,11 @@ export function claudeProvider({
                 fresh = false
               }
 
-              const uuid = randomUUID()
+              const uuid = inputUuid({
+                owner: compact ? undefined : item.ownerMessageId,
+                sent: sentUuids,
+              })
+              sentUuids.add(uuid)
               nativeInputs.set(
                 uuid,
                 item.id,
@@ -1286,6 +1292,22 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
   }
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Claude Code records a user message under the uuid it is sent with, so the owner's message id becomes the transcript
+// line's. An id this session already sent gets a fresh uuid.
+function inputUuid({
+  owner,
+  sent,
+}: {
+  owner?: string
+  sent: Set<string>
+}): UUID {
+  const fresh = owner !== undefined && UUID_PATTERN.test(owner) && !sent.has(owner)
+
+  return fresh ? owner as UUID : randomUUID()
+}
+
 export const readClaudeTranscript: TranscriptReader = ({
   record,
   subagent = false,
@@ -1348,6 +1370,10 @@ export const readClaudeTranscript: TranscriptReader = ({
 
   if (entry.type === 'user' && entry.isCompactSummary !== true && entry.isSidechain !== true) {
     parsed.digest = injectedDigest({ text: textContent({ value: content }) })
+
+    if (typeof entry.uuid === 'string') {
+      parsed.inputUuid = entry.uuid
+    }
   }
 
   if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {

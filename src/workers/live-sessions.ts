@@ -11,6 +11,8 @@ import type { Host, Live } from '#app/host-types.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { ownerActor } from '#app/actors.ts'
+import type { HydraState } from '#app/model.ts'
 import { receivedWith } from '#hydra/received.ts'
 import type { createHydraTurns } from '#hydra/turns.ts'
 import { loadHydra } from '#app/store.ts'
@@ -41,6 +43,34 @@ import { liveReplies } from './streaming.ts'
 import type { createUsageTracker } from './usage-tracker.ts'
 
 // One provider process per hosted session: opening it, feeding it input, following what it does, and retiring it.
+// The one owner message an input carries for the first time: a Hydra message the agent has not taken yet, or a task reply
+// delivered in its own words. Its id can become the harness's id for the input.
+function firstOwnerMessage({
+  state,
+  card,
+  input,
+  steering,
+}: {
+  state: HydraState
+  card: string
+  input?: string
+  steering?: string[]
+}): string | undefined {
+  if (steering) {
+    const [only] = steering
+    const replies = state.cards[card]?.steering ?? []
+    const reply = steering.length === 1 ? replies.find(message => message.id === only) : undefined
+
+    return reply && ownerActor({ actor: reply.source }) ? reply.id : undefined
+  }
+
+  const messages = card === HYDRA_CARD ? state.hydraMessages ?? [] : []
+  const message = messages.find(message => message.id === input)
+  const untaken = message && ownerActor({ actor: message.actor }) && !message.received
+
+  return untaken ? message.id : undefined
+}
+
 export function createLiveSessions({
   hydraId,
   live,
@@ -416,6 +446,8 @@ export function createLiveSessions({
             }
           }
 
+          let firstSteering: string[] | undefined
+
           if (item.steeringIds) {
             const current = loadHydra({ hydraId }).state.cards[card.id]
 
@@ -444,6 +476,7 @@ export function createLiveSessions({
                 item.id,
                 ids,
               )
+              firstSteering = ids
             } else {
               item.text = inboxNotice({
                 card: current,
@@ -497,6 +530,12 @@ export function createLiveSessions({
               pnyxHome(),
               'hydras',
             ),
+            ownerMessageId: firstOwnerMessage({
+              state: loadHydra({ hydraId }).state,
+              card: card.id,
+              input: item.id,
+              steering: firstSteering,
+            }),
           })
         }
       }

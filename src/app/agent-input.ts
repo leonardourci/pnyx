@@ -9,11 +9,13 @@ export function agentInput({
   text,
   original,
   hydras,
+  ownerMessageId,
 }: {
   id: string
   text: string
   original: string
   hydras: string
+  ownerMessageId?: string
 }): HostedInput {
   const images = attachedImages({
     text: original,
@@ -46,9 +48,15 @@ export function agentInput({
     }
   })
 
-  return {
+  const input: HostedInput = {
     id,
     text,
     images,
   }
+
+  if (ownerMessageId) {
+    input.ownerMessageId = ownerMessageId
+  }
+
+  return input
 }
