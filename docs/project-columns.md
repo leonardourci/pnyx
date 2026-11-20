@@ -148,7 +148,7 @@ Open: profile the dense view before and after the performance changes, using Chr
 
 ### Large-workspace stress findings
 
-The 628-task, six-Hydra stress run blocks the merge. Required: cards and project columns use TanStack Virtual windows, and off-screen Hydra bodies unmount. Width placeholders keep the horizontal layout steady. Drafts, selection, family folds and scroll offsets live outside those DOM nodes and return when a view remounts. Focused fields, composition, an active drag and the modal remain mounted until the owner finishes that interaction (ask-216413).
+The 628-task, six-Hydra stress run blocks the merge. Every Hydra, project column, card and loaded task update stays mounted while scrolling. Project columns and update rows use `content-visibility: auto` with intrinsic sizes so the browser can skip off-screen rendering. Activity reads all update pages when opened. Drafts, selection, family folds and scroll offsets remain in their existing stores.
 
 Scrolling uses one shared Lenis frame loop. A task's modal action selects it without waiting for inline-card scrolling. The addressed Hydra stays anchored as other Hydra widths load. Open: validate and fix the stress findings, then await Hydra's stress-complete signal before the single final deslop and CI approval.
 

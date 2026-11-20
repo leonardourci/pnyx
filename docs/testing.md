@@ -104,4 +104,4 @@ Rules:
 - `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
 - `browser/chat.test.ts`: Hydra's chat and a task's chat open on their latest row, hold still and keep new rows in view, in a card as tall as its column; older rows load without moving the ones being read and a failed load offers Retry; Focus mode keeps tool names out of the working line, and a card's status never names one.
-- `browser/cards.test.ts`: all 61 tasks remain mounted once through column scrolling, an open card fills its column after a viewport resize, and starting its worker keeps one stored card and the same DOM node.
+- `browser/cards.test.ts`: every column and card stays mounted through horizontal and vertical scrolling at desktop and phone widths, project requests reveal their column, Activity loads and retains all update rows and receives live changes, an open card fills its column after a viewport resize, and starting its worker keeps one stored card and the same DOM node.
