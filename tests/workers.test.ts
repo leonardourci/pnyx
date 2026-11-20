@@ -1902,6 +1902,7 @@ test(
       what: 'worker log block',
       check: async () => (await hydra.task({ key: 'facts' })).status === 'blocked',
     })
+    expect((await hydra.task({ key: 'facts' })).column).toBe(await hydra.column({ role: 'in_progress' }))
     writeFileSync(
       path,
       'note: reviewed café failure\nneeds-you: choose an account',
