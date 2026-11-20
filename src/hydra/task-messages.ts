@@ -38,15 +38,14 @@ export function replyEchoes({
       },
     })
 
-    for (const part of parts) {
-      sentTimes.set(
-        part.text,
-        [
-          ...sentTimes.get(part.text) ?? [],
-          sentAt,
-        ],
-      )
-    }
+    const sent = parts.map(part => part.text).join('')
+    sentTimes.set(
+      sent,
+      [
+        ...sentTimes.get(sent) ?? [],
+        sentAt,
+      ],
+    )
   }
 
   return {
@@ -100,15 +99,14 @@ export function deliveredInputs({
       entry: message,
       provider: agent?.provider,
     })
-  const injected = messages.filter(message => pnyxWords({ message }))
-  const injectedMessages = new Set(injected.map(message => messageOf({ entry: message })))
-
-  return new Set(inputs.filter(entry => {
-    const pnyxInput = entry.pnyx === true || injectedMessages.has(messageOf({ entry }))
-
-    return pnyxInput || echoes.take({
-      text: entry.text,
-      at: entry.at,
+  const fromPnyx = ({ message }: { message: ThreadEntry }) => message.pnyx === true
+    || pnyxWords({ message })
+    || echoes.take({
+      text: message.text,
+      at: message.at,
     })
-  }))
+  const delivered = messages.filter(message => fromPnyx({ message }))
+  const deliveredMessages = new Set(delivered.map(message => messageOf({ entry: message })))
+
+  return new Set(inputs.filter(entry => deliveredMessages.has(messageOf({ entry }))))
 }
