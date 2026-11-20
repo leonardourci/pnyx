@@ -118,22 +118,17 @@ export function hydraMessages({
     return new Set(delivered.map(copy => normalized({ text: copy })))
   }
 
-  // The newest message claims the newest copy sent after it, so a stopped one cannot take its resend's copy.
   const claims = new Map<HydraMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
+  const paired = messages.filter(message => message.actor !== HYDRA_ACTOR && message.actor !== 'pnyx' && !message.stopped)
+  const ids = new Set(messages.map(message => message.id))
 
-  for (const message of messages.toReversed()) {
-    if (message.actor === HYDRA_ACTOR || message.actor === 'pnyx' || message.stopped) {
-      continue
-    }
-
-    const copies = deliveredWords({ message })
-    const copy = transcript.findLast(entry => {
-      const words = ownCopies.get(entry)
-
-      return !claimed.has(entry) && words !== undefined && copies.has(words)
-        && (entry.at === undefined || entry.at >= message.at)
-    })
-
+  const claim = ({
+    message,
+    copy,
+  }: {
+    message: HydraMessage
+    copy?: ThreadEntry
+  }) => {
     if (copy) {
       claimed.add(copy)
       claims.set(
@@ -141,6 +136,35 @@ export function hydraMessages({
         copy,
       )
     }
+  }
+
+  // The harness recorded a message under its id when Pnyx could give it one.
+  for (const message of paired) {
+    claim({
+      message,
+      copy: transcript.find(entry => entry.inputUuid === message.id && ownCopies.has(entry)
+        && !claimed.has(entry)),
+    })
+  }
+
+  // Otherwise the newest message claims the newest copy of its words sent after it, so a stopped one cannot take its
+  // resend's copy, and no message takes a copy recorded under another's id.
+  for (const message of paired.toReversed()) {
+    if (claims.has(message)) {
+      continue
+    }
+
+    const copies = deliveredWords({ message })
+    claim({
+      message,
+      copy: transcript.findLast(entry => {
+        const words = ownCopies.get(entry)
+        const othersCopy = entry.inputUuid !== undefined && ids.has(entry.inputUuid)
+
+        return !claimed.has(entry) && !othersCopy && words !== undefined && copies.has(words)
+          && (entry.at === undefined || entry.at >= message.at)
+      }),
+    })
   }
 
   for (const message of messages) {

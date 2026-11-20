@@ -26,6 +26,7 @@ import type { TurnActions } from './conversation.ts'
 import type { TurnTiming } from './chat-messages.ts'
 import { threadEntryOrder } from './thread-order.ts'
 import { hydraMessages } from './chat-messages.ts'
+import { deliveredInput, replyEchoes } from './task-messages.ts'
 import { hydraConfig } from './config.ts'
 import type { HydraMessage } from './model.ts'
 
@@ -76,6 +77,7 @@ export interface ThreadEntry {
   initial?: boolean
   // Pnyx wrote this user input, such as a worker's start prompt.
   pnyx?: boolean
+  inputUuid?: string
   replyId?: string
   messageId?: string
   part?: number
@@ -227,6 +229,10 @@ export function transcriptEntries({
 
     if (message.pnyx) {
       entry.pnyx = true
+    }
+
+    if (parsed.inputUuid) {
+      entry.inputUuid = parsed.inputUuid
     }
 
     return entry
@@ -598,6 +604,8 @@ type ThreadSource = {
   session?: string
   path?: string
   index?: number
+  // The agent that wrote this transcript, which decides whose its user lines are.
+  agent?: Card['agent']
 }
 
 function threadSources({
@@ -631,11 +639,13 @@ function threadSources({
       {
         session,
         path: threadPath({ card }),
+        agent: card.agent,
       },
       ...previous.map(id => ({
         session: id,
         path: threadPath({ card: { agent: state.sessions?.[id]?.agent } }),
         index: members.indexOf(id),
+        agent: state.sessions?.[id]?.agent,
       })).reverse(),
     ]
   }
@@ -935,6 +945,15 @@ function readThreadPage(
     card,
     selectedSession,
   })
+  // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
+  const logged = threadEvents({
+    hydraId,
+    card,
+  })
+  const echoes = replyEchoes({
+    card: card.id,
+    events: logged,
+  })
   const named = sources.findIndex(source => source.index === sourceCursor)
   // A cursor naming a session this thread no longer pages reads no transcript.
   const first = sourceCursor === undefined ? 0 : named < 0 ? sources.length : named
@@ -975,8 +994,16 @@ function readThreadPage(
       continue
     }
 
+    // A task's owner messages show from Pnyx's record, so the input Pnyx gave its worker never shows as the owner's.
+    const typed = ({ item }: Candidate) => !deliveredInput({
+      entry: item,
+      echoes,
+      hosted: source.agent?.host === 'pnyx',
+      provider: source.agent?.provider,
+    })
+    const found = card.id === HYDRA_CARD ? read.found : read.found.filter(typed)
     candidates = [
-      ...read.found.map(candidate => ({
+      ...found.map(candidate => ({
         ...candidate,
         native: `${label}${candidate.native}`,
       })),
@@ -1008,11 +1035,6 @@ function readThreadPage(
     Infinity,
   ]
   const seenReplies = new Set<string>()
-  // A moved task's events are renumbered across the Hydras it passed through, so the cursor's boundary is looked up in the same list.
-  const logged = threadEvents({
-    hydraId,
-    card,
-  })
   const replyBoundary = logged.find(event => event.seq === replySeq)
 
   const beforeReply = ({

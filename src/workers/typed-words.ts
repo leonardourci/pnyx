@@ -1,7 +1,8 @@
 import { statSync } from 'node:fs'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { joinMessageParts } from '#hydra/history.ts'
-import { sessionEntries, splitEntry, threadPath } from '#hydra/transcripts-read.ts'
+import { sessionEntries, threadPath } from '#hydra/transcripts-read.ts'
+import { replyEchoes } from '#hydra/task-messages.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { steeringText } from './inbox-notice.ts'
 import { cardSessionId } from './session-attachments.ts'
@@ -44,50 +45,17 @@ export function typedWords({
       return []
     }
 
-    const sent = new Map<string, number>()
-
-    for (const reply of replies) {
-      if (reply.type !== 'card.replied' || reply.cardId !== card.id) {
-        continue
-      }
-
-      const parts = splitEntry({
-        entry: {
-          id: reply.data.reply,
-          role: 'user',
-          kind: 'message',
-          text: [
-            reply.data.text,
-            reply.data.context,
-          ].filter(Boolean).join('\n\n'),
-        },
-      })
-
-      for (const part of parts) {
-        sent.set(
-          part.text,
-          (sent.get(part.text) ?? 0) + 1,
-        )
-      }
-    }
+    const echoes = replyEchoes({
+      card: card.id,
+      events: replies,
+    })
 
     const typed = sessionEntries({
       path,
       session,
       boundaries: false,
     }).filter(entry => {
-      if (entry.role !== 'user' || entry.pnyx) {
-        return false
-      }
-
-      const echoes = sent.get(entry.text) ?? 0
-
-      if (echoes) {
-        sent.set(
-          entry.text,
-          echoes - 1,
-        )
-
+      if (entry.role !== 'user' || entry.pnyx || echoes.take({ text: entry.text })) {
         return false
       }
 
