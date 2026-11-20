@@ -17,17 +17,17 @@ function trigrams({ word }: { word: string }): Set<string> {
 }
 
 function paddedTrigramSimilarity({
-  a,
-  b,
+  word,
+  alternative,
 }: {
-  a: string
-  b: string
+  word: string
+  alternative: string
 }): number {
-  const x = trigrams({ word: ` ${a} ` })
-  const y = trigrams({ word: ` ${b} ` })
-  const shared = [...x].filter(t => y.has(t)).length
+  const wordTrigrams = trigrams({ word: ` ${word} ` })
+  const alternativeTrigrams = trigrams({ word: ` ${alternative} ` })
+  const shared = [...wordTrigrams].filter(trigram => alternativeTrigrams.has(trigram)).length
 
-  return shared / (x.size + y.size - shared)
+  return shared / (wordTrigrams.size + alternativeTrigrams.size - shared)
 }
 
 export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
@@ -283,8 +283,8 @@ export function matches({
 
     const contains = alternative.length >= 4 && word.includes(alternative)
     const similar = paddedTrigramSimilarity({
-      a: word,
-      b: alternative,
+      word,
+      alternative,
     }) >= FUZZY_SIMILARITY
 
     return contains || similar

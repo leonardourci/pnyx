@@ -84,6 +84,10 @@ test(
     ])
     expect(JSON.stringify(byTitle)).not.toContain('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
     expect(JSON.stringify(byTitle)).toContain('[redacted]')
+    const ledger = (byTitle as Result[]).find(result => result.title === 'Tidy the ledger')
+    expect(ledger?.snippets).toContainEqual(expect.objectContaining({
+      snippet: expect.stringContaining('[invoice]'),
+    }))
 
     for (const query of [
       'invoices',
@@ -105,7 +109,7 @@ test(
       ],
     })
     expect(fuzzy.mode).toBe('fuzzy')
-    expect(fuzzy.results).toContainEqual(expect.objectContaining({ title: 'Invoice export nightly' }))
+    expect(fuzzy.results).toContainEqual(expect.objectContaining({ title: 'Tidy the ledger' }))
 
     pnyx.claude.plan({
       hydra: hydra.id,

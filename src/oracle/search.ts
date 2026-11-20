@@ -244,17 +244,17 @@ export function search({
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
 
-    const documents = [
-      ...index.documents({
+    function* documents() {
+      yield* index.documents({
         terms,
         fuzzy,
-      }),
-      ...ownerDocuments,
-      ...projectDocuments,
-      ...hydraDocuments,
-    ]
+      })
+      yield* ownerDocuments
+      yield* projectDocuments
+      yield* hydraDocuments
+    }
 
-    for (const document of documents) {
+    for (const document of documents()) {
       if (!terms.some(term => wordMatches({
         text: document.text,
         term,

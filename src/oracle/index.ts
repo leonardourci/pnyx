@@ -250,7 +250,9 @@ function catchUp({
       continue
     }
 
-    if ((read.at(-1)?.seq ?? cursor.seq) === cursor.seq) {
+    const lastEvent = read.at(-1)
+
+    if (!lastEvent) {
       break
     }
 
@@ -289,12 +291,12 @@ function catchUp({
         }
 
         putCursor.run({
-          seq: read.at(-1)?.seq ?? cursor.seq,
-          event: read.at(-1)?.id ?? cursor.event,
+          seq: lastEvent.seq,
+          event: lastEvent.id,
         })
       },
     })
-    pendingEvents = superseded || (read.at(-1)?.seq ?? cursor.seq) < throughEvents
+    pendingEvents = superseded || lastEvent.seq < throughEvents
   }
 }
 
