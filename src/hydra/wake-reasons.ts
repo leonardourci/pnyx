@@ -1,3 +1,4 @@
+import { agentActivity } from '#workers/activity.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
@@ -126,6 +127,14 @@ export function mergeApproved({
   card: Card
   url?: string
 }): boolean {
+  if (agentActivity({
+    card,
+    cards: state.cards,
+    sessions: state.sessions,
+  }) === 'working') {
+    return false
+  }
+
   if (url !== undefined && mergeApproval({
     state,
     card,
@@ -139,7 +148,7 @@ export function mergeApproved({
     projects: state.projects ?? [],
   })
 
-  return (card.sessionActivity ?? card.activity) !== 'working' && rule?.merge === 'hydra'
+  return rule?.merge === 'hydra'
 }
 
 const checksDetail = ({ link }: { link: Link }) =>

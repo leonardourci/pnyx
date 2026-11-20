@@ -1,3 +1,4 @@
+import { sessionId } from './session-attachments.ts'
 import { sessionFields } from './session-facts.ts'
 import { scanEvents } from '#app/event-log.ts'
 
@@ -34,7 +35,7 @@ export function taskSessions({
 
     if (ids.has(event.cardId) && fields?.agent) {
       const agent = fields.agent
-      sessions.add(`${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`)
+      sessions.add(sessionId({ agent }))
     }
   }
 

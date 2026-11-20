@@ -2229,3 +2229,112 @@ test(
     }).activity).toBeUndefined()
   },
 )
+
+test(
+  'repeated working observations and child turns do not reset a cut worker’s resume limit',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'resume-limit' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'migration',
+        '--title',
+        'Resume limit',
+        '--folder',
+        folder,
+      ],
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('<pnyx-worker'),
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'migration',
+      ],
+    })
+    await hydra.agent({ cwd: folder })
+    const agent = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'migration',
+        '--full',
+      ],
+    })).task.agent
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          'migration',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent,
+          activity: 'working',
+        }),
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          `child-${attempt}`,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent: {
+            ...agent,
+            agentId: `child-${attempt}`,
+            host: undefined,
+          },
+          activity: 'working',
+        }),
+      })
+      pnyx.claude.plan({
+        hydra: hydra.id,
+        match: ({ text }) => text.includes('Pnyx restarted'),
+        hold: true,
+      })
+      await pnyx.restart()
+      await until({
+        what: 'the next cut turn to resume',
+        check: () => pnyx.claude.sessions.filter(session => session.cwd === folder)
+          .length === attempt + 2,
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'migration',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent,
+        activity: 'working',
+      }),
+    })
+    await pnyx.restart()
+    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(4)
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'migration',
+        '--full',
+      ],
+    })).task.activity).toBe('interrupted')
+  },
+)

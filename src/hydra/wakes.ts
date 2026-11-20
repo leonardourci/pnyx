@@ -363,6 +363,7 @@ export function findHydraTurnToResume({
 
     return fields?.activity === 'finished' && event.actor === 'pnyx'
       && fields.agent?.sessionId === agent.sessionId && fields.agent.provider === agent.provider
+      && fields.agent.agentId === agent.agentId
   })
   const sourceId = cutHydraTurn.id.replace(
     /:compact:hosted$|:hosted$/,

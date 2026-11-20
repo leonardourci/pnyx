@@ -134,7 +134,7 @@ export function sessionTask({
     },
   })
   const root = state.sessions?.[parent]
-  const task = state.sessions?.[id]?.taskId ?? root?.taskId
+  const task = agent.agentId ? root?.taskId : state.sessions?.[id]?.taskId
 
   if (task) {
     return state.cards[task]
@@ -303,6 +303,8 @@ export function applyAttachment({
     delete old.terminal
     delete old.activity
     delete old.sessionActivity
+    delete old.turnStartedAt
+    delete old.turnEndedSeq
     delete old.workingSince
     delete old.stoppedAt
     old.attention = old.attention.filter(a => !a.key.startsWith('hook:') && a.key !== INTERRUPTED)
@@ -375,7 +377,8 @@ export function observeSession({
     id,
     agent: cloneValue({ value: card.agent }),
     originCardId: card.id,
-    taskId: card.sessionIds?.length && !card.sessionIds.includes(id) ? null : card.id,
+    taskId: card.agent.agentId || (card.sessionIds?.length && !card.sessionIds.includes(id))
+      ? null : card.id,
     attention: [],
     sourceRefs: [],
   }
@@ -407,6 +410,10 @@ export function observeSession({
       lastSeen: session.lastSeen,
     })) {
       session.lastSeen = event.at
+    }
+
+    if (event.type === 'card.pushed' && typeof event.data.activity === 'string') {
+      session.activityObservedAt = event.data.source?.observedAt ?? event.at
     }
 
     session.agent = {

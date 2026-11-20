@@ -158,7 +158,8 @@ function unsafeWorker({
     return `The worker transcript reached ${QUEUE_CONTEXT_BYTES} bytes`
   }
 
-  const stalled = session.activity === 'working' || card.status?.state === 'blocked'
+  const stalled = session.activity === 'working'
+    || card.workerLog?.status?.code === 'blocked' || card.status?.state === 'blocked'
     || card.status?.state === 'paused' || session.attention.some(a => a.blocking && !a.answered)
 
   if (stalled && now - seenAt({ session }) >= QUEUE_STALL_MS) {

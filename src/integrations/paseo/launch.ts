@@ -141,6 +141,14 @@ export async function startAgent({
     }
   }
 
+  const taskEnvironment = {
+    PNYX_HOME: pnyxHome(),
+    PNYX_HYDRA: hydraId,
+    PNYX_TASK_DIR: workerTaskDir({
+      hydraId,
+      task: claimed.card.id,
+    }),
+  }
   const {
     agent,
     ref,
@@ -158,22 +166,8 @@ export async function startAgent({
         provider: dispatch.provider,
         folder: dispatch.folder,
       },
-      env: {
-        PNYX_HOME: pnyxHome(),
-        PNYX_HYDRA: hydraId,
-        PNYX_TASK_DIR: workerTaskDir({
-          hydraId,
-          task: claimed.card.id,
-        }),
-      },
-    }) as Record<string, string> : {
-      PNYX_HOME: pnyxHome(),
-      PNYX_HYDRA: hydraId,
-      PNYX_TASK_DIR: workerTaskDir({
-        hydraId,
-        task: claimed.card.id,
-      }),
-    },
+      env: taskEnvironment,
+    }) as Record<string, string> : taskEnvironment,
     beforeCreate: () => withWriter({
       hydraId,
       fn: ({ writer }) => {
