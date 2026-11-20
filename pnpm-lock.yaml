@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@toon-format/toon':
+        specifier: 2.3.1
+        version: 2.3.1
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.285
         version: 0.3.285(@anthropic-ai/sdk@0.133.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
@@ -23,9 +26,6 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.14.26
         version: 3.14.26(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@toon-format/toon':
-        specifier: 2.3.1
-        version: 2.3.1
       axi-sdk-js:
         specifier: ^0.1.13
         version: 0.1.13
