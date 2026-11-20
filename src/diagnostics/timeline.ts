@@ -55,7 +55,7 @@ export interface TimelineFilter {
 
 const string = ({ value }: { value: unknown }) => typeof value === 'string' ? value : undefined
 
-export function eventRow({ event }: { event: HydraEvent }): TimelineRow {
+function eventRow({ event }: { event: HydraEvent }): TimelineRow {
   const data = asRecord({ value: event.data })
   const origin = asRecord({ value: data?.source })
   const actualSession = event.type === 'diagnostic.retry' ? event.data.sessionId : event.sessionId

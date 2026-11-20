@@ -23,7 +23,7 @@ const frameKey = ({ frame }: { frame: Runtime.CallFrame }) => [
   frame.columnNumber,
 ].join(':')
 
-export function profileFunctions({ profile }: { profile: Profiler.Profile }) {
+function profileFunctions({ profile }: { profile: Profiler.Profile }) {
   const frames = new Map(profile.nodes.map(node => [
     node.id,
     node.callFrame,
