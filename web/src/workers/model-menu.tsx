@@ -16,5 +16,5 @@ export function ModelMenu({
 }
 
 export function ModelResults({ ...props }: ComponentProps<'div'>) {
-  return <div {...props} className="account-model-results min-h-0 flex-1 scrollbar-none overflow-auto overscroll-contain [&::-webkit-scrollbar]:hidden [&>:is(p,[role=alert])]:p-2 [&>:is(p,[role=alert])]:text-meta [&>:is(p,[role=alert])]:text-muted" />
+  return <div {...props} className="account-model-results min-h-8 flex-1 scrollbar-none overflow-auto overscroll-contain [&::-webkit-scrollbar]:hidden [&>:is(p,[role=alert])]:p-2 [&>:is(p,[role=alert])]:text-meta [&>:is(p,[role=alert])]:text-muted" />
 }

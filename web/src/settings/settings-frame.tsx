@@ -7,7 +7,7 @@ export function SettingsFrame({
 }: ComponentProps<'section'>) {
   return (
     <section {...props} className="settings-page min-h-0 flex-1 scroll-pt-settings-scroll overflow-y-auto px-settings pb-30 text-ui leading-normal agent-controls settings-columns" aria-label="Settings">
-      <header className="settings-head pt-7 pb-1.5 text-center [&>h1]:m-0 [&>h1]:font-brand [&>h1]:text-pane [&>h1]:font-bold [&>p]:mt-0.5 [&>p]:text-ui [&>p]:text-muted"><h1 data-settings-heading tabIndex={-1}>Settings</h1></header>
+      <header className="settings-head pt-7 pb-1.5 text-center"><h1 className="m-0 font-brand text-pane font-bold" data-settings-heading tabIndex={-1}>Settings</h1></header>
       {children}
     </section>
   )
