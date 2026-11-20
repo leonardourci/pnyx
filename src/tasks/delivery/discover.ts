@@ -15,8 +15,12 @@ const DISCOVERY_TIMEOUT_MS = 30_000
 const DISCOVERY_LIMIT = 100
 
 export function discoverableTasks({ state }: { state: HydraState }) {
+  if (state.config?.hydra.kind === 'firstmate') {
+    return []
+  }
+
   return Object.values(state.cards).filter(card => liveTask({ card }) && !card.doneAt
-    && Boolean(card.copy || card.folder || card.agent?.cwd || card.branches?.length))
+    && Boolean(card.copy?.state === 'active' || card.agent || card.launch || card.branches?.length))
 }
 
 export async function discoverPullRequests({
@@ -31,10 +35,6 @@ export async function discoverPullRequests({
   active(): boolean
 }): Promise<void> {
   const state = loadHydra({ hydraId }).state
-
-  if (state.config?.hydra.kind === 'firstmate') {
-    return
-  }
 
   for (const card of discoverableTasks({ state })) {
     const delay = workingTask({ card }) ? interval : interval * IDLE_FOLLOW_MULTIPLIER
@@ -52,8 +52,8 @@ export async function discoverPullRequests({
       card.id,
       Date.now(),
     )
-    const copy = card.copy && { ...card.copy }
-    const cwd = copy?.path ?? card.folder ?? card.agent?.cwd
+    const copy = card.copy?.state === 'active' ? { ...card.copy } : undefined
+    const cwd = copy?.path ?? card.agent?.cwd ?? (card.launch ? card.folder : undefined)
     const branches = [...card.branches ?? []]
 
     if (cwd) {
@@ -114,6 +114,12 @@ export async function discoverPullRequests({
         withWriter({
           hydraId,
           fn: ({ writer }) => {
+            const current = writer.state.cards[card.id]
+
+            if (!current || !liveTask({ card: current }) || current.doneAt) {
+              return
+            }
+
             writer.append({
               event: {
                 v: 1,
@@ -177,7 +183,8 @@ export async function discoverPullRequests({
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
 
-            if (!current || current.links.some(link => link.url === request.url)) {
+            if (!current || !liveTask({ card: current }) || current.doneAt
+              || current.links.some(link => link.url === request.url)) {
               return
             }
 

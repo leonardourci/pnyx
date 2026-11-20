@@ -1873,45 +1873,12 @@ test(
 )
 
 test(
-  'hosted turns and worker.log keep status factual across idle turns and restarts',
+  'worker log status and complete lines survive restarts',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'facts' })
     await until({
       what: 'idle worker status',
-      check: async () => (await hydra.task({ key: 'facts' })).status === 'idle',
-    })
-    const full = await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'facts',
-        '--full',
-      ],
-    })
-    expect(full.task.status).toBeUndefined()
-    expect(full.task.statusLog).toEqual([])
-    const held = pnyx.claude.plan({
-      hydra: hydra.id,
-      match: ({ text }) => text.includes('Another factual turn'),
-      reply: 'Finished another turn',
-      hold: true,
-    })
-    await hydra.owner({
-      args: [
-        'reply',
-        'facts',
-        '--text',
-        'Another factual turn',
-      ],
-    })
-    await until({
-      what: 'running worker status',
-      check: async () => (await hydra.task({ key: 'facts' })).status === 'running',
-    })
-    held.release()
-    await until({
-      what: 'idle after the second turn',
       check: async () => (await hydra.task({ key: 'facts' })).status === 'idle',
     })
     const path = join(
@@ -2087,6 +2054,27 @@ test(
       line: 'done: outside work complete',
     })
     expect((await hydra.task({ key: 'completed-worker' })).status).toBe('done')
+    await hydra.owner({ args: ['task', 'hide', 'completed-worker'] })
+    const completed = await hydra.task({ key: 'completed-worker' })
+    const hiddenLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      completed.id,
+      'worker.log',
+    )
+    await pnyx.restart({
+      whileStopped: () => writeFileSync(
+        hiddenLog,
+        'note: recorded while hidden\n',
+        { flag: 'a' },
+      ),
+    })
+    expect(await hydra.task({ key: 'completed-worker' })).toMatchObject({
+      status: 'done',
+      latest: 'recorded while hidden',
+    })
     await hydra.owner({
       args: [
         'hydra',

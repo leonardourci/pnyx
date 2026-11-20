@@ -103,6 +103,17 @@ export function cardStatus({
     }
   }
 
+  if (card.wait) {
+    const title = cards?.[card.wait.task]?.title ?? card.facts?.waitTitle ?? card.wait.task
+
+    return {
+      kind: 'waiting',
+      state: 'paused',
+      text: `waiting: ${title}`,
+      at: card.wait.at,
+    }
+  }
+
   const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
 
   if (requests.length && requests.every(link => link.state === 'merged')) {

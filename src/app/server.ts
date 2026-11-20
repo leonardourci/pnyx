@@ -228,8 +228,6 @@ export async function mountOwnedHydra({
     streamed,
   } = feed
 
-  // The held state is already updated when the pump reads its events, so changes need the previous activity.
-  // ponytail: one entry per task, seeded at mount; prune if Hydras get huge.
   const observedWork = new Map<string, boolean>(Object.entries(state.cards).map(([
     task,
     card,
@@ -283,15 +281,14 @@ export async function mountOwnedHydra({
 
       const linkedByOthers = event.type === 'card.linked' && event.actor !== 'pnyx'
       const changedTask = event.type === 'session.observed' ? state.sessions?.[sessionId({ agent: event.data.fields.agent })]?.taskId ?? event.cardId : event.cardId
-      const declaredChange = workChanged({ task: changedTask })
+      const activityChanged = workChanged({ task: changedTask })
 
       const discoveryChanged = [
         'task.copy',
         'task.launched',
-        'task.worker-line',
       ].includes(event.type)
 
-      if (linkedByOthers || declaredChange || discoveryChanged) {
+      if (linkedByOthers || activityChanged || discoveryChanged) {
         tick.refreshLinks({ task: changedTask })
       }
 

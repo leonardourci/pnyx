@@ -843,7 +843,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         intent: task.intent === undefined ? 'none' : clip({ text: task.intent }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
-        latest: currentState({ card: task })?.text ?? 'none',
+        latest: clip({ text: currentState({ card: task })?.text ?? 'none' }),
         status: cardStatus({
           card: task,
           cards: state.cards,

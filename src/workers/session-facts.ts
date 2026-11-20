@@ -5,6 +5,7 @@ import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
 import { refreshTasks } from '#tasks/columns.ts'
 import { touch } from '#tasks/touch.ts'
+import { HydraError } from '#store/errors.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 
@@ -58,7 +59,15 @@ export function decideSessionFacts({
   task?: Card
   session?: AgentSession
 }): Decision {
-  const agent = fields.agent ?? session!.agent
+  const agent = fields.agent ?? session?.agent
+
+  if (!agent) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: 'A session observation requires an agent',
+    })
+  }
+
   const owner = task ?? sessionTask({
     state,
     agent,
@@ -152,6 +161,11 @@ export function applySessionFacts({
     ...fields.agent,
   }
 
+  const activityAt = source?.observedAt ?? event.at
+  const previousActivityAt = session.activityObservedAt
+  const staleActivity = previousActivityAt !== undefined
+    && Date.parse(activityAt) < Date.parse(previousActivityAt)
+
   if (source) {
     session.sourceRefs = [
       ...session.sourceRefs.filter(known => !sameSource({
@@ -160,7 +174,9 @@ export function applySessionFacts({
       })),
       { ...source },
     ]
-    session.lastSeen = event.at
+    if (!session.lastSeen || Date.parse(event.at) >= Date.parse(session.lastSeen)) {
+      session.lastSeen = event.at
+    }
   }
 
   if (fields.title) {
@@ -187,13 +203,14 @@ export function applySessionFacts({
     session.attention = fields.attention.map(item => ({ ...item }))
   }
 
-  if (typeof fields.activity === 'string') {
+  if (typeof fields.activity === 'string' && !staleActivity) {
     sessionActivity({
       target: session,
       activity: fields.activity,
       at: event.at,
       seq: event.seq,
     })
+    session.activityObservedAt = activityAt
   }
 
   projectSession({

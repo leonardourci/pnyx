@@ -147,7 +147,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi hydra create\|list\|show\|set` | Create and configure Hydras. |
 | `pnyx-axi hydra start\|send\|messages\|check` | Start Hydra, queue a message in its chat, read the chat, or wait for changes. |
 | `pnyx-axi project add\|list\|set\|remove` | Attach, list, configure or detach projects. |
-| `pnyx-axi task create\|list\|show\|rename\|status\|history` | Manage tasks and one level of subtasks. |
+| `pnyx-axi task create\|list\|show\|rename\|history` | Manage tasks and one level of subtasks. |
 | `pnyx-axi task start\|continue <task>` | Start a worker, or host an ended outside session. |
 | `pnyx-axi task attach\|detach <task>` | Attach an interactive session to a task, or detach it. |
 | `pnyx-axi column create\|rename\|describe\|rule\|resize\|reorder\|delete\|list` | Edit the Hydra's columns. |

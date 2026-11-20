@@ -75,7 +75,6 @@ export function foldWorkerLog({
     const previous = card.workerLog?.latest
     const off = previous?.identity === identity ? previous.off : 0
 
-    // A worker log is append-only; truncation must not replay old status as new work.
     if (stat.size < off) {
       throw new HydraError({
         code: 'WORKER_LOG_TRUNCATED',
@@ -93,7 +92,9 @@ export function foldWorkerLog({
     )
     let start = 0
 
-    for (let end = bytes.indexOf(10); end >= 0 && end < count; end = bytes.indexOf(
+    const complete = bytes.subarray(0, count)
+
+    for (let end = complete.indexOf(10); end >= 0; end = complete.indexOf(
       10,
       start,
     )) {
@@ -106,12 +107,14 @@ export function foldWorkerLog({
           '',
         )
       const match = /^([^:]+):\s*(.*)$/.exec(raw)
-      let code: WorkerCode = match && CODES.has(match[1] as WorkerCode) ? match[1] as WorkerCode : 'invalid'
-      let text = code === 'invalid' ? raw : match?.[2] ?? raw
+      const kind = match?.[1]
+      const content = match?.[2]
+      let code: WorkerCode = 'invalid'
+      let text = raw
 
-      if (!text.trim()) {
-        code = 'invalid'
-        text = raw
+      if (kind && content?.trim() && CODES.has(kind as WorkerCode)) {
+        code = kind as WorkerCode
+        text = content
       }
 
       const lineOff = off + end + 1
@@ -163,7 +166,7 @@ export function foldWorkerLog({
         },
       })
 
-      if (link && !card.links.some(known => known.url === link.url)) {
+      if (link && !writer.state.cards[task]?.links.some(known => known.url === link.url)) {
         applyDecision({
           writer,
           decision: decideLink({
@@ -208,7 +211,7 @@ export function followWorkerLogs({
     }
 
     for (const card of Object.values(state.cards)) {
-      if (card.hidden || card.mirror || watches.has(card.id)) {
+      if (card.mirror || watches.has(card.id)) {
         continue
       }
 

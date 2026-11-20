@@ -26,6 +26,7 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
       activity: string
       at: string
     } | undefined
+    const seenAt = Date.parse(session.activityObservedAt ?? session.lastSeen ?? '')
 
     for (const line of tail?.lines ?? []) {
       const parsed = readTranscriptRecord({
@@ -34,10 +35,10 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
       })
 
       const observedAt = Date.parse(parsed.at ?? '')
-      const seenAt = Date.parse(session.lastSeen ?? '')
       const newer = !Number.isFinite(seenAt) || observedAt > seenAt
+      const newest = !latest || observedAt >= Date.parse(latest.at)
 
-      if (parsed.activity && parsed.at && Number.isFinite(observedAt) && newer) {
+      if (parsed.activity && parsed.at && Number.isFinite(observedAt) && newer && newest) {
         latest = {
           activity: parsed.activity,
           at: parsed.at,
@@ -45,7 +46,7 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
       }
     }
 
-    if (!latest || latest.activity === session.sessionActivity) {
+    if (!latest) {
       continue
     }
 

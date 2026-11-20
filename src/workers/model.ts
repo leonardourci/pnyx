@@ -256,6 +256,7 @@ export interface AgentLaunch {
 }
 
 export interface AgentSession {
+  activityObservedAt?: string
   autoTitle?: import('#tasks/model.ts').AutoTitle
   titleSet?: boolean
   createdBy?: string
