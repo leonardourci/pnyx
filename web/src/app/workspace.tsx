@@ -613,6 +613,7 @@ export function HydraView({
   ]))
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
+  const revealingProjects = columnRequest !== null
   const requestedColumnId = columns.find(column => column.id === columnRequest?.id)?.id
   useLayoutEffect(
     () => {
@@ -1357,6 +1358,7 @@ export function HydraView({
                                     })),
                                   ]}
                                   hydraId={navigation.hydraId}
+                                  revealing={revealingProjects}
                                   view={view}
                                   save={save}
                                   expandedWidth={expandedWidth}

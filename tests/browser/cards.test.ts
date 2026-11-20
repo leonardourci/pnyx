@@ -145,10 +145,12 @@ test(
 
         for (let frame = 0; frame < detail.frames; frame++) {
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-          const width = element.getBoundingClientRect().width
-          const unfolding = width > foldedWidth + 1 && width < detail.expandedWidth - 1
+          const projectBounds = element.getBoundingClientRect()
+          const width = projectBounds.width
+          const opened = width > foldedWidth + 1
+          const outside = projectBounds.left < 0 || projectBounds.right > innerWidth
 
-          if (!selected && unfolding) {
+          if (!selected && opened && outside) {
             chip.click()
             selected = true
           }
@@ -655,7 +657,6 @@ test(
         hydra,
         project,
         task,
-        expandedWidth,
         frames,
       }) => {
         if (document.activeElement instanceof HTMLElement) {
@@ -679,9 +680,11 @@ test(
 
         for (let frame = 0; frame < frames; frame++) {
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-          const width = column.getBoundingClientRect().width
+          const bounds = column.getBoundingClientRect()
+          const width = bounds.width
+          const outside = bounds.left < 0 || bounds.right > innerWidth
 
-          if (width > foldedWidth + 1 && width < expandedWidth - 1) {
+          if (width > foldedWidth + 1 && outside) {
             dispatchEvent(new CustomEvent(
               'pnyx:workspace-target',
               {
@@ -702,7 +705,6 @@ test(
         hydra: hydra.id,
         project: projectPaths[0],
         task: referenced.id,
-        expandedWidth: expandedProjectWidth,
         frames: REVEAL_FRAMES,
       },
     )
