@@ -74,6 +74,48 @@ export function removeLegacyHydraSkills({
   }
 }
 
+function syncReferences({
+  shippedFolder,
+  installedFolder,
+}: {
+  shippedFolder: string
+  installedFolder: string
+}) {
+  const shipped = existsSync(shippedFolder) ? readdirSync(shippedFolder) : []
+
+  if (!shipped.length) {
+    rmSync(
+      installedFolder,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+
+    return
+  }
+
+  cpSync(
+    shippedFolder,
+    installedFolder,
+    { recursive: true },
+  )
+  const dropped = readdirSync(installedFolder).filter(file => !shipped.includes(file))
+
+  for (const file of dropped) {
+    rmSync(
+      join(
+        installedFolder,
+        file,
+      ),
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+  }
+}
+
 export function copySkills({
   folder,
   names,
@@ -143,22 +185,16 @@ export function copySkills({
       ),
       content,
     )
-    const references = join(
-      dirname(source),
-      'references',
-    )
-
-    if (existsSync(references)) {
-      cpSync(
-        references,
-        join(
-          dir,
-          'references',
-        ),
-        { recursive: true },
-      )
-    }
-
+    syncReferences({
+      shippedFolder: join(
+        dirname(source),
+        'references',
+      ),
+      installedFolder: join(
+        dir,
+        'references',
+      ),
+    })
     installed.push(dir)
   }
 

@@ -1,6 +1,6 @@
 ---
 name: pnyx-manage-workers
-description: Use when you are Hydra and are about to start, queue, continue, replace, move or detach a task's worker, remove a task copy, or answer a worker's permission request.
+description: Use when you are Hydra and a worker needs more than task create, such as an owner's harness or model override, a dispatch rule change, another launch route, a lost or ended worker, a queue, moving a worker to another task, a browser grant, a flagged task copy or a permission request.
 user-invocable: false
 metadata:
   internal: true
@@ -8,159 +8,40 @@ metadata:
 
 # Hydra workers
 
-## Start a worker
+`task create` starts a task's worker through the dispatch rules. This skill covers the starts and moves that need more; `pnyx-axi task --help` lists every flag. A start that returns `NOT_RUNNING` sent nothing: retry once with the same `--event-id`, then follow its help or tell the owner. Read the task only when a start's outcome is unknown.
 
-Start in the UI requests a worker in your chat; you choose the project, copy or folder, launch route and agent. Read the task's history and current record before starting it. A request to start fresh may still have an old session attached; inspect it before choosing whether to continue or replace it.
+## Owner choices and dispatch rules
 
-Before starting, refresh a missing or out-of-date project profile as the Hydra contract describes. Pnyx adds shared project memory and the standing repository-conventions instruction to every opening prompt and task handoff. Keep briefs task-specific; do not repeat that instruction.
+Pass the owner's explicit `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly on `task create` or `task start`; never start on the rule's settings and change them afterwards. `rule now` shows which candidate each rule would start. When a start reports no usable candidate or a signed-out account, tell the owner what stopped it rather than switching to a weaker rule, and ask them to sign in when that is the fix.
 
-An explicit owner choice comes first: pass their `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly. Only `--harness` and `--model` choose what runs: they start even when no rule lists that harness or model, Pnyx checks the harness’s own catalog and login, records an owner override, and does not let quota veto the choice. `--effort`, `--mode` and `--fast` alone only change settings: quota still picks the candidate and account and skips spent ones, then those settings apply.
+To change rules or accounts, read `rule show` and `rule schema`, preview a patch with `rule apply --file <path> --check`, fix what it lists, then apply it; `rule set|remove|accounts` and `account set|remove` cover one small change. A permission increase goes through `rule apply --propose` and the owner's Confirm.
 
-Otherwise read `pnyx-axi rule list --hydra <hydra>` first, pick the named rule whose plain-language `when` fits the task, and run
+## Other routes
 
-```sh
-pnyx-axi task start <task> --rule <name> --reason "<why>" --hydra <hydra>
-```
+`--via paseo`, `--via command [--command <name>]` and `--via firstmate` start the worker outside Pnyx's own server. Use them when the owner or the project asks; `task start --help` gives each route's flags.
 
-Use the `default` list only when no named rule fits. `pnyx-axi rule now --hydra <hydra>` shows which candidate of each rule would start right now and why. Pnyx reads each candidate's quota through quota-axi and walks that provider's account list, including any project override. Candidates with a known spendPriority rank highest first, and unknown quota ranks below every known one; unknown quota is usable and shown as unknown. On a tie, or when every usable candidate's quota is unknown, the first listed starts, so a rule's order is its preference. The task records the chosen rule, model, account, quota evidence and any override. If a chosen rule has no usable candidates, all its accounts are spent, or any account is signed out, tell the owner what stopped the start. Never quietly choose a weaker rule or an unlisted account. Ask the owner to sign in when needed; Pnyx only stores login folders.
+## Lost or ended workers
 
-Change rules or accounts directly when the owner asks or when the work calls for it. Read `pnyx-axi rule show --hydra <hydra>` for the document and revision (`rule schema` lists every field and allowed value), write a patch file `{"version":1,"expected":{"revision":<n>},"patch":{...}}` naming only what changes (`null` removes a key; a list replaces the whole list), preview it with `pnyx-axi rule apply --file <path> --check --hydra <hydra>`, fix every problem it lists, then run it without `--check`. For one small change, use `rule set|remove|accounts` or `account set|remove`. Pnyx validates the whole result and saves it, adding one short line to your chat for the command.
+- An ended outside Claude Code or Codex session: `task continue <task> --reason "<why>"` hosts it in Pnyx, and `--check` reads eligibility first.
+- A lost worker (presence `gone`, or a session that cannot be continued) whose folder holds its work: relaunch it there without asking the owner, `task start <task> --via pnyx --replace-session <session> --folder <its folder> --reason "<why>"`. After two failed relaunches, tell the owner what failed and what the folder keeps.
+- A worker still marked interrupted after a restart continues only when you `reply` to it; send one unless its task says otherwise.
 
-`default` must contain at least one candidate. The `rules`, `accounts`, `workers` and `projects` objects are required but may be empty. With no registered accounts, `main` and the orders may name only `claude:default` and `codex:default`, the harnesses' own logins. Never edit the config files, which Pnyx rewrites from its change log.
+## Queues
 
-A candidate permission increase still needs the owner's Confirm in chat: use `rule apply --propose`, including in Bypass permissions or Codex's `never`. Never confirm it yourself. Lowering permissions is allowed directly.
-
-Every worker's opening prompt starts with Pnyx's worker header: its task, the copy it stays in, that it runs routine commands without asking, that it asks you through `task ask` about unsettled product or architecture choices, proposed departures from an approved design, merges, destructive or shared writes and work outside the task, and where it stops: its project's landing rule, or, for an investigation, its stored report. Before you report work as done or ready, finish what the brief and your project's instructions require, and check the final result. For code, that means required checks pass on its latest commit. For anything else, it means evidence of the end state: a link, screenshot or output. After later changes, redo the affected checks and refresh the description and evidence. Apply Questions and scope in the Hydra contract before answering or escalating through its card.
-
-Routes:
-
-- No `--via` (or `--via pnyx`): the Hydra's server runs Claude Code or Codex using the selected account and the candidate's model, effort, mode and Fast from its first turn, with the brief as its first prompt. When the owner asks for other settings for one start, pass `--model <model>`, `--effort <effort>`, `--mode <mode>` or `--fast on|off`: they replace the candidate's own from the first turn, the model must be in the harness's catalog, and effort and mode must be values that harness offers. Do not start on the rule's settings and change them afterwards to fake an override. `--folder <absolute path>` sets the folder when the task has none. `pnyx-axi reply <task> --text "<message>"` reaches it on the same account after a server restart. A worker cut by a Pnyx restart continues once by itself. One still marked interrupted stopped mid-turn, or was cut again: send it a message to continue unless its task says otherwise.
-- `--via paseo --rule <name> --folder <absolute path>` starts it in the local Paseo daemon on a candidate Paseo offers. `--harness claude|codex` honors the owner’s harness choice even outside the rule; `--prompt "<opening message>"` replaces the default opening message (the header stays).
-- `--via command [--prompt "<text>"]` runs the Hydra's own start command in the task's folder. `--command "<name>"` selects the assigned project's named command from `project list`. `bringsOwnFolder` means the command manages its own folder, so Pnyx makes no task copy and runs it from the project folder unless its contract needs `--folder`.
-- `--via firstmate [--prompt "<text>"]` hands the request to the Firstmate home that is this Hydra.
-
-A successful start records working and places the card in the same accepted assignment write; no first status or placement command is needed. A task holds one worker; `task detach <task>` frees it without stopping the agent and parks eligible unfinished work, preserving Done and unresolved owner gates. A repeated `--event-id` never starts a second worker.
-
-A start's receipt is its record. A Pnyx or Paseo receipt with `agent` means the worker is attached, so do not reread the task to confirm it. `launch: waiting` means another session's turn holds the task: start it again once that turn ends. `launch: pending` means another start is opening its session: do not start it again. `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, and if it fails the same way, follow its help or tell the owner. Read the task only when a start's outcome is unknown, such as a timeout after the request left.
-
-## Continue or replace
-
-After an outside Claude Code or Codex session ends, `pnyx-axi task continue <task> --reason "<why>" --hydra <hydra>` adopts its native session in Pnyx; the next reply resumes it in its recorded folder. Use `--check` to read eligibility first. Never continue while its terminal still runs it; a running or unverified process refuses the handoff. If the folder is missing, use `task start <task> --via pnyx --replace-session <session> --folder <path>` to start fresh from the brief; the old attachment stays until the new start passes validation.
-
-A lost worker (presence `gone`, or a session that cannot be continued) is relaunched without asking the owner when its folder still holds its work: `task start <task> --via pnyx --replace-session <session> --folder <its folder>`. The new worker's first prompt names the lost session and its last declaration, and it reads the task history. Count the relaunches in `task history`; after two that fail, stop and tell the owner what failed and what work the folder keeps.
-
-When creating work to dispatch, assign its attached project with `task create --project <name|path>`; create starts the worker unless you pass `--hold`, `--behind`, `--on` or `--no-start`. A start goes ahead over an open hold, question, prerequisite or worker prompt and lists each under `open` with the command that clears it; read that list and clear what matters. A start on a task that has a worker sends `--prompt` to it instead. See `pnyx-orchestrate` for work in Ideas, related tasks and owner decisions.
-
-## Queue related tasks
-
-Compare a new task's expected files and area with live workers' briefs and changes. Queue only real
-file overlap or a task that builds on that worker's result; a shared project alone is not a reason.
-Start an independent worker for independent work.
-
-```sh
-pnyx-axi task queue <next> --behind <task|session> --reason "<overlap or dependency>" --hydra <hydra>
-pnyx-axi task reorder <next> --behind <task|session> --reason "<why>" --hydra <hydra>
-pnyx-axi task unqueue <next> --reason "<why>" --hydra <hydra>
-```
-
-Behind a session or its current task appends to the queue; behind a queued task inserts immediately
-following it. The tasks must use the same project and have no worker or active copy. Give each a complete
-brief. Cards remain in Queued with their worker and position; the worker's card lists its ordered queue.
-The owner can also queue, reorder or unqueue from the card's menu.
-
-The server checks every 30 seconds. An open pull request holds the queue while its worker handles
-reviews. After all linked pull requests merge, or a task without a pull request is declared done and
-its commit lands, an idle worker takes the first queued task. Pnyx fetches origin, discovers its current
-default branch, verifies a clean isolated folder and landed commits, creates a fresh branch, transfers
-the copy to the next task, attaches the session and sends the next brief. Old branches stay intact.
-Automatic handoff declares working and restores the next card to In progress atomically; manual attachment still leaves placement alone. Before checkout Pnyx saves a durable intent. At startup, a handoff whose session event never committed gets its source checkout back, and a committed one keeps its target. An unresolved handoff refuses starts, resumes, replies and copy removal with `CONFLICT` until recovery succeeds; preserve any changed work before requesting a restart, which retries recovery.
-
-Done cleanup keeps a folder while its worker has queued tasks. Project copy commands have their own
-folder contracts, so those queues return to Queued for a fresh worker rather than reusing their folder.
-Failed branch preparation also releases the queue with its reason; no work is discarded.
-
-A dead or detached worker releases the queue. A working, blocked, paused or waiting worker with no sign
-of life for 30 minutes does too. After three tasks in one queue run, or a transcript of 2 MiB, remaining
-tasks return to normal Queued with a short note naming the earlier task. Read that history, carry over
-only useful context, and dispatch a fresh worker. Unknown presence keeps the queue waiting.
-Firstmate owns assignments on its linked Hydras; ask Firstmate to queue there.
+Queue only real file overlap or work that builds on another worker's result: `task queue <next> --behind <task|session> --reason "<overlap or dependency>"`, and `task reorder` or `task unqueue` to change it. The server hands the next task over once the current work lands. A released queue carries a handoff note: read that history and start a fresh worker.
 
 ## Move a worker to another task
 
-For manual reuse outside an automatic queue, a worker whose task is done can take a related task. First
-confirm the worker is idle, its work has landed, and the next task uses the same project. Rely on the worker's checked
-`done` declaration, then inspect its copy and folder: Done cleanup returns a clean landed slot to the
-pool, reserving it while its worker remains attached.
-Reuse only after copy settlement is complete and the folder will remain. If the folder is gone, start a
-new worker from the current default branch instead; `task attach` cannot restore a missing copy.
+A worker whose task is done and landed can take a related task in the same project while its folder remains: `task attach <next> --session <session>` moves the session and sends `<next>`'s brief. Make the brief's first step a check that the folder is clean, then a new branch from the freshly fetched default branch; work that has not landed is reported, never reset or discarded. When the folder is gone, start a fresh worker instead.
 
-For a surviving folder, write the next task's brief with the branch preparation below as its first step,
-then
+## Browser
 
-```sh
-pnyx-axi task attach <next> --session <session> --hydra <hydra>
-```
-
-moves the session to `<next>` (the old task is left without a worker, so no detach first) and sends
-`<next>`'s brief as its next message. `<next>` must have no worker of its own, and only a session Pnyx or
-Paseo runs, or one in a terminal, can be attached. The worker retains its session and current folder;
-attachment does not fetch Git history or switch branches. Check the command's brief delivery result
-before treating the handoff as delivered.
-
-### Prepare the branch before new work
-
-Include these instructions in every moved worker's brief and every post-merge follow-up sent to its
-original task. A resumed session keeps context, not permission to continue on a merged branch. Before
-editing or committing, the worker must:
-
-1. Verify it is in the intended project's isolated folder, no other worker is using it, and `git status
-   --porcelain` is empty. If work remains uncommitted or unlanded, stop and report it to Hydra; never
-   reset, discard or hide it to make reuse possible.
-2. Fetch the remote and discover its current default branch:
-
-   ```sh
-   git fetch origin
-   git remote set-head origin --auto
-   git symbolic-ref --short refs/remotes/origin/HEAD
-   ```
-
-      Use the remote-tracking ref printed by the last command, such as `origin/main`. If fetch or
-   default-branch discovery fails, stop and report it; a stale local branch is not a substitute. Confirm
-   all commits on the old branch, including any unpushed commits, have landed on the fetched default
-   branch or through their merged pull request.
-3. Create a new, unused branch for this task from that fetched default ref:
-
-   ```sh
-   git switch --no-track -c <unique-task-branch> <fetched-default-ref>
-   ```
-
-      Give a post-merge follow-up its own new branch too. Leave the old branch and its commits intact;
-   never reuse its name, reset it, or base the new work on it.
-4. Begin the brief only after the switch succeeds. Link the new pull request to the task; a merged pull
-   request cannot receive the follow-up commits.
-
-For folders created by a project's copy command, follow that project's preparation contract as well. If
-its folder cannot safely serve the next task, start a fresh worker instead. Copy retention and pooling
-are separate from session attachment.
-
-## Tool capabilities
-
-Hosted agents use the selected account’s native tools, skills, MCP servers, plugins and apps. For a UI worker, pass `task start --tool browser` for one isolated headless `chrome-devtools-axi` session. `task tools <task> --available` lists this capability; configured services need no grants.
-
-When a worker asks for an isolated browser through `task ask`, decide it yourself within the task, then run `task tools <task> --grant browser` and answer the worker's question. Use `--revoke browser` for removal. Other tools use the harness's native configuration; `task tools` cannot enable them. Pnyx records the browser selection and resumes the same conversation after its native work settles, including after restart. No new owner question or approval is needed for the grant. A tool's shared-system writes still need their existing authorization. Outside launch routes cannot enforce these hosted selections.
+For a UI worker, `task start --tool browser` gives one isolated headless browser. When a worker asks for one, decide within the task, run `task tools <task> --grant browser` and answer its question.
 
 ## Task copies
 
-A task with an attached project starts in its own copy (a git worktree on branch `<hydra-name-slug>/<task-title-slug>`, or the project's copy command); `--in-place` works in the project folder itself and is refused while another Hydra's worker runs there. Existing task branches remain stable after a rename; failed allocations retain their reserved branch names. Allocation can reuse clean unrecorded slots whose work landed; work that is uncommitted or unlanded is kept and reported to Hydra. When the task reaches Done, Pnyx releases a clean copy whose work landed to the project's pool, where the next task's start takes it on a fresh branch; a copy a worker still runs in stays its own. Completing or archiving a task, or removing its copy, stops its worker and every background tool it left running; a worker that declares its own task done finishes that turn first. A reply to a Done task whose folder remains resumes the worker for one turn. While a copy settles, replies wait in the task's inbox and starts are refused; retry after cleanup. Otherwise it keeps the copy, flags it and messages you: land the work and run `pnyx-axi task copy <task> remove --hydra <hydra>`, or, when it already landed another way or is empty, `pnyx-axi task copy <task> remove --safe --reason "<why>" --hydra <hydra>`. Never discard work that never landed; ask the owner, who runs `--discard`. Automatic folder handoff belongs to the worker queue; manual `task attach` keeps the branch preparation contract above.
+Pnyx keeps and flags a Done task's copy when its work did not land, and messages you. Land the work and run `task copy <task> remove`, or `task copy <task> remove --safe --reason "<why>"` when it already landed another way or is empty. Only the owner discards work that never landed.
 
 ## Permission requests
 
-Hosted workers' tool permission requests appear in `hydra check` as `task.permission` events. Read `pnyx-axi task show <task> --full --hydra <hydra>` for the request id, tool, input and status, then answer a pending one with
-
-```sh
-pnyx-axi task permission <task> <request> allow|deny --actor hydra --reason "<why>" --hydra <hydra>
-```
-
-The reason is posted in your chat; further allows on the same task fold into that line, and their reasons stay in the task's history. The first answer wins, expired requests cannot be answered, and once nothing else on the task waits for the owner, answering returns its card from Needs you to In progress. Command and file approvals apply to that call; Codex turn permissions last only for the named turn.
-
-A request with `questions` is a worker asking: allow it with `--answer '{"answers":[{"pick":[1]},{"text":"..."}]}'`, one entry per question (options numbered from 1, `text` for your own answer); one with `form` takes `--answer '{"values":{"<field>":"<value>"}}'`. Deny skips it. Answer only what the brief or the owner already settled; otherwise leave it for the owner.
+Pending requests show in `hydra check` and `task show <task> --full`. Answer what the brief or the owner already settled with `task permission <task> <request> allow|deny --reason "<why>"`, adding `--answer` for a question or form (`task permission --help`), and leave the rest for the owner.

@@ -1,4 +1,4 @@
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
@@ -9,7 +9,8 @@ import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { HYDRA_SKILLS } from '#setup/skill-names.ts'
+import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
+import { parse } from 'yaml'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
@@ -1386,7 +1387,7 @@ test(
 
 // The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written.
 test(
-  'Hydra\'s folder holds the shipped skills as written before its first turn',
+  'Hydra\'s folder holds the shipped skills as written and every reference its contract links before its first turn, and loses a reference the skills dropped by its next',
   async () => {
     const hydra = await pnyx.hydra()
     const session = await hydra.chat({ text: 'hello' })
@@ -1397,17 +1398,19 @@ test(
     )
 
     for (const skill of HYDRA_SKILLS) {
-      expect(
-        readFileSync(
-          join(
-            session.cwd,
-            '.agents',
-            'skills',
-            skill,
-            'SKILL.md',
-          ),
-          'utf8',
+      const installed = readFileSync(
+        join(
+          session.cwd,
+          '.agents',
+          'skills',
+          skill,
+          'SKILL.md',
         ),
+        'utf8',
+      )
+
+      expect(
+        installed,
         skill,
       ).toBe(readFileSync(
         join(
@@ -1417,7 +1420,126 @@ test(
         ),
         'utf8',
       ))
+      const frontmatter = /^---\n([\s\S]*?)\n---/.exec(installed)?.[1] ?? ''
+
+      expect(
+        parse(frontmatter),
+        `${skill} frontmatter`,
+      ).toMatchObject({
+        name: skill,
+        description: expect.any(String),
+      })
     }
+
+    const contract = readFileSync(
+      join(
+        session.cwd,
+        'AGENTS.md',
+      ),
+      'utf8',
+    )
+    const links = [...contract.matchAll(/\]\(([^)#]+\.md)(?:#[^)]*)?\)/g)].map(match => match[1])
+
+    expect(links.length).toBeGreaterThan(0)
+
+    for (const link of links) {
+      expect(
+        existsSync(join(
+          session.cwd,
+          link,
+        )),
+        link,
+      ).toBe(true)
+    }
+
+    const references = ({ skill }: { skill: string }) => join(
+      session.cwd,
+      '.agents',
+      'skills',
+      skill,
+      'references',
+    )
+    const withReferences = references({ skill: ORCHESTRATE_SKILL })
+    const withoutReferences = references({ skill: MANAGE_WORKERS_SKILL })
+    mkdirSync(
+      withoutReferences,
+      { recursive: true },
+    )
+
+    for (const folder of [
+      withReferences,
+      withoutReferences,
+    ]) {
+      writeFileSync(
+        join(
+          folder,
+          'dropped.md',
+        ),
+        'old guidance',
+      )
+    }
+
+    await hydra.chat({ text: 'hello again' })
+
+    for (const folder of [
+      withReferences,
+      withoutReferences,
+    ]) {
+      expect(
+        existsSync(join(
+          folder,
+          'dropped.md',
+        )),
+        folder,
+      ).toBe(false)
+    }
+  },
+)
+
+test(
+  'hydra check never points a Hydra that Pnyx runs at the wait it refuses',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'hello' })
+    const hosted = hydra.as({ session })
+    const check = await hosted.run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+
+    expect(check.help.join('\n')).not.toContain('--wait')
+
+    const outside = await hydra.as({
+      session,
+      env: {
+        ...session.env,
+        PNYX_HOSTED: undefined,
+      },
+    }).run({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+
+    expect(outside.help.join('\n')).toContain('--wait')
+
+    const waited = await hosted.refused({
+      args: [
+        'hydra',
+        'check',
+        '--wait',
+        '5',
+      ],
+    })
+
+    expect(waited.code).toBe('VALIDATION_ERROR')
   },
 )
 

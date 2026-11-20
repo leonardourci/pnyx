@@ -202,7 +202,7 @@ export async function setupCheck({
         name: `profile:${project.name}`,
         missing: `project ${project.name} has no profile`,
         by: 'hydra',
-        fix: `write its profile as the Hydra contract describes (pnyx-axi project memory list --project ${project.name} --hydra ${hydraId})`,
+        fix: `write its profile as the Hydra contract's projects reference describes (pnyx-axi project memory list --project ${project.name} --hydra ${hydraId})`,
       })
     }
   }
