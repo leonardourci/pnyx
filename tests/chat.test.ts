@@ -645,6 +645,7 @@ test(
       expect(wake).toContain('Which export format?')
 
       const reviewBefore = wake.match(/history --kind hydra.review --before (\d+) --limit 1 --full/)?.[1]
+
       if (reviewBefore === undefined) {
         throw new Error('The wake did not provide the timed review history cursor')
       }
@@ -775,7 +776,10 @@ test(
       expect(recovered.split('Report 7:')).toHaveLength(2)
 
       let cursor = after
-      const reports: { summary: string; reportStatus?: string }[] = []
+      const reports: {
+        summary: string
+        reportStatus?: string
+      }[] = []
 
       for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
         const rest = await hydra.as({ session }).run({
@@ -798,7 +802,10 @@ test(
 
       expect(reports).toEqual(Array.from(
         { length: 293 },
-        (_, index) => expect.objectContaining({
+        (
+          _,
+          index,
+        ) => expect.objectContaining({
           reportStatus: 'unhandled',
           summary: expect.stringMatching(new RegExp(`^Report ${index + 7}:`)),
         }),
