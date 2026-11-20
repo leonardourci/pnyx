@@ -50,6 +50,7 @@ export function taskTimeline({
 }): TaskUpdate[] {
   const updates = new Map<string, TaskUpdate>()
   const reasked = new Set<string>()
+  let latestStatusOrMove = ''
 
   for (const event of events.toSorted((
     a,
@@ -93,6 +94,14 @@ export function taskTimeline({
         text: update.note,
         cardId: card.id,
       })
+    }
+
+    if (event.type === 'card.moved' && latestStatusOrMove && update.note.endsWith(latestStatusOrMove)) {
+      update.note = ''
+    }
+
+    if (update.note && (row.kind === 'status' || event.type === 'card.moved')) {
+      latestStatusOrMove = update.note
     }
 
     const prior = updates.get(update.id)

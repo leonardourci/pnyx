@@ -16,7 +16,7 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
-  hydra create|list|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
+  hydra create|list|show|set|memory           Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|group|keep|list|set|remove      Attach repositories, group projects or choose a keeper
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|parent|arrange|history|updates|permission Tasks (create starts a worker) and one level of subtasks
@@ -50,7 +50,7 @@ commands:
   upgrade [--check] [--now] [--stop]         Pull, install, build and check the data of the latest main in the server, or here when none runs, then restart; --stop stops a running upgrade
   setup [check|postgres|skills|hooks]        Install login services, list missing setup, start Postgres, or install skills or hooks
   integrations                               Show which integrations are ready and how to set each up
-  reply <id> --text <text>   Send a reply to the card's worker session
+  reply <id> --text <text>                   Send a reply to the card's worker session
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
 worker:
   A worker reads any task or Hydra and writes only its own task (task ask|report|report-review|refresh-links|inbox|source, link, hydra send --task); any other write fails with WORKER_SCOPE
@@ -331,7 +331,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear> [--every "4 hours" --until worker-started|question-answered|task-done] [--question <id>]
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|command] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--replace-session <session>] [--tool <capability>]...
+pnyx-axi task start <task> [--via pnyx] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--replace-session <session>] [--tool <capability>]...
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 A start goes ahead over an open hold, question, prerequisite or worker prompt; its receipt lists each under open with the command that clears it,
 and the card gets the same note once. A task that has a worker keeps it: --prompt goes to that worker, and the receipt lists the start flags it did not apply.
