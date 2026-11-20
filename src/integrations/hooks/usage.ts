@@ -1,5 +1,5 @@
 import { transcriptProvider } from '#workers/usage.ts'
-import type { RecordedUsage, TranscriptUsageReader } from '#workers/provider.ts'
+import type { TranscriptUsageReader } from '#workers/provider.ts'
 
 export type { RecordedUsage } from '#workers/provider.ts'
 
@@ -35,23 +35,4 @@ export function readUsage({
     reader,
     value,
   })
-}
-
-export function recordedUsage({
-  provider,
-  records,
-}: {
-  provider: string
-  records: unknown[]
-}): RecordedUsage[] {
-  const reader = usageReader({ provider })
-
-  for (const value of records) {
-    readUsage({
-      reader,
-      value,
-    })
-  }
-
-  return reader.rows
 }

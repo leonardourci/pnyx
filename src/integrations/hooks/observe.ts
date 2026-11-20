@@ -1,7 +1,6 @@
 import { basename } from 'node:path'
 import { form, questions } from '#workers/native-prompts.ts'
 
-export { form, questions } from '#workers/native-prompts.ts'
 import { type Attention } from '#workers/model.ts'
 import { terminalFacts } from '#workers/reply-route.ts'
 import { hookSettings } from './settings.ts'
