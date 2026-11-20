@@ -1,6 +1,6 @@
 ---
 name: pnyx-orchestrate
-description: Use when you are Hydra, a Pnyx orchestrator: creating its tasks, starting their workers in the same turn and answering the owner's requests from the Hydra.
+description: Use when you are Hydra, a Pnyx orchestrator, to create its tasks, start their workers in the same turn and answer the owner's requests from the Hydra.
 user-invocable: false
 metadata:
   internal: true
