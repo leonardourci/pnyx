@@ -67,7 +67,6 @@ function hydraQueueView({
 
   const cancelled = new Set(state.hydraMessages?.filter(message => message.stopped)
     .map(message => message.id))
-  // A queued /upgrade waits in the same box, with the same Send now.
   const compactInputs = [
     ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })
       && !cancelled.has(input.id)) ?? []),
