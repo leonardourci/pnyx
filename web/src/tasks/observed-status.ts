@@ -55,10 +55,16 @@ export function observedStatus({
   const startingSession = active && status.kind === 'not-started'
 
   if (status.kind === 'working' || startingSession) {
-    const earlierTurn = !action?.work && action?.at && card.workingSince
-      && Date.parse(action.at) < Date.parse(card.workingSince)
-    const tools = action?.work ? action.work.runningTools.length > 0
-      : Boolean(action && !action.done && !earlierTurn && action.calls.length)
+    let tools = false
+
+    if (action?.work) {
+      tools = action.work.runningTools.length > 0
+    } else if (action && !action.done) {
+      const earlierTurn = action.at !== undefined && card.workingSince !== undefined
+        && Date.parse(action.at) < Date.parse(card.workingSince)
+      tools = !earlierTurn && action.calls.length > 0
+    }
+
     const text = tools ? 'working' : 'thinking'
 
     return {

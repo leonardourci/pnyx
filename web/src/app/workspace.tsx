@@ -977,6 +977,13 @@ export function HydraView({
         parentId: undefined,
       },
     }) : undefined
+    const pendingTurn = hydra.pendingTurns[item.id]
+    const statusOverride = pendingTurn ? observedStatus({
+      card: item,
+      state,
+      action: actions[item.id],
+      pending: pendingTurn,
+    }) : family.status
 
     return (
       <HydraCard
@@ -986,12 +993,7 @@ export function HydraView({
         sortScope={`${navigation.hydraId}:${column.id}:${priority}:${item.parentId ?? 'root'}`}
         rootColumn={rootColumn}
         rootScope={rootColumn && `${navigation.hydraId}:${rootColumn}:${priority}:root`}
-        statusOverride={hydra.pendingTurns[item.id] ? observedStatus({
-          card: item,
-          state,
-          action: actions[item.id],
-          pending: hydra.pendingTurns[item.id],
-        }) : family.status}
+        statusOverride={statusOverride}
         progress={family.progress}
         hasChildren={family.hasChildren}
         childrenOpen={family.childrenOpen}
@@ -1020,7 +1022,7 @@ export function HydraView({
             state={state}
             live={hydra.taskThreads[item.id]}
             action={actions[item.id]}
-            pendingTurn={hydra.pendingTurns[item.id]}
+            pendingTurn={pendingTurn}
             view={cardView}
             command={command}
             connected={connected}

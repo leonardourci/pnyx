@@ -339,7 +339,7 @@ export function createConnectionRequests({
             delivery: 'idempotent',
             patch: {
               card: target,
-              message: argument({
+              message: name === 'reply' ? args[2] : argument({
                 args,
                 flag: '--event-id',
               }),
@@ -465,8 +465,12 @@ export function createConnectionRequests({
 
       request.reject({ error })
     } else {
-      if (message.state === 'failed') {
-        const detail = typeof message.detail === 'string' ? message.detail : 'Turn could not start'
+      const reply = message.reply && typeof message.reply === 'object' ? message.reply : undefined
+      const replyFailed = reply && 'state' in reply && reply.state === 'failed'
+
+      if (message.state === 'failed' || replyFailed) {
+        const reason = replyFailed && 'detail' in reply ? reply.detail : message.detail
+        const detail = typeof reason === 'string' ? reason : 'Turn could not start'
         scope.turns.refuse({
           id: request.id,
           error: new CommandFailure({

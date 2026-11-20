@@ -106,25 +106,29 @@ export function pendingTurns({
   const pending: Record<string, PendingTurn> = {}
 
   for (const intent of latest.values()) {
+    const card = snapshot.confirmed[intent.patch.card]
+    const activity = card?.sessionActivity ?? card?.activity
     const hydraFailed = intent.patch.card === HYDRA_CARD && hydraStatus?.state === 'down'
-      && hydraStatus.seq > intent.patch.afterSeq
+      && hydraStatus.seq > intent.patch.afterSeq && activity !== 'working'
 
     if (hydraFailed) {
       pending[intent.patch.card] = { error: hydraStatus.detail ?? 'Hydra could not start a turn' }
       continue
     }
 
-    const card = snapshot.confirmed[intent.patch.card]
     const interrupted = card?.attention.find(item => item.key === INTERRUPTED)
 
-    if (interrupted && (card?.turnEndedSeq ?? 0) > intent.patch.afterSeq) {
+    if (interrupted && activity === 'interrupted' && (card?.turnEndedSeq ?? 0) > intent.patch.afterSeq) {
       pending[intent.patch.card] = { error: interrupted.text ?? 'The agent stopped before starting this turn' }
       continue
     }
 
     const reply = card?.replies?.find(reply => reply.id === intent.patch.message)
 
-    if (reply?.state === 'failed') {
+    const currentFailure = reply?.state === 'failed' && (reply.updatedSeq ?? 0) > intent.patch.afterSeq
+      && reply.turnStartedAt === card?.turnStartedAt
+
+    if (currentFailure) {
       pending[intent.patch.card] = { error: reply.detail ?? 'Message could not start a turn' }
       continue
     }
