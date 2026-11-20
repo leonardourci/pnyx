@@ -62,7 +62,7 @@ export function operationEvent({
 }
 
 // Input whose turn already started does not need another turn when a clean stop ends.
-export const arrivedSince = ({
+const arrivedSince = ({
   state,
   after,
 }: {
@@ -77,7 +77,7 @@ export const arrivedSince = ({
   && !isRoutineMessage({ message }))
 
 // Hydra's first turn after an operation stopped it: what it was, how it ended and what the owner wrote meanwhile.
-export function operationRecap({
+function operationRecap({
   state,
   operation,
   error,

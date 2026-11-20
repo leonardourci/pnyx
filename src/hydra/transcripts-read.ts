@@ -116,7 +116,7 @@ const CACHED_TRANSCRIPTS = 16
 // Parts bound each transport entry without cutting a logical message at a page boundary.
 const MAX_TEXT = 1000
 
-export const replyEntryId = ({ reply }: { reply: string }) => `reply:${reply}`
+const replyEntryId = ({ reply }: { reply: string }) => `reply:${reply}`
 
 export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
   const fromPart = (entry.part ?? 0) > 0
@@ -204,7 +204,7 @@ export function showsKind({
   return !hiddenTool && !hiddenThinking
 }
 
-export function transcriptEntries({
+function transcriptEntries({
   parsed,
   offset,
   tools = true,

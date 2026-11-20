@@ -93,7 +93,7 @@ export function conversationContext({
   ].filter(Boolean).join('\n\n')
 }
 
-export async function agentChangeTurn({
+async function agentChangeTurn({
   session,
   text,
   id,

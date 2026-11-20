@@ -150,7 +150,7 @@ export interface LookupThread {
 }
 
 // How many log positions one read covers, so a statement never runs long however large the thread.
-export const LOOKUP_WINDOW = 4000
+const LOOKUP_WINDOW = 4000
 
 const keyOf = ({ message }: { message: MessageRecord }): Key => ({
   seq: message.seq,

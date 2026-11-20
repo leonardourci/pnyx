@@ -6,7 +6,7 @@ import { hydraMessages, leadingTask, ownMessage, quietReply, type TurnTiming } f
 import { relevantUpdate, type TaskUpdate } from '#tasks/updates.ts'
 import { threadEntryOrder } from './thread-order.ts'
 
-export interface TaskActions {
+interface TaskActions {
   task: string
   title: string
   updates: TaskUpdate[]
@@ -20,7 +20,7 @@ export interface TurnActions {
 const spoken = ({ entry }: { entry: ThreadEntry }) => entry.text.trim() !== '' && !quietReply({ entry })
 
 // The owner's messages among the entries, in the order they were sent.
-export function ownerMessagesInSendOrder({
+function ownerMessagesInSendOrder({
   messages,
   entries,
 }: {
@@ -53,7 +53,7 @@ export function ownerMessagesInSendOrder({
 
 // Claude Code records a message that joins a running turn as an attachment, not a user message, so it keeps its send time.
 // An owner message no later than one sent before it is late, so a tie still shows in send order.
-export function lateOwnerMessages({
+function lateOwnerMessages({
   messages,
   entries,
 }: {

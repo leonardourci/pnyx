@@ -40,7 +40,7 @@ export interface RecordCalls {
   at?: string
 }
 
-export const LINE_MAX = 120
+const LINE_MAX = 120
 const COMMAND_MAX = 400
 const CALL_FIELDS = [
   'command',
