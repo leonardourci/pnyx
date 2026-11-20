@@ -39,20 +39,32 @@ export function ChatTokenText({
     <>{parts.map((
       part,
       index,
-    ) => 'item' in part && part.item ? (
-      <Fragment key={index}>
-        {CHIP_SPACE}<SkillBadge
-          skill={{
-            name: part.item.command.slice(1),
-            builtin: part.item.builtin,
-            command: part.item.command,
-            project: part.item.project,
-            projectPath: part.item.projectPath,
-          }}
-          colors={colors}
-        />{CHIP_SPACE}
-      </Fragment>
-    ) : <TaskReferenceText key={index} text={part.text ?? ''} />)}
+    ) => {
+      if ('item' in part && part.item) {
+        return (
+          <Fragment key={index}>
+            {CHIP_SPACE}<SkillBadge
+              skill={{
+                name: part.item.command.slice(1),
+                builtin: part.item.builtin,
+                command: part.item.command,
+                project: part.item.project,
+                projectPath: part.item.projectPath,
+              }}
+              colors={colors}
+            />{CHIP_SPACE}
+          </Fragment>
+        )
+      }
+
+      const literal = part.text ?? ''
+
+      return (
+        <Fragment key={index}>
+          {code ? literal : <TaskReferenceText text={literal} />}
+        </Fragment>
+      )
+    })}
     </>
   )
 }

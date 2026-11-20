@@ -144,7 +144,8 @@ test(
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'mentions' })
     const task = await hydra.task({ key: 'mentions' })
-    const text = `Check ${task.id}, Task mentions and [the card](pnyx-task:${task.id}).`
+    const prose = `Check ${task.id}, Task mentions and [the card](pnyx-task:${task.id}).`
+    const text = `${prose}\n\n\`Task mentions\`\n\n\`\`\`\n${task.id}\n\`\`\``
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'Show the references',
@@ -193,7 +194,7 @@ test(
 
       return clipboard.getData('text/plain')
     })
-    expect(copied).toBe(text)
+    expect(copied).toBe(prose)
     await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()
       .click()
     const taskChat = page.getByRole(
