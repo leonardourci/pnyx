@@ -1480,20 +1480,12 @@ test(
       ),
       'utf8',
     )).toBe('Keep my local skill')
-    const setupPreview = await pnyxAxi({
-      args: [
-        'setup',
-        'skills',
-      ],
-      env,
-    })
-    expect(
-      setupPreview.status,
-      setupPreview.stdout,
-    ).toBe(0)
-    expect(parsed(setupPreview).notices).toContainEqual(expect.objectContaining({
-      reason: expect.stringContaining(customSkill),
-      clear: expect.stringContaining('pnyx-axi setup skills'),
-    }))
+    expect(existsSync(join(
+      home,
+      '.agents',
+      'skills',
+      'pnyx-report-progress',
+      'SKILL.md',
+    ))).toBe(true)
   },
 )

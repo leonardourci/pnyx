@@ -105,7 +105,10 @@ export const approval = guard({
       options: WRITE,
       positionals: 2,
     })
-    const actor = meta({ values })
+    const actor = {
+      ...meta({ values }),
+      id: undefined,
+    }
 
     if (actor.actor === 'hydra' || memoryAgent()) {
       inform({

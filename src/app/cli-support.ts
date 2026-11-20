@@ -444,10 +444,6 @@ export function commit(
 
   },
 ): Output {
-  if (EXPLAINED.includes(intent.type)) {
-    explained({ meta })
-  }
-
   return withWriter({
     hydraId,
     create,
@@ -480,6 +476,10 @@ export function commit(
           })
         }
       } else {
+        if (EXPLAINED.includes(intent.type)) {
+          explained({ meta })
+        }
+
         let decision = decide({
           state: writer.state,
           meta,

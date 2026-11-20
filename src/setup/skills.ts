@@ -421,13 +421,13 @@ export function setupSkills(
     userHome,
     claudeConfigDir,
   })
-  const conflict = !remove && links.find(link => link.status === 'conflict')
-
-  if (conflict) {
-    inform({
-      reason: `Kept the existing skill at ${conflict.path}`,
-      clear: 'Move that skill aside and run pnyx-axi setup skills to install the Pnyx link',
-    })
+  if (!remove) {
+    for (const link of links.filter(link => link.status === 'conflict')) {
+      inform({
+        reason: `Kept the existing skill at ${link.path}`,
+        clear: 'Move that skill aside and run pnyx-axi setup skills to install the Pnyx link',
+      })
+    }
   }
 
   const folders = [...new Set(links.map(link => dirname(link.path)))]

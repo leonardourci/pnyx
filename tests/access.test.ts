@@ -902,6 +902,8 @@ test(
         'approval',
         'confirm',
         'saved-command',
+        '--event-id',
+        'confirm-saved-command',
       ],
     })
     expect(result.state).toBe('confirmed')
@@ -917,6 +919,8 @@ test(
         'approval',
         'confirm',
         'saved-command',
+        '--event-id',
+        'confirm-saved-command',
       ],
     })).toMatchObject({ event: 'none: proposal already resolved or missing' })
   },
