@@ -1,9 +1,12 @@
 import { loadHydra } from '#app/store.ts'
+import { log } from '#app/diagnostics.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { readTranscript } from './transcript-read.ts'
 import { readTranscriptRecord } from './transcripts.ts'
 import { decideSessionFacts } from './session-facts.ts'
+
+const ACTIVITY_READ_BYTES = 1024 * 1024
 
 export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
   const state = loadHydra({ hydraId }).state
@@ -15,73 +18,113 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
       continue
     }
 
-    const tail = readTranscript({
-      cursor: {
+    let cursor = session.activityCursor?.source === path
+      ? { ...session.activityCursor } : {
         source: path,
         identity: '',
         pos: 0,
-      },
-    })
-    let latest: {
-      activity: string
-      at: string
-    } | undefined
-    const seenAt = Date.parse(session.activityObservedAt ?? session.lastSeen ?? '')
-
-    for (const line of tail?.lines ?? []) {
-      const parsed = readTranscriptRecord({
-        record: line.record,
-        subagent: Boolean(session.agent.agentId),
-      })
-
-      const observedAt = Date.parse(parsed.at ?? '')
-      const newer = !Number.isFinite(seenAt) || observedAt > seenAt
-      const newest = !latest || observedAt >= Date.parse(latest.at)
-
-      if (parsed.activity && parsed.at && Number.isFinite(observedAt) && newer && newest) {
-        latest = {
-          activity: parsed.activity,
-          at: parsed.at,
-        }
       }
-    }
+    let through: number | undefined
+    let pending = true
 
-    if (!latest) {
-      continue
-    }
+    try {
+      while (pending) {
+        const tail = readTranscript({
+          cursor,
+          through,
+          maxBytes: ACTIVITY_READ_BYTES,
+        })
 
-    const observed = latest
-    withWriter({
-      hydraId,
-      fn: ({ writer }) => {
-        const current = writer.state.sessions?.[session.id]
-
-        if (!current) {
-          return
+        if (!tail || (tail.end === cursor.pos && !tail.reset)) {
+          break
         }
 
-        applyDecision({
-          writer,
-          decision: decideSessionFacts({
-            state: writer.state,
-            session: current,
-            task: current.taskId ? writer.state.cards[current.taskId] : undefined,
-            fields: {
-              agent: current.agent,
-              activity: observed.activity,
-            },
-            source: {
-              adapter: 'transcript',
-              objectId: path,
-              observedAt: observed.at,
-            },
-            meta: {
-              at: observed.at,
-              actor: 'pnyx',
-            },
-          }),
+        if (through === undefined) {
+          through = tail.size
+        }
+
+        withWriter({
+          hydraId,
+          fn: ({ writer }) => {
+            for (const line of tail.lines) {
+              const current = writer.state.sessions?.[session.id]
+
+              if (!current) {
+                return
+              }
+
+              const parsed = readTranscriptRecord({
+                record: line.record,
+                subagent: Boolean(current.agent.agentId),
+              })
+              const observedAt = Date.parse(parsed.at ?? '')
+              const knownAt = Date.parse(current.activityObservedAt ?? '')
+
+              if (!parsed.activity || !parsed.at || !Number.isFinite(observedAt)
+              || (Number.isFinite(knownAt) && observedAt <= knownAt)) {
+                continue
+              }
+
+              applyDecision({
+                writer,
+                decision: decideSessionFacts({
+                  state: writer.state,
+                  session: current,
+                  fields: {
+                    agent: current.agent,
+                    activity: parsed.activity,
+                  },
+                  source: {
+                    adapter: 'transcript',
+                    objectId: path,
+                    observedAt: parsed.at,
+                  },
+                  meta: {
+                    at: parsed.at,
+                    actor: 'pnyx',
+                  },
+                }),
+              })
+            }
+
+            const current = writer.state.sessions?.[session.id]
+
+            if (current) {
+              applyDecision({
+                writer,
+                decision: decideSessionFacts({
+                  state: writer.state,
+                  session: current,
+                  fields: { agent: current.agent },
+                  cursor: {
+                    source: path,
+                    identity: tail.identity,
+                    pos: tail.end,
+                  },
+                  meta: {
+                    at: new Date().toISOString(),
+                    actor: 'pnyx',
+                  },
+                }),
+              })
+            }
+          },
         })
-      },
-    })
+        cursor = {
+          source: path,
+          identity: tail.identity,
+          pos: tail.end,
+        }
+        pending = cursor.pos < through
+      }
+    } catch (error) {
+      log({
+        level: 'warn',
+        operation: 'session activity recovery',
+        hydraId,
+        sessionId: session.id,
+        error,
+      })
+    }
   }
 }

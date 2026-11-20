@@ -51,6 +51,7 @@ export function decideSessionFacts({
   meta,
   task,
   session,
+  cursor,
 }: {
   state: HydraState
   fields: PushFields & { agent: AgentSession['agent'] }
@@ -58,6 +59,7 @@ export function decideSessionFacts({
   meta: Meta
   task?: Card
   session?: AgentSession
+  cursor?: AgentSession['activityCursor']
 }): Decision {
   const agent = fields.agent
   const owner = task ?? sessionTask({
@@ -90,6 +92,7 @@ export function decideSessionFacts({
       }),
       type: 'session.observed',
       data: {
+        cursor,
         fields: {
           ...fields,
           agent,
@@ -153,6 +156,10 @@ export function applySessionFacts({
       },
     }
     state.sessions[id] = session
+  }
+
+  if (event.data.cursor) {
+    session.activityCursor = { ...event.data.cursor }
   }
 
   session.agent = {

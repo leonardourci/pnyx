@@ -206,9 +206,30 @@ test(
       event: 'PreToolUse',
       payload: {
         ...base,
-        tool_name: 'Read',
-        tool_input: { file_path: 'file.ts' },
+        tool_name: 'AskUserQuestion',
+        tool_input: {
+          questions: [
+            {
+              question: 'Which file should I read?',
+              header: 'File',
+              options: [
+                {
+                  label: 'file.ts',
+                  description: 'Read the source',
+                },
+                {
+                  label: 'test.ts',
+                  description: 'Read the test',
+                },
+              ],
+            },
+          ],
+        },
       },
+    })
+    await until({
+      what: 'the tool hook request',
+      check: async () => (await sessionFacts({ session: 'outside-1' }))?.attention.some((item: { text?: string }) => item.text?.includes('Which file should I read?')),
     })
     expect((await sessionFacts({ session: 'outside-1' })).title).toBe('Fix the flaky login test')
     const tasks = await pnyxAxi({
@@ -303,6 +324,36 @@ test(
         return facts?.activity === 'working' && facts
       },
     })
+    const brokenTranscript = join(
+      cwd,
+      'unreadable-transcript',
+    )
+    mkdirSync(brokenTranscript)
+    await hook({
+      event: 'SessionStart',
+      payload: {
+        ...base,
+        session_id: 'broken-transcript',
+        transcript_path: brokenTranscript,
+      },
+    })
+    const settingsTranscript = join(
+      cwd,
+      'settings-only.jsonl',
+    )
+    await hook({
+      event: 'SessionStart',
+      payload: {
+        ...base,
+        session_id: 'settings-only',
+        transcript_path: settingsTranscript,
+      },
+    })
+    await until({
+      what: 'settings-only session to be observed',
+      check: () => sessionFacts({ session: 'settings-only' }),
+    })
+    const nextTurnAt = new Date(Date.parse(running.lastSeen) + 2).toISOString()
     const legacyAt = running.lastSeen.replace(
       /\.\d{3}Z$/,
       'Z',
@@ -340,6 +391,17 @@ test(
     await pnyx.restart({
       whileStopped: () => {
         writeFileSync(
+          settingsTranscript,
+          `${JSON.stringify({
+            type: 'assistant',
+            timestamp: '2025-01-01T00:00:00.001Z',
+            message: {
+              stop_reason: 'end_turn',
+              content: [],
+            },
+          })}\n`,
+        )
+        writeFileSync(
           legacyTranscript,
           `${JSON.stringify({
             type: 'assistant',
@@ -369,12 +431,29 @@ test(
                 },
               ],
             },
+          })}\n${JSON.stringify({
+            type: 'user',
+            timestamp: nextTurnAt,
+            message: {
+              role: 'user',
+              content: 'A second offline turn',
+            },
           })}\n`,
         )
       },
     })
-    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({ activity: 'finished' })
+    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({
+      activity: 'working',
+      turnStartedAt: nextTurnAt,
+      turnEndedSeq: expect.any(Number),
+      activityCursor: { pos: expect.any(Number) },
+    })
+    expect(await sessionFacts({ session: 'settings-only' })).toMatchObject({ activity: 'finished' })
     expect(await sessionFacts({ session: 'legacy-clock' })).toMatchObject({ activity: 'finished' })
+    const recovered = await sessionFacts({ session: 'outside-1' })
+    expect(recovered.activityCursor.pos).toBe(Buffer.byteLength(readFileSync(base.transcript_path)))
+    await pnyx.restart()
+    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject(recovered)
     await hook({
       event: 'SessionEnd',
       payload: base,
@@ -484,6 +563,23 @@ test(
             prompt: 'Written while Pnyx was down',
           },
         })
+        const envelopes = readdirSync(join(
+          process.env.PNYX_HOME!,
+          'hydras',
+          'default',
+          'spool',
+        )).map(file => JSON.parse(readFileSync(
+          join(
+            process.env.PNYX_HOME!,
+            'hydras',
+            'default',
+            'spool',
+            file,
+          ),
+          'utf8',
+        )))
+        const envelope = envelopes.find(entry => entry.payload?.session_id === 'offline-1')
+        expect(envelope.at).toMatch(/\.\d{3}Z$/)
       },
     })
     expect(offline).toMatchObject({
@@ -583,20 +679,10 @@ test(
     })
     expect((await until({
       what: 'the session facts on its own Hydra',
-      check: async () => {
-        const shown = await pnyxAxi({
-          args: [
-            'task',
-            'sessions',
-            '--full',
-            '--hydra',
-            hydra.id,
-          ],
-          env: process.env,
-        })
-
-        return shown.status === 0 ? parsed(shown).sessions.find((facts: { agent: { sessionId: string } }) => facts.agent.sessionId === 'named-1') : undefined
-      },
+      check: () => sessionFacts({
+        session: 'named-1',
+        hydra: hydra.id,
+      }),
     })).title).toBe('Reported to a named Hydra')
   },
 )
@@ -781,9 +867,18 @@ test(
         'task',
         'history',
         'attached',
+        '--full',
       ],
     })
-    expect(history.events.some((event: { type: string }) => event.type === 'session.observed')).toBe(true)
+    expect(history.events).toContainEqual(expect.objectContaining({
+      type: 'session.observed',
+      data: expect.objectContaining({
+        fields: expect.objectContaining({
+          agent: expect.objectContaining({ agentId: 'child-agent' }),
+          attention: expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining('inspect-package') })]),
+        }),
+      }),
+    }))
     await hook({
       event: 'SubagentStop',
       payload: child,

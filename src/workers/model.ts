@@ -256,6 +256,11 @@ export interface AgentLaunch {
 }
 
 export interface AgentSession {
+  activityCursor?: {
+    source: string
+    identity: string
+    pos: number
+  }
   activityObservedAt?: string
   autoTitle?: import('#tasks/model.ts').AutoTitle
   titleSet?: boolean
