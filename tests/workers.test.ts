@@ -3,6 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { base } from '#app/command-meta.ts'
+import type { HydraState } from '#app/model.ts'
+import { EVENT_VERSION } from '#store/events.ts'
+import { applySessionMove } from '#workers/reduce.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
@@ -32,6 +36,55 @@ beforeAll(async () => {
       },
     },
   })
+})
+
+test('replaying an attachment to a missing task leaves the session available and the undo unrecorded', () => {
+  const session = 'codex:worker'
+  const state: HydraState = {
+    v: EVENT_VERSION,
+    seq: 0,
+    cards: {},
+    keys: {},
+    eventIds: {},
+    undone: {},
+    sessions: {
+      [session]: {
+        id: session,
+        agent: {
+          provider: 'codex',
+          sessionId: 'worker',
+        },
+        originCardId: 'original',
+        taskId: null,
+        attention: [],
+        sourceRefs: [],
+      },
+    },
+  }
+  applySessionMove({
+    state,
+    event: {
+      ...base({
+        state,
+        cardId: 'missing',
+        meta: {
+          at: '2026-01-01T00:00:00.000Z',
+          actor: 'owner',
+          id: 'undo-detach',
+        },
+      }),
+      type: 'task.session',
+      undoes: 'detach',
+      data: {
+        session,
+        before: null,
+        after: 'missing',
+      },
+    },
+  })
+
+  expect(state.sessions?.[session]?.taskId).toBeNull()
+  expect(state.undone).toEqual({})
 })
 
 test(

@@ -174,10 +174,15 @@ export function applyAttachment({
 }): boolean {
   let session = state.sessions?.[event.data.session]
   const started = event.data.started
+  const destination = event.data.after
+  const target = destination === null ? undefined : state.cards[destination]
+
+  if (destination !== null && !target) {
+    return false
+  }
 
   if (started) {
-    if (session || event.data.before !== null || !event.data.after
-      || !state.cards[event.data.after]) {
+    if (session || event.data.before !== null || !target) {
       return false
     }
 
@@ -235,8 +240,6 @@ export function applyAttachment({
       event,
     })
   }
-
-  const target = event.data.after && state.cards[event.data.after]
 
   if (target && target.launch?.via === 'command' && session.launch?.via === 'hooks') {
     session.launch = {

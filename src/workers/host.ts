@@ -118,7 +118,7 @@ export function findWorkerTurnToResume({
   }
 
   let lastTurn = scanEvents({
-    ...(session?.launchId ? {} : { cardId }),
+    cardId: session?.launchId ? undefined : cardId,
     hydraId,
     types: [
       'card.pushed',
