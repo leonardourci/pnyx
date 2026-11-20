@@ -1,3 +1,4 @@
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import type { AgentUsage } from '#workers/provider.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -90,7 +91,7 @@ function UsageBar({
       aria-valuemax={100}
       aria-valuenow={percent}
     >
-      <i style={{ width: `${width}%` }} />
+      <i style={runtimeStyle({ width: `${width}%` })} />
     </span>
   )
 }
@@ -138,7 +139,7 @@ export function Usage({
   const showFooter = context !== undefined || cost !== undefined
 
   return (
-    <span className="shared-usage flex flex-col w-full max-w-(--spacing-usage-content) p-3.25 gap-2.5">
+    <span className="shared-usage flex w-full max-w-(--spacing-usage-content) flex-col gap-2.5 p-3.25">
       <UsageSection className="shared-context">
         <UsageRow variant="header" className="shared-header">
           <UsageRow variant="icon" className="usage-icon-line"><Icon name="context" size={ICON_SIZE.inline} /><strong>Context window</strong></UsageRow>
@@ -158,7 +159,7 @@ export function Usage({
             )}
             <UsageRow variant="source" className="shared-source"><Icon name={sourceIcon} size={ICON_SIZE.inline} />{source}</UsageRow>
           </UsageStack>
-        ) : <span className="context-empty text-xs leading-question opacity-70 py-1" title={usage?.unavailable}>Usage unavailable</span>}
+        ) : <span className="context-empty py-1 text-xs leading-question opacity-70" title={usage?.unavailable}>Usage unavailable</span>}
       </UsageSection>
       <UsageSection divided className="shared-plan">
         <UsageRow variant="header" className="shared-header">
@@ -176,7 +177,7 @@ export function Usage({
             />
           )}
         </UsageRow>
-        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={ICON_SIZE.inline} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge text-usage-detail border border-usage-badge px-1.75 py-px rounded-compact leading-question capitalize">{who.plan}</span>}</UsageRow>
+        <UsageRow variant="account" className="plan-account"><Icon name={who?.icon ?? 'agent'} size={ICON_SIZE.inline} /><span>{provider}</span>{who?.account && <span>{who.account}</span>}{who?.plan && <span className="subscription-badge rounded-compact border border-usage-badge px-1.75 py-px text-usage-detail leading-question capitalize">{who.plan}</span>}</UsageRow>
         {who?.model && <UsageText className="shared-sub">{who.model}</UsageText>}
         {windows.map(window => {
           const windowTone = usageTone({ percent: window.used })

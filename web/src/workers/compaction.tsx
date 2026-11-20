@@ -64,7 +64,7 @@ export function CompactionRow({ operation }: { operation: Compaction }) {
   return (
     <OperationLine data-state={operation.state} role={operation.state === 'running' ? 'status' : undefined}>
       <Icon name={operation.state === 'running' ? 'context' : operation.state === 'done' ? 'check' : operation.state === 'cancelled' ? 'stop' : 'error'} size={ICON_SIZE.inline} />
-      <span>{label}{operation.state !== 'running' && operation.trigger === 'auto' && ' · automatic'}{operation.error && <span className="compaction-reason block mt-1">{operation.error}</span>}</span>
+      <span>{label}{operation.state !== 'running' && operation.trigger === 'auto' && ' · automatic'}{operation.error && <span className="compaction-reason mt-1 block">{operation.error}</span>}</span>
     </OperationLine>
   )
 }
@@ -76,7 +76,7 @@ export function CompactionRun({ operations }: { operations: Compaction[] }) {
 
   return (
     <Disclosure
-      className="compaction-run [&>summary]:block [&_.disclosure-body]:grid [&_.disclosure-body]:gap-1.5 [&_.disclosure-body]:pl-5.5"
+      className="compaction-run [&_.disclosure-body]:grid [&_.disclosure-body]:gap-1.5 [&_.disclosure-body]:pl-5.5 [&>summary]:block"
       title={(
         <OperationLine as="span">
           <Icon name="context" size={ICON_SIZE.inline} />
@@ -111,9 +111,9 @@ export function CompactionQueue({
   }
 
   return (
-    <Disclosure className="compaction-queue mt-0 mx-4 mb-2 py-2.5 px-3 border border-line rounded-card" title={`Queued messages (${inputs.length})`}>
+    <Disclosure className="compaction-queue mx-4 mt-0 mb-2 rounded-card border border-line px-3 py-2.5" title={`Queued messages (${inputs.length})`}>
       {inputs.map(input => (
-        <div className="compaction-queued flex items-center gap-1 py-1.5 px-0 [&>span:first-child]:flex-1 [&>span:first-child]:whitespace-pre-wrap [&>span:first-child]:wrap-anywhere [&>span:first-child]:min-w-0 [&>span:first-child]:text-ui [&_.tooltip-anchor]:shrink-0" key={input.id}>
+        <div className="compaction-queued flex items-center gap-1 px-0 py-1.5 [&_.tooltip-anchor]:shrink-0 [&>span:first-child]:min-w-0 [&>span:first-child]:flex-1 [&>span:first-child]:text-ui [&>span:first-child]:wrap-anywhere [&>span:first-child]:whitespace-pre-wrap" key={input.id}>
           <span>{input.text}</span>
           <Tooltip content="Send now">
             <Button aria-label="Send now" disabled={disabled} onClick={() => void sendNow({ id: input.id })}><Icon name="send" size={ICON_SIZE.inline} /></Button>

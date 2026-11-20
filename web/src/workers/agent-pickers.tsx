@@ -12,7 +12,7 @@ import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
 import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
 import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
 
-const PICKERS_CLASS = 'hydra-agent-pickers flex flex-1 flex-wrap items-center gap-0.5 min-w-0 [&_.picker-field]:block [&_.picker-field]:min-w-0 [&_.picker-field]:text-meta [&_.picker-field>span]:hidden [&_.select>.button]:min-h-6.5 [&_.select>.button]:gap-0.75 [&_.select>.button]:border-0 [&_.select>.button]:py-0.5 [&_.select>.button]:px-1.25 [&_.select>.button]:bg-transparent [&_.select>.button]:text-muted [&_.select>.button]:text-meta [&_.select-menu]:absolute [&_.select-menu]:top-auto [&_.select-menu]:bottom-[calc(100%+--spacing(1.25))] [&_.select]:min-w-0 [&_.select>.button>svg:not(:last-child)]:text-ink [&_:is(.select>.button,.account-model-picker>.button,.fast-toggle):is(:hover,:focus-visible):not(:disabled)]:bg-hover data-folded:relative [&[data-folded]>.agent-pickers-row]:absolute [&[data-folded]>.agent-pickers-row]:invisible [&[data-folded]>.agent-pickers-row]:pointer-events-none in-[.settings-page]:gap-(--settings-column-gap) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:min-h-(--agent-control-h) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:text-ui in-[.settings-page]:[&_.fast-toggle]:w-(--agent-control-h)'
+const PICKERS_CLASS = 'hydra-agent-pickers flex min-w-0 flex-1 flex-wrap items-center gap-0.5 in-[.settings-page]:gap-(--settings-column-gap) data-folded:relative in-[.settings-page]:[&_.fast-toggle]:w-(--agent-control-h) [&_.picker-field]:block [&_.picker-field]:min-w-0 [&_.picker-field]:text-meta [&_.picker-field>span]:hidden [&_.select]:min-w-0 [&_.select-menu]:absolute [&_.select-menu]:top-auto [&_.select-menu]:bottom-control-menu [&_.select>.button]:min-h-6.5 [&_.select>.button]:gap-0.75 [&_.select>.button]:border-0 [&_.select>.button]:bg-transparent [&_.select>.button]:px-1.25 [&_.select>.button]:py-0.5 [&_.select>.button]:text-meta [&_.select>.button]:text-muted [&_.select>.button>svg:not(:last-child)]:text-ink in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:min-h-(--agent-control-h) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:text-ui [&_:is(.select>.button,.account-model-picker>.button,.fast-toggle):is(:hover,:focus-visible):not(:disabled)]:bg-hover [&[data-folded]>.agent-pickers-row]:pointer-events-none [&[data-folded]>.agent-pickers-row]:invisible [&[data-folded]>.agent-pickers-row]:absolute'
 
 const ALL_FIELDS = [
   'effort',
@@ -273,7 +273,7 @@ export function AgentPickers({
       ))}
       {fastDash && (
         <Tooltip content="Fast isn't available for this model">
-          <span className="fast-unavailable inline-flex items-center justify-center w-(--agent-control-h) min-h-(--agent-control-h) text-muted opacity-60 cursor-default" tabIndex={0} aria-label="Fast isn't available for this model">–</span>
+          <span className="fast-unavailable inline-flex min-h-(--agent-control-h) w-(--agent-control-h) cursor-default items-center justify-center text-muted opacity-60" tabIndex={0} aria-label="Fast isn't available for this model">–</span>
         </Tooltip>
       )}
       {fastShown && (
@@ -284,7 +284,7 @@ export function AgentPickers({
           ].filter(Boolean).join(' ')}
         >
           <Button
-            className="fast-toggle text-meta text-muted py-0.5 px-1.5 min-h-6.5 aria-pressed:text-gold"
+            className="fast-toggle min-h-6.5 px-1.5 py-0.5 text-meta text-muted aria-pressed:text-gold"
             data-changed={marks?.fast?.changed || undefined}
             aria-label="Fast mode"
             aria-pressed={agent.fast === true}
@@ -310,7 +310,7 @@ export function AgentPickers({
       ref={room}
       data-folded={folded || undefined}
     >
-      <div className="agent-pickers-row flex flex-none w-max items-center gap-[inherit]" ref={row} inert={folded}>{pickers}</div>
+      <div className="agent-pickers-row flex w-max flex-none items-center gap-inherit" ref={row} inert={folded}>{pickers}</div>
       {folded && selection && (
         <AgentSettingsMenu
           label={label}

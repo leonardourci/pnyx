@@ -139,7 +139,7 @@ export function UsageRing({
   return (
     <Tooltip content={panel} interactive label="Usage details">
       <span
-        className={`usage-ring relative inline-flex items-center justify-center shrink-0 size-(--composer-control-h) text-muted font-sans font-normal text-usage-ring leading-none tabular-nums [&>svg]:absolute [&>svg]:inset-0 [&>svg]:size-full [&_circle]:fill-none [&_circle]:stroke-line [&_circle]:stroke-3 data-empty:[&_circle]:[stroke-dasharray:4_4] data-[tone=normal]:[&_.usage-fill]:stroke-muted! ${USAGE_TONE}`}
+        className={`usage-ring relative inline-flex size-(--composer-control-h) shrink-0 items-center justify-center font-sans text-usage-ring leading-none font-normal text-muted tabular-nums data-[tone=normal]:[&_.usage-fill]:stroke-muted! [&_circle]:fill-none [&_circle]:stroke-line [&_circle]:stroke-3 data-empty:[&_circle]:stroke-dashed [&>svg]:absolute [&>svg]:inset-0 [&>svg]:size-full ${USAGE_TONE}`}
         role="img"
         tabIndex={0}
         aria-label={label}
@@ -160,7 +160,7 @@ export function UsageRing({
           />
           {percent !== undefined && (
             <circle
-              className="usage-fill stroke-usage-tone! [stroke-linecap:round] -rotate-90 origin-center"
+              className="usage-fill origin-center -rotate-90 stroke-usage-tone! stroke-round"
               cx="15"
               cy="15"
               r="13.5"

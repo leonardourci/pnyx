@@ -6,7 +6,7 @@ const ROWS = {
   icon: 'gap-1.75 [&>b]:ml-auto',
   source: 'gap-1.75 text-usage-detail opacity-76',
   amounts: 'justify-between gap-1.5 text-usage-detail',
-  account: 'gap-1.75 text-usage-heading my-0.75',
+  account: 'my-0.75 gap-1.75 text-usage-heading',
   reset: 'flex-wrap gap-0.75 text-usage-reset opacity-90 [&>span]:whitespace-nowrap [&>time]:whitespace-nowrap [&>time]:opacity-80',
 }
 
@@ -43,4 +43,4 @@ export function UsageSection({
   return <TooltipSection {...props} className={`${variant} ${className}`} />
 }
 
-export const USAGE_TONE = 'data-[tone=normal]:[--usage-tone:var(--color-surface)] data-[tone=warning]:[--usage-tone:var(--color-gold)] data-[tone=critical]:[--usage-tone:var(--color-red)]'
+export const USAGE_TONE = 'data-[tone=critical]:usage-critical data-[tone=normal]:usage-normal data-[tone=warning]:usage-warning'
