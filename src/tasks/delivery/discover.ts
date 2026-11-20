@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { decode } from '@toon-format/toon'
 import { git } from '#projects/git.ts'
 import { githubRepository } from './proof.ts'
@@ -13,6 +15,28 @@ import { log } from '#app/diagnostics.ts'
 
 const DISCOVERY_TIMEOUT_MS = 30_000
 const DISCOVERY_LIMIT = 100
+
+function discoveryFolder({ card }: { card: import('#tasks/model.ts').Card }): string | undefined {
+  if (card.copy?.state === 'active') {
+    return card.copy.path
+  }
+
+  const folder = card.agent?.cwd ?? (card.launch ? card.folder : undefined)
+
+  if (!folder || !card.copy) {
+    return folder
+  }
+
+  const canonical = ({ path }: { path: string }) => {
+    try {
+      return realpathSync(path)
+    } catch {
+      return resolve(path)
+    }
+  }
+
+  return canonical({ path: folder }) === canonical({ path: card.copy.path }) ? undefined : folder
+}
 
 export function discoverableTasks({ state }: { state: HydraState }) {
   if (state.config?.hydra.kind === 'firstmate') {
@@ -53,8 +77,7 @@ export async function discoverPullRequests({
       Date.now(),
     )
     const copy = card.copy?.state === 'active' ? { ...card.copy } : undefined
-    const workerFolder = card.agent?.cwd ?? (card.launch ? card.folder : undefined)
-    const cwd = copy?.path ?? (card.copy ? undefined : workerFolder)
+    const cwd = discoveryFolder({ card })
     const branches = [...card.branches ?? []]
 
     if (cwd) {
@@ -125,10 +148,7 @@ export async function discoverPullRequests({
               return false
             }
 
-            const currentWorkerFolder = current.agent?.cwd
-              ?? (current.launch ? current.folder : undefined)
-
-            if (!copy && (current.copy || currentWorkerFolder !== cwd)) {
+            if (!copy && discoveryFolder({ card: current }) !== cwd) {
               return false
             }
 

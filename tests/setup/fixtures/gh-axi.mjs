@@ -176,6 +176,10 @@ if (args[0] === 'api') {
   )
 
   if (existsSync(malformed) && read({ file: malformed }).branch === branch) {
+    writeFileSync(
+      `${malformed}.read`,
+      branch,
+    )
     console.log('pull_requests[1]{url}:\n  null')
     process.exit(0)
   }
