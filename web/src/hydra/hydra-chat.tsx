@@ -718,7 +718,12 @@ export function HydraChat({
       <Running
         since={since}
         running={running}
-        label={card ? statusLabel({ status: cardStatus({ card, cards: state.cards }) }) : 'Starting Hydra'}
+        label={card ? statusLabel({
+          status: cardStatus({
+            card,
+            cards: state.cards,
+          }),
+        }) : 'Starting Hydra'}
         reading={queue.reading}
         waiting={queue.waiting}
         state={state}

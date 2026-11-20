@@ -343,7 +343,12 @@ export function TaskChat({
     card: card.id,
   }).tools
   const since = card.workingSince ?? null
-  const status = statusLabel({ status: observedStatus({ card, state }) })
+  const status = statusLabel({
+    status: observedStatus({
+      card,
+      state,
+    }),
+  })
   const statusLine = (
     <Running
       since={since}
