@@ -347,6 +347,7 @@ export function TaskChat({
     pending: pendingTurn,
   })
   const working = liveStatus.kind === 'working'
+  const nativeWorking = (card.sessionActivity ?? card.activity) === 'working'
   const showsTools = traces({
     view,
     card: card.id,
@@ -465,7 +466,7 @@ export function TaskChat({
         drafts={drafts}
         thread={live ?? null}
         settings={settings}
-        stop={card.agent?.host === 'pnyx' && working ? async () => {
+        stop={card.agent?.host === 'pnyx' && nativeWorking ? async () => {
           await command({
             name: 'task',
             args: [
