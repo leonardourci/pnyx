@@ -131,12 +131,54 @@ const registeredCallback = ({
   })
 }
 
+const nodeWatchAssignment = ({
+  node,
+  sourceCode,
+}) => {
+  let assigned = node
+
+  while (assigned.parent.type === 'TSAsExpression') {
+    assigned = assigned.parent
+  }
+
+  const assignment = assigned.parent
+
+  if (assignment.type !== 'AssignmentExpression' || assignment.right !== assigned) {
+    return false
+  }
+
+  const target = assignment.left
+
+  if (target.type !== 'MemberExpression' || target.computed || target.property.name !== 'watch'
+    || target.object.type !== 'Identifier') {
+    return false
+  }
+
+  const binding = variableFor({
+    node,
+    name: target.object.name,
+    sourceCode,
+  })?.defs[0]?.node
+
+  return [
+    'ImportDefaultSpecifier',
+    'ImportNamespaceSpecifier',
+  ].includes(binding?.type) && binding.parent.source.value === 'node:fs'
+}
+
 const boundary = ({
   node,
   filename,
   sourceCode,
 }) => {
   const parent = node.parent
+
+  if (nodeWatchAssignment({
+    node,
+    sourceCode,
+  })) {
+    return true
+  }
 
   if (registeredCallback({
     node,
