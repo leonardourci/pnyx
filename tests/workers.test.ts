@@ -19,7 +19,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
 
@@ -2468,5 +2468,258 @@ test(
       what: 'the new cut turn to resume independently after interruption',
       check: () => pnyx.claude.sessions.filter(session => session.cwd === folder).length === 5,
     })
+  },
+)
+
+test(
+  'only supported integrations launch workers, while command launches and explicit outside attachments stay available',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'outside-routes',
+        '--title',
+        'Outside routes',
+        '--no-start',
+      ],
+    })
+    expect((await hydra.owner({ args: ['integrations'] })).integrations.map((entry: { name: string }) => entry.name))
+      .toEqual([
+        'skills',
+        'hooks',
+        'command',
+        'github',
+      ])
+
+    for (const [
+      args,
+      error,
+    ] of [
+        [
+          [
+            'task',
+            'start',
+            'outside-routes',
+            '--via',
+            'firstmate',
+          ],
+          'unknown start route: firstmate',
+        ],
+        [
+          [
+            'task',
+            'start',
+            'outside-routes',
+            '--via',
+            'paseo',
+          ],
+          'unknown start route: paseo',
+        ],
+        [
+          [
+            'hydra',
+            'start',
+            '--via',
+            'firstmate',
+          ],
+          'unknown start route: firstmate',
+        ],
+        [
+          [
+            'hydra',
+            'start',
+            '--via',
+            'paseo',
+          ],
+          'unknown start route: paseo',
+        ],
+      ] as const) {
+      expect(await hydra.ownerRefused({ args: [...args] })).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        error,
+      })
+    }
+
+    for (const args of [
+      [
+        'hydra',
+        'create',
+        'removed-home',
+        '--firstmate',
+        '/unused',
+      ],
+      [
+        'hydra',
+        'homes',
+      ],
+      [
+        'setup',
+        'hydra',
+        '--home',
+        '/unused',
+      ],
+      [
+        'firstmate',
+        'sync',
+        '--home',
+        '/unused',
+      ],
+      [
+        'task',
+        'paseo',
+      ],
+      [
+        'task',
+        'start',
+        'outside-routes',
+        '--paseo-url',
+        'ws://127.0.0.1:1/ws',
+      ],
+    ]) {
+      expect((await hydra.ownerRefused({ args })).code).toBe('VALIDATION_ERROR')
+    }
+
+    const folder = hydra.folder({ name: 'command-route' })
+    const receipt = join(
+      folder,
+      'launch.txt',
+    )
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        `printenv PNYX_TASK > '${receipt}'`,
+      ],
+    })
+    expect(await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'outside-routes',
+        '--via',
+        'command',
+        '--folder',
+        folder,
+      ],
+    }))
+      .toMatchObject({
+        via: 'command',
+        folder,
+      })
+    const task = await hydra.task({ key: 'outside-routes' })
+    await until({
+      what: 'the command to receive its task',
+      check: () => existsSync(receipt) && readFileSync(
+        receipt,
+        'utf8',
+      ).trim() === task.id,
+    })
+
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-session',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'codex',
+          sessionId: 'outside-session',
+          cwd: folder,
+        },
+        terminal: {
+          tty: '/dev/ttys99999',
+          tmux: '/tmp/test-tmux',
+          tmuxPane: '%1',
+          herdrSession: 'test-session',
+          herdrPane: 'pane-1',
+        },
+        activity: 'finished',
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'attach',
+        task.id,
+        '--session',
+        'codex:outside-session',
+      ],
+    })
+    expect((await hydra.task({ key: task.id })).worker).toBe('codex:outside-session')
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        task.id,
+      ],
+    })
+    expect((await hydra.task({ key: task.id })).worker).toMatch(/^none(?::|$)/)
+
+    for (const identity of [
+      { TMUX_PANE: '%1' },
+      { HERDR_PANE_ID: 'pane-1' },
+    ]) {
+      const attached = await pnyxAxi({
+        args: [
+          'task',
+          'attach',
+          task.id,
+          '--session',
+          'self',
+          '--hydra',
+          hydra.id,
+        ],
+        env: {
+          ...process.env,
+          ...identity,
+        },
+      })
+      expect(attached.status).toBe(0)
+      expect((await hydra.task({ key: task.id })).worker).toBe('codex:outside-session')
+      await hydra.owner({
+        args: [
+          'task',
+          'detach',
+          task.id,
+        ],
+      })
+    }
+
+    const hydraStart = await hydra.owner({
+      args: [
+        'hydra',
+        'start',
+        '--folder',
+        folder,
+      ],
+    })
+    expect(hydraStart).toMatchObject({
+      via: 'command',
+      folder,
+    })
+    await until({
+      what: 'the command to receive Hydra context',
+      check: () => readFileSync(
+        receipt,
+        'utf8',
+      ).trim() === '$hydra',
+    })
+    const listed = parsed(await pnyxAxi({
+      args: [
+        'task',
+        'sessions',
+        '--hydra',
+        hydra.id,
+      ],
+      env: process.env,
+    }))
+    expect(listed.sessions).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'codex:outside-session' })]))
   },
 )

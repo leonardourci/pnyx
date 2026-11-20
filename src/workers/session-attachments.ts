@@ -19,7 +19,7 @@ export function sessionId({ agent }: { agent: AgentRef }): string {
 }
 
 export function interactive({ session }: { session: AgentSession }): boolean {
-  return Boolean(session.terminal?.tty || session.agent.paseoAgentId || session.agent.host)
+  return Boolean(session.terminal?.tty || session.agent.host)
 }
 
 export function cardSessionId({ card }: { card: Card }): string | undefined {
@@ -63,17 +63,15 @@ export function findSession({
   return found
 }
 
-// The session running in the caller's own terminal, for `--session self`: the newest
-// live session whose Paseo terminal, tmux pane or Herdr pane matches.
+// Prefer the newest live session in the caller's tmux or Herdr pane for `--session self`.
 export function selfSession({
   state,
   here,
 }: {
   state: HydraState
-  here: Pick<TerminalFacts, 'paseoTerminal' | 'tmuxPane' | 'herdrPane'>
+  here: Pick<TerminalFacts, 'tmuxPane' | 'herdrPane'>
 }): AgentSession {
   const keys = ([
-    'paseoTerminal',
     'tmuxPane',
     'herdrPane',
   ] as const).filter(k => here[k])
@@ -88,7 +86,7 @@ export function selfSession({
 
   if (!found) {
     throw new HydraError({
-      message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no Paseo, tmux or Herdr pane in the environment',
+      message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no tmux or Herdr pane in the environment',
       code: 'NOT_FOUND',
       help: ['Run `pnyx-axi task sessions` and pass --session <id>'],
     })
@@ -96,8 +94,6 @@ export function selfSession({
 
   return found
 }
-
-const firstmate = ({ card }: { card: Card }) => card.sourceRefs.some(r => r.adapter === 'firstmate')
 
 // An absent value deletes its key, so the state keeps its shape through its saved JSON.
 export function assignDefined<T extends object>({
@@ -254,7 +250,7 @@ export function projectSession({
   ]
 
   if (!task.outcome || task.outcome.source === 'hooks') {
-    if (session.outcome && !firstmate({ card: task })) {
+    if (session.outcome) {
       task.outcome = { ...session.outcome }
     } else {
       delete task.outcome
@@ -423,7 +419,7 @@ export function observeSession({
     if (!session.launch) {
       // Copies, not the card's own objects: a write through one would otherwise change the other without touching its row.
       session.launch = card.launch ? { ...card.launch } : {
-        via: card.agent.paseoAgentId ? 'paseo' : card.agent.host ? 'pnyx' : 'hooks',
+        via: card.agent.host ? 'pnyx' : 'hooks',
         at: event.at,
         folder: card.agent.cwd,
         harness: card.agent.provider,
@@ -459,8 +455,7 @@ export function observeSession({
     session.attention = card.attention.filter(a => a.key.startsWith('hook:')).map(a => ({ ...a }))
     const objectId = `${session.agent.sessionId}${session.agent.agentId ? `/${session.agent.agentId}` : ''}`
     session.sourceRefs = card.sourceRefs.filter(r => (r.adapter === 'hooks' && r.objectId === objectId)
-      || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath)
-      || (r.adapter === 'paseo' && r.objectId === session.agent.paseoAgentId)).map(r => ({ ...r }))
+      || (r.adapter === 'transcript' && r.objectId === session.agent.transcriptPath)).map(r => ({ ...r }))
   }
 
   if (event.type === 'card.outcome' && (event.data.after?.source === 'hooks' || event.data.before?.source === 'hooks')) {
@@ -497,4 +492,4 @@ export const observesPresence = ({
   adapter?: string
   lastSeen?: string
 }): boolean =>
-  !lastSeen || adapter === 'hooks' || adapter === 'paseo' || adapter === 'transcript'
+  !lastSeen || adapter === 'hooks' || adapter === 'transcript'

@@ -20,7 +20,6 @@ import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import type { Connect } from '#integrations/paseo/client.ts'
 import { redact } from '#oracle/text.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { commandText } from '#integrations/hooks/observe.ts'
@@ -72,10 +71,10 @@ const POLL_MS = 2000
 
 export async function hydraCheck({
   args,
-  connect,
+  probe,
 }: {
   args: string[]
-  connect?: Connect
+  probe?: Parameters<typeof checkAttachments>[0]['probe']
 }): Promise<Output> {
   const {
     values,
@@ -226,7 +225,7 @@ export async function hydraCheck({
 
   const agents = await checkAttachments({
     state: loadHydra({ hydraId }).state,
-    connect,
+    probe,
   })
   const state = loadHydra({ hydraId }).state
   const pendingReports = new Map(

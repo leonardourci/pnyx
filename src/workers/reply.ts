@@ -17,11 +17,9 @@ import type { RepliedEvent } from '#tasks/model.ts'
 import type { ReplyState } from './model.ts'
 import { KEY_LABEL, inputReason, type Key } from './controls.ts'
 import { replyRoute } from './reply-route.ts'
-import { STATUS_KEY, TASK_ID, resolveHome } from '#integrations/firstmate/home.ts'
 import { answerKeys, type KeyStep } from '#integrations/hooks/answer.ts'
-import { HOOK, waitsOnHook } from '#integrations/hooks/observe.ts'
+import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import type { Delivery } from '#integrations/hooks/terminal.ts'
-import type { Connect } from '#integrations/paseo/client.ts'
 import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { askAnswer } from '#tasks/ask-decide.ts'
@@ -34,14 +32,11 @@ export interface ReplyRequest {
   key?: Key
   // One more Enter after the text, for a command the harness may ask to confirm.
   confirm?: boolean
-  // A setting change: a request note to a Firstmate task's orchestrator, and
-  // elsewhere refused while the session waits on an open request.
+  // A setting change, refused while the session waits on an open request.
   control?: boolean
   // Idempotency key: a retry with the same id never sends twice unless the
   // earlier send failed outright.
   id?: string
-  resolveKey?: string
-  homes: string[]
   actor?: string
   // An inline answer to the open request with this key, pressed as keys into the
   // session's own prompt instead of typed text. seen is the requestId the answer was
@@ -96,29 +91,24 @@ export function invalid({
 export async function sendReply({
   hydraId,
   request,
-  connectPaseo,
 }: {
   hydraId: string
   request: ReplyRequest
-  connectPaseo?: Connect
 }): Promise<ReplyReceipt> {
-  const {
-    resolveKey,
-    answer,
-  } = request
+  const { answer } = request
 
   if (!answer && !request.ask && request.text.trim() === '') {
     throw invalid({ message: 'reply text is empty' })
   }
 
-  const keyed = resolveKey !== undefined || request.key || request.control
+  const keyed = request.key || request.control
 
   if (answer && keyed) {
-    throw invalid({ message: '--answer cannot be combined with a key, setting or --resolve-key' })
+    throw invalid({ message: '--answer cannot be combined with a key or setting' })
   }
 
   if (request.ask && (keyed || answer)) {
-    throw invalid({ message: 'a question\'s answer cannot be combined with --answer, a key, a setting or --resolve-key' })
+    throw invalid({ message: 'a question\'s answer cannot be combined with --answer, a key or a setting' })
   }
 
   if (request.ask?.fromMessage && request.text.trim() && /^\//.test(request.text.trimStart())) {
@@ -130,7 +120,6 @@ export async function sendReply({
     actor: request.actor ?? 'cli',
     ...(request.reason ? { reason: request.reason } : {}),
   })
-  const homes = request.homes.map(path => resolveHome({ path }))
 
   const queued = withWriter({
     hydraId,
@@ -211,21 +200,9 @@ export async function sendReply({
 
       const accepted = Boolean(built?.decision.fromMessage)
       const retained = known?.accepted === true
-      const found = replyRoute({
-        card,
-        homes,
-      })
+      const found = replyRoute({ card })
 
       if ('reason' in found && !accepted && !retained) {
-        const home = card.sourceRefs.find(r => r.adapter === 'firstmate')?.instanceId
-
-        if (home && found.reason.includes('not configured')) {
-          throw invalid({
-            message: `card ${card.id} belongs to Firstmate home ${home}, which is not configured`,
-            help: [`Pass --home ${home} to allow replies to it`],
-          })
-        }
-
         throw new HydraError({
           message: `card ${card.id} has no reply route: ${found.reason}`,
           code: 'NO_ROUTE',
@@ -248,35 +225,18 @@ export async function sendReply({
         })
       }
 
-      if (request.control && route?.kind !== 'firstmate' && waitsOnHook({ attention: card.attention })) {
+      if (request.control && waitsOnHook({ attention: card.attention })) {
         throw new HydraError({
           message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`,
           code: 'SESSION_WAITING',
         })
       }
 
-      if (route?.kind === 'firstmate') {
-        if (!TASK_ID.test(route.task)) {
-          throw new HydraError({
-            message: `card ${card.id} has no reply route`,
-            code: 'NO_ROUTE',
-            help: ['Reply to a Firstmate task card'],
-          })
-        }
-
-        // fm-send has no `--` separator, so a leading flag would be read as an option.
-        if (request.text.startsWith('--')) {
-          throw invalid({ message: 'reply text cannot start with --' })
-        }
-      } else if (resolveKey !== undefined) {
-        throw invalid({ message: '--resolve-key answers Firstmate decisions; this card replies through its agent session' })
-      }
-
       const entered = resolveSkillReferences({
         text: request.text,
         provider: card.agent?.provider,
       })
-      const nativeCommand = route?.kind !== 'firstmate' && /^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(entered.trimStart())
+      const nativeCommand = /^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(entered.trimStart())
       const control = Boolean(request.control || request.key || request.setting || nativeCommand)
       let text = entered
       let keys: KeyStep[] | undefined
@@ -360,28 +320,6 @@ export async function sendReply({
         })
       }
 
-      if (
-        resolveKey !== undefined
-      && (
-        resolveKey === STATUS_KEY
-        || resolveKey.startsWith(HOOK)
-        || !card.attention.some(a => a.key === resolveKey)
-      )
-      ) {
-        throw invalid({
-          message: `card ${card.id} has no open decision with key ${resolveKey}`,
-          help: [`Run \`pnyx-axi card ${card.id}\` to see its attention keys`],
-        })
-      }
-
-      if (resolveKey) {
-        const question = card.attention.find(request => request.key === resolveKey)
-        answerDecision = {
-          question: question?.text || question?.kind || resolveKey,
-          answer: text,
-        }
-      }
-
       let context = !request.control && !request.key && !answer
         ? mentionContext({
           state: writer.state,
@@ -393,22 +331,18 @@ export async function sendReply({
       }
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
-      const ordinary = !control && !request.taskMessage && !answers && !resolveKey
+      const ordinary = !control && !request.taskMessage && !answers
       const resumes = ordinary && !steeringHeld({ card })
       const data = {
         reply,
         resumes,
         state: 'queued' as const,
-        route: route ? routeName({
-          route,
-          control: request.control,
-        }) : 'none',
+        route: route ? routeName({ route }) : 'none',
         text,
         accepted: accepted || undefined,
         ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
         ...(control ? { control: true } : {}),
-        ...(resolveKey ? { resolveKey } : {}),
         ...(answerDecision ? { decision: answerDecision } : {}),
         ...(answers ? { answers } : {}),
       }
@@ -417,8 +351,8 @@ export async function sendReply({
         context,
       ].filter(Boolean).join('\n\n')
       const nativeCompact = route?.kind === 'pnyx' && compactCommand({ text: payload })
-      const steering = !nativeCompact && route?.kind !== 'firstmate' && !isManagedTask({ card })
-        && !control && !answers && !resolveKey
+      const steering = !nativeCompact && !isManagedTask({ card })
+        && !control && !answers
         ? reply : undefined
 
       if (steering) {
@@ -506,7 +440,6 @@ export async function sendReply({
       card,
       message: queued.steering,
       attempt: queued.notificationAttempt,
-      connectPaseo,
     })
     outcome = {
       state: notificationReceipt(notice),
@@ -541,10 +474,7 @@ export async function sendReply({
         drainSpool({ writer })
         const data = {
           reply,
-          route: route ? routeName({
-            route,
-            control: request.control,
-          }) : 'none',
+          route: route ? routeName({ route }) : 'none',
           ...outcome,
           resumes: queued.resumes,
           accepted: queued.accepted || undefined,

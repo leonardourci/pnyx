@@ -34,10 +34,6 @@ export function inboxTask({
     invalid({ message: 'Choose a native task for its steering inbox' })
   }
 
-  if (card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')) {
-    invalid({ message: 'Firstmate tasks use Firstmate’s steering inbox' })
-  }
-
   return card
 }
 

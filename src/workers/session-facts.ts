@@ -163,8 +163,6 @@ export function applySessionFacts({
 
     if (fields.agent.host) {
       via = 'pnyx'
-    } else if (fields.agent.paseoAgentId) {
-      via = 'paseo'
     }
 
     const task = state.cards[event.data.task ?? '']

@@ -9,7 +9,6 @@ import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ReplyState } from './model.ts'
 import { withWriter } from '#app/writer.ts'
-import { fmNote, noteRequestId } from '#integrations/firstmate/reply.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { sendReply, type ReplyRequest } from './reply.ts'
 
@@ -32,7 +31,7 @@ export async function sendTaskMessage({
   request,
 }: {
   hydraId: string
-  request: Pick<ReplyRequest, 'card' | 'text' | 'id' | 'actor' | 'homes'>
+  request: Pick<ReplyRequest, 'card' | 'text' | 'id' | 'actor'>
 }): Promise<TaskMessageReceipt> {
   if (!request.text.trim()) {
     throw new HydraError({
@@ -64,11 +63,6 @@ export async function sendTaskMessage({
 
       const known = card.replies?.find(r => r.id === reply)
 
-      const hydra = hydraConfig({
-        state: writer.state,
-        id: hydraId,
-      }).hydra
-
       return {
         context: mentionContext({
           state: writer.state,
@@ -79,7 +73,6 @@ export async function sendTaskMessage({
         agent: known?.route ? known.route !== 'hydra' : !!card.agent,
         session: card.sessionIds?.[0],
         receipt: known?.route && known.route !== 'hydra' ? known : undefined,
-        home: hydra.kind === 'firstmate' ? hydra.home : undefined,
       }
     },
   })
@@ -151,42 +144,6 @@ export async function sendTaskMessage({
         return { state: 'queued' as const }
       },
     })
-
-    if (target.home && (hydra.state === 'queued' || hydra.state === 'failed')) {
-      hydra = await fmNote({
-        home: target.home,
-        requestId: noteRequestId({
-          hydraId,
-          card: target.id,
-          reply,
-        }),
-        text: `Message on task ${target.id}: ${target.title}\n\n${[
-          request.text,
-          target.context,
-        ].filter(Boolean).join('\n\n')}`,
-      })
-      const outcome = hydra
-      withWriter({
-        hydraId,
-        fn: ({ writer }) => {
-          const decision = decideReply({
-            state: writer.state,
-            ref: target.id,
-            meta,
-            data: {
-              reply: `hydra:${reply}`,
-              route: 'hydra',
-              taskMessage: true,
-              ...outcome,
-            },
-          })
-
-          if ('event' in decision) {
-            writer.append({ event: decision.event })
-          }
-        },
-      })
-    }
   } catch (error) {
     hydra = {
       state: 'delivery_unknown',

@@ -1,25 +1,16 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
 import type { ReplyRoute } from './reply-route.ts'
-import { fmNote, fmSend, noteRequestId } from '#integrations/firstmate/reply.ts'
 import type { KeyStep } from '#integrations/hooks/answer.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { pressKey, pressKeys, typeInto, type Delivery } from '#integrations/hooks/terminal.ts'
-import { paseoReply } from '#integrations/paseo/reply.ts'
 import { askHost } from '#app/server-state.ts'
 import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import type { ReplyRequest } from './reply.ts'
 
-export function routeName({
-  route,
-  control,
-}: {
-  route: ReplyRoute
-  control?: boolean
-}): string {
-  return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate')
-    : route.kind === 'paseo-agent' || route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
+export function routeName({ route }: { route: ReplyRoute }): string {
+  return route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
 }
 
 // Time for Claude Code to show its confirmation after a model or effort command.
@@ -44,39 +35,12 @@ export async function deliver({
     text,
     key,
     confirm,
-    resolveKey,
   } = request
 
   if (keys && route.kind === 'tmux') {
     return await pressKeys({
       route,
       steps: keys,
-    })
-  }
-
-  if (route.kind === 'firstmate') {
-    return request.control
-      ? fmNote({
-        home: route.home,
-        requestId: noteRequestId({
-          hydraId,
-          card,
-          reply,
-        }),
-        text,
-      })
-      : fmSend({
-        route,
-        text,
-        resolveKey,
-      })
-  }
-
-  if (route.kind === 'paseo-agent') {
-    return paseoReply({
-      route,
-      text,
-      id: reply,
     })
   }
 

@@ -777,8 +777,6 @@ test(
           agent: {
             provider: 'claude',
             sessionId: 'attachment-probe',
-            paseoAgentId: 'attachment-probe',
-            paseoUrl: 'ws://127.0.0.1:1/ws',
           },
           activity: 'finished',
         }),
@@ -798,12 +796,12 @@ test(
             '--hydra',
             hydra.id,
           ],
-          connect: () => new Promise((
-            resolve,
-            reject,
-          ) => {
+          probe: () => new Promise(resolve => {
             checkingAttachments = true
-            releaseRead = () => reject(new Error('The attachment probe ended'))
+            releaseRead = () => resolve({
+              state: 'unknown',
+              detail: 'The attachment probe ended',
+            })
           }),
         }),
       })

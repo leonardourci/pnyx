@@ -121,10 +121,7 @@ export function requestId({ request }: { request: Attention }): string {
 // Whether the card's recorded route can press the keys: only a tmux pane, the one
 // host whose keys were checked by hand against each harness's prompt.
 function takesKeys({ card }: { card: Card }): boolean {
-  const found = replyRoute({
-    card,
-    homes: [],
-  })
+  const found = replyRoute({ card })
 
   return 'route' in found && found.route.kind === 'tmux'
 }
