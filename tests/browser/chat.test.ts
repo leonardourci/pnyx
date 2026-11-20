@@ -173,6 +173,27 @@ test(
       { exact: false },
     ).waitFor()
     expect(await hydraChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
+    const copied = await hydraChat.evaluate(chat => {
+      const paragraph = [...chat.querySelectorAll('p')].find(p => p.textContent?.startsWith('Check'))!
+      const range = document.createRange()
+      range.selectNodeContents(paragraph)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      const clipboard = new DataTransfer()
+      paragraph.dispatchEvent(new ClipboardEvent(
+        'copy',
+        {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: clipboard,
+        },
+      ))
+      selection.removeAllRanges()
+
+      return clipboard.getData('text/plain')
+    })
+    expect(copied).toBe(text)
     await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()
       .click()
     const taskChat = page.getByRole(
@@ -186,6 +207,18 @@ test(
     expect(await taskChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
     expect(await taskChat.locator(`[data-task-ref="${task.id}"]`).first()
       .getAttribute('aria-label')).toContain('Task mentions;')
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        task.id,
+        '--title',
+        'Renamed task',
+      ],
+    })
+    await hydraChat.locator(`[data-task-ref="${task.id}"][aria-label^="Open task Renamed task;"]`)
+      .first()
+      .waitFor()
   },
 )
 

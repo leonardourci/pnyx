@@ -2,6 +2,7 @@ import { createContext, Fragment, useContext, useLayoutEffect, useMemo, useRef, 
 import { InlineButton } from '#web-shared/ui/controls.tsx'
 import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
 import { CHIP_SPACE } from '#web-hydra/draft.ts'
+import { CHIP_SOURCE } from '#web-hydra/message-selection.ts'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 
 const stateIcons: Record<string, string> = {
@@ -128,7 +129,8 @@ export function TaskReferenceText({ text }: { text: string }) {
   ) => {
     const id = index % 2 === 1 ? context.names.get(part) : undefined
 
-    return id ? <TaskReference key={index} id={id} /> : <Fragment key={index}>{part}</Fragment>
+    return id ? <span key={index} {...{ [CHIP_SOURCE]: part }}><TaskReference id={id} /></span>
+      : <Fragment key={index}>{part}</Fragment>
   })
 }
 
