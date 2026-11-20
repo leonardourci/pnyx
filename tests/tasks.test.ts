@@ -3088,7 +3088,7 @@ test(
     expect(cleared.task.parentId).toBeUndefined()
     expect(cleared.task.project).toBeUndefined()
     expect(cleared.task.folder).toBeUndefined()
-    expect(await hydra.ownerRefused({
+    await hydra.owner({
       args: [
         'push',
         '--key',
@@ -3097,15 +3097,33 @@ test(
         '-',
       ],
       input: JSON.stringify({
-        title: 'Wrong task',
+        title: 'Parent updated',
         agent: {
           provider: 'claude',
           sessionId: 'observed',
         },
       }),
-    })).toMatchObject({ code: 'CONFLICT' })
+    })
     expect((await hydra.task({ key: 'observed' })).title).toBe('After')
-    expect((await hydra.task({ key: 'parent' })).title).toBe('Parent')
+    const parent = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'parent',
+        '--full',
+      ],
+    })).task
+    expect(parent.title).toBe('Parent updated')
+    expect(parent.sessionIds ?? []).toEqual([])
+    const stillAssigned = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'observed',
+        '--full',
+      ],
+    })).task
+    expect(stillAssigned.agent.sessionId).toBe('observed')
   },
 )
 

@@ -6,7 +6,6 @@ import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
 import { refreshTasks } from '#tasks/columns.ts'
 import { touch } from '#tasks/touch.ts'
 import { checkRevision } from '#tasks/push-rules.ts'
-import { HydraError } from '#store/errors.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 
@@ -63,18 +62,10 @@ export function decideSessionFacts({
   cursor?: AgentSession['activityCursor']
 }): Decision {
   const agent = fields.agent
-  const assigned = sessionTask({
+  const owner = task ?? sessionTask({
     state,
     agent,
   })
-  const owner = task ?? assigned
-
-  if (task && assigned && task.id !== assigned.id) {
-    throw new HydraError({
-      code: 'CONFLICT',
-      message: `Session is already assigned to ${assigned.id}`,
-    })
-  }
 
   if (owner) {
     checkRevision({
@@ -233,10 +224,18 @@ export function applySessionFacts({
     state,
     session,
   })
-  const task = sessionTask({
+  const assigned = sessionTask({
     state,
     agent: session.agent,
   })
+  const task = state.cards[event.data.task ?? ''] ?? assigned
+
+  if (assigned && assigned.id !== task?.id) {
+    touch({
+      card: assigned,
+      event,
+    })
+  }
 
   if (task) {
     if (event.data.task === task.id) {
