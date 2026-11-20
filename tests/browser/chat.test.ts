@@ -647,6 +647,29 @@ test(
           what: 'the older page response',
           check: () => heldOlderAnswers.length > 0,
         })
+
+        if (olderPage === 0) {
+          await conversation.locator('..').getByRole(
+            'button',
+            { name: 'Jump to latest' },
+          )
+            .click()
+          await conversation.evaluate(chat => {
+            chat.scrollTop = 0
+            const row = chat.querySelector('[data-entry-id]')
+
+            if (!row) {
+              throw new Error('No message to select')
+            }
+
+            const range = document.createRange()
+            range.selectNodeContents(row)
+            window.getSelection()?.removeAllRanges()
+            window.getSelection()?.addRange(range)
+            document.dispatchEvent(new Event('selectionchange'))
+          })
+        }
+
         await nextFrames({
           page,
           count: ARRIVAL_FRAMES,
@@ -695,11 +718,22 @@ test(
           JSON.stringify(frames),
         ).toEqual([])
         expect(frames.every(frame => Object.keys(frame.shownFromBottom).length > 0)).toBe(true)
+        expect(frames.every(frame => frame.shownFromBottom[anchorId] !== undefined)).toBe(true)
         const anchorAfter = await anchor.evaluate(row => row.getBoundingClientRect().top)
         const movement = anchorAfter - anchorBefore
         totalMovement += movement
         // scrollTop rounds fractional geometry; total drift stays within one pixel across prepends.
         expect(Math.abs(totalMovement)).toBeLessThanOrEqual(1)
+
+        if (olderPage === 0) {
+          await page.evaluate(() => {
+            window.getSelection()?.removeAllRanges()
+
+            if (document.activeElement instanceof HTMLElement) {
+              document.activeElement.blur()
+            }
+          })
+        }
       }
 
       expect(await conversation.getByText('The transcript is unavailable').count()).toBe(0)

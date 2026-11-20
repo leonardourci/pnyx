@@ -37,11 +37,12 @@ export function useChatScroll() {
     } : undefined
   }
 
+  const selectionOrFocusInside = useRef(false)
   const [follow] = useState(() => createChatFollow({
     changed: ({ away }) => {
       setReading(away)
 
-      if (!away) {
+      if (!away && !selectionOrFocusInside.current) {
         anchor.current = undefined
         scrollRemainder.current = 0
       } else if (!anchor.current) {
@@ -49,7 +50,6 @@ export function useChatScroll() {
       }
     },
   }))
-  const selectionOrFocusInside = useRef(false)
   const writtenTop = useRef<number>(undefined)
 
   const scrollToEnd = () => {
@@ -83,9 +83,9 @@ export function useChatScroll() {
   }
 
   const keepPlace = () => {
-    if (!follow.following()) {
+    if (!follow.following() || selectionOrFocusInside.current) {
       keepAnchor()
-    } else if (!selectionOrFocusInside.current) {
+    } else {
       scrollToEnd()
     }
   }
@@ -134,6 +134,10 @@ export function useChatScroll() {
     () => watchHistoryFocus({
       host: () => content.current?.querySelector('.messages'),
       changed: ({ selected }) => {
+        if (selected && !selectionOrFocusInside.current) {
+          rememberAnchor()
+        }
+
         selectionOrFocusInside.current = selected
 
         if (!selected) {
