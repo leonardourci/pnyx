@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -102,9 +103,10 @@ export function sourceTask({
       worker,
     })
   } else if (!ownerActor({ actor: meta.actor }) && meta.actor !== 'hydra' && meta.actor !== 'pnyx') {
-    invalidSource({
-      message: 'Only the owner, Hydra or this task’s worker can manage sources',
-      code: 'NOT_ALLOWED',
+    inform({
+      task: card.id,
+      reason: 'External source changed by another actor',
+      clear: `Use pnyx-axi task source list ${card.id} to inspect its sources`,
     })
   }
 

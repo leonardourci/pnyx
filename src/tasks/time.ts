@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { HydraError } from '#store/errors.ts'
 
 // RegExp captures are strings, though both parsers only accept these unit keys.
@@ -76,12 +77,21 @@ export function reminderTime({
     }
   }
 
-  if (!Number.isFinite(time) || time <= Date.parse(now) || time > 8_640_000_000_000_000) {
+  if (!Number.isFinite(time) || time > 8_640_000_000_000_000) {
     throw new HydraError({
       message: 'Choose a future reminder time',
       code: 'VALIDATION_ERROR',
       help: ['Use an ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours"; use clear to remove a reminder'],
     })
+  }
+
+  if (time <= Date.parse(now)) {
+    inform({
+      reason: 'Reminder time has passed; the reminder is due now',
+      clear: 'Use pnyx-axi task remind <task> <time|clear> to reschedule it',
+    })
+
+    return now
   }
 
   return new Date(time).toISOString()

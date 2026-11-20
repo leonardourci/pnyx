@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { existsSync } from 'node:fs'
 import { readInput } from '#app/request-context.ts'
 import { randomUUID } from 'node:crypto'
@@ -95,6 +96,10 @@ function cardDetail({
     workspace: card.workspace,
     column: card.column,
     tags: card.tags.length ? card.tags : 'none',
+  }
+
+  if (card.notices?.length) {
+    detail.notices = card.notices
   }
 
   if (card.brief !== undefined) {
@@ -538,9 +543,9 @@ function columnCommand({ args }: { args: string[] }): Output {
   const m = meta({ values })
 
   if (action === 'rule' && !m.reason?.trim()) {
-    throw new HydraError({
-      message: 'column rule needs --reason <why>',
-      code: 'VALIDATION_ERROR',
+    inform({
+      reason: 'Column rule changed without a reason',
+      clear: 'Use pnyx-axi column rule <column> --reason "<why>" to record one',
     })
   }
 
@@ -588,17 +593,11 @@ function columnCommand({ args }: { args: string[] }): Output {
     })
   }
 
-  let confirmation: { token?: string } | undefined
   const changesPlacement = action === 'delete' || action === 'reorder' || action === 'rule'
-
-  if (m.actor !== 'web' && changesPlacement) {
-    confirmation = { token: values.confirm as string | undefined }
-  }
 
   return commit({
     hydraId,
     meta: m,
-    confirmation,
     intent: {
       type: 'board.columns',
       card: '$board',
@@ -971,7 +970,6 @@ export const move = guard({
         type: 'card.moved',
         card: ref,
       },
-      ...(m.actor !== 'web' ? { confirmation: { token: values.confirm as string | undefined } } : {}),
       decide: ({ state }) => decideMove({
         state,
         ref,

@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { reportCalls, requireReportReview } from './inventory.ts'
 import { requireReady } from '#tasks/dependencies.ts'
@@ -148,24 +149,22 @@ export function decideBuild({
   })
 
   if (reportActor({ actor: meta.actor })) {
-    throw new HydraError({
-      message: 'only the owner, or Hydra on the owner\'s word, turns an investigation into its build',
-      code: 'FORBIDDEN',
+    inform({
+      reason: 'Investigation converted to a build by an agent',
+      clear: 'pnyx-axi task report <task>',
+      task: card.id,
     })
   }
 
   if (card.kind !== 'investigation') {
-    throw new HydraError({
-      message: `task ${card.id} is already a build task`,
-      code: 'CONFLICT',
-    })
+    return { skipped: 'unchanged' as const }
   }
 
   if (!card.report) {
-    throw new HydraError({
-      message: `task ${card.id} has no stored report to build from`,
-      code: 'CONFLICT',
-      help: ['The worker stores it with `pnyx-axi task report <task> --file <path>`'],
+    inform({
+      task: card.id,
+      reason: 'Build started without a stored investigation report',
+      clear: `Use pnyx-axi task report ${card.id} --file <path> to store one`,
     })
   }
 
@@ -216,12 +215,20 @@ export function decideReportReview({
   }
 
   const hasCalls = calls.length > 0
-  const invalidInventoryChoice = (none && hasCalls) || (!none && !hasCalls)
+  const invalidInventoryChoice = none && hasCalls
 
   if (invalidInventoryChoice) {
     throw new HydraError({
       message: 'review the whole report and pass --none or every --call <task>/<ask>',
       code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (!none && !hasCalls) {
+    inform({
+      task: card.id,
+      reason: 'No report inventory supplied; using its recorded questions',
+      clear: `Use pnyx-axi task report-review ${card.id} --report ${report} --call <task>/<question> to supply an inventory`,
     })
   }
 
@@ -269,10 +276,15 @@ export function decideReportReview({
   }).some(call => !recordedCalls.has(`${call.task}/${call.ask}`))
 
   if (missing) {
-    throw new HydraError({
-      message: 'the inventory omits an unresolved report question',
-      code: 'VALIDATION_ERROR',
+    inform({
+      task: card.id,
+      reason: 'Report inventory supplemented with unresolved questions',
+      clear: `Use pnyx-axi task report-review ${card.id} --report ${report} --call <task>/<question>`,
     })
+    records.push(...reportCalls({
+      state,
+      card,
+    }).filter(call => !recordedCalls.has(`${call.task}/${call.ask}`)))
   }
 
   if (isDeepStrictEqual(

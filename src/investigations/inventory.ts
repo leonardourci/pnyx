@@ -1,5 +1,5 @@
+import { inform } from '#app/command-notices.ts'
 import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
 import type { ReportCall } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 
@@ -58,9 +58,10 @@ export function requireReportReview({
   })
 
   if (gaps.length) {
-    throw new HydraError({
-      message: gaps.join('; '),
-      code: 'REPORT_REVIEW_REQUIRED',
+    inform({
+      task: card.id,
+      reason: gaps.join('; '),
+      clear: `Use pnyx-axi task report-review ${card.id} --report ${card.report?.id} --none or --call <task>/<question>`,
     })
   }
 }

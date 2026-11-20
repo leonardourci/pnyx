@@ -1,3 +1,7 @@
+import { inform } from '#app/command-notices.ts'
+import { applyDecision } from '#app/decision.ts'
+import { decideSession } from '#workers/sessions.ts'
+import { captureResult } from '#task-sources/sources.ts'
 import { join } from 'node:path'
 import { foldWorkerLog } from '#workers/worker-log.ts'
 import { randomUUID } from 'node:crypto'
@@ -20,7 +24,7 @@ import { fallbackColumn } from './column-rules.ts'
 import { cardFacts, placeCard } from './columns.ts'
 import type { Column } from './columns-model.ts'
 import type { Card } from './model.ts'
-import { movedAway, type HydraMoveEvent } from './move-state.ts'
+import { movedAway, type HydraMoveEvent, type MovedCard } from './move-state.ts'
 import { isManagedTask } from './select.ts'
 import { agentActivity } from '#workers/activity.ts'
 import { activeHelperBatches } from '#routine-helper/state.ts'
@@ -137,19 +141,17 @@ export function moveRefusal({
   source,
   target,
   card,
+  moving = [],
 }: {
   hydraId: string
   to: string
   source: HydraState
   target: HydraState
   card: Card
+  moving?: string[]
 }): HydraError | undefined {
-  const rerun = rerunCommand({
-    card,
-    to,
-    hydraId,
-  })
-  const others = Object.values(source.cards).filter(c => c.id !== card.id)
+  const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
+  const restoreRelationships = `Use pnyx-axi task move ${card.id} --to-hydra ${hydraId} --hydra ${to} to move it back; task history preserves its previous relationships`
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
@@ -180,11 +182,11 @@ export function moveRefusal({
     label: card.project,
   })
 
-  if (project && !project.attached) {
-    return refuse({
-      message: `Hydra ${to} has no project ${project.path} attached`,
-      help: `Run \`pnyx-axi project add ${project.path} --hydra ${to}\`, then \`${rerun}\``,
-      code: 'NOT_FOUND',
+  if (project && !project.attached && !moving.includes(card.id)) {
+    inform({
+      task: card.id,
+      reason: `Moved with: Hydra ${to} has no project ${project.path} attached`,
+      clear: restoreRelationships,
     })
   }
 
@@ -199,30 +201,34 @@ export function moveRefusal({
     card,
     cards: source.cards,
   }) === 'working') {
-    return refuse({
-      message: `${card.id}'s worker is mid-turn`,
-      help: `Wait for the turn to end (\`pnyx-axi task show ${card.id} --hydra ${hydraId}\`), then run \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Stopped ${card.id}'s mid-turn worker before moving; its saved session remains`,
+      clear: restoreRelationships,
     })
   }
 
   if (session && card.agent?.host !== 'pnyx') {
-    return refuse({
-      message: `${card.id}'s worker runs outside Pnyx, and its hooks would keep writing to Hydra ${hydraId}`,
-      help: `Run \`pnyx-axi task detach ${card.id} --hydra ${hydraId}\`, then \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Detached ${card.id}'s outside worker; its hooks retain Hydra ${hydraId}`,
+      clear: restoreRelationships,
     })
   }
 
   if (activeHelperBatches({ state: source }).some(batch => batch.tasks.includes(card.id))) {
-    return refuse({
-      message: `the routine helper is handling ${card.id}`,
-      help: `Wait for the helper's batch to end (\`pnyx-axi debug health --hydra ${hydraId}\`), then run \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Moved with: the routine helper is handling ${card.id}`,
+      clear: restoreRelationships,
     })
   }
 
   if (card.queue) {
-    return refuse({
-      message: `${card.id} is queued behind ${card.queue.session}`,
-      help: `Run \`pnyx-axi task unqueue ${card.id} --hydra ${hydraId}\`, then \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Removed the queue entry for ${card.id}, previously behind ${card.queue.session}`,
+      clear: restoreRelationships,
     })
   }
 
@@ -232,68 +238,76 @@ export function moveRefusal({
   }) : []
 
   if (behind[0]) {
-    return refuse({
-      message: `${behind[0].id} is queued behind ${card.id}'s worker`,
-      help: `Run \`pnyx-axi task unqueue ${behind[0].id} --hydra ${hydraId}\`, then \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Moved with: ${behind[0].id} is queued behind ${card.id}'s worker`,
+      clear: restoreRelationships,
     })
   }
 
-  const prerequisite = card.prerequisites?.[0]
+  const prerequisite = card.prerequisites?.find(id => !moving.includes(id))
 
   if (prerequisite) {
-    return refuse({
-      message: `${card.id} depends on ${prerequisite}, which stays on Hydra ${hydraId}`,
-      help: `Run \`pnyx-axi task undepend ${card.id} --on ${prerequisite} --hydra ${hydraId}\`, then \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Moved with: ${card.id} depends on ${prerequisite}, which stays on Hydra ${hydraId}`,
+      clear: restoreRelationships,
     })
   }
 
   const dependent = others.find(c => c.prerequisites?.includes(card.id))
 
   if (dependent) {
-    return refuse({
-      message: `${dependent.id} depends on ${card.id}`,
-      help: `Run \`pnyx-axi task undepend ${dependent.id} --on ${card.id} --hydra ${hydraId}\`, then \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Moved with: ${dependent.id} depends on ${card.id}`,
+      clear: restoreRelationships,
     })
   }
 
-  if (card.wait) {
-    return refuse({
-      message: `${card.id} waits for ${card.wait.task}, which stays on Hydra ${hydraId}`,
-      help: `Resolve the recorded dependency wait before running \`${rerun}\``,
+  if (card.wait && !moving.includes(card.wait.task)) {
+    inform({
+      task: card.id,
+      reason: `Moved with: ${card.id} waits for ${card.wait.task}, which stays on Hydra ${hydraId}`,
+      clear: restoreRelationships,
     })
   }
 
   const waiting = others.find(c => c.wait?.task === card.id)
 
   if (waiting) {
-    return refuse({
-      message: `${waiting.id} waits for ${card.id}`,
-      help: `Resolve the dependent task’s recorded wait before running \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Moved with: ${waiting.id} waits for ${card.id}`,
+      clear: restoreRelationships,
     })
   }
 
-  if (card.parentId) {
-    return refuse({
-      message: `${card.id} is a subtask of ${card.parentId}, which stays on Hydra ${hydraId}`,
-      help: 'Subtasks and their parent cannot move between Hydras',
+  if (card.parentId && !moving.includes(card.parentId)) {
+    inform({
+      task: card.id,
+      reason: `Moved with: ${card.id} is a subtask of ${card.parentId}, which stays on Hydra ${hydraId}`,
+      clear: restoreRelationships,
     })
   }
 
   const child = others.find(c => c.parentId === card.id && !isManagedTask({ card: c }))
 
   if (child) {
-    return refuse({
-      message: `${card.id} has subtask ${child.id}, which would stay on Hydra ${hydraId}`,
-      help: 'Subtasks and their parent cannot move between Hydras',
+    inform({
+      task: card.id,
+      reason: `Moved with: ${card.id} has subtask ${child.id}, which would stay on Hydra ${hydraId}`,
+      clear: restoreRelationships,
     })
   }
 
   const liveSource = card.externalSources?.find(s => LIVE_SOURCE_STATES.has(s.state))
 
   if (liveSource) {
-    return refuse({
-      message: `external source ${liveSource.id} still runs for ${card.id} on Hydra ${hydraId}`,
-      help: `Run \`pnyx-axi task source stop ${card.id} ${liveSource.id} --hydra ${hydraId}\`, then \`${rerun}\``,
+    inform({
+      task: card.id,
+      reason: `Moved with: external source ${liveSource.id} still runs for ${card.id} on Hydra ${hydraId}`,
+      clear: restoreRelationships,
     })
   }
 
@@ -301,20 +315,10 @@ export function moveRefusal({
 }
 
 function checkTarget({
-  hydraId,
   to,
 }: {
-  hydraId: string
   to: string
 }): void {
-  if (to === hydraId) {
-    throw refuse({
-      message: `the task is already on Hydra ${to}`,
-      help: 'Name another Hydra with --to-hydra',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
   if (!hydraIds().includes(to)) {
     throw refuse({
       message: `Hydra not found: ${to}`,
@@ -347,6 +351,7 @@ export async function releaseWorker({
       hydraId,
       body: {
         action: 'release',
+        permanent: true,
         task: card.id,
         actor,
       },
@@ -404,6 +409,7 @@ function depart({
   to,
   move,
   meta,
+  moving,
 }: {
   hydraId: string
   source: Writer
@@ -411,6 +417,7 @@ function depart({
   to: string
   move: string
   meta: Meta
+  moving?: MovedCard['moving']
 }): void {
   source.append({
     event: {
@@ -425,6 +432,7 @@ function depart({
       type: 'task.moved-out',
       data: {
         to,
+        moving,
         card: structuredClone(card),
         sessions: carried({
           hydraId,
@@ -471,6 +479,7 @@ export function stageTaskMove({
   to,
   move,
   meta,
+  moving,
 }: {
   hydraId: string
   source: Writer
@@ -479,6 +488,7 @@ export function stageTaskMove({
   to: string
   move: string
   meta: Meta
+  moving?: MovedCard['moving']
 }): HydraMoveEvent & { type: 'task.moved-in' } {
   // The source records the transcript's notes up to now, so the target reads on from the same place.
   harvestTranscripts({
@@ -498,7 +508,7 @@ export function stageTaskMove({
     writer: source,
     task: cardId,
   })
-  const current = source.state.cards[cardId]
+  let current = source.state.cards[cardId]
 
   if (!current) {
     throw missing({
@@ -519,6 +529,40 @@ export function stageTaskMove({
     throw late
   }
 
+  for (const external of current.externalSources ?? []) {
+    if (LIVE_SOURCE_STATES.has(external.state)) {
+      captureResult({
+        writer: source,
+        card: current,
+        source: external,
+        run: external.run?.id ?? external.registration,
+        outcome: 'stopped',
+        detail: 'Stopped for a Hydra move; unread results remain recorded',
+        meta,
+      })
+    }
+  }
+
+  if (current.agent?.host !== 'pnyx') {
+    for (const session of [...current.sessionIds ?? []]) {
+      applyDecision({
+        writer: source,
+        decision: decideSession({
+          state: source.state,
+          ref: session,
+          task: null,
+          meta: {
+            ...meta,
+            id: undefined,
+            ifRevision: undefined,
+          },
+        }),
+      })
+    }
+  }
+
+  current = source.state.cards[cardId]!
+
   const event = {
     ...base({
       state: target.state,
@@ -531,6 +575,7 @@ export function stageTaskMove({
     type: 'task.moved-in',
     data: {
       from: hydraId,
+      moving,
       column: targetColumn({
         source: source.state,
         target: target.state,
@@ -563,6 +608,7 @@ export function stageTaskMove({
     to,
     move,
     meta,
+    moving,
   })
 
   return event
@@ -581,7 +627,6 @@ export async function moveTask({
   meta: Meta
 }): Promise<Output> {
   checkTarget({
-    hydraId,
     to,
   })
   const state = loadHydra({ hydraId }).state
@@ -613,6 +658,21 @@ export async function moveTask({
       hydraId,
       ref,
     })
+  }
+
+  if (to === hydraId) {
+    inform({
+      task: card.id,
+      reason: `Task is already on Hydra ${to}`,
+      clear: `Use pnyx-axi task move ${card.id} --to-hydra <other-hydra> to move it elsewhere`,
+    })
+
+    return {
+      moved: card.id,
+      to,
+      event: 'none: unchanged',
+      state: 'unchanged',
+    }
   }
 
   const target = loadHydra({ hydraId: to }).state

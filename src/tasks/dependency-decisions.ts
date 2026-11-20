@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
@@ -20,9 +21,9 @@ export function prerequisiteCards({
   meta: Meta
 }): Card[] {
   if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
-    throw new HydraError({
-      message: 'only Hydra or the owner manages prerequisites',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Prerequisites changed by an agent',
+      clear: 'pnyx-axi task undepend <task> --on <prerequisite>',
     })
   }
 
@@ -68,6 +69,14 @@ export function decideDependencies({
     throw new HydraError({
       message: TASK_CARDS_ONLY,
       code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
+    inform({
+      task: card.id,
+      reason: 'Prerequisites changed by an agent',
+      clear: `Use pnyx-axi task undepend ${card.id} --on <prerequisite>`,
     })
   }
 

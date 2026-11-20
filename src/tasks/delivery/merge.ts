@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { mergeApproval } from './merge-questions.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -55,21 +56,30 @@ function pullRequest({
 }
 
 // Green means open, not a draft, no failed check and none still running.
-function mustBeGreen({ status }: { status: PullRequestStatus }): void {
+function mergeNotices({ status }: { status: PullRequestStatus }): void {
+  const reasons: string[] = []
+
   if (status.state === 'closed') {
-    refuse({ message: 'the pull request is closed' })
+    reasons.push('Pull request is closed')
   }
 
   if (status.draft) {
-    refuse({ message: 'the pull request is still a draft' })
+    reasons.push('Pull request is a draft')
   }
 
   if (status.checks.failed > 0) {
-    refuse({ message: `checks are red: ${status.checks.summary}` })
+    reasons.push(`Checks are red: ${status.checks.summary}`)
   }
 
   if (status.checks.pending > 0) {
-    refuse({ message: `checks are still running: ${status.checks.summary}` })
+    reasons.push(`Checks are running: ${status.checks.summary}`)
+  }
+
+  for (const reason of reasons) {
+    inform({
+      reason,
+      clear: 'Use pnyx-axi task refresh-links <task> to refresh the pull request facts',
+    })
   }
 }
 
@@ -108,9 +118,10 @@ export async function mergeCommand({
   const owner = ownerActor({ actor: meta.actor })
 
   if (!owner && meta.actor !== HYDRA_ACTOR) {
-    refuse({
-      message: 'only the owner or Hydra merges a pull request',
-      code: 'FORBIDDEN',
+    inform({
+      task: card.id,
+      reason: 'Merge requested by a worker',
+      clear: `Use pnyx-axi task landing ${card.id} --merge <owner|hydra> to change the merge default`,
     })
   }
 
@@ -124,9 +135,10 @@ export async function mergeCommand({
     card,
     url: link.url,
   })) {
-    refuse({
-      message: 'the owner merges this project\'s pull requests; ask them',
-      code: 'FORBIDDEN',
+    inform({
+      task: card.id,
+      reason: 'Merge requested while the landing rule defaults to the owner',
+      clear: `Use pnyx-axi task landing ${card.id} --merge hydra to change the default`,
     })
   }
 
@@ -142,7 +154,7 @@ export async function mergeCommand({
   let attempt = link.mergeAttempt
 
   if (status.state !== 'merged' && !attempt) {
-    mustBeGreen({ status })
+    mergeNotices({ status })
     let evidence
 
     try {
@@ -155,7 +167,11 @@ export async function mergeCommand({
     }
 
     if (evidence.problems.length) {
-      refuse({ message: evidence.problems.join('; ') })
+      inform({
+        task: card.id,
+        reason: evidence.problems.join('; '),
+        clear: `Use pnyx-axi task refresh-links ${card.id} to refresh merge evidence`,
+      })
     }
 
     attempt = {
@@ -179,9 +195,10 @@ export async function mergeCommand({
             card: currentCard,
             url: link.url,
           })) {
-          refuse({
-            message: 'the owner’s merge approval was withdrawn',
-            code: 'FORBIDDEN',
+          inform({
+            task: card.id,
+            reason: 'Merge approval changed before the merge attempt',
+            clear: `Use pnyx-axi task landing ${card.id} --merge owner to change the default`,
           })
         }
 

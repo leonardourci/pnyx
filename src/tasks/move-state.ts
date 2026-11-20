@@ -1,3 +1,4 @@
+import { touch } from './touch.ts'
 import type { EventBase } from '#store/events.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
@@ -7,6 +8,10 @@ import { refreshTasks } from './columns.ts'
 
 // Both sides carry the whole card and its sessions so either log replays alone; they share the event id.
 export interface MovedCard {
+  moving?: {
+    tasks: string[]
+    sessions: string[]
+  }
   card: Card
   sessions: AgentSession[]
 }
@@ -67,6 +72,51 @@ function moveOut({
     return
   }
 
+  const sessions = new Set(card.sessionIds ?? [])
+
+  for (const related of Object.values(state.cards)) {
+    if (related.id === card.id || event.data.moving?.tasks.includes(related.id)) {
+      continue
+    }
+
+    const parent = related.parentId === card.id
+    const prerequisite = related.prerequisites?.includes(card.id)
+    const waiting = related.wait?.task === card.id
+    const queued = related.queue && sessions.has(related.queue.session)
+
+    if (!parent && !prerequisite && !waiting && !queued) {
+      continue
+    }
+
+    if (parent) {
+      delete related.parentId
+    }
+
+    if (prerequisite) {
+      related.prerequisites = related.prerequisites?.filter(id => id !== card.id)
+    }
+
+    if (waiting) {
+      delete related.wait
+    }
+
+    if (queued) {
+      delete related.queue
+    }
+
+    related.notices = [
+      {
+        task: related.id,
+        reason: `Local relationship to ${card.id} cleared when it moved to Hydra ${event.data.to}`,
+        clear: `Use pnyx-axi task move ${card.id} --to-hydra ${event.boardId ?? '<source-hydra>'} --hydra ${event.data.to}, then task parent, task depend, or task queue to restore the relationship`,
+      },
+    ]
+    touch({
+      card: related,
+      event,
+    })
+  }
+
   delete state.cards[card.id]
 
   for (const [
@@ -102,6 +152,27 @@ function moveIn({
   event: Extract<HydraMoveEvent, { type: 'task.moved-in' }>
 }): void {
   const card = structuredClone(event.data.card)
+  const arriving = new Set(event.data.moving?.tasks ?? [])
+
+  if (card.parentId && !state.cards[card.parentId]
+    && !arriving.has(card.parentId)) {
+    delete card.parentId
+  }
+
+  if (card.prerequisites) {
+    card.prerequisites = card.prerequisites.filter(id => state.cards[id] || arriving.has(id))
+  }
+
+  if (card.wait && !state.cards[card.wait.task]
+    && !arriving.has(card.wait.task)) {
+    delete card.wait
+  }
+
+  if (card.queue && !state.sessions?.[card.queue.session]
+    && !event.data.moving?.sessions.includes(card.queue.session)) {
+    delete card.queue
+  }
+
   card.column = event.data.column
   delete card.rank
   card.createdSeq = event.seq

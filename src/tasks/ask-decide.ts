@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraState, Decision } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -219,7 +220,11 @@ function validateOwnerQuestion({
   }
 
   if (missing.length) {
-    throw invalid({ message: `Owner questions need ${missing.join('; ')}` })
+    inform({
+      task: card.id,
+      reason: `Owner question omits suggested details: ${missing.join('; ')}`,
+      clear: `Use pnyx-axi task ask ${card.id} --to owner --question "<decision?>" --context "<what changes> [Card](pnyx-task:${card.id})" --choice "<option>" --choice "<option>" --recommend 1 for a structured question`,
+    })
   }
 }
 
@@ -258,7 +263,12 @@ export function decideAsk({
   let origin: Ask['origin']
 
   if (card.id === HYDRA_CARD && audience !== 'owner') {
-    throw invalid({ message: 'A Hydra-wide question goes to the owner; workers ask on their own task' })
+    audience = 'owner'
+    inform({
+      task: card.id,
+      reason: 'Hydra-wide question routed to the owner',
+      clear: 'Use pnyx-axi task ask <task> --to hydra for a worker question',
+    })
   }
 
   if (fromReport !== undefined) {
@@ -282,23 +292,28 @@ export function decideAsk({
   }
 
   if (audience === 'owner' && meta.actor !== HYDRA_ACTOR) {
-    throw new HydraError({
-      message: 'only Hydra asks the owner directly; ask Hydra, which escalates what the owner must decide',
-      code: 'OWNER_ONLY',
-      help: [`Run \`pnyx-axi task ask ${card.id} --question "<question>"\` without --to owner`],
+    inform({
+      reason: 'Worker question sent directly to the owner',
+      clear: 'pnyx-axi task ask <task> --to hydra --question "<question>"',
+      task: card.id,
     })
   }
 
   if (audience === 'hydra' && meta.actor === HYDRA_ACTOR) {
-    throw invalid({ message: 'Hydra asks the owner: pass --to owner' })
+    audience = 'owner'
+    inform({
+      task: card.id,
+      reason: 'Hydra question routed to the owner',
+      clear: `Use pnyx-axi task answer ${card.id} <question> --text "<answer>"`,
+    })
   }
 
   // Hydra hears a question as its asker's report, so only an agent's question goes to Hydra.
   if (audience === 'hydra' && !reportActor({ actor: meta.actor })) {
-    throw new HydraError({
-      message: 'a question to Hydra comes from the task\'s worker; the owner talks to Hydra in its chat',
-      code: 'NOT_ALLOWED',
-      help: [`A worker Pnyx does not run passes --actor worker:${card.id}`],
+    inform({
+      reason: 'Question sent to Hydra by another actor',
+      clear: 'pnyx-axi hydra send --text "<message>"',
+      task: card.id,
     })
   }
 
@@ -318,7 +333,16 @@ export function decideAsk({
     throw invalid({ message: 'a go question supplies its own Go and Hold choices' })
   }
 
-  const recommendation = kind === 'go' ? 1 : recommended
+  const recommendation = kind === 'go' ? 1 : recommended ?? (options?.length ? 1 : undefined)
+
+  if (kind !== 'go' && recommended === undefined && options?.length) {
+    inform({
+      task: card.id,
+      reason: 'No recommendation supplied; using the first choice',
+      clear: `Use pnyx-axi task ask ${card.id} --recommend <number> to choose a recommendation`,
+    })
+  }
+
   const choices = questionChoices({
     options: kind === 'go' ? [
       { label: 'Go' },
@@ -357,6 +381,7 @@ export function decideAsk({
       options: choices,
       recommended: recommendation,
     })
+    said.context ??= `Task: ${card.title}. [Card](pnyx-task:${encodeURIComponent(card.id)})`
   }
 
   return hydraEvent({
@@ -414,9 +439,10 @@ export function decideEscalation({
   })
 
   if (meta.actor !== HYDRA_ACTOR) {
-    throw new HydraError({
-      message: 'only Hydra escalates a question to the owner',
-      code: 'NOT_ALLOWED',
+    inform({
+      reason: 'Question escalated by an agent',
+      clear: 'pnyx-axi task answer <task> <question> --text "<answer>"',
+      task: card.id,
     })
   }
 
@@ -427,9 +453,10 @@ export function decideEscalation({
   })
 
   if (ask.audience === 'owner') {
-    throw new HydraError({
-      message: `question ${ask.id} already waits for the owner`,
-      code: 'ASK_CLOSED',
+    inform({
+      task: card.id,
+      reason: 'Updated a question that already waits for the owner',
+      clear: `Use pnyx-axi task answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
     })
   }
 
@@ -536,55 +563,72 @@ export function askAnswer({
   })
 
   if (actor.startsWith('helper:') && (ask.audience !== 'hydra' || ask.escalated)) {
-    throw new HydraError({
-      message: 'The helper cannot answer an owner decision',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Helper answered an owner question',
+      clear: 'pnyx-axi task reopen-question <task> <question>',
+      task: card.id,
     })
   }
 
   if (reportActor({ actor }) || actor === 'pnyx') {
-    throw new HydraError({
-      message: 'an agent cannot answer a question; Hydra or the owner answers it',
-      code: 'NOT_ALLOWED',
+    inform({
+      reason: 'Question answered by an agent',
+      clear: 'pnyx-axi task reopen-question <task> <question>',
+      task: card.id,
     })
   }
 
   let source: AnswerMessage | undefined
+  let quoted = typed
 
   if (fromMessage !== undefined) {
     const message = state?.hydraMessages?.find(message => message.id === fromMessage)
-    const ownerMessage = message && ownerActor({ actor: message.actor }) && message.action === 'send'
-    const askedAt = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
-    const newer = message && Date.parse(message.at) > Date.parse(askedAt)
 
-    if (actor !== HYDRA_ACTOR || ask.audience !== 'owner') {
-      throw invalid({ message: '--from-message is for Hydra recording an owner answer to an owner question' })
-    }
-
-    if (!ownerMessage || !newer) {
-      throw invalid({ message: '--from-message must name the owner’s own message sent after the question' })
+    if (!message) {
+      throw new HydraError({
+        message: 'Saved message not found',
+        code: 'NOT_FOUND',
+      })
     }
 
     if (typed !== undefined || (choice !== undefined && ask.kind !== 'merge' && ask.kind !== 'go')) {
-      throw invalid({ message: '--from-message quotes the owner’s message; a merge or go question also takes --choice' })
+      throw invalid({ message: '--from-message quotes the saved message; use --text for a separate answer' })
     }
 
-    source = {
-      id: message.id,
-      text: message.text,
-      at: message.at,
-    }
+    const ownerMessage = ownerActor({ actor: message.actor }) && message.action === 'send'
+    const clarification = clarificationMessage({ message })
+    const askedAt = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
+    const newer = Date.parse(message.at) > Date.parse(askedAt)
 
-    if (clarificationMessage({ message })) {
-      throw invalid({ message: 'A clarification is not an answer; keep the question open and explain it' })
+    if (!ownerMessage || clarification) {
+      quoted = message.text
+      inform({
+        task: card.id,
+        reason: `Message ${message.id} is a report or clarification; the answer is recorded as ${actor}`,
+        clear: `Use pnyx-axi task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen it`,
+      })
+    } else {
+      source = {
+        id: message.id,
+        text: message.text,
+        at: message.at,
+      }
+
+      if (!newer) {
+        inform({
+          task: card.id,
+          reason: `Reused owner message ${message.id} from before the question`,
+          clear: `Use pnyx-axi task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen it`,
+        })
+      }
     }
   }
 
   if (ask.audience === 'owner' && actor === HYDRA_ACTOR && !source) {
-    throw new HydraError({
-      message: `question ${ask.id} waits for the owner's own answer`,
-      code: 'OWNER_ONLY',
-      help: ['Use --from-message <id> only when the owner’s own newer message answers this question'],
+    inform({
+      reason: 'Question answered without a saved owner message',
+      clear: 'pnyx-axi task reopen-question <task> <question>',
+      task: card.id,
     })
   }
 
@@ -598,7 +642,7 @@ export function askAnswer({
   }
 
   const note = text({
-    value: source?.text ?? typed,
+    value: source?.text ?? quoted,
     what: '--text',
     max: ANSWER_MAX,
   })
@@ -613,15 +657,17 @@ export function askAnswer({
   }
 
   const heldMerge = answeredMergeHold({ ask })
-  const ownerChoice = ownerActor({ actor }) && !undelivered
-  const relayedChoice = actor === HYDRA_ACTOR && !!source
-  const liftsHold = heldMerge && label === 'Merge' && (ownerChoice || relayedChoice)
+  const liftsHold = heldMerge && label === 'Merge'
 
   const newerThanHold = source && ask.answeredAt
     && Date.parse(source.at) > Date.parse(ask.answeredAt)
 
   if (liftsHold && source && !newerThanHold) {
-    throw invalid({ message: 'the owner’s message must be newer than the Hold answer' })
+    inform({
+      task: card.id,
+      reason: 'Changed a Merge Hold using an earlier owner message',
+      clear: `Use pnyx-axi task reask ${card.id} ${ask.id} --reason "<why>" to ask again`,
+    })
   }
 
   if (!liftsHold) {
@@ -642,7 +688,11 @@ export function askAnswer({
     }
 
     if (source && Date.parse(source.at) <= Date.parse(card.hold.at)) {
-      throw invalid({ message: 'the owner’s message must be newer than the current hold' })
+      inform({
+        task: card.id,
+        reason: 'Answered Go using an owner message from before the hold',
+        clear: `Use pnyx-axi task hold ${card.id} --reason "<why>" to restore the hold`,
+      })
     }
   }
 
@@ -702,10 +752,14 @@ export function decideAskClosure({
 
   if (reask) {
     if (!meta.reason?.trim()) {
-      throw invalid({ message: 're-asking a merge Hold needs --reason' })
+      inform({
+        task: card.id,
+        reason: 'Merge question re-asked without a reason',
+        clear: 'Use pnyx-axi task reask <task> <question> --reason "<why>" to record one',
+      })
     }
 
-    if (meta.actor !== HYDRA_ACTOR || !ask.answered || !answeredMergeHold({ ask })) {
+    if (!ask.answered || !answeredMergeHold({ ask })) {
       throw invalid({ message: 'only Hydra can re-ask an answered merge Hold' })
     }
 
@@ -725,10 +779,11 @@ export function decideAskClosure({
   }
 
   if (reopen) {
-    const currentAnswer = ask.fromMessage && ask.answered && ask.answered === answer && !ask.closed
+    answer ??= ask.answered
+    const currentAnswer = ask.answered && ask.answered === answer && !ask.closed
 
-    if (!ownerActor({ actor: meta.actor }) || !currentAnswer || !answer) {
-      throw invalid({ message: 'only the owner can undo the current answer recorded from their message' })
+    if (!currentAnswer || !answer) {
+      throw invalid({ message: 'Choose the current answer event to reopen this question' })
     }
 
     return hydraEvent({
@@ -746,7 +801,11 @@ export function decideAskClosure({
   }
 
   if (meta.actor !== HYDRA_ACTOR || !meta.reason?.trim() || !evidence?.trim()) {
-    throw invalid({ message: 'Hydra closes a moot question with --reason and --evidence' })
+    inform({
+      task: card.id,
+      reason: 'Question closed without Hydra’s usual reason and evidence',
+      clear: `Use pnyx-axi task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen an answer, or task ask to ask again`,
+    })
   }
 
   closed({
@@ -755,12 +814,20 @@ export function decideAskClosure({
   })
 
   if (ask.audience === 'owner' && !ask.origin && !ask.kind) {
-    throw invalid({ message: 'This owner question remains open until answered or its task explicitly finishes' })
+    inform({
+      task: card.id,
+      reason: 'Owner question closed explicitly without an answer',
+      clear: `Use pnyx-axi task ask ${card.id} --to owner --question "<question>" to ask again`,
+    })
   }
 
   if (ask.kind === 'merge' && !card.links.some(link =>
     link.url === ask.url && (link.state === 'merged' || link.state === 'closed'))) {
-    throw invalid({ message: 'A merge question remains open until its own pull request merges or closes, or the owner answers it' })
+    inform({
+      task: card.id,
+      reason: 'Merge question closed while its pull request remains open',
+      clear: `Use pnyx-axi task refresh-links ${card.id} to refresh the pull request`,
+    })
   }
 
   return hydraEvent({
@@ -771,8 +838,8 @@ export function decideAskClosure({
       type: 'task.ask.closed',
       data: {
         ask: id,
-        reason: meta.reason,
-        evidence,
+        reason: meta.reason ?? `Question closed by ${meta.actor}`,
+        evidence: evidence ?? 'Explicit close-question command',
       },
     },
   })
