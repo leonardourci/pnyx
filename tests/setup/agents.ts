@@ -604,6 +604,7 @@ export function fakeClaude() {
 
 // An app-server in this process: each request gets its recorded result and the notifications recorded after it.
 export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } = {}) {
+  let refuseInterrupt = false
   let reusedSession: string | undefined
   const sessions: AgentSession[] = []
   const turns = plans()
@@ -797,13 +798,19 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           })
         }
 
-        if (plan?.refuse) {
+        const rejectedInterrupt = message.method === 'turn/interrupt' && refuseInterrupt
+
+        if (plan?.refuse || rejectedInterrupt) {
+          if (rejectedInterrupt) {
+            refuseInterrupt = false
+          }
+
           send({
             message: {
               id: message.id,
               error: {
                 code: -32000,
-                message: 'the app-server refused this turn',
+                message: rejectedInterrupt ? 'the app-server refused this interruption' : 'the app-server refused this turn',
               },
             },
           })
@@ -812,6 +819,7 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         }
 
         if (message.method === 'turn/interrupt') {
+          session.answered = session.received.length
           send({
             message: {
               id: message.id,
@@ -893,6 +901,9 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
   return {
     spawnCodex,
     sessions,
+    refuseNextInterrupt: () => {
+      refuseInterrupt = true
+    },
     reuseNextSession: ({ id }: { id: string }) => {
       reusedSession = id
     },

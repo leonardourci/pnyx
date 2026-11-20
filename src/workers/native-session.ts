@@ -588,7 +588,22 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
 
           if (message.ownerMessageId && work.runningTurns.length) {
             emit({ event: 'carried' })
-            await interruptTurn({ cancelQueued: false })
+
+            try {
+              await interruptTurn({ cancelQueued: false })
+            } catch (error) {
+              emit({
+                event: {
+                  type: 'input',
+                  receipt: {
+                    inputId: message.id,
+                    phase: 'refused',
+                    error: (error as Error).message,
+                  },
+                },
+              })
+              throw error
+            }
           }
 
           if (generation !== inputGeneration) {

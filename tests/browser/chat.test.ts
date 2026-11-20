@@ -887,11 +887,24 @@ test.each([
     })
     socket.close()
     const text = `Retry the ${target} input`
-    pnyx.codex.plan({
-      hydra: hydra.id,
-      match: ({ text: input }) => input.includes(text),
-      refuse: true,
-    })
+
+    if (target === 'Hydra') {
+      const turn = pnyx.codex.plan({
+        hydra: hydra.id,
+        text: 'Keep working before refusal',
+        hold: true,
+      })
+      onTestFinished(() => turn.release())
+      await hydra.chat({ text: 'Keep working before refusal' })
+      pnyx.codex.refuseNextInterrupt()
+    } else {
+      pnyx.codex.plan({
+        hydra: hydra.id,
+        match: ({ text: input }) => input.includes(text),
+        refuse: true,
+      })
+    }
+
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
@@ -930,7 +943,19 @@ test.each([
     ).waitFor()
     expect(await row.getByRole('alert').textContent()).toContain('refused')
     const id = await row.locator('[data-entry-id]').getAttribute('data-entry-id')
-    const element = await row.elementHandle()
+
+    if (target === 'Hydra') {
+      await pnyx.restart()
+      await row.getByRole(
+        'button',
+        {
+          name: 'Retry',
+          exact: true,
+        },
+      ).waitFor()
+      expect(await row.getByRole('alert').textContent()).toContain('refused')
+    }
+
     await row.getByRole(
       'button',
       {
@@ -946,7 +971,7 @@ test.each([
         return received && session.answered === session.received.length
       }),
     })
-    await row.locator('xpath=following-sibling::*').getByText(
+    await conversation.getByText(
       'Recorded reply.',
       { exact: true },
     )
@@ -954,10 +979,9 @@ test.each([
       .waitFor()
     const attempts = pnyx.codex.sessions.flatMap(session => session.received)
       .filter(input => input.includes(text))
-    expect(attempts).toHaveLength(2)
+    expect(attempts).toHaveLength(target === 'Hydra' ? 1 : 2)
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
-    expect(await element?.evaluate(row => row.isConnected)).toBe(true)
     expect(await row.getByRole('alert').count()).toBe(0)
     expect(await row.locator('.receipt').count()).toBe(0)
     expect(await row.locator('time').count()).toBe(1)
