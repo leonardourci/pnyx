@@ -192,7 +192,8 @@ test(
           height,
         } = await fillsColumn()
 
-        return available > columnHeight && Math.abs(height - available) <= 1
+        return height > columnHeight + 1 && available > columnHeight
+          && Math.abs(height - available) <= 1
       },
     })
   },
