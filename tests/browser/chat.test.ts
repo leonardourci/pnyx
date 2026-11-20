@@ -621,6 +621,8 @@ test(
         { name: label },
       )
 
+      let totalMovement = 0
+
       for (let olderPage = 0; olderPage < 3; olderPage++) {
         const loadedFirst = await conversation.locator('[data-entry-id]').first()
           .getAttribute('data-entry-id')
@@ -658,6 +660,7 @@ test(
 
           return [...chat.querySelectorAll('[data-entry-id]')].find(row => row.getBoundingClientRect().bottom > top)
         })
+        const anchorBefore = await anchor.evaluate(row => row!.getBoundingClientRect().top)
         heldOlderAnswers.splice(0).forEach(release => release())
         await until({
           what: 'older messages above the reading position',
@@ -685,6 +688,11 @@ test(
         ).toEqual([])
         expect(frames.every(frame => Object.keys(frame.shownFromBottom).length > 0)).toBe(true)
         expect(await anchor.evaluate(row => row?.isConnected)).toBe(true)
+        const anchorAfter = await anchor.evaluate(row => row!.getBoundingClientRect().top)
+        const movement = anchorAfter - anchorBefore
+        totalMovement += movement
+        // scrollTop rounds fractional geometry; total drift stays within one pixel across prepends.
+        expect(Math.abs(totalMovement)).toBeLessThanOrEqual(1)
         await anchor.dispose()
       }
 
