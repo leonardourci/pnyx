@@ -150,6 +150,8 @@ export function applyReplyReceipt({
   const reply: Reply = {
     id: event.data.reply,
     state: event.data.state,
+    updatedSeq: event.seq,
+    turnStartedAt: card.turnStartedAt,
     ...(resumes !== undefined ? { resumes } : {}),
     ...(taskMessage ? { route: event.data.route } : {}),
   }
