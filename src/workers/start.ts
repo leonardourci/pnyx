@@ -4,7 +4,7 @@ import { taskLease } from '#routine-helper/leases.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { startBlockers } from '#tasks/dependencies.ts'
-import { decideNote, noteId } from '#tasks/notes.ts'
+import { noteOnce } from '#tasks/notes.ts'
 import type { Blocker } from '#tasks/owner-gates.ts'
 import { dispatchTask, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
 import { modelIds, type ModelOption } from './provider.ts'
@@ -138,6 +138,22 @@ function queuedRefusal({
   })
 }
 
+function requireLiveTask({
+  card,
+  ref,
+}: {
+  card: Card
+  ref: string
+}): void {
+  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+    throw new HydraError({
+      message: `task not found: ${ref}`,
+      code: 'NOT_FOUND',
+      help: ['Run `pnyx-axi task list`'],
+    })
+  }
+}
+
 export function freeTask({
   state,
   ref,
@@ -150,13 +166,10 @@ export function freeTask({
     ref,
   })
 
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
-    throw new HydraError({
-      message: `task not found: ${ref}`,
-      code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi task list`'],
-    })
-  }
+  requireLiveTask({
+    card,
+    ref,
+  })
 
   if (card.queue) {
     throw queuedRefusal({
@@ -393,33 +406,15 @@ function noteOpen({
     return
   }
 
-  const text = [
-    'Started with these still open:',
-    ...open.map(item => `- ${item.reason}. ${item.clear}`),
-  ].join('\n')
-
-  withWriter({
+  noteOnce({
     hydraId,
-    fn: ({ writer }) => applyDecision({
-      writer,
-      decision: decideNote({
-        state: writer.state,
-        ref: task,
-        note: {
-          kind: 'context',
-          source: 'pnyx:start',
-          text,
-        },
-        meta: {
-          ...meta,
-          id: noteId({
-            cardKey: task,
-            ref: text,
-          }),
-          ifRevision: undefined,
-        },
-      }),
-    }),
+    task,
+    source: 'pnyx:start',
+    text: [
+      'Started with these still open:',
+      ...open.map(item => `- ${item.reason}. ${item.clear}`),
+    ].join('\n'),
+    meta,
   })
 }
 
@@ -488,6 +483,10 @@ export async function startTask({
   const worker = card.sessionIds?.[0]
 
   if (worker && !replacement) {
+    requireLiveTask({
+      card,
+      ref: task,
+    })
     checkRevision({
       card,
       ifRevision: meta.ifRevision,
@@ -571,16 +570,15 @@ export async function startTask({
     }
 
     if (how === 'firstmate') {
-      const unqueued = leaveQueue({
-        hydraId,
-        card,
-        meta,
-      })
-
       const requested = await askFirstmate({
         hydraId,
         task,
         prompt,
+        meta,
+      })
+      const unqueued = leaveQueue({
+        hydraId,
+        card,
         meta,
       })
 
@@ -821,12 +819,10 @@ async function askFirstmate({
         })
       }
 
-      if (!liveTask({ card }) || card.id === HYDRA_CARD) {
-        throw new HydraError({
-          message: `task not found: ${task}`,
-          code: 'NOT_FOUND',
-        })
-      }
+      requireLiveTask({
+        card,
+        ref: task,
+      })
 
       const config = hydraConfig({
         state: writer.state,

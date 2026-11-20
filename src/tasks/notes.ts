@@ -4,7 +4,8 @@ import { NOTE_KINDS, type Note } from './model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { invalid, text } from '#app/command-validation.ts'
-import { decided } from '#app/decision.ts'
+import { applyDecision, decided } from '#app/decision.ts'
+import { withWriter } from '#app/writer.ts'
 
 // The event id of a harvested note: the same card and source record always give
 // the same id, so a note is appended once however often its source is read.
@@ -79,5 +80,43 @@ export function decideNote(
       type: 'card.noted',
       data,
     },
+  })
+}
+
+export function noteOnce({
+  hydraId,
+  task,
+  source,
+  text,
+  meta,
+}: {
+  hydraId: string
+  task: string
+  source: string
+  text: string
+  meta: Meta
+}): void {
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => applyDecision({
+      writer,
+      decision: decideNote({
+        state: writer.state,
+        ref: task,
+        note: {
+          kind: 'context',
+          source,
+          text,
+        },
+        meta: {
+          ...meta,
+          id: noteId({
+            cardKey: task,
+            ref: text,
+          }),
+          ifRevision: undefined,
+        },
+      }),
+    }),
   })
 }

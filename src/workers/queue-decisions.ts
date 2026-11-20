@@ -5,6 +5,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
@@ -37,6 +38,28 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
   return undefined
 }
 
+function visibleTask({
+  state,
+  task,
+}: {
+  state: HydraState
+  task: string
+}): Card {
+  const card = findCard({
+    state,
+    ref: task,
+  })
+
+  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+    throw new HydraError({
+      message: 'choose a visible task',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return card
+}
+
 export function queueAnchor({
   state,
   behind,
@@ -56,9 +79,9 @@ export function queueGap({
   task: string
   behind: string
 }): Blocker | undefined {
-  const card = findCard({
+  const card = visibleTask({
     state,
-    ref: task,
+    task,
   })
 
   if (state.config?.hydra.kind === 'firstmate') {
@@ -151,17 +174,10 @@ export function decideQueue({
     return { skipped: 'duplicate' }
   }
 
-  const card = findCard({
+  const card = visibleTask({
     state,
-    ref: task,
+    task,
   })
-
-  if (!liveTask({ card }) || card.id === '$hydra') {
-    throw new HydraError({
-      message: 'choose a visible task',
-      code: 'VALIDATION_ERROR',
-    })
-  }
 
   let after = null
   let order: string[] | undefined

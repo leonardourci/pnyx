@@ -169,7 +169,7 @@ export async function localTaskCommand({
   meta,
 }: {
   action?: string
-  values: Record<string, string | boolean | undefined>
+  values: Record<string, unknown>
   positionals: string[]
   hydraId: string
   meta: Meta

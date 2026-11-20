@@ -760,15 +760,34 @@ test(
       ],
     })).toMatchObject({ launch: 'queued' })
 
-    expect((await hydra.ownerRefused({
-      args: [
-        'task',
-        'start',
-        'follow',
+    const failedStarts = {
+      NOT_FOUND: [
         '--rule',
         'no-such-rule',
       ],
-    })).code).toBe('NOT_FOUND')
+      NO_ROUTE: [
+        '--via',
+        'firstmate',
+      ],
+    }
+
+    for (const [
+      code,
+      flags,
+    ] of Object.entries(failedStarts)) {
+      expect(
+        (await hydra.ownerRefused({
+          args: [
+            'task',
+            'start',
+            'follow',
+            ...flags,
+          ],
+        })).code,
+        flags.join(' '),
+      ).toBe(code)
+    }
+
     expect((await hydra.task({ key: 'follow' })).queue).toBeDefined()
 
     const started = await hydra.owner({

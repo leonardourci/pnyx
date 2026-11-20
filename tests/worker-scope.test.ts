@@ -179,7 +179,6 @@ test(
       'creating a task': [
         'task',
         'create',
-        '--no-start',
         '--title',
         'Another',
       ],

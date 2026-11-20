@@ -41,7 +41,7 @@ Routes:
 
 A successful start records working and places the card in the same accepted assignment write; no first status or placement command is needed. A task holds one worker; `task detach <task>` frees it without stopping the agent and parks eligible unfinished work, preserving Done and unresolved owner gates. A repeated `--event-id` never starts a second worker.
 
-A start's receipt is its record. A success through Pnyx or Paseo means the worker is attached, so do not reread the task to confirm it. `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, and if it fails the same way, follow its help or tell the owner. Read the task only when a start's outcome is unknown, such as a timeout after the request left.
+A start's receipt is its record. A Pnyx or Paseo receipt with `agent` means the worker is attached, so do not reread the task to confirm it. `launch: waiting` means another session's turn holds the task: start it again once that turn ends. `launch: pending` means another start is opening its session: do not start it again. `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, and if it fails the same way, follow its help or tell the owner. Read the task only when a start's outcome is unknown, such as a timeout after the request left.
 
 ## Continue or replace
 

@@ -7,7 +7,7 @@ import { withWriter } from '#app/writer.ts'
 import { HydraError } from '#store/errors.ts'
 import { decideDependencies, prerequisiteCards } from '#tasks/dependency-decisions.ts'
 import type { Card } from '#tasks/model.ts'
-import { decideNote, noteId } from '#tasks/notes.ts'
+import { noteOnce } from '#tasks/notes.ts'
 import { goQuestionCommand } from '#tasks/owner-gates.ts'
 import { localTaskCommand } from '#tasks/plans-cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -184,49 +184,6 @@ function recordWait({
   })
 }
 
-function noteBlocker({
-  hydraId,
-  task,
-  error,
-  meta,
-  operation,
-}: {
-  hydraId: string
-  task: string
-  error: HydraError
-  meta: Meta
-  operation: string
-}): void {
-  const text = [
-    `Could not start a worker: ${error.message}`,
-    ...error.help,
-  ].join('\n')
-
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => applyDecision({
-      writer,
-      decision: decideNote({
-        state: writer.state,
-        ref: task,
-        note: {
-          kind: 'context',
-          source: 'pnyx:create',
-          text,
-        },
-        meta: {
-          ...meta,
-          id: noteId({
-            cardKey: operation,
-            ref: text,
-          }),
-          ifRevision: undefined,
-        },
-      }),
-    }),
-  })
-}
-
 async function startCreated({
   hydraId,
   task,
@@ -297,12 +254,15 @@ async function startCreated({
       throw error
     }
 
-    noteBlocker({
+    noteOnce({
       hydraId,
       task,
-      error,
+      source: 'pnyx:create',
+      text: [
+        `Could not start a worker: ${error.message}`,
+        ...error.help,
+      ].join('\n'),
       meta,
-      operation,
     })
 
     return {
@@ -347,7 +307,7 @@ export async function createCommand({
 
   const created = (await localTaskCommand({
     action: 'create',
-    values: values as Record<string, string | boolean | undefined>,
+    values,
     positionals,
     hydraId,
     meta,

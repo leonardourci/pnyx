@@ -381,7 +381,7 @@ test(
 )
 
 test(
-  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, and one set to wait on Hydra itself files nothing',
+  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, one set to wait on Hydra itself files nothing, and a start cannot steer Hydra itself',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'ring' })
@@ -515,11 +515,21 @@ test(
         'list',
       ],
     })).tasks.some((task: { title: string }) => task.title === 'Wait for Hydra')).toBe(false)
+
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        '$hydra',
+        '--prompt',
+        'Drop the legend',
+      ],
+    })).code).toBe('NOT_FOUND')
   },
 )
 
 test(
-  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, and a queue that cannot happen explains instead of refusing',
+  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, a queue or reorder that cannot happen explains instead of refusing, and Hydra's own card cannot queue',
   async () => {
     const hydra = await pnyx.hydra()
     const { folder } = await hydra.startTask({ key: 'export' })
@@ -621,19 +631,33 @@ test(
         '--no-start',
       ],
     })
-    const reasons = {
-      export: 'worker’s project',
-      [later.card.id]: 'no live task worker',
-    }
+    const answers = [
+      {
+        action: 'queue',
+        anchor: 'export',
+        reason: 'worker’s project',
+      },
+      {
+        action: 'queue',
+        anchor: later.card.id,
+        reason: 'no live task worker',
+      },
+      {
+        action: 'reorder',
+        anchor: 'export',
+        reason: 'is not queued',
+      },
+    ]
 
-    for (const [
+    for (const {
+      action,
       anchor,
       reason,
-    ] of Object.entries(reasons)) {
+    } of answers) {
       expect(await hydra.owner({
         args: [
           'task',
-          'queue',
+          action,
           idea.card.id,
           '--behind',
           anchor,
@@ -645,6 +669,15 @@ test(
     }
 
     expect((await hydra.task({ key: idea.card.id })).queue).toBeUndefined()
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'queue',
+        '$hydra',
+        '--behind',
+        'export',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
   },
 )
 
