@@ -1,3 +1,5 @@
+import { discoverPullRequests } from '#tasks/delivery/discover.ts'
+import * as processes from '#app/run-process.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { readEvents } from '#app/event-log.ts'
 import workerThreads from 'node:worker_threads'
@@ -5,7 +7,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
@@ -4573,6 +4575,51 @@ test(
     })
     expect(linked.task.links).toHaveLength(1)
     expect(linked.task.links[0].src).toBe('branch')
+    await pnyx.restart({
+      whileStopped: async () => {
+        let active = true
+        const lookups: string[][] = []
+        const nativeRun = processes.runProcess
+        const spy = vi.spyOn(
+          processes,
+          'runProcess',
+        ).mockImplementation(async ({
+          command,
+          args,
+          ...options
+        }) => {
+          if (command === process.env.PNYX_GH_AXI) {
+            lookups.push(args)
+          }
+
+          const result = await nativeRun({
+            command,
+            args,
+            ...options,
+          })
+
+          if (command === 'git' && args.includes(full.task.copy.path)
+            && args.includes('symbolic-ref')) {
+            active = false
+          }
+
+          return result
+        })
+
+        try {
+          await discoverPullRequests({
+            hydraId: hydra.id,
+            interval: 0,
+            checked: new Map(),
+            active: () => active,
+          })
+          expect(active).toBe(false)
+          expect(lookups).toEqual([])
+        } finally {
+          spy.mockRestore()
+        }
+      },
+    })
     const gate = join(
       github,
       'discovery-gate.json',
