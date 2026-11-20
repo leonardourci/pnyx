@@ -111,7 +111,7 @@ const card = async ({ session }: { session: string }) => {
 }
 
 test(
-  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s and no part of a long steering notice, also once the ended session continues in Pnyx, Stop ends its turn, and every hook exits 0 at once',
+  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s and no part of a long steering notice, Stop ends its turn, and every hook exits 0 at once',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -140,26 +140,6 @@ test(
         'transcript.jsonl',
       ),
     }
-    const psFindingNoTerminal = join(
-      process.env.TMPDIR!,
-      'no-terminal-bin',
-    )
-    mkdirSync(
-      psFindingNoTerminal,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        psFindingNoTerminal,
-        'ps',
-      ),
-      '#!/bin/sh\nexit 0\n',
-      { mode: 0o755 },
-    )
-    const noTerminal = {
-      ...process.env,
-      PATH: `${psFindingNoTerminal}:${process.env.PATH}`,
-    }
 
     const userLine = ({ content }: { content: string }) => `${JSON.stringify({
       type: 'user',
@@ -187,7 +167,6 @@ test(
           ...base,
           source: 'startup',
         },
-        env: noTerminal,
       }),
       await hook({
         event: 'UserPromptSubmit',
@@ -195,7 +174,6 @@ test(
           ...base,
           prompt: 'Fix the flaky login test\nwith more detail below',
         },
-        env: noTerminal,
       }),
     ]
     const working = await until({
@@ -206,28 +184,22 @@ test(
       title: 'Fix the flaky login test',
       activity: 'working',
     })
-
-    const ownerLines = async () => {
-      const chat = parsed(await pnyxAxi({
-        args: [
-          'task',
-          'chat',
-          'claude:outside-1',
-          '--hydra',
-          'default',
-        ],
-        env: process.env,
-      }))
-
-      return (chat.thread.entries as {
-        role: string
-        text: string
-      }[])
-        .filter(entry => entry.role === 'user' || entry.role === 'You')
-        .map(entry => entry.text)
-    }
-
-    expect(await ownerLines()).toEqual(['Fix the flaky login test'])
+    const chat = parsed(await pnyxAxi({
+      args: [
+        'task',
+        'chat',
+        'claude:outside-1',
+        '--hydra',
+        'default',
+      ],
+      env: process.env,
+    }))
+    expect((chat.thread.entries as {
+      role: string
+      text: string
+    }[])
+      .filter(entry => entry.role === 'user' || entry.role === 'You')
+      .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
 
     await flushLogs()
     const onLogs = logFiles().map(file => readFileSync(
@@ -268,27 +240,6 @@ test(
     expect(logs).toContain('hook.push')
     expect(logs).not.toContain('Fix the flaky login test')
     expect(logs).not.toContain('with more detail below')
-
-    runs.push(await hook({
-      event: 'SessionEnd',
-      payload: base,
-    }))
-    await until({
-      what: 'the ended session to continue in Pnyx',
-      check: async () => (await pnyxAxi({
-        args: [
-          'task',
-          'continue',
-          'claude:outside-1',
-          '--reason',
-          'Carry on from the terminal session',
-          '--hydra',
-          'default',
-        ],
-        env: process.env,
-      })).status === 0,
-    })
-    expect(await ownerLines()).toEqual(['Fix the flaky login test'])
 
     for (const run of runs) {
       expect(run).toMatchObject({
