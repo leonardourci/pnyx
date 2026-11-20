@@ -1,3 +1,4 @@
+import { discoverPullRequests, discoverableTasks } from '#tasks/delivery/discover.ts'
 import type { startReviewTimer } from '#hydra/review-timer.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import { settleDone, settles } from '#projects/copies.ts'
@@ -59,6 +60,9 @@ export function createServerTick({
   review(): ReturnType<typeof startReviewTimer>
   recover(): void
 }) {
+  const discoveredAt = new Map<string, number>()
+  const followingTasks = () => needsPullRequestFollow({ state: state() })
+    || discoverableTasks({ state: state() }).length > 0
   const followChecks = followSchedule({ interval: followDelay })
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
@@ -137,12 +141,18 @@ export function createServerTick({
         }
 
         followChecks.prune({ links: followedLinks({ state: state() }) })
-        const following = needsPullRequestFollow({ state: state() })
+        const following = followingTasks()
 
         if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
           followCheckedAt = Date.now()
           followRun = (async () => {
             try {
+              await discoverPullRequests({
+                hydraId,
+                interval: followDelay,
+                checked: discoveredAt,
+                active: () => !closed(),
+              })
               await followPullRequests({
                 hydraId,
                 active: () => !closed(),
@@ -314,7 +324,7 @@ export function createServerTick({
           deadlines.push(spoolRetryAt)
         }
 
-        if (!followRun && needsPullRequestFollow({ state: state() })) {
+        if (!followRun && followingTasks()) {
           deadlines.push(followCheckedAt + followDelay)
         }
 
@@ -355,6 +365,7 @@ export function createServerTick({
       task: string
       restart?: boolean
     }) {
+      discoveredAt.delete(task)
       followChecks.touch({
         task,
         restart,

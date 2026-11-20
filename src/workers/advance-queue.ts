@@ -17,7 +17,7 @@ import type { Card } from '#tasks/model.ts'
 import type { LinkState } from '#tasks/delivery/model.ts'
 import type { AgentSession } from './model.ts'
 import { taskPrompt } from './worker-brief.ts'
-import { confirmedMerge } from '#tasks/delivery/confirmed.ts'
+import { refreshConfirmedProject } from '#projects/refresh-confirmed.ts'
 import { mergeObservation } from '#tasks/delivery/merge-observation.ts'
 import { sendReply } from './reply.ts'
 import { pullRequestLanding, pullRequestState } from '#integrations/github/pull-request.ts'
@@ -400,7 +400,7 @@ async function refreshLinks({
       })
 
       if (landing) {
-        await confirmedMerge({
+        await refreshConfirmedProject({
           hydraId,
           cardId: card.id,
           url: link.url,
@@ -624,7 +624,7 @@ export async function advanceQueues({
         brief = await taskPrompt({
           hydraId,
           card: next,
-          prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations.`,
+          prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Append updates to this task's worker.log.`,
         })
 
         const currentState = loadHydra({ hydraId }).state

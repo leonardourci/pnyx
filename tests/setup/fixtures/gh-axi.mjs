@@ -126,6 +126,29 @@ if (args[0] === 'api') {
     console.log('error: unsupported fake GitHub request\ncode: NOT_FOUND')
     process.exit(1)
   }
+} else if (args[0] === 'pr' && args[1] === 'list') {
+  const repo = args[args.indexOf('--repo') + 1]
+  const branch = args[args.indexOf('--head') + 1]
+  const folder = join(
+    root,
+    repo,
+  )
+  const requests = existsSync(folder) ? readdirSync(folder).filter(name => /^\d+\.json$/.test(name))
+    .filter(name => read({
+      file: join(
+        folder,
+        name,
+      ),
+    }).branch === branch)
+    .map(name => {
+      const url = `https://github.com/${repo}/pull/${name.slice(
+        0,
+        -5,
+      )}`
+
+      return `  ${JSON.stringify(url)}`
+    }) : []
+  console.log(requests.length ? `pull_requests[${requests.length}]{url}:\n${requests.join('\n')}` : 'pull_requests: []')
 } else {
   const repo = args[args.indexOf('--repo') + 1]
   const number = args[2]

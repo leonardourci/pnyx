@@ -6,7 +6,7 @@ export const IDLE_FOLLOW_MULTIPLIER = 15
 export const UNRESOLVED_RETRIES = 3
 
 export function workingTask({ card }: { card: Card }): boolean {
-  return card.status?.state === 'working' || (card.sessionActivity ?? card.activity) === 'working'
+  return (card.sessionActivity ?? card.activity) === 'working'
 }
 
 export type ReadResult = 'found' | 'missing' | 'failed'

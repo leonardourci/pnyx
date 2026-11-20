@@ -1,3 +1,6 @@
+import { discoverableTasks } from '#tasks/delivery/discover.ts'
+import { sessionId } from '#workers/session-attachments.ts'
+import { followWorkerLogs } from '#workers/worker-log.ts'
 import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
 import { followGit } from '#tasks/delivery/follow-git.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -195,6 +198,7 @@ export async function mountOwnedHydra({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
     })
+    workerLogs.reconcile({ state })
     followHome()
 
     for (const ws of clients) {
@@ -224,21 +228,21 @@ export async function mountOwnedHydra({
     streamed,
   } = feed
 
-  // Each task's declared working state as the pump last saw it; a held Hydra's writer has already
-  // changed the state before the pump reads the event, so the state alone cannot tell a change.
+  // The held state is already updated when the pump reads its events, so changes need the previous activity.
   // ponytail: one entry per task, seeded at mount; prune if Hydras get huge.
-  const declaredWork = new Map<string, boolean>(Object.entries(state.cards).map(([
+  const observedWork = new Map<string, boolean>(Object.entries(state.cards).map(([
     task,
     card,
   ]) => [
     task,
-    card.status?.state === 'working',
+    (card.sessionActivity ?? card.activity) === 'working',
   ]))
 
   const workChanged = ({ task }: { task: string }) => {
-    const working = state.cards[task]?.status?.state === 'working'
-    const changed = declaredWork.get(task) !== working
-    declaredWork.set(
+    const card = state.cards[task]
+    const working = (card?.sessionActivity ?? card?.activity) === 'working'
+    const changed = observedWork.get(task) !== working
+    observedWork.set(
       task,
       working,
     )
@@ -278,10 +282,17 @@ export async function mountOwnedHydra({
       }
 
       const linkedByOthers = event.type === 'card.linked' && event.actor !== 'pnyx'
-      const declaredChange = workChanged({ task: event.cardId })
+      const changedTask = event.type === 'session.observed' ? state.sessions?.[sessionId({ agent: event.data.fields.agent })]?.taskId ?? event.cardId : event.cardId
+      const declaredChange = workChanged({ task: changedTask })
 
-      if (linkedByOthers || declaredChange || event.type === 'task.copy') {
-        tick.refreshLinks({ task: event.cardId })
+      const discoveryChanged = [
+        'task.copy',
+        'task.launched',
+        'task.worker-line',
+      ].includes(event.type)
+
+      if (linkedByOthers || declaredChange || discoveryChanged) {
+        tick.refreshLinks({ task: changedTask })
       }
 
       if (event.type === 'hydra.project') {
@@ -293,7 +304,7 @@ export async function mountOwnedHydra({
       }
 
       broadcast({ event })
-      touchLatest({ ids: [event.cardId] })
+      touchLatest({ ids: [changedTask] })
 
       const reasons = wakeReasons({
         state,
@@ -324,6 +335,7 @@ export async function mountOwnedHydra({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
     })
+    workerLogs.reconcile({ state })
     followHome()
   }
 
@@ -353,6 +365,10 @@ export async function mountOwnedHydra({
     review: () => review,
     recover: () => recovery.reconcile(),
   })
+  const workerLogs = followWorkerLogs({
+    hydraId,
+    changed: tick.kick,
+  })
   const gitFollow = followGit({ changed: tick.refreshLinks })
   background({
     name: 'follow git refs',
@@ -360,6 +376,7 @@ export async function mountOwnedHydra({
   })
 
   const { kick } = tick
+  workerLogs.reconcile({ state })
 
   const agents = createHost({
     hydraId,
@@ -422,7 +439,9 @@ export async function mountOwnedHydra({
         })
         const followed = followedLinks({ state }).some(({ card: linked }) => linked.id === card.id)
 
-        if (!followed) {
+        const discovering = discoverableTasks({ state }).some(task => task.id === card.id)
+
+        if (!followed && !discovering) {
           return {
             refreshing: 'none: task has no open pull request links',
             task: card.id,
@@ -681,6 +700,7 @@ export async function mountOwnedHydra({
   const stop = async () => {
     closed = true
     profileAbort.abort()
+    workerLogs.close()
     gitFollow.close()
     await recovery.close()
     withdrawHost()
@@ -764,6 +784,7 @@ export async function mountOwnedHydra({
         changed: tick.spooled,
       }),
     )
+    workerLogs.reconcile({ state })
     followHome()
   } catch (error) {
     await stop()
