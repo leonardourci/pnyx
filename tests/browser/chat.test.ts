@@ -48,7 +48,7 @@ function recordPaintedChats() {
       return
     }
 
-    for (const chat of document.querySelectorAll<HTMLElement>('.chat-messages')) {
+    for (const chat of document.querySelectorAll<HTMLElement>('[data-hydra-workspace][data-active=true] .chat-messages')) {
       const box = chat.getBoundingClientRect()
       const loaded = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')].flatMap(row => {
         const id = row.dataset.entryId
@@ -165,7 +165,7 @@ test(
       port: pnyx.port(),
       hydraId: hydra.id,
     })
-    const hydraChat = page.getByRole(
+    const hydraChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
       { name: 'Hydra conversation' },
     )
@@ -197,7 +197,7 @@ test(
     expect(copied).toBe(prose)
     await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()
       .click()
-    const taskChat = page.getByRole(
+    const taskChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
       { name: 'Task mentions conversation' },
     )
@@ -246,10 +246,11 @@ const shownText = ({
   page: Page
   chat: string
   text: string
-}) => page.getByRole(
+}) => page.locator('[data-hydra-workspace][data-active=true]').getByRole(
   'region',
   { name: chat },
-).getByText(text)
+)
+  .getByText(text)
   .filter({ visible: true })
   .waitFor()
 
@@ -376,7 +377,7 @@ test(
       }),
     })).toEqual([])
 
-    const card = page.locator('[data-task]').filter({ hasText: 'Task notes' })
+    const card = page.locator('[data-hydra-workspace][data-active=true] [data-task]').filter({ hasText: 'Task notes' })
     await card.getByText(
       'Task notes',
       { exact: true },
@@ -481,21 +482,21 @@ test(
           'Run the build',
         ],
       })
-      await page.locator('[data-task]').getByText(
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
         'Task build',
         { exact: true },
       )
         .click()
       const working = [
-        page.locator('.hydra-chat .chat-running-status'),
-        page.locator('[data-task] .chat-running-status'),
+        page.locator('[data-hydra-workspace][data-active=true] .hydra-chat .chat-running-status'),
+        page.locator('[data-hydra-workspace][data-active=true] [data-task] .chat-running-status'),
       ]
 
       for (const line of working) {
         await line.getByText('Running a command').waitFor()
       }
 
-      await page.locator('[data-task] .agent-activity').focus()
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task] .agent-activity').focus()
       expect(await page.getByRole('tooltip').textContent()).toBe('working')
 
       await setFocusMode({
@@ -607,7 +608,7 @@ test(
       'Task older-notes conversation',
     ]) {
       if (label === 'Task older-notes conversation') {
-        await page.locator('[data-task]').getByText(
+        await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
           'Task older-notes',
           { exact: true },
         )
@@ -619,7 +620,7 @@ test(
         })
       }
 
-      const conversation = page.getByRole(
+      const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
         'region',
         { name: label },
       )
@@ -801,14 +802,14 @@ test.each([
     })
 
     if (target === 'worker') {
-      await page.locator('[data-task]').getByText(
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
         'Task lakes',
         { exact: true },
       )
         .click()
     }
 
-    const chat = page.getByRole(
+    const chat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
       { name: label },
     )
@@ -822,7 +823,7 @@ test.each([
         )
 
         const frame = () => {
-          const chat = document.querySelector(`[aria-label="${label}"]`)
+          const chat = document.querySelector(`[data-hydra-workspace][data-active=true] [aria-label="${label}"]`)
           const rows = [...chat?.querySelectorAll('[data-entry-id][aria-label="You"]') ?? []]
           counts.push(rows.filter(row => row.textContent?.includes('List three lakes')).length)
           requestAnimationFrame(frame)
@@ -832,10 +833,11 @@ test.each([
       },
       { label },
     )
-    await page.getByRole(
+    await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'textbox',
       { name: field },
-    ).fill('List three lakes')
+    )
+      .fill('List three lakes')
     await page.keyboard.press('Enter')
     await chat.getByText(
       'List three lakes',
@@ -851,10 +853,11 @@ test.each([
       what: 'the agent to take the message',
       check: () => session.received.some(text => text.includes('List three lakes')),
     })
-    expect(await page.getByRole(
+    expect(await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
       { name: label },
-    ).locator('[data-entry-id][aria-label="You"]')
+    )
+      .locator('[data-entry-id][aria-label="You"]')
       .filter({ hasText: 'List three lakes' })
       .count()).toBe(1)
     answer.release()
@@ -922,7 +925,7 @@ test.each([
       hydraId: hydra.id,
       reducedMotion: true,
     })
-    await page.locator('[data-task]').getByText(
+    await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
       'Task interrupt',
       { exact: true },
     )
@@ -958,17 +961,18 @@ test.each([
         hold: true,
       })
       onTestFinished(() => nextTurn.release())
-      const conversation = page.getByRole(
+      const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
         'region',
         { name: chat },
       )
-      await page.getByRole(
+      await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
         'textbox',
         {
           name: field,
           exact: true,
         },
-      ).fill(text)
+      )
+        .fill(text)
       await page.keyboard.press('Enter')
       await until({
         what: 'the new input to reach the interrupted session',
@@ -989,13 +993,14 @@ test.each([
       expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
         .count()).toBe(1)
       const rows = await conversation.locator('[data-entry-id]').count()
-      await page.getByRole(
+      await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
         'button',
         {
           name: stop,
           exact: true,
         },
-      ).click()
+      )
+        .click()
       await until({
         what: 'the stopped turn to end',
         check: () => session.answered === session.received.length,
@@ -1056,7 +1061,7 @@ test.each([
     })
 
     if (target === 'worker') {
-      await page.locator('[data-task]').getByText(
+      await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
         'Task retry-input',
         { exact: true },
       )
@@ -1065,17 +1070,18 @@ test.each([
 
     const label = target === 'Hydra' ? 'Hydra conversation' : 'Task retry-input conversation'
     const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
-    const conversation = page.getByRole(
+    const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
       { name: label },
     )
-    await page.getByRole(
+    await page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'textbox',
       {
         name: field,
         exact: true,
       },
-    ).fill(text)
+    )
+      .fill(text)
     await page.keyboard.press('Enter')
     const row = conversation.locator('.message-row').filter({ hasText: text })
     await row.getByRole(

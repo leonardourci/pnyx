@@ -19,6 +19,7 @@ export function ProjectColumn({
   column,
   poleis,
   hydraId,
+  revealing,
   view,
   save,
   expandedWidth,
@@ -28,6 +29,7 @@ export function ProjectColumn({
   poleis?: string[]
   column: ProjectColumnData
   hydraId: string
+  revealing: boolean
   view: ViewPreferences
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
   expandedWidth: number
@@ -107,6 +109,7 @@ export function ProjectColumn({
     disabled: column.id === 'ideas',
   })
   const reduced = useReducedMotion()
+  const instantWidth = preview !== null || reduced || revealing
   const dragging = useSortState()
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
     && dragging.active.hydra === hydraId
@@ -142,7 +145,7 @@ export function ProjectColumn({
       aria-label={column.title}
       style={runtimeStyle({ projectCardWidth: `${contentWidth}px` })}
       animate={{ width: folded ? 48 : width }}
-      transition={preview !== null || reduced ? { duration: motionDuration({ speed: 'instant' }) / 1000 } : undefined}
+      transition={instantWidth ? { duration: motionDuration({ speed: 'instant' }) / 1000 } : undefined}
     >
       <ProjectColumnHeader
         column={column}
