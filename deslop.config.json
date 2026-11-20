@@ -28,8 +28,7 @@
         "kill-ai-slop",
         "write-ci-workflow"
       ],
-      "ciRequired": true,
-      "try": "code"
+      "ciRequired": true
     },
     {
       "name": "fixture",
@@ -52,8 +51,7 @@
         "audit-tests",
         "kill-ai-slop"
       ],
-      "ciRequired": true,
-      "try": "code"
+      "ciRequired": true
     },
     {
       "name": "skill text",
@@ -69,8 +67,7 @@
         "follow-conventions",
         "kill-ai-slop"
       ],
-      "ciRequired": true,
-      "try": "code"
+      "ciRequired": true
     },
     {
       "name": "docs",
@@ -86,8 +83,7 @@
         "project",
         "follow-conventions",
         "kill-ai-slop"
-      ],
-      "try": "code"
+      ]
     },
     {
       "name": "tests",
@@ -108,8 +104,7 @@
         "follow-conventions",
         "audit-tests"
       ],
-      "ciRequired": true,
-      "try": "code"
+      "ciRequired": true
     },
     {
       "name": "UI",
@@ -133,8 +128,7 @@
         "kill-ai-slop",
         "write-front-end"
       ],
-      "ciRequired": true,
-      "try": "ui"
+      "ciRequired": true
     },
     {
       "name": "back-end",
@@ -157,8 +151,7 @@
         "audit-tests",
         "kill-ai-slop"
       ],
-      "ciRequired": true,
-      "try": "code"
+      "ciRequired": true
     }
   ],
   "instructions": {
@@ -168,6 +161,5 @@
     "follow-conventions": ".agents/skills/follow-conventions/SKILL.md"
   },
   "checkFixAttempts": 1,
-  "agentTimeoutMinutes": 45,
-  "tryNotes": "Give each trial a fresh scratch home. Run the web app with `PNYX_DEV_HOME=<scratch dir> pnpm dev`. Its backend defaults to port 4319. If that port is in use, serve the built app on an assigned port instead. After `pnpm build`, run `PNYX_HOME=<scratch dir> node dist/cli/pnyx-axi.js serve --port 0`. Wait for the trial's server to start, then open the URL it serves (the URL Vite prints for `pnpm dev`) in a headless browser with its own profile. Stop the processes started for the trial when done. Leave the global `pnyx-axi`, pnyx.localhost, `~/.pnyx` and `~/.pnyx-dev` alone."
+  "agentTimeoutMinutes": 45
 }
