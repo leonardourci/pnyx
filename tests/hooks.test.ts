@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os'
 import { base as eventBase } from '#app/command-meta.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -10,7 +11,7 @@ import { flushLogs } from '#app/diagnostics.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
@@ -131,54 +132,6 @@ test(
   'outside hooks keep facts without an implicit card, and the assigned chat shows its typed prompt without a steering notice',
   async () => {
     const hydra = await pnyx.hydra()
-    const customSkill = join(
-      process.env.HOME!,
-      '.agents',
-      'skills',
-      'pnyx-cli',
-    )
-    mkdirSync(
-      customSkill,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        customSkill,
-        'SKILL.md',
-      ),
-      'Keep my local skill',
-    )
-    const installed = await pnyxAxi({
-      args: [
-        'setup',
-        'skills',
-      ],
-      env: process.env,
-    })
-    expect(
-      installed.status,
-      installed.stdout,
-    ).toBe(0)
-    expect(parsed(installed).notices).toBeDefined()
-    expect(readFileSync(
-      join(
-        customSkill,
-        'SKILL.md',
-      ),
-      'utf8',
-    )).toBe('Keep my local skill')
-    const setupPreview = await pnyxAxi({
-      args: [
-        'setup',
-        '--preview',
-      ],
-      env: process.env,
-    })
-    expect(
-      setupPreview.status,
-      setupPreview.stdout,
-    ).toBe(0)
-    expect(parsed(setupPreview).notices).toBeDefined()
     await hydra.owner({
       args: [
         'settings',
@@ -1463,5 +1416,84 @@ test(
     expect(bound.agent.transcriptPath).toBe(replacement)
     expect.soft(bound.activity).toBe('working')
     expect.soft(bound.activityCursor?.source).not.toBe(rebound)
+  },
+)
+
+test(
+  'setup preserves a custom skill and reports how to install the shipped one',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-skill-conflict-',
+    ))
+    onTestFinished(() => rmSync(
+      home,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const env = {
+      ...process.env,
+      HOME: home,
+      PNYX_HOME: join(
+        home,
+        '.pnyx',
+      ),
+    }
+    const customSkill = join(
+      home,
+      '.agents',
+      'skills',
+      'pnyx-cli',
+    )
+    mkdirSync(
+      customSkill,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        customSkill,
+        'SKILL.md',
+      ),
+      'Keep my local skill',
+    )
+    const installed = await pnyxAxi({
+      args: [
+        'setup',
+        'skills',
+      ],
+      env,
+    })
+    expect(
+      installed.status,
+      installed.stdout,
+    ).toBe(0)
+    expect(parsed(installed).notices).toContainEqual(expect.objectContaining({
+      reason: expect.stringContaining(customSkill),
+      clear: expect.stringContaining('pnyx-axi setup skills'),
+    }))
+    expect(readFileSync(
+      join(
+        customSkill,
+        'SKILL.md',
+      ),
+      'utf8',
+    )).toBe('Keep my local skill')
+    const setupPreview = await pnyxAxi({
+      args: [
+        'setup',
+        'skills',
+      ],
+      env,
+    })
+    expect(
+      setupPreview.status,
+      setupPreview.stdout,
+    ).toBe(0)
+    expect(parsed(setupPreview).notices).toContainEqual(expect.objectContaining({
+      reason: expect.stringContaining(customSkill),
+      clear: expect.stringContaining('pnyx-axi setup skills'),
+    }))
   },
 )
