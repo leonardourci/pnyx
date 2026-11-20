@@ -310,11 +310,14 @@ test(
 test(
   'registered hosted workers keep native features and connections without grants, while browser remains opt-in',
   async () => {
+    process.env.PASEO_PASSWORD = 'synthetic-paseo-password'
+    onTestFinished(() => delete process.env.PASEO_PASSWORD)
     const hydra = await pnyx.hydra()
     const { worker: codex } = await hydra.startTask({
       key: 'native-codex',
       harness: 'codex',
     })
+    expect(codex.env.PASEO_PASSWORD).toBeUndefined()
     expect(codex.env.CODEX_HOME).toBe(join(
       process.env.TMPDIR!,
       'pnyx-run',
