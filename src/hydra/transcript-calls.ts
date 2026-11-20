@@ -3,7 +3,7 @@ import { callOf, type ActionRead, type CurrentAction, type RecordCalls } from '.
 
 const MAX_CALLS = 8
 
-export function recordCalls({ record }: { record: unknown }): RecordCalls {
+function recordCalls({ record }: { record: unknown }): RecordCalls {
   const parsed = readTranscriptRecord({ record })
   const found: RecordCalls = {
     calls: parsed.calls.map(callOf),
