@@ -1,7 +1,8 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
-import { pnyxAxi, parsed, startPnyx, type Pnyx } from './setup/pnyx.ts'
+import { beforeAll, expect, test, vi } from 'vitest'
+import * as processes from '#app/run-process.ts'
+import { pnyxAxi, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 beforeAll(async () => {
@@ -926,5 +927,248 @@ test(
         ']',
         '',
       )).toContain('Owner journal previously private')
+  },
+)
+
+test(
+  'a digest keeps the captured write journal when it changes during project checks',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'digest-snapshot' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'digest-a',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'AAA',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'digest-b',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'BBBBBBBBBB',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'digest-a',
+      ],
+    })
+    const resume = Promise.withResolvers<void>()
+    let entered = false
+    const nativeRun = processes.runProcess
+    const spy = vi.spyOn(
+      processes,
+      'runProcess',
+    ).mockImplementation(async ({
+      command,
+      args,
+      ...options
+    }) => {
+      if (!entered && command === 'git' && args.includes(project)) {
+        entered = true
+        await resume.promise
+      }
+
+      return nativeRun({
+        command,
+        args,
+        ...options,
+      })
+    })
+    const pending = pnyxAxi({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        hydra.id,
+      ],
+      env: process.env,
+    })
+
+    try {
+      await until({
+        what: 'the digest project read',
+        check: () => entered,
+      })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--polis',
+          'digest-b',
+        ],
+      })
+    } finally {
+      resume.resolve()
+      spy.mockRestore()
+    }
+
+    const result = await pending
+    expect(
+      result.status,
+      result.stdout + result.stderr,
+    ).toBe(0)
+    expect(result.stdout).toContain('Owner memory uses 3 of 24000 characters.')
+  },
+)
+
+test.each([
+  { detached: false },
+  { detached: true },
+])(
+  'worker context shares the attachment check (detached: $detached)',
+  async ({ detached }) => {
+    const hydra = await pnyx.hydra()
+    const project = hydra.folder({ name: 'worker-snapshot' })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        project,
+        '--key',
+        'preferences',
+        '--text',
+        'Project context marker',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        project,
+        '--key',
+        'workers',
+        '--text',
+        'Standing project instruction marker',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'snapshot-worker',
+        '--title',
+        'Snapshot worker',
+        '--project',
+        project,
+      ],
+    })
+    const resume = Promise.withResolvers<void>()
+    let entered = false
+    const nativeRun = processes.runProcess
+    const spy = vi.spyOn(
+      processes,
+      'runProcess',
+    ).mockImplementation(async ({
+      command,
+      args,
+      ...options
+    }) => {
+      if (!entered && command === 'git' && args.includes(project) && args.includes('remote')) {
+        entered = true
+        await resume.promise
+      }
+
+      return nativeRun({
+        command,
+        args,
+        ...options,
+      })
+    })
+    const pending = hydra.owner({
+      args: [
+        'task',
+        'start',
+        'snapshot-worker',
+        '--folder',
+        project,
+        '--harness',
+        'claude',
+      ],
+    })
+
+    try {
+      await until({
+        what: 'the worker project read',
+        check: () => entered,
+      })
+
+      if (detached) {
+        await hydra.owner({
+          args: [
+            'project',
+            'remove',
+            project,
+          ],
+        })
+      }
+    } finally {
+      resume.resolve()
+      spy.mockRestore()
+    }
+
+    await pending
+    const worker = await until({
+      what: 'the worker prompt',
+      check: () => pnyx.claude.sessions.find(session =>
+        session.cwd === project && session.received.length > 0),
+    })
+    const prompt = worker.received.join('\n')
+
+    if (detached) {
+      expect(prompt).not.toContain('Project context marker')
+      expect(prompt).not.toContain('Standing project instruction marker')
+    } else {
+      expect(prompt).toContain('Project context marker')
+      expect(prompt).toContain('Standing project instruction marker')
+    }
   },
 )
