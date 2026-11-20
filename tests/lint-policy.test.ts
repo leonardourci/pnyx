@@ -36,6 +36,8 @@ test(
         source,
         { filePath: 'tests/watcher-policy.ts' },
       )
+      expect(results).toHaveLength(1)
+      expect(results[0]!.fatalErrorCount).toBe(0)
       const rejected = results.flatMap(result => result.messages)
         .filter(message => message.ruleId === 'pnyx/object-params')
       expect(rejected).toHaveLength(errors)
