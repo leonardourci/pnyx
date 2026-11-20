@@ -256,6 +256,12 @@ export interface AgentLaunch {
 }
 
 export interface AgentSession {
+  autoTitle?: import('#tasks/model.ts').AutoTitle
+  titleSet?: boolean
+  createdBy?: string
+  title?: string
+  turnStartedAt?: string
+  turnEndedSeq?: number
   id: string
   agent: AgentRef
   launch?: AgentLaunch
