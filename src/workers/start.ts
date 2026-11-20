@@ -65,6 +65,20 @@ function chooseVia({
   return chosen as Via
 }
 
+function queuedRefusal({
+  task,
+  session,
+}: {
+  task: string
+  session: string
+}) {
+  return new HydraError({
+    message: `task ${task} is queued behind worker ${session}`,
+    code: 'CONFLICT',
+    help: [`Run \`pnyx-axi task unqueue ${task}\` first to give it its own worker`],
+  })
+}
+
 export function freeTask({
   state,
   ref,
@@ -92,16 +106,17 @@ export function freeTask({
   })
 
   if (card.queue) {
-    throw new HydraError({
-      message: 'unqueue this task before starting a separate worker',
-      code: 'CONFLICT',
+    throw queuedRefusal({
+      task: card.id,
+      session: card.queue.session,
     })
   }
 
   if (card.sessionIds?.length) {
     throw new HydraError({
-      message: `task ${card.id} already has an attached agent; detach it first`,
+      message: `task ${card.id} already has an attached agent: ${card.sessionIds.join(', ')}`,
       code: 'SESSION_CONFLICT',
+      help: [`Run \`pnyx-axi task detach ${card.id}\` to free it, or reply to that worker with \`pnyx-axi reply ${card.id} --text "<message>"\``],
     })
   }
 
@@ -202,9 +217,9 @@ export async function startTask({
     })
 
     if (card.queue) {
-      throw new HydraError({
-        message: 'unqueue this task before starting a separate worker',
-        code: 'CONFLICT',
+      throw queuedRefusal({
+        task: card.id,
+        session: card.queue.session,
       })
     }
 

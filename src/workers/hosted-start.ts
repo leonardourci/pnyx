@@ -259,7 +259,8 @@ export function createWorkerStarts({
     if (starting.has(target.id)) {
       throw new HydraError({
         message: `task ${target.id} is already starting`,
-        code: 'SESSION_CONFLICT',
+        code: 'TASK_STARTING',
+        help: [`Check \`pnyx-axi task show ${target.id}\` once its session opens`],
       })
     }
 
