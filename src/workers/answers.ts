@@ -80,9 +80,6 @@ const CODEX_PERMISSION: Choice[] = [
   },
 ]
 
-// A question's options are picked by digit, and a form's choices are each a Down key
-// away, so longer lists are left to the terminal.
-
 // Names one request exactly as it was shown, so an answer lands only on the prompt
 // it was written for: a later request under the same key with other text,
 // questions or fields is a different prompt. FNV-1a over its fields, so the browser

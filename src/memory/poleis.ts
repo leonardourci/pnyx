@@ -14,7 +14,7 @@ import { HydraError } from '#store/errors.ts'
 
 import { canRead, canWrite, hydraPolisConfig } from './polis-policy.ts'
 
-export { canRead,   hydraPolisConfig  } from './polis-policy.ts'
+export { canRead, hydraPolisConfig } from './polis-policy.ts'
 
 export function memoryAgent(): boolean {
   const env = requestEnv()
