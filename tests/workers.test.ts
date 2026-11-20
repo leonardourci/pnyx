@@ -1905,7 +1905,7 @@ test(
     expect((await hydra.task({ key: 'facts' })).column).toBe(await hydra.column({ role: 'in_progress' }))
     writeFileSync(
       path,
-      'note: reviewed café failure\nneeds-you: choose an account',
+      'note: reviewed café\u2028failure\nneeds-you: choose an account',
       { flag: 'a' },
     )
     const blocked = await until({
@@ -1920,7 +1920,7 @@ test(
           ],
         })
 
-        return result.task.workerLog?.latest.text === 'reviewed café failure' && result.task
+        return result.task.workerLog?.latest.text === 'reviewed café\u2028failure' && result.task
       },
     })
     expect(blocked.workerLog.status.code).toBe('blocked')
