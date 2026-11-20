@@ -1,4 +1,4 @@
-import { inform } from '#app/command-notices.ts'
+import { commandNotices, inform } from '#app/command-notices.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
@@ -427,6 +427,7 @@ export function applyDispatch({
         revision: revision + 1,
         changes,
         issues: remaining,
+        notices: commandNotices(),
       }
       const entry: ChangeEntry = {
         v: 1,

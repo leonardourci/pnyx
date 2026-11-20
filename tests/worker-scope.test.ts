@@ -2,7 +2,7 @@ import { workerLine } from './setup/worker-log.ts'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { pnyxAxi, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, pnyxAxi, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 let hydra: Hydra
@@ -143,7 +143,17 @@ test(
     ]
     const firstReceipt = await asWorker.run({ args: retryArgs })
     const retriedReceipt = await asWorker.run({ args: retryArgs })
+    expect(firstReceipt.notices).toContainEqual(expect.objectContaining({
+      reason: expect.stringContaining('task brief is outside'),
+    }))
     expect(retriedReceipt.notices).toEqual(firstReceipt.notices)
+    expect(rows({
+      text: "select id from events where hydra_id = $1 and type = 'task.brief' and data->'data'->>'after' = $2",
+      values: [
+        hydra.id,
+        'Retried guidance',
+      ],
+    })).toHaveLength(1)
 
     expect((await hydra.task({ key: 'target' })).status).toBe('done')
     expect((await hydra.task({ key: 'target' })).notices).toBeDefined()
@@ -163,35 +173,39 @@ test(
         'show',
       ],
     })
-    const dispatch = await asWorker.run({
-      args: [
-        'rule',
-        'apply',
-        '--propose',
-        '--actor',
-        'hydra',
-        '--json',
-        JSON.stringify({
-          version: 1,
-          expected: { revision: dispatchBefore.revision },
-          patch: {
-            rules: {
-              'direct-agent': {
-                when: 'Explicit agent selection',
-                candidates: [
-                  {
-                    harness: 'claude',
-                    mode: 'bypassPermissions',
-                  },
-                ],
-              },
+    const dispatchArgs = [
+      'rule',
+      'apply',
+      '--propose',
+      '--event-id',
+      'dispatch-guidance-retry',
+      '--actor',
+      'hydra',
+      '--json',
+      JSON.stringify({
+        version: 1,
+        expected: { revision: dispatchBefore.revision },
+        patch: {
+          rules: {
+            'direct-agent': {
+              when: 'Explicit agent selection',
+              candidates: [
+                {
+                  harness: 'claude',
+                  mode: 'bypassPermissions',
+                },
+              ],
             },
           },
-        }),
-      ],
-    })
+        },
+      }),
+    ]
+    const dispatch = await asWorker.run({ args: dispatchArgs })
     expect(dispatch).not.toHaveProperty('confirmation')
     expect(dispatch.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('permission level increased') }))
+    const dispatchRetry = await asWorker.run({ args: dispatchArgs })
+    expect(dispatchRetry.notices).toEqual(dispatch.notices)
+    expect(dispatchRetry.revision).toBe(dispatch.revision)
     expect(JSON.stringify(await hydra.owner({
       args: [
         'rule',
