@@ -39,7 +39,8 @@ function retainedBoundary({ value }: { value?: string }): ThreadBoundary {
   }
 }
 
-// thread follows a card; --retain restores the range identified by its session and oldest entry.
+// thread follows a card; --retain restores the range identified by its session and oldest entry, and any other option,
+// such as --recent from a tab of an older build, reads the latest page.
 export function threadCommand({
   ws,
   id,
@@ -83,7 +84,7 @@ export function threadCommand({
   const old = map.get(ws)
   const restoring = args[1] === '--retain'
   const retain = restoring ? retainedBoundary({ value: args[2] }) : undefined
-  const before = restoring ? undefined : args[1]
+  const before = args[1]?.startsWith('--') ? undefined : args[1]
   const cursor = card.agent?.paseoAgentId ? PASEO_HISTORY_CURSOR : THREAD_CURSOR
   const cursorLimit = card.agent?.paseoAgentId ? 600 : 200
 

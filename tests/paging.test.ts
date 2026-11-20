@@ -242,8 +242,17 @@ test(
           }),
         ],
       }) as unknown as { thread: { entries: Entry[] } }
+      // An option the server no longer knows reads the latest page instead of being refused.
+      const recent = await reconnected.send({
+        name: 'thread',
+        args: [
+          'notes',
+          '--recent',
+        ],
+      }) as unknown as { thread?: { entries: Entry[] } }
       reconnected.close()
       expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+      expect(recent.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
     } finally {
       await focusMode({ on: true })
     }
