@@ -38,8 +38,11 @@ test(
       }),
     })
 
+    const projectPaths: string[] = []
+
     for (let project = 0; project < PROJECTS; project++) {
       const folder = hydra.folder({ name: `Project-${project}` })
+      projectPaths.push(folder)
       await hydra.owner({
         args: [
           'project',
@@ -128,7 +131,8 @@ test(
             card,
             offset,
           ] of taskOffsets) {
-            const currentOffset = card.getBoundingClientRect().top - currentColumnTop + column.scrollTop
+            const currentTop = card.getBoundingClientRect().top
+            const currentOffset = currentTop - currentColumnTop + column.scrollTop
 
             if (Math.abs(currentOffset - offset) > 1) {
               failures.push(`Card moved inside its column: ${card.dataset.task}`)
@@ -367,22 +371,73 @@ test(
       { name: /^Open task Project task 6;/ },
     ).click()
     const requested = workspace.locator(`[data-task="${referenced.id}"]`)
-    await until({
-      what: 'the referenced task to receive focus',
-      check: () => requested.evaluate(element => element.contains(document.activeElement)),
-    })
-    const heldInView = await requested.evaluate(async element => {
-      const visible: boolean[] = []
 
-      for (let frame = 0; frame < 10; frame++) {
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-        const bounds = element.getBoundingClientRect()
-        visible.push(bounds.left >= 0 && bounds.right <= innerWidth)
-      }
+    const assertRequestedTaskVisible = async () => {
+      await until({
+        what: 'the referenced task to receive focus',
+        check: () => requested.evaluate(element => element.contains(document.activeElement)),
+      })
+      const hiddenFrames = await requested.evaluate(async element => {
+        const frames: {
+          left: number
+          right: number
+          viewport: number
+          scroll: number
+        }[] = []
 
-      return visible.every(Boolean)
-    })
-    expect(heldInView).toBe(true)
+        for (let frame = 0; frame < 10; frame++) {
+          await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+          const bounds = element.getBoundingClientRect()
+          frames.push({
+            left: bounds.left,
+            right: bounds.right,
+            viewport: innerWidth,
+            scroll: element.closest<HTMLElement>('.workspace-axis')!.scrollLeft,
+          })
+        }
+
+        return frames.filter(frame => frame.left < 0 || frame.right > frame.viewport)
+      })
+      expect(hiddenFrames).toEqual([])
+    }
+
+    await assertRequestedTaskVisible()
+    await page.evaluate(
+      ({
+        hydra,
+        project,
+        task,
+      }) => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur()
+        }
+
+        dispatchEvent(new CustomEvent(
+          'pnyx:workspace-target',
+          {
+            detail: {
+              hydra,
+              path: project,
+            },
+          },
+        ))
+        dispatchEvent(new CustomEvent(
+          'pnyx:workspace-target',
+          {
+            detail: {
+              hydra,
+              id: task,
+            },
+          },
+        ))
+      },
+      {
+        hydra: hydra.id,
+        project: projectPaths[0],
+        task: referenced.id,
+      },
+    )
+    await assertRequestedTaskVisible()
   },
 )
 
