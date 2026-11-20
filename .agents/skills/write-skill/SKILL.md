@@ -12,7 +12,7 @@ Skills follow the [Agent Skills](https://agentskills.io) format: a folder holdin
 
 ## Naming and frontmatter
 
-- [ ] Name the action, verb first where it reads naturally (`review-code`, `write-front-end`, `pnyx-manage-workers`), not the tool that runs it or a vague category. Use lowercase letters, numbers and single hyphens. The frontmatter `name` must equal the folder name.
+- [ ] Name the action, verb first where it reads naturally (`write-pull-request`, `write-front-end`, `pnyx-manage-workers`), not the tool that runs it or a vague category. Use lowercase letters, numbers and single hyphens. The frontmatter `name` must equal the folder name.
 - [ ] Give the frontmatter `name` and `description`. The description, under 1,024 characters, says what the skill does and when to read it, with the words a future agent would match on. Add `paths` only when the skill applies to a fixed set of files, as `write-front-end` does for `web/**`.
 
 ## Body
