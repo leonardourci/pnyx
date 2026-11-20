@@ -1384,9 +1384,9 @@ test(
   },
 )
 
-// The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written.
+// The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written, and the contract's links open there.
 test(
-  'Hydra\'s folder holds the shipped skills as written before its first turn',
+  'Hydra\'s folder holds the shipped skills as written, and every reference its contract links, before its first turn',
   async () => {
     const hydra = await pnyx.hydra()
     const session = await hydra.chat({ text: 'hello' })
@@ -1418,15 +1418,7 @@ test(
         'utf8',
       ))
     }
-  },
-)
 
-// The contract keeps only the main path and links the rest, so every link must open in Hydra's folder.
-test(
-  'Hydra\'s contract links only references its folder holds',
-  async () => {
-    const hydra = await pnyx.hydra()
-    const session = await hydra.chat({ text: 'hello' })
     const contract = readFileSync(
       join(
         session.cwd,
@@ -1434,7 +1426,7 @@ test(
       ),
       'utf8',
     )
-    const links = [...contract.matchAll(/\]\(([^)]+\.md)\)/g)].map(match => match[1])
+    const links = [...contract.matchAll(/\]\(([^)#]+\.md)(?:#[^)]*)?\)/g)].map(match => match[1])
 
     expect(links.length).toBeGreaterThan(0)
 
