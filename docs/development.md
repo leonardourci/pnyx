@@ -85,6 +85,8 @@ PNYX_HOME=/path/to/trial portless trial.pnyx pnyx-axi serve
 
 Choose a unique `<name>.pnyx` for each trial and share the stable URL portless prints. Leave `--port` unset: Pnyx reads the `PORT` supplied by portless. Use the same `PNYX_HOME` for every trial command, including `stop`. Without portless, use `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0` and share the printed URL. Automated tests continue using random ports; do not wrap them in portless.
 
+Schema 9 retires saved session-only task rows and drops their obsolete flag. Their session facts remain, with membership cleared only for retired rows. Actual tasks and Hydra’s canonical record remain.
+
 ## Verification
 
 Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull request: `Tests` runs only on pull requests, and deslop waits for its checks. The review reads the PR description as the intent, including its folded Intentional slop section, and lists the code comments the diff adds (every comment in JavaScript and TypeScript; elsewhere only comments that start a line, not trailing ones); see [deslop's README](https://github.com/leonardourci/deslop#readme) for tool usage and proof details.
