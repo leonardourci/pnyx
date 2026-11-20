@@ -7,7 +7,7 @@ import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { fixPrompt, stoppedWhile } from './fix-prompt.ts'
 
 function UpgradeAction({ ...props }: ComponentProps<typeof Button>) {
-  return <Button variant="surface" {...props} className="upgrade-fix justify-self-start inline-flex items-center gap-1.5" />
+  return <Button variant="surface" {...props} className="upgrade-fix inline-flex items-center gap-1.5 justify-self-start" />
 }
 
 const STEPS: UpgradeStepName[] = [
@@ -25,7 +25,7 @@ function Steps({ operation }: { operation: UpgradeOperation }) {
   const shown = active && !restartOnly ? STEPS : operation.steps.map(step => step.step)
 
   return (
-    <ol className="upgrade-steps flex flex-wrap gap-y-1 gap-x-3 m-0 p-0 list-none text-muted [&_li]:inline-flex [&_li]:items-center [&_li]:gap-1 [&_li[data-state=todo]]:text-control [&_li[data-state=done]_svg]:text-green [&_li[data-state=failed]]:text-red [&_li[data-state=stopped]]:text-ink">
+    <ol className="upgrade-steps m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-muted [&_li]:inline-flex [&_li]:items-center [&_li]:gap-1 [&_li[data-state=done]_svg]:text-green [&_li[data-state=failed]]:text-red [&_li[data-state=stopped]]:text-ink [&_li[data-state=todo]]:text-control">
       {shown.map(name => {
         const step = operation.steps.find(item => item.step === name)
         const [
@@ -111,11 +111,11 @@ export function UpgradeRow({
   return (
     <OperationLine upgrade data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
       <Icon name={active ? activeIcon : needsFix ? 'error' : operation.state === 'stopped' ? 'stop' : 'check'} size={ICON_SIZE.inline} />
-      <div className="upgrade-body grid gap-1.5 min-w-0 flex-1">
+      <div className="upgrade-body grid min-w-0 flex-1 gap-1.5">
         <span className="upgrade-title font-medium">{title}</span>
-        {detail && <span className="upgrade-detail text-muted -mt-1">{detail}</span>}
+        {detail && <span className="upgrade-detail -mt-1 text-muted">{detail}</span>}
         {operation.state === 'refused' ? (
-          <ul className="upgrade-reasons text-muted grid gap-0.5 m-0 pl-4 list-disc">
+          <ul className="upgrade-reasons m-0 grid list-disc gap-0.5 pl-4 text-muted">
             {operation.reasons?.map(reason => <li key={reason}>{reason}</li>)}
           </ul>
         ) : operation.steps.length > 0 && operation.state !== 'current' && <Steps operation={operation} />}
@@ -135,7 +135,7 @@ export function UpgradeRow({
             Can't stop during the restart.
           </span>
         )}
-        {needsFix && operation.error && <pre className="upgrade-error max-h-upgrade-error m-0 py-1.5 px-2 overflow-auto border border-line rounded-md bg-raised text-ink text-meta leading-normal font-mono whitespace-pre-wrap wrap-anywhere">{operation.error}</pre>}
+        {needsFix && operation.error && <pre className="upgrade-error m-0 max-h-upgrade-error overflow-auto rounded-md border border-line bg-raised px-2 py-1.5 font-mono text-meta leading-normal wrap-anywhere whitespace-pre-wrap text-ink">{operation.error}</pre>}
         {needsFix && !restartOnly && (
           <UpgradeAction onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
             <Icon name="fix" size={ICON_SIZE.inline} />Ask Hydra to fix
