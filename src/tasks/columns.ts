@@ -160,12 +160,6 @@ export function validateColumnRule({ rule }: { rule: unknown }): void {
   }
 }
 
-export function describeColumnRule({ column }: { column: HydraColumn }): string {
-  const rule = columnRule({ column })
-
-  return rule.length ? rule.map(row => row.join(' AND ')).join(' OR ') : 'manual only'
-}
-
 export function refreshTasks({
   state,
   ids,
