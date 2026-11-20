@@ -18,10 +18,6 @@
 
 <!-- Findings and fixes from the deslop review, and any pending checks. -->
 
-## How to try this
-
-<!-- First line: `Try: none`, `Try: code` or `Try: ui`. It overrides the kind's default for the deslop run. Then say what to exercise and with which inputs. Delete this section to keep the default. -->
-
 <details>
 <summary>Intentional slop</summary>
 
