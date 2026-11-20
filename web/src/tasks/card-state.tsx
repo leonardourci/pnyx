@@ -8,19 +8,6 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { relativeTime } from './brief.ts'
 import type { ObservedStatus } from './observed-status.ts'
 
-const COMPACT_STATES: Record<string, string> = {
-  asks: 'needs you',
-  working: 'running',
-  waiting: 'waiting',
-  paused: 'paused',
-  'asks-hydra': 'waiting',
-  answering: 'sending',
-  unknown: 'unknown',
-  done: 'done',
-  stopped: 'stopped',
-  'not-started': 'queued',
-}
-
 const STATE_COLORS: Record<string, string> = {
   asks: 'text-gold',
   'asks-hydra': 'text-slate',
@@ -80,12 +67,8 @@ export function CardState({
   compact?: boolean
   children?: ReactNode
 }) {
-  const label = compact ? COMPACT_STATES[status.kind] ?? status.text : status.text
   const text = statusLabel({
-    status: {
-      ...status,
-      text: label,
-    },
+    status,
   })
   const at = status.at || card.updatedAt
   const created = card.createdAt || card.statusLog?.[0]?.at

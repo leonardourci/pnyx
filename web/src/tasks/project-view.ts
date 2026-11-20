@@ -155,7 +155,6 @@ export function taskRollup({
   const observed = observedStatus({
     card,
     state,
-    action: actions[card.id],
   })
   const own = observed.kind === 'not-started'
     ? {
@@ -178,7 +177,6 @@ export function taskRollup({
   const parts = children.map(child => observedStatus({
     card: child,
     state,
-    action: actions[child.id],
   }))
   const done = parts.filter(part => part.kind === 'done').length
   let status: ObservedStatus
