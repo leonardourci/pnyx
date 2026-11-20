@@ -16,7 +16,7 @@ export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
 commands:
   pnyx-axi                                   Show the Hydra summary
-  hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
+  hydra create|list|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|group|keep|list|set|remove      Attach repositories, group projects or choose a keeper
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|parent|arrange|history|updates|permission Tasks (create starts a worker) and one level of subtasks
