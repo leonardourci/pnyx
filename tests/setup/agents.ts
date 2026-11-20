@@ -590,6 +590,7 @@ export function fakeClaude() {
 
 // An app-server in this process: each request gets its recorded result and the notifications recorded after it.
 export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } = {}) {
+  let reusedSession: string | undefined
   const sessions: AgentSession[] = []
   const turns = plans()
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
@@ -757,7 +758,16 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           session.resumed = message.method === 'thread/resume'
           session.config = params.config as Record<string, unknown> | undefined
           session.instructions = params.developerInstructions as string | undefined
-          session.id = session.resumed ? String(params.threadId) : randomUUID()
+
+          if (session.resumed) {
+            session.id = String(params.threadId)
+          } else if (reusedSession) {
+            session.id = reusedSession
+            reusedSession = undefined
+          } else {
+            session.id = randomUUID()
+          }
+
           sessions.push(session)
         }
 
@@ -868,6 +878,9 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
   return {
     spawnCodex,
     sessions,
+    reuseNextSession: ({ id }: { id: string }) => {
+      reusedSession = id
+    },
     plan: turns.plan,
     reply,
     // The context the recorded turn reports.

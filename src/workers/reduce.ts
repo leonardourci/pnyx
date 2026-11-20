@@ -85,25 +85,57 @@ export function applySessionMove({
   state: HydraState
   event: HydraEvent
 }): boolean {
+  if (event.type === 'session.observed') {
+    const session = state.sessions?.[event.data.session]
+
+    if (!session) {
+      return true
+    }
+
+    const {
+      activity,
+      attention,
+    } = event.data
+
+    if (activity !== undefined) {
+      const working = session.sessionActivity === 'working'
+      session.activity = activity
+      session.sessionActivity = activity
+
+      if (activity !== 'working') {
+        delete session.workingSince
+      } else if (!working || !session.workingSince) {
+        session.workingSince = event.at
+      }
+    }
+
+    if (attention !== undefined) {
+      session.attention = structuredClone(attention)
+    }
+
+    return true
+  }
+
   const card = state.cards[event.cardId]
 
   if (event.type === 'task.session') {
-    const attached = state.sessions?.[event.data.session]?.taskId === event.data.before
-    applyAttachment({
+    const attached = applyAttachment({
       state,
       event,
     })
 
-    if (attached) {
-      for (const id of [
-        event.data.before,
-        event.data.after,
-      ]) {
-        const task = id && state.cards[id]
+    if (!attached) {
+      return true
+    }
 
-        if (task) {
-          task.steeringGeneration = event.seq
-        }
+    for (const id of [
+      event.data.before,
+      event.data.after,
+    ]) {
+      const task = id && state.cards[id]
+
+      if (task) {
+        task.steeringGeneration = event.seq
       }
     }
 
@@ -223,7 +255,7 @@ export function applyReplyReceipt({
 
     const id = cardSessionId({ card })
     const session = id ? state.sessions?.[id] : undefined
-    const origin = session && state.cards[session.originCardId]
+    const origin = session && !session.launchId ? state.cards[session.originCardId] : undefined
     const task = session?.taskId ? state.cards[session.taskId] : undefined
 
     for (const holder of new Set([

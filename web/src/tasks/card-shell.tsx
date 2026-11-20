@@ -40,7 +40,6 @@ export function CardContent({
 }
 
 export const AnimatedCardShell = motion.create(CardShell)
-export const AnimatedCardContent = motion.create(CardContent)
 
 export function CardHeading({
   title,

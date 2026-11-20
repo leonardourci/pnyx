@@ -2,7 +2,12 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { base } from '#app/command-meta.ts'
+import type { HydraState } from '#app/model.ts'
+import { replayOwned } from '#app/reducer.ts'
+import { EVENT_VERSION } from '#store/events.ts'
+import { applySessionMove } from '#workers/reduce.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
@@ -10,7 +15,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -33,6 +38,268 @@ beforeAll(async () => {
     },
   })
 })
+
+test(
+  'replaying an attachment to a missing or occupied task preserves its sessions and undo state',
+  () => {
+    const session = 'codex:worker'
+    const state: HydraState = {
+      v: EVENT_VERSION,
+      seq: 0,
+      cards: {},
+      keys: {},
+      eventIds: {},
+      undone: {},
+      sessions: {
+        [session]: {
+          id: session,
+          agent: {
+            provider: 'codex',
+            sessionId: 'worker',
+          },
+          originCardId: 'original',
+          taskId: null,
+          attention: [],
+          sourceRefs: [],
+        },
+      },
+    }
+    applySessionMove({
+      state,
+      event: {
+        ...base({
+          state,
+          cardId: 'missing',
+          meta: {
+            at: '2026-01-01T00:00:00.000Z',
+            actor: 'owner',
+            id: 'undo-detach',
+          },
+        }),
+        type: 'task.session',
+        undoes: 'detach',
+        data: {
+          session,
+          before: null,
+          after: 'missing',
+        },
+      },
+    })
+
+    expect(state.sessions?.[session]?.taskId).toBeNull()
+    expect(state.undone).toEqual({})
+
+    const task = 'occupied'
+    const current = 'codex:current'
+    const meta = {
+      at: '2026-01-01T00:00:00.000Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: task,
+            meta: {
+              ...meta,
+              id: 'create-occupied-task',
+            },
+          }),
+          type: 'task.created',
+          data: {
+            key: task,
+            title: 'Occupied task',
+          },
+        },
+      ],
+    })
+    applySessionMove({
+      state,
+      event: {
+        ...base({
+          state,
+          cardId: task,
+          meta: {
+            ...meta,
+            id: 'start-current-worker',
+          },
+        }),
+        type: 'task.session',
+        data: {
+          session: current,
+          before: null,
+          after: task,
+          started: {
+            agent: {
+              provider: 'codex',
+              sessionId: 'current',
+              host: 'pnyx',
+            },
+            settings: {},
+          },
+        },
+      },
+    })
+    applySessionMove({
+      state,
+      event: {
+        ...base({
+          state,
+          cardId: task,
+          meta: {
+            ...meta,
+            id: 'undo-detach-into-occupied-task',
+          },
+        }),
+        type: 'task.session',
+        undoes: 'detach',
+        data: {
+          session,
+          before: null,
+          after: task,
+        },
+      },
+    })
+
+    expect(state.cards[task]?.agent?.sessionId).toBe('current')
+    expect(state.sessions?.[current]?.taskId).toBe(task)
+    expect(state.sessions?.[session]?.taskId).toBeNull()
+    expect(state.undone).toEqual({})
+  },
+)
+
+test(
+  'a reused provider session keeps its current worker and a retry starts the requested task',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({
+      key: 'original-worker',
+      harness: 'codex',
+    })
+    const folder = hydra.folder({ name: 'next-worker' })
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Next worker',
+        '--folder',
+        folder,
+      ],
+    })
+    const task = created.card.id as string
+    const args = [
+      'task',
+      'start',
+      task,
+      '--harness',
+      'codex',
+      '--event-id',
+      'reused-provider',
+    ]
+    pnyx.codex.reuseNextSession({ id: worker.id })
+    const pending = await hydra.owner({ args })
+    expect(pending).toMatchObject({
+      task,
+      launch: 'pending',
+      session: `codex:${worker.id}`,
+    })
+    expect(pending.information).toContain('existing session')
+    expect(pending.help).toEqual(expect.arrayContaining([expect.stringContaining('Retry the same start request')]))
+    expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
+    expect((await hydra.task({ key: task })).worker).toBe('none: not started, no reason given')
+    expect(worker.closed).toBe(false)
+    await hydra.owner({ args })
+    const next = await until({
+      what: 'the retry to start a fresh worker',
+      check: () => pnyx.codex.sessions.find(session =>
+        session.cwd === folder && !session.closed && session.answered === 1),
+    })
+    expect(next.id).not.toBe(worker.id)
+    expect((await hydra.task({ key: task })).worker).toBe(`codex:${next.id}`)
+    expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
+    const followUp = 'Continue on the original worker.'
+    await hydra.owner({
+      args: [
+        'reply',
+        'original-worker',
+        '--text',
+        followUp,
+      ],
+    })
+    await until({
+      what: 'the original worker to receive its follow-up',
+      check: () => worker.received.some(text => text.includes(followUp)),
+    })
+  },
+)
+
+test(
+  'a detached hosted worker finishes without changing its old task and keeps its activity after restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'detached-worker' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'detached-worker',
+        '--title',
+        'Detached worker',
+        '--folder',
+        folder,
+      ],
+    })
+    const held = pnyx.claude.plan({
+      hydra: hydra.id,
+      partial: 'Still checking the export',
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'detached-worker',
+      ],
+    })
+    const worker = await hydra.agent({ cwd: folder })
+    const session = `claude-code:${worker.id}`
+    const activity = () => rows<{ activity: string }>({
+      text: "select data->>'sessionActivity' as activity from sessions where hydra_id = $1 and id = $2",
+      values: [
+        hydra.id,
+        session,
+      ],
+    })[0]?.activity
+    await until({
+      what: 'the held worker turn',
+      check: () => worker.received.length === 1,
+    })
+    expect(activity()).toBe('working')
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'detached-worker',
+      ],
+    })
+    held.release()
+    await until({
+      what: 'the detached session to finish',
+      check: () => activity() === 'finished',
+    })
+    expect((await hydra.task({ key: 'detached-worker' })).worker).toMatch(/^none(?::|$)/)
+    await pnyx.restart()
+    expect(activity()).toBe('finished')
+    expect((await hydra.task({ key: 'detached-worker' })).worker).toMatch(/^none(?::|$)/)
+  },
+)
 
 test(
   'registered hosted workers keep native features and connections without grants, while browser remains opt-in',

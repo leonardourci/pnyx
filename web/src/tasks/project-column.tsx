@@ -3,7 +3,7 @@ import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { sessionViewKey } from '#web-app/session-view.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { motionDuration } from '#web-shared/motion.ts'
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
@@ -31,13 +31,7 @@ export function ProjectColumn({
   view: ViewPreferences
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
   expandedWidth: number
-  children({
-    scroll,
-    width,
-  }: {
-    scroll: HTMLElement | null
-    width: number
-  }): ReactNode
+  children(): ReactNode
   create(): void
 }) {
   const [
@@ -59,10 +53,6 @@ export function ProjectColumn({
     }),
     active: !folded,
   })
-  const [
-    scrollElement,
-    setScrollElement,
-  ] = useState<HTMLDivElement | null>(null)
   const outdentZone = useDropZone({
     item: {
       id: column.id,
@@ -77,7 +67,6 @@ export function ProjectColumn({
     // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
     (node: HTMLDivElement | null) => {
       scroll.current = node
-      setScrollElement(node)
       remembered.ref(node)
       outdentNode(node)
     },
@@ -107,17 +96,6 @@ export function ProjectColumn({
   })
 
   const contentWidth = width - PROJECT_CONTENT_INSET
-  const content = useMemo(
-    () => children({
-      scroll: scrollElement,
-      width: contentWidth,
-    }),
-    [
-      children,
-      scrollElement,
-      contentWidth,
-    ],
-  )
 
   const sort = useSortItem({
     item: {
@@ -148,7 +126,7 @@ export function ProjectColumn({
     <SortablePanel
       as="section"
       surface="column"
-      layout="position"
+      layout={false}
       initial={false}
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
@@ -179,12 +157,12 @@ export function ProjectColumn({
         open={!folded}
         axis="none"
         ref={scrollRef}
-        layoutScroll
+        layout={false}
         data-sort-surface={`tasks:${hydraId}:${column.id}`}
         className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [&[hidden]]:hidden"
       >
         <div ref={grid} className="project-card-grid relative w-(--project-card-width)">
-          {content}
+          {children()}
         </div>
       </FoldContent>
       {!folded && !phone && (

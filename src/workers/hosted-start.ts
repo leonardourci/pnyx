@@ -23,6 +23,7 @@ import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
+import { taskInstructions } from '#tasks/owner-ask.ts'
 import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -46,7 +47,6 @@ export function createWorkerStarts({
   children,
   open,
   folderOf,
-  sessionKey,
 }: {
   hydraId: string
   live: Map<string, Live>
@@ -79,7 +79,6 @@ export function createWorkerStarts({
     session?: HostedSession
   }): Live
   folderOf({ card }: { card: Card & { agent: AgentRef } }): string
-  sessionKey({ agent }: { agent: AgentRef }): string
 }) {
   const starting = new Set<string>()
 
@@ -301,11 +300,11 @@ export function createWorkerStarts({
           },
           env: environment({
             task: target.id,
-            steeringWorker: `${id}:session`,
+            steeringWorker: `${id}:attach`,
           }),
         }) : environment({
           task: target.id,
-          steeringWorker: `${id}:session`,
+          steeringWorker: `${id}:attach`,
         }),
         signal: controller.signal,
         spawned: children.spawned,
@@ -373,6 +372,27 @@ export function createWorkerStarts({
           ...(reason ? { reason } : {}),
         }
 
+        const agent: AgentRef = {
+          provider,
+          sessionId: prepared.id,
+          cwd,
+          ...(prepared.path ? { transcriptPath: prepared.path } : {}),
+          host: 'pnyx',
+          ...(dispatch ? {
+            account: dispatch.account,
+            loginFolder: dispatch.folder,
+          } : {}),
+        }
+        const sessionKey = sessionId({ agent })
+
+        if (writer.state.sessions?.[sessionKey]) {
+          return {
+            task: card.id,
+            duplicate: true,
+            existing: sessionKey,
+          }
+        }
+
         if (replacement) {
           applyDecision({
             writer,
@@ -388,7 +408,6 @@ export function createWorkerStarts({
           })
         }
 
-        // A marker left by an earlier agent belongs to it, not to the one starting now.
         const attention = withoutInterrupted({ attention: card.attention })
         const input = {
           ...(cwd !== card.folder ? { folder: cwd } : {}),
@@ -410,51 +429,32 @@ export function createWorkerStarts({
           })
         }
 
-        const agent: AgentRef = {
-          provider,
-          sessionId: prepared.id,
-          cwd,
-          ...(prepared.path ? { transcriptPath: prepared.path } : {}),
-          host: 'pnyx',
-          ...(dispatch ? {
-            account: dispatch.account,
-            loginFolder: dispatch.folder,
-          } : {}),
-        }
         applyDecision({
           writer,
-          decision: decidePush({
-            state: writer.state,
-            key: sessionKey({ agent }),
-            input: {
-              title: card.title,
-              agent,
-              ...(Object.keys(settings).length ? { settings } : {}),
-              activity: 'working',
-              source: {
-                adapter: 'pnyx',
-                objectId: agent.sessionId,
-                observedAt: at(),
+          decision: {
+            event: {
+              ...base({
+                state: writer.state,
+                cardId: card.id,
+                meta: {
+                  ...meta,
+                  id: `${id}:attach`,
+                },
+              }),
+              type: 'task.session',
+              data: {
+                session: sessionKey,
+                before: null,
+                after: card.id,
+                started: {
+                  agent,
+                  settings,
+                },
+                working: true,
+                brief: taskInstructions({ card }),
               },
             },
-            meta: {
-              ...meta,
-              id: `${id}:session`,
-            },
-          }),
-        })
-        applyDecision({
-          writer,
-          decision: decideSession({
-            state: writer.state,
-            ref: sessionId({ agent }),
-            task: card.id,
-            working: true,
-            meta: {
-              ...meta,
-              id: `${id}:attach`,
-            },
-          }),
+          },
         })
 
         if (tools) {
@@ -534,7 +534,7 @@ export function createWorkerStarts({
                 route: 'pnyx',
                 worker: {
                   agent: queued.worker.agent,
-                  session: sessionId({ agent }),
+                  session: sessionKey,
                 },
               },
               meta,
@@ -561,6 +561,16 @@ export function createWorkerStarts({
 
       if (claimed.duplicate) {
         session.close()
+
+        if ('existing' in claimed && claimed.existing) {
+          return {
+            task: claimed.task,
+            launch: 'pending',
+            session: claimed.existing,
+            information: 'The provider returned an existing session. Pnyx kept its current worker unchanged.',
+            help: ['Retry the same start request to open a fresh worker, or use `pnyx-axi task sessions` to see the existing session'],
+          }
+        }
 
         return {
           task: claimed.task,

@@ -173,6 +173,22 @@ test(
     expect(next.cwd).toBe(folder)
     expect(worker.closed).toBe(true)
     expect(next.id).not.toBe(worker.id)
+    expect((await hydra.as({ session: worker }).refused({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        task.id,
+      ],
+    })).code).toBe('STALE_CLAIM')
+    expect((await hydra.as({ session: next }).run({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        task.id,
+      ],
+    })).pending).toBe(0)
     expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(pnyx.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
@@ -289,7 +305,7 @@ test(
     const worker = await until({
       what: 'the task has its own worker',
       check: () => pnyx.claude.sessions.find(session =>
-        session.env.PNYX_STEERING_WORKER === 'card:create-and-send:worker:session'
+        session.env.PNYX_ACTOR === `worker:${created.card.id}`
         && session.answered === 1),
     })
     const { task: current } = await hydra.owner({

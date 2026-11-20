@@ -171,11 +171,55 @@ export function applyAttachment({
 }: {
   state: HydraState
   event: Extract<HydraEvent, { type: 'task.session'}>
-}): void {
-  const session = state.sessions?.[event.data.session]
+}): boolean {
+  let session = state.sessions?.[event.data.session]
+  const started = event.data.started
+  const destination = event.data.after
+  const target = destination === null ? undefined : state.cards[destination]
+
+  if (destination !== null && !target) {
+    return false
+  }
+
+  if (target && target.id !== event.data.before && cardSessionId({ card: target })) {
+    return false
+  }
+
+  if (started) {
+    if (session || event.data.before !== null || !target) {
+      return false
+    }
+
+    session = {
+      id: event.data.session,
+      agent: cloneValue({ value: started.agent }),
+      settings: cloneValue({ value: started.settings }),
+      originCardId: event.cardId,
+      launchId: event.id,
+      taskId: null,
+      launch: {
+        via: 'pnyx',
+        at: event.at,
+        folder: started.agent.cwd,
+        harness: started.agent.provider,
+      },
+      lastSeen: event.at,
+      activity: 'working',
+      sessionActivity: 'working',
+      workingSince: event.at,
+      attention: [],
+      sourceRefs: [],
+    }
+
+    if (!state.sessions) {
+      state.sessions = {}
+    }
+
+    state.sessions[session.id] = session
+  }
 
   if (!session || session.taskId !== event.data.before) {
-    return
+    return false
   }
 
   const old = session.taskId && state.cards[session.taskId]
@@ -200,8 +244,6 @@ export function applyAttachment({
       event,
     })
   }
-
-  const target = event.data.after && state.cards[event.data.after]
 
   if (target && target.launch?.via === 'command' && session.launch?.via === 'hooks') {
     session.launch = {
@@ -237,6 +279,8 @@ export function applyAttachment({
     state,
     session,
   })
+
+  return true
 }
 
 // Replay migrates legacy observations without changing event bytes or ids.

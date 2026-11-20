@@ -690,7 +690,6 @@ export function HydraView({
       notify,
       answer: answerTask,
       onEdit: cancelOpen,
-      save,
       recoverSelection: ({ id }: { id: string }) => setPageView(view => {
         const recovered = view.selected && view.expanded.length
 
@@ -1003,8 +1002,6 @@ export function HydraView({
         openInline={openInline}
         onEdit={cardActions.onEdit}
         recoverSelection={cardActions.recoverSelection}
-        view={cardView}
-        save={cardActions.save}
         open={cardActions.open}
         command={command}
         connected={connected}
@@ -1362,10 +1359,7 @@ export function HydraView({
                                         ? c.repositories[0] : undefined,
                                       group: c.id,
                                     })}
-                                  >{({
-                                      scroll,
-                                      width,
-                                    }) => (
+                                  >{() => (
                                       <>
                                         {creatingTask?.group === c.id && (
                                           <TaskCreate
@@ -1413,23 +1407,9 @@ export function HydraView({
                                         <SortGroup namespace={`tasks:${navigation.hydraId}`} id={`tasks:${navigation.hydraId}:${c.id}`} items={items.map(item => item.id)}>
                                           <ProjectTasks
                                             items={items}
-                                            state={state}
-                                            actions={actions}
-                                            selected={expandedIds}
-                                            column={c.id}
-                                            hydra={navigation.hydraId}
-                                            scroll={scroll}
-                                            width={width}
-                                            reveal={revealing}
-                                            render={({
-                                              card: item,
-                                              width: familyWidth,
-                                            }) => (
+                                            render={({ card: item }) => (
                                               <TaskFamily
                                                 card={item}
-                                                width={familyWidth}
-                                                scroll={scroll}
-                                                reveal={revealing}
                                                 hydraId={navigation.hydraId}
                                                 state={state}
                                                 actions={actions}

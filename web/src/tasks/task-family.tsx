@@ -11,7 +11,6 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { compareTasks, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
-import { SUBTASK_INDENT } from './project-layout.ts'
 
 function Subtasks({
   children,
@@ -75,9 +74,6 @@ export function TaskFamily({
   state,
   actions,
   selected,
-  width,
-  scroll,
-  reveal,
   preview,
   renderCard,
 }: {
@@ -86,9 +82,6 @@ export function TaskFamily({
   state: HydraState
   actions: Record<string, CurrentAction>
   selected: string[]
-  width: number
-  scroll: HTMLElement | null
-  reveal?: string | null
   preview: SortMove | null
 } & FamilyRenderer) {
   const [
@@ -162,7 +155,7 @@ export function TaskFamily({
     <DraggableFamily
       id={card.id}
       hydra={hydraId}
-      layout="position"
+      layout={false}
       className={className}
       data-family={card.id}
     >
@@ -178,25 +171,17 @@ export function TaskFamily({
         }}
       />
       {children.length > 0 && (
-        <FoldContent open={childrenOpen}>
+        <FoldContent open={childrenOpen} layout={false}>
           <Subtasks data-sort-surface={`children:${card.id}`}>
             <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
               <ProjectTasks
                 items={shown.filter(child => !child.hidden || selected.includes(child.id))}
-                state={state}
-                actions={actions}
-                selected={selected}
-                column={`children:${card.id}`}
-                hydra={hydraId}
-                width={width - SUBTASK_INDENT}
-                scroll={scroll}
-                reveal={reveal}
                 singleColumn
                 render={({ card: child }) => (
                   <DraggableFamily
                     id={child.id}
                     hydra={hydraId}
-                    layout="position"
+                    layout={false}
                     key={child.key}
                     data-child={child.id}
                   >

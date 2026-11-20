@@ -28,7 +28,7 @@ import { accountEnvironment } from './dispatch.ts'
 import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask, toolApplicationReady } from './host.ts'
 import type { createHostedDelivery } from './hosted-delivery.ts'
 import { steeringMessages } from './inbox-notice.ts'
-import type { AgentRef } from './model.ts'
+import type { AgentRef, SessionObservation } from './model.ts'
 import { nativeIdle } from './native-session.ts'
 import type { createPermissionBridge } from './permission-bridge.ts'
 import { permissionEvent } from './permission-rules.ts'
@@ -104,7 +104,7 @@ export function createLiveSessions({
   }: {
     writer: Writer
     agent: AgentRef
-    input: Record<string, unknown>
+    input: SessionObservation
     actor: string
     eventId?: string
     details?: string
@@ -1243,7 +1243,10 @@ export function createLiveSessions({
     )
     entry.consumed = consume({
       key,
-      card,
+      card: {
+        ...card,
+        agent: { ...card.agent },
+      },
       entry,
     })
 

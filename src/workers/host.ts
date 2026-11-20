@@ -109,21 +109,43 @@ export function findWorkerTurnToResume({
   state: HydraState
   agent: AgentRef
 }): string | undefined {
-  const session = state.sessions?.[sessionId({ agent })]
+  const workerSession = sessionId({ agent })
+  const session = state.sessions?.[workerSession]
   const cardId = session?.taskId ?? session?.originCardId
 
   if (!cardId) {
     return undefined
   }
 
-  const lastTurn = scanEvents({
-    cardId,
+  let lastTurn = scanEvents({
+    cardId: session?.launchId ? undefined : cardId,
     hydraId,
-    types: ['card.pushed'],
+    types: [
+      'card.pushed',
+      'session.observed',
+    ],
     descending: true,
-  }).find(event => event.type === 'card.pushed' && event.data.activity === 'working'
-      && event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider)
+  }).find(event => {
+    if (event.type === 'session.observed') {
+      return event.data.session === workerSession && event.data.activity === 'working'
+    }
+
+    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
+      return false
+    }
+
+    const observedAgent = event.data.agent
+
+    return observedAgent !== undefined && sessionId({ agent: observedAgent }) === workerSession
+  })
+  const launchSeq = session?.launchId ? state.eventIds[session.launchId] : undefined
+
+  if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)) {
+    lastTurn = readEvents({
+      hydraId,
+      seqs: [launchSeq],
+    })[0]
+  }
 
   if (!lastTurn || resumesInARow({
     turn: lastTurn,

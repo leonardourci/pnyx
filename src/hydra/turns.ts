@@ -42,7 +42,7 @@ import { compactCommand } from '#workers/compaction/state.ts'
 import { accountEnvironment } from '#workers/dispatch.ts'
 import { effectiveDispatch, loginFolder } from '#workers/dispatch-config.ts'
 import { HYDRA_TURN_POLL_MS, sameChosenSettings } from '#workers/host.ts'
-import type { AgentRef } from '#workers/model.ts'
+import type { AgentRef, SessionObservation } from '#workers/model.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
 import { harnessOf, providerIdOf } from '#workers/providers.ts'
 import { sessionId, withoutInterrupted } from '#workers/session-attachments.ts'
@@ -104,7 +104,7 @@ export function createHydraTurns({
   }: {
     writer: Writer
     agent: AgentRef
-    input: Record<string, unknown>
+    input: SessionObservation
     actor: string
   }): void
   stoppedFor: ReturnType<typeof createHydraOperations>['stoppedFor']

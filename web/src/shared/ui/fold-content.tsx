@@ -7,6 +7,7 @@ export function FoldContent({
   axis = 'height',
   as = 'div',
   className = '',
+  layout = 'position',
   children,
   ...props
 }: Omit<HTMLMotionProps<'div'>, 'hidden'> & {
@@ -37,7 +38,7 @@ export function FoldContent({
       inert={!open}
       aria-hidden={!open}
       hidden={closed && !open}
-      layout="position"
+      layout={layout}
       initial={false}
       animate={{
         ...dimensions,

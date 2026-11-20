@@ -259,6 +259,7 @@ export interface AgentSession {
   id: string
   agent: AgentRef
   launch?: AgentLaunch
+  launchId?: string
   lastSeen?: string
   originCardId: string
   queueCompleted?: number
@@ -274,6 +275,16 @@ export interface AgentSession {
   sourceRefs: SourceRef[]
 }
 
+export interface SessionObservation {
+  activity?: string
+  attention?: Attention[]
+}
+
+export type SessionObservedEvent = EventBase & {
+  type: 'session.observed'
+  data: SessionObservation & { session: string }
+}
+
 export type SessionEvent = EventBase & {
   type: 'task.session'
   data: {
@@ -283,6 +294,10 @@ export type SessionEvent = EventBase & {
     brief?: string
     nativeEpoch?: string
     working?: boolean
+    started?: {
+      agent: AgentRef
+      settings: AgentSettings
+    }
     handoff?: {
       folder: string
       copy?: TaskCopy
