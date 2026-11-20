@@ -1376,7 +1376,11 @@ export function codexProvider({
               const previousContext = carriedContext.get(message.id)
               carriedContext.delete(message.id)
               const currentContext = context && !manualCompact ? await context({ compacted }) : undefined
-              const text = [compacted ? undefined : previousContext, currentContext, said]
+              const text = [
+                compacted ? undefined : previousContext,
+                currentContext,
+                said,
+              ]
                 .filter(part => part !== undefined).join('\n\n')
 
               if (manualCompact && said.trim() !== '/compact') {
@@ -1620,8 +1624,12 @@ export function codexProvider({
                       correlationId: message.id,
                       error,
                     })
+
                     if (rendered) {
-                      carriedContext.set(message.id, rendered)
+                      carriedContext.set(
+                        message.id,
+                        rendered,
+                      )
                     }
 
                     carried.push(message)
