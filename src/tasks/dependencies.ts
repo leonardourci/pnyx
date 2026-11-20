@@ -1,6 +1,6 @@
 import { reportReviewGaps } from '#investigations/inventory.ts'
 import { openAsks } from './ask-state.ts'
-import { ownerGates } from './owner-gates.ts'
+import { holdBlocker, ownerGates, questionBlockers, type Blocker } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
@@ -188,6 +188,55 @@ export function unmetPrerequisites({
   })
 }
 
+function readinessBlockers({
+  state,
+  card,
+  unmet,
+}: {
+  state: HydraState
+  card: Card
+  unmet: ReturnType<typeof unmetPrerequisites>
+}): Blocker[] {
+  const blockers: Blocker[] = unmet.map(item => ({
+    reason: `waiting for ${item.title} (${item.id}): ${item.reason}`,
+    clear: `Finish ${item.id} first, or run \`pnyx-axi task undepend ${card.id} --on ${item.id}\` if it no longer blocks this task`,
+  }))
+
+  if (card.wait) {
+    const wait = waitReadiness({
+      state,
+      wait: card.wait,
+    })
+
+    if (!wait.ready) {
+      blockers.push({
+        reason: `waiting for ${wait.title} (${card.wait.task}): ${card.wait.condition}`,
+        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; run \`pnyx-axi task status ${card.id} paused --reason "<why>"\` to drop the wait`,
+      })
+    }
+  }
+
+  if (card.hold) {
+    blockers.push(holdBlocker({
+      task: card.id,
+      reason: card.hold.reason,
+    }))
+  }
+
+  if (card.status?.state === 'paused' && card.status.hold) {
+    const detail = card.status.note ? `: ${card.status.note}` : ''
+
+    blockers.push({
+      reason: `its worker declared a paused hold${detail}`,
+      clear: `Once the owner gives the go, run \`pnyx-axi task status ${card.id} paused --reason "<the owner's go>"\` to clear the hold`,
+    })
+  }
+
+  blockers.push(...questionBlockers({ card }))
+
+  return blockers
+}
+
 export function taskReadiness({
   state,
   card,
@@ -199,30 +248,11 @@ export function taskReadiness({
     state,
     card,
   })
-  const reasons = unmet.map(item => `waiting for ${item.title} (${item.id}): ${item.reason}`)
-
-  if (card.wait) {
-    const wait = waitReadiness({
-      state,
-      wait: card.wait,
-    })
-
-    if (!wait.ready) {
-      reasons.push(`waiting for ${wait.title}: ${card.wait.condition}`)
-    }
-  }
-
-  if (card.hold) {
-    reasons.push(`held for discussion: ${card.hold.reason}`)
-  }
-
-  if (card.status?.state === 'paused' && card.status.hold) {
-    reasons.push('declared paused on hold')
-  }
-
-  if (ownerGates({ card }).length || openAsks({ card }).length) {
-    reasons.push('waiting for an answer')
-  }
+  const reasons = readinessBlockers({
+    state,
+    card,
+    unmet,
+  }).map(blocker => blocker.reason)
 
   return {
     ready: reasons.length === 0,
@@ -238,16 +268,20 @@ export function requireReady({
   state: HydraState
   card: Card
 }): void {
-  const readiness = taskReadiness({
+  const blockers = readinessBlockers({
     state,
     card,
+    unmet: unmetPrerequisites({
+      state,
+      card,
+    }),
   })
 
-  if (!readiness.ready) {
+  if (blockers.length) {
     throw new HydraError({
-      message: `task ${card.id} is not ready: ${readiness.reasons.join('; ')}`,
+      message: `task ${card.id} is not ready: ${blockers.map(blocker => blocker.reason).join('; ')}`,
       code: 'TASK_NOT_READY',
-      help: ['Complete or resolve the named prerequisites before starting this task'],
+      help: [...new Set(blockers.map(blocker => blocker.clear))],
     })
   }
 }
