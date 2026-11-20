@@ -197,6 +197,14 @@ test(
       },
     )
     expect(await composer.inputValue()).toBe(draft)
+    await composer.dispatchEvent(
+      'keydown',
+      {
+        key: 'Enter',
+        keyCode: 229,
+      },
+    )
+    expect(await composer.inputValue()).toBe(draft)
     await composer.fill(unmatched)
     await page.getByText(
       'Nothing in this Hydra matches.',

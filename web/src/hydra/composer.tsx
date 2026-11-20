@@ -12,6 +12,7 @@ import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
+import { composing } from '#web-shared/ime.ts'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
@@ -281,7 +282,11 @@ export function Composer({
   )
 
   const draftKey = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.nativeEvent.isComposing) {
+    if (composing({ event: e.nativeEvent })) {
+      return
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
       e.preventDefault()
 
       if (!e.repeat) {

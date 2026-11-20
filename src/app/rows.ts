@@ -1009,13 +1009,6 @@ export function stateFromRows({
     }
   }
 
-  if (state.config) {
-    Reflect.deleteProperty(
-      state.config,
-      'readPoleis',
-    )
-  }
-
   for (const { id } of ids) {
     const row = body.get(id)
 
@@ -1032,14 +1025,6 @@ export function stateFromRows({
       ...hidden.get(id),
       ...lists.get(id),
     }
-    Reflect.deleteProperty(
-      card,
-      'kind',
-    )
-    Reflect.deleteProperty(
-      card,
-      'report',
-    )
     state.cards[id] = card
     state.keys[card.key] = id
   }

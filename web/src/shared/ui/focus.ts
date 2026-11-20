@@ -10,13 +10,24 @@ export const isEditing = ({ target }: { target: Element }) => {
 
 export function focusElement({ selector }: { selector: string }) {
   const element = document.querySelector<HTMLElement>(selector)
-  element?.focus({ preventScroll: true }); element?.scrollIntoView({
+
+  if (!element) {
+    return false
+  }
+
+  const inColumns = element.closest('.kanban') !== null
+  let behavior: ScrollBehavior | undefined
+
+  if (inColumns) {
+    behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
+  }
+
+  element.focus({ preventScroll: true })
+  element.scrollIntoView({
     block: 'nearest',
     inline: 'nearest',
-    ...(element.closest('.kanban')
-      ? { behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' } as const
-      : {}),
+    behavior,
   })
 
-  return !!element && document.activeElement === element
+  return document.activeElement === element
 }
