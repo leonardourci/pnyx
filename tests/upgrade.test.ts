@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, beforeEach, expect, test } from 'vitest'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
@@ -337,6 +338,14 @@ test(
       }
 
       const local = 'echo saved local edit\n'
+      const untracked = join(
+        folder.install,
+        'local-notes.txt',
+      )
+      writeFileSync(
+        untracked,
+        'Keep these untracked notes',
+      )
       writeFileSync(
         join(
           folder.install,
@@ -375,6 +384,25 @@ test(
           'refs/stash:build.sh',
         ],
       })).toBe(local.trim())
+      const stash = /Saved local work as ([0-9a-f]+)/.exec(notices)?.[1]
+      expect(stash).toBeDefined()
+      const restored = spawnSync(
+        'git',
+        [
+          'stash',
+          'apply',
+          String(stash),
+        ],
+        {
+          cwd: folder.install,
+          encoding: 'utf8',
+        },
+      )
+      expect(restored.stdout + restored.stderr).toContain('build.sh')
+      expect(readFileSync(
+        untracked,
+        'utf8',
+      )).toBe('Keep these untracked notes')
       const branch = git({
         cwd: folder.install,
         args: [

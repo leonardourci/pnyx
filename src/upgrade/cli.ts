@@ -107,7 +107,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
     throw new AxiError(
       `Upgrade finished, but the restart failed; the upgraded code remains on disk.\n${outcome.error}`,
       'UPGRADE_FAILED',
-      ['Run `pnyx-axi restart`'],
+      [
+        ...(outcome.reasons ?? []),
+        'Run `pnyx-axi restart`',
+      ],
     )
   }
 
@@ -115,7 +118,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
     throw new AxiError(
       `Upgrade failed${outcome.failed ? ` while ${STEP_WORDS[outcome.failed][1].toLowerCase()}` : ''}; ${outcome.rolledBack ? 'went back to the previous version' : 'going back to the previous version failed, so the folder may be partly upgraded'}.\n${outcome.error}`,
       'UPGRADE_FAILED',
-      ['Fix the cause, then run `pnyx-axi upgrade` again'],
+      [
+        ...(outcome.reasons ?? []),
+        'Fix the cause, then run `pnyx-axi upgrade` again',
+      ],
     )
   }
 
@@ -124,13 +130,19 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
       throw new AxiError(
         `Upgrade stopped; going back to the previous version failed, so the folder may be partly upgraded.\n${outcome.error}`,
         'UPGRADE_STOPPED',
-        ['Fix the cause, then run `pnyx-axi upgrade` again'],
+        [
+          ...(outcome.reasons ?? []),
+          'Fix the cause, then run `pnyx-axi upgrade` again',
+        ],
       )
     }
 
     return {
       steps: outcome.steps,
-      notices: outcome.reasons,
+      notices: outcome.reasons?.map(reason => ({
+        reason,
+        clear: 'Use pnyx-axi upgrade --check to check the installed version',
+      })),
       result: 'stopped: Upgrade stopped; nothing changed',
     }
   }
@@ -138,7 +150,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
   if (outcome.state === 'current') {
     return {
       steps: outcome.steps,
-      notices: outcome.reasons,
+      notices: outcome.reasons?.map(reason => ({
+        reason,
+        clear: 'Use pnyx-axi upgrade --check to check the installed version',
+      })),
       result: 'none: Pnyx is already up to date',
     }
   }
@@ -146,7 +161,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
   const upgraded = {
     steps: outcome.steps,
     result: 'Upgraded',
-    notices: outcome.reasons,
+    notices: outcome.reasons?.map(reason => ({
+      reason,
+      clear: 'Use pnyx-axi upgrade --check to check the installed version',
+    })),
   }
 
   if (!outcome.to) {
