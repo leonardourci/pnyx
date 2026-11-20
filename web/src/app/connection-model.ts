@@ -9,6 +9,7 @@ import { createPendingResource } from '#web-shared/pending-intents.ts'
 import type { Command,Receipt } from './connection.ts'
 import type { watchHydra } from './hydra-views.ts'
 import { type HydraResource } from './pending-state.ts'
+import type { createPendingTurns } from '#web-workers/pending-turns.ts'
 
 export interface Creation {
   attempt: string
@@ -25,6 +26,7 @@ export interface Scope {
   identity: string
   viewKey: string
   resource: HydraResource
+  turns: ReturnType<typeof createPendingTurns>
   hasSnapshot: boolean
   ready: boolean
   expectedSeq?: number

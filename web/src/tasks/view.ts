@@ -60,6 +60,7 @@ export function cardState({
   hours,
   now,
   state,
+  action,
 }: {
   card: Card
   hours?: DoneAfterHours
@@ -71,6 +72,7 @@ export function cardState({
   const status = observedStatus({
     card,
     state,
+    action,
   })
 
   if (status.kind === 'done' && card.doneAt) {

@@ -52,6 +52,7 @@ import { projectColumns, statusPriority, IDEAS_COLUMN, type ProjectColumnData } 
 import { taskProjectGroup } from '#tasks/order.ts'
 import { Detail } from '#web-tasks/detail.tsx'
 import { argument } from '#web-tasks/optimistic.ts'
+import { observedStatus } from '#web-tasks/observed-status.ts'
 import { TaskCreate,type TaskDraft } from '#web-tasks/task-create.tsx'
 import { useTaskNavigation } from '#web-tasks/task-navigation.ts'
 import { useModalTask } from '#web-tasks/presentation.ts'
@@ -985,7 +986,12 @@ export function HydraView({
         sortScope={`${navigation.hydraId}:${column.id}:${priority}:${item.parentId ?? 'root'}`}
         rootColumn={rootColumn}
         rootScope={rootColumn && `${navigation.hydraId}:${rootColumn}:${priority}:root`}
-        statusOverride={family.status}
+        statusOverride={hydra.pendingTurns[item.id] ? observedStatus({
+          card: item,
+          state,
+          action: actions[item.id],
+          pending: hydra.pendingTurns[item.id],
+        }) : family.status}
         progress={family.progress}
         hasChildren={family.hasChildren}
         childrenOpen={family.childrenOpen}
@@ -1014,6 +1020,7 @@ export function HydraView({
             state={state}
             live={hydra.taskThreads[item.id]}
             action={actions[item.id]}
+            pendingTurn={hydra.pendingTurns[item.id]}
             view={cardView}
             command={command}
             connected={connected}
@@ -1275,6 +1282,7 @@ export function HydraView({
                         state={state}
                         liveThread={hydraThread}
                         action={actions[HYDRA_CARD]}
+                        pendingTurn={hydra.pendingTurns[HYDRA_CARD]}
                         taskActions={actions}
                         selectedTask={selectedRef}
                         queue={hydraQueue}

@@ -10,6 +10,7 @@ import { commandArguments, editTargets } from './pending-state.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Scope, Request, HydraListResource } from './connection-model.ts'
 import type { Receipt } from './connection.ts'
+import { turnTarget } from '#web-workers/pending-turns.ts'
 
 const chatRead = ({ request }: { request: { name: string } }) => request.name === 'thread'
 
@@ -319,6 +320,37 @@ export function createConnectionRequests({
         })
       }
 
+      const state = scope.resource.snapshot().confirmed
+      const target = turnTarget({
+        name,
+        args,
+        state,
+      })
+
+      if (target) {
+        const existing = scope.turns.snapshot().intents.find(intent => intent.id === id)
+
+        if (existing?.stage === 'refused' || existing?.stage === 'unknown') {
+          scope.turns.retry({ id })
+        } else if (!existing) {
+          scope.turns.enqueue({
+            id,
+            targets: [target],
+            delivery: 'idempotent',
+            patch: {
+              card: target,
+              message: argument({
+                args,
+                flag: '--event-id',
+              }),
+              afterSeq: state.seq,
+              turnStartedAt: state.cards[target]?.turnStartedAt,
+              stoppedAt: state.cards[target]?.stoppedAt,
+            },
+          })
+        }
+      }
+
       requests.set(
         id,
         {
@@ -413,6 +445,11 @@ export function createConnectionRequests({
         })
       }
 
+      scope.turns.refuse({
+        id: request.id,
+        error,
+      })
+
       if (request.creation) {
         hydras.refuse({
           id: request.creation,
@@ -428,6 +465,19 @@ export function createConnectionRequests({
 
       request.reject({ error })
     } else {
+      if (message.state === 'failed') {
+        const detail = typeof message.detail === 'string' ? message.detail : 'Turn could not start'
+        scope.turns.refuse({
+          id: request.id,
+          error: new CommandFailure({
+            message: detail,
+            code: 'START_FAILED',
+          }),
+        })
+      } else {
+        scope.turns.accept({ id: request.id })
+      }
+
       if (request.optimistic) {
         scope.resource.acknowledge({
           id: request.id,

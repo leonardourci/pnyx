@@ -15,6 +15,7 @@ const STATE_COLORS: Record<string, string> = {
   done: 'text-green',
   stopped: 'text-red',
   blocked: 'text-red',
+  error: 'text-red',
   waiting: 'text-slate',
 }
 

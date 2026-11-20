@@ -12,6 +12,7 @@ export function Running({
   since,
   running,
   label,
+  statusName: labelName,
   reading,
   waiting,
   state,
@@ -20,6 +21,7 @@ export function Running({
   since: string | null
   running: boolean
   label: string
+  statusName?: string
   reading: QueuedUpdate[]
   waiting: QueuedUpdate[]
   state: HydraState
@@ -67,6 +69,7 @@ export function Running({
       >
         {running && <WorkingDots />}
         {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
+        <span role={labelName ? 'status' : undefined} aria-label={labelName} data-status={label}>{label}</span>
         {children}
         {words && (
           <Tooltip
@@ -126,7 +129,7 @@ function statusName({
     return label
   }
 
-  return words ?? undefined
+  return words ?? label
 }
 
 function queueWords({

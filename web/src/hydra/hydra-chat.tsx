@@ -1,4 +1,6 @@
-import { cardStatus, statusLabel } from '#tasks/card-status.ts'
+import { statusLabel } from '#tasks/card-status.ts'
+import { observedStatus } from '#web-tasks/observed-status.ts'
+import type { PendingTurn } from '#web-workers/pending-turns.ts'
 import { kept } from '#web-shared/stable.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
@@ -109,6 +111,7 @@ export function HydraChat({
   action,
   taskActions,
   selectedTask,
+  pendingTurn,
 }: {
   hydraId: string
   storageIdentity: string
@@ -126,6 +129,7 @@ export function HydraChat({
   projectRequest?: boolean
   projectRequested?(): void
   action?: CurrentAction
+  pendingTurn?: PendingTurn
   selectedTask?: string | null
   taskActions?: Record<string, CurrentAction>
   liveThread: ThreadPage | null
@@ -519,7 +523,13 @@ export function HydraChat({
   }
 
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
-  const running = working || (hosted && inFlight.length > 0)
+  const status = observedStatus({
+    card,
+    state,
+    action,
+    pending: pendingTurn,
+  })
+  const running = status.kind === 'working'
   const lookupState = useRef(state)
   lookupState.current = state
   const lookup = useMemo(
@@ -713,22 +723,18 @@ export function HydraChat({
     view,
     card: HYDRA_CARD,
   }).tools
-  const statusLine = running && !compacting ? (
+  const statusLine = (card || pendingTurn) && !compacting ? (
     <TaskReferencesProvider references={references} openTask={openTask}>
       <Running
         since={since}
         running={running}
-        label={card ? statusLabel({
-          status: cardStatus({
-            card,
-            cards: state.cards,
-          }),
-        }) : 'Starting Hydra'}
+        label={statusLabel({ status })}
+        statusName="Hydra status"
         reading={queue.reading}
         waiting={queue.waiting}
         state={state}
       >
-        {showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
+        {running && showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
       </Running>
     </TaskReferencesProvider>
   ) : null

@@ -1,5 +1,6 @@
 import { statusLabel } from '#tasks/card-status.ts'
 import { observedStatus } from './observed-status.ts'
+import type { PendingTurn } from '#web-workers/pending-turns.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
@@ -44,6 +45,7 @@ export function TaskChat({
   command,
   connected,
   notify,
+  pendingTurn,
 }: {
   hydraId: string
   storageIdentity: string
@@ -51,6 +53,7 @@ export function TaskChat({
   state: HydraState
   live: ThreadPage | null | undefined
   action?: CurrentAction
+  pendingTurn?: PendingTurn
   view: ViewPreferences
   command: Command
   connected: boolean
@@ -337,28 +340,31 @@ export function TaskChat({
     ],
   )
 
-  const working = (card.sessionActivity ?? card.activity) === 'working'
+  const liveStatus = observedStatus({
+    card,
+    state,
+    action,
+    pending: pendingTurn,
+  })
+  const working = liveStatus.kind === 'working'
   const showsTools = traces({
     view,
     card: card.id,
   }).tools
   const since = card.workingSince ?? null
   const status = statusLabel({
-    status: observedStatus({
-      card,
-      state,
-    }),
+    status: liveStatus,
   })
   const statusLine = (
     <Running
       since={since}
       running={working}
       label={status}
+      statusName="Worker status"
       reading={NO_WAKE_QUEUE}
       waiting={NO_WAKE_QUEUE}
       state={state}
     >
-      <span role="status" aria-label="Worker status" data-status={status}>{status}</span>
       {working && showsTools && <ActionBubble action={action} since={since} lookup={lookup} />}
     </Running>
   )
