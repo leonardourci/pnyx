@@ -1,4 +1,3 @@
-import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { forgetSessionView, useSessionView } from '#web-app/session-view.ts'
 import { taskViewKey } from './task-view.ts'
@@ -14,15 +13,12 @@ import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useMemo, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
-import type { ViewPreferences } from '#preferences/model.ts'
 import type { Card as CardData, SavedLabelColor } from '#tasks/model.ts'
 import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { CardTitle } from './card-title.tsx'
-import { CardShell, CardContent, AnimatedCardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
+import { CardShell, CardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
-import { CARD_SIZING } from '#web-shared/card-sizing.ts'
-import { useColumnHeight } from './card-height.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -32,7 +28,6 @@ import { currentState, waitingQuestions } from '#tasks/card-status.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
 import { TaskQuestion } from './task-question.tsx'
 import { harnessName } from '#web-workers/view.ts'
-import { Resize } from '#web-shared/ui/resize.tsx'
 
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { Icon } from '#web-shared/icons.tsx'
@@ -128,8 +123,6 @@ export const HydraCard = memo(function HydraCard({
   latest,
   selected,
   openInline = selected,
-  view,
-  save,
   open,
   onEdit,
   recoverSelection,
@@ -163,8 +156,6 @@ export const HydraCard = memo(function HydraCard({
   selected: boolean
   // A modal opened from a closed card leaves that card closed on the board.
   openInline?: boolean
-  view: ViewPreferences
-  save({ patch }: { patch: unknown }): Promise<boolean>
   open({
     id,
     pointer,
@@ -268,10 +259,6 @@ export const HydraCard = memo(function HydraCard({
     },
   })
 
-  const [
-    preview,
-    setPreview,
-  ] = useState<number | null>(null)
   const {
     modal,
     showModal,
@@ -280,6 +267,7 @@ export const HydraCard = memo(function HydraCard({
     id: card.id,
     hydraId,
   })
+  const inlineHeight = selected && !modal ? 'h-column' : ''
   const element = modal ? modalElement : inlineElement
   const {
     chatOnly,
@@ -333,14 +321,6 @@ export const HydraCard = memo(function HydraCard({
     active: selected && tab === 'activity',
   })
   const openLayout = chatOnly ? CHAT_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
-  const columnHeight = useColumnHeight({
-    element: inlineElement,
-    active: selected && !modal,
-  })
-  const height = Math.max(
-    CARD_SIZING.open.minHeight,
-    view.cardHeights[card.id] ?? columnHeight ?? CARD_SIZING.open.height,
-  )
   const [
     reminding,
     setReminding,
@@ -713,14 +693,10 @@ export const HydraCard = memo(function HydraCard({
         droppable: !connected,
       }}
       modal={modal}
-      layout={preview === null && !modal}
-      layoutId={modal ? undefined : `task:${hydraId}:${card.id}`}
-      className={`@container/task ${modal ? 'min-h-0! flex-1! rounded-none! border-0! bg-transparent!' : ''}`}
+      layout={false}
+      className={`@container/task ${inlineHeight} ${modal ? 'min-h-0! flex-1! rounded-none! border-0! bg-transparent!' : ''}`}
       elementRef={modal ? attachModal : attachInline}
       selected={selected}
-      style={runtimeStyle({
-        height: selected && !modal ? (preview ?? height) : undefined,
-      })}
       data-task={card.id}
       data-task-hydra={hydraId}
       data-tab={selected ? tab : undefined}
@@ -734,7 +710,7 @@ export const HydraCard = memo(function HydraCard({
       data-has-children={hasChildren}
 
     >
-      <AnimatedCardContent layout="position">
+      <CardContent>
         <header
           data-card-header
           className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'cursor-grab touch-none [&_.card-open]:cursor-grab'}` : 'contents'}
@@ -953,28 +929,8 @@ export const HydraCard = memo(function HydraCard({
             }}
           />
         )}
-      </AnimatedCardContent>
+      </CardContent>
       {hoverActions}
-      {selected && !modal && (
-        <Resize
-          className="right-auto! bottom-0! left-1/2! h-6! w-24 -translate-x-1/2 after:top-4.25!"
-          label="Resize card"
-          axis="y"
-          value={height}
-          min={CARD_SIZING.open.minHeight}
-          tabIndex={selected ? 0 : tabIndex}
-          onPreview={({ value }) => setPreview(value)}
-          onCommit={async ({ value }) => {
-            try {
-              return await save({
-                patch: { cardHeights: { [card.id]: value } },
-              })
-            } finally {
-              setPreview(null)
-            }
-          }}
-        />
-      )}
     </TaskCardDrag>
   )
 
@@ -984,8 +940,7 @@ export const HydraCard = memo(function HydraCard({
         <CardShell
           aria-hidden
           inert
-          className="invisible"
-          style={runtimeStyle({ height: openInline ? height : undefined })}
+          className={openInline ? 'invisible h-column' : 'invisible'}
         >{openInline ? summary : <CardContent>{closedSummary}</CardContent>}
         </CardShell>
       )}
