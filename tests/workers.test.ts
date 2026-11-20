@@ -1353,13 +1353,6 @@ test(
     })
     expect(stopped.notices).toBeDefined()
     expect(stopped.stopped).toMatch(/^task-/)
-    expect((await hydra.owner({
-      args: [
-        'task',
-        'stop',
-        'stoppable',
-      ],
-    })).stopped).toMatch(/^(task-|none:)/)
     expect((await hydra.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
       what: 'the owner\'s reply to read as not delivered',

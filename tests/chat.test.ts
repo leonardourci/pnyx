@@ -7,7 +7,7 @@ import { runForClient } from '#app/request-context.ts'
 import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -1135,6 +1135,14 @@ test(
       ],
     })
     expect(mainEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('leased') }))
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'invoices',
+        '--full',
+      ],
+    })).task.brief).toBe('Retry the export without losing its rows')
     const ungranted = await hydra.owner({
       args: [
         'task',
@@ -1634,14 +1642,31 @@ test(
 
     expect(outside.help.join('\n')).toContain('--wait')
 
-    const waited = await hosted.run({
-      args: [
-        'hydra',
-        'check',
-        '--wait',
-        '5',
-      ],
-    })
+    const beforeWait = rows<{ seq: number }>({
+      text: 'select seq from hydras where id = $1',
+      values: [hydra.id],
+    })[0].seq
+    const clock = vi.spyOn(
+      Date,
+      'now',
+    ).mockReturnValue(Date.now())
+    let waited
+
+    try {
+      waited = await hosted.run({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          String(beforeWait),
+          '--wait',
+          '5',
+        ],
+      })
+      expect(waited.changes).toContain('none:')
+    } finally {
+      clock.mockRestore()
+    }
 
     expect(waited.notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('returns immediately') })]))
     expect((await hosted.refused({
