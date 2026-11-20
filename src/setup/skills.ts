@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { log } from '#app/diagnostics.ts'
 import {
   ORCHESTRATE_SKILL,
@@ -12,7 +13,6 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { HydraError } from '#store/errors.ts'
 
 const LEGACY_SKILLS = [
   'pnyx-hydra',
@@ -421,14 +421,14 @@ export function setupSkills(
     userHome,
     claudeConfigDir,
   })
-  const conflict = !remove && links.find(link => link.status === 'conflict')
 
-  if (conflict) {
-    throw new HydraError({
-      message: `cannot replace existing skill at ${conflict.path}`,
-      code: 'SKILL_CONFLICT',
-      help: ['Move the existing skill aside, then rerun `pnyx-axi setup skills`'],
-    })
+  if (!remove) {
+    for (const link of links.filter(link => link.status === 'conflict')) {
+      inform({
+        reason: `Kept the existing skill at ${link.path}`,
+        clear: 'Move that skill aside and run pnyx-axi setup skills to install the Pnyx link',
+      })
+    }
   }
 
   const folders = [...new Set(links.map(link => dirname(link.path)))]
@@ -488,7 +488,8 @@ export function setupSkills(
   }
 
   const skills = links.map(link => {
-    const change = remove ? (link.owned ? 'removed' : 'unchanged') : link.status === 'ready' ? 'unchanged' : 'installed'
+    const keep = link.status === 'ready' || link.status === 'conflict'
+    const change = remove ? (link.owned ? 'removed' : 'unchanged') : keep ? 'unchanged' : 'installed'
 
     if (!preview && change === 'installed') {
       mkdirSync(

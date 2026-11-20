@@ -5,7 +5,7 @@ import { decideReply } from './reply-rules.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { liveTask } from '#tasks/select.ts'
+import { inform } from '#app/command-notices.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ReplyState } from './model.ts'
 import { withWriter } from '#app/writer.ts'
@@ -54,10 +54,18 @@ export async function sendTaskMessage({
         ref: request.card,
       })
 
-      if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+      if (card.id === HYDRA_CARD) {
         throw new HydraError({
           message: 'choose a task for this message',
           code: 'VALIDATION_ERROR',
+        })
+      }
+
+      if (card.hidden) {
+        inform({
+          task: card.id,
+          reason: 'Message sent to a hidden task',
+          clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
         })
       }
 

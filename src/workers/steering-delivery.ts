@@ -7,7 +7,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Card } from '#tasks/model.ts'
-import { liveTask } from '#tasks/select.ts'
 import { sessionId } from './session-attachments.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Live } from '#app/host-types.ts'
@@ -50,7 +49,7 @@ export function createSteeringDelivery({
     generation?: number
     ids: string[]
   }) => {
-    if (!card?.agent || !liveTask({ card }) || sessionId({ agent: card.agent }) !== key
+    if (!card?.agent || sessionId({ agent: card.agent }) !== key
       || card.steeringGeneration !== generation || steeringHeld({ card })) {
       return []
     }
@@ -174,7 +173,7 @@ export function createSteeringDelivery({
     message?: string
     attempt?: string
   }) => {
-    if (card.id === HYDRA_CARD || !liveTask({ card })
+    if (card.id === HYDRA_CARD
       || steeringHeld({ card }) || activeCompaction({ card })) {
       return
     }

@@ -1,4 +1,5 @@
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { inform } from '#app/command-notices.ts'
+import { ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { HydraError } from '#store/errors.ts'
@@ -61,25 +62,35 @@ export function decideQuestionAction({
     const askedAt = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
     const newer = message && Date.parse(message.at) > Date.parse(askedAt)
 
-    if (meta.actor !== HYDRA_ACTOR || !message || !ownerActor({ actor: message.actor })
-      || message.action !== 'send' || !newer || clarificationMessage({ message })) {
+    if (!message) {
       throw new HydraError({
-        code: 'OWNER_ONLY',
-        message: 'Deferral requires the owner’s own newer message',
+        message: 'Saved message not found',
+        code: 'NOT_FOUND',
       })
     }
 
-    source = {
-      id: message.id,
-      text: message.text,
-      at: message.at,
+    const ownerMessage = ownerActor({ actor: message.actor }) && message.action === 'send'
+
+    if (ownerMessage && newer && !clarificationMessage({ message })) {
+      source = {
+        id: message.id,
+        text: message.text,
+        at: message.at,
+      }
+    } else {
+      inform({
+        task: card.id,
+        reason: 'Deferred a question without a newer owner instruction',
+        clear: `Use pnyx-axi task defer-question ${card.id} ${id} --until clear to clear the deferral`,
+      })
     }
   }
 
   if (!ownerActor({ actor: meta.actor }) && !source) {
-    throw new HydraError({
-      code: 'OWNER_ONLY',
-      message: 'Only the owner can defer or discuss their question',
+    inform({
+      task: card.id,
+      reason: 'Owner question deferred or discussed by an agent',
+      clear: `Use pnyx-axi task defer-question ${card.id} ${id} --until clear to clear the deferral`,
     })
   }
 
@@ -88,9 +99,10 @@ export function decideQuestionAction({
       card,
       ask,
     })) {
-      throw new HydraError({
-        code: 'SESSION_WAITING',
-        message: 'Check the pending answer before deferring this question',
+      inform({
+        task: card.id,
+        reason: 'An answer is already being delivered while this question is deferred',
+        clear: `Use pnyx-axi task show ${card.id} --full to inspect its delivery`,
       })
     }
 
@@ -114,7 +126,7 @@ export function decideQuestionAction({
 
   const discussion = text?.trim()
 
-  if (!discussion || !ownerActor({ actor: meta.actor })) {
+  if (!discussion) {
     throw new HydraError({
       code: 'VALIDATION_ERROR',
       message: 'Discuss a question with the owner’s own --text',

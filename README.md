@@ -63,7 +63,7 @@ Choose a unique `<name>.pnyx` for each trial and share the URL portless prints. 
 
 Use the same `PNYX_HOME` for every command in that trial, including `stop`. A separate home still uses your normal harness logins and global skill folders.
 
-Setup commands change user-wide configuration and require an explicit override for custom homes. See [data and privacy](docs/data.md) before sharing a data folder or removing it.
+Setup commands change user-wide configuration and report the selected home when it differs from the default. See [data and privacy](docs/data.md) before sharing a data folder or removing it.
 
 ### 2. Attach a project
 
@@ -84,7 +84,7 @@ Send a message in Hydra's composer, for example:
 
 > Look at this project and help me plan a small improvement.
 
-The first message starts Hydra's agent session. Hydra reports missing setup in chat and asks you to confirm owner-only changes.
+The first message starts Hydra's agent session. Hydra reports missing setup in chat, runs setup commands directly and directs the owner to sign in through the harness when a login is needed. Credentials stay out of Hydra chat.
 
 Read the [dispatch guide](docs/pnyx-axi.md#kinds-the-light-check-and-the-worker-contract) to configure your harnesses, models and accounts.
 

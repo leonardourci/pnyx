@@ -1,10 +1,9 @@
+import { steeringHeld } from './steering.ts'
 import { sessionFields } from './session-facts.ts'
 import { sessionId } from './session-attachments.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { taskDone } from '#tasks/select.ts'
-import { steeringHeld } from './steering.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { readEvents, scanEvents } from '#app/event-log.ts'
 
@@ -191,17 +190,12 @@ export const closedByWorker = ({ card }: { card: Card }) => card.status?.state =
   && card.status.actor === `worker:${card.id}` && !card.hidden && card.copy?.state !== 'removed'
 
 // A saved tool change that may reach its pnyx-hosted agent now; Hydra's own card applies one even when closed.
-export const toolApplicationReady = ({
-  state,
-  card,
-}: {
+export const toolApplicationReady = ({ card }: {
   state: HydraState
   card: Card
-}) => card.agent?.host === 'pnyx' && card.toolsRevision !== undefined && card.toolsRevision !== card.toolsApplied
-  && !steeringHeld({ card }) && (card.id === HYDRA_CARD || !closedTask({
-  state,
-  card,
-}))
+}) =>
+  card.agent?.host === 'pnyx' && card.toolsRevision !== undefined
+    && card.toolsRevision !== card.toolsApplied && card.copy?.state !== 'removed'
 
 export function closedTask({
   state,

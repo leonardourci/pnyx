@@ -267,7 +267,6 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
         value: positionals[1],
         what: 'proposal token',
       }),
-      confirm: values.confirm as string | undefined,
       meta: meta({ values }),
     })
   }
@@ -550,7 +549,7 @@ pnyx-axi rule remove <name>
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>]
 Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders; every section but main is required. It is saved as a change log in the Pnyx home, and the two JSON files beside it are rewritten from that log, so change it only through rule apply or its shortcuts. rule show prints it with its revision; rule schema lists every field and allowed value.
 rule now shows which candidate of each rule would start right now from current quota, for the saved document or the one --json gives; each login's reading is kept for a minute.
-rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}} from a file, stdin or --json, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose asks the owner to confirm, and a repeated --event-id returns its first receipt. Hydra applies settings directly and records each change in chat. Raising candidate permissions still requires the owner, including in Bypass permissions.
+rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}} from a file, stdin or --json, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose applies directly with an informational notice, and a repeated --event-id returns its first receipt. Hydra applies settings directly and records each change in chat. Candidate permission increases apply directly with a notice.
 set, remove and accounts are shortcuts for one patch. Each provider and account pair appears once within a rule, whatever the model or controls; a candidate without an account is its own pair. A change that adds a duplicate is refused and saves nothing; an existing duplicate stays readable so it can be removed. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--label <display name>]

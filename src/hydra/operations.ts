@@ -25,10 +25,12 @@ export function operationEvent({
   state,
   operation,
   meta,
+  eventId,
 }: {
   state: HydraState
   operation: HydraOperation
   meta: Meta
+  eventId?: string
 }): Decision {
   const data: HydraOperation = {
     id: operation.id,
@@ -52,7 +54,7 @@ export function operationEvent({
     cardId: HYDRA_CARD,
     meta: {
       ...meta,
-      id: `operation:${operation.id}:${operation.state}`,
+      id: eventId ?? `operation:${operation.id}:${operation.state}`,
     },
     change: {
       type: 'hydra.operation',

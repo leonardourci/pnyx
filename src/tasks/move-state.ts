@@ -1,3 +1,4 @@
+import { touch } from './touch.ts'
 import type { EventBase } from '#store/events.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
@@ -7,6 +8,10 @@ import { refreshTasks } from './columns.ts'
 
 // Both sides carry the whole card and its sessions so either log replays alone; they share the event id.
 export interface MovedCard {
+  moving?: {
+    tasks: string[]
+    sessions: string[]
+  }
   card: Card
   sessions: AgentSession[]
 }
@@ -67,6 +72,49 @@ function moveOut({
     return
   }
 
+  const departingIdsInCommand = event.data.moving?.tasks ?? [card.id]
+  const departing = departingIdsInCommand.flatMap(id => state.cards[id] ? [state.cards[id]] : [])
+  const departingIds = new Set(departing.map(item => item.id))
+
+  for (const related of Object.values(state.cards)) {
+    if (departingIds.has(related.id)) {
+      continue
+    }
+
+    const affected = departing.filter(item => related.parentId === item.id
+      || related.prerequisites?.includes(item.id)
+      || related.wait?.task === item.id
+      || (related.queue && item.sessionIds?.includes(related.queue.session)))
+
+    if (!affected.length) {
+      continue
+    }
+
+    if (related.parentId && departingIds.has(related.parentId)) {
+      delete related.parentId
+    }
+
+    related.prerequisites = related.prerequisites?.filter(id => !departingIds.has(id))
+
+    if (related.wait && departingIds.has(related.wait.task)) {
+      delete related.wait
+    }
+
+    if (related.queue && departing.some(item => item.sessionIds?.includes(related.queue?.session ?? ''))) {
+      delete related.queue
+    }
+
+    related.notices = affected.map(item => ({
+      task: related.id,
+      reason: `Local relationship to ${item.id} cleared when it moved to Hydra ${event.data.to}`,
+      clear: `Use pnyx-axi task move ${item.id} --to-hydra ${event.boardId ?? '<source-hydra>'} --hydra ${event.data.to}, then task parent, task depend, or task queue to restore the relationship`,
+    }))
+    touch({
+      card: related,
+      event,
+    })
+  }
+
   delete state.cards[card.id]
 
   for (const [
@@ -102,6 +150,27 @@ function moveIn({
   event: Extract<HydraMoveEvent, { type: 'task.moved-in' }>
 }): void {
   const card = structuredClone(event.data.card)
+  const arriving = new Set(event.data.moving?.tasks ?? [])
+
+  if (card.parentId && !state.cards[card.parentId]
+    && !arriving.has(card.parentId)) {
+    delete card.parentId
+  }
+
+  if (card.prerequisites) {
+    card.prerequisites = card.prerequisites.filter(id => state.cards[id] || arriving.has(id))
+  }
+
+  if (card.wait && !state.cards[card.wait.task]
+    && !arriving.has(card.wait.task)) {
+    delete card.wait
+  }
+
+  if (card.queue && !state.sessions?.[card.queue.session]
+    && !event.data.moving?.sessions.includes(card.queue.session)) {
+    delete card.queue
+  }
+
   card.column = event.data.column
   delete card.rank
   card.createdSeq = event.seq

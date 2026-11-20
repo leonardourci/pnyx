@@ -1,43 +1,26 @@
+import { inform } from '#app/command-notices.ts'
 import { requireCommandMemoryAccess } from '#memory/command-access.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import { HYDRA_OPTIONS } from './cli.ts'
-import { proposeOwnerCommand } from '#app/confirmations.ts'
 import { parseArgs } from 'node:util'
 import { DEFAULT_HYDRA } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
-import { AxiError } from 'axi-sdk-js'
-import { hydraBypasses } from './hydra.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { guard, WRITE, type Options } from '#app/cli-support.ts'
-import { ownerOnlyCommand } from '#app/command-registry.ts'
+import { agentNoticeCommand } from '#app/command-registry.ts'
 import { requestEnv } from '#app/request-context.ts'
-import { findCard } from '#tasks/push-rules.ts'
-import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
 import { settingsNotice } from './settings-notice.ts'
 import { asRecord } from '#app/command-validation.ts'
 
 type Command = ReturnType<typeof guard>
 
-// Bypass counts only for the Hydra the command runs in, never one it names with --hydra.
-export function runsInBypass({
-  hydraId,
-  env = requestEnv(),
-}: {
-  hydraId: string
-  env?: NodeJS.ProcessEnv
-}): boolean {
-  return env.PNYX_HYDRA === hydraId && hydraBypasses({ state: loadHydra({ hydraId }).state })
-}
-
-// Native commands check cross-Hydra memory capabilities before owner-only proposals.
-export function ownerOnly<T extends Record<string, Command>>({
+export function agentNotices<T extends Record<string, Command>>({
   commands,
   env = requestEnv(),
 }: {
   commands: T
   env?: NodeJS.ProcessEnv
 }): T {
-  const refuse = ({
+  const wrap = ({
     name,
     run,
   }: {
@@ -103,53 +86,13 @@ export function ownerOnly<T extends Record<string, Command>>({
         hydraId,
       })
 
-      if (hydra && ownerOnlyCommand({
+      if (hydra && agentNoticeCommand({
         name,
         args: actionArgs,
       })) {
-        if (name === 'approval' || (name === 'rule' && [
-          'confirm',
-          'dismiss',
-        ].includes(positionals[0] ?? ''))) {
-          throw new AxiError(
-            'Only the owner can answer an approval question',
-            'OWNER_ONLY',
-          )
-        }
-
-        const permissionMode = name === 'agent' && positionals[1] === 'mode'
-
-        if (permissionMode && !agentPermissionNeedsOwner({
-          card: findCard({
-            state: loadHydra({ hydraId }).state,
-            ref: positionals[0] ?? '',
-          }),
-          value: positionals[2] ?? '',
-        })) {
-          return run(args)
-        }
-
-        // Hydra's own permission prompts, raised in Bypass only by the owner's ask rules, stay the owner's.
-        const ownPrompt = name === 'task' && positionals[0] === 'permission'
-
-        if (!ownPrompt && !permissionMode && runsInBypass({
-          hydraId,
-          env,
-        })) {
-          // Setup without a target serves every Hydra and refuses --hydra.
-          const service = name === 'setup' && positionals.length === 0
-          const serviceArgs = args.filter((
-            arg,
-            index,
-          ) => arg !== '--hydra' && args[index - 1] !== '--hydra' && !arg.startsWith('--hydra='))
-
-          return run(service ? serviceArgs : args)
-        }
-
-        return proposeOwnerCommand({
-          name,
-          args,
-          hydraId,
+        inform({
+          reason: `Agent requested ${name} directly`,
+          clear: `Use pnyx-axi ${name} --help to inspect or change its settings`,
         })
       }
 
@@ -199,7 +142,7 @@ export function ownerOnly<T extends Record<string, Command>>({
       run,
     ]) => [
       name,
-      refuse({
+      wrap({
         name,
         run,
       }),

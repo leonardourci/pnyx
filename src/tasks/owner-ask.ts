@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -5,12 +6,14 @@ import type { Card, OwnerAsk } from './model.ts'
 
 export function ownerAsk({
   state,
+  task,
   text,
   message,
   actor,
   at,
 }: {
   state: HydraState
+  task?: string
   text: string
   message?: string
   actor: string
@@ -45,11 +48,10 @@ export function ownerAsk({
   }
 
   if (!ownerActor({ actor })) {
-    throw new HydraError({
-      message: 'Only the owner can add an ask without a saved owner message',
-      field: 'message',
-      code: 'OWNER_ONLY',
-      help: ['Pass --message <owner-message-id> and quote its words exactly'],
+    inform({
+      task,
+      reason: 'Ask recorded without a saved owner message',
+      clear: 'pnyx-axi task owner-ask <task> --text "<owner words>" --message <owner-message-id>',
     })
   }
 

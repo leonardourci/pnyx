@@ -168,6 +168,7 @@ export function planTaskChange({
       })
     }
 
+    const createdId = cardId ?? `task-${randomUUID()}`
     const created: TaskCreated['data'] = {
       key,
       title,
@@ -244,6 +245,7 @@ export function planTaskChange({
       try {
         created.ask = ownerAsk({
           state,
+          task: createdId,
           text: operation.ask,
           message: operation.message,
           actor: meta.actor,
@@ -261,7 +263,7 @@ export function planTaskChange({
     return hydraEvent({
       state,
       meta,
-      cardId: cardId ?? `task-${randomUUID()}`,
+      cardId: createdId,
       change: {
         type: 'task.created',
         data: created,
@@ -360,6 +362,7 @@ export function planTaskChange({
 
   const entry = ownerAsk({
     state,
+    task: task.id,
     text: operation.text,
     message: operation.message,
     actor: meta.actor,

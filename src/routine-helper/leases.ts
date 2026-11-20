@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
@@ -15,6 +16,7 @@ interface Lease {
   holders: {
     id: string
     pid: number
+    actor?: string
   }[]
 }
 
@@ -218,10 +220,10 @@ export function guardTaskLease({
   const otherHelper = !helper && lease && isHelper({ actor: lease.actor })
 
   if ((helper && lease?.actor !== actor) || otherHelper) {
-    throw new HydraError({
-      message: `Task ${task} is leased to ${lease?.actor ?? 'another Hydra session'}`,
-      code: 'TASK_LEASED',
-      help: [`\`pnyx-axi task history ${task}\` shows what that session did`],
+    inform({
+      task,
+      reason: `Task is leased to ${lease?.actor ?? 'another Hydra session'}`,
+      clear: `Use pnyx-axi task history ${task} to inspect overlapping work`,
     })
   }
 }
@@ -263,18 +265,20 @@ export function taskLease({
     }
 
     if (lease && (lease.actor !== owner || copyHeld)) {
-      if (lease.actor.startsWith(COPY_LEASE_PREFIX)) {
+      if (actor.startsWith(COPY_LEASE_PREFIX) || lease.actor.startsWith(COPY_LEASE_PREFIX)) {
         throw copySettlingRefusal({
           task,
           code: 'TASK_LEASED',
         })
       }
 
-      throw new HydraError({
-        message: `Task ${task} is being handled by ${lease.actor}; try again after its turn ends`,
-        code: 'TASK_LEASED',
-        help: [`\`pnyx-axi task history ${task}\` shows what that session did`],
+      inform({
+        task,
+        reason: `Task is also being handled by ${lease.actor}`,
+        clear: `Use pnyx-axi task history ${task} to inspect overlapping work`,
       })
+
+      owner = lease.actor
     }
 
     if (isHelper({ actor }) && !helperGrant({
@@ -282,9 +286,10 @@ export function taskLease({
       actor,
       task,
     })) {
-      throw new HydraError({
-        message: 'Helper has no live grant for this task',
-        code: 'NOT_ALLOWED',
+      inform({
+        task,
+        reason: 'Helper has no current task grant',
+        clear: `Use pnyx-axi task history ${task} to inspect the change`,
       })
     }
 
@@ -293,6 +298,7 @@ export function taskLease({
       {
         id: holder,
         pid,
+        actor,
       },
     ]
     writeLease({
@@ -344,8 +350,13 @@ export function releaseTask({
     const lease = readLease({ path })
 
     if (lease?.actor === actor) {
-      lease.holders = lease.holders.filter(entry =>
-        holder ? entry.id !== holder : entry.pid !== process.pid)
+      lease.holders = lease.holders.filter(entry => {
+        if (holder) {
+          return entry.id !== holder
+        }
+
+        return entry.pid !== process.pid || (entry.actor ?? lease.actor) !== actor
+      })
 
       if (lease.holders.length) {
         writeLease({

@@ -1,20 +1,14 @@
 import { workerLine } from './setup/worker-log.ts'
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { parsed, pnyxAxi, startPnyx, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, pnyxAxi, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 let hydra: Hydra
 let worker: AgentSession
 let asWorker: ReturnType<Hydra['as']>
 let mine: { id: string }
-let other: {
-  id: string
-  status: string
-}
-let done: string
 
 const settingsOf = async () => (await hydra.owner({
   args: [
@@ -43,8 +37,6 @@ beforeAll(async () => {
     ],
   })
   mine = await hydra.task({ key: 'mine' })
-  other = await hydra.task({ key: 'other' })
-  done = await hydra.column({ role: 'done' })
   asWorker = hydra.as({ session: worker })
 })
 
@@ -62,158 +54,479 @@ const commandWorkerEnv = (): NodeJS.ProcessEnv => {
 }
 
 test(
-  'a worker\'s writes outside its own task are refused with WORKER_SCOPE and change nothing',
+  'workers change other tasks and settings, with notices instead of scope refusals',
   async () => {
-    const otherStatus = await statusOfOther()
-    const { fontSize } = await settingsOf()
-
-    const refused = {
-      'question on another task': [
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'writer' })
+    await hydra.owner({
+      args: [
         'task',
-        'ask',
-        'other',
-        '--question',
-        'May I continue?',
-
+        'create',
+        '--no-start',
+        '--key',
+        'target',
+        '--title',
+        'Other work',
       ],
-      'question on another task by id': [
+    })
+    const target = await hydra.task({ key: 'target' })
+    const asWorker = hydra.as({ session: worker })
+    const done = await hydra.column({ role: 'done' })
+
+    for (const args of [
+      [
         'task',
         'ask',
-        other.id,
         '--question',
-        'May I continue?',
+        'Which parser?',
+        'target',
       ],
-      'question on another task claiming to be Hydra': [
+      [
+        'link',
+        '--url',
+        'https://example.test/change',
+        'target',
+      ],
+      [
         'task',
-        'ask',
-        'other',
-        '--question',
-        'May I continue?',
-        '--actor',
-        'hydra',
+        'owner-ask',
+        'target',
+        '--text',
+        'Keep this visible',
+      ],
+      [
+        'move',
+        'target',
+        done,
+      ],
+      [
+        'settings',
+        'set',
+        '--json',
+        '{"fontSize":19}',
+      ],
+      [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Follow up',
+        '--key',
+        'follow-up',
+      ],
+      [
+        'outcome',
+        'target',
+        'done',
+      ],
+    ]) {
+      const output = await asWorker.run({ args })
+      expect(
+        output.notices,
+        args.join(' '),
+      ).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          reason: expect.any(String),
+          clear: expect.stringContaining('pnyx-axi'),
+        }),
+      ]))
+    }
+
+    const retryArgs = [
+      'task',
+      'brief',
+      'target',
+      '--brief',
+      'Retried guidance',
+      '--event-id',
+      'notice-retry',
+    ]
+    const firstReceipt = await asWorker.run({ args: retryArgs })
+    const retriedReceipt = await asWorker.run({ args: retryArgs })
+    expect(firstReceipt.notices).toContainEqual(expect.objectContaining({
+      reason: expect.stringContaining('task brief is outside'),
+    }))
+    expect(retriedReceipt.notices).toEqual(firstReceipt.notices)
+    expect(rows({
+      text: "select id from events where hydra_id = $1 and type = 'task.brief' and data->'data'->>'after' = $2",
+      values: [
+        hydra.id,
+        'Retried guidance',
+      ],
+    })).toHaveLength(1)
+
+    expect((await hydra.task({ key: 'target' })).status).toBe('done')
+    expect((await hydra.task({ key: 'target' })).notices).toBeDefined()
+    expect((await settingsOf()).fontSize).toBe(19)
+    expect((await hydra.task({ key: 'follow-up' })).title).toBe('Follow up')
+    const history = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        target.id,
+      ],
+    })
+    expect(history.events).toContainEqual(expect.objectContaining({ actor: worker.env.PNYX_ACTOR }))
+    const dispatchBefore = await hydra.owner({
+      args: [
+        'rule',
+        'show',
+      ],
+    })
+    const dispatchArgs = [
+      'rule',
+      'apply',
+      '--propose',
+      '--event-id',
+      'dispatch-guidance-retry',
+      '--actor',
+      'hydra',
+      '--json',
+      JSON.stringify({
+        version: 1,
+        expected: { revision: dispatchBefore.revision },
+        patch: {
+          rules: {
+            'direct-agent': {
+              when: 'Explicit agent selection',
+              candidates: [
+                {
+                  harness: 'claude',
+                  mode: 'bypassPermissions',
+                },
+              ],
+            },
+          },
+        },
+      }),
+    ]
+    const dispatch = await asWorker.run({ args: dispatchArgs })
+    expect(dispatch).not.toHaveProperty('confirmation')
+    expect(dispatch.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('permission level increased') }))
+    const dispatchRetry = await asWorker.run({ args: dispatchArgs })
+    expect(dispatchRetry.notices).toEqual(dispatch.notices)
+    expect(dispatchRetry.revision).toBe(dispatch.revision)
+    expect(JSON.stringify(await hydra.owner({
+      args: [
+        'rule',
+        'show',
+      ],
+    }))).toContain('bypassPermissions')
+
+    const inboxTarget = await hydra.startTask({ key: 'inbox-target' })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'inbox-target',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'enqueue',
+        'inbox-target',
+        'older-instruction',
+        '--text',
+        'Review the first instruction',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'enqueue',
+        'inbox-target',
+        'newer-instruction',
+        '--text',
+        'Record the blocker',
+      ],
+    })
+    const pending = await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        'inbox-target',
+      ],
+    })
+    const acknowledgement = await asWorker.run({
+      args: [
+        'task',
+        'inbox',
+        'ack',
+        'inbox-target',
+        'newer-instruction',
+        '--session',
+        pending.claim.session,
+        '--generation',
+        String(pending.claim.generation),
+        '--outcome',
+        'blocked',
+      ],
+    })
+    expect(acknowledgement.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('older pending instruction') }))
+    expect(acknowledgement.message.ack.note).toBe('Marked blocked by the explicit acknowledgement')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        'inbox-target',
+      ],
+    })).messages).toContainEqual(expect.objectContaining({ id: 'older-instruction' }))
+    await hydra.owner({
+      args: [
+        'reply',
+        'inbox-target',
+        '--text',
+        'Continue the hidden task',
+      ],
+    })
+    await until({
+      what: 'the current hidden worker to receive its reply',
+      check: async () => {
+        const current = await hydra.agent({ cwd: inboxTarget.folder })
+
+        return current.received.some(text => text.includes('Continue the hidden task'))
+      },
+    })
+    const directMessage = await hydra.owner({
+      args: [
+        'reply',
+        'inbox-target',
+        '--task-message',
+        '--text',
+        'Keep the hidden task context',
+      ],
+    })
+    expect(directMessage.notices).toBeDefined()
+
+    await hydra.owner({
+      args: [
+        'task',
+        'hold',
+        'inbox-target',
         '--reason',
-        'not mine',
+        'Inspect the source result before delivery',
       ],
-      'question on another task claiming to be its worker': [
+    })
+    await asWorker.run({
+      args: [
         'task',
-        'ask',
+        'source',
+        'register',
+        'inbox-target',
+        'manual-result',
+        '--executable',
+        '/usr/bin/true',
+        '--argv',
+        '[]',
+        '--cwd',
+        hydra.folder({ name: 'source-cwd' }),
+      ],
+    })
+    const stoppedSource = await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'stop',
+        'inbox-target',
+        'manual-result',
+      ],
+    })
+    const unread = await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'read',
+        'inbox-target',
+        'manual-result',
+      ],
+    })
+    const handledSource = await asWorker.run({
+      args: [
+        'task',
+        'source',
+        'handled',
+        'inbox-target',
+        'manual-result',
+        String(stoppedSource.source.results[0].sequence),
+        '--session',
+        unread.claim.session,
+        '--generation',
+        String(unread.claim.generation),
+      ],
+    })
+    expect(handledSource.result.handled).toBeDefined()
+    expect(handledSource.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('before its steering message') }))
+  },
+)
+
+test(
+  'a command-route worker keeps its identity while changing another task',
+  async () => {
+    const asCommand = hydra.as({
+      session: worker,
+      env: commandWorkerEnv(),
+    })
+    const output = await asCommand.run({
+      args: [
+        'link',
         'other',
-        '--question',
-        'May I continue?',
-        '--actor',
-        `worker:${other.id}`,
+        '--url',
+        'https://example.test/command-worker',
       ],
-      'question on its own task claiming to be the owner': [
+    })
+    expect(output.notices).toBeDefined()
+    const history = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        'other',
+      ],
+    })
+    expect(history.events).toContainEqual(expect.objectContaining({ actor: `worker:${mine.id}` }))
+  },
+)
+
+test(
+  'a worker without a task identity proceeds with a notice and can record an explicit worker actor',
+  async () => {
+    const env = { ...worker.env }
+    delete env.PNYX_ACTOR
+    const asUnnamed = hydra.as({
+      session: worker,
+      env,
+    })
+    const output = await asUnnamed.run({
+      args: [
+        'link',
+        'other',
+        '--url',
+        'https://example.test/unnamed-worker',
+        '--actor',
+        'cli',
+      ],
+    })
+    expect(output.notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('no recorded task identity') })]))
+    const own = await asUnnamed.run({
+      args: [
+        'link',
+        'mine',
+        '--url',
+        'https://example.test/default-worker',
+        '--actor',
+        `worker:${mine.id}`,
+      ],
+    })
+    expect(own.event).toBeDefined()
+    const history = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        'mine',
+      ],
+    })
+    expect(history.events).toContainEqual(expect.objectContaining({ actor: `worker:${mine.id}` }))
+  },
+)
+
+test(
+  'workers retain malformed-input and missing-target validation',
+  async () => {
+    expect((await asWorker.refused({
+      args: [
         'task',
         'ask',
-        'mine',
+        'nope',
         '--question',
-        'May I continue?',
-        '--actor',
-        'web',
+        'Which parser?',
       ],
-      'a question through apply': [
+    })).code).toBe('NOT_FOUND')
+    expect((await asWorker.refused({
+      args: [
         'apply',
         '--json',
         '{}',
       ],
-      'a question on another task': [
-        'task',
-        'ask',
-        'other',
-        '--question',
-        'Which one?',
-      ],
-      'a link on another task': [
-        'link',
-        'other',
-        '--url',
-        'https://example.test/pull/1',
-      ],
-      'a message about another task': [
-        'hydra',
-        'send',
-        '--task',
-        'other',
-        '--kind',
-        'progress',
-        '--text',
-        'not mine',
-      ],
-      'a move of another task': [
-        'move',
-        'other',
-        done,
-      ],
-      'a move of its own card': [
-        'move',
-        'mine',
-        done,
-      ],
-      'settings set': [
-        'settings',
-        'set',
-        '--json',
-        '{"fontSize":19}',
-      ],
-      'settings set claiming to be Hydra': [
-        'settings',
-        'set',
-        '--json',
-        '{"fontSize":19}',
-        '--actor',
-        'hydra',
-        '--reason',
-        'not mine',
-      ],
-      'a rule change': [
-        'rule',
-        'remove',
-        'build',
-      ],
-      'an account change': [
-        'account',
-        'remove',
-        'main',
-      ],
-      'an outcome': [
-        'outcome',
-        'other',
-        'done',
-      ],
-      'creating a task': [
+    })).code).toBe('VALIDATION_ERROR')
+    expect((await asWorker.refused({
+      args: [
         'task',
         'create',
-        '--title',
-        'Another',
+        '--unknown-option',
       ],
-      'a report on another task': [
+    })).code).toBe('VALIDATION_ERROR')
+  },
+)
+
+test(
+  'a worker can stop another worker or Hydra and receives the result with a notice',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker: caller } = await hydra.startTask({ key: 'caller' })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('<pnyx-worker'),
+      partial: 'Working',
+      hold: true,
+    })
+    const folder = hydra.folder({ name: 'target' })
+    await hydra.owner({
+      args: [
         'task',
-        'report',
-        'other',
-        '--file',
-        '-',
+        'create',
+        '--no-start',
+        '--key',
+        'target',
+        '--title',
+        'Target',
+        '--folder',
+        folder,
+        '--brief',
+        'Work until stopped',
       ],
-      'refreshing the plan limits': [
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'target',
+      ],
+    })
+    const target = await hydra.agent({ cwd: folder })
+    await until({
+      what: 'target to start its turn',
+      check: () => target.received.length === 1,
+    })
+    const asCaller = hydra.as({ session: caller })
+    const stopped = await asCaller.run({
+      args: [
+        'task',
+        'stop',
+        'target',
+      ],
+    })
+    expect(stopped.stopped).toMatch(/^task-/)
+    expect(stopped.notices).toBeDefined()
+    expect((await hydra.task({ key: 'target' })).status).toBe('ended')
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Look at the result',
+      partial: 'Looking',
+      hold: true,
+    })
+    await hydra.chat({ text: 'Look at the result' })
+    const hydraStopped = await asCaller.run({
+      args: [
         'hydra',
-        'usage',
-        'refresh',
+        'stop',
       ],
-    }
-
-    for (const [
-      what,
-      args,
-    ] of Object.entries(refused)) {
-      const refusal = await asWorker.refused({ args })
-      expect(
-        refusal.code,
-        what,
-      ).toBe('WORKER_SCOPE')
-    }
-
-    expect(await statusOfOther()).toBe(otherStatus)
-    expect((await settingsOf()).fontSize).toBe(fontSize)
+    })
+    expect(hydraStopped.stopped).toBe('hydra')
+    expect(hydraStopped.notices).toBeDefined()
   },
 )
 
@@ -365,350 +678,6 @@ test(
         `${args.join(' ')}:\n${run.stdout}`,
       ).toBe(0)
     }
-  },
-)
-
-test(
-  'a flag before the task never changes which task a worker\'s command is checked against',
-  async () => {
-    await asWorker.run({
-      args: [
-        'task',
-        'source',
-        'list',
-        '--page',
-        '1',
-        'mine',
-      ],
-    })
-    await asWorker.run({
-      args: [
-        'task',
-        'inbox',
-        'read',
-        '--session',
-        'session',
-        'mine',
-      ],
-    })
-
-    for (const args of [
-      [
-        'task',
-        'source',
-        'register',
-        '--page',
-        mine.id,
-        'other',
-        'source-1',
-        '--executable',
-        '/bin/echo',
-        '--argv',
-        '[]',
-        '--cwd',
-        hydra.folder({ name: 'other' }),
-      ],
-      [
-        'task',
-        'inbox',
-        'ack',
-        '--session',
-        'session',
-        '--generation',
-        mine.id,
-        'other',
-        'message-1',
-      ],
-      [
-        'link',
-        '--number',
-        '1',
-        'other',
-        '--url',
-        'https://example.test/pull/1',
-      ],
-    ]) {
-      const refusal = await asWorker.refused({ args })
-      expect(
-        refusal.code,
-        args.join(' '),
-      ).toBe('WORKER_SCOPE')
-      expect(refusal.error).toContain(other.id)
-    }
-  },
-)
-
-test(
-  'a worker that leaves out --hydra is checked against the Hydra its command writes to',
-  async () => {
-    const fallback = await pnyx.hydra({ id: 'default' })
-    await fallback.owner({
-      args: [
-        'task',
-        'create',
-        '--no-start',
-        '--title',
-        'The default Hydra\'s task',
-        '--key',
-        'mine',
-        '--folder',
-        fallback.folder({ name: 'mine' }),
-      ],
-    })
-    const before = (await fallback.task({ key: 'mine' })).status as string
-    const run = await pnyxAxi({
-      args: [
-        'task',
-        'ask',
-        'mine',
-        '--question',
-        'May I continue?',
-
-      ],
-      env: worker.env,
-    })
-
-    expect(run.status).toBe(1)
-    expect(parsed(run).code).toBe('WORKER_SCOPE')
-    expect((await fallback.task({ key: 'mine' })).status).toBe(before)
-  },
-)
-
-test(
-  'a worker started with --via command is held to its own task, and records as that worker',
-  async () => {
-    const env = commandWorkerEnv()
-    const asCommand = hydra.as({
-      session: worker,
-      env,
-    })
-    const otherStatus = await statusOfOther()
-
-    for (const args of [
-      [
-        'task',
-        'ask',
-        'other',
-        '--question',
-        'May I continue?',
-      ],
-      [
-        'settings',
-        'set',
-        '--json',
-        '{"fontSize":19}',
-      ],
-    ]) {
-      expect((await asCommand.refused({ args })).code).toBe('WORKER_SCOPE')
-    }
-
-    expect((await asCommand.refused({
-      args: [
-        'task',
-        'tools',
-        'mine',
-        '--grant',
-        'browser',
-      ],
-    })).code).toBe('HYDRA_ONLY')
-
-    for (const args of [
-      [
-        'task',
-        'stop',
-        'mine',
-      ],
-      [
-        'task',
-        'move',
-        'mine',
-        '--to-hydra',
-        'default',
-      ],
-      ['upgrade'],
-    ]) {
-      expect(
-        (await asCommand.refused({ args })).code,
-        args.join(' '),
-      ).toBe('OWNER_ONLY')
-    }
-
-    const restart = await pnyxAxi({
-      args: ['restart'],
-      env,
-    })
-    expect(parsed(restart).code).toBe('OWNER_ONLY')
-    expect(await statusOfOther()).toBe(otherStatus)
-
-    await asCommand.run({
-      args: [
-        'link',
-        'mine',
-        '--url',
-        'https://example.com/command',
-      ],
-    })
-    const history = await hydra.owner({
-      args: [
-        'task',
-        'history',
-        'mine',
-      ],
-    })
-    expect(history.events).toContainEqual(expect.objectContaining({
-      type: 'card.linked',
-      actor: `worker:${mine.id}`,
-    }))
-  },
-)
-
-test(
-  'a worker whose PNYX_ACTOR is missing still cannot write to another task, and is told how to name its own',
-  async () => {
-    const env = { ...worker.env }
-    delete env.PNYX_ACTOR
-    const asUnnamed = hydra.as({
-      session: worker,
-      env,
-    })
-    const otherStatus = await statusOfOther()
-
-    const elsewhere = await asUnnamed.refused({
-      args: [
-        'task',
-        'ask',
-        'other',
-        '--question',
-        'May I continue?',
-        '--actor',
-        'cli',
-      ],
-    })
-    expect(elsewhere.code).toBe('WORKER_SCOPE')
-    const unnamed = await asUnnamed.refused({
-      args: [
-        'task',
-        'ask',
-        'mine',
-        '--question',
-        'May I continue?',
-      ],
-    })
-    expect(unnamed.code).toBe('WORKER_SCOPE')
-    expect(unnamed.error).toContain('PNYX_ACTOR is missing')
-    expect(await statusOfOther()).toBe(otherStatus)
-
-    await asUnnamed.run({
-      args: [
-        'link',
-        'mine',
-        '--url',
-        'https://example.com/unnamed',
-        '--actor',
-        `worker:${mine.id}`,
-      ],
-    })
-  },
-)
-
-test(
-  'a worker\'s refusal keeps the command\'s own error code and says what was refused',
-  async () => {
-    const unknown = await asWorker.refused({
-      args: [
-        'task',
-        'ask',
-        'nope',
-        '--question',
-        'May I continue?',
-      ],
-    })
-    expect(unknown.code).toBe('NOT_FOUND')
-    expect(unknown.help?.length).toBeGreaterThan(0)
-
-    expect((await asWorker.refused({
-      args: [
-        'reply',
-        'mine',
-        '--text',
-        'hello',
-      ],
-    })).error).toBe('reply is not a worker\'s command')
-
-    expect((await asWorker.refused({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        'mine',
-        '--action',
-        'send',
-        '--text',
-        'hello',
-      ],
-    })).error).toContain('hydra send --action is Hydra\'s')
-
-    const logs = await asWorker.refused({
-      args: [
-        'logs',
-        'clean',
-      ],
-    })
-    expect(logs.code).toBe('WORKER_SCOPE')
-    expect(logs.error).toContain('refused for a worker')
-    expect(logs.help?.[0]).toContain('A worker may run on its own task: task ask, ')
-  },
-)
-
-test(
-  'a worker\'s refusal of a Stop keeps the owner-only error, for the task and for the Hydra',
-  async () => {
-    for (const args of [
-      [
-        'task',
-        'stop',
-        'other',
-      ],
-      [
-        'hydra',
-        'stop',
-      ],
-      [
-        'hydra',
-        'cancel',
-        'message-1',
-      ],
-    ]) {
-      expect(
-        (await asWorker.refused({ args })).code,
-        args.join(' '),
-      ).toBe('OWNER_ONLY')
-    }
-  },
-)
-
-test(
-  'a worker in a scratch home of its own may run a server there, while its own home still refuses it',
-  async () => {
-    const scratch = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-scratch-',
-    ))
-    const refused = await pnyxAxi({
-      args: ['stop'],
-      env: worker.env,
-    })
-    expect(parsed(refused).code).toBe('WORKER_SCOPE')
-
-    const elsewhere = await pnyxAxi({
-      args: ['stop'],
-      env: {
-        ...worker.env,
-        PNYX_HOME: scratch,
-      },
-    })
-    expect(elsewhere.status).toBe(0)
-    expect((await fetch(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/health`)).status).toBe(200)
   },
 )
 

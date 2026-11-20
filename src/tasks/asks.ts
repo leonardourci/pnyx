@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { decisionKey, ownerQuestionGroups, questionGroupCard } from './question-groups.ts'
 import { readFileSync } from 'node:fs'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
@@ -599,9 +600,9 @@ async function answerGroup({
   meta: Meta
 }): Promise<Output> {
   if (!ownerActor({ actor: meta.actor })) {
-    throw new HydraError({
-      code: 'OWNER_ONLY',
-      message: 'Only the owner answers a question group; record individual owner answers with their source message',
+    inform({
+      reason: 'Question group answered by an agent',
+      clear: 'pnyx-axi task questions',
     })
   }
 
@@ -894,9 +895,9 @@ export function askCommand({
   }
 
   if (!explained({ meta: m })) {
-    throw new HydraError({
-      message: 'an escalation needs --reason <why the owner must decide>',
-      code: 'VALIDATION_ERROR',
+    inform({
+      reason: 'Question escalated without a reason',
+      clear: 'Use pnyx-axi task escalate <task> <question> --reason "<why>" to record one',
     })
   }
 

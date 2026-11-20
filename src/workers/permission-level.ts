@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import type { Harness } from './providers.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
@@ -5,7 +6,6 @@ import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from './controls.ts'
 import { PROVIDERS, harnessOf, providerIdOf } from './providers.ts'
 import { hydraActor } from '#app/request-context.ts'
-import { HydraError } from '#store/errors.ts'
 
 const PERMISSION_LEVELS: Record<Harness, Record<string, number>> = {
   claude: {
@@ -50,8 +50,7 @@ export function workerMode({
   return undefined
 }
 
-// A start Hydra asks for may keep or lower the worker's permission level; only the owner raises it.
-export function requireOwnerToRaise({
+export function noticePermissionIncrease({
   state,
   actor,
   harness,
@@ -75,14 +74,14 @@ export function requireOwnerToRaise({
   })
 
   if (hydraRaises) {
-    throw new HydraError({
-      message: 'Only the owner can raise a worker’s permission level',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Worker permission level increased',
+      clear: 'pnyx-axi agent <task> mode <mode>',
     })
   }
 }
 
-export function agentPermissionNeedsOwner({
+export function agentPermissionIncreases({
   card,
   value,
 }: {

@@ -1,3 +1,4 @@
+import { commandNotices, inform } from '#app/command-notices.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
@@ -13,7 +14,7 @@ import { HydraError } from '#store/errors.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
-import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
+import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
 import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
 import { raisesPermission, workerMode } from './permission-level.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
@@ -134,83 +135,12 @@ export function dispatchIssues({ document }: { document: DispatchDocument }) {
   })
 }
 
-function proposalToken({
-  hydraId,
-  proposal,
-}: {
-  hydraId: string
-  proposal: DispatchProposal
-}): string {
-  return createHash('sha256').update(canonical({
-    value: {
-      hydraId,
-      ...proposal,
-    },
-  }))
-    .digest('hex')
-    .slice(
-      0,
-      24,
-    )
-}
-
 // --if-revision names the dispatch revision, so the Hydra event that records a proposal never checks it.
 function eventMeta({ meta }: { meta: Meta }): Meta {
   const event = structuredClone(meta)
   delete event.ifRevision
 
   return event
-}
-
-function propose({
-  hydraId,
-  meta,
-  changes,
-  summary,
-}: {
-  hydraId: string
-  meta: Meta
-  changes: DispatchChange[]
-  summary: string
-}): Output {
-  const proposal: DispatchProposal = {
-    token: '',
-    kind: 'dispatch',
-    shared: true,
-    before: JSON.stringify(changes),
-    value: JSON.stringify(patchOf({ changes })),
-    summary,
-  }
-  proposal.token = proposalToken({
-    hydraId,
-    proposal,
-  })
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      const decision = hydraEvent({
-        state: writer.state,
-        meta: eventMeta({ meta }),
-        cardId: HYDRA_CARD,
-        change: {
-          type: 'hydra.dispatch-proposed',
-          data: proposal,
-        },
-      })
-
-      if ('event' in decision) {
-        writer.append({ event: decision.event })
-      }
-    },
-  })
-
-  return {
-    confirmation: 'needed',
-    token: proposal.token,
-    action: summary,
-    changes,
-    help: ['The owner can Confirm or Dismiss this proposal in Hydra’s chat'],
-  }
 }
 
 function raisesCandidatePermission({
@@ -362,7 +292,6 @@ export function applyDispatch({
   meta,
   check = false,
   proposeIt = false,
-  summary,
 }: {
   hydraId: string
   envelope: DispatchEnvelope
@@ -476,11 +405,9 @@ export function applyDispatch({
       }
 
       if (proposeIt) {
-        return propose({
-          hydraId,
-          meta,
-          changes,
-          summary,
+        inform({
+          reason: 'Dispatch settings applied directly; confirmation is no longer needed',
+          clear: 'Use pnyx-axi rule show to inspect dispatch settings',
         })
       }
 
@@ -489,10 +416,9 @@ export function applyDispatch({
         before: document,
         after,
       })) {
-        throw new HydraError({
-          message: 'Only the owner can raise a candidate’s permission level',
-          code: 'OWNER_ONLY',
-          help: ['Repeat with --propose'],
+        inform({
+          reason: 'Dispatch candidate permission level increased',
+          clear: 'pnyx-axi rule apply --file <patch>',
         })
       }
 
@@ -501,6 +427,7 @@ export function applyDispatch({
         revision: revision + 1,
         changes,
         issues: remaining,
+        notices: commandNotices(),
       }
       const entry: ChangeEntry = {
         v: 1,
@@ -633,19 +560,17 @@ export function resolveProposal({
   hydraId,
   action,
   token,
-  confirm,
   meta,
 }: {
   hydraId: string
   action: 'confirm' | 'dismiss'
   token: string
-  confirm?: string
   meta: Meta
 }): Output {
   if (hydraActor({ actor: meta.actor })) {
-    throw new HydraError({
-      message: 'Only the owner can confirm or dismiss a dispatch proposal',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Dispatch proposal answered by an agent',
+      clear: 'pnyx-axi rule show',
     })
   }
 
@@ -671,15 +596,6 @@ export function resolveProposal({
       const changes = proposal.kind === 'dispatch' ? JSON.parse(proposal.before) as DispatchChange[] : []
 
       if (action === 'confirm') {
-        if (confirm !== proposal.token) {
-          return {
-            confirmation: 'needed',
-            token,
-            action: proposal.summary,
-            changes,
-          }
-        }
-
         const id = `proposal-${token}`
 
         // A confirm whose save landed before recording the resolution failed only records it on retry.

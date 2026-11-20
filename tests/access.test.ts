@@ -9,7 +9,7 @@ import { zeroCookieName } from '#app/server-protocol.ts'
 import { queries } from '#store/zero-schema.ts'
 import type { QueryResultType } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
-import { openPage, pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { openPage, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 import { readRows, zeroReady } from './setup/zero.ts'
 
 let pnyx: Pnyx
@@ -108,12 +108,6 @@ test(
   },
 )
 
-// The upgrades the page's chat shows for a Hydra.
-const upgrades = ({ hydraId }: { hydraId: string }) => rows({
-  text: 'select value from hydra_values where hydra_id = $1 and key = \'upgrades\'',
-  values: [hydraId],
-}).flatMap(row => row.value as unknown[])
-
 // A request exactly as given: fetch would normalize the path and drop a forged Host header.
 const raw = ({
   path,
@@ -158,7 +152,7 @@ const raw = ({
 })
 
 test(
-  'a worker acts as itself: its worker line lands on its own task, and owner-only commands are refused without effect',
+  'a worker acts as itself: its worker line lands on its own task, and it can move its task with a notice',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'app' })
@@ -199,74 +193,53 @@ test(
       ],
     })).task.status).toBe('idle')
 
-    for (const args of [
-      ['upgrade'],
-      [
+    const other = await pnyx.hydra()
+    const moved = await hydra.as({ session: worker }).run({
+      args: [
         'task',
         'move',
         'export',
         '--to-hydra',
-        'default',
+        other.id,
       ],
-    ]) {
-      expect((await hydra.as({ session: worker }).refused({ args })).code).toBe('OWNER_ONLY')
-    }
-
-    const restart = await pnyxAxi({
-      args: ['restart'],
-      env: worker.env,
     })
-    expect(restart.status).toBe(1)
-    expect(restart.stdout).toContain('code: OWNER_ONLY')
+    expect(moved.notices).toBeDefined()
+    expect((await other.task({ key: 'export' })).worker).not.toContain('none:')
     expect((await fetch(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/health`)).status).toBe(200)
   },
 )
 
 test(
-  'Hydra\'s owner-only commands wait for the owner\'s confirmation instead of running, and only the owner may answer them',
+  'Hydra changes worker permission mode directly and receives a notice',
   async () => {
     const hydra = await pnyx.hydra()
-    const session = await hydra.chat({ text: 'restart Pnyx for me' })
-    const before = await (await fetch(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/health`)).json() as { pid: number }
-
-    const proposed = await hydra.as({ session }).run({ args: ['upgrade'] })
-    expect(proposed).toMatchObject({
-      confirmation: 'needed',
-      action: expect.stringContaining('pnyx-axi upgrade'),
-    })
-    const answer = await hydra.as({ session }).refused({
+    await hydra.startTask({ key: 'permission-mode' })
+    const session = await hydra.chat({ text: 'Change the worker mode' })
+    const output = await hydra.as({ session }).run({
       args: [
-        'approval',
-        'confirm',
-        proposed.token,
+        'agent',
+        'permission-mode',
+        'mode',
+        'bypassPermissions',
       ],
     })
-    expect(answer.code).toBe('OWNER_ONLY')
-
-    const restart = await pnyxAxi({
-      args: ['restart'],
-      env: session.env,
-    })
-    expect(restart.status).toBe(0)
-    expect(restart.stdout).toContain('confirmation: needed')
-    const after = await (await fetch(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/health`)).json() as { pid: number }
-    expect(after.pid).toBe(before.pid)
-
-    await hydra.owner({
+    expect(output.notices).toBeDefined()
+    const record = await hydra.owner({
       args: [
-        'approval',
-        'dismiss',
-        proposed.token,
+        'task',
+        'show',
+        'permission-mode',
+        '--full',
       ],
     })
+    expect(record.task.settings.mode).toBe('bypassPermissions')
     expect((await hydra.owner({
       args: [
-        'approval',
-        'confirm',
-        proposed.token,
+        'task',
+        'show',
+        'permission-mode',
       ],
-    })).event).toMatch(/^none:/)
-    expect(upgrades({ hydraId: hydra.id })).toEqual([])
+    })).task.notices).toBeDefined()
   },
 )
 
@@ -298,10 +271,15 @@ test(
       'allow',
     ]
 
-    // Hydra runs pnyx-axi unasked, so its answer only becomes a proposal, and an answer made in Hydra's name is refused outright.
     const page = await hydra.page()
-    const proposed = await hydra.as({ session }).run({ args: answer })
-    expect(proposed.confirmation).toBe('needed')
+    expect((await hydra.as({ session }).refused({ args: answer })).code).toBe('NO_ROUTE')
+    expect((await hydra.as({ session }).refused({
+      args: [
+        ...answer,
+        '--actor',
+        'cli',
+      ],
+    })).code).toBe('NO_ROUTE')
     expect(await page.send({
       name: 'task',
       args: [
@@ -325,15 +303,7 @@ test(
     })).task.permissions[0].status).toBe('pending')
 
     page.close()
-    await hydra.owner({
-      args: [
-        'approval',
-        'confirm',
-        proposed.token,
-        '--confirm',
-        proposed.token,
-      ],
-    })
+    await hydra.owner({ args: answer })
     expect(await decision).toMatchObject({ behavior: 'allow' })
     expect((await hydra.ownerRefused({ args: answer })).code).toBe('PERMISSION_CLOSED')
   },
@@ -843,20 +813,11 @@ test(
   async () => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra()
-    const proposed = await caller.owner({
+    await caller.owner({
       args: [
         'hydra',
         'remove',
         target.id,
-      ],
-    })
-    await caller.owner({
-      args: [
-        'approval',
-        'confirm',
-        proposed.token,
-        '--confirm',
-        proposed.token,
       ],
     })
     const url = `http://127.0.0.1:${pnyx.port()}/zero`
@@ -882,5 +843,85 @@ test(
     })
     expect(result).toContainEqual(expect.objectContaining({ id: caller.id }))
     expect(result).not.toContainEqual(expect.objectContaining({ id: target.id }))
+  },
+)
+
+test(
+  'a saved command approval runs once without another confirmation and records its applying claim',
+  async () => {
+    const id = 'legacy-approval'
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      id,
+    )
+    mkdirSync(
+      folder,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        folder,
+        'events.jsonl',
+      ),
+      `${JSON.stringify({
+        v: 1,
+        seq: 1,
+        id: 'saved-proposal',
+        at: '2026-01-01T00:00:00Z',
+        actor: 'hydra',
+        cardId: '$hydra',
+        type: 'hydra.dispatch-proposed',
+        data: {
+          token: 'saved-command',
+          kind: 'command',
+          shared: false,
+          before: 'old-context',
+          value: JSON.stringify({
+            name: 'task',
+            args: [
+              'create',
+              '--no-start',
+              '--title',
+              'Saved command task',
+              '--key',
+              'saved-command-task',
+            ],
+            cwd: process.cwd(),
+          }),
+          summary: 'Create the saved task',
+        },
+      })}\n`,
+    )
+    const hydra = await pnyx.hydra({
+      id,
+      create: false,
+    })
+    const result = await hydra.owner({
+      args: [
+        'approval',
+        'confirm',
+        'saved-command',
+        '--event-id',
+        'confirm-saved-command',
+      ],
+    })
+    expect(result.state).toBe('confirmed')
+    expect(result.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('target changed') }))
+    const progress = rows<{ status: string }>({
+      text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress'",
+      values: [id],
+    })
+    expect(progress).toEqual([{ status: 'applying' }])
+    expect((await hydra.task({ key: 'saved-command-task' })).title).toBe('Saved command task')
+    expect(await hydra.owner({
+      args: [
+        'approval',
+        'confirm',
+        'saved-command',
+        '--event-id',
+        'confirm-saved-command',
+      ],
+    })).toMatchObject({ event: 'none: proposal already resolved or missing' })
   },
 )

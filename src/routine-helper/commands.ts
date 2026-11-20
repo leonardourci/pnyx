@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { parseArgs } from 'node:util'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
@@ -16,11 +17,11 @@ import { requestEnv } from '#app/request-context.ts'
 const TASK_READS = helperReads({ name: 'task' })
 const TASK_WRITES = HELPER_TASK_WRITES
 
-function denied(): never {
-  throw new AxiError(
-    'This action belongs to the main Hydra; record an owner outcome for it',
-    'MAIN_ONLY',
-  )
+function denied(): void {
+  inform({
+    reason: 'Helper acted outside its default task scope',
+    clear: 'Use pnyx-axi task history <task> to inspect the change',
+  })
 }
 
 export function commandLease({

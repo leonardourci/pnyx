@@ -53,7 +53,7 @@ commands:
   reply <id> --text <text>                   Send a reply to the card's worker session
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
 worker:
-  A worker reads any task or Hydra and writes only its own task (task ask|report|report-review|refresh-links|inbox|source, link, hydra send --task); any other write fails with WORKER_SCOPE
+  Workers may run every command. Work outside the assigned task, permission increases and other departures from defaults carry notices with the command that changes them.
 flags:
   --hydra <name>     Hydra to use (default: default)
   --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
@@ -110,15 +110,15 @@ Default receipts summarize changed fields and collection counts, never whole tas
 Apply validates the whole document again at write time and appends one atomic log record.
 Errors include zero-based operation indexes, field paths, codes and reasons; nothing is written.
 An identical --event-id retry returns the original receipt. Different contents or actor are refused.
-Each change can carry reason; Hydra must explain creates, brief/Intent edits and owner asks.
-Owner message references and existing authority, discussion-hold, report and landing checks apply.
+Each change can carry reason; a missing Hydra reason is reported as a notice.
+Owner message references, task references and revisions are validated. Holds, report gaps and landing defaults appear as information.
 No worker starts, messages, memory, settings or external effects. Correct a batch with another apply;
 undo refuses its individual events. See docs/pnyx-axi.md for the full operation schema and examples.
 `,
   hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--icon <icon>] [--identity <identity>] [--session <session>]
 pnyx-axi hydra list
 pnyx-axi hydra remove <id> [--hydra <caller>]
-Removal asks the owner to Confirm the task count, unlanded copies and open PRs in the caller’s chat. It stops workers and tools, detaches projects, discards task copies and removes its own pooled worktree slots and registrations; history and Oracle stay, and GitHub PRs stay on GitHub. The last Hydra and caller’s own Hydra cannot be removed. Interrupted cleanup stays pending and resumes on restart.
+Removal runs directly after every copy is proved safe. Copies with unlanded work stay protected for every caller. It stops workers and tools, detaches projects, discards task copies and removes its own pooled worktree slots and registrations; history and Oracle stay, and GitHub PRs stay on GitHub. Removing the last Hydra or the caller’s Hydra is reported as a notice. Agents cannot delete copies with unlanded or unproved work. Interrupted cleanup stays pending and resumes on restart.
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 pnyx-axi hydra set [--read-poleis <comma-separated poleis>] [--polis <polis>] [--propose] [--hydra <id>]
@@ -126,7 +126,7 @@ A Hydra must be on the polis reader list and include the polis in its own read l
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
 At start the server names, once, every Hydra still called by its id or by no name.
---session self picks the session running in the caller's own tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
+--session self picks the session running in the caller's own tmux pane or Herdr pane. No process is launched. Selecting a task worker as Hydra detaches it from its task and reports the change.
 --done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] [--helper-fast on|off] selects its agent, separate from Hydra’s own. Fast is off unless --helper-fast on is set or Fast is on in the Hydra’s composer, which turns it on for every worker and helper run that Hydra starts where the model has Fast; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags, including running workers without updates for an hour, overdue owner questions and green unmerged PRs. Memory lag stays quiet; owner questions also get chat reminders.
@@ -181,7 +181,7 @@ prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
-except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears, and a Hydra that Pnyx runs is refused --wait and told to end its turn instead. It returns
+except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears, and a Hydra that Pnyx runs gets an immediate receipt with a notice and told to end its turn instead. It returns
 a compact conversations digest of the owner's queued task replies (read them whole with task history --full) and of the words
 typed straight into the session of a worker Pnyx does not run, which carry their time, count once an event follows them, wake --wait
 and are read whole with task chat <task>. Pass the printed through as the next --after.
@@ -196,11 +196,11 @@ New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|ve
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Move a whole document to another readable polis with owner memory move --key <key> --to <polis> [--propose].
-Move proposals pin both source and destination with --if-revision and --if-destination-revision; a changed memory refuses confirmation.
+Move a whole document to another polis with owner memory move --key <key> --to <polis> [--propose].
+Moves accept --if-revision and --if-destination-revision to detect concurrent memory changes.
 shared keeps $PNYX_HOME/owner/memory.jsonl; other poleis use owner/poleis/<polis>/memory.jsonl. Every replacement and removal stays in the log.
 New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --read-poleis <comma-separated poleis> --polis <polis>.
-Hydra may narrow access directly. Widening reads, readers or memory distribution needs the owner's Confirm, even in bypass modes. Repeat with --propose to save the question.
+Hydra may change reads, readers and memory distribution directly; widening access carries a notice. --propose remains accepted and runs the action directly.
 Use owner memory list's writable documents when editing; memory combines all readable poleis.
 These checks guard Pnyx output, not raw disk access from a local shell.
 `,
@@ -214,8 +214,7 @@ pnyx-axi column resize <id> --width <pixels>
 pnyx-axi column delete <id> [--to <remaining-column>]
 pnyx-axi column reorder <id> [--before <id>]
 All columns, including template columns, can be edited. Deletion moves cards to the fallback;
-the final column cannot be deleted. Rule edits, reorder and delete first return confirmation: needed and a token;
-repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
+the final column cannot be deleted. Rule edits, reorder and delete run directly and return their event receipt.
 Rules use comma-separated facts as AND, repeated --when as OR, and !fact as NOT.
 The first matching column in display order wins; --clear makes a column manual only.
 Facts: worker:none|checks|blocked|hydra|paused|ended, owner-question, held,
@@ -233,16 +232,16 @@ When it cannot queue behind that worker, it starts its own and the receipt says 
 and a note on the card say why. Repeating the same --event-id never files or starts anything twice.
 Add --start --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] to create and send directly to its worker.
 pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]
-Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
+Every actor may send directly. The same event ID never launches or delivers twice. With no worker,
 Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing
 harness or account starts a fresh session with the prior conversation available through task chat.
 Sending to a hosted worker interrupts its current turn and delivers the message with the selected agent.
 Outside sessions keep their reply route and require Continue in Pnyx before an agent change.
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
-pnyx-axi task hold <id> --reason <topic>
-pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
-Release records Go for the open go question bound to the hold, if any; the source must also postdate that question.
-Held unfinished cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
+pnyx-axi task hold <id> [--reason <topic>]
+pnyx-axi task release <id> [--from-message <owner-message-id>] [--reason <why>]
+Release records Go for an open go question. An absent, older or agent-authored source is reported in the receipt and on the card.
+Holds remain visible as Talking. Explicit actions proceed while reporting the hold and its release command.
 pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
 --intent rewrites the card's Intent when the goal itself changes; the log keeps the earlier ones.
@@ -251,7 +250,7 @@ pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
 pnyx-axi task tools <task> [--available]
 pnyx-axi task tools <task> [--grant browser] [--revoke browser]
-Capability: browser selects one isolated headless chrome-devtools-axi session. Hydra grants it; workers ask with task ask. Pnyx resumes the same conversation when native work settles. Grants survive restart. Hosted sessions keep their native tools, MCP servers, plugins and apps.
+Capability: browser selects one isolated headless chrome-devtools-axi session. Hydra or a worker can grant it; worker grants carry a notice. Pnyx resumes the same conversation when native work settles. Grants survive restart. Hosted sessions keep their native tools, MCP servers, plugins and apps.
 pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task refresh-links <id>
@@ -270,7 +269,7 @@ Workers append <code>: <text> lines to $PNYX_TASK_DIR/worker.log: needs-you, blo
 Running and idle come from hosted turns or installed hooks. Notes update the latest line without changing status.
 Pull requests are discovered from the task's recorded branches.
 pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
-Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
+Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion report a missing inventory and proceed.
 pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
 pnyx-axi task inbox read <task> [--all]
@@ -288,34 +287,33 @@ An ack means read, never completed work. The default outcome is read; legacy inc
 Reads return the active session/generation claim. Report progress and blockers through worker.log, and questions through task ask. Use read --all for recovery history.
 Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
 pnyx-axi task build <id>
-Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
+Turns an investigation into its build; its worker keeps the context and starts a fresh branch. A missing report or review is reported as a notice.
 pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
-Gives this task alone a landing rule other than its project's, or prints the rule it follows. Owner, or Hydra on the owner's word.
+Gives this task a landing override or prints its rule. Without a project the defaults are pr and owner; worker changes carry a notice.
 pnyx-axi task merge <id> [--url <pull request>]
-Merges the task's linked pull request with a merge commit and records it. Hydra needs --merge hydra or the owner's Merge approval for that link,
-and never merges while a check is red or still running. A 403/404 from branch rules means no readable rules there; other merge gates still apply.
+Requests a merge commit and records GitHub’s result. Owner merge defaults, Hold, draft state, failed or pending checks and missing evidence are reported as notices; GitHub enforces its branch rules.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
-A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. Owner questions require one decision ending in ?, --context explaining the change and next action with a [Title](pnyx-task:<task-id>) card link, at least two --choice values and --recommend <n>. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
+A worker’s question defaults to Hydra; --to owner sends it directly to the owner. Suggested owner-question structure is a decision ending in ?, context with a card link, two choices and a recommendation. Missing presentation details produce notices; a supplied choice list defaults to its first recommendation. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task questions
 Lists owner-question groups, their question keys and shared choices. A task and its sub-tasks share one group; worker questions and updates do not count.
 pnyx-axi task answer-group <task> --questions <JSON-array-of-keys> --choice <shared-label> --event-id <attempt>
-The owner answers the displayed group with one shared choice. The server checks the question list before each send. If it changes during delivery, earlier answers may already have been sent. Answer permissions and incompatible choices individually. Retry an uncertain receipt with the same event ID, question keys and choice.
+Any actor may answer the displayed group with one shared choice; agent answers carry a notice. The server checks the question list before each send. If it changes during delivery, earlier answers may already have been sent. Answer permissions and incompatible choices individually. Retry an uncertain receipt with the same event ID, question keys and choice.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
-Short requests such as "why?" or "explain", and recognized clarification questions ending in "?", keep the question open. Longer instructions remain answers even when they begin with those words. Use discuss-question for other follow-up wording; an explicit discussion cannot be quoted as an answer.
+Short requests such as "why?" or "explain", and recognized clarification questions ending in "?", keep the question open. Longer instructions remain answers even when they begin with those words. Use discuss-question for other follow-up wording; quoting a discussion as an answer produces a notice and records the caller as its source.
 Sends merge answers and answers to Hydra's questions to Hydra, and answers to worker questions to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice; --text with a choice adds a note sent with the choice. Retry failed delivery with reply --idempotency-key <reply-id>.
 Hydra can replace an answered merge Hold with --from-message <owner-message> --choice Merge only when that saved owner message is newer than the Hold answer. Undo restores Hold.
 pnyx-axi task reask <task> <question> --reason <why>
 Hydra re-asks an answered merge Hold in chat and on the card. It grants no approval until the owner answers Merge.
 Answers without an owner source resolve once delivered. An uncertain delivery holds those questions; check the session before using --undelivered to answer or escalate again.
 pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
-Evidence closure applies to report-linked choices, worker or Go questions, and a merge question whose own PR has settled. Ordinary owner questions require an answer or explicit task completion.
+Explicit closure may close any unanswered question. Missing evidence, owner questions closed without answers and unresolved merge questions produce notices.
 pnyx-axi task discuss-question <task> <question> --text <clarification>
 Sends discussion to Hydra without recording an answer or releasing a hold.
 pnyx-axi task defer-question <task> <question> --until <future-time|clear> [--from-message <owner-message>]
-Later pauses active Waiting on you and question reminders until the owner's date. The question stays unanswered and still gates work. Hydra needs the owner's newer message; workers cannot defer owner questions.
+Later pauses active Waiting on you and question reminders until the selected date. The question stays unanswered. An agent can defer or discuss it directly, with a notice.
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--choice <label>]... [--recommend <n>] [--undelivered] --reason <text>
-Hydra hands a worker's question to the owner under the same id. The worker's wording stays in its history. Owner-question validation applies. When replacing choices with --choice, supply a new --recommend.
+Hydra hands a worker's question to the owner under the same id. The worker's wording stays in its history. Owner-question presentation guidance applies. When replacing choices with --choice, supply a new --recommend.
 pnyx-axi task history <id> [--before <seq>|<hydra>:<seq>] [--limit <n>] [--full]
 A moved task's history continues into the Hydras it came from; those rows name their Hydra, and --before <hydra>:<seq> pages through them.
 pnyx-axi task updates <id> [--before <seq>] [--limit <n>]
@@ -338,9 +336,8 @@ A queued task leaves its queue for a worker of its own. Another actor's turn on 
 pnyx-axi task copy <task> [remove [--safe | --discard]]
 pnyx-axi task move <task> --to-hydra <hydra> [--reason <why>]
 Moves the task to another Hydra with its asks, questions, links, column, history and Pnyx-run worker session; its task copy stays in place.
-Refused, with the command that clears it, while the target lacks its project, its worker is starting, mid-turn or runs outside Pnyx, the routine helper holds it,
-or it is queued, a subtask or parent, or tied by a prerequisite or wait to a task that stays. Undo refuses; move it back with the same command.
-Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start, permission, move and task move. Pnyx keeps it on the event,
+Moves stop native work, detach outside sessions and remove cross-Hydra queue, parent, prerequisite and wait links. Each adjustment is reported with its corrective command. Undo refuses; move it back with the same command.
+Hydra (actor hydra) should pass --reason, one short why, to create, brief, hide, unhide, start, permission, move and task move. Pnyx keeps it on the event,
 and shows the changes in the task’s Updates and the turn’s fold. --details keeps longer context on the same event.
 pnyx-axi task queue <task> --behind <task|session>
 pnyx-axi task unqueue <task>
@@ -351,15 +348,15 @@ pnyx-axi task detach <task>
 Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
 Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue; a queue that cannot happen answers queued: false with the reason. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 A handoff cut by a restart is settled at the next start: an uncommitted one gets its source checkout back, a committed one keeps its target. While a handoff is unresolved, starts, resumes, replies and copy removal for both tasks answer CONFLICT; move out any changed work in the folder, then restart to retry.
-Tasks accept one attached session. A second session cannot replace the recipient.
-attach moves an interactive session to the task; an occupied destination is rejected.
+Tasks accept one attached session. Explicit attach replaces an existing recipient and reports the detached session.
+attach moves an interactive session to the task and releases its queue entry.
 detach removes the attachment without stopping the session; it stays in task sessions and History.
 attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
 task create accepts --project <name|path>; task project assigns an existing task to an attached project.
-task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered requires an open owner --question; answering or closing it stops the reminder. A worker start stops worker-started; task completion stops task-done, which requires unfinished work. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, keeps reminders as updates, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
+task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered names a saved --question; answering or closing it stops the reminder. A worker start stops worker-started; task completion stops task-done, which stops immediately when the task is already done. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, keeps reminders as updates, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
-It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
+A still-present outside session produces a notice; unknown presence needs inspection. The next message resumes the same session in its recorded folder.
 task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder inside the server
 (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
@@ -382,7 +379,7 @@ A task with an attached project starts in its own copy: a git worktree slot copi
 takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
 dependencies, and starts the branch from the fetched origin default branch. A failed refresh or remote branch listing stops allocation;
 projects without origin use local HEAD. --in-place works in the project folder
-itself and is refused while a worker of another Hydra runs there; --folder names the folder outright.
+itself and reports other Hydras already working there; --folder names the folder outright.
 When the task reaches Done and its agent stops working, Pnyx releases its copy if it has no uncommitted changes and its
 commit is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy
 command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
@@ -391,7 +388,7 @@ when an attached worker still runs in it; otherwise it is deleted. A slot a work
 Allocation reuses clean unrecorded slots whose commits landed; uncommitted or unlanded work stays and is reported to Hydra.
 Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
 task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
-already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
+already landed or is empty; --discard also preserves unlanded work; no caller may discard it.
 `,
   push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
 Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
@@ -421,10 +418,10 @@ Sources are only read. Each note is kept once, so running it again appends only 
 `,
   move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>] [--details <text>]
 Puts the card in the column just above the --before card, or at the end of the column without it.
-First returns confirmation: needed and a token; repeat with --confirm <token> to act.
+Runs directly and returns its result; confirmation is not needed.
 Pnyx applies column rules on phase changes; a manual move lasts until the next rule result changes.
 Hydra uses manual placement for an exceptional correction with a reason. Read rules with \`pnyx-axi column list\`.
-Hydra's moves need --reason, kept on the event and shown in the task's Updates. The owner's moves need none.
+Hydra's moves should carry --reason, kept on the event and shown in the task's Updates; a missing reason produces a notice.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
 GitHub pull request URLs get kind and number filled in. A link never moves the card.
@@ -455,7 +452,7 @@ as it is: the check migrates a copy made with pg_dump and pg_restore, then drops
 --url saves the postgresUrl setting without the server, which cannot start while that URL is wrong; --url '' clears
 it. The server applies it on its next start.
 setup installs the server's login service.
-setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given, and so does
+setup, setup hooks and setup skills report a non-default PNYX_HOME in the receipt, as does
 setup postgres before it starts or changes Homebrew's service.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills

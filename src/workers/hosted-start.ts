@@ -1,8 +1,9 @@
 import { nativeIdle } from './native-session.ts'
+import { inform } from '#app/command-notices.ts'
 import { decideReply } from './reply-rules.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { realpathSync } from 'node:fs'
-import { BROWSER_TOOL, requireToolAuthority, toolNames, writeTools } from './tools.ts'
+import { BROWSER_TOOL, toolNames, writeTools } from './tools.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { transcriptPath } from './claude.ts'
 import type { trackChildren } from './children.ts'
@@ -23,7 +24,6 @@ import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
-import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
@@ -90,11 +90,19 @@ export function createWorkerStarts({
   }): AgentSession => {
     const agent = card.agent
 
-    if (!liveTask({ card }) || !agent || !knownProvider({ name: agent.provider })
+    if (!agent || !knownProvider({ name: agent.provider })
       || agent.host || agent.agentId) {
       throw new HydraError({
         message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
         code: 'NO_ROUTE',
+      })
+    }
+
+    if (card.hidden) {
+      inform({
+        task: card.id,
+        reason: 'Outside session continued on a hidden task',
+        clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
       })
     }
 
@@ -110,12 +118,19 @@ export function createWorkerStarts({
     return session
   }
 
-  const requireGone = ({ current }: { current: Presence }) => {
-    if (current.state !== 'gone') {
+  const noticeOutsidePresence = ({ current }: { current: Presence }) => {
+    if (current.state === 'unknown') {
       throw new HydraError({
-        message: current.state === 'present' ? 'the outside session still runs in its terminal; end it before continuing in Pnyx' : `cannot confirm the outside session has ended: ${current.detail}`,
+        message: `cannot confirm the outside session has ended: ${current.detail}`,
         code: 'SESSION_RUNNING',
         help: ['End the outside session, then try Continue in Pnyx again'],
+      })
+    }
+
+    if (current.state === 'present') {
+      inform({
+        reason: 'Outside session is still present; continuing its saved conversation in Pnyx',
+        clear: 'Use pnyx-axi task sessions to inspect both the outside session and its Pnyx worker',
       })
     }
   }
@@ -186,7 +201,7 @@ export function createWorkerStarts({
       })
     }
 
-    requireGone({ current: presence({ session: previous }) })
+    noticeOutsidePresence({ current: presence({ session: previous }) })
 
     return card
   }
@@ -237,15 +252,6 @@ export function createWorkerStarts({
         event: 'none: duplicate',
         help: ['This start was already recorded; nothing was started again'],
       }
-    }
-
-    if (tools) {
-      requireToolAuthority({
-        meta: {
-          actor,
-          at: at(),
-        },
-      })
     }
 
     if (starting.has(target.id)) {
@@ -652,13 +658,13 @@ export function createWorkerStarts({
       if (check) {
         return {
           task: card.id,
-          canContinue: current.state === 'gone',
+          canContinue: current.state !== 'unknown',
           folderMissing: !agent.cwd || !isFolder({ path: agent.cwd }),
           ...current,
         }
       }
 
-      requireGone({ current })
+      noticeOutsidePresence({ current })
 
       const cwd = folderOf({
         card: {

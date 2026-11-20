@@ -16,7 +16,7 @@ import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -1132,6 +1132,44 @@ test(
       })).task.settings?.version === '9.9.9',
     })
     expect(helper.answered).toBe(0)
+    const mainEdit = await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'invoices',
+        '--brief',
+        'Retry the export without losing its rows',
+      ],
+    })
+    expect(mainEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('leased') }))
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'invoices',
+        '--full',
+      ],
+    })).task.brief).toBe('Retry the export without losing its rows')
+    const ungranted = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'outside-helper-grant',
+        '--title',
+        'Check the import log',
+      ],
+    })
+    const helperEdit = await hydra.as({ session: helper }).run({
+      args: [
+        'task',
+        'hold',
+        ungranted.card.id,
+      ],
+    })
+    expect(helperEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('default') }))
+    expect((await hydra.task({ key: ungranted.card.id })).hold).toBeDefined()
 
     const reportHelperTurn = pnyx.claude.plan({
       hydra: hydra.id,
@@ -1585,7 +1623,7 @@ test(
 )
 
 test(
-  'hydra check never points a Hydra that Pnyx runs at the wait it refuses',
+  'hydra check returns immediately with a notice when a hosted Hydra requests a wait',
   async () => {
     const hydra = await pnyx.hydra()
     const session = await hydra.chat({ text: 'hello' })
@@ -1618,16 +1656,41 @@ test(
 
     expect(outside.help.join('\n')).toContain('--wait')
 
-    const waited = await hosted.refused({
+    const beforeWait = rows<{ seq: number }>({
+      text: 'select seq from hydras where id = $1',
+      values: [hydra.id],
+    })[0].seq
+    const clock = vi.spyOn(
+      Date,
+      'now',
+    ).mockReturnValue(Date.now())
+    let waited
+
+    try {
+      waited = await hosted.run({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          String(beforeWait),
+          '--wait',
+          '5',
+        ],
+      })
+      expect(waited.changes).toContain('none:')
+    } finally {
+      clock.mockRestore()
+    }
+
+    expect(waited.notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('returns immediately') })]))
+    expect((await hosted.refused({
       args: [
         'hydra',
         'check',
         '--wait',
-        '5',
+        '3601',
       ],
-    })
-
-    expect(waited.code).toBe('VALIDATION_ERROR')
+    })).code).toBe('VALIDATION_ERROR')
   },
 )
 

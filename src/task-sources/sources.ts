@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -93,6 +94,14 @@ export function sourceTask({
     invalidSource({ message: 'Choose a native task for external sources' })
   }
 
+  if (card.hidden) {
+    inform({
+      task: card.id,
+      reason: 'External source action on a hidden task',
+      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+    })
+  }
+
   if (meta.actor.startsWith('worker:')) {
     requireSteeringWorker({
       state: writer.state,
@@ -101,9 +110,10 @@ export function sourceTask({
       worker,
     })
   } else if (!ownerActor({ actor: meta.actor }) && meta.actor !== 'hydra' && meta.actor !== 'pnyx') {
-    invalidSource({
-      message: 'Only the owner, Hydra or this task’s worker can manage sources',
-      code: 'NOT_ALLOWED',
+    inform({
+      task: card.id,
+      reason: 'External source changed by another actor',
+      clear: `Use pnyx-axi task source list ${card.id} to inspect its sources`,
     })
   }
 
@@ -188,7 +198,7 @@ export function registerSource({
   const expiry = expiresAt ?? known?.expiresAt
     ?? new Date(Date.parse(meta.at) + SOURCE_MAX_TIMEOUT_MS).toISOString()
 
-  if (!owner || card.hidden) {
+  if (!owner) {
     invalidSource({ message: 'An external source needs an assigned worker' })
   }
 
@@ -438,7 +448,11 @@ export function handleResult({
   const message = card.steering?.find(message => message.id === result.message)
 
   if (!message?.ack) {
-    invalidSource({ message: 'Read and acknowledge this result’s steering message before handling it' })
+    inform({
+      task: card.id,
+      reason: 'Source result handled before its steering message was acknowledged',
+      clear: `Use pnyx-axi task inbox read ${card.id} to inspect its pending instructions`,
+    })
   }
 
   if (validateOnly) {

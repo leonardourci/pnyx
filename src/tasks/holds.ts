@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -17,11 +18,10 @@ export function requireUnheld({ card }: { card: Card }): void {
       task: card.id,
       reason: card.hold.reason,
     })
-
-    throw new HydraError({
-      message: `task ${card.id} is ${blocker.reason}`,
-      code: 'TASK_HELD',
-      help: [blocker.clear],
+    inform({
+      task: card.id,
+      reason: blocker.reason,
+      clear: blocker.clear,
     })
   }
 }
@@ -52,19 +52,20 @@ export function decideHold({
   }
 
   if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
-    throw new HydraError({
-      message: 'only Hydra or the owner manages discussion holds',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Discussion hold changed by an agent',
+      clear: 'pnyx-axi task release <task> --reason "<why>"',
+      task: card.id,
     })
   }
 
-  const reason = meta.reason?.trim()
+  const reason = meta.reason?.trim() || `${release ? 'Release' : 'Discussion hold'} requested by ${meta.actor}`
 
-  if (!reason) {
-    throw new HydraError({
-      message: 'pass --reason for the discussion hold or release',
-      field: 'reason',
-      code: 'VALIDATION_ERROR',
+  if (!meta.reason?.trim()) {
+    inform({
+      task: card.id,
+      reason: 'No reason supplied; using the caller’s request',
+      clear: `Use pnyx-axi task hold ${card.id} --reason "<why>" to describe the hold`,
     })
   }
 
@@ -81,25 +82,42 @@ export function decideHold({
   }
 
   const source = state.hydraMessages?.find(entry => entry.id === message)
-  const ownerMessage = source?.action === 'send' && ownerActor({ actor: source.actor })
-  const newer = source && card.hold && Date.parse(source.at) > Date.parse(card.hold.at)
 
-  if (!card.hold || !ownerMessage || !newer) {
+  if (message && !source) {
     throw new HydraError({
-      message: '--from-message must name the owner’s own message sent after the current hold',
-      field: 'message',
-      code: 'VALIDATION_ERROR',
+      message: 'Owner message not found',
+      code: 'NOT_FOUND',
     })
   }
 
-  if (clarificationMessage({ message: source })) {
-    throw new HydraError({
-      code: 'VALIDATION_ERROR',
-      message: 'A clarification does not release a discussion hold',
-    })
+  if (!card.hold) {
+    return { skipped: 'unchanged' as const }
   }
 
   const question = openAsks({ card }).find(ask => ask.kind === 'go' && ask.hold?.id === card.hold?.id)
+  const askedAt = question?.reaskedAt ?? question?.escalated?.at ?? question?.at
+  const ownerGo = source?.action === 'send' && ownerActor({ actor: source.actor })
+    && Date.parse(source.at) > Date.parse(card.hold.at)
+    && (askedAt === undefined || Date.parse(source.at) > Date.parse(askedAt))
+    && !clarificationMessage({ message: source })
+
+  if (!ownerGo) {
+    inform({
+      task: card.id,
+      reason: 'Discussion hold released without an owner go message',
+      clear: `Use pnyx-axi task hold ${card.id} --reason "<why>" to restore it`,
+    })
+  }
+
+  const recorded = source ? {
+    id: source.id,
+    text: source.text,
+    at: source.at,
+  } : {
+    id: meta.id ?? `release:${state.seq + 1}`,
+    text: reason,
+    at: meta.at,
+  }
 
   if (question) {
     askAnswer({
@@ -108,7 +126,7 @@ export function decideHold({
       id: question.id,
       actor: HYDRA_ACTOR,
       choice: 'Go',
-      fromMessage: source.id,
+      ...(ownerGo ? { fromMessage: source.id } : {}),
     })
   }
 
@@ -121,11 +139,8 @@ export function decideHold({
       data: {
         hold: card.hold.id,
         answers: question?.id,
-        message: {
-          id: source.id,
-          text: source.text,
-          at: source.at,
-        },
+        message: recorded,
+        ...(!ownerGo ? { direct: true as const } : {}),
       },
     },
   })

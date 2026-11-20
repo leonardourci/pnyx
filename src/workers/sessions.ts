@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import type { SourceRef, HydraState, Decision } from '#app/model.ts'
 import { asRecord, invalid, onlyKeys, text, optionalText } from '#app/command-validation.ts'
 import type { AgentRef, AgentSettings, TerminalFacts, SessionEvent } from './model.ts'
@@ -257,16 +258,20 @@ export function decideSession({
   })
 
   if (target?.queue && target.queue.session !== fromQueue) {
-    throw new HydraError({
-      message: 'unqueue this task before attaching a worker manually',
-      code: 'CONFLICT',
+    inform({
+      task: target.id,
+      reason: 'Released the queue to attach the requested worker',
+      clear: `Use pnyx-axi task queue ${target.id} --behind ${target.queue.session} to queue it again`,
     })
   }
 
-  if (target?.sessionIds?.some(id => id !== session.id)) {
-    throw new HydraError({
-      message: `task ${target.id} already has an attached agent; detach it first`,
-      code: 'SESSION_CONFLICT',
+  const replaces = target?.sessionIds?.find(id => id !== session.id)
+
+  if (target && replaces) {
+    inform({
+      task: target.id,
+      reason: `Replaced attached session ${replaces}; its history and files remain`,
+      clear: `Use pnyx-axi task attach ${target.id} --session ${replaces} to attach it again`,
     })
   }
 
@@ -292,6 +297,10 @@ export function decideSession({
     session: session.id,
     before: session.taskId,
     after: target?.id ?? null,
+  }
+
+  if (replaces) {
+    data.replaces = replaces
   }
 
   if (working) {

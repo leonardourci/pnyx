@@ -18,13 +18,13 @@ import { AGENT_HELP, agent } from '#workers/agent-cli.ts'
 import { REPLY_HELP, reply } from '#workers/reply-cli.ts'
 import { workerCommands } from '#workers/workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from '#integrations/cli.ts'
-import { ownerOnly } from '#hydra/hydra-session.ts'
+import { agentNotices } from '#hydra/hydra-session.ts'
 import { workerScoped } from '#workers/worker-scope.ts'
 import { RESTART_HELP, restart } from '#upgrade/restart.ts'
 import { UPGRADE_HELP, upgrade } from '#upgrade/cli.ts'
 
 const HELP: Record<string, string> = {
-  approval: 'usage: pnyx-axi approval confirm|dismiss <token> [--confirm <token>]\nOwner-only questions appear in Hydra’s chat.',
+  approval: 'usage: pnyx-axi approval confirm|dismiss <token>\nApplies or dismisses an existing saved approval directly.',
   oracle: ORACLE_HELP,
   project: PROJECT_HELP,
   reply: REPLY_HELP,
@@ -132,7 +132,7 @@ export async function runCli({
       }
     }
 
-  const owned = ownerOnly({
+  const owned = agentNotices({
     commands: {
       ...commands,
       ...supervisedCommands({

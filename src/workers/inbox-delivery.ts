@@ -113,7 +113,7 @@ export async function notifySteering({
         }
 
         const waiting = waitsOnHook({ attention: current.attention })
-        const active = !current.hidden && !steeringHeld({ card: current }) && !waiting
+        const active = !steeringHeld({ card: current }) && !waiting
 
         return Boolean(active && pending && !pending.ack
           && sameClaim({

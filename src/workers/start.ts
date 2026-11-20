@@ -1,5 +1,5 @@
+import { inform } from '#app/command-notices.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
-import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { startBlockers } from '#tasks/dependencies.ts'
@@ -15,7 +15,6 @@ import { checkRevision, findCard } from '#tasks/push-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import { liveTask } from '#tasks/select.ts'
 import { taskFolder } from '#projects/copy-create.ts'
 import type { Harness } from '#workers/providers.ts'
 import { canonical } from '#store/paths.ts'
@@ -130,11 +129,19 @@ function requireLiveTask({
   card: Card
   ref: string
 }): void {
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+  if (card.id === HYDRA_CARD) {
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
       help: ['Run `pnyx-axi task list`'],
+    })
+  }
+
+  if (card.hidden) {
+    inform({
+      task: card.id,
+      reason: 'Worker action requested on a hidden task',
+      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
     })
   }
 }
@@ -537,10 +544,6 @@ export async function startTask({
         ...(open.length ? { open } : {}),
         ...(unqueued ? { unqueued } : {}),
       }
-    }
-
-    if (tools?.length) {
-      requireToolAuthority({ meta })
     }
 
     checkRevision({

@@ -1,8 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { ownerActor } from './actors.ts'
+import { inform } from './command-notices.ts'
+import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { parseArgs, promisify } from 'node:util'
 import { join } from 'node:path'
-import { WRITE, guard, meta, parse, required, type Output } from './cli-support.ts'
+import { WRITE, guard, meta, parse, required } from './cli-support.ts'
 import { effectiveDispatch, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -12,7 +14,7 @@ import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { requestCwd, IDENTITY } from '#app/request-context.ts'
+import { requestEnv, IDENTITY } from '#app/request-context.ts'
 import { memoryAgent, memoryAccessRevision } from '#memory/poleis.ts'
 
 const exec = promisify(execFile)
@@ -92,145 +94,6 @@ function context({
     .digest('hex')
 }
 
-export function approvedHydraRemoval({
-  hydraId,
-  id,
-  token,
-}: {
-  hydraId: string
-  id: string
-  token: string
-}): false | Record<string, string> {
-  const state = loadHydra({ hydraId }).state
-  const proposal = state.dispatchProposals?.find(entry => entry.token === token)
-
-  const callerUnavailable = state.config?.removed || state.config?.removing
-
-  if (callerUnavailable || proposal?.kind !== 'command' || proposal.status !== 'applying') {
-    return false
-  }
-
-  const target = JSON.parse(proposal.value) as Target
-
-  if (target.name !== 'hydra' || target.args[0] !== 'remove' || target.args[1] !== id) {
-    return false
-  }
-
-  if (context({
-    state,
-    target,
-  }) !== proposal.before) {
-    throw new HydraError({
-      message: 'The target changed. Ask Hydra to propose the removal again',
-      code: 'CONFLICT',
-    })
-  }
-
-  if (!target.removalWork) {
-    throw new HydraError({
-      message: 'This approval has no checkout preview. Propose removal again',
-      code: 'CONFLICT',
-    })
-  }
-
-  return target.removalWork
-}
-
-export function proposeOwnerCommand({
-  name,
-  args,
-  hydraId,
-  summary: requestedSummary,
-  removalSeq,
-  removalWork,
-}: {
-  name: string
-  args: string[]
-  hydraId: string
-  summary?: string
-  removalSeq?: number
-  removalWork?: Record<string, string>
-}): Output {
-  const safe: string[] = []
-
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index]!
-
-    if ([
-      '--hydra',
-      '--actor',
-      '--confirm',
-      '--event-id',
-    ].includes(arg)) {
-      index++
-      continue
-    }
-
-    if (/^--(hydra|actor|confirm|event-id)=/.test(arg)) {
-      continue
-    }
-
-    safe.push(arg)
-  }
-
-  const token = randomUUID()
-  const target: Target = {
-    name,
-    args: safe,
-    cwd: requestCwd(),
-    removalWork,
-  }
-  const value = JSON.stringify(target)
-  const summary = requestedSummary ?? `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
-  const dispatch = dispatchFor({ target })
-  const memory = memoryRulesFor({ target })
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      const decision = hydraEvent({
-        state: writer.state,
-        meta: {
-          actor: 'hydra',
-          at: new Date().toISOString(),
-        },
-        cardId: HYDRA_CARD,
-        change: {
-          type: 'hydra.dispatch-proposed',
-          data: {
-            token,
-            kind: 'command',
-            shared: false,
-            before: context({
-              state: writer.state,
-              target,
-              dispatch,
-              memory,
-              removalSeq,
-            }),
-            value,
-            summary,
-          },
-        },
-      })
-
-      if ('event' in decision) {
-        writer.append({ event: decision.event })
-      }
-    },
-  })
-
-  return {
-    confirmation: 'needed',
-    token,
-    action: summary,
-    preview: {
-      name,
-      args: safe,
-    },
-    help: ['The owner can Confirm or Dismiss this question in Hydra’s chat'],
-  }
-}
-
 export const approval = guard({
   handler: async ({ args }) => {
     const {
@@ -242,12 +105,15 @@ export const approval = guard({
       options: WRITE,
       positionals: 2,
     })
-    const actor = meta({ values })
+    const actor = {
+      ...meta({ values }),
+      id: undefined,
+    }
 
     if (actor.actor === 'hydra' || memoryAgent()) {
-      throw new HydraError({
-        message: 'Only the owner can answer an approval question',
-        code: 'OWNER_ONLY',
+      inform({
+        reason: 'Approval question answered by an agent',
+        clear: 'Use pnyx-axi approval dismiss <token> to dismiss a pending approval',
       })
     }
 
@@ -259,7 +125,7 @@ export const approval = guard({
 
     if (action !== 'confirm' && action !== 'dismiss') {
       throw new HydraError({
-        message: 'Use approval confirm|dismiss <token> [--confirm <token>]',
+        message: 'Use approval confirm|dismiss <token>',
         code: 'VALIDATION_ERROR',
       })
     }
@@ -286,14 +152,10 @@ export const approval = guard({
         }
 
         if (action === 'confirm' && proposal.status === 'failed') {
-          throw new HydraError({
-            message: 'Inspect the failed action before asking Hydra for a new question',
-            code: 'CONFLICT',
+          inform({
+            reason: 'Retrying a failed approved action after checking its target',
+            clear: 'Use pnyx-axi approval dismiss <token> to dismiss it instead',
           })
-        }
-
-        if (action === 'confirm' && values.confirm !== token) {
-          return proposal
         }
 
         if (action === 'confirm' && context({
@@ -302,9 +164,9 @@ export const approval = guard({
           dispatch,
           memory,
         }) !== proposal.before) {
-          throw new HydraError({
-            message: 'The target changed; dismiss this question and ask Hydra to propose it again',
-            code: 'CONFLICT',
+          inform({
+            reason: 'Applying a saved action after its target changed',
+            clear: `Use pnyx-axi ${confirming?.name ?? 'task'} --help to inspect its current commands`,
           })
         }
 
@@ -347,21 +209,6 @@ export const approval = guard({
       }
     }
 
-    if (values.confirm !== token) {
-      const previewTarget = JSON.parse(selected.value) as Target
-
-      return {
-        confirmation: 'needed',
-        token,
-        action: selected.summary,
-        preview: {
-          name: previewTarget.name,
-          args: previewTarget.args,
-          cwd: previewTarget.cwd,
-        },
-      }
-    }
-
     const target = JSON.parse(selected.value) as Target
     let output: string
     const ownerEnv = { ...process.env }
@@ -371,7 +218,18 @@ export const approval = guard({
     }
 
     ownerEnv.PNYX_HOME = pnyxHome()
-    ownerEnv.PNYX_ACTOR = 'web'
+    const caller = requestEnv()
+    const fromAgent = !ownerActor({ actor: actor.actor }) || memoryAgent()
+
+    if (fromAgent) {
+      for (const name of IDENTITY) {
+        if (caller[name] !== undefined) {
+          ownerEnv[name] = caller[name]
+        }
+      }
+    }
+
+    ownerEnv.PNYX_ACTOR = fromAgent ? caller.PNYX_ACTOR ?? actor.actor : 'web'
 
     const removesHydra = target.name === 'hydra' && target.args[0] === 'remove'
 
@@ -414,13 +272,6 @@ export const approval = guard({
           maxBuffer: 4 * 1024 * 1024,
         },
       )
-
-      if (/^confirmation: needed$/m.test(stdout)) {
-        throw new HydraError({
-          message: 'The approved command still requires confirmation',
-          code: 'CONFLICT',
-        })
-      }
 
       output = stdout.trim()
     } catch (error) {

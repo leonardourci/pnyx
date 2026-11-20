@@ -1,3 +1,4 @@
+import { inform, withCommandNotices } from '#app/command-notices.ts'
 import { hostedHydraRequest } from './request-context.ts'
 import { HYDRA_ACTOR } from './actors.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -15,7 +16,7 @@ import { validateChoice, chosenSettings, readQuota } from '#workers/dispatch.ts'
 import { knownHarness, providerIdOf } from '#workers/providers.ts'
 import { hydraFastReaches, modelIds } from '#workers/provider.ts'
 import { SETTINGS } from '#workers/host.ts'
-import { requireOwnerToRaise, workerMode } from '#workers/permission-level.ts'
+import { noticePermissionIncrease, workerMode } from '#workers/permission-level.ts'
 
 // The host names the helper's reply action 'send'.
 const HELPER_ACTIONS: Record<string, HelperAction> = {
@@ -207,7 +208,7 @@ export async function hostRequestUnlocked({
         project,
       })
 
-      requireOwnerToRaise({
+      noticePermissionIncrease({
         state: current,
         actor,
         harness: dispatch.provider,
@@ -479,7 +480,7 @@ export async function hostRequestUnlocked({
   }
 }
 
-export async function hostRequest({
+async function runHostRequest({
   host,
   body,
   usage = {},
@@ -497,9 +498,9 @@ export async function hostRequest({
     HELPER_ACTIONS,
     String(action),
   )) {
-    throw new HydraError({
-      message: 'This action belongs to the main Hydra',
-      code: 'MAIN_ONLY',
+    inform({
+      reason: 'Helper requested an action outside its defaults',
+      clear: 'Use pnyx-axi task history <task> to inspect the change',
     })
   }
 
@@ -528,9 +529,9 @@ export async function hostRequest({
       actor,
       action: HELPER_ACTIONS[String(action)],
     })) {
-      throw new HydraError({
-        message: 'This task now belongs to the main Hydra',
-        code: 'MAIN_ONLY',
+      inform({
+        reason: 'Helper acted without a current task grant',
+        clear: 'Use pnyx-axi task history <task> to inspect the change',
       })
     }
 
@@ -555,4 +556,22 @@ export async function hostRequest({
   } finally {
     release()
   }
+}
+
+export async function hostRequest({
+  host,
+  body,
+  usage = {},
+}: {
+  host: Host
+  body: unknown
+  usage?: UsageInputs
+}): Promise<Record<string, unknown>> {
+  return withCommandNotices({
+    run: () => runHostRequest({
+      host,
+      body,
+      usage,
+    }),
+  })
 }

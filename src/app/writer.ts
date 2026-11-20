@@ -1,3 +1,4 @@
+import { collectingNotices, commandNotices, inform } from './command-notices.ts'
 import { applyObservation, observationKey, observationStatement, type SourceObservation } from '#tasks/observations.ts'
 import type { Output } from './cli-support.ts'
 import { transactionReceipt, transactionStatement } from './transactions.ts'
@@ -420,10 +421,20 @@ export function eventWriter({
           task,
           actor: event.actor,
         }))) {
-          throw new HydraError({
-            message: 'Helper mutation is outside its task scope',
-            code: 'MAIN_ONLY',
+          inform({
+            task,
+            reason: 'Helper changed a task outside its default scope',
+            clear: 'Use pnyx-axi task history <task> to inspect the change',
           })
+        }
+      }
+
+      const notices = commandNotices({ task: event.cardId })
+
+      if (collectingNotices() && !harvested && !event.actor.startsWith('hook:')) {
+        event = {
+          ...event,
+          notices,
         }
       }
 

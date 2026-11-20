@@ -15,7 +15,7 @@ beforeAll(async () => {
 })
 
 test(
-  'poleis enforce both locks and resolve every write from the Hydra',
+  'poleis filter ordinary reads while explicit writes proceed with notices',
   async () => {
     const work = await pnyx.hydra()
     const defaults = (await work.owner({
@@ -51,7 +51,7 @@ test(
     })
     expect(unavailableHome.writable ?? null).toBeNull()
     expect(unavailableHome.revision ?? null).toBeNull()
-    expect((await work.ownerRefused({
+    const unavailableWrite = await work.owner({
       args: [
         'owner',
         'memory',
@@ -61,7 +61,8 @@ test(
         '--text',
         'Unavailable home',
       ],
-    })).code).toBe('NOT_FOUND')
+    })
+    expect(unavailableWrite.notices).toBeDefined()
     await work.owner({
       args: [
         'hydra',
@@ -70,7 +71,7 @@ test(
         'shared',
       ],
     })
-    expect((await work.ownerRefused({
+    expect((await work.owner({
       args: [
         'hydra',
         'create',
@@ -79,7 +80,15 @@ test(
         'work',
         '--propose',
       ],
-    })).code).toBe('VALIDATION_ERROR')
+    })).notices).toBeDefined()
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--polis',
+        'shared',
+      ],
+    })
     expect((await work.ownerRefused({
       args: [
         'settings',
@@ -302,15 +311,15 @@ test(
       ],
       env: crossEnv,
     })
-    expect(crossHydraWrite.status).not.toBe(0)
-    expect(crossHydraWrite.stdout).toContain('NOT_FOUND')
+    expect(crossHydraWrite.status).toBe(0)
+    expect(parsed(crossHydraWrite).notices).toBeDefined()
     expect(JSON.stringify(await personal.owner({
       args: [
         'hydra',
         'memory',
         'list',
       ],
-    }))).toContain('Private Hydra scope')
+    }))).not.toContain('Private Hydra scope')
     await personal.owner({
       args: [
         'hydra',
@@ -363,20 +372,19 @@ test(
       ],
       env: crossEnv,
     })
-    expect(crossOwnerWrite.status).not.toBe(0)
-    expect(parsed(crossOwnerWrite).code).toBe('NOT_FOUND')
-    expect((await pnyxAxi({
+    expect(crossOwnerWrite.status).toBe(0)
+    expect(parsed(crossOwnerWrite).notices).toBeDefined()
+    await personal.owner({
       args: [
-        'hydra',
+        'owner',
+        'memory',
         'set',
-        '--read-poleis',
-        'shared,personal',
-        '--propose',
-        '--hydra',
-        personal.id,
+        '--key',
+        'preferences',
+        '--text',
+        'Secret nebula preference',
       ],
-      env: crossEnv,
-    })).stdout).toContain('NOT_FOUND')
+    })
     expect((await pnyxAxi({
       args: [
         'oracle',
@@ -550,8 +558,8 @@ test(
       ],
       env: crossEnv,
     })
-    expect(hiddenSpaceEdit.status).not.toBe(0)
-    expect(hiddenSpaceEdit.stdout).toContain('NOT_FOUND')
+    expect(hiddenSpaceEdit.status).toBe(0)
+    expect(parsed(hiddenSpaceEdit).notices).toBeDefined()
     const missingSpaceEdit = await pnyxAxi({
       args: [
         'settings',
@@ -563,7 +571,7 @@ test(
       ],
       env: crossEnv,
     })
-    expect(missingSpaceEdit.stdout).toBe(hiddenSpaceEdit.stdout)
+    expect(missingSpaceEdit.status).toBe(0)
     const hiddenSpaceProposal = await pnyxAxi({
       args: [
         'settings',
@@ -576,8 +584,16 @@ test(
       ],
       env: crossEnv,
     })
-    expect(hiddenSpaceProposal.status).not.toBe(0)
-    expect(hiddenSpaceProposal.stdout).toBe(hiddenSpaceEdit.stdout)
+    expect(hiddenSpaceProposal.status).toBe(0)
+    expect(parsed(hiddenSpaceProposal)).not.toHaveProperty('confirmation')
+    await personal.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ poleis: { personal: { readers: [personal.id] } } }),
+      ],
+    })
     expect(JSON.stringify(await personal.owner({
       args: [
         'owner',
@@ -585,6 +601,12 @@ test(
         'list',
       ],
     }))).toContain('Corrected supernova preference')
+    const originalReads = (await work.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra.readPoleis
     const selfGrant = await pnyxAxi({
       args: [
         'hydra',
@@ -603,9 +625,17 @@ test(
         PNYX_HYDRA: work.id,
       },
     })
-    expect(selfGrant.status).not.toBe(0)
-    expect(selfGrant.stdout + selfGrant.stderr).toContain('OWNER_ONLY')
-    const hidden = await work.ownerRefused({
+    expect(selfGrant.status).toBe(0)
+    expect(parsed(selfGrant).notices).toBeDefined()
+    await work.owner({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        originalReads.join(','),
+      ],
+    })
+    const hidden = await work.owner({
       args: [
         'owner',
         'memory',
@@ -616,18 +646,25 @@ test(
         'personal',
       ],
     })
-    const missing = await work.ownerRefused({
+    expect(hidden.notices).toBeDefined()
+    expect(JSON.stringify(await personal.owner({
       args: [
         'owner',
         'memory',
-        'move',
+        'list',
+      ],
+    }))).toContain('Work quasar learning')
+    await work.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
         '--key',
         'learnings',
-        '--to',
-        'missing',
+        '--text',
+        'Work quasar learning',
       ],
     })
-    expect(hidden).toEqual(missing)
     await work.owner({
       args: [
         'owner',
@@ -704,11 +741,8 @@ test(
       ],
       env: crossEnv,
     })
-    expect(parsed(nativeStart)).toMatchObject({
-      code: 'NOT_FOUND',
-      error: 'not found',
-    })
-    expect(pnyx.claude.sessions.some(session => session.cwd === nativeFolder)).toBe(false)
+    expect(nativeStart.status).toBe(0)
+    expect(parsed(nativeStart).notices).toBeDefined()
     await personal.owner({
       args: [
         'settings',
@@ -740,10 +774,8 @@ test(
       ],
       env: crossEnv,
     })
-    expect(parsed(lockedStart)).toMatchObject({
-      code: 'NOT_FOUND',
-      error: 'not found',
-    })
+    expect(lockedStart.status).toBe(0)
+    expect(parsed(lockedStart).notices).toBeDefined()
     await work.owner({
       args: [
         'hydra',
@@ -799,7 +831,7 @@ test(
       ],
       env: crossEnv,
     })
-    expect(parsed(boundWrite).code).toBe('NOT_FOUND')
+    expect(parsed(boundWrite).code).toBe('VALIDATION_ERROR')
     await work.owner({
       args: [
         'hydra',
@@ -960,7 +992,7 @@ test(
         'personal',
       ],
     })
-    expect((await work.ownerRefused({
+    expect((await work.owner({
       args: [
         'owner',
         'memory',
@@ -968,9 +1000,9 @@ test(
         '--key',
         'preferences',
         '--text',
-        'forbidden',
+        'Explicit private update',
       ],
-    })).code).toBe('NOT_FOUND')
+    })).notices).toBeDefined()
     expect(JSON.stringify(await work.owner({
       args: [
         'owner',
@@ -1025,6 +1057,99 @@ test(
         'preferences',
         '--text',
         'small',
+      ],
+    })
+
+    for (const args of [
+      [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'scope',
+        '--text',
+        'h'.repeat(1600),
+      ],
+      [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'o'.repeat(25000),
+      ],
+      [
+        'owner',
+        'worker-notes',
+        'set',
+        '--text',
+        'w'.repeat(1600),
+      ],
+    ]) {
+      const overBudget = await work.owner({
+        args: [
+          ...args,
+          '--reason',
+          'Save explicit budget example',
+        ],
+      })
+      expect(overBudget.notices).toContainEqual(expect.objectContaining({ reason: expect.stringMatching(/uses (1600 of 1500|25000 of 24000)|exceed|budget/i) }))
+      const readArgs = args[0] === 'hydra' ? [
+        'hydra',
+        'memory',
+        'list',
+        '--key',
+        'scope',
+      ] : args[1] === 'worker-notes' ? [
+        'owner',
+        'memory',
+        'list',
+      ] : [
+        'owner',
+        'memory',
+        'list',
+        '--key',
+        'preferences',
+      ]
+      expect(JSON.stringify(await work.owner({ args: readArgs }))).toContain(args[args.length - 1])
+    }
+
+    const savedBudget = JSON.stringify(await work.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    }))
+    expect(savedBudget).toContain('o'.repeat(25000))
+    await work.owner({
+      args: [
+        'owner',
+        'worker-notes',
+        'forget',
+        '--reason',
+        'Curate test notes',
+      ],
+    })
+    await work.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'small',
+      ],
+    })
+    await work.owner({
+      args: [
+        'hydra',
+        'memory',
+        'forget',
+        '--key',
+        'scope',
       ],
     })
     const roomyDigest = await pnyxAxi({
@@ -1289,7 +1414,7 @@ test(
         PNYX_HYDRA: hidden.id,
         PNYX_TASK: undefined,
       },
-    })).stdout).toContain('NOT_FOUND')
+    })).stdout).toContain('filtered')
     expect(JSON.stringify(await hidden.owner({
       args: [
         'project',
@@ -1297,7 +1422,7 @@ test(
         path,
       ],
     }))).not.toContain('Project pulsar learning')
-    expect((await hidden.ownerRefused({
+    expect((await hidden.owner({
       args: [
         'project',
         'memory',
@@ -1305,13 +1430,31 @@ test(
         '--project',
         path,
         '--key',
-        'learnings',
+        'preferences',
         '--text',
-        'blocked',
-        '--reason',
-        'test',
+        'Explicit hidden-project update',
       ],
-    })).code).toBe('NOT_FOUND')
+    })).notices).toBeDefined()
+
+    for (const text of [
+      'Project pulsar learning',
+      'Unknown private learning',
+    ]) {
+      expect((await hidden.ownerRefused({
+        args: [
+          'project',
+          'memory',
+          'confirm',
+          '--project',
+          path,
+          '--text',
+          text,
+          '--reason',
+          'Explicit confirmation',
+        ],
+      })).code).toBe('NOT_FOUND')
+    }
+
     expect((await pnyxAxi({
       args: [
         'hydra',
@@ -1981,10 +2124,10 @@ test(
 )
 
 test(
-  'Hydra proposes wider polis access for Confirm and narrows directly',
+  'memory configuration and distribution apply directly even with legacy propose flags',
   async () => {
     const hydra = await pnyx.hydra()
-    const project = hydra.folder({ name: 'permission-project' })
+    const project = hydra.folder({ name: 'direct-memory' })
     await hydra.owner({
       args: [
         'project',
@@ -1992,384 +2135,73 @@ test(
         project,
       ],
     })
-    const other = await legacyDuplicate({
-      pnyx,
-      id: 'legacy-permission-other',
-      projects: [{ path: project }],
-    })
-    await hydra.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({
-          poleis: {
-            controlled: { readers: [hydra.id] },
-            extra: { readers: [hydra.id] },
-          },
-        }),
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared,controlled',
-      ],
-    })
-    await hydra.chat({ text: 'Memory permission test' })
-    await hydra.owner({
-      args: [
-        'agent',
-        '$hydra',
-        'mode',
-        'bypassPermissions',
-      ],
-    })
-    const env = {
-      ...process.env,
-      PNYX_ACTOR: 'hydra',
-      PNYX_HYDRA: hydra.id,
-      PNYX_TASK: undefined,
-    }
-    const concurrent = await Promise.all([
-      pnyxAxi({
+
+    const run = async ({ args }: { args: string[] }) => {
+      const result = await pnyxAxi({
         args: [
-          'hydra',
-          'set',
-          '--read-poleis',
-          'shared',
-          '--reason',
-          'Narrow memory access',
+          ...args,
+          '--propose',
           '--hydra',
           hydra.id,
         ],
-        env,
-      }),
-      pnyxAxi({
-        args: [
-          'hydra',
-          'set',
-          '--polis',
-          'controlled',
-          '--reason',
-          'Select memory home',
-          '--hydra',
-          hydra.id,
-        ],
-        env,
-      }),
-    ])
-    expect(concurrent.map(result => result.status)).toEqual([
-      0,
-      0,
-    ])
-    const serialized = (await hydra.owner({
-      args: [
-        'hydra',
-        'show',
-      ],
-    })).hydra
-    expect(serialized.readPoleis).toEqual(['shared'])
-    expect(serialized.polis).toBe('controlled')
-    expect((await hydra.ownerRefused({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Unreadable home',
-      ],
-    })).code).toBe('NOT_FOUND')
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'shared',
-        '--read-poleis',
-        'shared,controlled',
-      ],
-    })
-
-    const widerReads = [
-      'hydra',
-      'set',
-      '--read-poleis',
-      'shared,controlled,extra',
-      '--review-minutes',
-      '25',
-      '--hydra',
-      hydra.id,
-    ]
-    const refusedReads = await pnyxAxi({
-      args: widerReads,
-      env,
-    })
-    expect(refusedReads.status).not.toBe(0)
-    expect(refusedReads.stdout).toContain('OWNER_ONLY')
-    const proposedReads = parsed(await pnyxAxi({
-      args: [
-        ...widerReads,
-        '--propose',
-      ],
-      env,
-    }))
-    expect(proposedReads.confirmation).toBe('needed')
-    expect((await hydra.owner({
-      args: [
-        'hydra',
-        'show',
-      ],
-    })).hydra.readPoleis).toEqual([
-      'shared',
-      'controlled',
-    ])
-    await hydra.owner({
-      args: [
-        'approval',
-        'confirm',
-        proposedReads.token,
-        '--confirm',
-        proposedReads.token,
-      ],
-    })
-    expect((await hydra.owner({
-      args: [
-        'hydra',
-        'show',
-      ],
-    })).hydra.readPoleis).toEqual([
-      'shared',
-      'controlled',
-      'extra',
-    ])
-    expect((await pnyxAxi({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared,controlled',
-        '--hydra',
-        hydra.id,
-      ],
-      env,
-    })).status).toBe(0)
-
-    const widerReaders = [
-      'settings',
-      'set',
-      '--json',
-      JSON.stringify({
-        poleis: {
-          controlled: {
-            readers: [
-              hydra.id,
-              other.id,
-            ],
-          },
+        env: {
+          ...process.env,
+          PNYX_ACTOR: 'hydra',
+          PNYX_HYDRA: hydra.id,
+          PNYX_TASK: undefined,
         },
-      }),
-      '--hydra',
-      hydra.id,
-    ]
-    expect((await pnyxAxi({
-      args: widerReaders,
-      env,
-    })).stdout).toContain('OWNER_ONLY')
-    let proposedReaders = parsed(await pnyxAxi({
-      args: [
-        ...widerReaders,
-        '--propose',
-      ],
-      env,
-    }))
-    expect((await hydra.owner({
-      args: [
-        'settings',
-        'show',
-      ],
-    })).settings.poleis.controlled.readers).toEqual([hydra.id])
-    await hydra.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        '{"logDays":23}',
-      ],
-    })
-    expect((await hydra.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposedReaders.token,
-        '--confirm',
-        proposedReaders.token,
-      ],
-    })).code).toBe('CONFLICT')
-    await hydra.owner({
-      args: [
-        'approval',
-        'dismiss',
-        proposedReaders.token,
-      ],
-    })
-    proposedReaders = parsed(await pnyxAxi({
-      args: [
-        ...widerReaders,
-        '--propose',
-      ],
-      env,
-    }))
-    await hydra.owner({
-      args: [
-        'approval',
-        'confirm',
-        proposedReaders.token,
-        '--confirm',
-        proposedReaders.token,
-      ],
-    })
-    expect((await hydra.owner({
-      args: [
-        'settings',
-        'show',
-      ],
-    })).settings.poleis.controlled.readers).toEqual([
-      hydra.id,
-      other.id,
-    ])
-    expect((await pnyxAxi({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({ poleis: { controlled: { readers: [hydra.id] } } }),
-        '--hydra',
-        hydra.id,
-      ],
-      env,
-    })).status).toBe(0)
-    expect((await hydra.owner({
-      args: [
-        'settings',
-        'show',
-      ],
-    })).settings.poleis.controlled.readers).toEqual([hydra.id])
+      })
+      expect(
+        result.status,
+        result.stdout,
+      ).toBe(0)
+      const output = parsed(result)
+      expect(output).not.toHaveProperty('confirmation')
+      expect(output.notices).toBeDefined()
 
-    expect((await pnyxAxi({
+      return output
+    }
+
+    await run({
+      args: [
+        'hydra',
+        'set',
+        '--read-poleis',
+        'shared,direct-memory',
+        '--polis',
+        'direct-memory',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra.polis).toBe('direct-memory')
+    await run({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({ poleis: { 'direct-memory': { readers: ['*'] } } }),
+      ],
+    })
+    await run({
       args: [
         'project',
         'move',
         project,
         '--polis',
-        'controlled',
-        '--hydra',
-        hydra.id,
+        'direct-memory',
       ],
-      env,
-    })).status).toBe(0)
-    expect(JSON.stringify(await other.owner({
+    })
+    const movedProjects = await hydra.owner({
       args: [
         'project',
         'list',
       ],
-    }))).toContain('permission-project')
-    expect((await pnyxAxi({
-      args: [
-        'project',
-        'move',
-        project,
-        '--polis',
-        'shared',
-        '--hydra',
-        hydra.id,
-      ],
-      env,
-    })).stdout).toContain('OWNER_ONLY')
-    const projectProposalArgs = [
-      'project',
-      '--polis',
-      'shared',
-      'move',
-      project,
-      '--propose',
-      '--hydra',
-      hydra.id,
-    ]
-    let projectProposal = parsed(await pnyxAxi({
-      args: projectProposalArgs,
-      env,
-    }))
-    expect(JSON.stringify(await other.owner({
-      args: [
-        'project',
-        'list',
-      ],
-    }))).toContain('permission-project')
-    await other.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        '',
-      ],
     })
-    expect((await hydra.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        projectProposal.token,
-        '--confirm',
-        projectProposal.token,
-      ],
-    })).code).toBe('CONFLICT')
-    await hydra.owner({
-      args: [
-        'approval',
-        'dismiss',
-        projectProposal.token,
-      ],
-    })
-    await other.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared',
-      ],
-    })
-    projectProposal = parsed(await pnyxAxi({
-      args: projectProposalArgs,
-      env,
-    }))
-    await hydra.owner({
-      args: [
-        'approval',
-        'confirm',
-        projectProposal.token,
-        '--confirm',
-        projectProposal.token,
-      ],
-    })
-    expect(JSON.stringify(await other.owner({
-      args: [
-        'project',
-        'list',
-      ],
-    }))).toContain('permission-project')
-
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'controlled',
-      ],
-    })
+    expect(movedProjects.projects.find((entry: { path: string }) => entry.path === project)?.polis).toBe('direct-memory')
     await hydra.owner({
       args: [
         'owner',
@@ -2378,66 +2210,10 @@ test(
         '--key',
         'preferences',
         '--text',
-        'Controlled magnetar note',
+        'Direct distribution preference',
       ],
     })
-    const move = [
-      'owner',
-      'memory',
-      'move',
-      '--key',
-      'preferences',
-      '--to',
-      'shared',
-      '--hydra',
-      hydra.id,
-    ]
-    await hydra.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({
-          poleis: {
-            shared: {
-              readers: [
-                hydra.id,
-                'future-polis-reader',
-              ],
-            },
-          },
-        }),
-      ],
-    })
-    expect((await pnyxAxi({
-      args: move,
-      env,
-    })).stdout).toContain('OWNER_ONLY')
-    await hydra.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        '{"poleis":{"shared":{"readers":["*"]}}}',
-      ],
-    })
-    const sourceMemory = await hydra.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'owner',
-        'memory',
-        'forget',
-        '--key',
-        'preferences',
-      ],
-    })
-    expect((await hydra.ownerRefused({
+    await run({
       args: [
         'owner',
         'memory',
@@ -2446,98 +2222,16 @@ test(
         'preferences',
         '--to',
         'shared',
-        '--if-revision',
-        String(sourceMemory.revision),
-      ],
-    })).code).toBe('REVISION_CONFLICT')
-    await hydra.owner({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Controlled magnetar note',
       ],
     })
-    expect((await pnyxAxi({
-      args: move,
-      env,
-    })).stdout).toContain('OWNER_ONLY')
-    let moveProposal = parsed(await pnyxAxi({
-      args: [
-        ...move,
-        '--propose',
-      ],
-      env,
-    }))
-    expect(JSON.stringify(await other.owner({
+    const reader = await pnyx.hydra()
+    expect(JSON.stringify(await reader.owner({
       args: [
         'owner',
         'memory',
         'list',
       ],
-    }))).not.toContain('Controlled magnetar note')
-    await other.owner({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Latest destination preference',
-      ],
-    })
-    expect((await hydra.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        moveProposal.token,
-        '--confirm',
-        moveProposal.token,
-      ],
-    })).code).toBe('REVISION_CONFLICT')
-    expect(JSON.stringify(await hydra.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
-    }))).toContain('Controlled magnetar note')
-    await hydra.owner({
-      args: [
-        'approval',
-        'dismiss',
-        moveProposal.token,
-      ],
-    })
-    moveProposal = parsed(await pnyxAxi({
-      args: [
-        ...move,
-        '--propose',
-      ],
-      env,
-    }))
-    await hydra.owner({
-      args: [
-        'approval',
-        'confirm',
-        moveProposal.token,
-        '--confirm',
-        moveProposal.token,
-      ],
-    })
-
-    expect(JSON.stringify(await other.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
-    }))).toContain('Controlled magnetar note')
-
+    }))).toContain('Direct distribution preference')
     await hydra.owner({
       args: [
         'owner',
@@ -2546,92 +2240,83 @@ test(
         '--key',
         'learnings',
         '--text',
-        'Controlled axion line',
+        'Direct project learning',
       ],
     })
-    const learningMove = [
-      'owner',
-      'memory',
-      'move',
-      '--project',
-      project,
-      '--text',
-      'Controlled axion line',
-      '--hydra',
-      hydra.id,
-    ]
-    expect((await pnyxAxi({
-      args: learningMove,
-      env,
-    })).stdout).toContain('OWNER_ONLY')
-    let learningProposal = parsed(await pnyxAxi({
+    const learning = await hydra.owner({
       args: [
-        ...learningMove,
-        '--propose',
+        'owner',
+        'memory',
+        'list',
       ],
-      env,
-    }))
-    expect(JSON.stringify(await other.owner({
+    })
+    const reinforced = await hydra.owner({
       args: [
-        'project',
-        'show',
-        project,
+        'owner',
+        'memory',
+        'confirm',
+        '--text',
+        'Direct project learning',
+        '--if-revision',
+        String(learning.revision),
       ],
-    }))).not.toContain('Controlled axion line')
-    await other.owner({
+    })
+    expect(reinforced.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('without session evidence') }))
+    const evidenced = await hydra.owner({
       args: [
-        'project',
+        'owner',
+        'memory',
+        'confirm',
+        '--text',
+        'Direct project learning',
+        '--reason',
+        'Confirmed in this session',
+      ],
+    })
+    expect(evidenced.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('without session evidence') }))
+    expect((await hydra.ownerRefused({
+      args: [
+        'owner',
+        'memory',
+        'move',
+        '--key',
+        'preferences',
+        '--to',
+        'Invalid',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'owner',
         'memory',
         'set',
-        '--project',
-        project,
         '--key',
         'preferences',
         '--text',
-        'Latest project preference',
-        '--reason',
-        'test changed destination',
+        'Still readable after invalid move',
       ],
     })
-    expect((await hydra.ownerRefused({
+
+    await run({
       args: [
-        'approval',
-        'confirm',
-        learningProposal.token,
-        '--confirm',
-        learningProposal.token,
-      ],
-    })).code).toBe('REVISION_CONFLICT')
-    await hydra.owner({
-      args: [
-        'approval',
-        'dismiss',
-        learningProposal.token,
+        'owner',
+        'memory',
+        'move',
+        '--project',
+        project,
+        '--text',
+        'Direct project learning',
       ],
     })
-    learningProposal = parsed(await pnyxAxi({
-      args: [
-        ...learningMove,
-        '--propose',
-      ],
-      env,
-    }))
-    await hydra.owner({
-      args: [
-        'approval',
-        'confirm',
-        learningProposal.token,
-        '--confirm',
-        learningProposal.token,
-      ],
-    })
-    expect(JSON.stringify(await other.owner({
+    expect(JSON.stringify(await hydra.owner({
       args: [
         'project',
-        'show',
+        'memory',
+        'list',
+        '--project',
         project,
       ],
-    }))).toContain('Controlled axion line')
+    }))).toContain('Direct project learning')
   },
 )
 
@@ -3081,170 +2766,6 @@ test(
 )
 
 test(
-  'memory move confirmation refuses a changed destination audience',
-  async () => {
-    const author = await pnyx.hydra()
-    const reader = await pnyx.hydra()
-    const newcomer = await pnyx.hydra()
-    await author.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({
-          poleis: {
-            'audience-private': { readers: [author.id] },
-            'audience-destination': {
-              readers: [
-                author.id,
-                reader.id,
-                newcomer.id,
-              ],
-            },
-          },
-        }),
-      ],
-    })
-    await author.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'audience-private',
-        '--read-poleis',
-        'audience-private,audience-destination',
-      ],
-    })
-    await reader.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'audience-destination',
-      ],
-    })
-    await author.owner({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Audience-bound cobalt preference',
-      ],
-    })
-    const proposal = parsed(await pnyxAxi({
-      args: [
-        'owner',
-        'memory',
-        'move',
-        '--key',
-        'preferences',
-        '--to',
-        'audience-destination',
-        '--propose',
-        '--hydra',
-        author.id,
-      ],
-      env: {
-        ...process.env,
-        PNYX_ACTOR: 'hydra',
-        PNYX_HYDRA: author.id,
-        PNYX_TASK: undefined,
-      },
-    }))
-    expect(proposal.confirmation).toBe('needed')
-    await newcomer.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'audience-destination',
-      ],
-    })
-    expect((await author.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposal.token,
-        '--confirm',
-        proposal.token,
-      ],
-    })).code).toBe('CONFLICT')
-    expect((await author.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
-    })).writable.preferences.text).toBe('Audience-bound cobalt preference')
-    expect(JSON.stringify(await reader.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
-    }))).not.toContain('Audience-bound cobalt preference')
-
-    const grant = await pnyxAxi({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({
-          poleis: {
-            'audience-private': {
-              readers: [
-                author.id,
-                newcomer.id,
-              ],
-            },
-          },
-        }),
-        '--propose',
-        '--hydra',
-        author.id,
-      ],
-      env: {
-        ...process.env,
-        PNYX_ACTOR: 'hydra',
-        PNYX_HYDRA: author.id,
-        PNYX_TASK: undefined,
-      },
-    })
-    expect(grant.status).toBe(0)
-    const readerGrant = parsed(grant)
-    expect(readerGrant.confirmation).toBe('needed')
-    await newcomer.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'audience-destination,audience-private',
-      ],
-    })
-    expect((await author.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        readerGrant.token,
-        '--confirm',
-        readerGrant.token,
-      ],
-    })).code).toBe('CONFLICT')
-    const newcomerMemory = await newcomer.owner({
-      args: [
-        'owner',
-        'memory',
-        'list',
-      ],
-    })
-    expect(JSON.stringify(newcomerMemory.memory)).not.toContain('Audience-bound cobalt preference')
-  },
-)
-
-test(
   'async memory contexts stop after three access changes',
   async () => {
     const hydra = await pnyx.hydra()
@@ -3293,7 +2814,7 @@ test(
 )
 
 test(
-  'native cross-Hydra controls require every target memory capability',
+  'cross-Hydra controls and explicit memory writes proceed with notices while memory reads stay filtered',
   async () => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra()
@@ -3320,6 +2841,28 @@ test(
         'shared,control-private',
       ],
     })
+    await target.owner({
+      args: [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'scope',
+        '--text',
+        'Private Hydra sentinel',
+      ],
+    })
+    await target.owner({
+      args: [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'preferences',
+        '--text',
+        'Private owner sentinel',
+      ],
+    })
     const folder = target.folder({ name: 'capability-target' })
     await target.owner({
       args: [
@@ -3343,191 +2886,270 @@ test(
       PNYX_HYDRA: caller.id,
       PNYX_TASK: undefined,
     }
-    const controls = [
+
+    const run = async ({
+      args,
+      input,
+    }: {
+      args: string[]
+      input?: string
+    }) => {
+      const result = await pnyxAxi({
+        args: [
+          ...args,
+          '--hydra',
+          target.id,
+        ],
+        env,
+        input,
+      })
+      expect(
+        result.status,
+        result.stdout + result.stderr,
+      ).toBe(0)
+      const output = parsed(result)
+      expect(
+        output.notices,
+        args.join(' '),
+      ).toBeDefined()
+      expect(JSON.stringify(output)).not.toContain('Private owner sentinel')
+
+      return output
+    }
+
+    for (const args of [
       [
         'task',
         'create',
         '--no-start',
         '--title',
-        'Unauthorized task',
-        '--brief',
-        'Unauthorized brief',
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'task',
-        'start',
-        task.id,
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'task',
-        'continue',
-        task.id,
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'reply',
-        task.id,
-        '--text',
-        'Private worker query',
-      ],
-      [
-        'task',
-        'attach',
-        task.id,
-        '--session',
-        'unavailable-session',
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'task',
-        'brief',
-        task.id,
-        '--brief',
-        'Unauthorized brief',
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'task',
-        'status',
-        task.id,
-        'working',
-        '--note',
-        'Unauthorized status',
-      ],
-      [
-        'task',
-        'stop',
-        task.id,
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'task',
-        'tools',
-        task.id,
-        '--grant',
-        'browser',
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'task',
-        'move',
-        task.id,
-        '--to-hydra',
-        caller.id,
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'agent',
-        task.id,
-        'mode',
-        'bypass',
+        'Cross-Hydra task',
       ],
       [
         'hydra',
         'set',
         '--name',
-        'Unauthorized name',
-        '--reason',
-        'Test cross-Hydra capability',
-      ],
-      [
-        'hydra',
-        'usage',
-        'refresh',
+        'Cross-Hydra name',
       ],
       [
         'settings',
         'set',
         '--json',
         '{"logDays":15}',
-        '--reason',
-        'Test cross-Hydra capability',
       ],
       [
-        'task',
-        'brief',
-        task.id,
-        '--brief',
-        'Spoofed actor brief',
-        '--actor',
-        'cli',
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'scope',
+        '--text',
+        'Cross-Hydra scope',
       ],
-    ]
-
-    for (const args of controls) {
-      const refused = await pnyxAxi({
-        args: [
-          ...args,
-          `--hydra=${target.id}`,
-        ],
-        env,
-      })
-      expect(
-        parsed(refused),
-        args.join(' '),
-      ).toMatchObject({
-        code: 'NOT_FOUND',
-        error: 'not found',
-      })
+      [
+        'owner',
+        'memory',
+        'set',
+        '--key',
+        'learnings',
+        '--text',
+        'Cross-Hydra learning',
+      ],
+    ]) {
+      await run({ args })
     }
 
-    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
-    const namedCreate = await pnyxAxi({
+    await run({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.brief',
+            task: task.id,
+            brief: 'Changed across Hydras',
+          },
+        ],
+      }),
+    })
+
+    expect((await target.task({ key: task.id })).brief).toBe('Changed across Hydras')
+    expect(JSON.stringify(await target.owner({
       args: [
         'hydra',
-        'create',
+        'memory',
+        'list',
+      ],
+    }))).toContain('Cross-Hydra scope')
+    expect(JSON.stringify(await target.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    }))).toContain('Cross-Hydra learning')
+    const filtered = await pnyxAxi({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+        '--hydra',
         target.id,
-        '--name',
-        'Unauthorized target',
       ],
       env,
     })
-    expect(parsed(namedCreate)).toMatchObject({
-      code: 'NOT_FOUND',
-      error: 'not found',
-    })
-    await caller.owner({
+    expect(parsed(filtered).memory).toBe('none: no Hydra memory yet')
+    const ownerRead = await pnyxAxi({
       args: [
-        'task',
-        'create',
-        '--no-start',
-        '--key',
-        'move-capability',
-        '--title',
-        'Move capability',
-        '--brief',
-        'Original caller task',
-      ],
-    })
-    const moved = await pnyxAxi({
-      args: [
-        'task',
-        'move',
-        'move-capability',
-        '--to-hydra',
+        'owner',
+        'memory',
+        'list',
+        '--hydra',
         target.id,
-        '--reason',
-        'Test destination capability',
       ],
       env,
     })
-    expect(parsed(moved)).toMatchObject({
-      code: 'NOT_FOUND',
-      error: 'not found',
-    })
-    expect((await caller.task({ key: 'move-capability' })).title).toBe('Move capability')
+    expect(ownerRead.stdout).not.toContain('Private owner sentinel')
+    expect(ownerRead.stdout).not.toContain('Cross-Hydra learning')
 
-    expect((await target.task({ key: task.id })).brief).toBe('Original capability brief')
+    const project = target.folder({ name: 'private-project' })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await target.owner({
+      args: [
+        'project',
+        'move',
+        project,
+        '--polis',
+        'control-private',
+      ],
+    })
+    await run({
+      args: [
+        'project',
+        'memory',
+        'set',
+        '--project',
+        project,
+        '--key',
+        'learnings',
+        '--text',
+        'Explicit project write',
+      ],
+    })
+    expect(JSON.stringify(await target.owner({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+      ],
+    }))).toContain('Explicit project write')
+    const hiddenProject = await pnyxAxi({
+      args: [
+        'project',
+        'memory',
+        'list',
+        '--project',
+        project,
+        '--hydra',
+        target.id,
+      ],
+      env,
+    })
+    expect(parsed(hiddenProject).memory).toBe('none: project memory is filtered')
+
+    await run({
+      args: [
+        'task',
+        'start',
+        task.id,
+      ],
+    })
+    const worker = await target.agent({ cwd: folder })
+    await until({
+      what: 'the cross-Hydra worker turn',
+      check: () => worker.answered > 0,
+    })
+    await run({
+      args: [
+        'reply',
+        task.id,
+        '--text',
+        'Cross-Hydra reply',
+      ],
+    })
+    await until({
+      what: 'the cross-Hydra reply',
+      check: () => worker.answered > 1,
+    })
+    await run({
+      args: [
+        'agent',
+        task.id,
+        'mode',
+        'bypassPermissions',
+      ],
+    })
+    const beforeGrant = (await target.owner({
+      args: [
+        'task',
+        'show',
+        task.id,
+        '--full',
+      ],
+    })).task.toolsRevision
+    await run({
+      args: [
+        'task',
+        'tools',
+        task.id,
+        '--grant',
+        'browser',
+      ],
+    })
+    await until({
+      what: 'the browser grant to apply',
+      check: async () => {
+        const full = await target.owner({
+          args: [
+            'task',
+            'show',
+            task.id,
+            '--full',
+          ],
+        })
+
+        return full.task.tools.includes('browser') && full.task.toolsRevision !== beforeGrant
+          && full.task.toolsRevision === full.task.toolsApplied
+      },
+    })
+
+    for (const args of [
+      [
+        'hydra',
+        'usage',
+        'refresh',
+      ],
+      [
+        'logs',
+        'clean',
+      ],
+    ]) {
+      const output = await target.as({ session: worker }).run({ args })
+      expect(output.notices).toBeDefined()
+    }
+
     const missing = await pnyxAxi({
       args: [
         'task',
@@ -3535,62 +3157,51 @@ test(
         task.id,
         '--hydra',
         'missing-control-hydra',
-        '--reason',
-        'Test missing target',
       ],
       env,
     })
-    expect(parsed(missing)).toMatchObject({
-      code: 'NOT_FOUND',
-      error: 'not found',
-    })
-    const visibleTask = await pnyxAxi({
+    expect(parsed(missing).code).toBe('NOT_FOUND')
+    expect((await target.ownerRefused({
       args: [
         'task',
-        '--hydra',
+        'attach',
+        task.id,
+        '--session',
+        'unavailable-session',
+      ],
+    })).code).toBe('NOT_FOUND')
+    await run({
+      args: [
+        'task',
+        'stop',
+        task.id,
+      ],
+    })
+    await run({
+      args: [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        caller.id,
+      ],
+    })
+    expect((await caller.task({ key: task.id })).brief).toBe('Changed across Hydras')
+    await run({
+      args: [
+        'hydra',
+        'create',
         target.id,
+        '--name',
+        'Updated existing Hydra',
+      ],
+    })
+    expect((await target.owner({
+      args: [
+        'hydra',
         'show',
-        task.id,
       ],
-      env,
-    })
-    expect(visibleTask.status).toBe(0)
-    expect(parsed(visibleTask).task.id).toBe(task.id)
-    const implicitMemoryRead = await pnyxAxi({
-      args: [
-        'hydra',
-        'memory',
-        '--hydra',
-        target.id,
-      ],
-      env,
-    })
-    expect(implicitMemoryRead.status).toBe(0)
-    expect(parsed(implicitMemoryRead).memory).toBe('none: no Hydra memory yet')
-    await target.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'shared',
-      ],
-    })
-    const extraReads = await pnyxAxi({
-      args: [
-        'task',
-        'start',
-        task.id,
-        '--hydra',
-        target.id,
-        '--reason',
-        'Test target extra reads',
-      ],
-      env,
-    })
-    expect(parsed(extraReads)).toMatchObject({
-      code: 'NOT_FOUND',
-      error: 'not found',
-    })
+    })).hydra.name).toBe('Updated existing Hydra')
   },
 )
 
@@ -3924,106 +3535,5 @@ test(
     expect(parsed(retry).event).toBe('none: duplicate')
     expect(parsed(retry).revision).toBe(parsed(first).revision)
     expect(retry.stdout).not.toContain('retry-polis')
-  },
-)
-
-test(
-  'project move confirmation pins the destination Hydra read lists',
-  async () => {
-    const author = await pnyx.hydra()
-    const reader = await pnyx.hydra()
-    const path = author.folder({ name: 'project-audience-pin' })
-    await author.owner({
-      args: [
-        'project',
-        'add',
-        path,
-      ],
-    })
-    await author.owner({
-      args: [
-        'settings',
-        'set',
-        '--json',
-        JSON.stringify({
-          poleis: {
-            'project-source': { readers: [author.id] },
-            'project-destination': {
-              readers: [
-                author.id,
-                reader.id,
-              ],
-            },
-          },
-        }),
-      ],
-    })
-    await author.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared,project-source,project-destination',
-      ],
-    })
-    await author.owner({
-      args: [
-        'project',
-        'move',
-        path,
-        '--polis',
-        'project-source',
-      ],
-    })
-    const proposal = parsed(await pnyxAxi({
-      args: [
-        'project',
-        'move',
-        path,
-        '--polis',
-        'project-destination',
-        '--propose',
-        '--hydra',
-        author.id,
-      ],
-      env: {
-        ...process.env,
-        PNYX_ACTOR: 'hydra',
-        PNYX_HYDRA: author.id,
-        PNYX_TASK: undefined,
-      },
-    }))
-    expect(proposal.confirmation).toBe('needed')
-    await reader.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared,project-destination',
-      ],
-    })
-    expect((await author.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposal.token,
-        '--confirm',
-        proposal.token,
-      ],
-    })).code).toBe('CONFLICT')
-    await author.owner({
-      args: [
-        'hydra',
-        'set',
-        '--read-poleis',
-        'shared,project-source',
-      ],
-    })
-    expect(JSON.stringify(await author.owner({
-      args: [
-        'project',
-        'list',
-      ],
-    }))).toContain('project-audience-pin')
   },
 )

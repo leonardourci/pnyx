@@ -1,14 +1,13 @@
+import { inform } from '#app/command-notices.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
 import type { LandingRule } from './model.ts'
 import { loadHydra } from '#app/store.ts'
 import { parseLanding, parseMerger, taskLanding } from './rule.ts'
 
-// Only the owner, or Hydra on the owner's word, gives one task a rule other than its project's.
 export function decideTaskLanding({
   state,
   ref,
@@ -30,25 +29,32 @@ export function decideTaskLanding({
   })
 
   if (reportActor({ actor: meta.actor })) {
-    throw new HydraError({
-      message: 'only the owner, or Hydra on the owner\'s word, changes how a task lands',
-      code: 'FORBIDDEN',
+    inform({
+      reason: 'Landing rule changed by a worker',
+      clear: 'pnyx-axi task landing <task> --clear',
+      task: card.id,
     })
   }
 
   let after: LandingRule | null = null
 
   if (!clear) {
-    const current = taskLanding({
+    const inherited = taskLanding({
       state,
       card,
     })
 
-    if (!current) {
-      throw new HydraError({
-        message: `task ${card.id} has no project; give it one with \`task rename ${card.id} --project <name>\` first`,
-        code: 'CONFLICT',
+    if (!inherited) {
+      inform({
+        task: card.id,
+        reason: 'Task has no project; using pr landing and owner merge defaults',
+        clear: `Use pnyx-axi task rename ${card.id} --project <project> to attach it`,
       })
+    }
+
+    const current = inherited ?? {
+      landing: 'pr' as const,
+      merge: 'owner' as const,
     }
 
     after = {

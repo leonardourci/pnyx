@@ -1,10 +1,12 @@
+import { POLIS_NAME } from './polis-policy.ts'
+import { inform } from '#app/command-notices.ts'
 import { checkWorkerNotes } from './workers.ts'
 import { readSettings } from '#settings/store.ts'
 import { canRead, memoryCaller, polisAccess, memoryMovePermission } from './poleis.ts'
 import { log } from '#app/diagnostics.ts'
 import { ownerMemoryLogPath as logPath, readOwnerEntries, readOwnerLogs, ownerRevision, type OwnerEntry } from './owner-memory-log.ts'
 import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
-import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
+import { archiveRemoved, dateLearnings, informReinforcement, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
@@ -179,6 +181,11 @@ function append({
   }
 
   if (key === 'learnings') {
+    informReinforcement({
+      confirmed,
+      change: learning,
+      evidence: meta.reason,
+    })
     dateLearnings({
       before: log.memory[key]?.lines,
       after,
@@ -568,6 +575,7 @@ export async function moveOwnerLearning({
       }
 
       const project = projectMemoryViewUnderLock({
+        writing: true,
         facts,
         hydraId,
       })
@@ -666,6 +674,13 @@ export function moveOwnerPolis({
   key: string
   meta: OwnerMeta
 }) {
+  if (!POLIS_NAME.test(destination)) {
+    throw new HydraError({
+      message: 'Invalid destination polis name',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   tryMigrate()
 
   return withRegistryLock({
@@ -679,9 +694,9 @@ export function moveOwnerPolis({
         poleis: readSettings().settings.poleis,
         polis: destination,
       })) {
-        throw new HydraError({
-          message: 'Memory is unavailable',
-          code: 'NOT_FOUND',
+        inform({
+          reason: `Moving owner memory to ${destination} outside the caller’s read scope`,
+          clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> to change visibility`,
         })
       }
 
@@ -739,6 +754,7 @@ export function moveOwnerPolis({
 
       if (key === 'workers') {
         checkWorkerNotes({
+          command: 'pnyx-axi owner worker-notes set',
           text: after,
           reason: meta.reason,
         })

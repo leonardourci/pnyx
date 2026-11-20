@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { readOwnerLogs } from './owner-memory-log.ts'
 import { memorySize, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
 import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
@@ -185,9 +186,9 @@ export const owner = guard({
     const action = positionals[1] ?? 'list'
 
     if (action !== 'list' && !memoryCaller({ hydraId })) {
-      throw new HydraError({
-        message: 'Memory is unavailable',
-        code: 'NOT_FOUND',
+      inform({
+        reason: `Writing memory for Hydra ${hydraId} from another Hydra`,
+        clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> to change memory scope`,
       })
     }
 
@@ -282,6 +283,7 @@ export const owner = guard({
 
     if (action === 'move') {
       const project = await findReadableProject({
+        writing: true,
         hydraId,
         state: loadHydra({ hydraId }).state,
         ref: required({
@@ -340,6 +342,7 @@ export const owner = guard({
 
     if (key === 'workers') {
       checkWorkerNotes({
+        command: 'pnyx-axi owner worker-notes set',
         text: after,
         reason: m.reason,
       })
@@ -385,9 +388,9 @@ export function hydraMemory({
       })
     }
 
-    throw new HydraError({
-      message: 'Memory is unavailable',
-      code: 'NOT_FOUND',
+    inform({
+      reason: `Writing Hydra ${hydraId} memory from another Hydra`,
+      clear: `Use pnyx-axi hydra memory list --hydra ${hydraId} in its own context to inspect it`,
     })
   }
 
