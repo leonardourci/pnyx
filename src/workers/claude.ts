@@ -1379,6 +1379,12 @@ export const readClaudeTranscript: TranscriptReader = ({
       && message.stop_reason !== 'pause_turn'
   }
 
+  if (entry.isCompactSummary !== true && (subagent || entry.isSidechain !== true)
+    && (entry.type === 'user' || entry.type === 'assistant')) {
+    const ended = parsed.final || (subagent && message.stop_reason === 'end_turn')
+    parsed.activity = ended ? 'finished' : 'working'
+  }
+
   const content = message.content
   const blocks = Array.isArray(content) ? content : []
 

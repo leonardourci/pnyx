@@ -1,3 +1,4 @@
+import { sessionFields } from './session-facts.ts'
 import { sessionId } from './session-attachments.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -126,25 +127,16 @@ export function findWorkerTurnToResume({
     ],
     descending: true,
   }).find(event => {
-    if (event.type === 'session.observed') {
-      return event.data.session === workerSession && event.data.activity === 'working'
-    }
+    const fields = sessionFields({ event })
 
-    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
-      return false
-    }
-
-    const observedAgent = event.data.agent
-
-    return observedAgent !== undefined && sessionId({ agent: observedAgent }) === workerSession
+    return fields?.activity === 'working' && fields.agent?.sessionId === agent.sessionId
+      && fields.agent.provider === agent.provider
   })
+
   const launchSeq = session?.launchId ? state.eventIds[session.launchId] : undefined
 
   if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)) {
-    lastTurn = readEvents({
-      hydraId,
-      seqs: [launchSeq],
-    })[0]
+    lastTurn = readEvents({ hydraId, seqs: [launchSeq] })[0]
   }
 
   if (!lastTurn || resumesInARow({

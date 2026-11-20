@@ -1,3 +1,5 @@
+import { decideSessionFacts } from '#workers/session-facts.ts'
+import { sessionId } from '#workers/session-attachments.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraState, Decision } from '#app/model.ts'
@@ -130,9 +132,12 @@ export function decidePush({
     fields.agent = parseAgent({ value: input.agent })
   }
 
+  const session = fields.agent ? state.sessions?.[sessionId({ agent: fields.agent })]
+    : Object.values(state.sessions ?? {}).find(known => known.id === key || known.sourceRefs.some(ref => `${ref.instanceId}:${ref.objectId}` === key))
+
   if (input.settings !== undefined) {
     fields.settings = mergeSettings({
-      current: state.cards[cardId]?.settings,
+      current: session?.settings ?? state.cards[cardId]?.settings,
       value: input.settings,
     })
   }
@@ -143,6 +148,27 @@ export function decidePush({
 
   if (input.attention !== undefined) {
     fields.attention = parseAttention({ value: input.attention })
+  }
+
+  const source = input.source === undefined ? undefined : parseSource({ value: input.source })
+  const card = state.cards[cardId]
+
+  const sessionSource = !source || [
+    'hooks',
+    'paseo',
+    'pnyx',
+    'transcript',
+  ].includes(source.adapter)
+
+  if (sessionSource && (fields.agent || session)) {
+    return decideSessionFacts({
+      state,
+      fields,
+      source,
+      meta,
+      task: card,
+      session,
+    })
   }
 
   if (input.parent === null) {
@@ -172,9 +198,6 @@ export function decidePush({
 
     fields.parentId = parent.id
   }
-
-  const source = input.source === undefined ? undefined : parseSource({ value: input.source })
-  const card = state.cards[cardId]
 
   if (source && isStaleSource({
     card,

@@ -1,12 +1,15 @@
+import type { AgentSession } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 
 // A worker whose session ended is stopped, so a dead job never reads as active.
 export function agentActivity({
   card,
   cards,
+  sessions,
 }: {
   card: Card
   cards?: Record<string, Card>
+  sessions?: Record<string, AgentSession>
 }): 'working' | 'finished' | 'stopped' | undefined {
   const agent = card.agent
 
@@ -14,9 +17,11 @@ export function agentActivity({
     return undefined
   }
 
-  const activity = card.sessionActivity ?? card.activity
+  const session = sessions?.[card.sessionIds?.[0] ?? '']
+  const observed = session?.sessionActivity ?? session?.activity
+  const activity = observed ?? card.sessionActivity ?? card.activity
 
-  if (activity === 'ended' || card.outcome?.state === 'ended') {
+  if (activity === 'ended' || activity === 'interrupted' || card.outcome?.state === 'ended') {
     return 'stopped'
   }
 
@@ -25,7 +30,10 @@ export function agentActivity({
     child.agent?.agentId && child.agent.provider === agent.provider
     && child.agent.sessionId === agent.sessionId
     && agentActivity({ card: child }) === 'working')
-  const childWorking = !agent.agentId && (card.facts?.childWorking ?? childSeen())
+  const activeChild = Object.values(sessions ?? {}).some(child => child.agent.agentId
+    && child.agent.provider === agent.provider && child.agent.sessionId === agent.sessionId
+    && (child.sessionActivity ?? child.activity) === 'working')
+  const childWorking = !agent.agentId && (card.facts?.childWorking ?? (activeChild || childSeen()))
 
   if (activity === 'working' || childWorking) {
     return 'working'

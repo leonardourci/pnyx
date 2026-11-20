@@ -1,3 +1,4 @@
+import { sessionFields } from '#workers/session-facts.ts'
 import type { HydraState } from '#app/model.ts'
 import { decisionsBlock } from '#tasks/decisions.ts'
 import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
@@ -351,12 +352,18 @@ export function findHydraTurnToResume({
   const lastFinishedTurn = scanEvents({
     hydraId,
     cardId: HYDRA_CARD,
-    types: ['card.pushed'],
+    types: [
+      'card.pushed',
+      'session.observed',
+    ],
     before: cutHydraTurn.seq,
     descending: true,
-  }).find(event => event.type === 'card.pushed' && event.data.activity === 'finished'
-      && event.actor === 'pnyx' && event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider)
+  }).find(event => {
+    const fields = sessionFields({ event })
+
+    return fields?.activity === 'finished' && event.actor === 'pnyx'
+      && fields.agent?.sessionId === agent.sessionId && fields.agent.provider === agent.provider
+  })
   const sourceId = cutHydraTurn.id.replace(
     /:compact:hosted$|:hosted$/,
     '',

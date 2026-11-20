@@ -93,25 +93,34 @@ const hook = ({
   }))
 })
 
-// The card an outside session's hooks keep on the default Hydra, the one outside sessions report to.
-const card = async ({ session }: { session: string }) => {
+const sessionFacts = async ({
+  session,
+  hydra = 'default',
+}: {
+  session: string
+  hydra?: string
+}) => {
   const shown = await pnyxAxi({
     args: [
       'task',
-      'show',
-      `claude:${session}`,
+      'sessions',
       '--full',
       '--hydra',
-      'default',
+      hydra,
     ],
     env: process.env,
   })
 
-  return shown.status === 0 ? parsed(shown).task : undefined
+  if (shown.status !== 0) {
+    return undefined
+  }
+
+  return parsed(shown).sessions.find((facts: { agent: { sessionId: string } }) =>
+    facts.agent.sessionId === session)
 }
 
 test(
-  'an outside session\'s hooks keep its card: the prompt names it, its chat shows the prompt typed in its terminal as the owner\'s and no part of a long steering notice, Stop ends its turn, and every hook exits 0 at once',
+  'outside hooks keep facts without an implicit card, and the assigned chat shows its typed prompt without a steering notice',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -128,6 +137,15 @@ test(
       'utf8',
     ))
       .join('').length
+    const beforeTasks = parsed(await pnyxAxi({
+      args: [
+        'task',
+        'list',
+        '--hydra',
+        'default',
+      ],
+      env: process.env,
+    })).tasks
     const cwd = join(
       process.env.TMPDIR!,
       'outside',
@@ -177,27 +195,48 @@ test(
       }),
     ]
     const working = await until({
-      what: 'the session\'s card',
-      check: () => card({ session: 'outside-1' }),
+      what: 'the session facts',
+      check: () => sessionFacts({ session: 'outside-1' }),
     })
     expect(working).toMatchObject({
       title: 'Fix the flaky login test',
       activity: 'working',
     })
-    const chat = parsed(await pnyxAxi({
+    await hook({
+      event: 'PreToolUse',
+      payload: {
+        ...base,
+        tool_name: 'Read',
+        tool_input: { file_path: 'file.ts' },
+      },
+    })
+    expect((await sessionFacts({ session: 'outside-1' })).title).toBe('Fix the flaky login test')
+    const tasks = await pnyxAxi({
       args: [
         'task',
-        'chat',
-        'claude:outside-1',
+        'list',
         '--hydra',
         'default',
       ],
       env: process.env,
-    }))
-    expect((chat.thread.entries as {
-      role: string
-      text: string
-    }[])
+    })
+    expect(parsed(tasks).tasks).toEqual(beforeTasks)
+    const assignedHydra = await pnyx.hydra({ id: 'default', create: false })
+    await assignedHydra.owner({
+      args: ['task', 'create', '--key', 'outside-hook-chat', '--title', 'Outside hook chat', '--no-start'],
+    })
+    await assignedHydra.owner({
+      args: ['push', '--key', 'outside-1', '--file', '-'],
+      input: JSON.stringify({
+        agent: { provider: 'claude', sessionId: 'outside-1' },
+        terminal: { tty: '/dev/ttys99999' },
+      }),
+    })
+    await assignedHydra.owner({
+      args: ['task', 'attach', 'outside-hook-chat', '--session', 'claude:outside-1'],
+    })
+    const chat = await assignedHydra.owner({ args: ['task', 'chat', 'outside-hook-chat'] })
+    expect((chat.thread.entries as { role: string; text: string }[])
       .filter(entry => entry.role === 'user' || entry.role === 'You')
       .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
 
@@ -228,7 +267,7 @@ test(
       check: async () => [
         'finished',
         'idle',
-      ].includes((await card({ session: 'outside-1' }))?.activity),
+      ].includes((await sessionFacts({ session: 'outside-1' }))?.activity),
     })
 
     await flushLogs()
@@ -248,6 +287,51 @@ test(
         ended: true,
       })
     }
+
+    await hook({
+      event: 'UserPromptSubmit',
+      payload: {
+        ...base,
+        prompt: 'Resume the outside task',
+      },
+    })
+    const running = await until({
+      what: 'the outside turn to start',
+      check: async () => {
+        const facts = await sessionFacts({ session: 'outside-1' })
+
+        return facts?.activity === 'working' && facts
+      },
+    })
+    await pnyx.restart({
+      whileStopped: () => {
+        writeFileSync(
+          base.transcript_path,
+          `${JSON.stringify({
+            type: 'assistant',
+            timestamp: new Date(Date.parse(running.lastSeen) + 1).toISOString(),
+            message: {
+              stop_reason: 'end_turn',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Completed while offline',
+                },
+              ],
+            },
+          })}\n`,
+        )
+      },
+    })
+    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({ activity: 'finished' })
+    await hook({
+      event: 'SessionEnd',
+      payload: base,
+    })
+    await until({
+      what: 'the outside session to end',
+      check: async () => (await sessionFacts({ session: 'outside-1' }))?.activity === 'ended',
+    })
   },
 )
 
@@ -358,7 +442,7 @@ test(
     })
     expect((await until({
       what: 'the spooled report to land',
-      check: () => card({ session: 'offline-1' }),
+      check: () => sessionFacts({ session: 'offline-1' }),
     })).title).toBe('Written while Pnyx was down')
   },
 )
@@ -447,20 +531,20 @@ test(
       stdout: '',
     })
     expect((await until({
-      what: 'the session\'s card on its own Hydra',
+      what: 'the session facts on its own Hydra',
       check: async () => {
         const shown = await pnyxAxi({
           args: [
             'task',
-            'show',
-            'claude:named-1',
+            'sessions',
+            '--full',
             '--hydra',
             hydra.id,
           ],
           env: process.env,
         })
 
-        return shown.status === 0 ? parsed(shown).task : undefined
+        return shown.status === 0 ? parsed(shown).sessions.find((facts: { agent: { sessionId: string } }) => facts.agent.sessionId === 'named-1') : undefined
       },
     })).title).toBe('Reported to a named Hydra')
   },
@@ -544,5 +628,119 @@ test(
         dir,
       ))).toBe(false)
     }
+  },
+)
+
+test(
+  'subagent hooks keep session facts and wake Hydra for a prompt on the attached task',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const first = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Watch hook questions',
+      hold: true,
+    })
+    const supervisor = await hydra.chat({ text: 'Watch hook questions' })
+    const cwd = hydra.folder({ name: 'outside-agent' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'attached',
+        '--title',
+        'Assigned outside work',
+      ],
+    })
+    const assigned = await hydra.task({ key: 'attached' })
+    const env = {
+      ...process.env,
+      PNYX_HYDRA: hydra.id,
+      PNYX_TASK: assigned.id,
+    }
+    const base = {
+      session_id: 'root-agent',
+      cwd,
+    }
+    await hook({
+      event: 'UserPromptSubmit',
+      payload: {
+        ...base,
+        prompt: 'Inspect the package',
+      },
+      env,
+    })
+    await until({
+      what: 'outside root session',
+      check: () => sessionFacts({
+        session: 'root-agent',
+        hydra: hydra.id,
+      }),
+    })
+    const child = {
+      ...base,
+      agent_id: 'child-agent',
+      agent_type: 'Explore',
+    }
+    await hook({
+      event: 'SubagentStart',
+      payload: child,
+      env,
+    })
+    await until({
+      what: 'subagent session without a task card',
+      check: async () => {
+        const shown = await hydra.owner({
+          args: [
+            'task',
+            'sessions',
+            '--full',
+          ],
+        })
+
+        return shown.sessions.some((session: { agent: { agentId?: string } }) => session.agent.agentId === 'child-agent')
+      },
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'list',
+      ],
+    })).tasks).toHaveLength(1)
+    await hook({
+      event: 'PermissionRequest',
+      payload: {
+        ...child,
+        tool_name: 'Bash',
+        tool_input: { command: 'inspect-package' },
+      },
+      env,
+    })
+    await until({
+      what: 'child prompt projected to the task',
+      check: async () => (await hydra.task({ key: 'attached' })).status === 'needs you',
+    })
+    first.release()
+    await until({
+      what: 'Hydra to hear the native question',
+      check: () => supervisor.received.some(text => text.includes('asked:') && text.includes('inspect-package')),
+    })
+    const history = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        'attached',
+      ],
+    })
+    expect(history.events.some((event: { type: string }) => event.type === 'session.observed')).toBe(true)
+    await hook({
+      event: 'SubagentStop',
+      payload: child,
+      env,
+    })
+    await until({
+      what: 'finished subagent prompt to clear',
+      check: async () => (await hydra.task({ key: 'attached' })).status === 'running',
+    })
   },
 )

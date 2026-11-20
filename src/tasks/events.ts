@@ -11,7 +11,7 @@ export function offerTitle({
   card,
   next,
 }: {
-  card: Card
+  card: Pick<Card, 'autoTitle' | 'titleSet'> & { title?: string }
   next: AutoTitle
 }): void {
   const current = card.autoTitle
@@ -45,7 +45,7 @@ export function isStaleSource({
   card,
   source,
 }: {
-  card: Card | undefined
+  card: Pick<Card, 'sourceRefs'> | undefined
   source: SourceRef
 }): boolean {
   const known = card?.sourceRefs.find(r => sameSource({

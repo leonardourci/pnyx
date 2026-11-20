@@ -1,3 +1,4 @@
+import { sessionFields } from './session-facts.ts'
 import { scanEvents } from '#app/event-log.ts'
 
 export function taskSessions({
@@ -16,6 +17,7 @@ export function taskSessions({
       'task.session',
       'task.moved-in',
       'card.pushed',
+      'session.observed',
     ],
   })) {
     if (event.type === 'task.session' && (ids.has(event.data.before ?? '') || ids.has(event.data.after ?? ''))) {
@@ -28,8 +30,10 @@ export function taskSessions({
       }
     }
 
-    if (ids.has(event.cardId) && event.type === 'card.pushed' && event.data.agent) {
-      const agent = event.data.agent
+    const fields = sessionFields({ event })
+
+    if (ids.has(event.cardId) && fields?.agent) {
+      const agent = fields.agent
       sessions.add(`${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`)
     }
   }

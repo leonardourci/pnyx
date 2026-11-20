@@ -1,3 +1,4 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { cloneValue } from '#app/preimage.ts'
 import type { AgentRef, AgentSession, Attention, TerminalFacts } from './model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -118,6 +119,51 @@ export function assignDefined<T extends object>({
   }
 }
 
+export function sessionTask({
+  state,
+  agent,
+}: {
+  state: HydraState
+  agent: AgentRef
+}): Card | undefined {
+  const id = sessionId({ agent })
+  const parent = sessionId({
+    agent: {
+      provider: agent.provider,
+      sessionId: agent.sessionId,
+    },
+  })
+  const root = state.sessions?.[parent]
+  const task = state.sessions?.[id]?.taskId ?? root?.taskId
+
+  if (task) {
+    return state.cards[task]
+  }
+
+  return state.config?.hydra.session === parent ? state.cards[HYDRA_CARD] : undefined
+}
+
+export function sessionAttention({
+  state,
+  session,
+}: {
+  state: HydraState
+  session: AgentSession
+}): Attention[] {
+  const children = Object.values(state.sessions ?? {}).filter(child => child.agent.agentId
+    && child.agent.provider === session.agent.provider
+    && child.agent.sessionId === session.agent.sessionId
+    && (child.sessionActivity ?? child.activity) !== 'ended')
+
+  return [
+    ...session.attention,
+    ...children.flatMap(child => child.attention.map(item => ({
+      ...item,
+      key: `hook:child:${child.id}:${item.key}`,
+    }))),
+  ]
+}
+
 // Membership projection preserves task-owned fields when the session changes.
 export function projectSession({
   state,
@@ -126,7 +172,28 @@ export function projectSession({
   state: HydraState
   session: AgentSession
 }): void {
-  const task = session.taskId && state.cards[session.taskId]
+  if (session.agent.agentId) {
+    const parent = state.sessions?.[sessionId({
+      agent: {
+        provider: session.agent.provider,
+        sessionId: session.agent.sessionId,
+      },
+    })]
+
+    if (parent) {
+      projectSession({
+        state,
+        session: parent,
+      })
+    }
+
+    return
+  }
+
+  const task = sessionTask({
+    state,
+    agent: session.agent,
+  })
 
   if (!task) {
     return
@@ -148,12 +215,17 @@ export function projectSession({
       activity: session.activity,
       sessionActivity: session.sessionActivity,
       workingSince: session.workingSince,
+      turnStartedAt: session.turnStartedAt,
+      turnEndedSeq: session.turnEndedSeq,
       stoppedAt: session.stoppedAt,
     },
   })
   task.attention = [
     ...task.attention.filter(a => !a.key.startsWith('hook:')),
-    ...session.attention,
+    ...sessionAttention({
+      state,
+      session,
+    }),
   ]
 
   if (!task.outcome || task.outcome.source === 'hooks') {
