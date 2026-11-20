@@ -17,6 +17,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'quick',
         '--title',
@@ -401,6 +402,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'retry',
         '--title',

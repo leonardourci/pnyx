@@ -32,6 +32,7 @@ beforeAll(async () => {
     args: [
       'task',
       'create',
+      '--no-start',
       '--title',
       'Other task',
       '--key',
@@ -452,6 +453,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'The default Hydra\'s task',
         '--key',

@@ -166,6 +166,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Add the cart',
         '--key',
@@ -237,6 +238,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Next chart',
         '--key',
@@ -305,6 +307,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Handoff gate',
         '--key',
@@ -533,6 +536,7 @@ if (branch === 'hercules/add-cart') {
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Failure hook',
         '--key',
@@ -671,6 +675,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Bystander',
         '--key',
@@ -710,6 +715,156 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
 )
 
 test(
+  'a create behind a worker on the same project queues it, a start that fails leaves it queued, a start takes it out of the queue for a worker of its own, once detached it is not shown as never started, and a replayed create or queue keeps its answer after the worker leaves',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Lead',
+        '--key',
+        'lead',
+        '--project',
+        'shop',
+      ],
+    })
+    const lead = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'lead',
+      ],
+    })
+    await hydra.agent({ cwd: lead.agent.folder })
+    expect(await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Follow',
+        '--key',
+        'follow',
+        '--project',
+        'shop',
+        '--brief',
+        'Follow the lead',
+        '--behind',
+        'lead',
+      ],
+    })).toMatchObject({ launch: 'queued' })
+
+    const failedStarts = {
+      NOT_FOUND: [
+        '--rule',
+        'no-such-rule',
+      ],
+      NO_ROUTE: [
+        '--via',
+        'firstmate',
+      ],
+    }
+
+    for (const [
+      code,
+      flags,
+    ] of Object.entries(failedStarts)) {
+      expect(
+        (await hydra.ownerRefused({
+          args: [
+            'task',
+            'start',
+            'follow',
+            ...flags,
+          ],
+        })).code,
+        flags.join(' '),
+      ).toBe(code)
+    }
+
+    expect((await hydra.task({ key: 'follow' })).queue).toBeDefined()
+
+    const started = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'follow',
+      ],
+    })
+    expect(started.unqueued).toContain('was queued behind worker')
+    expect((await hydra.task({ key: 'follow' })).queue).toBeUndefined()
+    expect(started.agent.folder).not.toBe(lead.agent.folder)
+    expect((await hydra.agent({ cwd: started.agent.folder })).received[0]).toContain('Follow the lead')
+
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'follow',
+      ],
+    })
+    expect((await hydra.task({ key: 'follow' })).worker).toBe('none')
+
+    const second = [
+      'task',
+      'create',
+      '--title',
+      'Follow again',
+      '--project',
+      'shop',
+      '--behind',
+      'lead',
+      '--event-id',
+      'follow-again',
+    ]
+    expect(await hydra.owner({ args: second })).toMatchObject({ launch: 'queued' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Wait for the lead',
+        '--key',
+        'wait',
+        '--project',
+        'shop',
+      ],
+    })
+    const queueWait = [
+      'task',
+      'queue',
+      'wait',
+      '--behind',
+      'lead',
+      '--event-id',
+      'queue-wait',
+    ]
+    await hydra.owner({ args: queueWait })
+    expect((await hydra.task({ key: 'wait' })).queue).toBeDefined()
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        'lead',
+      ],
+    })
+    const sessions = pnyx.claude.sessions.length
+    expect(await hydra.owner({ args: second })).toMatchObject({ launch: 'queued' })
+    expect(pnyx.claude.sessions).toHaveLength(sessions)
+    const replayedQueue = await hydra.owner({ args: queueWait })
+    expect(replayedQueue.queued).toBeUndefined()
+    expect(replayedQueue.duplicate).toBeDefined()
+  },
+)
+
+test(
   'a pull-request task is done only once GitHub reports its pull request merged, and one with an unreviewed report waits for its review',
   async () => {
     const hydra = await pnyx.hydra()
@@ -724,6 +879,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Write the cart notes',
         '--key',
@@ -765,6 +921,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Add the cart',
         '--key',
@@ -923,6 +1080,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Add the cart',
         '--key',
@@ -1058,6 +1216,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Fix private merge',
         '--key',
@@ -1344,6 +1503,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',
@@ -1735,6 +1895,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Keep this work',
         '--project',
@@ -1814,6 +1975,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Legacy work',
         '--project',
@@ -1862,6 +2024,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Dependent work',
         '--project',
@@ -1872,6 +2035,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Independent work',
         '--project',
@@ -2137,6 +2301,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           title,
           '--key',
@@ -2315,6 +2480,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Chart',
         '--key',
@@ -2416,6 +2582,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Retry allocation',
         '--key',
@@ -2526,6 +2693,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Shared name',
         '--key',
@@ -2576,6 +2744,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Shared name',
         '--key',
@@ -2644,6 +2813,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Source',
         '--key',
@@ -2665,6 +2835,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Target',
         '--key',
@@ -2686,6 +2857,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Gate',
         '--key',
@@ -3021,6 +3193,7 @@ if (branch === 'iris/target') {
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           'Final',
           '--key',
@@ -3124,6 +3297,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Reassign',
         '--key',
@@ -3223,6 +3397,7 @@ execFileSync(process.execPath, ${JSON.stringify([
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Reuse clean slot',
         '--key',
@@ -3300,6 +3475,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Unrecorded',
         '--key',
@@ -3344,6 +3520,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Next',
         '--key',
@@ -3436,6 +3613,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Later',
         '--key',
@@ -3471,6 +3649,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Still unlanded',
         '--key',
@@ -3510,6 +3689,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Recovered',
         '--key',
@@ -3576,6 +3756,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Finished work',
         '--project',
@@ -3610,6 +3791,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Real subtask',
         '--project',
@@ -3905,6 +4087,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Review cart',
         '--key',
@@ -4009,6 +4192,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Shared review',
         '--project',

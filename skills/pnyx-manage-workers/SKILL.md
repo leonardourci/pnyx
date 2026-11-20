@@ -41,7 +41,7 @@ Routes:
 
 A successful start records working and places the card in the same accepted assignment write; no first status or placement command is needed. A task holds one worker; `task detach <task>` frees it without stopping the agent and parks eligible unfinished work, preserving Done and unresolved owner gates. A repeated `--event-id` never starts a second worker.
 
-A start's receipt is its record. A success through Pnyx or Paseo means the worker is attached, so do not reread the task to confirm it. `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, and if it fails the same way, follow its help or tell the owner. Read the task only when a start's outcome is unknown, such as a timeout after the request left.
+A start's receipt is its record. A Pnyx or Paseo receipt with `agent` means the worker is attached, so do not reread the task to confirm it. `launch: waiting` means another session's turn holds the task: start it again once that turn ends. `launch: pending` means another start is opening its session: do not start it again. `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, and if it fails the same way, follow its help or tell the owner. Read the task only when a start's outcome is unknown, such as a timeout after the request left.
 
 ## Continue or replace
 
@@ -49,7 +49,7 @@ After an outside Claude Code or Codex session ends, `pnyx-axi task continue <tas
 
 A lost worker (presence `gone`, or a session that cannot be continued) is relaunched without asking the owner when its folder still holds its work: `task start <task> --via pnyx --replace-session <session> --folder <its folder>`. The new worker's first prompt names the lost session and its last declaration, and it reads the task history. Count the relaunches in `task history`; after two that fail, stop and tell the owner what failed and what work the folder keeps.
 
-When creating work to dispatch, assign its attached project with `task create --project <name|path>`. See `pnyx-orchestrate` for work in Ideas, related tasks and owner decisions.
+When creating work to dispatch, assign its attached project with `task create --project <name|path>`; create starts the worker unless you pass `--hold`, `--behind`, `--on` or `--no-start`. A start goes ahead over an open hold, question, prerequisite or worker prompt and lists each under `open` with the command that clears it; read that list and clear what matters. A start on a task that has a worker sends `--prompt` to it instead. See `pnyx-orchestrate` for work in Ideas, related tasks and owner decisions.
 
 ## Queue related tasks
 

@@ -29,14 +29,16 @@ import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
+import { createCommand } from '#workers/create.ts'
+import { workerGap } from '#tasks/card-status.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
-import { startOverride, sessionRef, afterAttach } from '#workers/cli.ts'
+import { startOverride, startFlags, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
 import { findProject } from '#projects/read.ts'
-import { decideQueue } from '#workers/queue-decisions.ts'
+import { decideQueue, queueRequestGap } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
 import { taskSpend } from '#workers/task-spend.ts'
@@ -69,6 +71,7 @@ export const TASK_OPTIONS: Options = {
     multiple: true,
   },
   start: { type: 'boolean' },
+  'no-start': { type: 'boolean' },
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
@@ -189,6 +192,15 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       text: createText,
       agent: creatingWorker,
       actor: m.actor,
+    })
+  }
+
+  if (action === 'create' && !values.start) {
+    return createCommand({
+      hydraId,
+      positionals,
+      values,
+      meta: m,
     })
   }
 
@@ -563,16 +575,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       hydraId,
       task: ref,
       replacement: values['replace-session'] as string | undefined,
-      commandName: values.command as string | undefined,
-      via: values.via as string | undefined,
-      rule: values.rule as string | undefined,
-      harness: values.harness as string | undefined,
-      override: startOverride({ values }),
-      tools: values.tool as string[] | undefined,
-      prompt: values.prompt as string | undefined,
       folder: values.folder as string | undefined,
-      inPlace: Boolean(values['in-place']),
-      url,
+      ...startFlags({ values }),
       meta: m,
     })
 
@@ -612,6 +616,30 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       value: values.behind as string | undefined,
       what: '--behind <task|session>',
     })
+    const state = loadHydra({ hydraId }).state
+    const card = findCard({
+      state,
+      ref: task,
+    })
+    const replayed = m.id !== undefined && Object.hasOwn(
+      state.eventIds,
+      m.id,
+    )
+    const gap = replayed ? undefined : queueRequestGap({
+      state,
+      card,
+      reorder: action === 'reorder',
+      behind,
+    })
+
+    if (gap) {
+      return {
+        task: card.id,
+        queued: false,
+        reason: gap.reason,
+        help: [gap.clear],
+      }
+    }
 
     return commit({
       hydraId,
@@ -621,14 +649,13 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         card: task,
       },
       decide: ({ state }) => {
-        if (action === 'reorder' && !findCard({
+        const unqueuedSince = action === 'reorder' && !findCard({
           state,
           ref: task,
-        }).queue) {
-          throw new HydraError({
-            message: 'only a queued task can be reordered',
-            code: 'CONFLICT',
-          })
+        }).queue
+
+        if (unqueuedSince) {
+          return { skipped: 'stale' }
         }
 
         return decideQueue({
@@ -807,7 +834,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${clip({ text: task.status.note })}` : ''}` : 'none: no declaration yet',
-        worker: task.sessionIds?.[0] ?? 'none',
+        worker: task.sessionIds?.[0] ?? workerGap({ card: task }),
         ...(task.queue ? {
           queue: queuePosition({
             state,

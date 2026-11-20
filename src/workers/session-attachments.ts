@@ -25,6 +25,20 @@ export function cardSessionId({ card }: { card: Card }): string | undefined {
   return card.sessionIds?.[0] ?? (card.agent ? sessionId({ agent: card.agent }) : undefined)
 }
 
+export function sessionByRef({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): AgentSession | undefined {
+  const direct = state.sessions?.[ref]
+  const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
+
+  return direct ?? Object.values(state.sessions ?? {}).find(s =>
+    card?.sessionIds?.includes(s.id) || s.sourceRefs.some(r => `${r.instanceId}:${r.objectId}` === ref))
+}
+
 export function findSession({
   state,
   ref,
@@ -32,10 +46,10 @@ export function findSession({
   state: HydraState
   ref: string
 }): AgentSession {
-  const direct = state.sessions?.[ref]
-  const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
-  const found = direct ?? Object.values(state.sessions ?? {}).find(s =>
-    card?.sessionIds?.includes(s.id) || s.sourceRefs.some(r => `${r.instanceId}:${r.objectId}` === ref))
+  const found = sessionByRef({
+    state,
+    ref,
+  })
 
   if (!found) {
     throw new HydraError({

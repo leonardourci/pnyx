@@ -11,8 +11,6 @@ import { withWriter } from '#app/writer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { requireReady } from '#tasks/dependencies.ts'
-import { requireUnheld } from '#tasks/holds.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import { candidateIssues } from './dispatch-check.ts'
@@ -103,10 +101,7 @@ export function queueCardInput({
         }
       }
 
-      requireCardInputTarget({
-        state: writer.state,
-        card,
-      })
+      requireCardInputTarget({ card })
       applyDecision({
         writer,
         decision: decideReply({
@@ -135,13 +130,7 @@ export function queueCardInput({
   })
 }
 
-function requireCardInputTarget({
-  state,
-  card,
-}: {
-  state: HydraState
-  card: Card
-}) {
+function requireCardInputTarget({ card }: { card: Card }) {
   if (!liveTask({ card }) || card.id === HYDRA_CARD || card.queue) {
     throw new HydraError({
       message: 'Choose an active, unqueued task',
@@ -158,12 +147,6 @@ function requireCardInputTarget({
       code: 'NO_ROUTE',
     })
   }
-
-  requireUnheld({ card })
-  requireReady({
-    state,
-    card,
-  })
 }
 
 function agentChange({
@@ -259,11 +242,6 @@ export function createCardInputs({
     reply: Reply
   }) => {
     try {
-      requireUnheld({ card })
-      requireReady({
-        state: loadHydra({ hydraId }).state,
-        card,
-      })
       const { agent } = reply.worker!
       const current = card.agent
       const change = agentChange({
@@ -289,7 +267,7 @@ export function createCardInputs({
           harness: targetHarness,
           ...override
         } = agent
-        await startTask({
+        const started = await startTask({
           hydraId,
           task: card.id,
           via: 'pnyx',
@@ -308,6 +286,16 @@ export function createCardInputs({
             id: `card:${reply.id}`,
           },
         })
+        const anotherActorHoldsTask = started.launch === 'waiting' || started.launch === 'pending'
+
+        if (anotherActorHoldsTask) {
+          record({
+            card,
+            reply,
+            state: 'failed',
+            detail: String(started.blocker),
+          })
+        }
       } else {
         for (const setting of [
           'model',

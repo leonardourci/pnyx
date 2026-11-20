@@ -1,7 +1,7 @@
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import { cardStatus, waitStatus, type CardStatus } from '#tasks/card-status.ts'
+import { cardStatus, noWorkerText, waitStatus, type CardStatus } from '#tasks/card-status.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { unmetPrerequisites } from '#tasks/dependencies.ts'
 import { failedChecks, pendingChecks } from '#tasks/delivery/model.ts'
@@ -172,7 +172,7 @@ export function observedStatus({
     } else {
       add({
         kind: 'not-started',
-        text: 'no worker assigned',
+        text: noWorkerText({ card }),
       })
     }
   }

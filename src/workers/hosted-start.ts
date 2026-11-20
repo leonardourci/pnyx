@@ -19,7 +19,6 @@ import { freeTask } from './start.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
-import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -159,11 +158,6 @@ export function createWorkerStarts({
       state: writer.state,
       ref,
     })
-    requireUnheld({ card })
-    requireReady({
-      state: writer.state,
-      card,
-    })
 
     if (inputId && card.agent?.host === 'pnyx') {
       const queued = card.replies?.find(reply => reply.id === inputId && reply.state === 'queued' && reply.worker)
@@ -259,7 +253,8 @@ export function createWorkerStarts({
     if (starting.has(target.id)) {
       throw new HydraError({
         message: `task ${target.id} is already starting`,
-        code: 'SESSION_CONFLICT',
+        code: 'TASK_STARTING',
+        help: [`Check \`pnyx-axi task show ${target.id}\` once its session opens`],
       })
     }
 

@@ -9,13 +9,19 @@ import { askAnswer } from './ask-decide.ts'
 import { openAsks } from './ask-state.ts'
 import { isManagedTask } from './select.ts'
 import { clarificationMessage } from './question-actions.ts'
+import { holdBlocker } from './owner-gates.ts'
 
 export function requireUnheld({ card }: { card: Card }): void {
   if (card.hold) {
+    const blocker = holdBlocker({
+      task: card.id,
+      reason: card.hold.reason,
+    })
+
     throw new HydraError({
-      message: `task ${card.id} is held for discussion: ${card.hold.reason}`,
+      message: `task ${card.id} is ${blocker.reason}`,
       code: 'TASK_HELD',
-      help: ['Discuss with the owner, then ask a go question or release with their newer message'],
+      help: [blocker.clear],
     })
   }
 }

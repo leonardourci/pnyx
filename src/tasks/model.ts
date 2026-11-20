@@ -175,6 +175,7 @@ export interface Card {
   projectRefresh?: Record<string, ProjectRefresh>
   prerequisites?: string[]
   hold?: TaskHold
+  unstarted?: string
   id: string
   key: string
   title: string

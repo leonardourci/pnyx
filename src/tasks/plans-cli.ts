@@ -6,6 +6,7 @@ import { commit, required, withHelp, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { parseOperation, ApplyError, type Operation } from '#app/apply/schema.ts'
 import { planTaskChange, type TaskOperation } from './plans.ts'
+import { START_FLAGS } from '#workers/cli.ts'
 
 const ACTION_FLAGS: Record<string, string[]> = {
   create: [
@@ -22,6 +23,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
     'before',
     'kind',
     'hold',
+    'no-start',
   ],
   brief: [
     'brief',
@@ -90,9 +92,9 @@ export function validateLocalTaskFlags({
     })
   }
 
-  if (action !== 'start' && Array.isArray(values.tool) && values.tool.length) {
+  if (action !== 'start' && action !== 'create' && Array.isArray(values.tool) && values.tool.length) {
     throw new HydraError({
-      message: '--tool is only valid for task start',
+      message: '--tool is only valid for task start and task create',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -109,6 +111,18 @@ export function validateLocalTaskFlags({
     ...ACTION_FLAGS[action]!,
   ]
 
+  const unstarted = [
+    'no-start',
+    'hold',
+  ].find(flag => values[flag])
+
+  if (action === 'create' && values.start && unstarted) {
+    throw new HydraError({
+      message: `--start sends the ask to a worker, and --${unstarted} leaves the task unstarted; choose one`,
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   if (action === 'create' && values.start) {
     allowed.push(
       'start',
@@ -116,6 +130,14 @@ export function validateLocalTaskFlags({
       'account',
       'model',
       'effort',
+    )
+  }
+
+  if (action === 'create' && !values.start) {
+    allowed.push(
+      'behind',
+      'on',
+      ...START_FLAGS,
     )
   }
 
@@ -147,7 +169,7 @@ export async function localTaskCommand({
   meta,
 }: {
   action?: string
-  values: Record<string, string | boolean | undefined>
+  values: Record<string, unknown>
   positionals: string[]
   hydraId: string
   meta: Meta
@@ -167,6 +189,7 @@ export async function localTaskCommand({
         'from-message': 'message',
         'wait-for': 'waitFor',
         'ready-when': 'readyWhen',
+        'no-start': 'noStart',
       }
       input[names[field] ?? field] = values[field]
     }
@@ -243,10 +266,7 @@ export async function localTaskCommand({
     help: ({ output }) => {
       const id = (output.card as { id?: string } | undefined)?.id ?? '<id>'
 
-      return [
-        `Run \`pnyx-axi task start ${id} --hydra ${hydraId}\` to start a worker`,
-        `Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`,
-      ]
+      return [`Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`]
     },
   })
 }

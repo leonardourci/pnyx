@@ -342,6 +342,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Sized card',
       ],

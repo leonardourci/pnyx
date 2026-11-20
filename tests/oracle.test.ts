@@ -42,6 +42,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Invoice export nightly',
         '--key',
@@ -56,6 +57,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Tidy the ledger',
         '--key',
@@ -129,6 +131,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           `Release checklist ${key}`,
           '--key',
@@ -243,6 +246,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           `Roadmap ${name}`,
           '--key',
@@ -327,6 +331,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Family preview',
         '--key',
@@ -337,6 +342,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Live child',
         '--parent',

@@ -49,6 +49,39 @@ export function startOverride({
   })
 }
 
+export const START_FLAGS = [
+  'via',
+  'rule',
+  'harness',
+  'account',
+  'model',
+  'effort',
+  'mode',
+  'fast',
+  'prompt',
+  'tool',
+  'in-place',
+  'command',
+  'paseo-url',
+]
+
+export const flagGiven = ({ value }: { value: unknown }) =>
+  Array.isArray(value) ? value.length > 0 : value !== undefined && value !== false
+
+export function startFlags({ values }: { values: Record<string, unknown> }) {
+  return {
+    via: values.via as string | undefined,
+    rule: values.rule as string | undefined,
+    harness: values.harness as string | undefined,
+    override: startOverride({ values }),
+    tools: values.tool as string[] | undefined,
+    prompt: values.prompt as string | undefined,
+    inPlace: Boolean(values['in-place']),
+    commandName: values.command as string | undefined,
+    url: values['paseo-url'] as string | undefined,
+  }
+}
+
 type Attachment = Extract<HydraEvent, { type: 'task.session' }>
 
 // Attachment is durable even when delivery fails.

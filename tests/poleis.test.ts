@@ -678,6 +678,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Native prompt binding',
         '--key',
@@ -820,6 +821,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Own native prompt binding',
         '--key',
@@ -3323,6 +3325,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'capability-target',
         '--title',
@@ -3344,6 +3347,7 @@ test(
       [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Unauthorized task',
         '--brief',
@@ -3496,6 +3500,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'move-capability',
         '--title',
@@ -3723,6 +3728,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Visible update',
         '--key',

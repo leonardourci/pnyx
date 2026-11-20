@@ -1,10 +1,11 @@
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { requireToolAuthority } from './tools.ts'
 import { taskLease } from '#routine-helper/leases.ts'
-import { requireCopyAvailable } from '#projects/copy-lease.ts'
+import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
-import { requireReady } from '#tasks/dependencies.ts'
-import { requireUnheld } from '#tasks/holds.ts'
+import { startBlockers } from '#tasks/dependencies.ts'
+import { noteOnce } from '#tasks/notes.ts'
+import type { Blocker } from '#tasks/owner-gates.ts'
 import { dispatchTask, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
 import { modelIds, type ModelOption } from './provider.ts'
 import { effectiveDispatch } from './dispatch-config.ts'
@@ -36,6 +37,9 @@ import { requireOwnerToRaise } from './permission-level.ts'
 import { applyDecision } from '#app/decision.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { namedProjectCommand, startCommand } from './start-command.ts'
+import { decideQueue } from './queue-decisions.ts'
+import { sendReply } from './reply.ts'
+import { flagGiven } from './cli.ts'
 
 const VIAS = [
   'pnyx',
@@ -45,12 +49,20 @@ const VIAS = [
 ] as const
 type Via = (typeof VIAS)[number]
 
-function chooseVia({
+export function startRoute({
   state,
   via,
+  commandName,
+  replacement,
+  override,
+  tools,
 }: {
   state: HydraState
   via?: string
+  commandName?: string
+  replacement?: string
+  override?: Override
+  tools?: string[]
 }): Via {
   const chosen = via ?? (state.config?.hydra.kind === 'firstmate' ? 'firstmate' : 'pnyx')
 
@@ -62,7 +74,84 @@ function chooseVia({
     })
   }
 
-  return chosen as Via
+  const how = chosen as Via
+
+  if (commandName && how !== 'command') {
+    throw new HydraError({
+      message: '--command needs --via command',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (replacement && how !== 'pnyx') {
+    throw new HydraError({
+      message: 'starting fresh from an outside session uses Pnyx',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (override && (how === 'firstmate' || how === 'command')) {
+    throw new HydraError({
+      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
+      code: 'VALIDATION_ERROR',
+      help: ['Use --via pnyx or --via paseo'],
+    })
+  }
+
+  if (tools?.length && how !== 'pnyx') {
+    throw new HydraError({
+      message: 'Tool grants require the pnyx launch route',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return how
+}
+
+export function startRecorded({
+  state,
+  id,
+}: {
+  state: HydraState
+  id: string
+}): boolean {
+  return [
+    `${id}:attach`,
+    `${id}:started`,
+  ].some(recorded => Object.hasOwn(
+    state.eventIds,
+    recorded,
+  ))
+}
+
+function queuedRefusal({
+  task,
+  session,
+}: {
+  task: string
+  session: string
+}) {
+  return new HydraError({
+    message: `task ${task} is queued behind worker ${session}`,
+    code: 'CONFLICT',
+    help: [`Run \`pnyx-axi task unqueue ${task}\` first to give it its own worker`],
+  })
+}
+
+function requireLiveTask({
+  card,
+  ref,
+}: {
+  card: Card
+  ref: string
+}): void {
+  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+    throw new HydraError({
+      message: `task not found: ${ref}`,
+      code: 'NOT_FOUND',
+      help: ['Run `pnyx-axi task list`'],
+    })
+  }
 }
 
 export function freeTask({
@@ -77,31 +166,23 @@ export function freeTask({
     ref,
   })
 
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
-    throw new HydraError({
-      message: `task not found: ${ref}`,
-      code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi task list`'],
-    })
-  }
-
-  requireUnheld({ card })
-  requireReady({
-    state,
+  requireLiveTask({
     card,
+    ref,
   })
 
   if (card.queue) {
-    throw new HydraError({
-      message: 'unqueue this task before starting a separate worker',
-      code: 'CONFLICT',
+    throw queuedRefusal({
+      task: card.id,
+      session: card.queue.session,
     })
   }
 
   if (card.sessionIds?.length) {
     throw new HydraError({
-      message: `task ${card.id} already has an attached agent; detach it first`,
+      message: `task ${card.id} already has an attached agent: ${card.sessionIds.join(', ')}`,
       code: 'SESSION_CONFLICT',
+      help: [`Run \`pnyx-axi task detach ${card.id}\` to free it, or reply to that worker with \`pnyx-axi reply ${card.id} --text "<message>"\``],
     })
   }
 
@@ -136,6 +217,205 @@ async function hostedOffers({
   }))
 
   return offers
+}
+
+const START_FLAG_NAMES = {
+  via: '--via',
+  rule: '--rule',
+  harness: '--harness',
+  override: '--account, --model, --effort, --mode or --fast',
+  tools: '--tool',
+  folder: '--folder',
+  inPlace: '--in-place',
+  commandName: '--command',
+  url: '--paseo-url',
+}
+
+type StartFlag = keyof typeof START_FLAG_NAMES
+
+function unappliedFlags({ given }: { given: Record<StartFlag, unknown> }): string[] {
+  return Object.entries(START_FLAG_NAMES)
+    .filter(([name]) => flagGiven({ value: given[name as StartFlag] }))
+    .map(([
+      , flag,
+    ]) => flag)
+}
+
+async function steerAttached({
+  hydraId,
+  card,
+  worker,
+  prompt,
+  unapplied,
+  meta,
+}: {
+  hydraId: string
+  card: Card
+  worker: string
+  prompt?: string
+  unapplied: string[]
+  meta: Meta
+}): Promise<Output> {
+  const receipt = {
+    task: card.id,
+    worker,
+    ...(unapplied.length ? {
+      unapplied,
+      reason: `worker ${worker} is already attached, so its start flags were not applied`,
+    } : {}),
+  }
+  const help = [
+    `Reply to it with \`pnyx-axi reply ${card.id} --text "<message>"\``,
+    `Run \`pnyx-axi task detach ${card.id}\` first to start a new worker instead`,
+  ]
+
+  if (!prompt) {
+    return {
+      ...receipt,
+      launch: 'running',
+      help,
+    }
+  }
+
+  const home = loadHydra({ hydraId }).state.config?.hydra.home
+
+  try {
+    const sent = await sendReply({
+      hydraId,
+      request: {
+        card: card.id,
+        expectedSession: worker,
+        text: prompt,
+        homes: home ? [home] : [],
+        actor: meta.actor,
+        reason: meta.reason,
+        id: meta.id ? `${meta.id}:steer` : randomUUID(),
+      },
+    })
+
+    return {
+      ...receipt,
+      launch: 'steered',
+      delivery: sent.state,
+      help,
+    }
+  } catch (error) {
+    if (!(error instanceof HydraError) || error.code !== 'NO_ROUTE') {
+      throw error
+    }
+
+    return {
+      ...receipt,
+      launch: 'running',
+      delivery: 'not sent',
+      blocker: error.message,
+      help: [
+        ...error.help,
+        ...help,
+      ],
+    }
+  }
+}
+
+function leaseOrWait({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): { release: () => void } | { waiting: Output } {
+  try {
+    return {
+      release: taskLease({
+        hydraId,
+        task,
+        actor: 'main',
+      }),
+    }
+  } catch (error) {
+    const otherTurn = error instanceof HydraError && error.code === 'TASK_LEASED' && !copySettling({
+      hydraId,
+      task,
+    })
+
+    if (!otherTurn) {
+      throw error
+    }
+
+    return {
+      waiting: {
+        task,
+        launch: 'waiting',
+        blocker: error.message,
+        help: error.help,
+      },
+    }
+  }
+}
+
+function leaveQueue({
+  hydraId,
+  card,
+  meta,
+}: {
+  hydraId: string
+  card: Card
+  meta: Meta
+}): string | undefined {
+  const session = withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const queued = writer.state.cards[card.id]?.queue?.session
+
+      if (!queued) {
+        return undefined
+      }
+
+      applyDecision({
+        writer,
+        decision: decideQueue({
+          state: writer.state,
+          task: card.id,
+          meta: {
+            ...meta,
+            id: meta.id ? `${meta.id}:unqueue` : undefined,
+            ifRevision: undefined,
+          },
+        }),
+      })
+
+      return queued
+    },
+  })
+
+  return session && `was queued behind worker ${session}; it now gets its own worker`
+}
+
+function noteOpen({
+  hydraId,
+  task,
+  open,
+  meta,
+}: {
+  hydraId: string
+  task: string
+  open: Blocker[]
+  meta: Meta
+}): void {
+  if (!open.length) {
+    return
+  }
+
+  noteOnce({
+    hydraId,
+    task,
+    source: 'pnyx:start',
+    text: [
+      'Started with these still open:',
+      ...open.map(item => `- ${item.reason}. ${item.clear}`),
+    ].join('\n'),
+    meta,
+  })
 }
 
 export async function startTask({
@@ -188,74 +468,124 @@ export async function startTask({
     hydraId,
     task: card.id,
   })
-  const release = taskLease({
+
+  if (meta.id && startRecorded({
+    state,
+    id: meta.id,
+  })) {
+    return {
+      task: card.id,
+      event: 'none: duplicate',
+      help: ['This start was already recorded; nothing was started again'],
+    }
+  }
+
+  const how = startRoute({
+    state,
+    via,
+    commandName,
+    replacement,
+    override,
+    tools,
+  })
+  const worker = card.sessionIds?.[0]
+
+  if (worker && !replacement) {
+    requireLiveTask({
+      card,
+      ref: task,
+    })
+    checkRevision({
+      card,
+      ifRevision: meta.ifRevision,
+    })
+
+    return steerAttached({
+      hydraId,
+      card,
+      worker,
+      prompt,
+      unapplied: unappliedFlags({
+        given: {
+          via,
+          rule,
+          harness,
+          override,
+          tools,
+          folder: given,
+          inPlace,
+          commandName,
+          url,
+        },
+      }),
+      meta,
+    })
+  }
+
+  const leased = leaseOrWait({
     hydraId,
     task: card.id,
-    actor: 'main',
   })
 
+  if ('waiting' in leased) {
+    return leased.waiting
+  }
+
+  const release = leased.release
+
   try {
-    requireUnheld({ card })
-    requireReady({
-      state,
-      card,
-    })
-
-    if (card.queue) {
-      throw new HydraError({
-        message: 'unqueue this task before starting a separate worker',
-        code: 'CONFLICT',
+    const guided = ({
+      started,
+      unqueued,
+      launched = true,
+    }: {
+      started: Output
+      unqueued?: string
+      launched?: boolean
+    }): Output => {
+      const current = loadHydra({ hydraId }).state
+      const open = startBlockers({
+        state: current,
+        card: findCard({
+          state: current,
+          ref: card.id,
+        }),
       })
-    }
 
-    const how = chooseVia({
-      state,
-      via,
-    })
+      if (launched) {
+        noteOpen({
+          hydraId,
+          task: card.id,
+          open,
+          meta,
+        })
+      }
 
-    if (commandName && how !== 'command') {
-      throw new HydraError({
-        message: '--command needs --via command',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (replacement && how !== 'pnyx') {
-      throw new HydraError({
-        message: 'starting fresh from an outside session uses Pnyx',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (override && (how === 'firstmate' || how === 'command')) {
-      throw new HydraError({
-        message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
-        code: 'VALIDATION_ERROR',
-        help: ['Use --via pnyx or --via paseo'],
-      })
-    }
-
-    if (tools?.length && how !== 'pnyx') {
-      throw new HydraError({
-        message: 'Tool grants require the pnyx launch route',
-        code: 'VALIDATION_ERROR',
-      })
+      return {
+        ...started,
+        ...(open.length ? { open } : {}),
+        ...(unqueued ? { unqueued } : {}),
+      }
     }
 
     if (how === 'firstmate') {
-      return await askFirstmate({
+      const requested = await askFirstmate({
         hydraId,
         task,
         prompt,
         meta,
       })
-    }
+      const unqueued = leaveQueue({
+        hydraId,
+        card,
+        meta,
+      })
 
-    if (meta.id && (how === 'pnyx' || how === 'paseo') && `${meta.id}:attach` in state.eventIds) {
-      return {
-        task: card.id,
-        event: 'none: duplicate',
-      }
+      return guided({
+        started: requested,
+        unqueued,
+        launched: requested.sent !== 'failed',
+      })
     }
 
     if (tools?.length) {
@@ -353,15 +683,10 @@ export async function startTask({
     const ownsFolder = commandName
       ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
     const ownFolder = command && ownsFolder
-    const currentState = loadHydra({ hydraId }).state
-    const currentCard = findCard({
-      state: currentState,
-      ref: task,
-    })
-    requireUnheld({ card: currentCard })
-    requireReady({
-      state: currentState,
-      card: currentCard,
+    const unqueued = leaveQueue({
+      hydraId,
+      card,
+      meta,
     })
 
     const folder = replacement ? given
@@ -375,20 +700,23 @@ export async function startTask({
       })
 
     if (command) {
-      return await startCommand({
-        hydraId,
-        role: 'worker',
-        task,
-        prompt,
-        folder,
-        harness,
-        commandName,
-        meta,
+      return guided({
+        started: await startCommand({
+          hydraId,
+          role: 'worker',
+          task,
+          prompt,
+          folder,
+          harness,
+          commandName,
+          meta,
+        }),
+        unqueued,
       })
     }
 
-    if (how === 'pnyx') {
-      return await askHost({
+    const started = how === 'pnyx'
+      ? await askHost({
         hydraId,
         body: {
           action: 'start',
@@ -409,27 +737,44 @@ export async function startTask({
           ...(meta.reason ? { reason: meta.reason } : {}),
         },
       }) as Output
+      : await startAgent({
+        hydraId,
+        task,
+        harness: harness ?? agent.harness,
+        agent: {
+          ...agent,
+          ...dispatch?.override,
+        },
+        dispatch,
+        prompt: await taskPrompt({
+          hydraId,
+          card,
+          prompt,
+        }),
+        folder,
+        url,
+        meta,
+        connect,
+      })
+
+    return guided({
+      started: {
+        ...started,
+        rule: dispatch?.rule,
+      },
+      unqueued,
+    })
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'TASK_STARTING') {
+      return {
+        task: card.id,
+        launch: 'pending',
+        blocker: error.message,
+        help: error.help,
+      }
     }
 
-    return await startAgent({
-      hydraId,
-      task,
-      harness: harness ?? agent.harness,
-      agent: {
-        ...agent,
-        ...dispatch?.override,
-      },
-      dispatch,
-      prompt: await taskPrompt({
-        hydraId,
-        card,
-        prompt,
-      }),
-      folder,
-      url,
-      meta,
-      connect,
-    })
+    throw error
   } finally {
     release()
   }
@@ -474,18 +819,10 @@ async function askFirstmate({
         })
       }
 
-      requireUnheld({ card })
-      requireReady({
-        state: writer.state,
+      requireLiveTask({
         card,
+        ref: task,
       })
-
-      if (!liveTask({ card }) || card.id === HYDRA_CARD) {
-        throw new HydraError({
-          message: `task not found: ${task}`,
-          code: 'NOT_FOUND',
-        })
-      }
 
       const config = hydraConfig({
         state: writer.state,

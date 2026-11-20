@@ -19,7 +19,7 @@ commands:
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|group|keep|list|set|remove      Attach repositories, group projects or choose a keeper
   column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks and one level of subtasks (--parent <id>)
+  task create|list|show|rename|parent|arrange|status|history|updates|permission Tasks (create starts a worker) and one level of subtasks
   task move <task> --to-hydra <hydra>        Move a task, its history and its Pnyx-run worker to another Hydra
   task send <task> --text <text> --harness claude|codex Start or message a worker directly
   task start|continue <task>                  Start a worker or host an ended outside session
@@ -232,9 +232,13 @@ pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, do
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--before <task>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--key <key>] [--folder <path>] [--column <id>] [--before <task>] [--parent <task>] [--reason <text>] [--details <text>] [--event-id <id>] [task start flags | --hold | --behind <task|session> | --on <task>... | --no-start]
 Create work with --project, or put it in Ideas when no project applies. Use --parent for related work or a PR stack, one level deep.
 --project names a project attached to the Hydra (see project list).
+Create files the task and starts its worker through the dispatch rules, taking task start's flags. --hold, --behind or --on records why it waits instead,
+and --no-start files it unstarted; --reason says why. A task left unstarted without a reason shows "not started, no reason given".
+When it cannot queue behind that worker, it starts its own and the receipt says why. When the start cannot run, the task is still filed, and the receipt
+and a note on the card say why. Repeating the same --event-id never files or starts anything twice.
 Add --start --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] to create and send directly to its worker.
 pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]
 Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
@@ -345,6 +349,9 @@ pnyx-axi task continue <task> [--check]
 pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>] [--tool <capability>]...
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
+A start goes ahead over an open hold, question, prerequisite or worker prompt; its receipt lists each under open with the command that clears it,
+and the card gets the same note once. A task that has a worker keeps it: --prompt goes to that worker, and the receipt lists the start flags it did not apply.
+A queued task leaves its queue for a worker of its own. Another actor's turn on the task answers launch: waiting, and a session still opening answers pending.
 pnyx-axi task copy <task> [remove [--safe | --discard]]
 pnyx-axi task move <task> --to-hydra <hydra> [--reason <why>]
 Moves the task to another Hydra with its asks, questions, links, column, history and Pnyx-run worker session; its task copy stays in place.
@@ -360,7 +367,7 @@ pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
 Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
-Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
+Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue; a queue that cannot happen answers queued: false with the reason. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 A handoff cut by a restart is settled at the next start: an uncommitted one gets its source checkout back, a committed one keeps its target. While a handoff is unresolved, starts, resumes, replies and copy removal for both tasks answer CONFLICT; move out any changed work in the folder, then restart to retry.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
