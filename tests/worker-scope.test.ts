@@ -132,6 +132,19 @@ test(
       ]))
     }
 
+    const retryArgs = [
+      'task',
+      'brief',
+      'target',
+      '--brief',
+      'Retried guidance',
+      '--event-id',
+      'notice-retry',
+    ]
+    const firstReceipt = await asWorker.run({ args: retryArgs })
+    const retriedReceipt = await asWorker.run({ args: retryArgs })
+    expect(retriedReceipt.notices).toEqual(firstReceipt.notices)
+
     expect((await hydra.task({ key: 'target' })).status).toBe('done')
     expect((await hydra.task({ key: 'target' })).notices).toBeDefined()
     expect((await settingsOf()).fontSize).toBe(19)
@@ -144,6 +157,196 @@ test(
       ],
     })
     expect(history.events).toContainEqual(expect.objectContaining({ actor: worker.env.PNYX_ACTOR }))
+    const dispatchBefore = await hydra.owner({
+      args: [
+        'rule',
+        'show',
+      ],
+    })
+    const dispatch = await asWorker.run({
+      args: [
+        'rule',
+        'apply',
+        '--propose',
+        '--actor',
+        'hydra',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          expected: { revision: dispatchBefore.revision },
+          patch: {
+            rules: {
+              'direct-agent': {
+                when: 'Explicit agent selection',
+                candidates: [
+                  {
+                    harness: 'claude',
+                    mode: 'bypassPermissions',
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      ],
+    })
+    expect(dispatch).not.toHaveProperty('confirmation')
+    expect(dispatch.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('permission level increased') }))
+    expect(JSON.stringify(await hydra.owner({
+      args: [
+        'rule',
+        'show',
+      ],
+    }))).toContain('bypassPermissions')
+
+    const inboxTarget = await hydra.startTask({ key: 'inbox-target' })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'inbox-target',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'enqueue',
+        'inbox-target',
+        'older-instruction',
+        '--text',
+        'Review the first instruction',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'enqueue',
+        'inbox-target',
+        'newer-instruction',
+        '--text',
+        'Record the blocker',
+      ],
+    })
+    const pending = await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        'inbox-target',
+      ],
+    })
+    const acknowledgement = await asWorker.run({
+      args: [
+        'task',
+        'inbox',
+        'ack',
+        'inbox-target',
+        'newer-instruction',
+        '--session',
+        pending.claim.session,
+        '--generation',
+        String(pending.claim.generation),
+        '--outcome',
+        'blocked',
+      ],
+    })
+    expect(acknowledgement.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('older pending instruction') }))
+    expect(acknowledgement.message.ack.note).toBe('Marked blocked by the explicit acknowledgement')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        'inbox-target',
+      ],
+    })).messages).toContainEqual(expect.objectContaining({ id: 'older-instruction' }))
+    await hydra.owner({
+      args: [
+        'reply',
+        'inbox-target',
+        '--text',
+        'Continue the hidden task',
+      ],
+    })
+    await until({
+      what: 'the current hidden worker to receive its reply',
+      check: async () => {
+        const current = await hydra.agent({ cwd: inboxTarget.folder })
+
+        return current.received.some(text => text.includes('Continue the hidden task'))
+      },
+    })
+    const directMessage = await hydra.owner({
+      args: [
+        'reply',
+        'inbox-target',
+        '--task-message',
+        '--text',
+        'Keep the hidden task context',
+      ],
+    })
+    expect(directMessage.notices).toBeDefined()
+
+    await hydra.owner({
+      args: [
+        'task',
+        'hold',
+        'inbox-target',
+        '--reason',
+        'Inspect the source result before delivery',
+      ],
+    })
+    await asWorker.run({
+      args: [
+        'task',
+        'source',
+        'register',
+        'inbox-target',
+        'manual-result',
+        '--executable',
+        '/usr/bin/true',
+        '--argv',
+        '[]',
+        '--cwd',
+        hydra.folder({ name: 'source-cwd' }),
+      ],
+    })
+    const stoppedSource = await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'stop',
+        'inbox-target',
+        'manual-result',
+      ],
+    })
+    const unread = await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'read',
+        'inbox-target',
+        'manual-result',
+      ],
+    })
+    const handledSource = await asWorker.run({
+      args: [
+        'task',
+        'source',
+        'handled',
+        'inbox-target',
+        'manual-result',
+        String(stoppedSource.source.results[0].sequence),
+        '--session',
+        unread.claim.session,
+        '--generation',
+        String(unread.claim.generation),
+      ],
+    })
+    expect(handledSource.result.handled).toBeDefined()
+    expect(handledSource.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('before its steering message') }))
   },
 )
 

@@ -8,7 +8,6 @@ import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { SteeringAck, SteeringAttempt, SteeringClaim, SteeringMessage } from './model.ts'
-import { liveTask } from '#tasks/select.ts'
 import type { Writer } from '#app/writer.ts'
 import { pendingSteering, sameClaim, steeringClaim, steeringWorkerIdentity } from './steering.ts'
 
@@ -31,8 +30,16 @@ export function inboxTask({
     ref,
   })
 
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+  if (card.id === HYDRA_CARD) {
     invalid({ message: 'Choose a native task for its steering inbox' })
+  }
+
+  if (card.hidden) {
+    inform({
+      task: card.id,
+      reason: 'Steering accessed on a hidden task',
+      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+    })
   }
 
   return card
@@ -55,6 +62,8 @@ export function requireSteeringWorker({
       reason: 'Steering acknowledged by another actor',
       clear: `Use pnyx-axi task inbox read ${card.id} to inspect its steering`,
     })
+
+    return
   }
 
   const launchIdentityRequired = card.agent?.host === 'pnyx' || worker !== undefined
@@ -294,11 +303,23 @@ export function acknowledgeSteering({
   }
 
   if (pendingSteering({ card })[0]?.id !== id) {
-    invalid({ message: 'Handle the oldest pending instruction first' })
+    inform({
+      task: card.id,
+      reason: 'Steering handled before an older pending instruction',
+      clear: `Use pnyx-axi task inbox read ${card.id} to inspect the remaining instructions`,
+    })
   }
 
   if (ack.outcome === 'blocked' && !ack.note?.trim()) {
-    invalid({ message: 'A blocked acknowledgement needs a note explaining what prevents incorporation' })
+    inform({
+      task: card.id,
+      reason: 'Steering marked blocked without an explanatory note',
+      clear: `Use pnyx-axi task inbox enqueue ${card.id} <message-id> --text "<what blocks it>" to record the blocker`,
+    })
+    ack = {
+      ...ack,
+      note: 'Marked blocked by the explicit acknowledgement',
+    }
   }
 
   writer.append({
