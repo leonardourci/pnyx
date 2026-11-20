@@ -1,3 +1,4 @@
+import { readEvents } from '#app/event-log.ts'
 import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
@@ -183,32 +184,38 @@ export function hydraInscribe({
 }): Output {
   const action = positionals[1]
   const state = loadHydra({ hydraId }).state
+  const m = meta({ values })
+  const savedSeq = m.id ? state.eventIds[m.id] : undefined
+  const saved = savedSeq === undefined ? undefined : readEvents({
+    hydraId,
+    seqs: [savedSeq],
+  })[0]
+  const savedOperation = saved?.type === 'hydra.operation' && saved.data.kind === 'inscribe' ? saved.data.id : undefined
   const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
-  const operationId = values.key === undefined ? running?.id ?? randomUUID() : String(values.key)
+  const requestedId = values.key === undefined ? running?.id ?? randomUUID() : String(values.key)
+  const operationId = savedOperation ?? requestedId
   const through = integer({
     value: values.through,
     flag: '--through',
   })
   const error = values.error as string | undefined
-  const operation = inscribeOperation({
-    state,
-    id: operationId,
-    action,
-    through,
-    error,
-  })
 
-  const m = meta({ values })
+  const operationState = action === 'finish' ? 'finished' : action === 'fail' ? 'failed' : 'started'
+  const eventMeta = {
+    ...m,
+    id: m.id ?? `operation:${operationId}:${operationState}`,
+  }
   const result = commit({
     hydraId,
-    meta: m,
+    meta: eventMeta,
     intent: {
       type: 'hydra.operation',
       card: HYDRA_CARD,
     },
     decide: ({ state }) => operationEvent({
       state,
-      meta: m,
+      meta: eventMeta,
+      eventId: eventMeta.id,
       operation: inscribeOperation({
         state,
         id: operationId,
@@ -218,6 +225,13 @@ export function hydraInscribe({
       }),
     }),
   })
+  const updated = loadHydra({ hydraId }).state
+  const operation = updated.historyMilestones?.find(item => item.id === operationId)
+
+  if (!operation) {
+    throw new Error('Inscribe milestone was not recorded')
+  }
+
   const since = operation.historySince ?? 'origin'
 
   return {

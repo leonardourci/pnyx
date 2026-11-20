@@ -292,6 +292,8 @@ test(
         'start',
         '--key',
         'first-pass',
+        '--event-id',
+        'first-pass-start',
       ],
     })
     const overlapping = await hydra.owner({
@@ -304,6 +306,30 @@ test(
       ],
     })
     expect(overlapping.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    const retried = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'first-pass',
+        '--event-id',
+        'first-pass-start',
+      ],
+    })
+    expect(retried.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    expect((await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'second-pass',
+        '--through',
+        String(Number.MAX_SAFE_INTEGER),
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+
     const incomplete = await hydra.owner({
       args: [
         'hydra',
@@ -322,7 +348,18 @@ test(
         'last-inscribe',
         '--count',
       ],
-    })).totalTokens).toBeGreaterThanOrEqual(0)
+    })).totalTokens).toBe(0)
+    const completed = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        incomplete.milestone,
+        '--count',
+      ],
+    })
+    expect(completed.boundary).toBe(incomplete.through)
+    expect(completed.totalTokens).toBe(0)
   },
   120_000,
 )

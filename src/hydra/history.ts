@@ -189,6 +189,16 @@ export function inscribeOperation({
     })
   }
 
+  const invalidThrough = through !== undefined
+    && (!Number.isSafeInteger(through) || through < 0 || through > state.seq)
+
+  if (invalidThrough) {
+    throw new HydraError({
+      message: '--through must name an existing log position',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   const previous = state.historyMilestones?.find(item => item.id === id)
 
   if ((previous && previous.kind !== 'inscribe') || (action !== 'start' && !previous)) {
@@ -225,7 +235,7 @@ export function inscribeOperation({
   if (action === 'finish' && through !== previous?.through) {
     inform({
       reason: 'Inscribe finished without confirming its history snapshot',
-      clear: 'Use pnyx-axi hydra history to read the remaining history',
+      clear: `Use pnyx-axi hydra history --since ${previous?.historySince ?? 'origin'} --through ${previous?.through ?? state.seq} to read this pass’s history`,
     })
   }
 
