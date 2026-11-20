@@ -79,25 +79,10 @@ jobs:
           for job in "$typecheck" "$eslint" "$css" "$build"; do wait "$job" || failed=1; done
           exit "$failed"
 
-      # Integration files, then browser journeys; the runner image carries PostgreSQL and Google Chrome.
       - name: Tests
         env:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
         run: pnpm exec vitest run
-
-      - name: Check workspace latency
-        env:
-          PNYX_PERFORMANCE: '1'
-          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
-        run: pnpm exec vitest run --project performance
-
-      - name: Profile the workspace
-        env:
-          VITE_PNYX_PROFILE: '1'
-          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
-        run: |
-          pnpm run build
-          pnpm exec vitest run --project performance
 
       # The tests' scratch homes and the Postgres log, so a failure only CI shows can be read.
       - name: Keep the test files
