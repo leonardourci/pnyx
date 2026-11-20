@@ -165,6 +165,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Fix the export',
         '--key',
@@ -520,6 +521,7 @@ test(
           argv: [
             'task',
             'create',
+            '--no-start',
             '--title',
             'Unauthorized',
             '--key',
@@ -576,6 +578,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',
@@ -718,6 +721,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--key',
           key,
           '--title',

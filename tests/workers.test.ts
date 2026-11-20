@@ -364,6 +364,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Long migration',
         '--key',
@@ -597,6 +598,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',
@@ -722,6 +724,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Stoppable',
         '--key',

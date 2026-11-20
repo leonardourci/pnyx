@@ -487,6 +487,7 @@ function hydraClient({
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         `Task ${key}`,
         '--key',

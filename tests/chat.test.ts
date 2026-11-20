@@ -286,6 +286,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Export invoices',
         '--key',
@@ -980,6 +981,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Export invoices',
         '--key',

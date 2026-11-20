@@ -166,6 +166,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Add the cart',
         '--key',
@@ -237,6 +238,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Next chart',
         '--key',
@@ -305,6 +307,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Handoff gate',
         '--key',
@@ -533,6 +536,7 @@ if (branch === 'hercules/add-cart') {
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Failure hook',
         '--key',
@@ -671,6 +675,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Bystander',
         '--key',
@@ -724,6 +729,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Write the cart notes',
         '--key',
@@ -765,6 +771,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Add the cart',
         '--key',
@@ -923,6 +930,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Add the cart',
         '--key',
@@ -1058,6 +1066,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Fix private merge',
         '--key',
@@ -1344,6 +1353,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',
@@ -1735,6 +1745,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Keep this work',
         '--project',
@@ -1814,6 +1825,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Legacy work',
         '--project',
@@ -1862,6 +1874,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Dependent work',
         '--project',
@@ -1872,6 +1885,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Independent work',
         '--project',
@@ -2137,6 +2151,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           title,
           '--key',
@@ -2315,6 +2330,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Chart',
         '--key',
@@ -2416,6 +2432,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Retry allocation',
         '--key',
@@ -2526,6 +2543,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Shared name',
         '--key',
@@ -2576,6 +2594,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Shared name',
         '--key',
@@ -2644,6 +2663,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Source',
         '--key',
@@ -2665,6 +2685,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Target',
         '--key',
@@ -2686,6 +2707,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Gate',
         '--key',
@@ -3021,6 +3043,7 @@ if (branch === 'iris/target') {
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           'Final',
           '--key',
@@ -3124,6 +3147,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Reassign',
         '--key',
@@ -3223,6 +3247,7 @@ execFileSync(process.execPath, ${JSON.stringify([
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Reuse clean slot',
         '--key',
@@ -3300,6 +3325,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Unrecorded',
         '--key',
@@ -3344,6 +3370,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Next',
         '--key',
@@ -3436,6 +3463,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Later',
         '--key',
@@ -3471,6 +3499,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Still unlanded',
         '--key',
@@ -3510,6 +3539,7 @@ throw new Error('fixture allocation refusal')
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Recovered',
         '--key',
@@ -3576,6 +3606,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Finished work',
         '--project',
@@ -3610,6 +3641,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Real subtask',
         '--project',
@@ -3905,6 +3937,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Review cart',
         '--key',
@@ -4009,6 +4042,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Shared review',
         '--project',

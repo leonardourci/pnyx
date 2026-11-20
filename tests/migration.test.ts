@@ -203,6 +203,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Watched session',
         '--key',
@@ -215,6 +216,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Busy task',
         '--key',
@@ -293,6 +295,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'After the migration',
       ],
@@ -310,6 +313,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Keep my size',
       ],
@@ -467,6 +471,7 @@ test(
           args: [
             'task',
             'create',
+            '--no-start',
             '--title',
             `${hydra.id} ${key}`,
             '--key',

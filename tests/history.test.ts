@@ -94,6 +94,7 @@ async function seededHydra({ id }: { id: string }) {
     args: [
       'task',
       'create',
+      '--no-start',
       '--title',
       'Busy task',
       '--key',

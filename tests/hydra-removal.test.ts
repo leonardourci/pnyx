@@ -107,6 +107,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'lost',
         '--title',
@@ -145,6 +146,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'moved',
         '--title',
@@ -187,6 +189,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'pooled',
         '--title',
@@ -223,6 +226,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'neighbor',
         '--title',
@@ -400,6 +404,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'resurrection',
       ],
@@ -453,6 +458,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Created after the preview',
       ],
@@ -618,6 +624,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'first',
         '--title',
@@ -637,6 +644,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'locked',
         '--title',
@@ -694,6 +702,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Competing write',
       ],
@@ -705,6 +714,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Competing write after restart',
       ],
@@ -784,6 +794,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'changed',
         '--title',
@@ -861,6 +872,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Created after removal refusal',
       ],
@@ -931,6 +943,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'unsafe',
         '--title',
@@ -1080,6 +1093,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'retry',
         '--title',

@@ -376,6 +376,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Long job',
         '--key',

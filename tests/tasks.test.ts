@@ -6,7 +6,7 @@ import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { parsed, pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -30,6 +30,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Build the export',
         '--key',
@@ -44,6 +45,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Ship the export',
         '--key',
@@ -81,14 +83,26 @@ test(
     expect(worker.received[0]).toContain('Write the CSV export')
     expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
 
-    const again = await hydra.ownerRefused({
+    const again = await hydra.owner({
       args: [
         'task',
         'start',
         'build',
+        '--model',
+        'opus',
+        '--prompt',
+        'Also export the refunds',
       ],
     })
-    expect(again.code).toBe('SESSION_CONFLICT')
+    expect(again).toMatchObject({
+      launch: 'steered',
+      worker: (await hydra.task({ key: 'build' })).worker,
+      unapplied: ['--account, --model, --effort, --mode or --fast'],
+    })
+    await until({
+      what: 'the worker to hear the start prompt',
+      check: () => worker.received.some(text => text.includes('Also export the refunds')),
+    })
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
     const session = await hydra.chat({ text: 'what does the export need?' })
@@ -168,6 +182,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',
@@ -221,7 +236,7 @@ test(
 )
 
 test(
-  'a held task refuses to start until the owner releases it from a newer message',
+  'a start on a held task goes ahead and lists the hold, with the command that releases it, once on the card',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'held' })
@@ -238,50 +253,36 @@ test(
         '--hold',
       ],
     })
-    expect((await hydra.ownerRefused({
-      args: [
-        'task',
-        'start',
-        'rename',
-      ],
-    })).code).toBe('TASK_HELD')
-    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
-
-    const go = await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        'Go ahead with the rename',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'task',
-        'release',
-        'rename',
-        '--from-message',
-        go.message,
-        '--reason',
-        'The owner said go',
-      ],
-    })
-    await hydra.owner({
+    const card = await hydra.task({ key: 'rename' })
+    const started = await hydra.owner({
       args: [
         'task',
         'start',
         'rename',
       ],
     })
+    expect(started.open).toEqual([
+      expect.objectContaining({
+        reason: 'held for discussion: Rename the API',
+        clear: expect.stringContaining(`pnyx-axi task release ${card.id} --from-message`),
+      }),
+    ])
     expect((await hydra.agent({ cwd: folder })).received).toHaveLength(1)
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'rename',
+        '--full',
+      ],
+    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:start' })])
   },
 )
 
 test(
-  'a hold is not released by a message sent before it or by one Hydra wrote, and the task still cannot start',
+  'a hold is released only by an owner message sent after it, not by an earlier one or one Hydra wrote',
   async () => {
     const hydra = await pnyx.hydra()
-    const folder = hydra.folder({ name: 'still-held' })
     const before = await hydra.owner({
       args: [
         'hydra',
@@ -298,8 +299,6 @@ test(
         'Rename the API',
         '--key',
         'still-held',
-        '--folder',
-        folder,
         '--hold',
       ],
     })
@@ -336,18 +335,33 @@ test(
       ).toBe('VALIDATION_ERROR')
     }
 
-    expect((await hydra.ownerRefused({
+    expect((await hydra.task({ key: 'still-held' })).hold).toBeDefined()
+
+    const go = await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Go ahead with the rename',
+      ],
+    })
+    await hydra.owner({
       args: [
         'task',
-        'start',
+        'release',
         'still-held',
+        '--from-message',
+        go.message,
+        '--reason',
+        'The owner said go',
       ],
-    })).code).toBe('TASK_HELD')
+    })
+    expect((await hydra.task({ key: 'still-held' })).hold).toBeUndefined()
   },
 )
 
 test(
-  'Hydra files an owner ask and starts its worker in one intake, a replay starts nothing more, and a create that neither starts nor waits is refused',
+  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, and a task left unstarted shows why or that no reason was given',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'ring' })
@@ -359,26 +373,9 @@ test(
         'Please fix the usage ring, it is not accurate',
       ],
     })
-    const refused = await hydra.ownerRefused({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Fix the usage ring',
-        '--folder',
-        folder,
-        '--actor',
-        'hydra',
-        '--reason',
-        'The owner asked for the fix',
-      ],
-    })
-    expect(refused.code).toBe('NOT_STARTED')
-    expect(refused.help?.join('\n')).toContain('pnyx-axi task intake')
-
-    const intake = [
+    const create = [
       'task',
-      'intake',
+      'create',
       '--title',
       'Fix the usage ring',
       '--folder',
@@ -394,9 +391,9 @@ test(
       '--reason',
       'The owner asked for the fix',
       '--event-id',
-      'ring-intake',
+      'ring-create',
     ]
-    const first = await hydra.owner({ args: intake })
+    const first = await hydra.owner({ args: create })
     expect(first).toMatchObject({
       launch: 'started',
       rule: 'default',
@@ -409,29 +406,55 @@ test(
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('fix the usage ring')
     expect(worker.received[0]).toContain('Show the usage the agent reports')
-    const started = await hydra.task({ key: first.task })
-    expect(started.worker).toBe(first.worker)
+    expect((await hydra.task({ key: first.card.id })).worker).toBe(first.worker)
 
     await hydra.as({ session: worker }).run({
       args: [
         'task',
         'ask',
-        first.task,
+        first.card.id,
         '--question',
         'Which ring do you mean?',
       ],
     })
-    const replay = await hydra.owner({ args: intake })
-    expect(replay).toMatchObject({
-      task: first.task,
+    expect(await hydra.owner({ args: create })).toMatchObject({
       launch: 'started',
       worker: first.worker,
     })
-    expect((await hydra.task({ key: first.task })).worker).toBe(first.worker)
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
-    const session = await hydra.chat({ text: 'Also polish the usage ring after the fix' })
-    const apply = ({ changes }: { changes: object[] }) => pnyxAxi({
+    const later = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Polish the usage ring',
+        '--no-start',
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner wants the fix to land first',
+      ],
+    })
+    expect(later).toMatchObject({
+      launch: 'not started',
+      reason: 'The owner wants the fix to land first',
+    })
+    expect((await hydra.task({ key: later.card.id })).worker).toBe('none: not started: The owner wants the fix to land first')
+
+    const saved = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Redraw the usage ring',
+        '--no-start',
+      ],
+    })
+    expect((await hydra.task({ key: saved.card.id })).worker).toBe('none: not started, no reason given')
+
+    const session = await hydra.chat({ text: 'Also add a legend to the usage ring' })
+    expect((await pnyxAxi({
       args: [
         'apply',
         '--file',
@@ -442,155 +465,79 @@ test(
       env: session.env,
       input: JSON.stringify({
         version: 1,
-        changes,
+        changes: [
+          {
+            op: 'task.create',
+            key: 'legend',
+            title: 'Add a legend to the usage ring',
+            reason: 'The owner asked for a legend',
+          },
+        ],
       }),
-    })
-    const lone = {
-      op: 'task.create',
-      as: 'polish',
-      title: 'Polish the usage ring',
-      reason: 'The owner asked for a follow-up',
-    }
-    const refusedApply = parsed(await apply({ changes: [lone] }))
-    expect(refusedApply.errors).toEqual([expect.objectContaining({ code: 'NOT_STARTED' })])
-    expect((await apply({
-      changes: [
-        lone,
-        {
-          op: 'task.depend',
-          task: '$polish',
-          on: [first.task],
-          reason: 'The follow-up needs the fix first',
-        },
-      ],
     })).status).toBe(0)
-
-    const listed = (await hydra.owner({
-      args: [
-        'task',
-        'list',
-      ],
-    })).tasks as { title: string }[]
-    expect(listed.map(task => task.title).filter(title => title.endsWith('usage ring'))
-      .sort()).toEqual([
-      'Fix the usage ring',
-      'Polish the usage ring',
-    ])
+    expect((await hydra.task({ key: 'legend' })).worker).toBe('none: not started, no reason given')
   },
 )
 
 test(
-  'an intake on a task with a worker sends the owner ask to that worker and its replay starts none after the worker leaves, while a wait on it or a refused queue behind it names why and files nothing',
+  'a create behind a worker it cannot share starts its own worker and says why it was not queued, and a queue that cannot happen explains instead of refusing',
   async () => {
     const hydra = await pnyx.hydra()
-    const {
-      folder,
-      worker,
-    } = await hydra.startTask({ key: 'export' })
-    const sent = await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        'The export should also include refunds, and then do the import',
-      ],
-    })
-    const steer = [
-      'task',
-      'intake',
-      'export',
-      '--ask',
-      'The export should also include refunds',
-      '--message',
-      sent.message,
-      '--actor',
-      'hydra',
-      '--reason',
-      'The owner widened the export',
-      '--event-id',
-      'export-refunds',
-    ]
-    const steered = await hydra.owner({ args: steer })
-    expect(steered).toMatchObject({
-      launch: 'steered',
-      worker: (await hydra.task({ key: 'export' })).worker,
-    })
-    await until({
-      what: 'the worker to hear the new ask',
-      check: () => worker.received.some(text => text.includes('The export should also include refunds')),
-    })
-
-    const held = await hydra.ownerRefused({
+    const { folder } = await hydra.startTask({ key: 'export' })
+    const importFolder = hydra.folder({ name: 'import' })
+    const behind = await hydra.owner({
       args: [
         'task',
-        'intake',
-        'export',
-        '--ask',
-        'The export should also include refunds',
-        '--message',
-        sent.message,
-        '--hold',
-        '--actor',
-        'hydra',
-        '--reason',
-        'The owner wants to talk about refunds',
-        '--event-id',
-        'export-hold',
-      ],
-    })
-    expect(held.code).toBe('CONFLICT')
-    expect(held.error).toContain(steered.worker)
-
-    const queued = await hydra.ownerRefused({
-      args: [
-        'task',
-        'intake',
+        'create',
         '--title',
         'Build the import',
-        '--ask',
-        'then do the import',
-        '--message',
-        sent.message,
+        '--folder',
+        importFolder,
         '--brief',
         'Read the exported CSV back',
         '--behind',
         'export',
-        '--actor',
-        'hydra',
-        '--reason',
-        'The import reuses the export worker',
-        '--event-id',
-        'import-behind',
       ],
     })
-    expect(queued.code).toBe('CONFLICT')
-    expect(queued.error).toContain('worker’s project')
-    expect(queued.help?.join('\n')).toContain('pnyx-axi task project')
-    const listed = (await hydra.owner({
-      args: [
-        'task',
-        'list',
-      ],
-    })).tasks as { title: string }[]
-    expect(listed.some(task => task.title === 'Build the import')).toBe(false)
+    expect(behind).toMatchObject({
+      launch: 'started',
+      queued: expect.stringContaining('worker’s project'),
+    })
+    expect(behind.help.join('\n')).toContain('pnyx-axi task project')
+    expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
+    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
-    await hydra.owner({
+    const idea = await hydra.owner({
       args: [
         'task',
-        'detach',
+        'create',
+        '--title',
+        'Archive the export',
+        '--no-start',
+      ],
+    })
+    expect(await hydra.owner({
+      args: [
+        'task',
+        'queue',
+        idea.card.id,
+        '--behind',
         'export',
       ],
+    })).toMatchObject({
+      queued: false,
+      reason: expect.stringContaining('worker’s project'),
     })
-    expect(await hydra.owner({ args: steer })).toMatchObject({ launch: 'steered' })
-    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
+    expect((await hydra.task({ key: idea.card.id })).queue).toBeUndefined()
   },
 )
 
 test(
-  'Hydra holds work for the owner, and a held or dependent intake stays unstarted with its reason',
+  'Hydra holds work for the owner, a held or dependent create stays unstarted with its reason, and a start on the dependent goes ahead and lists the dependency',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'talk-first' })
+    const docsFolder = hydra.folder({ name: 'rename-docs' })
     const sent = await hydra.owner({
       args: [
         'hydra',
@@ -599,25 +546,10 @@ test(
         'Let us talk about renaming the API before anyone builds it, and document it after',
       ],
     })
-    const idea = await hydra.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Rename the CLI',
-        '--hold',
-        '--actor',
-        'hydra',
-        '--reason',
-        'The owner wants to talk first',
-      ],
-    })
-    expect((await hydra.task({ key: idea.card.id })).hold).toMatchObject({ reason: 'The owner wants to talk first' })
-
     const held = await hydra.owner({
       args: [
         'task',
-        'intake',
+        'create',
         '--title',
         'Rename the API',
         '--folder',
@@ -641,6 +573,7 @@ test(
       launch: 'held',
       hold: 'The owner wants to talk first',
     })
+    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
     const goQuestion = (held.help[0] as string).split('`')[1]!
       .replace(
         '<go question?>',
@@ -665,22 +598,14 @@ test(
       ],
     })).toMatchObject({ ask: expect.any(String) })
 
-    const start = await hydra.ownerRefused({
-      args: [
-        'task',
-        'start',
-        held.task,
-      ],
-    })
-    expect(start.code).toBe('TASK_HELD')
-    expect(start.help?.join('\n')).toContain(`pnyx-axi task release ${held.task} --from-message`)
-
     const waiting = await hydra.owner({
       args: [
         'task',
-        'intake',
+        'create',
         '--title',
         'Document the rename',
+        '--folder',
+        docsFolder,
         '--ask',
         'document it after',
         '--message',
@@ -688,7 +613,7 @@ test(
         '--brief',
         'Update the API docs',
         '--on',
-        held.task,
+        held.card.id,
         '--actor',
         'hydra',
         '--reason',
@@ -699,34 +624,42 @@ test(
     })
     expect(waiting).toMatchObject({
       launch: 'waiting',
-      on: [held.task],
+      on: [held.card.id],
     })
-    const docs = await hydra.ownerRefused({
+    expect(pnyx.claude.sessions.some(session => session.cwd === docsFolder)).toBe(false)
+
+    const docs = await hydra.owner({
       args: [
         'task',
         'start',
-        waiting.task,
+        waiting.card.id,
       ],
     })
-    expect(docs.code).toBe('TASK_NOT_READY')
-    expect(docs.help?.join('\n')).toContain(`pnyx-axi task undepend ${waiting.task} --on ${held.task}`)
-    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
+    expect(docs.open).toEqual([
+      expect.objectContaining({
+        clear: expect.stringContaining(`pnyx-axi task undepend ${waiting.card.id} --on ${held.card.id}`),
+      }),
+    ])
+    expect((await hydra.agent({ cwd: docsFolder })).received).toHaveLength(1)
   },
 )
 
 test(
-  'a start blocked by an open question names it and the command that answers it, and an intake on that task records the blocker once and starts the worker when retried after the answer',
+  'a start with an open question goes ahead and lists it with the command that answers it, and a create that cannot start notes why once however often it is retried',
   async () => {
     const hydra = await pnyx.hydra()
-    const folder = hydra.folder({ name: 'blocked' })
+    const folder = hydra.folder({ name: 'archive' })
     await hydra.owner({
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Archive invoices',
         '--key',
         'archive',
+        '--folder',
+        folder,
         '--brief',
         'Archive the old invoices',
       ],
@@ -755,85 +688,53 @@ test(
         'Only the owner knows the rule',
       ],
     })
-    const answer = `pnyx-axi task answer ${card.id} ${asked.ask}`
 
-    const start = await hydra.ownerRefused({
+    const started = await hydra.owner({
       args: [
         'task',
         'start',
         'archive',
       ],
     })
-    expect(start.code).toBe('TASK_NOT_READY')
-    expect(start.error).toContain(asked.ask)
-    expect(start.help?.join('\n')).toContain(answer)
+    expect(started.open).toEqual([
+      expect.objectContaining({
+        reason: expect.stringContaining(asked.ask),
+        clear: expect.stringContaining(`pnyx-axi task answer ${card.id} ${asked.ask}`),
+      }),
+    ])
+    expect((await hydra.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
 
-    const sent = await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        'Please archive the invoices now',
-      ],
-    })
-    const intake = [
+    const idea = [
       'task',
-      'intake',
-      'archive',
-      '--ask',
-      'archive the invoices now',
-      '--message',
-      sent.message,
+      'create',
+      '--title',
+      'Sketch the invoice archive',
       '--actor',
       'hydra',
       '--reason',
-      'The owner asked again',
+      'The owner asked for a sketch',
       '--event-id',
-      'archive-again',
+      'archive-sketch',
     ]
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      const blocked = await hydra.owner({ args: intake })
-      expect(blocked).toMatchObject({
-        task: card.id,
-        launch: 'blocked',
-        code: 'TASK_NOT_READY',
-      })
-      expect(blocked.help.join('\n')).toContain(answer)
+      expect(await hydra.owner({ args: idea })).toMatchObject({ launch: 'not started' })
     }
 
+    const sketch = (await hydra.owner({
+      args: [
+        'task',
+        'list',
+      ],
+    })).tasks.find((task: { title: string }) => task.title === 'Sketch the invoice archive')
     expect((await hydra.owner({
       args: [
         'task',
         'show',
-        'archive',
+        sketch.id,
         '--full',
       ],
-    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:intake' })])
-    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
-
-    await hydra.owner({
-      args: [
-        'task',
-        'answer',
-        'archive',
-        asked.ask,
-        '--choice',
-        '1',
-      ],
-    })
-    expect(await hydra.owner({
-      args: [
-        ...intake,
-        '--folder',
-        folder,
-      ],
-    })).toMatchObject({
-      task: card.id,
-      launch: 'started',
-    })
-    const worker = await hydra.agent({ cwd: folder })
-    expect(worker.received[0]).toContain('archive the invoices now')
+    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:create' })])
   },
 )
 
@@ -852,6 +753,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Later work',
         '--key',
@@ -952,6 +854,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Export',
       ],
@@ -960,6 +863,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Import',
       ],
@@ -968,6 +872,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'CSV',
       ],
@@ -976,6 +881,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Headers',
       ],
@@ -1050,6 +956,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'family',
         '--title',
@@ -1060,6 +967,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'part',
         '--title',
@@ -1072,6 +980,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'second-part',
         '--title',
@@ -1188,6 +1097,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'retried',
         '--title',
@@ -1250,6 +1160,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'a',
         '--title',
@@ -1260,6 +1171,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'b',
         '--title',
@@ -1270,6 +1182,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'p',
         '--title',
@@ -1575,6 +1488,7 @@ async function placementFamily() {
     const args = [
       'task',
       'create',
+      '--no-start',
       '--key',
       entry.key,
       '--title',
@@ -1740,6 +1654,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'other',
         '--title',
@@ -2257,6 +2172,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Export batch',
       ],
@@ -2270,6 +2186,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',
@@ -2500,6 +2417,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Export delivery batch',
       ],
@@ -2545,6 +2463,7 @@ test(
         args: [
           'task',
           'create',
+          '--no-start',
           '--title',
           key,
           '--key',

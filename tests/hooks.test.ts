@@ -250,6 +250,7 @@ test(
       [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Speed up checkout',
         '--project',
