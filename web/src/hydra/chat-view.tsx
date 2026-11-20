@@ -1,4 +1,4 @@
-import { Button } from '#web-shared/ui/controls.tsx'
+import { Button, InlineButton } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -19,20 +19,24 @@ function OlderSentinel({
   scroll,
   older,
   loadingEarlier,
-  notify,
 }: {
   scroll: ChatScroll
   older?: OlderRows
   loadingEarlier: boolean
-  notify({ text }: { text: string }): void
 }) {
   const marker = useRef<HTMLDivElement>(null)
   const [
     loading,
     setLoading,
   ] = useState(false)
-  // The cursor whose read failed is not read again on its own; a reconnect, which drops older, allows it again.
-  const failed = useRef<string>(undefined)
+  // A read that failed is not sent again on its own; Retry or a reconnect, which drops older, sends it again.
+  const [
+    failure,
+    setFailure,
+  ] = useState<{
+    cursor: string
+    text: string
+  }>()
   const latestOlder = useRef(older)
   useLayoutEffect(() => {
     latestOlder.current = older
@@ -46,10 +50,10 @@ function OlderSentinel({
       const root = scroll.scroller.current
 
       if (offline) {
-        failed.current = undefined
+        setFailure(undefined)
       }
 
-      const idle = !cursor || loading || loadingEarlier || failed.current === cursor
+      const idle = !cursor || loading || loadingEarlier || failure?.cursor === cursor
 
       if (!element || !root || idle) {
         return
@@ -72,8 +76,10 @@ function OlderSentinel({
               return
             }
 
-            failed.current = cursor
-            notify({ text: (error as Error).message })
+            setFailure({
+              cursor,
+              text: (error as Error).message,
+            })
           } finally {
             setLoading(false)
           }
@@ -92,11 +98,20 @@ function OlderSentinel({
       loading,
       loadingEarlier,
       offline,
+      failure,
     ],
   )
 
+  const failedHere = failure !== undefined && failure.cursor === cursor
+
   return (
-    <div ref={marker} className="chat-older h-7">
+    <div ref={marker} className="chat-older min-h-7">
+      {failedHere && (
+        <p className="chat-older-failed flex h-full flex-wrap items-center justify-center gap-x-2 text-meta text-muted" role="alert">
+          Earlier messages did not load: {failure.text}
+          <InlineButton className="text-gold cursor-pointer" onClick={() => setFailure(undefined)}>Retry</InlineButton>
+        </p>
+      )}
       {(loading || loadingEarlier) && (
         <div className="chat-loading h-full flex items-center justify-center pointer-events-none" role="status" aria-label="Loading earlier messages">
           <span className="chat-spinner size-4 border-2 border-line border-t-muted rounded-full animate-hydra-spin motion-reduce:animate-hydra-spin-reduced" aria-hidden="true" />
@@ -138,7 +153,6 @@ export function Chat({
   loadingEarlier = false,
   error,
   status,
-  notify,
   children,
 }: {
   title: string
@@ -149,7 +163,6 @@ export function Chat({
   // Why the conversation could not be read.
   error?: string
   status?: ReactNode
-  notify({ text }: { text: string }): void
   children: ReactNode
 }) {
   return (
@@ -169,7 +182,6 @@ export function Chat({
             scroll={scroll}
             older={older}
             loadingEarlier={loadingEarlier}
-            notify={notify}
           />
           {error && <ChatError text={error} />}
           {children}

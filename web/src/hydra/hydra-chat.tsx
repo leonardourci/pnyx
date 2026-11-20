@@ -753,7 +753,6 @@ export function HydraChat({
         loadingEarlier={thread.loadingEarlier}
         error={thread.error}
         status={statusLine}
-        notify={notify}
       >
         <Messages
           catalog={catalog}

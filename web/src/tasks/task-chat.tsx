@@ -364,7 +364,6 @@ export function TaskChat({
         loadingEarlier={thread.loadingEarlier}
         error={thread.error}
         status={statusLine}
-        notify={notify}
       >
         {live?.unavailable && card.agent && <Tooltip content={live.unavailable}><span aria-label="Conversation unavailable"><Icon name="warning" /></span></Tooltip>}
         <Messages
