@@ -961,7 +961,7 @@ test(
       after: settingsOnly.event.seq,
     })
       .find(event => event.type === 'session.observed'
-        && event.data.fields.attention?.some(item => item.text?.includes('inspect-package')))!
+        && 'fields' in event.data && event.data.fields.attention?.some(item => item.text?.includes('inspect-package')))!
     expect(eventReasons({
       state: stateAfterQuestion,
       event: questionEvent,

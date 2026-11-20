@@ -157,8 +157,13 @@ export function projectedAttention({
 }
 
 export function observedQuestions({ event }: { event: HydraEvent }): Attention[] {
-  const attention = event.type === 'session.observed' ? event.data.fields.attention
-    : event.type === 'card.pushed' ? event.data.attention : undefined
+  let attention: Attention[] | undefined
+
+  if (event.type === 'session.observed') {
+    attention = 'fields' in event.data ? event.data.fields.attention : event.data.attention
+  } else if (event.type === 'card.pushed') {
+    attention = event.data.attention
+  }
 
   return attention?.filter(item => item.blocking && !item.answered) ?? []
 }

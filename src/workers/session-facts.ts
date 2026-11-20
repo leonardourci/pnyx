@@ -115,6 +115,30 @@ export function applySessionFacts({
   state: HydraState
   event: Extract<import('#app/model.ts').HydraEvent, { type: 'session.observed' }>
 }): void {
+  if ('session' in event.data) {
+    const session = state.sessions?.[event.data.session]
+
+    if (!session) {
+      return
+    }
+
+    applySessionFacts({
+      state,
+      event: {
+        ...event,
+        data: {
+          fields: {
+            agent: session.agent,
+            activity: event.data.activity,
+            attention: event.data.attention,
+          },
+        },
+      },
+    })
+
+    return
+  }
+
   const {
     fields,
     source,
@@ -306,9 +330,23 @@ export function applySessionFacts({
   refreshTasks({ state })
 }
 
-export function sessionFields({ event }: { event: import('#app/model.ts').HydraEvent }): PushFields | undefined {
+export function sessionFields({
+  event,
+  state,
+}: {
+  event: import('#app/model.ts').HydraEvent
+  state?: HydraState
+}): PushFields | undefined {
   if (event.type === 'session.observed') {
-    return event.data.fields
+    if ('fields' in event.data) {
+      return event.data.fields
+    }
+
+    return {
+      activity: event.data.activity,
+      attention: event.data.attention,
+      agent: state?.sessions?.[event.data.session]?.agent,
+    }
   }
 
   return event.type === 'card.pushed' ? event.data : undefined
