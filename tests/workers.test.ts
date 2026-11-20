@@ -1,3 +1,4 @@
+import { query } from '#store/postgres.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
@@ -2001,6 +2002,34 @@ test(
       taskRoot,
       unavailable.card.id,
     )
+    query({
+      statements: [
+        { text: 'create sequence worker_log_write_attempts' },
+        {
+          text: `create function fail_worker_log_once() returns trigger language plpgsql as $$
+          begin
+            if nextval('worker_log_write_attempts') = 1 then
+              raise exception 'injected initial worker log write failure';
+            end if;
+            return new;
+          end $$`,
+        },
+        {
+          text: `create trigger fail_worker_log_once before insert on events for each row
+          when (new.type = 'task.worker-line' and new.data->'data'->>'text' = 'completed offline')
+          execute function fail_worker_log_once()`,
+        },
+      ],
+    })
+    onTestFinished(() => {
+      query({
+        statements: [
+          { text: 'drop trigger if exists fail_worker_log_once on events' },
+          { text: 'drop function if exists fail_worker_log_once()' },
+          { text: 'drop sequence if exists worker_log_write_attempts' },
+        ],
+      })
+    })
     await pnyx.restart({
       whileStopped: () => {
         rmSync(
@@ -2027,14 +2056,23 @@ test(
     })
     rmSync(unreadableLog)
     rmSync(unavailableDir)
-    const restored = await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'facts',
-        '--full',
-      ],
+    const restored = await until({
+      what: 'the offline line to recover after its first write fails',
+      check: async () => {
+        const shown = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'facts',
+            '--full',
+          ],
+        })
+
+        return shown.task.workerLog?.latest.text === 'completed offline' && shown
+      },
     })
+    expect(query({ statements: [{ text: 'select last_value::int as attempts from worker_log_write_attempts' }] })[0]![0]!.attempts)
+      .toBeGreaterThan(1)
     expect(restored.task.workerLog.status).toEqual(done.task.workerLog.status)
     expect(restored.task.workerLog.latest.text).toBe('completed offline')
     writeFileSync(

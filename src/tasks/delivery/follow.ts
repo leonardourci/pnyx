@@ -78,7 +78,7 @@ export function workerNews({
 
   if (link.comments !== undefined && status.comments > link.comments) {
     const count = status.comments - link.comments
-    news.push(`${count} new review ${count === 1 ? 'comment' : 'comments'} on ${link.url}. Read them with \`gh-axi pr view ${number}${repo} --comments --reviews\`, address each one on your branch and push. Do not reply on the pull request: your replies would come back to you as new comments. Declare needs_you only for a comment that asks for something outside this task.`)
+    news.push(`${count} new review ${count === 1 ? 'comment' : 'comments'} on ${link.url}. Read them with \`gh-axi pr view ${number}${repo} --comments --reviews\`, address each one on your branch and push. Do not reply on the pull request: your replies would come back to you as new comments. For a comment that asks for something outside this task, append \`needs-you: <question>\` to \`$PNYX_TASK_DIR/worker.log\`.`)
   }
 
   const finished = link.checks !== undefined && link.checks !== status.checks.summary

@@ -274,18 +274,19 @@ export function followWorkerLogs({
           hydraId,
           task: card.id,
         })
+        const watcher = watchPath({
+          path: join(
+            dir,
+            'worker.log',
+          ),
+          changed: read,
+          poll: true,
+        })
         watches.set(
           card.id,
-          watchPath({
-            path: join(
-              dir,
-              'worker.log',
-            ),
-            changed: read,
-            poll: true,
-          }),
+          watcher,
         )
-        read()
+        watcher.reconcile()
       } catch (error) {
         log({
           level: 'warn',
