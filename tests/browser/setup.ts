@@ -32,7 +32,6 @@ export async function openHydra({
     browser = await chromium.launch({
       channel: 'chrome',
       headless: true,
-      // A scratch HOME must not open the owner's macOS Keychain prompt.
       args: [
         '--use-mock-keychain',
         '--password-store=basic',
