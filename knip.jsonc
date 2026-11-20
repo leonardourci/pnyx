@@ -1,5 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "includeEntryExports": true,
+  // A declaration used within its own file is live code.
+  "ignoreExportsUsedInFile": true,
   "entry": [
     // Worker URLs select the source or built extension at runtime.
     "src/store/postgres-worker.ts",

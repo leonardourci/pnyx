@@ -28,7 +28,7 @@
     "dev": "PNYX_HOME=${PNYX_DEV_HOME:-$HOME/.pnyx-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
     "dev:server": "node --conditions=source --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
-    "knip": "knip",
+    "knip": "knip --tsConfig tsconfig.build.json",
     "verify": "pnpm run lint && pnpm test",
     "deslop": "deslop run",
     "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts",

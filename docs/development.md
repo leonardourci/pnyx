@@ -111,7 +111,7 @@ Project means `AGENTS.md`; conventions means `follow-conventions`. `review-code`
 
 `Tests` runs on `pull_request` with read-only permissions, no secrets and no path filters. `Test scope` installs the selector from package.json without lifecycle hooks and reads the merge diff, including both paths of renames. It runs tests when the selection names `Lint, build and tests`. Docs-only changes skip that job, satisfying branch protection. The docs kind names `Test scope` because deslop requires a successful CI check to publish proof. A failed scope job still runs tests behind the approved `ci` environment. Description edits start no run; new pushes cancel older runs.
 
-The full CI job runs `pnpm knip` after the build and before tests. Knip loads the Vite config, which resolves the server protocol import to the built file under the default Node conditions. Unused files, exports and dependencies fail the job. `knip.jsonc` lists workers and test processes launched at runtime.
+The full CI job runs `pnpm knip` after the build and before tests. Knip loads the Vite config, which resolves the server protocol import to the built file under the default Node conditions. The command uses `tsconfig.build.json` to map compiled imports back to source. Unused files, exports and dependencies fail the job, including unused exports in entry files; declarations used within their own file count as live code. `knip.jsonc` lists workers and test processes launched at runtime.
 
 The PR controls the workflow, selector spec and config, so changes to those files need owner review. The read-only token, absence of secrets and approval-gated tests limit what untrusted code can do.
 
