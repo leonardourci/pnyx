@@ -48,7 +48,10 @@ test(
     ]
     const sent = await hydra.owner({ args })
     expect(sent).toMatchObject({ state: 'queued' })
-    expect(sent.notices).toBeDefined()
+    expect(sent.notices).toContainEqual(expect.objectContaining({
+      task: (await hydra.task({ key: 'quick' })).id,
+      reason: expect.stringContaining('hidden'),
+    }))
     const worker = await hydra.agent({ cwd: folder })
     await until({
       what: 'direct start reaches the worker',
