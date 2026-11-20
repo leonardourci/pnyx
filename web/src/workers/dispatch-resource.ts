@@ -6,7 +6,7 @@ import { canonical, mergePatch, type DispatchDocument } from '#workers/dispatch-
 import { createSettingsResource } from '#web-shared/settings-resource.ts'
 import { installationScope } from '#web-shared/installation.ts'
 
-export type DispatchView = EffectiveDispatch & {
+type DispatchView = EffectiveDispatch & {
   proposals?: ProposalStatus[]
   revision?: number
 }
