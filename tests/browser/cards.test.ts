@@ -418,22 +418,28 @@ test(
         const frames: {
           left: number
           right: number
-          viewport: number
-          scroll: number
+          visibleLeft: number
+          visibleRight: number
         }[] = []
+        const axis = element.closest<HTMLElement>('.workspace-axis')
+
+        if (!axis) {
+          throw new Error('The requested task has no horizontal scroller')
+        }
 
         for (let frame = 0; frame < 10; frame++) {
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
           const bounds = element.getBoundingClientRect()
+          const scrollerLeft = axis.getBoundingClientRect().left + axis.clientLeft
           frames.push({
             left: bounds.left,
             right: bounds.right,
-            viewport: innerWidth,
-            scroll: element.closest<HTMLElement>('.workspace-axis')!.scrollLeft,
+            visibleLeft: Math.max(0, scrollerLeft),
+            visibleRight: Math.min(innerWidth, scrollerLeft + axis.clientWidth),
           })
         }
 
-        return frames.filter(frame => frame.left < 0 || frame.right > frame.viewport)
+        return frames.filter(frame => frame.left < frame.visibleLeft || frame.right > frame.visibleRight)
       })
       expect(hiddenFrames).toEqual([])
     }

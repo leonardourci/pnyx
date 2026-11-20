@@ -1,5 +1,5 @@
 // Motion transforms move what is painted, not where the layout puts it.
-export function layoutOffset({
+function layoutOffset({
   element,
   horizontal,
 }: {

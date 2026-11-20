@@ -143,6 +143,7 @@ export function useCardUpdates({
       }
 
       setError(undefined)
+      setLoading(true)
       const timer = setTimeout(
         loadHistory,
         previous ? LIVE_REFRESH_DEBOUNCE_MS : 0,
@@ -163,7 +164,7 @@ export function useCardUpdates({
 
   return {
     list,
-    loading: loading && !list,
+    loading,
     error,
     retry: () => {
       setError(undefined)
