@@ -1,7 +1,7 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { refreshTasks } from './columns.ts'
-import { createdColumn, heldPlacement, ROLE_STATUS } from './column-rules.ts'
+import { createdColumn } from './column-rules.ts'
 import { touch } from './touch.ts'
 import { applySteering } from '#workers/steering.ts'
 
@@ -12,6 +12,52 @@ export function applyTask({
   state: HydraState
   event: HydraEvent
 }): boolean {
+  if (event.type === 'task.branch') {
+    const card = state.cards[event.cardId]
+
+    const recorded = card?.branches?.some(branch => branch.repository === event.data.repository
+      && branch.branch === event.data.branch)
+
+    if (card && !recorded) {
+      card.branches = [
+        ...card.branches ?? [],
+        { ...event.data },
+      ]
+      touch({
+        card,
+        event,
+      })
+    }
+
+    return true
+  }
+
+  if (event.type === 'task.worker-line') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      const latest = {
+        ...event.data,
+        at: event.at,
+      }
+      const changesStatus = [
+        'needs-you',
+        'blocked',
+        'done',
+      ].includes(latest.code)
+      card.workerLog = {
+        latest,
+        status: changesStatus ? latest : card.workerLog?.status,
+      }
+      touch({
+        card,
+        event,
+      })
+    }
+
+    return true
+  }
+
   if (event.type === 'task.tools-applied') {
     const card = state.cards[event.cardId]
 
@@ -57,17 +103,9 @@ export function applyTask({
       },
     })
 
-    return applyTask({
-      state,
-      event: {
-        ...event,
-        type: 'task.declared',
-        data: {
-          state: 'working',
-          note: event.data.message.text,
-        },
-      },
-    })
+    delete card.wait
+
+    return true
   }
 
   if (event.type === 'task.held' || event.type === 'task.released') {
@@ -165,19 +203,7 @@ export function applyTask({
     } = event.data
     const columns = hydraConfig({ state }).columns
     const held = Boolean(event.data.hold)
-    const placement = heldPlacement({
-      columns,
-      column,
-      held,
-    })
-    const role = columns.find(c => c.id === placement)?.role
-    const initial = role && ROLE_STATUS[role] && {
-      id: event.id,
-      at: event.at,
-      actor: event.actor,
-      state: ROLE_STATUS[role],
-      note: '',
-    }
+
     state.cards[event.cardId] = {
       id: event.cardId,
       key,
@@ -204,8 +230,7 @@ export function applyTask({
       sourceRefs: [],
       sessionIds: [],
       tracking: 'declared',
-      statusLog: initial ? [initial] : [],
-      ...(initial ? { status: initial } : {}),
+      statusLog: [],
       ...(parentId ? { parentId } : {}),
       ...(folder ? { folder } : {}),
       column: createdColumn({
