@@ -1,8 +1,34 @@
-import { similarity } from './fuzzy.ts'
 import { synonymGroup } from './synonyms.ts'
 
 const FUZZY_SIMILARITY = 0.4
 const SHORT_WORD = 2
+
+function trigrams({ word }: { word: string }): Set<string> {
+  const found = new Set<string>()
+
+  for (let index = 0; index < word.length - 2; index++) {
+    found.add(word.slice(
+      index,
+      index + 3,
+    ))
+  }
+
+  return found
+}
+
+function paddedTrigramSimilarity({
+  word,
+  alternative,
+}: {
+  word: string
+  alternative: string
+}): number {
+  const wordTrigrams = trigrams({ word: ` ${word} ` })
+  const alternativeTrigrams = trigrams({ word: ` ${alternative} ` })
+  const shared = [...wordTrigrams].filter(trigram => alternativeTrigrams.has(trigram)).length
+
+  return shared / (wordTrigrams.size + alternativeTrigrams.size - shared)
+}
 
 export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(
@@ -256,9 +282,9 @@ export function matches({
     }
 
     const contains = alternative.length >= 4 && word.includes(alternative)
-    const similar = similarity({
-      a: word,
-      b: alternative,
+    const similar = paddedTrigramSimilarity({
+      word,
+      alternative,
     }) >= FUZZY_SIMILARITY
 
     return contains || similar

@@ -1,3 +1,4 @@
+import type { Query } from '#oracle/model.ts'
 import { readSearchFilters } from '#oracle/filters.ts'
 import { searchInBackground } from '#oracle/search-background.ts'
 import { HydraError } from '#store/errors.ts'
@@ -42,13 +43,13 @@ export function oracleCommand({
   }
 
   const filters = readSearchFilters({ value: args[3] })
-  const query = {
+  const query: Query = {
     ...filters,
     text: args[0] ?? '',
     ...(args[1] ? { workspace: args[1] } : {}),
     ...(args[2] === 'hydra' ? { live: true } : {}),
     limit: ORACLE_LIMIT,
-    highlight: true,
+    includeParts: true,
   }
 
   searches.get(ws)?.abort()

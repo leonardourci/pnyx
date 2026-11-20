@@ -2,13 +2,15 @@ import { chmodSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
-import type { HydraState } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { readEvents } from '#app/event-log.ts'
 import { HydraError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { privateDir } from '#store/storage.ts'
-import { eventDocuments, type Document } from './documents.ts'
+import type { Document } from './model.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { chunk, eventText, redact } from './text.ts'
 import { fold, inflection, matches, tokens, type Term } from './query.ts'
 
 const require = createRequire(import.meta.url)
@@ -28,7 +30,6 @@ function sqlite(): typeof import('node:sqlite') {
 // Bump when the schema, stored text, visibility or tokenization changes.
 const INDEX_VERSION = 9
 const CATCH_UP_BATCH_EVENTS = 500
-const EVENTS = 'events'
 // The full-text index an earlier version kept beside each Hydra.
 const RETIRED_INDEX_FILES = [
   'search.db',
@@ -53,16 +54,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS vocabulary USING fts5vocab(words, 'col');
 `
 
 interface Cursor {
-  source: string
-  pos: number
   seq: number
   event: string
 }
-
-const searchPath = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
-  'oracle.db',
-)
 
 export function openIndex({
   hydraId,
@@ -71,19 +65,23 @@ export function openIndex({
   hydraId: string
   state: HydraState
 }) {
-  privateDir({ dir: hydraDir({ hydraId }) })
+  const dir = hydraDir({ hydraId })
+  privateDir({ dir })
 
   for (const leftover of RETIRED_INDEX_FILES) {
     rmSync(
       join(
-        hydraDir({ hydraId }),
+        dir,
         leftover,
       ),
       { force: true },
     )
   }
 
-  const path = searchPath({ hydraId })
+  const path = join(
+    dir,
+    'oracle.db',
+  )
   const { DatabaseSync } = sqlite()
   const db = new DatabaseSync(path)
 
@@ -193,52 +191,25 @@ function catchUp({
   hydraId: string
   state: HydraState
 }) {
-  const getCursor = db.prepare('SELECT * FROM cursors WHERE source=?')
+  const getCursor = db.prepare("SELECT seq, event FROM cursors WHERE source='events'")
   const putCursor = db.prepare(`INSERT INTO cursors(source, pos, seq, event)
-    VALUES(:source, :pos, :seq, :event)
-    ON CONFLICT(source) DO UPDATE SET pos=:pos, seq=:seq, event=:event`)
+    VALUES('events', :seq, :seq, :event)
+    ON CONFLICT(source) DO UPDATE SET pos=:seq, seq=:seq, event=:event`)
   const insert = db.prepare(`INSERT INTO docs(card, kind, at, text, pos, part)
     VALUES(?, ?, ?, ?, ?, ?)`)
   const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
-
-  const add = ({
-    entry,
-    pos,
-    part,
-  }: {
-    entry: Document
-    pos: number
-    part: number
-  }) => {
-    const words = tokens({ text: fold({ text: entry.text }) })
-    const inserted = insert.run(
-      entry.card,
-      entry.kind,
-      entry.at,
-      entry.text,
-      pos,
-      part,
-    )
-    putWords.run(
-      inserted.lastInsertRowid,
-      words.join(' '),
-      words.map(word => `s${inflection({ word })}`).join(' '),
-    )
-  }
 
   const throughEvents = state.seq
   let pendingEvents = true
 
   while (pendingEvents) {
-    const cursor = (getCursor.get(EVENTS) as unknown as Cursor | undefined) ?? {
-      source: EVENTS,
-      pos: 0,
+    const cursor = (getCursor.get() as unknown as Cursor | undefined) ?? {
       seq: 0,
       event: '',
     }
     const read = readEvents({
       hydraId,
-      after: cursor.pos,
+      after: cursor.seq,
       limit: CATCH_UP_BATCH_EVENTS,
       before: throughEvents + 1,
     })
@@ -252,7 +223,7 @@ function catchUp({
     const belongs = captured || ahead
 
     if (!belongs) {
-      if (cursor.pos === 0) {
+      if (cursor.seq === 0) {
         throw new HydraError({
           code: 'LOG_CORRUPT',
           message: 'Event log does not start at its first event',
@@ -263,9 +234,9 @@ function catchUp({
       transaction({
         db,
         fn: () => {
-          const current = getCursor.get(EVENTS) as unknown as Cursor | undefined
+          const current = getCursor.get() as unknown as Cursor | undefined
 
-          if (current?.pos === cursor.pos && current.event === cursor.event) {
+          if (current?.seq === cursor.seq && current.event === cursor.event) {
             recreate({ db })
           }
         },
@@ -279,7 +250,9 @@ function catchUp({
       continue
     }
 
-    if ((read.at(-1)?.seq ?? cursor.pos) === cursor.pos) {
+    const lastEvent = read.at(-1)
+
+    if (!lastEvent) {
       break
     }
 
@@ -287,9 +260,9 @@ function catchUp({
     transaction({
       db,
       fn: () => {
-        const current = getCursor.get(EVENTS) as unknown as Cursor | undefined
+        const current = getCursor.get() as unknown as Cursor | undefined
 
-        if (current && current.pos !== cursor.pos) {
+        if (current && current.seq !== cursor.seq) {
           superseded = true
 
           return
@@ -299,24 +272,31 @@ function catchUp({
           let part = 0
 
           for (const entry of eventDocuments({ event })) {
-            add({
-              entry,
-              pos: event.seq,
+            const words = tokens({ text: fold({ text: entry.text }) })
+            const inserted = insert.run(
+              entry.card,
+              entry.kind,
+              entry.at,
+              entry.text,
+              event.seq,
               part,
-            })
+            )
+            putWords.run(
+              inserted.lastInsertRowid,
+              words.join(' '),
+              words.map(word => `s${inflection({ word })}`).join(' '),
+            )
             part++
           }
         }
 
         putCursor.run({
-          ...cursor,
-          pos: (read.at(-1)?.seq ?? cursor.pos),
-          seq: read.at(-1)?.seq ?? cursor.seq,
-          event: read.at(-1)?.id ?? cursor.event,
+          seq: lastEvent.seq,
+          event: lastEvent.id,
         })
       },
     })
-    pendingEvents = superseded || (read.at(-1)?.seq ?? cursor.pos) < throughEvents
+    pendingEvents = superseded || lastEvent.seq < throughEvents
   }
 }
 
@@ -344,4 +324,48 @@ function transaction<T>({
     db.exec('ROLLBACK')
     throw error
   }
+}
+
+function* documentChunks({
+  card,
+  kind,
+  at,
+  text,
+}: Document): Generator<Document> {
+  for (const body of chunk({ text: redact({ text }) })) {
+    yield {
+      card: card === HYDRA_CARD ? '$board' : card,
+      kind,
+      at,
+      text: body,
+    }
+  }
+}
+
+function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
+  if (event.type === 'chat.message' || event.type === 'hydra.memory' || event.type === 'hydra.review') {
+    return
+  }
+
+  if (event.type === 'hydra.helper-finished') {
+    for (const outcome of event.data.outcomes) {
+      if (outcome.status !== 'handled' && outcome.status !== 'still_waiting') {
+        yield* documentChunks({
+          card: outcome.task,
+          kind: 'event',
+          at: event.at,
+          text: outcome.summary,
+        })
+      }
+    }
+
+    return
+  }
+
+  yield* documentChunks({
+    card: event.cardId,
+    kind: event.type === 'card.noted' ? 'note' : 'event',
+    at: event.type === 'card.noted' ? event.data.at ?? event.at : event.at,
+    text: eventText({ event }),
+  })
 }

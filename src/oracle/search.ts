@@ -1,12 +1,10 @@
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
-import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
-import type { Hit, Match, Query, Snippet } from './model.ts'
+import type { Document, Hit, Match, Query, Snippet } from './model.ts'
 import { queryTerms, fold, tokens, matches, type Term } from './query.ts'
-import type { Document } from './documents.ts'
 import { openIndex } from './index.ts'
 import { redact } from './text.ts'
 
@@ -60,7 +58,7 @@ function snippet({
   query: Query
   fuzzy: boolean
 }): Snippet {
-  const text = query.highlight === false ? entry.text : entry.text.replace(
+  const text = entry.text.replace(
     /\s+/g,
     ' ',
   )
@@ -178,10 +176,10 @@ function snippet({
   const result: Snippet = {
     kind: entry.kind,
     at: entry.at || 'unknown',
-    snippet: parts.map(part => part.matched && query.highlight !== false ? `[${part.text}]` : part.text).join(''),
+    snippet: parts.map(part => part.matched ? `[${part.text}]` : part.text).join(''),
   }
 
-  if (query.highlight === true) {
+  if (query.includeParts) {
     result.parts = parts
   }
 
@@ -191,20 +189,17 @@ function snippet({
 export function search({
   hydraId,
   query,
-  memoryDocuments = [],
-  includeMemory = true,
-  state = loadHydra({ hydraId }).state,
+  memoryDocuments,
 }: {
   hydraId: string
   query: Query
-  state?: HydraState
-  memoryDocuments?: Document[]
-  includeMemory?: boolean
+  memoryDocuments: Document[]
 }): {
   hits: Hit[]
   total: number
   match: Match
 } {
+  const state = loadHydra({ hydraId }).state
   const terms = queryTerms({ text: query.text })
 
   if (!terms.length) {
@@ -215,19 +210,19 @@ export function search({
     })
   }
 
-  const ownerDocuments = includeMemory ? Object.values(ownerMemory({
+  const ownerDocuments = Object.values(ownerMemory({
     migrate: false,
   })).map(entry => ({
     card: '$board',
     kind: 'note' as const,
     at: entry.at,
     text: redact({ text: entry.text }),
-  })) : []
-  const projectDocuments = (includeMemory ? memoryDocuments : []).map(document => ({
+  }))
+  const projectDocuments = memoryDocuments.map(document => ({
     ...document,
     text: redact({ text: document.text }),
   }))
-  const hydraDocuments = includeMemory ? Object.entries(state.hydraMemory ?? {})
+  const hydraDocuments = Object.entries(state.hydraMemory ?? {})
     .filter(([key]) => !Object.hasOwn(
       OWNER_DOCUMENTS,
       key,
@@ -240,7 +235,7 @@ export function search({
       kind: 'event' as const,
       at: entry.at,
       text: redact({ text: `${key}: ${entry.text}` }),
-    })) : []
+    }))
   const index = openIndex({
     hydraId,
     state,
@@ -249,18 +244,14 @@ export function search({
   const run = ({ fuzzy }: { fuzzy: boolean }) => {
     const grouped = new Map<string, Document[]>()
 
-    const memoryEntries: Document[] = [
-      ...ownerDocuments,
-      ...projectDocuments,
-      ...hydraDocuments,
-    ]
-
     function* documents() {
       yield* index.documents({
         terms,
         fuzzy,
       })
-      yield* memoryEntries
+      yield* ownerDocuments
+      yield* projectDocuments
+      yield* hydraDocuments
     }
 
     for (const document of documents()) {
