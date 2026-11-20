@@ -35,7 +35,7 @@ const flag = ({
   name,
 }: Args & { name: string }) => args.some(arg => arg === name || arg.startsWith(`${name}=`))
 
-export const COMMAND_REGISTRY = {
+const COMMAND_REGISTRY = {
   page: {
     readOnly: () => true,
     page: true,

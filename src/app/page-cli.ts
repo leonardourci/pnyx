@@ -67,7 +67,7 @@ export function pageInterest({
   }
 }
 
-export function pageOutput({
+function pageOutput({
   state,
   args,
 }: {

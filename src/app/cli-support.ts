@@ -601,7 +601,7 @@ export function withHelp({
   } : output
 }
 
-export function summary({ event }: { event: HydraEvent }): string {
+function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
