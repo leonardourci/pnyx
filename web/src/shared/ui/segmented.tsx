@@ -49,7 +49,7 @@ export function Segmented({
   return (
     <div
       ref={group}
-      className="segmented inline-flex flex-wrap gap-0.5 p-0.5 border border-line rounded-control bg-raised"
+      className="segmented inline-flex flex-wrap gap-0.5 rounded-control border border-line bg-raised p-0.5"
       role="radiogroup"
       aria-label={label}
       aria-busy={busy}
@@ -69,7 +69,7 @@ export function Segmented({
         <button
           key={option.value}
           type="button"
-          className="inline-flex items-center gap-1.25 min-h-6 px-2.5 py-0.75 border-0 rounded-compact bg-transparent text-muted text-ui cursor-pointer aria-checked:bg-surface aria-checked:text-ink aria-checked:shadow-segment aria-checked:[&_svg]:text-gold focus-visible:outline-2 focus-visible:outline-gold-line focus-visible:-outline-offset-2"
+          className="inline-flex min-h-6 cursor-pointer items-center gap-1.25 rounded-compact border-0 bg-transparent px-2.5 py-0.75 text-ui text-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-gold-line aria-checked:bg-surface aria-checked:text-ink aria-checked:shadow-segment aria-checked:[&_svg]:text-gold"
           role="radio"
           aria-checked={index === chosen}
           tabIndex={index === chosen ? 0 : -1}

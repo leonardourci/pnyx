@@ -83,7 +83,7 @@ export function Tabs({
             id: tab.id,
           })}
           tabIndex={tab.id === selected ? 0 : -1}
-          className="tab border-0 bg-transparent text-muted px-2 py-0.75 whitespace-nowrap -mb-px border-b-2 border-b-transparent aria-selected:text-gold aria-selected:font-semibold aria-selected:border-b-gold"
+          className="tab -mb-px border-0 border-b-2 border-b-transparent bg-transparent px-2 py-0.75 whitespace-nowrap text-muted aria-selected:border-b-gold aria-selected:font-semibold aria-selected:text-gold"
           onClick={event => {
             event.stopPropagation(); select({ id: tab.id })
           }}

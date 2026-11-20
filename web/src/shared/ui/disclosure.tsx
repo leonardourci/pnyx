@@ -36,7 +36,7 @@ export function Disclosure({
         onToggle?.({ open: opened })
       }}
     >
-      <summary className={`list-none cursor-pointer relative text-ui in-[.ask]:py-0.75 [&::-webkit-details-marker]:hidden ${summaryPadding}`} contentEditable={false}>
+      <summary className={`relative cursor-pointer list-none text-ui in-[.ask]:py-0.75 [&::-webkit-details-marker]:hidden ${summaryPadding}`} contentEditable={false}>
         {typeof title === 'function' ? title({ open: expanded }) : title}
         <span className={`disclosure-chevron absolute top-0 ${position}`} aria-hidden="true"><DisclosureChevron expanded={expanded} /></span>
       </summary>
@@ -111,12 +111,12 @@ export function CollapsibleText({
   )
 
   return (
-    <div className={`collapsible-text in-[.card]:min-w-0 in-[.card]:max-w-full ${className}`}>
-      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview max-h-[3lh] text-chat leading-(--chat-line) line-clamp-3'}><RichText text={shown} /></div>
+    <div className={`collapsible-text in-[.card]:max-w-full in-[.card]:min-w-0 ${className}`}>
+      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview line-clamp-3 max-h-disclosure text-chat leading-(--chat-line)'}><RichText text={shown} /></div>
       {(long || expanded) && (
         <Button
           contentEditable={false}
-          className="show-more justify-self-start min-h-0 p-0 text-gold text-meta font-semibold"
+          className="show-more min-h-0 justify-self-start p-0 text-meta font-semibold text-gold"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={flip}

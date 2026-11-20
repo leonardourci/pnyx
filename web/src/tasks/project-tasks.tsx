@@ -1,3 +1,4 @@
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useFamilyFolds } from './task-view.ts'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { motion } from 'motion/react'
@@ -246,7 +247,7 @@ export function ProjectTasks({
       ref={element}
       data-scroll-content
       className="relative w-full"
-      style={{ height: virtual.getTotalSize() }}
+      style={runtimeStyle({ height: virtual.getTotalSize() })}
     >
       {visible.flatMap(row => rows[row.index]!.map((
         family,
@@ -272,11 +273,11 @@ export function ProjectTasks({
               }
             }}
             className="absolute min-w-0"
-            style={{
+            style={runtimeStyle({
               top: row.start - margin,
               left: slot * (cell + gap),
               width: cell,
-            }}
+            })}
           >{render({
               card: family.card,
               width: cell,

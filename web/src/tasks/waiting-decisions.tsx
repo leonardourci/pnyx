@@ -46,7 +46,7 @@ export function WaitingDecisions({
     <>
       {retries}
       <section
-        className="waiting-decisions flex-none py-1.5 text-meta text-muted [&>.popover]:max-w-full [&>.popover>.button]:flex [&>.popover>.button]:w-full [&>.popover>.button]:justify-between [&>.popover>.button]:min-h-0 [&>.popover>.button]:py-1.5 [&>.popover>.button]:px-0 [&>.popover>.button]:gap-2 [&>.popover>.button]:text-gold [&>.popover>.button]:text-[length:inherit] [&>.popover>.button]:border-t [&>.popover>.button]:border-t-line [&_ul]:list-none [&_ul]:p-0 [&_ul]:m-0 [&_.popover-panel]:p-1.25 [&_.popover-panel]:max-h-waiting-menu [&_li_.button]:flex [&_li_.button]:flex-col [&_li_.button]:items-start [&_li_.button]:w-full [&_li_.button]:min-h-0 [&_li_.button]:p-1.75 [&_li_.button]:text-left [&_li_.button]:whitespace-normal [&_li_.button]:wrap-anywhere [&_li_.button]:text-[length:inherit] [&_li_.button]:leading-normal"
+        className="waiting-decisions flex-none py-1.5 text-meta text-muted [&_.popover-panel]:max-h-waiting-menu [&_.popover-panel]:p-1.25 [&_li_.button]:flex [&_li_.button]:min-h-0 [&_li_.button]:w-full [&_li_.button]:flex-col [&_li_.button]:items-start [&_li_.button]:p-1.75 [&_li_.button]:text-left [&_li_.button]:text-inherit-size [&_li_.button]:leading-normal [&_li_.button]:wrap-anywhere [&_li_.button]:whitespace-normal [&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&>.popover]:max-w-full [&>.popover>.button]:flex [&>.popover>.button]:min-h-0 [&>.popover>.button]:w-full [&>.popover>.button]:justify-between [&>.popover>.button]:gap-2 [&>.popover>.button]:border-t [&>.popover>.button]:border-t-line [&>.popover>.button]:px-0 [&>.popover>.button]:py-1.5 [&>.popover>.button]:text-inherit-size [&>.popover>.button]:text-gold"
         aria-label="Waiting on you"
         onKeyDownCapture={event => {
           const trigger = triggerRef.current
@@ -89,7 +89,7 @@ export function WaitingDecisions({
           trigger={(
             <>
               <span className="shrink-0 whitespace-nowrap">Waiting on you · {groups.length}</span>
-              <span className="waiting-decision-summary min-w-0 flex-1 truncate max-w-[58%] text-muted">{groups[0].card.title}</span>
+              <span className="waiting-decision-summary max-w-decision-summary min-w-0 flex-1 truncate text-muted">{groups[0].card.title}</span>
             </>
           )}
         >
@@ -140,7 +140,7 @@ export function WaitingDecisions({
                               <span className="waiting-decision-task text-muted">{decision.card.title}</span>
                               <span className="waiting-decision-question text-gold">{markdownText({ text: decision.text })}</span>
                             </Button>
-                            {context && <div className="text-meta text-muted px-1.75 pb-2"><RichText text={context} /></div>}
+                            {context && <div className="px-1.75 pb-2 text-meta text-muted"><RichText text={context} /></div>}
                           </li>
                         )
                       })}

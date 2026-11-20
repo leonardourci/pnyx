@@ -1,3 +1,4 @@
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { forgetSessionView, useSessionView } from '#web-app/session-view.ts'
 import { taskViewKey } from './task-view.ts'
@@ -708,9 +709,9 @@ export const HydraCard = memo(function HydraCard({
       className={`@container/task ${modal ? 'min-h-0! flex-1! rounded-none! border-0! bg-transparent!' : ''}`}
       elementRef={modal ? attachModal : attachInline}
       selected={selected}
-      style={{
+      style={runtimeStyle({
         height: selected && !modal ? (preview ?? height) : undefined,
-      }}
+      })}
       data-task={card.id}
       data-task-hydra={hydraId}
       data-tab={selected ? tab : undefined}
@@ -727,7 +728,7 @@ export const HydraCard = memo(function HydraCard({
       <AnimatedCardContent layout="position">
         <header
           data-card-header
-          className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'touch-none cursor-grab [&_.card-open]:cursor-grab'}` : 'contents'}
+          className={selected ? `flex shrink-0 flex-col gap-1.5 ${modal ? '' : 'cursor-grab touch-none [&_.card-open]:cursor-grab'}` : 'contents'}
         >
           {!selected && closedSummary}
           {selected && (
@@ -846,10 +847,10 @@ export const HydraCard = memo(function HydraCard({
           )}
         </header>
         {selected && (
-          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] @task-details/task:grid-rows-1'}`}>
-            <div hidden={chatOnly} className="card-details [&[hidden]]:hidden flex min-h-0 min-w-0 flex-col gap-2 overflow-auto">
+          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.worker-chat]:border-l-0 [&>.worker-chat]:pl-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'}`}>
+            <div hidden={chatOnly} className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto [&[hidden]]:hidden">
               <CardPanel ref={contextScroll.ref} {...panel({ id: 'context' })}>
-                {card.copy?.state === 'flagged' && <div className="copy-warning text-gold text-meta"><RichText text={card.copy.reason ?? ''} /></div>}
+                {card.copy?.state === 'flagged' && <div className="copy-warning text-meta text-gold"><RichText text={card.copy.reason ?? ''} /></div>}
                 {waiting.length > 0 && (card.intent || factual) && (
                   <ContextIndex
                     questions={waiting.length}
@@ -947,7 +948,7 @@ export const HydraCard = memo(function HydraCard({
       {hoverActions}
       {selected && !modal && (
         <Resize
-          className="bottom-0! right-auto! left-1/2! -translate-x-1/2 h-6! w-24 after:top-4.25!"
+          className="right-auto! bottom-0! left-1/2! h-6! w-24 -translate-x-1/2 after:top-4.25!"
           label="Resize card"
           axis="y"
           value={height}
@@ -975,7 +976,7 @@ export const HydraCard = memo(function HydraCard({
           aria-hidden
           inert
           className="invisible"
-          style={openInline ? { height } : undefined}
+          style={runtimeStyle({ height: openInline ? height : undefined })}
         >{openInline ? summary : <CardContent>{closedSummary}</CardContent>}
         </CardShell>
       )}

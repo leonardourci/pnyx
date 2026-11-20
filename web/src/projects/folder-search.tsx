@@ -81,7 +81,7 @@ export function FolderSearch({
           id={`${id}-options`}
           role="listbox"
           aria-label={`${label} suggestions`}
-          className="folder-options absolute top-full left-0 z-40 w-folder-options max-w-folder-viewport max-h-65 overflow-y-auto p-1.25 border border-line rounded-lg bg-surface shadow-menu"
+          className="folder-options absolute top-full left-0 z-40 max-h-65 w-folder-options max-w-folder-viewport overflow-y-auto rounded-lg border border-line bg-surface p-1.25 shadow-menu"
         >
           {folders.map((
             folder,

@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { FloatingPanel } from './floating-panel.tsx'
 import { Icon } from '#web-shared/icons.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
@@ -10,11 +11,11 @@ function MenuSurface({
 }: ComponentProps<'div'> & { variant?: 'menu' | 'confirm' }) {
   const layout = variant === 'confirm'
     ? 'delete-confirm flex'
-    : 'menu-items z-30 min-w-menu max-w-menu-viewport max-h-menu-height p-1 rounded-lg'
+    : 'menu-items z-30 max-h-menu-height max-w-menu-viewport min-w-menu rounded-lg p-1'
 
   const Surface = variant === 'confirm' ? 'div' : FloatingPanel
 
-  return <Surface {...props} className={`${layout} [&>.button]:flex [&>.button]:w-full [&>.button]:min-h-8.5 [&>.button]:px-2.5 [&>.button]:py-1.75 [&>.button]:text-ui [&>.button]:justify-start [&>.button]:text-left [&>.button]:border-0 [&>.button]:rounded-sm [&>.button]:text-ink [&>.button]:normal-case ${className}`} />
+  return <Surface {...props} className={`${layout} [&>.button]:flex [&>.button]:min-h-8.5 [&>.button]:w-full [&>.button]:justify-start [&>.button]:rounded-sm [&>.button]:border-0 [&>.button]:px-2.5 [&>.button]:py-1.75 [&>.button]:text-left [&>.button]:text-ui [&>.button]:text-ink [&>.button]:normal-case ${className}`} />
 }
 
 export function Menu({
@@ -45,20 +46,30 @@ export function Menu({
         const anchor = trigger.current?.getBoundingClientRect()
 
         if (anchor) {
-          element.style.left = `${Math.max(
-            8,
-            Math.min(
-              anchor.right - element.offsetWidth,
-              innerWidth - element.offsetWidth - 8,
-            ),
-          )}px`
-          element.style.top = `${Math.max(
-            8,
-            Math.min(
-              anchor.bottom + 5,
-              innerHeight - element.offsetHeight - 8,
-            ),
-          )}px`
+          applyRuntimeStyle({
+            element,
+            values: {
+              left: Math.max(
+                8,
+                Math.min(
+                  anchor.right - element.offsetWidth,
+                  innerWidth - element.offsetWidth - 8,
+                ),
+              ),
+            },
+          })
+          applyRuntimeStyle({
+            element,
+            values: {
+              top: Math.max(
+                8,
+                Math.min(
+                  anchor.bottom + 5,
+                  innerHeight - element.offsetHeight - 8,
+                ),
+              ),
+            },
+          })
         }
       }
 
@@ -170,7 +181,7 @@ export function DeleteItem({
       setBusy,
     ] = useState(false)
 
-  return asking && refusal ? <p className="delete-refused m-0 px-2.5 py-1.75 max-w-65 text-ui text-muted" role="status">{refusal}</p> : asking ? (
+  return asking && refusal ? <p className="delete-refused m-0 max-w-65 px-2.5 py-1.75 text-ui text-muted" role="status">{refusal}</p> : asking ? (
     <MenuSurface variant="confirm" aria-label={`Confirm ${label}`}>
       <Button
         data-menu-keep
@@ -211,20 +222,30 @@ export function ContextMenu({
       }
 
       element.showPopover()
-      element.style.left = `${Math.max(
-        8,
-        Math.min(
-          at.x,
-          innerWidth - element.offsetWidth - 8,
-        ),
-      )}px`
-      element.style.top = `${Math.max(
-        8,
-        Math.min(
-          at.y,
-          innerHeight - element.offsetHeight - 8,
-        ),
-      )}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          left: Math.max(
+            8,
+            Math.min(
+              at.x,
+              innerWidth - element.offsetWidth - 8,
+            ),
+          ),
+        },
+      })
+      applyRuntimeStyle({
+        element,
+        values: {
+          top: Math.max(
+            8,
+            Math.min(
+              at.y,
+              innerHeight - element.offsetHeight - 8,
+            ),
+          ),
+        },
+      })
       element.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
     },
     [at],

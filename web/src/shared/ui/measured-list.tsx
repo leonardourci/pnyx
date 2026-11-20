@@ -1,3 +1,4 @@
+import { runtimeStyle } from './runtime-style.ts'
 import { layoutOffset } from './scroll-offset.ts'
 import { useSessionViewResource, sessionViewKey } from '#web-app/session-view.ts'
 import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
@@ -172,24 +173,20 @@ export function MeasuredList<T>({
     <div
       ref={list}
       data-scroll-content
-      style={{
+      className="relative"
+      style={runtimeStyle({
         height: virtualizer.getTotalSize(),
-        position: 'relative',
-      }}
+      })}
     >
       {rows.map(row => (
         <div
           key={row.key}
           data-index={row.index}
-          className="measured-row"
+          className="measured-row absolute top-0 left-0 w-full"
           ref={virtualizer.measureElement}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
+          style={runtimeStyle({
             transform: `translateY(${row.start - margin}px)`,
-          }}
+          })}
         >
           {render({
             item: items[row.index]!,

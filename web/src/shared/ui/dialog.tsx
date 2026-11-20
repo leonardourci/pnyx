@@ -61,6 +61,7 @@ export function Dialog({
       onLayoutAnimationComplete={() => setAnimating(false)}
       initial={false}
       exit={{ opacity: 0 }}
+      // eslint-disable-next-line no-restricted-syntax
       style={style}
       ref={dialog}
       aria-labelledby={heading}
@@ -101,7 +102,7 @@ export function Dialog({
         }
       }}
     >
-      <header className="dialog-head flex items-start gap-2 px-4 pt-3.5 pb-2.5 border-b border-line [&>h2]:flex-1 [&>h2]:font-brand">
+      <header className="dialog-head flex items-start gap-2 border-b border-line px-4 pt-3.5 pb-2.5 [&>h2]:flex-1 [&>h2]:font-brand">
         <h2 id={heading}>{title}</h2>
         {actions}
         <IconButton

@@ -11,7 +11,9 @@ paths:
 
 - Build UI from the primitives in `web/src/shared/ui/`. When one is missing, add it there and extend it; do not inline a one-off control.
 - Never use native-styled controls (`<select>`, `<input type="checkbox">` and friends as the browser draws them) or a third-party styled kit such as DaisyUI. Pnyx has one look in every browser.
-- Colors and fonts come from the theme tokens in `web/src/index.css`. No raw hex values or ad hoc font stacks in components.
+- Design values come from Tailwind's `@theme` in `web/src/index.css`: colors, spacing, sizes, radii, typography and shadows. Reuse a token before adding one; collapse near-duplicates and record the change in the PR.
+- Shared controls own repeated class lists. Screens compose those controls and keep their own class lists short. Add a shared component only for a pattern used in several places.
+- ESLint rejects arbitrary utility values and inline styles and sorts classes. Fixed values belong in tokens. Measured geometry and owner-selected sizes use the closed `runtimeStyle` and `applyRuntimeStyle` mechanism described in [Development](../../../docs/development.md#build-and-test); keep the marked chat exception scoped to its rebuild.
 - Reuse before building. Search `web/src/shared/ui/` and the feature folders under `web/src/` for a component, hook or formatter that already does the job; build a new one only when nothing composes into it.
 - Keep components small: one job each, composed from primitives. A screen reads as a list of named pieces, not one block of JSX. A piece used by one file sits above the exported component in that file; a generic piece several features use moves to `web/src/shared/ui/`. A component that looks generic but carries one feature's logic stays in that feature's folder; when a file comes to hold unrelated concerns, split it along them inside that folder ([follow-conventions](../follow-conventions/SKILL.md#files-and-concerns)).
 - Put derived values (labels, classes, formatted text) and compound conditions in named constants above the `return`, not inline in the JSX.
@@ -62,10 +64,10 @@ try {
 }
 ```
 
-When testing an action, hold its server request and assert the visible result before releasing it. For creation, retain the element reference and check its first painted frame and visibility through confirmation, as well as refusal and reconnect behavior.
+Run `pnpm verify` and follow [Testing](../../../docs/testing.md) for behavior tests.
 
 ## Pull requests with visible changes
 
-Show before and after screenshots of each changed view side by side in a `Before | After` table, at a reduced width (`<img src="..." width="360">`), in both light and dark themes. Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/`, never in the PR's diff or a gist, and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
+Capture each changed view in an isolated headless browser at desktop and phone widths in light and dark themes. Show before and after screenshots side by side in a `Before | After` table at a reduced width (`<img src="..." width="360">`). Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/` and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
 
 Long lists in Activity and chat use @tanstack/react-virtual over Zero’s paged queries for variable row heights; zero-virtual needs fixed row heights.

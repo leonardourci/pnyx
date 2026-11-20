@@ -55,7 +55,7 @@ export function MenuHead({
   back?(): void
 }) {
   return (
-    <div className="account-model-head min-h-7 flex items-center gap-1.5 [&>strong]:text-ui ">
+    <div className="account-model-head flex min-h-7 items-center gap-1.5 [&>strong]:text-ui">
       {back && (
         <IconButton
           icon="arrow_left"
@@ -451,7 +451,7 @@ export function SelectionMenu({
         })}
       </ModelResults>
       {step !== 'model' && (
-        <div className="account-model-add flex-none border-t border-line pt-2 [&>.button]:w-full [&>.button]:text-ui [&>p]:mt-1.25 [&>p]:mx-0 [&>p]:mb-0 [&>p]:text-center [&>p]:text-meta [&>p]:text-muted">
+        <div className="account-model-add flex-none border-t border-line pt-2 [&>.button]:w-full [&>.button]:text-ui [&>p]:mx-0 [&>p]:mt-1.25 [&>p]:mb-0 [&>p]:text-center [&>p]:text-meta [&>p]:text-muted">
           <Button variant="surface" onClick={add}><Icon name="plus" size={ICON_SIZE.control} />{addLabel}</Button>
           <p>Or ask Hydra to add it for you.</p>
         </div>
@@ -495,7 +495,7 @@ export function AccountModelPicker({
       trigger={trigger ?? (
         <>
           <Icon name={provider.icon} size={ICON_SIZE.heading} />
-          <span className="account-model-label flex flex-col min-w-0 max-w-45 leading-prose-heading [&>span]:text-ui [&>span]:truncate [&>small]:text-muted [&>small]:text-meta [&>small]:truncate">
+          <span className="account-model-label flex max-w-45 min-w-0 flex-col leading-prose-heading [&>small]:truncate [&>small]:text-meta [&>small]:text-muted [&>span]:truncate [&>span]:text-ui">
             <span>{modelLabel}</span>
             <small>{name}</small>
           </span>

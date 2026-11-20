@@ -224,7 +224,7 @@ function SettingsMenuRow({
         onClick={onClick}
       >
         <Icon name={icon} size={ICON_SIZE.toolbar} />
-        <span className="agent-setting-text flex items-baseline gap-1.5 [&>small]:text-muted [&>small]:text-ui [&>small]:truncate"><span>{name}</span><small>{value}</small></span>
+        <span className="agent-setting-text flex items-baseline gap-1.5 [&>small]:truncate [&>small]:text-ui [&>small]:text-muted"><span>{name}</span><small>{value}</small></span>
         {drills && <Icon name="chevron_right" size={ICON_SIZE.control} />}
       </Button>
     </MenuOption>

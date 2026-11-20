@@ -18,7 +18,7 @@ export function MenuOption({
   return (
     <div
       {...props}
-      className={`menu-option flex items-center justify-between ${compact ? 'gap-0' : 'gap-5'} min-w-0 rounded-sm cursor-pointer text-ui [&:not([aria-disabled=true]):is([data-active],:focus-within)]:bg-hover aria-disabled:opacity-45 aria-disabled:cursor-default [&[aria-disabled=true]_.button:disabled]:opacity-100 [&>.button:enabled:hover]:bg-transparent [&>.tooltip-anchor>.button:enabled:hover]:bg-transparent ${className}`}
+      className={`menu-option flex items-center justify-between ${compact ? 'gap-0' : 'gap-5'} min-w-0 cursor-pointer rounded-sm text-ui aria-disabled:cursor-default aria-disabled:opacity-45 [&:not([aria-disabled=true]):is([data-active],:focus-within)]:bg-hover [&>.button:enabled:hover]:bg-transparent [&>.tooltip-anchor>.button:enabled:hover]:bg-transparent [&[aria-disabled=true]_.button:disabled]:opacity-100 ${className}`}
       role="option"
       aria-selected={selected}
       aria-disabled={disabled || undefined}

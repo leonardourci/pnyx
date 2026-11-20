@@ -1,6 +1,7 @@
+import { runtimeStyle } from './runtime-style.ts'
 import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
-import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { sliderValue } from './slider-value.ts'
 import { MenuOption } from './menu-option.tsx'
 
@@ -10,16 +11,16 @@ export function Button({
   ...props
 }: ComponentProps<'button'> & { variant?: 'quiet' | 'primary' | 'surface' | 'menu-choice' }) {
   const appearance = {
-    'menu-choice': 'bg-transparent border-transparent flex-1 min-w-0 justify-start min-h-9 gap-2 p-1.75 text-ui text-left [&>span]:flex-1 [&>span]:min-w-0 [&>span]:wrap-anywhere [&>svg]:shrink-0',
-    quiet: '[:where(&)]:bg-transparent [:where(&)]:border-transparent enabled:hover:bg-hover',
-    surface: 'bg-raised border-control enabled:hover:bg-hover',
-    primary: 'bg-gold-fill text-gold-ink border-gold-fill enabled:hover:bg-hover enabled:hover:brightness-108',
+    'menu-choice': 'min-h-9 min-w-0 flex-1 justify-start gap-2 border-transparent bg-transparent p-1.75 text-left text-ui [&>span]:min-w-0 [&>span]:flex-1 [&>span]:wrap-anywhere [&>svg]:shrink-0',
+    quiet: 'enabled:hover:bg-hover [:where(&)]:border-transparent [:where(&)]:bg-transparent',
+    surface: 'border-control bg-raised enabled:hover:bg-hover',
+    primary: 'border-gold-fill bg-gold-fill text-gold-ink enabled:hover:bg-hover enabled:hover:brightness-108',
   }[variant]
 
-  return <button type="button" className={`button ${variant} inline-flex items-center justify-center [:where(&)]:gap-1.5 [:where(&)]:rounded-md border [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:min-h-7.5 [:where(&)]:text-ui [:where(&)]:leading-question ${appearance} ${className}`} {...props} />
+  return <button type="button" className={`button ${variant} inline-flex items-center justify-center border [:where(&)]:min-h-7.5 [:where(&)]:gap-1.5 [:where(&)]:rounded-md [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:text-ui [:where(&)]:leading-question ${appearance} ${className}`} {...props} />
 }
 
-const INPUT_CLASSES = 'input [:where(&)]:appearance-none [:where(&)]:border [:where(&)]:border-control [:where(&)]:rounded-md [:where(&)]:px-2.25 [:where(&)]:py-1.75 [:where(&)]:min-w-0 [:where(&)]:text-ui [:where(&)]:leading-normal placeholder:text-muted placeholder:opacity-85 [&::-webkit-search-cancel-button]:appearance-none'
+const INPUT_CLASSES = 'input placeholder:text-muted placeholder:opacity-85 [&::-webkit-search-cancel-button]:appearance-none [:where(&)]:min-w-0 [:where(&)]:appearance-none [:where(&)]:rounded-md [:where(&)]:border [:where(&)]:border-control [:where(&)]:px-2.25 [:where(&)]:py-1.75 [:where(&)]:text-ui [:where(&)]:leading-normal'
 
 export function Input({ ...props }: ComponentProps<'input'>) {
   return <input {...props} className={`${INPUT_CLASSES} [:where(&)]:bg-surface ${props.className ?? ''}`} />
@@ -72,7 +73,7 @@ export function InlineButton({
 }
 
 export function Textarea({ ...props }: ComponentProps<'textarea'>) {
-  return <textarea {...props} className={`${INPUT_CLASSES} textarea [:where(&)]:bg-background [:where(&)]:w-full [:where(&)]:h-full [:where(&)]:min-h-12 [:where(&)]:max-h-textarea [:where(&)]:resize-y [:where(&)]:overflow-y-auto ${props.className ?? ''}`} />
+  return <textarea {...props} className={`${INPUT_CLASSES} textarea [:where(&)]:h-full [:where(&)]:max-h-textarea [:where(&)]:min-h-12 [:where(&)]:w-full [:where(&)]:resize-y [:where(&)]:overflow-y-auto [:where(&)]:bg-background ${props.className ?? ''}`} />
 }
 
 export function useBusy(): [boolean, ({ save }: { save: () => unknown }) => void] {
@@ -120,7 +121,7 @@ export function Switch({
 
   return (
     <Button
-      className="switch-label group/switch justify-start text-muted py-1.25 px-0 text-meta in-[.settings-page]:gap-2 in-[.settings-page]:p-0 in-[.settings-page]:text-ink in-[.settings-page]:text-ui in-[.settings-page]:disabled:cursor-not-allowed"
+      className="switch-label group/switch justify-start px-0 py-1.25 text-meta text-muted in-[.settings-page]:gap-2 in-[.settings-page]:p-0 in-[.settings-page]:text-ui in-[.settings-page]:text-ink in-[.settings-page]:disabled:cursor-not-allowed"
       role="switch"
       aria-label={label}
       aria-checked={checked}
@@ -128,8 +129,8 @@ export function Switch({
       disabled={disabled || busy}
       onClick={() => run({ save: () => onChange({ value: !checked }) })}
     >
-      <span className="switch-track w-7 h-4 p-0.5 border border-control rounded-card bg-hover shrink-0 in-[.settings-page]:bg-raised group-aria-checked/switch:bg-gold-fill group-aria-checked/switch:border-gold-line">
-        <span className="block size-2.5 rounded-full bg-muted transition-transform ease-ui duration-fast in-[.settings-page]:bg-control in-[.settings-page]:duration-base group-aria-checked/switch:translate-x-2.75 group-aria-checked/switch:bg-gold-ink in-[.settings-page]:group-aria-checked/switch:translate-x-3" />
+      <span className="switch-track h-4 w-7 shrink-0 rounded-card border border-control bg-hover p-0.5 group-aria-checked/switch:border-gold-line group-aria-checked/switch:bg-gold-fill in-[.settings-page]:bg-raised">
+        <span className="block size-2.5 rounded-full bg-muted transition-transform duration-fast ease-ui group-aria-checked/switch:translate-x-2.75 group-aria-checked/switch:bg-gold-ink in-[.settings-page]:bg-control in-[.settings-page]:duration-base in-[.settings-page]:group-aria-checked/switch:translate-x-3" />
       </span>
       {caption ?? (!quiet && label)}
     </Button>
@@ -294,14 +295,14 @@ export function Select({
           id={id}
           role="listbox"
           aria-label={label}
-          className="select-menu absolute top-[calc(100%+--spacing(1.25))] left-0 min-w-full w-max max-w-select max-h-70 overflow-auto p-1 rounded-control bg-raised border border-line shadow-menu z-30 [&_.menu-option]:px-2.5 [&_.menu-option]:py-2"
+          className="select-menu absolute top-control-menu left-0 z-30 max-h-70 w-max max-w-select min-w-full overflow-auto rounded-control border border-line bg-raised p-1 shadow-menu [&_.menu-option]:px-2.5 [&_.menu-option]:py-2"
         >
           {options.map((
             o,
             n,
           ) => (
             <Fragment key={o.value}>
-              {o.group && o.group !== options[n - 1]?.group && <div className="select-group pt-2 px-2.5 pb-0.5 text-muted text-meta font-semibold first:pt-0.5" role="presentation">{o.group}</div>}
+              {o.group && o.group !== options[n - 1]?.group && <div className="select-group px-2.5 pt-2 pb-0.5 text-meta font-semibold text-muted first:pt-0.5" role="presentation">{o.group}</div>}
               <MenuOption
                 id={`${id}-${n}`}
                 aria-label={o.label}
@@ -339,7 +340,7 @@ export function Select({
                   }
                 }}
               >
-                <span className="select-option inline-flex items-center gap-2 min-w-0">
+                <span className="select-option inline-flex min-w-0 items-center gap-2">
                   {o.icon && <Icon name={o.icon} size={iconSize} />}
                   {o.label}
                   {onDefault && o.value === defaultValue && (
@@ -357,7 +358,7 @@ export function Select({
               </MenuOption>
             </Fragment>
           ))}
-          {onDefault && <p className="select-hint mt-1 mx-0 mb-0 pt-1.5 px-2.5 pb-0.5 border-t border-line text-muted text-meta">{MOD}-click or hold to pick it and make it the default</p>}
+          {onDefault && <p className="select-hint mx-0 mt-1 mb-0 border-t border-line px-2.5 pt-1.5 pb-0.5 text-meta text-muted">{MOD}-click or hold to pick it and make it the default</p>}
         </div>
       )}
     </div>
@@ -421,9 +422,9 @@ export function NumberField({
   )
 
   return (
-    <div className="number-field flex items-center justify-between gap-2 mt-4 text-ui" aria-busy={busy}>
+    <div className="number-field mt-4 flex items-center justify-between gap-2 text-ui" aria-busy={busy}>
       <label htmlFor={id}>{label}</label>
-      <span className="number-control inline-flex items-center gap-0.75 shrink-0 [&>.input]:w-12 [&>.input]:text-center [&>.input]:text-ui [&>span]:text-muted [&>span]:text-ui [&>.button]:text-pane [&>.button]:px-1.5 [&>.button]:py-1">
+      <span className="number-control inline-flex shrink-0 items-center gap-0.75 [&>.button]:px-1.5 [&>.button]:py-1 [&>.button]:text-pane [&>.input]:w-12 [&>.input]:text-center [&>.input]:text-ui [&>span]:text-ui [&>span]:text-muted">
         <Button
           aria-label={`Decrease ${label}`}
           disabled={value <= min}
@@ -542,10 +543,10 @@ function NumberSlider({
   }
 
   return (
-    <div className="slider-field flex items-center gap-2.5 w-full" aria-busy={busy}>
-      <span className="slider-track relative flex-1 flex items-center h-5.5" style={{ '--fill': share({ at: shown }) } as CSSProperties}>
+    <div className="slider-field flex w-full items-center gap-2.5" aria-busy={busy}>
+      <span className="slider-track relative flex h-5.5 flex-1 items-center" style={runtimeStyle({ sliderFill: share({ at: shown }) })}>
         <input
-          className="appearance-none w-full h-5.5 m-0 bg-transparent cursor-pointer focus-visible:outline-2 focus-visible:outline-gold-line focus-visible:outline-offset-2 focus-visible:rounded-sm [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-sm [&::-webkit-slider-runnable-track]:[background:linear-gradient(var(--color-gold-fill),var(--color-gold-fill))_0/var(--fill,50%)_100%_no-repeat,var(--color-line)] [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-sm [&::-moz-range-track]:bg-line [&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-sm [&::-moz-range-progress]:bg-gold-fill [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:-mt-1.5 [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gold [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-surface [&::-webkit-slider-thumb]:shadow-range [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-gold [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-surface"
+          className="m-0 h-5.5 w-full cursor-pointer appearance-none bg-transparent focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-line [&::-moz-range-progress]:h-1 [&::-moz-range-progress]:rounded-sm [&::-moz-range-progress]:bg-gold-fill [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-gold [&::-moz-range-thumb]:bg-surface [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-sm [&::-moz-range-track]:bg-line [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-sm [&::-webkit-slider-runnable-track]:bg-slider-fill [&::-webkit-slider-thumb]:-mt-1.5 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-gold [&::-webkit-slider-thumb]:bg-surface [&::-webkit-slider-thumb]:shadow-range"
           type="range"
           aria-label={label}
           min={min}
@@ -560,12 +561,12 @@ function NumberSlider({
           onKeyUp={release}
           onBlur={release}
         />
-        {tick && <span className="slider-tick absolute top-3.75 w-px h-1.5 bg-muted -translate-x-1/2 pointer-events-none after:content-[attr(data-l)] after:absolute after:top-1.25 after:left-1/2 after:-translate-x-1/2 after:text-muted after:text-meta after:whitespace-nowrap" style={{ left: tick }} data-l="default" />}
+        {tick && <span className="slider-tick pointer-events-none absolute top-3.75 h-1.5 w-px -translate-x-1/2 bg-muted after:absolute after:top-1.25 after:left-1/2 after:-translate-x-1/2 after:text-meta after:whitespace-nowrap after:text-muted after:content-label" style={runtimeStyle({ left: tick })} data-l="default" />}
       </span>
-      <span className="slider-box flex items-center border border-line rounded-md bg-surface focus-within:border-gold-line">
+      <span className="slider-box flex items-center rounded-md border border-line bg-surface focus-within:border-gold-line">
         <Input
           id={id}
-          className="slider-number w-16 h-7 py-1 px-1.5 border-0 bg-transparent text-right text-ui tabular-nums shadow-none"
+          className="slider-number h-7 w-16 border-0 bg-transparent px-1.5 py-1 text-right text-ui tabular-nums shadow-none"
           aria-label={`${label} value`}
           inputMode="numeric"
           value={sliding === undefined ? draft : String(sliding)}
@@ -580,10 +581,10 @@ function NumberSlider({
             }
           }}
         />
-        {unit && <label htmlFor={id} className="slider-unit pr-1.75 text-muted text-meta">{unit}</label>}
+        {unit && <label htmlFor={id} className="slider-unit pr-1.75 text-meta text-muted">{unit}</label>}
       </span>
     </div>
   )
 }
 
-export const DATE_EDITOR = 'reminder-editor flex flex-col gap-2 mt-2.5 p-2.5 border border-line rounded-lg bg-surface [&_[role=alert]]:text-red'
+export const DATE_EDITOR = 'reminder-editor mt-2.5 flex flex-col gap-2 rounded-lg border border-line bg-surface p-2.5 [&_[role=alert]]:text-red'

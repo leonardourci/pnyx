@@ -16,8 +16,8 @@ export function Label({
   wrap?: boolean
   compact?: boolean
 }) {
-  const wrapping = wrap ? 'whitespace-normal wrap-anywhere text-clip' : 'whitespace-nowrap text-ellipsis'
+  const wrapping = wrap ? 'wrap-anywhere text-clip whitespace-normal' : 'text-ellipsis whitespace-nowrap'
   const padding = compact ? 'px-1' : 'px-1.5'
 
-  return <Tooltip content={label}><span className={`task-label block w-fit max-w-full overflow-hidden rounded border border-label-line py-px text-meta leading-normal text-label-ink bg-label-fill ${wrapping} ${padding}${project ? ' project-label' : ''}`} data-label-color={colors?.find(entry => entry.label === label)?.color}>{text}</span></Tooltip>
+  return <Tooltip content={label}><span className={`task-label block w-fit max-w-full overflow-hidden rounded border border-label-line bg-label-fill py-px text-meta leading-normal text-label-ink ${wrapping} ${padding}${project ? ' project-label' : ''}`} data-label-color={colors?.find(entry => entry.label === label)?.color}>{text}</span></Tooltip>
 }

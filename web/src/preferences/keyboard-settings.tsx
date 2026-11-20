@@ -22,7 +22,7 @@ function KeyAction({
 }: ComponentProps<typeof Button> & { reset?: boolean }) {
   const appearance = reset ? 'keymap-reset text-gold' : 'keymap-add'
 
-  return <Button {...props} className={`min-h-6.5 py-0.5 px-1.75 text-meta ${appearance} ${className}`} />
+  return <Button {...props} className={`min-h-6.5 px-1.75 py-0.5 text-meta ${appearance} ${className}`} />
 }
 
 export function KeyRows({
@@ -147,10 +147,10 @@ export function KeyRows({
 
   return (
     <div className="keymap [&>[role=group]:first-of-type_.keymap-group]:mt-0" aria-label="Keyboard shortcuts">
-      {error && <p role="alert" className="keymap-error mt-2 mx-5 mb-0 text-red text-meta">{error}</p>}
+      {error && <p role="alert" className="keymap-error mx-5 mt-2 mb-0 text-meta text-red">{error}</p>}
       {groups.map(group => (
         <div key={group} role="group" aria-label={group}>
-          <div className="keymap-group mt-4 py-2.5 px-5 border-y border-line bg-raised text-ink text-meta font-semibold uppercase tracking-keymap">{group}</div>
+          <div className="keymap-group mt-4 border-y border-line bg-raised px-5 py-2.5 text-meta font-semibold tracking-keymap text-ink uppercase">{group}</div>
           {shown.filter(action => groupOf({ action }) === group).map(a => {
             const keys = bindingsFor({
               prefs,
@@ -159,11 +159,11 @@ export function KeyRows({
             const customized = a.id in prefs.bindings
 
             return (
-              <div className="keymap-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 py-2 px-5 border-t border-subtle data-capturing:bg-gold-wash" key={a.id} data-capturing={capturing === a.id || undefined}>
+              <div className="keymap-row grid grid-cols-content-action items-center gap-2.5 border-t border-subtle px-5 py-2 data-capturing:bg-gold-wash" key={a.id} data-capturing={capturing === a.id || undefined}>
                 <span className="keymap-action font-medium">{a.label}</span>
-                <span className="keymap-keys flex flex-wrap justify-end items-center gap-1">
+                <span className="keymap-keys flex flex-wrap items-center justify-end gap-1">
                   {keys.map(key => (
-                    <Keycap as="span" className="keymap-key gap-0.75 py-px pl-1.5 pr-0.75 whitespace-nowrap [&>kbd]:min-w-0 [&>kbd]:h-auto [&>kbd]:p-0 [&>kbd]:border-0 [&>kbd]:rounded-none [&>kbd]:bg-transparent [&>kbd]:shadow-none [&>kbd]:[font:inherit] [&>kbd]:text-ink" key={key}>
+                    <Keycap as="span" className="keymap-key gap-0.75 py-px pr-0.75 pl-1.5 whitespace-nowrap [&>kbd]:h-auto [&>kbd]:min-w-0 [&>kbd]:rounded-none [&>kbd]:border-0 [&>kbd]:bg-transparent [&>kbd]:p-0 [&>kbd]:text-ink [&>kbd]:shadow-none [&>kbd]:font-inherit-all" key={key}>
                       <kbd>{keyLabel({
                         keys: [key],
                         platform,
@@ -183,7 +183,7 @@ export function KeyRows({
                     </Keycap>
                   ))}
                   {capturing === a.id
-                    ? <span className="keymap-capture text-gold text-meta" role="status">Press a key… Esc cancels</span>
+                    ? <span className="keymap-capture text-meta text-gold" role="status">Press a key… Esc cancels</span>
                     : (
                       <KeyAction
                         aria-label={`Add a key for ${a.label}`}

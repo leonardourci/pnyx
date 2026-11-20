@@ -8,9 +8,177 @@ import { parse } from 'yaml'
 import { afterEach, expect, test } from 'vitest'
 import { git } from './setup/upgrade.ts'
 import { stagedBuild } from '../scripts/build/staged.ts'
+import { ESLint } from 'eslint'
 
 const temporaryFolders: string[] = []
 const CHILD_PROCESS_TIMEOUT_MS = 30_000
+
+test(
+  'web lint rejects one-off styles and unsorted classes while accepting tokens and runtime geometry',
+  async () => {
+    const linter = new ESLint()
+    const cases = [
+      {
+        source: 'classList.add("w-[317px]")',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'element.classList.add("w-[317px]")',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'element.style.width = `${measuredWidth}px`',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'element["style"].width = "317px"',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, values: { left: 317 } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, "values": { left: 317 } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, values: { left: -317 } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'applyRuntimeStyle({ element, values: { left: `317px` } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div className="text-sm/[17px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className={`text-sm/[${height}px]`} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div style={runtimeStyle({ left: -317 })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style={runtimeStyle({ left: +317 })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style={runtimeStyle({ left: `317px` })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'const itemClassName = "text-ink flex"; <div className={itemClassName} />',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+      {
+        source: '<Tooltip anchorClassName="w-[317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className={`w-[${width}px]`} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className={`[width:${width}px]`} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<Tooltip anchorClassName="text-ink flex" />',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+      {
+        source: '<div className="bg-[#123456]/50" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="w-[317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="hover:w-[317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="[color:red]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="[--card2_width:317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="![color:red]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className="[grid-template-columns:[start]_1fr_[end]]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'const ITEM_CLASSES = "w-[317px]"; <div className={ITEM_CLASSES} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: 'const narrow = "w-[317px]"; <div className={narrow} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div style={{ width: 317 }} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style="width: 317px" />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: 'const style = { width: 317 }; <div style={style} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style={runtimeStyle({ width: 317 })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div className="text-ink flex" />',
+        rule: 'better-tailwindcss/enforce-consistent-class-order',
+      },
+    ]
+
+    for (const {
+      source,
+      rule,
+    } of cases) {
+      const reports = await linter.lintText(
+        source,
+        { filePath: 'web/src/shared/ui/lint-policy.tsx' },
+      )
+      const messages = reports.flatMap(report => report.messages)
+      expect(
+        messages.map(message => message.ruleId),
+        source,
+      ).toContain(rule)
+    }
+
+    const valid = 'const width = window.innerWidth; const element = document.createElement("div"); applyRuntimeStyle({ element, values: { width, maxHeight: width } }); element.classList.add("flex", "text-ink"); <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width, left: -width, top: +width, fontSize: `${width}px` })} />'
+    const reports = await linter.lintText(
+      valid,
+      { filePath: 'web/src/shared/ui/lint-policy.tsx' },
+    )
+    const policyRules = new Set([
+      'better-tailwindcss/no-restricted-classes',
+      'better-tailwindcss/enforce-consistent-class-order',
+      'no-restricted-syntax',
+    ])
+    const messages = reports.flatMap(report => report.messages)
+    const violations = messages.filter(message =>
+      message.fatal || (message.ruleId !== null && policyRules.has(message.ruleId)))
+    expect(violations).toEqual([])
+  },
+)
 
 afterEach(() => {
   for (const folder of temporaryFolders.splice(0)) {

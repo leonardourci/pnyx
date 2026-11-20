@@ -31,7 +31,7 @@ export function ReminderLabel({ card }: { card: Card }) {
   const repeat = card.reminder.repeat
   const cadence = repeat ? ` · every ${reminderIntervalText({ milliseconds: repeat.everyMs })}, until ${STOP_LABELS[repeat.until]}` : ''
 
-  return <span className="reminder-label inline-flex items-center gap-1.25 mt-2 text-gold text-meta" title={date.toISOString()}><Icon name="reminder" size={ICON_SIZE.inline} />reminds you {when}{cadence}</span>
+  return <span className="reminder-label mt-2 inline-flex items-center gap-1.25 text-meta text-gold" title={date.toISOString()}><Icon name="reminder" size={ICON_SIZE.inline} />reminds you {when}{cadence}</span>
 }
 
 export interface ReminderDraft {

@@ -191,7 +191,7 @@ export function AccountSettings({
     <form
       ref={form}
       id={`${errorId}-form`}
-      className={`${SETTING_STACK} account-form min-w-0 gap-(--settings-column-gap) [&_:is(.input,.select)]:w-settings-field [&_.select>.button]:justify-start [&_.select>.button>svg:last-child]:ml-auto`}
+      className={`${SETTING_STACK} account-form min-w-0 gap-(--settings-column-gap) [&_.select>.button]:justify-start [&_.select>.button>svg:last-child]:ml-auto [&_:is(.input,.select)]:w-settings-field`}
       onSubmit={event => {
         event.preventDefault(); commit({ left: false })
       }}
@@ -233,7 +233,7 @@ export function AccountSettings({
       </SettingField>
       <SettingField>
         <label className="setting-name text-ui font-semibold" htmlFor={`${errorId}-home`}>Existing home folder</label>
-        <p className="setting-description mt-0.75 mb-2.5 mx-0 text-muted text-ui">Use a home folder you have already configured for this provider.</p>
+        <p className="setting-description mx-0 mt-0.75 mb-2.5 text-ui text-muted">Use a home folder you have already configured for this provider.</p>
         <Input
           id={`${errorId}-home`}
           aria-label="Existing home folder"
@@ -251,7 +251,7 @@ export function AccountSettings({
       </SettingField>
       {visibleFailure && (
         <p
-          className="account-form-error text-red text-ui"
+          className="account-form-error text-ui text-red"
           id={errorId}
           role="alert"
           data-account-field="form"
@@ -274,7 +274,7 @@ export function AccountSettings({
   const adding = draft && !draft.key
 
   return (
-    <div className="account-settings flex flex-col gap-3 min-w-0 [&>.settings-rows]:border-0 [&>.settings-rows]:bg-transparent [&>:not(.settings-rows)]:mt-0 [&>:not(.settings-rows)]:mx-5 [&>:not(.settings-rows)]:mb-4">
+    <div className="account-settings flex min-w-0 flex-col gap-3 [&>.settings-rows]:border-0 [&>.settings-rows]:bg-transparent [&>:not(.settings-rows)]:mx-5 [&>:not(.settings-rows)]:mt-0 [&>:not(.settings-rows)]:mb-4">
       <SettingsRows>
         {Object.entries(accounts).map(([
           key,
@@ -324,7 +324,7 @@ export function AccountSettings({
           >{editor}
           </SettingRow>
         ) : (
-          <div className="account-add-row py-4 px-5 border-t border-subtle" key="add-account">
+          <div className="account-add-row border-t border-subtle px-5 py-4" key="add-account">
             <Button
               variant="surface"
               disabled={!base}

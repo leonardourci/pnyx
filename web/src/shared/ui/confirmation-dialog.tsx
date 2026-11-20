@@ -28,7 +28,7 @@ export function ConfirmationDialog({
   return (
     <dialog
       ref={dialog}
-      className="confirmation-dialog bg-surface text-ink border border-line rounded-xl p-6 max-w-110 backdrop:bg-shadow"
+      className="confirmation-dialog max-w-110 rounded-xl border border-line bg-surface p-6 text-ink backdrop:bg-shadow"
       aria-label={title}
       onCancel={e => {
         e.preventDefault()

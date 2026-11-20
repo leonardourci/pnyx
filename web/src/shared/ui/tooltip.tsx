@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 export const HOVER_CLAIM = 'pnyx-tooltip'
@@ -6,7 +7,7 @@ const GAP = 8
 const CLOSE_DELAY_MS = 180
 
 export function TooltipPanel({ children }: { children: ReactNode }) {
-  return <span className="tooltip-panel flex flex-col gap-2.5 min-w-60 py-1 px-0.5 has-[>.shared-usage]:p-0 has-[>.shared-usage]:gap-0 [&_.usage-session-details]:pt-0 [&_.usage-session-details]:px-3.25 [&_.usage-session-details]:pb-3.25">{children}</span>
+  return <span className="tooltip-panel flex min-w-60 flex-col gap-2.5 px-0.5 py-1 has-[>.shared-usage]:gap-0 has-[>.shared-usage]:p-0 [&_.usage-session-details]:px-3.25 [&_.usage-session-details]:pt-0 [&_.usage-session-details]:pb-3.25">{children}</span>
 }
 
 export function TooltipSection({
@@ -156,13 +157,18 @@ export function Tooltip({
       }
 
       element.showPopover()
-      element.style.left = `${Math.max(
-        GAP,
-        Math.min(
-          rect.left + rect.width / 2 - element.offsetWidth / 2,
-          innerWidth - element.offsetWidth - GAP,
-        ),
-      )}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          left: Math.max(
+            GAP,
+            Math.min(
+              rect.left + rect.width / 2 - element.offsetWidth / 2,
+              innerWidth - element.offsetWidth - GAP,
+            ),
+          ),
+        },
+      })
       const aboveSpace = Math.max(
         0,
         rect.top - GAP * 2,
@@ -175,8 +181,18 @@ export function Tooltip({
       const fitsBelow = element.offsetHeight <= belowSpace
       const above = fitsAbove || (!fitsBelow && aboveSpace >= belowSpace)
       const available = above ? aboveSpace : belowSpace
-      element.style.maxHeight = `${available}px`
-      element.style.top = `${above ? rect.top - element.offsetHeight - GAP : rect.bottom + GAP}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          maxHeight: available,
+        },
+      })
+      applyRuntimeStyle({
+        element,
+        values: {
+          top: above ? rect.top - element.offsetHeight - GAP : rect.bottom + GAP,
+        },
+      })
       const focused = document.activeElement
 
       if (!(focused instanceof HTMLElement) || !anchor.current?.contains(focused)) {
@@ -212,7 +228,7 @@ export function Tooltip({
   return (
     <span
       ref={anchor}
-      className={`tooltip-anchor [:where(&)]:inline-flex min-w-0 max-w-full ${anchorClassName}`}
+      className={`tooltip-anchor max-w-full min-w-0 [:where(&)]:inline-flex ${anchorClassName}`}
       data-tooltip-active={visible || undefined}
       aria-describedby={visible ? id : undefined}
       onPointerEnter={show}
@@ -244,7 +260,7 @@ export function Tooltip({
           role={interactive ? 'dialog' : 'tooltip'}
           aria-label={label}
           popover="manual"
-          className="tooltip has-[.shared-usage]:w-84 has-[.shared-usage]:max-w-usage-tooltip has-[.shared-usage]:p-0 fixed inset-auto m-0 max-w-floating-panel py-1.25 px-2 border-0 rounded-md bg-ink text-surface text-meta leading-question wrap-anywhere overflow-y-auto overscroll-contain pointer-events-auto opacity-100 starting:opacity-0 transition-opacity duration-base ease-ui motion-reduce:transition-none [:where(&)_:is(strong,span)]:block [&_mark]:px-px [&_mark]:py-0 [&_mark]:rounded-xs [&_mark]:bg-gold/45 [&_mark]:text-inherit"
+          className="tooltip pointer-events-auto fixed inset-auto m-0 max-w-floating-panel overflow-y-auto overscroll-contain rounded-md border-0 bg-ink px-2 py-1.25 text-meta leading-question wrap-anywhere text-surface opacity-100 transition-opacity duration-base ease-ui has-[.shared-usage]:w-84 has-[.shared-usage]:max-w-usage-tooltip has-[.shared-usage]:p-0 motion-reduce:transition-none starting:opacity-0 [&_mark]:rounded-xs [&_mark]:bg-gold/45 [&_mark]:px-px [&_mark]:py-0 [&_mark]:text-inherit [:where(&)_:is(strong,span)]:block"
           onPointerEnter={() => clearTimeout(closeTimer.current)}
           onPointerLeave={leave}
         >{content}

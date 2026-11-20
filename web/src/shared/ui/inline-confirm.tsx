@@ -40,7 +40,7 @@ export function InlineConfirm({
     >
       <Button
         ref={trigger}
-        className="inline-confirm-trigger in-[.settings-page]:min-h-7 in-[.settings-page]:gap-1.5 in-[.settings-page]:py-1.25 in-[.settings-page]:px-2.25 in-[.settings-page]:border in-[.settings-page]:border-line in-[.settings-page]:rounded-md in-[.settings-page]:bg-raised in-[.settings-page]:text-ui"
+        className="inline-confirm-trigger in-[.settings-page]:min-h-7 in-[.settings-page]:gap-1.5 in-[.settings-page]:rounded-md in-[.settings-page]:border in-[.settings-page]:border-line in-[.settings-page]:bg-raised in-[.settings-page]:px-2.25 in-[.settings-page]:py-1.25 in-[.settings-page]:text-ui"
         aria-label={label}
         aria-expanded={open}
         aria-controls={open ? id : undefined}

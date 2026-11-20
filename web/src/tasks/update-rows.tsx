@@ -93,18 +93,18 @@ function UpdateIcon({
   label?: string
 }) {
   const tones: Partial<Record<UpdateKind, string>> = {
-    ask: 'text-gold bg-gold-wash',
-    decision: 'text-gold bg-gold-wash',
-    hydra: 'text-teal bg-update-hydra',
-    told: 'text-blue bg-update-told',
-    link: 'text-purple bg-update-link',
-    done: 'text-green bg-update-done',
+    ask: 'bg-gold-wash text-gold',
+    decision: 'bg-gold-wash text-gold',
+    hydra: 'bg-update-hydra text-teal',
+    told: 'bg-update-told text-blue',
+    link: 'bg-update-link text-purple',
+    done: 'bg-update-done text-green',
   }
-  const appearance = tones[kind] ?? 'text-muted bg-raised'
+  const appearance = tones[kind] ?? 'bg-raised text-muted'
 
   return (
     <Tooltip content={label}>
-      <span className={`update-icon update-icon-${kind} inline-flex items-center justify-center size-5.5 rounded-md ${appearance}`} role="img" aria-label={label}><Icon name={icon} size={ICON_SIZE.inline} /></span>
+      <span className={`update-icon update-icon-${kind} inline-flex size-5.5 items-center justify-center rounded-md ${appearance}`} role="img" aria-label={label}><Icon name={icon} size={ICON_SIZE.inline} /></span>
     </Tooltip>
   )
 }
@@ -140,11 +140,11 @@ function UpdateLine({
   children?: ReactNode
 }) {
   return (
-    <div className="update-line grid grid-cols-[--spacing(5.5)_minmax(0,1fr)] gap-2 items-start [&+.update-line]:mt-1.5">
+    <div className="update-line grid grid-cols-update items-start gap-2 [&+.update-line]:mt-1.5">
       <UpdateIcon kind={kind} icon={icon} label={label} />
-      <div className="update-main grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.75 items-baseline min-w-0 [&>:is(time,.tooltip-anchor)]:col-start-2 [&>:is(time,.tooltip-anchor)]:row-start-1 [&>:not(time,.tooltip-anchor)]:col-span-full [&>.update-title]:col-start-1 [&>.update-title]:col-end-auto [&>.update-title]:row-start-1 [&_time]:text-muted [&_time]:text-meta [&_time]:leading-5.5 [&_time]:whitespace-nowrap">
+      <div className="update-main grid min-w-0 grid-cols-content-action items-baseline gap-x-2.5 gap-y-0.75 [&_time]:text-meta [&_time]:leading-5.5 [&_time]:whitespace-nowrap [&_time]:text-muted [&>.update-title]:col-start-1 [&>.update-title]:col-end-auto [&>.update-title]:row-start-1 [&>:is(time,.tooltip-anchor)]:col-start-2 [&>:is(time,.tooltip-anchor)]:row-start-1 [&>:not(time,.tooltip-anchor)]:col-span-full">
         {at && <UpdateTime at={at} plain={plain} />}
-        {title && <div className="update-title font-semibold leading-5.5 wrap-anywhere [&_.card-link]:py-0 [&_.card-link]:leading-4.5 [&_.card-link]:align-[--spacing(0.25)] in-[.update-decision]:text-gold">{title}</div>}
+        {title && <div className="update-title leading-5.5 font-semibold wrap-anywhere in-[.update-decision]:text-gold [&_.card-link]:py-0 [&_.card-link]:align-update-icon [&_.card-link]:leading-4.5">{title}</div>}
         {children}
       </div>
     </div>
@@ -179,7 +179,7 @@ export function UpdateEntry({
   if (update.kind === 'report') {
     return (
       <Disclosure
-        className="update-fold report-fold [&>summary]:pr-0 [&>summary>.disclosure-chevron]:hidden [&>.disclosure-body]:grid [&>.disclosure-body]:gap-1.5 [&>.disclosure-body]:pt-1.5 [&>.disclosure-body]:pl-7.5"
+        className="update-fold report-fold [&>.disclosure-body]:grid [&>.disclosure-body]:gap-1.5 [&>.disclosure-body]:pt-1.5 [&>.disclosure-body]:pl-7.5 [&>summary]:pr-0 [&>summary>.disclosure-chevron]:hidden"
         title={({ open }) => (
           <UpdateLine
             kind="report"
@@ -188,7 +188,7 @@ export function UpdateEntry({
             title={(
               <>
                 <span>{update.state}</span>
-                <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[calc(--spacing(0.5)*-1)] text-muted" aria-hidden="true">
+                <span className="update-fold-chevron ml-1 inline-flex h-3.5 align-update-chevron text-muted" aria-hidden="true">
                   <DisclosureChevron expanded={open} size={ICON_SIZE.inline} />
                 </span>
               </>
@@ -220,9 +220,9 @@ function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> })
   const you = decision.actor === 'You'
 
   return (
-    <div className="decision-answer grid grid-cols-[--spacing(5.5)_minmax(0,1fr)] gap-1.5 items-start">
+    <div className="decision-answer grid grid-cols-update items-start gap-1.5">
       <UpdateIcon kind={you ? 'ask' : 'hydra'} label={`Answered by ${you ? 'you' : decision.actor}`} />
-      <div className="decision-answer-text grid gap-0.5 min-w-0">
+      <div className="decision-answer-text grid min-w-0 gap-0.5">
         {decision.choice && <CollapsibleText text={decision.choice} />}
         {decision.answer !== decision.choice && <CollapsibleText text={decision.answer} />}
       </div>
@@ -244,7 +244,7 @@ function AskParts({
       {ask.from && <p className={QUESTION_SOURCE}>{ask.from} asked {ask.from === 'Hydra' ? 'you' : 'Hydra'}</p>}
       {ask.context && <CollapsibleText text={ask.context} />}
       {!!ask.options?.length && (
-        <ol className="decision-choices m-0 pl-4.5 grid gap-0.5 [&>li[aria-current]]:text-gold [&>li[aria-current]]:font-semibold">
+        <ol className="decision-choices m-0 grid gap-0.5 pl-4.5 [&>li[aria-current]]:font-semibold [&>li[aria-current]]:text-gold">
           {ask.options.map((
             option,
             i,
@@ -258,7 +258,7 @@ function AskParts({
         </ol>
       )}
       {escalation && (
-        <div className="decision-escalation grid gap-1 pl-2 border-l-2 border-line">
+        <div className="decision-escalation grid gap-1 border-l-2 border-line pl-2">
           <p className={QUESTION_SOURCE}>Hydra asked you</p>
           {escalation.reason && (
             <CollapsibleText className={QUESTION_SOURCE} text={escalation.reason} />
@@ -270,7 +270,7 @@ function AskParts({
         </div>
       )}
       {ask.details && (
-        <Disclosure className="decision-details [&>summary]:text-muted [&>summary]:text-meta" title="Details">
+        <Disclosure className="decision-details [&>summary]:text-meta [&>summary]:text-muted" title="Details">
           <CollapsibleText text={ask.details} />
         </Disclosure>
       )}
@@ -292,11 +292,11 @@ function Decision({
   return (
     <>
       <UpdateLine kind="decision" at={update.at} title={many ? `${count} decisions` : update.state} />
-      <ol className="decision-list list-none mt-1.5 mr-0 mb-0 ml-7.5 p-0 grid gap-2 [&>li]:grid [&>li]:gap-1 [&>li]:py-0.5 [&>li]:pr-0 [&>li]:pl-2.5 [&>li]:border-l-2 [&>li]:border-gold-line">
+      <ol className="decision-list mt-1.5 mr-0 mb-0 ml-7.5 grid list-none gap-2 p-0 [&>li]:grid [&>li]:gap-1 [&>li]:border-l-2 [&>li]:border-gold-line [&>li]:py-0.5 [&>li]:pr-0 [&>li]:pl-2.5">
         {update.decision && (
           <li key={update.id}>
-            <div className="decision-question flex gap-1.5 items-baseline min-w-0 [&>.collapsible-text]:min-w-0">
-              {many && <span className="decision-number inline-flex items-center justify-center shrink-0 min-w-4.5 h-4.5 rounded-full bg-gold-wash text-gold text-meta">{index + 1}</span>}
+            <div className="decision-question flex min-w-0 items-baseline gap-1.5 [&>.collapsible-text]:min-w-0">
+              {many && <span className="decision-number inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-gold-wash text-meta text-gold">{index + 1}</span>}
               <CollapsibleText className={QUESTION_HEADLINE} text={update.decision.question} />
             </div>
             {update.decision.ask && (
@@ -306,7 +306,7 @@ function Decision({
               />
             )}
             <Answer decision={update.decision} />
-            {update.decision.reason && <CollapsibleText className="decision-why text-muted text-meta" text={update.decision.reason} />}
+            {update.decision.reason && <CollapsibleText className="decision-why text-meta text-muted" text={update.decision.reason} />}
           </li>
         )}
       </ol>
@@ -334,7 +334,7 @@ function GroupHeading({
 
   return (
     <Button
-      className="update-group-toggle block w-full text-left p-0 whitespace-normal"
+      className="update-group-toggle block w-full p-0 text-left whitespace-normal"
       aria-expanded={open}
       aria-controls={controls}
       onClick={toggle}
@@ -345,8 +345,8 @@ function GroupHeading({
         at={group.updates.at(-1)!.at}
         plain
         title={(
-          <>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states text-muted text-meta font-normal">{states}</span>
-            <span className="update-fold-chevron inline-flex h-3.5 ml-1 align-[calc(--spacing(0.5)*-1)] text-muted" aria-hidden="true"><DisclosureChevron expanded={open} size={ICON_SIZE.inline} /></span>
+          <>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states text-meta font-normal text-muted">{states}</span>
+            <span className="update-fold-chevron ml-1 inline-flex h-3.5 align-update-chevron text-muted" aria-hidden="true"><DisclosureChevron expanded={open} size={ICON_SIZE.inline} /></span>
           </>
         )}
       />
@@ -406,7 +406,7 @@ export function UpdateRow({
 
   return (
     <li
-      className={`update-row [.card_.task-updates_&]:py-1.25 py-2 px-1 border-b border-subtle transition-colors duration-fast ease-ui last:border-b-0 first:pt-1.5 [&:is(.update-decision,:has(.update-fold,.update-group-toggle,.show-more)):hover]:rounded-md [&:is(.update-decision,:has(.update-fold,.update-group-toggle,.show-more)):hover]:bg-hover/55 hover:[&_.update-fold-chevron]:text-ink motion-reduce:transition-none [&:not([data-update-group-end]):not(:has(.update-group-toggle[aria-expanded=false]))]:border-b-0 [&.update-group-continuation]:pt-0 [&:is(.update-group-workers,.update-group-changes)>.update-entry]:pt-1.5 [&:is(.update-group-workers,.update-group-changes)>.update-entry]:pl-7.5 [&.update-group-decisions>.update-entry>.update-line]:hidden [&.update-group-moment.update-group-continuation_.update-icon]:hidden [&.update-group-moment.update-group-continuation_.update-main>.tooltip-anchor:has(time)]:hidden [&.update-group-moment.update-group-continuation_.update-main]:col-start-2 update-group-${group.type}${index ? ' update-group-continuation' : ''}${update.kind === 'decision' ? ' update-decision' : ''}`}
+      className={`update-row border-b border-subtle px-1 py-2 transition-colors duration-fast ease-ui first:pt-1.5 last:border-b-0 motion-reduce:transition-none hover:[&_.update-fold-chevron]:text-ink [&.update-group-continuation]:pt-0 [&.update-group-decisions>.update-entry>.update-line]:hidden [&.update-group-moment.update-group-continuation_.update-icon]:hidden [&.update-group-moment.update-group-continuation_.update-main]:col-start-2 [&.update-group-moment.update-group-continuation_.update-main>.tooltip-anchor:has(time)]:hidden [&:is(.update-decision,:has(.update-fold,.update-group-toggle,.show-more)):hover]:rounded-md [&:is(.update-decision,:has(.update-fold,.update-group-toggle,.show-more)):hover]:bg-hover/55 [&:is(.update-group-workers,.update-group-changes)>.update-entry]:pt-1.5 [&:is(.update-group-workers,.update-group-changes)>.update-entry]:pl-7.5 [&:not([data-update-group-end]):not(:has(.update-group-toggle[aria-expanded=false]))]:border-b-0 [.card_.task-updates_&]:py-1.25 update-group-${group.type}${index ? ' update-group-continuation' : ''}${update.kind === 'decision' ? ' update-decision' : ''}`}
       data-update={update.id}
       data-update-group={groupId}
       data-update-group-end={index === group.updates.length - 1 || undefined}

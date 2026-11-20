@@ -2,6 +2,7 @@ import { HydraRemoval } from './hydra-removal.tsx'
 import { Poleis, HydraPoleis } from './poleis.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
+import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -12,7 +13,7 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
-import { SettingsFrame } from './settings-frame.tsx'
+import { SettingsFrame, SettingsSearch, SettingsSection } from './settings-frame.tsx'
 import { RepositoryOwnership } from '#web-projects/ownership.tsx'
 import { About } from '#web-app/about.tsx'
 import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
@@ -263,10 +264,10 @@ function ColumnWidths({
           value,
         })}
       />
-      <Disclosure className="setting-more mt-2.5 [&_summary]:text-gold [&_summary]:text-meta [&_summary]:cursor-pointer" title="Per column" leading>
-        <div className="setting-per-column grid gap-2 mt-2">
+      <Disclosure className="setting-more mt-2.5 [&_summary]:cursor-pointer [&_summary]:text-meta [&_summary]:text-gold" title="Per column" leading>
+        <div className="setting-per-column mt-2 grid gap-2">
           {columns.map(column => (
-            <div className="setting-labeled grid grid-cols-[var(--spacing-setting-label)_minmax(0,1fr)] items-center gap-x-(--settings-column-gap) gap-y-2 text-meta" key={column.id}>
+            <div className="setting-labeled grid grid-cols-setting-label items-center gap-x-(--settings-column-gap) gap-y-2 text-meta" key={column.id}>
               <span>{column.title}</span>
               <NumberField
                 label={`${column.title} width`}
@@ -557,10 +558,10 @@ function Empty({
   clear(): void
 }) {
   return (
-    <div className="settings-empty py-10 px-2.5 text-muted text-center text-ui [&>h3]:mt-0 [&>h3]:mx-0 [&>h3]:mb-1.5 [&>h3]:text-ink [&>h3]:text-pane [&_.settings-chips]:my-2.5 [&_.settings-chips]:mx-0" role="status">
+    <div className="settings-empty px-2.5 py-10 text-center text-ui text-muted [&_.settings-chips]:mx-0 [&_.settings-chips]:my-2.5 [&>h3]:mx-0 [&>h3]:mt-0 [&>h3]:mb-1.5 [&>h3]:text-pane [&>h3]:text-ink" role="status">
       <h3>No setting matches “{query || 'Changed'}”</h3>
       <p>Search looks at names, descriptions, values and related words.</p>
-      <div className="settings-chips flex flex-wrap justify-center gap-1.5 mt-2.5">
+      <div className="settings-chips mt-2.5 flex flex-wrap justify-center gap-1.5">
         {SUGGESTIONS.map(word => (
           <Chip key={word} variant="settings" onClick={() => search({ query: word })}>{word}</Chip>
         ))}
@@ -690,10 +691,19 @@ export function SettingsPage({
         return
       }
 
-      const measure = () => surface.current?.style.setProperty(
-        '--settings-search-height',
-        `${header.offsetHeight}px`,
-      )
+      const measure = () => {
+        const element = surface.current
+
+        if (!element) {
+          return
+        }
+
+        applyRuntimeStyle({
+          element,
+          values: { settingsSearchHeight: `${header.offsetHeight}px` },
+        })
+      }
+
       const observer = new ResizeObserver(measure)
       observer.observe(header)
       measure()
@@ -739,7 +749,7 @@ export function SettingsPage({
         showConfirmation={showConfirmation}
       />
       <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
-      <div className="settings-search sticky top-0 z-20 pt-3.5 pb-2.5 bg-[linear-gradient(var(--color-background)_82%,transparent)] [&_.search-bar]:max-w-settings-search [&_.search-bar]:mx-auto [&_.search-bar]:my-0 [&_.search-bar]:px-3 [&_.search-bar]:py-2 [&_.search-bar]:shadow-settings-search [&_.search-bar:focus-within]:shadow-settings-focus [&_.search-bar-eye]:text-muted" ref={sticky}>
+      <SettingsSearch ref={sticky}>
         <SearchBar
           label="Search settings"
           query={query}
@@ -755,14 +765,14 @@ export function SettingsPage({
             }
           }}
         />
-        <nav className="settings-chips flex flex-wrap justify-center gap-1.5 mt-2.5" aria-label="Settings sections">
+        <nav className="settings-chips mt-2.5 flex flex-wrap justify-center gap-1.5" aria-label="Settings sections">
           <Chip
             variant="settings"
             data-filter
             aria-pressed={onlyChanged}
             onClick={() => setOnlyChanged(current => !current)}
           >
-            <Icon name="edit" size={ICON_SIZE.inline} />Changed{changed.size > 0 && <span className="settings-chip-count text-gold font-semibold">{changed.size}</span>}
+            <Icon name="edit" size={ICON_SIZE.inline} />Changed{changed.size > 0 && <span className="settings-chip-count font-semibold text-gold">{changed.size}</span>}
           </Chip>
           {SETTINGS_SECTIONS.map(item => (
             <Chip
@@ -772,22 +782,19 @@ export function SettingsPage({
               onClick={() => goTo({ id: item.id })}
             >
               <Icon name={item.icon} size={ICON_SIZE.inline} />{item.label}
-              {filtering && counts[item.id] ? <span className="settings-chip-count text-gold font-semibold">{counts[item.id]}</span> : null}
+              {filtering && counts[item.id] ? <span className="settings-chip-count font-semibold text-gold">{counts[item.id]}</span> : null}
             </Chip>
           ))}
         </nav>
-      </div>
+      </SettingsSearch>
       {sections.map(item => (
-        <section
+        <SettingsSection
           key={item.id}
-          id={`settings-${item.id}`}
-          className="settings-section mt-7 scroll-mt-2 [&>h2]:flex [&>h2]:items-center [&>h2]:gap-2.25 [&>h2]:mt-0 [&>h2]:mx-0 [&>h2]:mb-0.5 [&>h2]:font-brand [&>h2]:text-settings-section [&>h2]:font-bold [&>h2+.settings-rows]:mt-2.5"
-          aria-labelledby={`settings-${item.id}-title`}
+          id={item.id}
+          label={item.label}
+          icon={item.icon}
+          note={'note' in item ? item.note : undefined}
         >
-          <h2 id={`settings-${item.id}-title`}>
-            <span className="settings-section-icon grid place-items-center size-7 border border-gold-line rounded-control bg-gold-wash text-gold"><Icon name={item.icon} size={ICON_SIZE.control} /></span>{item.label}
-          </h2>
-          {'note' in item && <p className="settings-section-note mt-0.5 mx-0 mb-2.5 text-muted text-ui">{item.note}</p>}
           <SettingsRows>
             {shown.filter(match => match.entry.section === item.id).map(match => {
               const control = (
@@ -851,7 +858,7 @@ export function SettingsPage({
               <KeyRows prefs={view.keyboard} save={save} query={keyboardFound ? '' : query} />
             )}
           </SettingsRows>
-        </section>
+        </SettingsSection>
       ))}
       {!sections.length && (
         <Empty

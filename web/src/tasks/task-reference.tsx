@@ -97,7 +97,7 @@ export function TaskReference({
   return (
     <Tooltip anchorClassName="inline" content={reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
       <InlineButton
-        className={`button task-mention task-reference inline max-w-full min-h-0 p-0 border-0 rounded-none bg-transparent text-inherit font-[inherit] text-left whitespace-[inherit] wrap-anywhere align-baseline hover:bg-transparent aria-disabled:opacity-45 aria-disabled:cursor-default column-${reference?.column ?? 'custom'} ${className}`}
+        className={`button task-mention task-reference inline min-h-0 max-w-full rounded-none border-0 bg-transparent p-0 text-left align-baseline font-inherit wrap-anywhere whitespace-inherit text-inherit hover:bg-transparent aria-disabled:cursor-default aria-disabled:opacity-45 column-${reference?.column ?? 'custom'} ${className}`}
         data-task-ref={id}
         data-state={reference?.kind}
         disabled={!open}

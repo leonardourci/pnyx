@@ -33,7 +33,7 @@ function Option({
     <div
       id={id}
       role="option"
-      className="oracle-option flex items-center gap-2 px-2 py-1.5 rounded-md text-ui text-muted cursor-pointer aria-selected:bg-raised aria-selected:text-ink [&_mark]:bg-gold-wash [&_mark]:text-inherit [&_mark]:rounded-xs"
+      className="oracle-option flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-ui text-muted aria-selected:bg-raised aria-selected:text-ink [&_mark]:rounded-xs [&_mark]:bg-gold-wash [&_mark]:text-inherit"
       data-value={value}
       aria-selected={selected}
       onMouseDown={event => event.preventDefault()}
@@ -41,7 +41,7 @@ function Option({
     >
       <Icon name={icon} size={ICON_SIZE.control} />
       <span className="oracle-option-label min-w-0 flex-1 truncate text-ink"><Highlight text={label} terms={terms} /></span>
-      {meta && <span className="oracle-option-meta flex-none max-w-[45%] truncate text-meta">{meta}</span>}
+      {meta && <span className="oracle-option-meta max-w-option-meta flex-none truncate text-meta">{meta}</span>}
     </div>
   )
 }
@@ -55,7 +55,7 @@ function Group({
 }) {
   return (
     <div role="group" aria-label={label}>
-      <div className="oracle-caption pt-2.5 px-2 pb-1 text-meta text-muted" aria-hidden="true">{label}</div>
+      <div className="oracle-caption px-2 pt-2.5 pb-1 text-meta text-muted" aria-hidden="true">{label}</div>
       {children}
     </div>
   )

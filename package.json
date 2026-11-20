@@ -28,6 +28,7 @@
     "dev": "PNYX_HOME=${PNYX_DEV_HOME:-$HOME/.pnyx-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
     "dev:server": "node --conditions=source --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
+    "verify": "pnpm run lint && pnpm test",
     "deslop": "deslop run",
     "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts",
     "lint:css": "biome lint . --error-on-warnings"
@@ -60,6 +61,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "deslop": "https://github.com/leonardourci/deslop/releases/download/v0.1.3/deslop.tgz",
     "eslint": "^10.12.0",
+    "eslint-plugin-better-tailwindcss": "4.11.0",
     "globals": "^17.13.0",
     "lenis": "^1.3.27",
     "marked": "^18.1.1",

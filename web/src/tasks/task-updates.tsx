@@ -92,7 +92,7 @@ export function TaskUpdates({
 
   return (
     <div
-      className="task-updates min-h-0 flex-1 overflow-visible wrap-anywhere py-2 [&>div[role=list]]:list-none [&>div[role=list]]:m-0 [&>div[role=list]]:p-0"
+      className="task-updates min-h-0 flex-1 overflow-visible py-2 wrap-anywhere [&>div[role=list]]:m-0 [&>div[role=list]]:list-none [&>div[role=list]]:p-0"
       role="region"
       aria-label="Task updates"
       aria-busy={loading}
@@ -101,7 +101,7 @@ export function TaskUpdates({
       <div className="task-updates-head flex items-center justify-between gap-2 px-1">
         <h3 className="eyebrow">Updates</h3>
         <Button
-          className="quiet updates-order text-meta text-muted py-0.5 px-1.5"
+          className="quiet updates-order px-1.5 py-0.5 text-meta text-muted"
           aria-label={oldestFirst ? 'Show newest updates first' : 'Show oldest updates first'}
           onClick={() => setOldestFirst(order => !order)}
         >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}

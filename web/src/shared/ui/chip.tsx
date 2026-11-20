@@ -2,9 +2,9 @@ import type { ComponentProps } from 'react'
 import { Button } from './controls.tsx'
 
 const VARIANTS = {
-  settings: 'settings-chip min-h-6 gap-1.25 px-2.5 py-0.5 border-line bg-surface text-ink text-meta [&_svg]:text-muted data-zero:opacity-40 aria-pressed:bg-gold-wash aria-pressed:border-gold-line aria-pressed:text-gold aria-pressed:[&_svg]:text-gold',
-  hydra: 'text-[length:inherit] touch-none hydra-chip gap-1.75 border-line px-2.5 py-1 aria-[current=page]:border-gold-line aria-[current=page]:bg-gold-wash max-phone:px-2',
-  project: 'touch-none border-column-line px-2.25 py-0.75 text-[length:inherit]',
+  settings: 'settings-chip min-h-6 gap-1.25 border-line bg-surface px-2.5 py-0.5 text-meta text-ink aria-pressed:border-gold-line aria-pressed:bg-gold-wash aria-pressed:text-gold data-zero:opacity-40 [&_svg]:text-muted aria-pressed:[&_svg]:text-gold',
+  hydra: 'hydra-chip touch-none gap-1.75 border-line px-2.5 py-1 text-inherit-size aria-[current=page]:border-gold-line aria-[current=page]:bg-gold-wash max-phone:px-2',
+  project: 'touch-none border-column-line px-2.25 py-0.75 text-inherit-size',
 }
 
 export function Chip({
@@ -16,5 +16,5 @@ export function Chip({
   variant?: keyof typeof VARIANTS
   vertical?: boolean
 }) {
-  return <Button {...props} className={`w-max flex-none whitespace-nowrap rounded-full ${VARIANTS[variant]} ${vertical ? '[writing-mode:vertical-rl]' : ''} ${className}`} />
+  return <Button {...props} className={`w-max flex-none rounded-full whitespace-nowrap ${VARIANTS[variant]} ${vertical ? 'writing-vertical' : ''} ${className}`} />
 }

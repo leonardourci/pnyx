@@ -144,5 +144,5 @@ export function useModels({
 }
 
 export function PickerShell({ ...props }: ComponentProps<'div'>) {
-  return <div {...props} className="picker-field grid grid-cols-[var(--spacing-picker-label)_minmax(0,1fr)] items-center gap-1.5 [&_small]:text-muted [&_small]:text-meta [&_small]:leading-question [&_small]:col-span-full [:where(&)_.select>.button]:w-full [:where(&)_.select>.button]:justify-between [:where(&)_.select>.button]:border [:where(&)_.select>.button]:border-line [:where(&)_.select>.button]:rounded-md [:where(&)_.select>.button]:text-ui [:where(&)_.select-menu]:relative [:where(&)_.select-menu]:inset-auto [:where(&)_.select-menu]:max-h-40 [:where(&)_.select-menu]:mt-1" />
+  return <div {...props} className="picker-field grid grid-cols-picker items-center gap-1.5 [&_small]:col-span-full [&_small]:text-meta [&_small]:leading-question [&_small]:text-muted [:where(&)_.select-menu]:relative [:where(&)_.select-menu]:inset-auto [:where(&)_.select-menu]:mt-1 [:where(&)_.select-menu]:max-h-40 [:where(&)_.select>.button]:w-full [:where(&)_.select>.button]:justify-between [:where(&)_.select>.button]:rounded-md [:where(&)_.select>.button]:border [:where(&)_.select>.button]:border-line [:where(&)_.select>.button]:text-ui" />
 }

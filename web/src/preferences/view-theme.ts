@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 
 export function useViewTheme({
@@ -15,18 +16,14 @@ export function useViewTheme({
       }
 
       const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
-      root.style.setProperty(
-        '--text-ui',
-        `${view.fontSize}px`,
-      )
-      root.style.setProperty(
-        '--text-chat',
-        `${view.chatFontSize}px`,
-      )
-      root.style.setProperty(
-        '--text-code',
-        `${view.codeFontSize}px`,
-      )
+      applyRuntimeStyle({
+        element: root,
+        values: {
+          uiFont: `${view.fontSize}px`,
+          chatFont: `${view.chatFontSize}px`,
+          codeFont: `${view.codeFontSize}px`,
+        },
+      })
 
       const apply = () => {
         root.dataset.theme = view.theme === 'system' ? (dark.matches ? 'dark' : 'light') : view.theme
