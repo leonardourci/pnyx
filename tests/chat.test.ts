@@ -2,6 +2,8 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
+import { runForClient } from '#app/request-context.ts'
+import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
@@ -527,6 +529,17 @@ test(
       match: ({ text }) => text.includes('more worker reports'),
       hold: true,
     })
+    const replacementTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Resume after the interrupted read',
+      hold: true,
+    })
+    const overflowTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Read the remaining reports',
+      hold: true,
+    })
+    let releaseRead = () => {}
 
     try {
       for (let index = 0; index < 300; index++) {
@@ -659,6 +672,96 @@ test(
       })
       expect(ownerPage.changes[0]).toMatchObject({ reportStatus: 'unhandled' })
 
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'attachment-probe',
+          '--title',
+          'Attachment probe',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          'attachment-probe',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          title: 'Attachment probe',
+          agent: {
+            provider: 'claude',
+            sessionId: 'attachment-probe',
+            paseoAgentId: 'attachment-probe',
+            paseoUrl: 'ws://127.0.0.1:1/ws',
+          },
+          activity: 'finished',
+        }),
+      })
+      let checkingAttachments = false
+      const interruptedRead = runForClient({
+        identity: {
+          PNYX_ACTOR: session.env.PNYX_ACTOR,
+          PNYX_HOSTED: session.env.PNYX_HOSTED,
+          PNYX_HYDRA: session.env.PNYX_HYDRA,
+        },
+        cwd: session.cwd,
+        run: () => hydraCheck({
+          args: [
+            '--after',
+            after,
+            '--hydra',
+            hydra.id,
+          ],
+          connect: () => new Promise((
+            resolve,
+            reject,
+          ) => {
+            checkingAttachments = true
+            releaseRead = () => reject(new Error('The attachment probe ended'))
+          }),
+        }),
+      })
+      await until({
+        what: 'the report read to wait for attachment presence',
+        check: () => checkingAttachments,
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'detach',
+          'attachment-probe',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'stop',
+        ],
+      })
+      await until({
+        what: 'the turn with the pending read to stop',
+        check: () => queue({ hydraId: hydra.id })?.working === false,
+      })
+      await hydra.chat({ text: 'Resume after the interrupted read' })
+      releaseRead()
+      const discardedPage = await interruptedRead
+      expect(discardedPage.changes).toContainEqual(expect.objectContaining({
+        summary: expect.stringContaining('Report 7:'),
+        reportStatus: 'unhandled',
+      }))
+      replacementTurn.release()
+      await until({
+        what: 'the replacement turn to finish without consuming discarded output',
+        check: () => queue({ hydraId: hydra.id })?.working === false,
+      })
+      await hydra.chat({ text: 'Read the remaining reports' })
+      const recovered = session.received.find(text => text.endsWith('Read the remaining reports'))!
+      expect(recovered.split('Report 7:')).toHaveLength(2)
+
       let cursor = after
       const reports: string[] = []
 
@@ -685,7 +788,7 @@ test(
 
       expect(reports).toHaveLength(293)
       expect(reports.at(-1)).toContain('Report 299:')
-      wakeTurn.release()
+      overflowTurn.release()
       await until({
         what: 'the overflow-reading turn to finish',
         check: () => queue({ hydraId: hydra.id })?.working === false,
@@ -701,10 +804,16 @@ test(
       })).stdout
       expect(digest).not.toContain('Report 7:')
       expect(digest).not.toContain('Report 299:')
+      await hydra.chat({ text: 'Confirm the report burst is consumed' })
+      const confirmed = session.received.find(text => text.endsWith('Confirm the report burst is consumed'))!
+      expect(confirmed).not.toContain('Report 7:')
     } finally {
+      releaseRead()
       turn.release()
       page.close()
       wakeTurn.release()
+      replacementTurn.release()
+      overflowTurn.release()
     }
   },
 )

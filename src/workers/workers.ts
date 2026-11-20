@@ -108,6 +108,15 @@ export async function hydraCheck({
     )
   }
 
+  const hosted = hostedHydraRequest({ hydraId })
+  const reading = hosted ? await askHost({
+    hydraId,
+    body: {
+      action: 'report-turn',
+      actor: HYDRA_ACTOR,
+    },
+  }) : undefined
+  const reportTurn = typeof reading?.turn === 'string' ? reading.turn : undefined
   const after = integer({
     value: values.after,
     flag: '--after',
@@ -373,14 +382,13 @@ export async function hydraCheck({
     )}s`,
   })))
 
-  const hosted = hostedHydraRequest({ hydraId })
-
-  if (hosted && readReports.length) {
+  if (reportTurn && readReports.length) {
     await askHost({
       hydraId,
       body: {
         action: 'reports-read',
         actor: HYDRA_ACTOR,
+        turn: reportTurn,
         seqs: readReports,
       },
     })
