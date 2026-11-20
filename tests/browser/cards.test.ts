@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { openHydra } from './setup.ts'
+import { openHydra } from './page.ts'
 import { rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
@@ -49,7 +49,6 @@ test(
     ).waitFor()
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
 
-    // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
     const stability = await column.evaluate(async element => {
       const tasks = [...element.querySelectorAll<HTMLElement>('[data-task]')]
       const positions = new Map(tasks.map(task => [
@@ -145,7 +144,7 @@ test(
     ).click()
     const card = page.locator('[data-task].selected')
     await card.waitFor()
-    // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
+
     const fillsColumn = () => card.evaluate(element => {
       const column = element.closest<HTMLElement>('.column-cards')
 
@@ -238,7 +237,7 @@ test(
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
 
     expect(await taskCard.evaluate(
-      // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
+
       (
         element,
         original,
