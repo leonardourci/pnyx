@@ -234,11 +234,12 @@ export async function hydraCheck({
     0,
     CHECK_LIMIT,
   )
-  const paged = visibleChanges.length > CHECK_LIMIT
-  const through = paged ? page.at(-1)!.seq : last
+  const pageEnd = visibleChanges[CHECK_LIMIT - 1]
+  const nextChange = visibleChanges[CHECK_LIMIT]
+  const through = nextChange && pageEnd ? pageEnd.seq : last
 
-  if (paged) {
-    typed = typed.filter(words => Date.parse(words.at) < Date.parse(page.at(-1)!.at))
+  if (nextChange && pageEnd) {
+    typed = typed.filter(words => Date.parse(words.at) <= Date.parse(pageEnd.at))
   }
 
   type Conversation = {
@@ -385,7 +386,7 @@ export async function hydraCheck({
 
   const paginationHelp: string[] = []
 
-  if (paged) {
+  if (nextChange) {
     paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --hydra ${hydraId}\` for the next page`)
   } else if (requestEnv().PNYX_HOSTED !== 'hydra') {
     paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)

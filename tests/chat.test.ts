@@ -844,8 +844,7 @@ test(
         ],
         env: process.env,
       })).stdout
-      expect(digest).not.toContain('Report 7:')
-      expect(digest).not.toContain('Report 299:')
+      expect(digest).not.toMatch(/\[unhandled\]: Report \d+:/)
       await hydra.chat({ text: 'Confirm the report burst is consumed' })
       const confirmed = session.received.find(text => text.endsWith('Confirm the report burst is consumed'))!
       expect(confirmed).not.toContain('Report 7:')
@@ -1118,7 +1117,7 @@ test(
         && queue({ hydraId: hydra.id })?.working === false,
     })
     expect(main.received.find(text => text.includes('Check the invoice report while the helper works')))
-      .toContain('[helper handling]')
+      .toMatch(/\[helper handling\] \(progress\): New invoice progress during the helper lease/)
     reportHelperTurn.release()
     await until({
       what: 'helper to finish the worker report',
