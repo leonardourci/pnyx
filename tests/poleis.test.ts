@@ -2198,6 +2198,25 @@ test(
         'Direct project learning',
       ],
     })
+    const learning = await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'list',
+      ],
+    })
+    const reinforced = await hydra.owner({
+      args: [
+        'owner',
+        'memory',
+        'confirm',
+        '--text',
+        'Direct project learning',
+        '--if-revision',
+        String(learning.revision),
+      ],
+    })
+    expect(reinforced.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('without session evidence') }))
     await run({
       args: [
         'owner',

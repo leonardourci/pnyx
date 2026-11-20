@@ -1,6 +1,7 @@
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
+import { inform } from '#app/command-notices.ts'
 import { taskDone } from '#tasks/select.ts'
 
 export interface Learning {
@@ -213,9 +214,9 @@ export function dateLearnings({
   }
 
   if (reinforced.length && !evidence?.trim()) {
-    throw new HydraError({
-      message: 'Confirm a learning with evidence from this session in --reason',
-      code: 'VALIDATION_ERROR',
+    inform({
+      reason: 'Learning reinforced without session evidence',
+      clear: 'Use pnyx-axi owner memory confirm or project memory confirm with --reason "<session evidence>" to record why it remains useful',
     })
   }
 
