@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // gh-axi for tests: reads each pull request from $PNYX_FAKE_GITHUB/<owner>/<repo>/<n>.json and logs every call.
 // A pull request file may set head, branch, checks, draft, title, comments and mergeBehavior ('merged' by default, or 'queued').
-import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync, watch, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
 const args = process.argv.slice(2)
@@ -26,6 +26,7 @@ const read = ({ file }) => JSON.parse(readFileSync(
 ))
 const HEAD = 'a'.repeat(40)
 const MERGE = 'b'.repeat(40)
+const DISCOVERY_GATE_BOUND_MS = 20_000
 
 if (args[0] === 'api') {
   const query = args.find(arg => arg.startsWith('query=')) ?? ''
@@ -129,6 +130,41 @@ if (args[0] === 'api') {
 } else if (args[0] === 'pr' && args[1] === 'list') {
   const repo = args[args.indexOf('--repo') + 1]
   const branch = args[args.indexOf('--head') + 1]
+  const gate = join(
+    root,
+    'discovery-gate.json',
+  )
+
+  if (existsSync(gate) && read({ file: gate }).branch === branch) {
+    await new Promise((
+      resolve,
+      reject,
+    ) => {
+      const timer = setTimeout(
+        () => {
+          watcher.close()
+          unlinkSync(`${gate}.ready`)
+          reject(new Error('discovery gate was not released'))
+        },
+        DISCOVERY_GATE_BOUND_MS,
+      )
+      const watcher = watch(
+        gate,
+        () => {
+          if (!existsSync(gate)) {
+            watcher.close()
+            clearTimeout(timer)
+            resolve()
+          }
+        },
+      )
+      writeFileSync(
+        `${gate}.ready`,
+        branch,
+      )
+    })
+  }
+
   const folder = join(
     root,
     repo,

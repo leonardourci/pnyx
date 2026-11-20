@@ -111,6 +111,9 @@ function follow({
           background({
             name: `watch ${path}`,
             run: () => changed({ filename }),
+            retry: () => {
+              previous = ''
+            },
           })
         }
       }
@@ -279,7 +282,10 @@ export function watchPath({
   }
 
   if (poll) {
-    record.poll()
+    background({
+      name: `watch polling ${path}`,
+      run: record.poll,
+    })
   }
 
   const id = Symbol()

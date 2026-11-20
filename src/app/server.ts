@@ -705,6 +705,7 @@ export async function mountOwnedHydra({
       tick.queueRun,
       tick.replyRun,
       tick.followRun,
+      tick.discoveryRun,
       tick.settling,
       joinWorkers(),
     ])

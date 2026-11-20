@@ -62,13 +62,15 @@ export function createServerTick({
 }) {
   const discoveredAt = new Map<string, number>()
   const followingTasks = () => needsPullRequestFollow({ state: state() })
-    || discoverableTasks({ state: state() }).length > 0
+  const discoveringTasks = () => discoverableTasks({ state: state() }).length > 0
   const followChecks = followSchedule({ interval: followDelay })
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
   let cancelReminder = () => {}
   let queueRun: Promise<void> | undefined
   let queueCheckedAt = 0
   let queueNeedsRetry = false
+  let discoveryRun: Promise<void> | undefined
+  let discoveryCheckedAt = 0
   let followRun: Promise<void> | undefined
   let settling: Promise<void> | undefined
   let followCheckedAt = 0
@@ -140,12 +142,9 @@ export function createServerTick({
           })()
         }
 
-        followChecks.prune({ links: followedLinks({ state: state() }) })
-        const following = followingTasks()
-
-        if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
-          followCheckedAt = Date.now()
-          followRun = (async () => {
+        if (discoveringTasks() && !discoveryRun && Date.now() - discoveryCheckedAt >= followDelay) {
+          discoveryCheckedAt = Date.now()
+          discoveryRun = (async () => {
             try {
               await discoverPullRequests({
                 hydraId,
@@ -153,6 +152,28 @@ export function createServerTick({
                 checked: discoveredAt,
                 active: () => !closed(),
               })
+            } catch (error) {
+              log({
+                level: 'error',
+                operation: 'discover pull requests',
+                error,
+                hydraId,
+                eventSeq: state().seq,
+              })
+            } finally {
+              discoveryRun = undefined
+              kick()
+            }
+          })()
+        }
+
+        followChecks.prune({ links: followedLinks({ state: state() }) })
+        const following = followingTasks()
+
+        if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
+          followCheckedAt = Date.now()
+          followRun = (async () => {
+            try {
               await followPullRequests({
                 hydraId,
                 active: () => !closed(),
@@ -279,7 +300,9 @@ export function createServerTick({
               settling = undefined
             }
 
-            pump()
+            if (!closed()) {
+              pump()
+            }
           }
 
           settling = settle()
@@ -324,6 +347,10 @@ export function createServerTick({
           deadlines.push(spoolRetryAt)
         }
 
+        if (!discoveryRun && discoveringTasks()) {
+          deadlines.push(discoveryCheckedAt + followDelay)
+        }
+
         if (!followRun && followingTasks()) {
           deadlines.push(followCheckedAt + followDelay)
         }
@@ -366,6 +393,7 @@ export function createServerTick({
       restart?: boolean
     }) {
       discoveredAt.delete(task)
+      discoveryCheckedAt = 0
       followChecks.touch({
         task,
         restart,
@@ -384,6 +412,9 @@ export function createServerTick({
     },
     get replyRun() {
       return replyRun
+    },
+    get discoveryRun() {
+      return discoveryRun
     },
     get followRun() {
       return followRun

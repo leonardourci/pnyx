@@ -3,7 +3,7 @@ import { readEvents } from '#app/event-log.ts'
 import workerThreads from 'node:worker_threads'
 import { syncBuiltinESMExports } from 'node:module'
 import { spawn, spawnSync } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
@@ -4564,6 +4564,64 @@ test(
     })
     expect(linked.task.links).toHaveLength(1)
     expect(linked.task.links[0].src).toBe('branch')
+    const gate = join(
+      github,
+      'discovery-gate.json',
+    )
+    writeFileSync(
+      gate,
+      JSON.stringify({ branch }),
+    )
+
+    try {
+      await hydra.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'discovered',
+        ],
+      })
+      await until({
+        what: 'branch discovery to be pending',
+        check: () => existsSync(`${gate}.ready`),
+      })
+      writeFileSync(
+        join(
+          github,
+          'o',
+          'shop',
+          '901.json',
+        ),
+        JSON.stringify({
+          branch,
+          state: 'open',
+          draft: true,
+          title: 'Updated while discovery is pending',
+        }),
+      )
+      await hydra.owner({
+        args: [
+          'task',
+          'refresh-links',
+          'discovered',
+        ],
+      })
+      await until({
+        what: 'the known pull request to refresh while discovery waits',
+        check: async () => (await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'discovered',
+            '--full',
+          ],
+        })).task.links[0]?.title === 'Updated while discovery is pending',
+      })
+      expect(existsSync(`${gate}.ready`)).toBe(true)
+    } finally {
+      unlinkSync(gate)
+    }
+
     expect(linked.task.branches).toEqual([
       {
         repository: 'o/shop',
