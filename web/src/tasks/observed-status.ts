@@ -83,10 +83,10 @@ export function observedStatus({
   }
 
   if (work?.runningTools.length || (connected && !work && base.kind === 'working' && action && !action.done && action.calls.length)) {
-    const names = [...new Set(action?.calls.map(call => call.tool) ?? [])]
+    // A status names no tool: the chat shows the calls, and only while Focus mode is off.
     add({
       kind: 'working',
-      text: `running ${names.join(', ') || 'tool'}`,
+      text: 'working',
     })
   }
 
