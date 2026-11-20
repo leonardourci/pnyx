@@ -61,7 +61,7 @@ export function applyAsk({
       ask: event.data.answers,
       answer: event.data.message.text,
       choice: 'Go',
-      source: event.data.message,
+      source: event.data.direct ? undefined : event.data.message,
       id: event.id,
     }
   }

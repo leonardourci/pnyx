@@ -72,45 +72,43 @@ function moveOut({
     return
   }
 
-  const sessions = new Set(card.sessionIds ?? [])
+  const departingIdsInCommand = event.data.moving?.tasks ?? [card.id]
+  const departing = departingIdsInCommand.flatMap(id => state.cards[id] ? [state.cards[id]] : [])
+  const departingIds = new Set(departing.map(item => item.id))
 
   for (const related of Object.values(state.cards)) {
-    if (related.id === card.id || event.data.moving?.tasks.includes(related.id)) {
+    if (departingIds.has(related.id)) {
       continue
     }
 
-    const parent = related.parentId === card.id
-    const prerequisite = related.prerequisites?.includes(card.id)
-    const waiting = related.wait?.task === card.id
-    const queued = related.queue && sessions.has(related.queue.session)
+    const affected = departing.filter(item => related.parentId === item.id
+      || related.prerequisites?.includes(item.id)
+      || related.wait?.task === item.id
+      || (related.queue && item.sessionIds?.includes(related.queue.session)))
 
-    if (!parent && !prerequisite && !waiting && !queued) {
+    if (!affected.length) {
       continue
     }
 
-    if (parent) {
+    if (related.parentId && departingIds.has(related.parentId)) {
       delete related.parentId
     }
 
-    if (prerequisite) {
-      related.prerequisites = related.prerequisites?.filter(id => id !== card.id)
-    }
+    related.prerequisites = related.prerequisites?.filter(id => !departingIds.has(id))
 
-    if (waiting) {
+    if (related.wait && departingIds.has(related.wait.task)) {
       delete related.wait
     }
 
-    if (queued) {
+    if (related.queue && departing.some(item => item.sessionIds?.includes(related.queue?.session ?? ''))) {
       delete related.queue
     }
 
-    related.notices = [
-      {
-        task: related.id,
-        reason: `Local relationship to ${card.id} cleared when it moved to Hydra ${event.data.to}`,
-        clear: `Use pnyx-axi task move ${card.id} --to-hydra ${event.boardId ?? '<source-hydra>'} --hydra ${event.data.to}, then task parent, task depend, or task queue to restore the relationship`,
-      },
-    ]
+    related.notices = affected.map(item => ({
+      task: related.id,
+      reason: `Local relationship to ${item.id} cleared when it moved to Hydra ${event.data.to}`,
+      clear: `Use pnyx-axi task move ${item.id} --to-hydra ${event.boardId ?? '<source-hydra>'} --hydra ${event.data.to}, then task parent, task depend, or task queue to restore the relationship`,
+    }))
     touch({
       card: related,
       event,

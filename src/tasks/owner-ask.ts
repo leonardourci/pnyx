@@ -6,12 +6,14 @@ import type { Card, OwnerAsk } from './model.ts'
 
 export function ownerAsk({
   state,
+  task,
   text,
   message,
   actor,
   at,
 }: {
   state: HydraState
+  task?: string
   text: string
   message?: string
   actor: string
@@ -47,6 +49,7 @@ export function ownerAsk({
 
   if (!ownerActor({ actor })) {
     inform({
+      task,
       reason: 'Ask recorded without a saved owner message',
       clear: 'pnyx-axi task owner-ask <task> --text "<owner words>" --message <owner-message-id>',
     })

@@ -354,6 +354,19 @@ test(
       before.message,
       byHydra.message,
     ]) {
+      const go = await hydra.owner({
+        args: [
+          'task',
+          'ask',
+          'still-held',
+          '--to',
+          'owner',
+          '--kind',
+          'go',
+          '--question',
+          'Proceed with the rename?',
+        ],
+      })
       const released = await hydra.owner({
         args: [
           'task',
@@ -366,6 +379,17 @@ test(
         ],
       })
       expect(released.notices).toBeDefined()
+      const releasedTask = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'still-held',
+          '--full',
+        ],
+      })).task
+      const answeredGo = releasedTask.asks.find((ask: { id: string }) => ask.id === go.ask)
+      expect(answeredGo.choice).toBe('Go')
+      expect(answeredGo.fromMessage ?? null).toBeNull()
       expect((await hydra.task({ key: 'still-held' })).hold).toBeUndefined()
       expect((await hydra.ownerRefused({
         args: [
@@ -3671,6 +3695,29 @@ test(
         }),
       ]))
       expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
+      const saved = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'policies',
+          '--full',
+        ],
+      })).task
+
+      if (args[1] === 'depend') {
+        expect(saved.prerequisites).toEqual([(await hydra.task({ key: 'prerequisite' })).id])
+      }
+
+      if (args[1] === 'hold') {
+        expect(saved.hold.reason).toBe('Discussion hold requested by worker:policies')
+      }
+
+      if (args[1] === 'owner-ask') {
+        expect(saved.ask).toContainEqual(expect.objectContaining({
+          text: 'Keep the result visible',
+          actor: 'worker:policies',
+        }))
+      }
     }
 
     const full = await hydra.owner({
@@ -3686,6 +3733,49 @@ test(
       landing: 'branch',
       merge: 'owner',
     })
+    const batch = await pnyxAxi({
+      args: [
+        'apply',
+        '--file',
+        '-',
+        '--hydra',
+        hydra.id,
+      ],
+      env: {
+        ...process.env,
+        PNYX_ACTOR: 'worker:policies',
+        PNYX_HYDRA: hydra.id,
+      },
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.owner-ask',
+            task: 'policies',
+            text: 'Keep this additional instruction visible',
+          },
+          {
+            op: 'task.brief',
+            task: 'prerequisite',
+            brief: 'Unrelated task instruction',
+          },
+        ],
+      }),
+    })
+    expect(
+      batch.status,
+      batch.stdout,
+    ).toBe(0)
+    const unrelated = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'prerequisite',
+        '--full',
+      ],
+    })).task
+    expect(unrelated.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: 'Ask recorded without a saved owner message' }))
+
     const released = await hydra.owner({
       args: [
         'task',
@@ -3754,5 +3844,13 @@ test(
       ],
     })
     expect(stoppedRecurrence.notices).toContainEqual(expect.objectContaining({ reason: 'Task is already done; its recurring reminder stops immediately' }))
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'policies',
+        '--full',
+      ],
+    })).task.reminder).toBeUndefined()
   },
 )

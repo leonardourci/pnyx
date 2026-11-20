@@ -139,6 +139,7 @@ export function decideHold({
         hold: card.hold.id,
         answers: question?.id,
         message: recorded,
+        ...(!ownerGo ? { direct: true as const } : {}),
       },
     },
   })
