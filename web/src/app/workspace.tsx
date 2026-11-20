@@ -623,11 +623,10 @@ export function HydraView({
     }) : columnRequest?.id
   const revealIndex = columns.findIndex(column => column.id === revealingColumn)
   const revealTarget = columns[revealIndex]
-  // From the model, so a column that is still animating its width lands where it ends up.
   const projectStart = projectSnaps[0] ?? 0
   const targetStart = projectSnaps[revealIndex]
-  const revealLeft = targetStart === undefined ? undefined : targetStart - projectStart
-  const revealWidth = revealTarget ? columnWidth({ item: revealTarget }) : 0
+  const finalColumnOffset = targetStart === undefined ? undefined : targetStart - projectStart
+  const finalColumnWidth = revealTarget ? columnWidth({ item: revealTarget }) : 0
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
   const revealRequestKey = columnRequest && columnRequest.id === revealingColumn
@@ -636,7 +635,7 @@ export function HydraView({
     () => {
       const scroller = viewport.axis.current
 
-      if (revealLeft === undefined || !kanban || !scroller || !revealingColumn) {
+      if (finalColumnOffset === undefined || !kanban || !scroller || !revealingColumn) {
         return
       }
 
@@ -647,13 +646,15 @@ export function HydraView({
       }
 
       const reveal = () => {
-        const left = layoutOffset({
-          element: kanban,
-          horizontal: true,
-        }) - layoutOffset({
+        const scrollerOffset = layoutOffset({
           element: scroller,
           horizontal: true,
-        }) + revealLeft - revealPadding
+        })
+        const projectsOffset = layoutOffset({
+          element: kanban,
+          horizontal: true,
+        }) - scrollerOffset
+        const left = projectsOffset + finalColumnOffset - revealPadding
         scroller.scrollTo({
           left,
           behavior: 'instant',
@@ -662,14 +663,10 @@ export function HydraView({
         const targetLeft = layoutOffset({
           element: target,
           horizontal: true,
-        })
-          - layoutOffset({
-            element: scroller,
-            horizontal: true,
-          })
+        }) - scrollerOffset
         const targetRight = targetLeft + target.offsetWidth
         const settledPosition = Math.abs(targetLeft - left - revealPadding) <= 1
-        const settledWidth = Math.abs(target.offsetWidth - revealWidth) <= 1
+        const settledWidth = Math.abs(target.offsetWidth - finalColumnWidth) <= 1
         const fits = targetLeft >= scroller.scrollLeft - 1
           && targetRight <= scroller.scrollLeft + scroller.clientWidth + 1
         const wideAtStart = target.offsetWidth > scroller.clientWidth
@@ -687,6 +684,10 @@ export function HydraView({
       const observer = new ResizeObserver(reveal)
       observer.observe(kanban)
 
+      for (let column: Element | null = target; column; column = column.previousElementSibling) {
+        observer.observe(column)
+      }
+
       if (layer) {
         observer.observe(layer)
       }
@@ -700,9 +701,9 @@ export function HydraView({
       layer,
       revealingColumn,
       revealRequestKey,
-      revealLeft,
+      finalColumnOffset,
       revealPadding,
-      revealWidth,
+      finalColumnWidth,
     ],
   )
 

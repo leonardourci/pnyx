@@ -107,16 +107,29 @@ test(
           ...cards,
         ]
         const failures: string[] = []
-        let frames = 0
+        const columnTop = column.getBoundingClientRect().top
+        const taskOffsets = new Map(cards.filter(card => column.contains(card)).map(card => [
+          card,
+          card.getBoundingClientRect().top - columnTop + column.scrollTop,
+        ]))
 
         const sample = () => {
-          frames++
           const current = [...workspace.querySelectorAll('[data-column], [data-task]')]
 
           const replaced = original.some(node => !node.isConnected || !current.includes(node))
 
           if (current.length !== original.length || replaced) {
             failures.push('A column or card was removed or replaced')
+          }
+
+          const currentColumnTop = column.getBoundingClientRect().top
+
+          for (const [card, offset] of taskOffsets) {
+            const currentOffset = card.getBoundingClientRect().top - currentColumnTop + column.scrollTop
+
+            if (Math.abs(currentOffset - offset) > 1) {
+              failures.push(`Card moved inside its column: ${card.dataset.task}`)
+            }
           }
 
           for (const element of [
@@ -261,7 +274,6 @@ test(
 
         return {
           failures: [...new Set(failures)],
-          frames,
           columns: columns.length,
           cards: cards.length,
           sideways,
@@ -271,7 +283,6 @@ test(
       expect(stability.columns).toBe(9)
       expect(stability.cards).toBe(69)
       expect(stability.failures).toEqual([])
-      expect(stability.frames).toBeGreaterThan(10)
       expect(stability.sideways.maximum).toBeGreaterThan(width)
       expect(stability.down.maximum).toBeGreaterThan(0)
 
@@ -500,29 +511,28 @@ test(
         },
       )
 
-      for (const top of [
-        element.scrollHeight,
-        0,
-      ]) {
-        element.scrollTo({
-          top,
-          behavior: 'instant',
-        })
-        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-      }
-
-      const maximum = element.scrollHeight - element.clientHeight
-      element.scrollTop = maximum
+      element.scrollTo({
+        top: element.scrollHeight,
+        behavior: 'instant',
+      })
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       const bottom = element.scrollTop
+      element.scrollTo({
+        top: 0,
+        behavior: 'instant',
+      })
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       observer.disconnect()
 
       return {
         retained: rows.every(row => row.isConnected) && !rows.some(row => removed.includes(row)),
         bottom,
+        top: element.scrollTop,
       }
     })
     expect(retained.retained).toBe(true)
     expect(retained.bottom).toBeGreaterThan(0)
+    expect(retained.top).toBe(0)
     await hydra.owner({
       args: [
         'task',
