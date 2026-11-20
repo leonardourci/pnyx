@@ -14,7 +14,7 @@ export interface Query {
   columns?: string[]
   projects?: string[]
   since?: string
-  highlight?: boolean
+  includeParts?: true
 }
 
 export interface Snippet {
@@ -39,4 +39,12 @@ export interface Hit {
   kind?: 'hydra'
   match: Match
   snippets: Snippet[]
+}
+
+export interface Document {
+  project?: string
+  card: string
+  kind: Kind
+  at: string
+  text: string
 }
