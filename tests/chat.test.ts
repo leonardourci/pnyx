@@ -1,3 +1,5 @@
+import { recordCompaction } from '#workers/compaction/record.ts'
+import { failHydraInput } from '#hydra/received.ts'
 import { operationEvent } from '#hydra/operations.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
@@ -3067,6 +3069,103 @@ test(
         hydra,
         text,
       })).toMatchObject({ receipt: 'failed' })
+    }
+  },
+)
+
+test(
+  'recovery drains a retried compaction input and the input after it exactly once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'prepare compaction recovery' })
+    await until({
+      what: 'the preparation to finish',
+      check: () => session.answered === 1,
+    })
+    const texts = [
+      'retried compaction request',
+      'next compaction request',
+    ]
+    await pnyx.restart({
+      whileStopped: async () => {
+        for (const text of texts) {
+          const id = randomUUID()
+          await hydraSend({
+            hydraId: hydra.id,
+            values: {
+              text,
+              'event-id': id,
+            },
+          })
+          withWriter({
+            hydraId: hydra.id,
+            fn: ({ writer }) => {
+              const at = new Date().toISOString()
+
+              if (text === texts[0]) {
+                failHydraInput({
+                  writer,
+                  input: id,
+                  error: 'The agent refused this input',
+                  at,
+                })
+                applyDecision({
+                  writer,
+                  decision: hydraEvent({
+                    state: writer.state,
+                    cardId: HYDRA_CARD,
+                    meta: {
+                      actor: 'web',
+                      at,
+                    },
+                    change: {
+                      type: 'hydra.input',
+                      data: {
+                        message: id,
+                        state: 'retrying',
+                      },
+                    },
+                  }),
+                })
+              }
+
+              recordCompaction({
+                writer,
+                card: HYDRA_CARD,
+                at,
+                change: {
+                  kind: 'held',
+                  input: {
+                    id,
+                    text,
+                    actor: 'web',
+                    route: 'hydra',
+                    accepted: true,
+                    at,
+                  },
+                },
+              })
+            },
+          })
+        }
+      },
+    })
+    await until({
+      what: 'both compaction inputs to drain',
+      check: () => compactionInputs({ hydraId: hydra.id })?.length === 0,
+    })
+
+    for (const text of texts) {
+      await until({
+        what: 'the drained input to be confirmed',
+        check: async () => (await chatEntry({
+          hydra,
+          text,
+        }))?.receipt === 'delivered',
+      })
+      const delivered = pnyx.claude.sessions.flatMap(session => session.received)
+        .filter(input => input.endsWith(text))
+      expect(delivered).toHaveLength(1)
     }
   },
 )

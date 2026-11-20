@@ -5,6 +5,7 @@ import { recordCompaction } from '#workers/compaction/record.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { reportActor } from '#hydra/hydra.ts'
+import { hydraDeliveryId } from '#hydra/received.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { sessionId } from '#workers/session-attachments.ts'
@@ -320,13 +321,17 @@ export function createCompactionControl({
                 ))
               }
 
-              const marker = input.accepted ? `${input.id}:compact:hosted` : `${input.id}:hosted`
-              const cancelled = loadHydra({ hydraId }).state.hydraMessages
-                ?.find(message => message.id === input.id)?.stopped
+              const state = loadHydra({ hydraId }).state
+              const message = state.hydraMessages?.find(message => message.id === input.id)
+              const marker = hydraDeliveryId({
+                message: message ?? { id: input.id },
+                release: input.accepted,
+              })
+              const cancelled = message?.stopped
               const noOp = reportActor({ actor: input.actor })
                 || (input.id.startsWith('helper-outcomes:') && !helperPending()) || cancelled
 
-              if (closing() || (!noOp && !(marker in loadHydra({ hydraId }).state.eventIds))) {
+              if (closing() || (!noOp && !(marker in state.eventIds))) {
                 return
               }
             } else {
