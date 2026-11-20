@@ -685,7 +685,6 @@ export function SettingsPage({
           query={query}
           setQuery={({ query }) => setQuery(query)}
           count={count}
-          hint={query ? undefined : '/'}
           placeholder="Search settings"
           inputRef={search}
           onKeyDown={({ event }) => {
