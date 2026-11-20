@@ -245,7 +245,7 @@ export interface HostedSession {
     value: string
   }): Promise<void>
   // Ends the running turn early; the session stays open for the next message.
-  // cancelQueued also cancels the inputs the agent has not taken; Send now keeps them.
+  // Stop cancels unread input; interrupting for a new message preserves it.
   interrupt({ cancelQueued }: { cancelQueued: boolean }): Promise<void>
   commands?(): Promise<{
     name: string
