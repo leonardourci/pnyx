@@ -18,7 +18,13 @@ beforeAll(async () => {
 interface Result {
   card: string
   title: string
-  snippets: { snippet: string }[]
+  snippets: {
+    snippet: string
+    parts?: {
+      text: string
+      matched: boolean
+    }[]
+  }[]
 }
 
 const search = async ({
@@ -79,6 +85,28 @@ test(
     expect(JSON.stringify(byTitle)).not.toContain('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
     expect(JSON.stringify(byTitle)).toContain('[redacted]')
 
+    for (const query of [
+      'invoices',
+      'invoi*',
+    ]) {
+      expect((await search({
+        hydra,
+        args: [query],
+      }) as Result[]).map(result => result.title)).toEqual([
+        'Invoice export nightly',
+        'Tidy the ledger',
+      ])
+    }
+
+    const fuzzy = await hydra.owner({
+      args: [
+        'oracle',
+        'invoce',
+      ],
+    })
+    expect(fuzzy.mode).toBe('fuzzy')
+    expect(fuzzy.results).toContainEqual(expect.objectContaining({ title: 'Invoice export nightly' }))
+
     pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('<pnyx-worker'),
@@ -102,6 +130,19 @@ test(
       line: 'note: Found the cron drift in the scheduler',
     })
 
+    expect(await search({
+      hydra,
+      args: ['cron drift'],
+    })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
+
+    const fromAgent = await hydra.as({ session: worker }).run({
+      args: [
+        'oracle',
+        'cron drift',
+      ],
+    })
+    expect(fromAgent.results).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
+    await pnyx.restart()
     expect(await search({
       hydra,
       args: ['cron drift'],
@@ -165,7 +206,17 @@ test(
       ],
     }) as unknown as { hits: Result[] }
     expect(fromPage.hits.map(hit => hit.card)).toEqual(inDone.map(result => result.card))
+    expect(fromPage.hits[0]!.snippets.some(snippet =>
+      snippet.parts?.some(part => part.matched && part.text.toLowerCase() === 'checklist'))).toBe(true)
     page.close()
+
+    expect((await search({
+      hydra,
+      args: ['ship'],
+    }) as Result[]).map(result => result.title).toSorted()).toEqual([
+      'Release checklist closed',
+      'Release checklist open',
+    ])
 
     expect(await search({
       hydra,
