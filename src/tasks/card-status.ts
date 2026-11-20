@@ -194,25 +194,26 @@ export function currentState({
   at: string
   source: 'note' | 'progress' | 'reminder' | 'review'
 } | undefined {
-  if (card.workerLog) {
-    const line = card.workerLog.latest
+  const line = card.workerLog?.latest
+  const workerUpdate = line ? {
+    text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
+    at: line.at,
+    source: 'note' as const,
+  } : undefined
 
-    return {
-      text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
-      at: line.at,
-      source: 'note',
-    }
+  if (workerUpdate && !workerOnly) {
+    return workerUpdate
   }
 
   const note = (card.statusLog ?? [])
     .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
     .at(-1)
-  const reviewUpdates = card.links.flatMap(link => {
+  const reviewUpdates = workerOnly ? [] : card.links.flatMap(link => {
     const at = link.checkedAt
     const openDecision = (card.asks ?? []).some(ask =>
       ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
 
-    if (workerOnly || !at || openDecision || !readyForReview({ link })) {
+    if (!at || openDecision || !readyForReview({ link })) {
       return []
     }
 
@@ -234,6 +235,7 @@ export function currentState({
   const includeProgress = progress && (!workerOnly || reportActor({ actor: progress.actor }))
   const said = [
     ...reviewUpdates,
+    workerUpdate,
     reminder?.dueAt ? {
       text: 'Reminder due',
       at: reminder.dueAt,

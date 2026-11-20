@@ -60,7 +60,10 @@ function taskLine({
     cards: state.cards,
     sessions: state.sessions,
   }).text
-  const latest = currentState({ card })
+  const latest = currentState({
+    card,
+    workerOnly: true,
+  })
   const ownerMessage = latestOwnerMessage({ card })
   const helperOutcome = state.helper?.outcomes.findLast(outcome => outcome.task === card.id)
   const session = card.sessionIds?.[0] ? state.sessions?.[card.sessionIds[0]] : undefined
