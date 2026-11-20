@@ -1326,7 +1326,10 @@ test(
     const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g))
     const recoveredOwnerMessages = []
 
-    for (const [, seq, after] of ownerReads) {
+    for (const [
+      , seq,
+      after,
+    ] of ownerReads) {
       if (after === undefined) {
         throw new Error('The recovery command did not provide an owner message cursor')
       }
