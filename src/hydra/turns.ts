@@ -189,12 +189,7 @@ export function createHydraTurns({
       }
 
       if (note.task && status === 'unhandled') {
-        const task = note.task
-        const taskLeased = activeHelperBatches({ state }).some(batch => batch.tasks.includes(task))
-
-        if (!taskLeased) {
-          mainTasks.add(task)
-        }
+        mainTasks.add(note.task)
       }
     }
 

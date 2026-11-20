@@ -11,7 +11,7 @@ import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { AxiError } from 'axi-sdk-js'
-import { HYDRA_ACTOR, OWNER_ACTORS } from '#app/actors.ts'
+import { HYDRA_ACTOR, OWNER_ACTORS, reportActor } from '#app/actors.ts'
 import type { HydraEvent, EventType } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
@@ -213,11 +213,25 @@ export async function hydraCheck({
     ))
   } while (!woken)
 
-  const page = changes.slice(
+  const agents = await checkAttachments({
+    state: loadHydra({ hydraId }).state,
+    connect,
+  })
+  const state = loadHydra({ hydraId }).state
+  const pendingReports = new Map(
+    (state.contextNotes ?? []).filter(note => note.report).map(note => [note.seq, note] as const),
+  )
+  const visibleChanges = hosted ? changes.filter(event => {
+    const progress = event.type === 'hydra.message' && event.data.kind === 'progress'
+      && reportActor({ actor: event.actor })
+
+    return !progress || pendingReports.has(event.seq)
+  }) : changes
+  const page = visibleChanges.slice(
     0,
     CHECK_LIMIT,
   )
-  const paged = changes.length > CHECK_LIMIT
+  const paged = visibleChanges.length > CHECK_LIMIT
   const through = paged ? page.at(-1)!.seq : last
 
   if (paged) {
@@ -285,22 +299,6 @@ export async function hydraCheck({
 
   if (typed.length) {
     typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`)
-  }
-
-  const agents = await checkAttachments({
-    state: loadHydra({ hydraId }).state,
-    connect,
-  })
-  const state = loadHydra({ hydraId }).state
-  const pendingReports = new Map<number, NonNullable<typeof state.contextNotes>[number]>()
-
-  for (const note of state.contextNotes ?? []) {
-    if (note.report) {
-      pendingReports.set(
-        note.seq,
-        note,
-      )
-    }
   }
 
   const readReports: number[] = []

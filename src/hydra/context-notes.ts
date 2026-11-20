@@ -297,7 +297,7 @@ export function contextReportStatus({
   }
 
   const leased = Object.values(state.helper?.runs ?? {}).some(batch =>
-    !batch.error && batch.seqs.includes(note.seq))
+    !batch.error && (batch.seqs.includes(note.seq) || (note.task !== undefined && batch.tasks.includes(note.task))))
 
   return leased ? 'helper handling' : 'unhandled'
 }

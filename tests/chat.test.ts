@@ -419,14 +419,17 @@ test(
       throw new Error('The wake did not identify the collapsed progress report')
     }
 
-    const progressPage = await hydra.owner({
+    const progressPage = await hydra.as({ session }).run({
       args: [
         'hydra',
         'check',
         '--after',
-        String(Number(progressSeq) - 1),
+        '0',
       ],
     })
+    expect(progressPage.changes).not.toContainEqual(expect.objectContaining({
+      summary: expect.stringContaining('Halfway through the invoices'),
+    }))
     expect(progressPage.changes).toContainEqual(expect.objectContaining({
       seq: Number(progressSeq),
       reportStatus: 'unhandled',
@@ -1055,6 +1058,20 @@ test(
       check: () => pnyx.claude.sessions.some(session => session.env.PNYX_ACTOR?.startsWith('helper:')
         && session.received.some(text => text.includes('End of invoice evidence'))),
     })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'invoices',
+        '--actor',
+        `worker:${id}`,
+        '--kind',
+        'progress',
+        '--text',
+        'New invoice progress during the helper lease',
+      ],
+    })
     await hydra.chat({ text: 'Check the invoice report while the helper works' })
     await until({
       what: 'main to finish reading the leased report',
@@ -1081,6 +1098,7 @@ test(
       env: process.env,
     })).stdout
     expect(digest).toContain('Invoice report handled in background')
+    expect(digest).toMatch(/\[unhandled\] \(progress\): New invoice progress during the helper lease/)
     const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice report handled in background/)?.[1]
     expect(reportSeq).toBeDefined()
     const checked = await hydra.owner({

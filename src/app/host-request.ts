@@ -57,8 +57,16 @@ export async function hostRequestUnlocked({
       const turn = field({
         body,
         name: 'turn',
-      })!
+        optional: true,
+      })
       const seqs = body.seqs
+
+      if (!turn) {
+        throw new HydraError({
+          code: 'VALIDATION_ERROR',
+          message: 'Report reads need a hosted Hydra turn',
+        })
+      }
 
       if (!Array.isArray(seqs) || !seqs.every(seq => Number.isSafeInteger(seq) && seq > 0)) {
         throw new HydraError({
