@@ -353,7 +353,7 @@ test(
       what: 'settings-only session to be observed',
       check: () => sessionFacts({ session: 'settings-only' }),
     })
-    const nextTurnAt = new Date(Date.parse(running.lastSeen) + 2).toISOString()
+    const nextTurnAt = new Date(Date.parse(running.lastSeen) + 1).toISOString()
     const legacyAt = running.lastSeen.replace(
       /\.\d{3}Z$/,
       'Z',
@@ -421,7 +421,7 @@ test(
           base.transcript_path,
           `${JSON.stringify({
             type: 'assistant',
-            timestamp: new Date(Date.parse(running.lastSeen) + 1).toISOString(),
+            timestamp: nextTurnAt,
             message: {
               stop_reason: 'end_turn',
               content: [
@@ -857,6 +857,17 @@ test(
       what: 'child prompt projected to the task',
       check: async () => (await hydra.task({ key: 'attached' })).status === 'needs you',
     })
+    const changes = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+    expect(changes.changes).toContainEqual(expect.objectContaining({
+      type: 'session.observed',
+    }))
     first.release()
     await until({
       what: 'Hydra to hear the native question',

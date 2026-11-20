@@ -61,7 +61,7 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
               const knownAt = Date.parse(current.activityObservedAt ?? '')
 
               if (!parsed.activity || !parsed.at || !Number.isFinite(observedAt)
-              || (Number.isFinite(knownAt) && observedAt <= knownAt)) {
+              || (Number.isFinite(knownAt) && observedAt < knownAt)) {
                 continue
               }
 

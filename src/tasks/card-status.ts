@@ -1,14 +1,9 @@
 import type { Card, TaskStatus } from './model.ts'
 import { ownerQuestions, type OwnerQuestion } from './questions.ts'
 import { reportActor } from '#hydra/hydra.ts'
-import type { AgentSession, ReplyState } from '#workers/model.ts'
+import type { AgentSession } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
 import { readyForReview } from '#tasks/delivery/model.ts'
-
-const ANSWER_STATES: Partial<Record<ReplyState, string>> = {
-  queued: 'answer sending',
-  delivery_unknown: 'answer delivery uncertain',
-}
 
 export interface CardStatus {
   state?: TaskStatus

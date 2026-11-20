@@ -178,7 +178,9 @@ export async function hydraCheck({
 
         const task = current.cards[e.cardId]
         const worker = task?.tracking === 'declared' && !isManagedTask({ card: task })
-        const question = worker && e.type === 'card.pushed' && e.data.attention?.some(a => a.blocking && !a.answered)
+        const attention = e.type === 'session.observed' ? e.data.fields.attention
+          : e.type === 'card.pushed' ? e.data.attention : undefined
+        const question = worker && attention?.some(a => a.blocking && !a.answered)
         const owner = e.type === 'card.replied' && e.cardId !== '$hydra' && e.data.state === 'queued' && Boolean(e.data.text?.trim()) && !e.data.control && e.actor !== HYDRA_ACTOR
 
         if (e.type === 'task.worker-line' && [
