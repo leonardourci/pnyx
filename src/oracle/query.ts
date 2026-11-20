@@ -10,7 +10,7 @@ export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize
     '',
   )
 
-export const bare = ({ token }: { token: string }) => token.replace(
+const bare = ({ token }: { token: string }) => token.replace(
   /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,
   '',
 )
