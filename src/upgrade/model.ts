@@ -26,9 +26,6 @@ export const UPGRADE_SUGGESTION: Suggestion = {
   kind: 'command',
 }
 
-export const isUpgradeSuggestion = ({ item }: { item?: Suggestion }): boolean =>
-  item?.kind === 'command' && item.command === UPGRADE_COMMAND
-
 export const upgradeCommand = ({ text }: { text: string }) => text.trim() === UPGRADE_COMMAND
 
 export type UpgradeStepName = 'pull' | 'install' | 'build' | 'data' | 'restart'
