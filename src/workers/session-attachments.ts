@@ -175,7 +175,11 @@ export function applyAttachment({
   let session = state.sessions?.[event.data.session]
   const started = event.data.started
 
-  if (!session && started && event.data.before === null) {
+  if (started) {
+    if (session || event.data.before !== null || !event.data.after || !state.cards[event.data.after]) {
+      return false
+    }
+
     session = {
       id: event.data.session,
       agent: cloneValue({ value: started.agent }),

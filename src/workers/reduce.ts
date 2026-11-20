@@ -124,16 +124,18 @@ export function applySessionMove({
       event,
     })
 
-    if (attached) {
-      for (const id of [
-        event.data.before,
-        event.data.after,
-      ]) {
-        const task = id && state.cards[id]
+    if (!attached) {
+      return true
+    }
 
-        if (task) {
-          task.steeringGeneration = event.seq
-        }
+    for (const id of [
+      event.data.before,
+      event.data.after,
+    ]) {
+      const task = id && state.cards[id]
+
+      if (task) {
+        task.steeringGeneration = event.seq
       }
     }
 

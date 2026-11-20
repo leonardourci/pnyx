@@ -122,13 +122,21 @@ test(
   'an open task fills its column height and follows a viewport resize',
   async () => {
     const hydra = await pnyx.hydra()
-    await hydra.owner({
+    const created = await hydra.owner({
       args: [
         'task',
         'create',
         '--no-start',
         '--title',
         'Read the worker chat',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'view',
+        'set',
+        '--json',
+        JSON.stringify({ cardHeights: { [created.card.id]: 440 } }),
       ],
     })
     const page = await openHydra({
@@ -237,7 +245,6 @@ test(
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
 
     expect(await taskCard.evaluate(
-
       (
         element,
         original,
