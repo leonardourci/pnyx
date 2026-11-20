@@ -11,6 +11,8 @@ import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Scope, Request, HydraListResource } from './connection-model.ts'
 import type { Receipt } from './connection.ts'
 
+const chatRead = ({ request }: { request: { name: string } }) => request.name === 'thread'
+
 export function createConnectionRequests({
   connection,
   scopes,
@@ -112,7 +114,10 @@ export function createConnectionRequests({
           } else {
             requests.delete(request.id)
             request.reject({ error })
-            request.scope.error = error.message
+
+            if (!chatRead({ request })) {
+              request.scope.error = error.message
+            }
           }
 
           publish()
@@ -416,9 +421,8 @@ export function createConnectionRequests({
       }
 
       const cancelledSearch = request.name === 'oracle' && message.code === 'CANCELLED'
-      const supersededRead = request.name === 'thread' && message.code === 'THREAD_SUPERSEDED'
 
-      if (!cancelledSearch && !supersededRead) {
+      if (!cancelledSearch && !chatRead({ request })) {
         scope.error = message.error
       }
 

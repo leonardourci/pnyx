@@ -534,6 +534,7 @@ test(
     const shared = Object.keys(firstShown).filter(id => lastShown[id] !== undefined)
     expect(shared.length).toBeGreaterThan(0)
     expect(movedRows({ frames })).toEqual([])
+    expect(await page.getByText('The transcript is unavailable').count()).toBe(0)
 
     await page.getByRole(
       'button',
