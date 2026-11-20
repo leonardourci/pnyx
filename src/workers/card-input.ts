@@ -267,7 +267,7 @@ export function createCardInputs({
           harness: targetHarness,
           ...override
         } = agent
-        await startTask({
+        const started = await startTask({
           hydraId,
           task: card.id,
           via: 'pnyx',
@@ -286,6 +286,16 @@ export function createCardInputs({
             id: `card:${reply.id}`,
           },
         })
+        const anotherActorHoldsTask = started.launch === 'waiting' || started.launch === 'pending'
+
+        if (anotherActorHoldsTask) {
+          record({
+            card,
+            reply,
+            state: 'failed',
+            detail: String(started.blocker),
+          })
+        }
       } else {
         for (const setting of [
           'model',

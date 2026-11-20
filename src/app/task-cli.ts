@@ -38,7 +38,7 @@ import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
 import { findProject } from '#projects/read.ts'
-import { decideQueue, queueGap } from '#workers/queue-decisions.ts'
+import { decideQueue, queueRequestGap } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
 import { taskSpend } from '#workers/task-spend.ts'
@@ -621,12 +621,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       state,
       ref: task,
     })
-    const gap = action === 'reorder' && !card.queue ? {
-      reason: `${card.id} is not queued`,
-      clear: `Run \`pnyx-axi task queue ${card.id} --behind <task|session>\` to queue it`,
-    } : behind !== undefined && queueGap({
+    const replayed = m.id !== undefined && Object.hasOwn(
+      state.eventIds,
+      m.id,
+    )
+    const gap = replayed ? undefined : queueRequestGap({
       state,
-      task,
+      card,
+      reorder: action === 'reorder',
       behind,
     })
 

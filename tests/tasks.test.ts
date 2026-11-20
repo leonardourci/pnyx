@@ -15,7 +15,7 @@ beforeAll(async () => {
 })
 
 test(
-  'a task moves across the board as its worker and Hydra report, and its dependent becomes ready once it is done',
+  'a task moves across the board as its worker and Hydra report, a second start steers its worker unless a start flag is invalid, and its dependent becomes ready once it is done',
   async () => {
     const hydra = await pnyx.hydra()
     const board = {
@@ -83,6 +83,18 @@ test(
     expect(worker.received[0]).toContain('Write the CSV export')
     expect((await hydra.task({ key: 'build' })).column).toBe(board.in_progress)
 
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        'build',
+        '--via',
+        'nowhere',
+        '--prompt',
+        'Export the archive too',
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+
     const again = await hydra.owner({
       args: [
         'task',
@@ -103,6 +115,7 @@ test(
       what: 'the worker to hear the start prompt',
       check: () => worker.received.some(text => text.includes('Also export the refunds')),
     })
+    expect(worker.received.some(text => text.includes('Export the archive too'))).toBe(false)
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
     const session = await hydra.chat({ text: 'what does the export need?' })

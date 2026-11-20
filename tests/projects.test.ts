@@ -715,7 +715,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
 )
 
 test(
-  'a create behind a worker on the same project queues it, a start that fails leaves it queued, a start takes it out of the queue for a worker of its own, and once detached it is not shown as never started',
+  'a create behind a worker on the same project queues it, a start that fails leaves it queued, a start takes it out of the queue for a worker of its own, once detached it is not shown as never started, and a replayed create or queue keeps its answer after the worker leaves',
   async () => {
     const hydra = await pnyx.hydra()
     await createProject({
@@ -827,6 +827,30 @@ test(
     await hydra.owner({
       args: [
         'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Wait for the lead',
+        '--key',
+        'wait',
+        '--project',
+        'shop',
+      ],
+    })
+    const queueWait = [
+      'task',
+      'queue',
+      'wait',
+      '--behind',
+      'lead',
+      '--event-id',
+      'queue-wait',
+    ]
+    await hydra.owner({ args: queueWait })
+    expect((await hydra.task({ key: 'wait' })).queue).toBeDefined()
+    await hydra.owner({
+      args: [
+        'task',
         'detach',
         'lead',
       ],
@@ -834,6 +858,9 @@ test(
     const sessions = pnyx.claude.sessions.length
     expect(await hydra.owner({ args: second })).toMatchObject({ launch: 'queued' })
     expect(pnyx.claude.sessions).toHaveLength(sessions)
+    const replayedQueue = await hydra.owner({ args: queueWait })
+    expect(replayedQueue.queued).toBeUndefined()
+    expect(replayedQueue.duplicate).toBeDefined()
   },
 )
 

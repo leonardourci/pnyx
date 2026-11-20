@@ -156,6 +156,35 @@ export function queueGap({
   return undefined
 }
 
+export function queueRequestGap({
+  state,
+  card,
+  reorder,
+  behind,
+}: {
+  state: HydraState
+  card: Card
+  reorder: boolean
+  behind?: string
+}): Blocker | undefined {
+  if (reorder && !card.queue) {
+    return {
+      reason: `${card.id} is not queued`,
+      clear: `Run \`pnyx-axi task queue ${card.id} --behind <task|session>\` to queue it`,
+    }
+  }
+
+  if (behind === undefined) {
+    return undefined
+  }
+
+  return queueGap({
+    state,
+    task: card.id,
+    behind,
+  })
+}
+
 export function decideQueue({
   state,
   task,

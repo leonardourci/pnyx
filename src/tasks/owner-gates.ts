@@ -92,7 +92,7 @@ export function questionBlockers({ card }: { card: Card }): Blocker[] {
   ])
   const permissions = [...permissionIds].map(id => ({
     reason: `waiting for permission request ${id}`,
-    clear: `Run \`pnyx-axi task permission ${card.id} ${id} allow|deny\``,
+    clear: `Run \`pnyx-axi task permission ${card.id} ${id} allow|deny --reason "<why>"\``,
   }))
   const asks = openAsks({ card }).map(ask => askBlocker({
     card,

@@ -480,6 +480,14 @@ export async function startTask({
     }
   }
 
+  const how = startRoute({
+    state,
+    via,
+    commandName,
+    replacement,
+    override,
+    tools,
+  })
   const worker = card.sessionIds?.[0]
 
   if (worker && !replacement) {
@@ -526,15 +534,6 @@ export async function startTask({
   const release = leased.release
 
   try {
-    const how = startRoute({
-      state,
-      via,
-      commandName,
-      replacement,
-      override,
-      tools,
-    })
-
     const guided = ({
       started,
       unqueued,
@@ -770,6 +769,7 @@ export async function startTask({
       return {
         task: card.id,
         launch: 'pending',
+        blocker: error.message,
         help: error.help,
       }
     }
