@@ -1892,6 +1892,91 @@ test(
     const asHydra = hydra.as({ session })
     const card = await hydra.task({ key: 'questions' })
     const context = `Archived invoices change totals. After the answer I will build the export. [Export \\[scope\\]](pnyx-task:${card.id})`
+    const asWorker = hydra.as({ session: worker })
+    const managed = await asHydra.run({
+      args: [
+        'task',
+        'ask',
+        'questions',
+        '--to',
+        'owner',
+        '--question',
+        'Choose an export format?',
+        '--choice',
+        'CSV',
+        '--choice',
+        'JSON',
+      ],
+    })
+    const deferred = await asWorker.run({
+      args: [
+        'task',
+        'defer-question',
+        'questions',
+        managed.ask,
+        '--until',
+        '2099-01-01T09:00:00Z',
+      ],
+    })
+    expect(deferred.notices).toBeDefined()
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'questions',
+        '--full',
+      ],
+    })).task.asks).toContainEqual(expect.objectContaining({
+      id: managed.ask,
+      deferredUntil: '2099-01-01T09:00:00.000Z',
+    }))
+    const discussed = await asWorker.run({
+      args: [
+        'task',
+        'discuss-question',
+        'questions',
+        managed.ask,
+        '--text',
+        'CSV works with the existing importer',
+      ],
+    })
+    expect(discussed.notices).toBeDefined()
+    const answered = await asWorker.run({
+      args: [
+        'task',
+        'answer',
+        'questions',
+        managed.ask,
+        '--choice',
+        'CSV',
+      ],
+    })
+    expect(answered.notices).toBeDefined()
+    const reopened = await asWorker.run({
+      args: [
+        'task',
+        'reopen-question',
+        'questions',
+        managed.ask,
+      ],
+    })
+    expect(reopened.event).toBeDefined()
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'questions',
+        '--full',
+      ],
+    })).task.asks.find((ask: { id: string }) => ask.id === managed.ask).answered).toBeUndefined()
+    await asHydra.run({
+      args: [
+        'task',
+        'close-question',
+        'questions',
+        managed.ask,
+      ],
+    })
     const fields = [
       [
         '--question',

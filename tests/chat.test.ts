@@ -1125,6 +1125,36 @@ test(
       })).task.settings?.version === '9.9.9',
     })
     expect(helper.answered).toBe(0)
+    const mainEdit = await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'invoices',
+        '--brief',
+        'Retry the export without losing its rows',
+      ],
+    })
+    expect(mainEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('leased') }))
+    const ungranted = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'outside-helper-grant',
+        '--title',
+        'Check the import log',
+      ],
+    })
+    const helperEdit = await hydra.as({ session: helper }).run({
+      args: [
+        'task',
+        'hold',
+        ungranted.card.id,
+      ],
+    })
+    expect(helperEdit.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('default') }))
+    expect((await hydra.task({ key: ungranted.card.id })).hold).toBeDefined()
 
     const reportHelperTurn = pnyx.claude.plan({
       hydra: hydra.id,

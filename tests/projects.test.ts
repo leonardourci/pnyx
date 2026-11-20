@@ -209,6 +209,41 @@ test(
       ),
       'cart\n',
     )
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'copy',
+        'cart',
+        'remove',
+        '--discard',
+      ],
+    })).code).toBe('CONFLICT')
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'copy',
+        'cart',
+        'remove',
+        '--discard',
+        '--actor',
+        'worker:cart',
+      ],
+    })).code).toBe('CONFLICT')
+    expect(readFileSync(
+      join(
+        copy,
+        'cart.txt',
+      ),
+      'utf8',
+    )).toBe('cart\n')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'copy',
+        'cart',
+      ],
+    })).copy.state).toBe('active')
+
     await workerLine({
       hydra,
       key: 'cart',
@@ -847,6 +882,31 @@ test(
       '--event-id',
       'queue-wait',
     ]
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'wait',
+      ],
+    })
+    const hiddenQueue = await hydra.owner({
+      args: [
+        'task',
+        'queue',
+        'wait',
+        '--behind',
+        'lead',
+      ],
+    })
+    expect(hiddenQueue.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('hidden task') }))
+    expect((await hydra.task({ key: 'wait' })).queue).toBeDefined()
+    await hydra.owner({
+      args: [
+        'task',
+        'unqueue',
+        'wait',
+      ],
+    })
     await hydra.owner({ args: queueWait })
     expect((await hydra.task({ key: 'wait' })).queue).toBeDefined()
     await hydra.owner({
@@ -1421,7 +1481,7 @@ test(
       .split('\n')
       .map(line => JSON.parse(line) as string[])
     const submissions = calls.filter(args => args.includes('PUT') && args.includes(`/repos/o/${repo}/pulls/22/merge`))
-    expect(submissions).toHaveLength(cases.length + 1)
+    expect(submissions).toHaveLength(10)
     expect(submissions[0]).toContain(`sha=${head}`)
   },
 )
