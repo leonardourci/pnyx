@@ -747,7 +747,7 @@ test(
 )
 
 test(
-  'new ignored work written while stopping tools keeps the copy until a direct retry',
+  'new ignored work written during landing checks or while stopping tools keeps the copy until a direct retry',
   async ({ onTestFinished }) => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra()
@@ -799,6 +799,53 @@ test(
       copy,
       'new-work.txt',
     )
+    const gitBin = target.folder({ name: 'git-during-landing-check' })
+    const counter = join(
+      gitBin,
+      'status-count',
+    )
+    writeFileSync(
+      join(
+        gitBin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { existsSync, readFileSync, writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+const result = spawnSync('/usr/bin/git', args)
+if (args[0] === '-C' && args[1] === ${JSON.stringify(copy)} && args[2] === 'status' && args.includes('--untracked-files=normal')) {
+  const count = existsSync(${JSON.stringify(counter)}) ? Number(readFileSync(${JSON.stringify(counter)}, 'utf8')) + 1 : 1
+  writeFileSync(${JSON.stringify(counter)}, String(count))
+  if (count === 2) writeFileSync(${JSON.stringify(workPath)}, 'keep during landing check')
+}
+process.stdout.write(result.stdout ?? '')
+process.stderr.write(result.stderr ?? '')
+process.exit(result.status ?? 1)
+`,
+      { mode: 0o755 },
+    )
+    const previousPath = process.env.PATH
+    process.env.PATH = `${gitBin}:${previousPath}`
+
+    try {
+      const duringCheck = await caller.ownerRefused({
+        args: [
+          'hydra',
+          'remove',
+          target.id,
+        ],
+      })
+      expect(duringCheck.code).toBe('CONFLICT')
+      expect(readFileSync(
+        workPath,
+        'utf8',
+      )).toBe('keep during landing check')
+    } finally {
+      process.env.PATH = previousPath
+    }
+
+    rmSync(workPath)
     const tool = spawn(
       process.execPath,
       [

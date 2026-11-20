@@ -16,6 +16,8 @@ import { hydraConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
 import { HydraError } from '#store/errors.ts'
 import { findSession } from '#workers/session-attachments.ts'
+import { decideSession } from '#workers/sessions.ts'
+import { applyDecision } from '#app/decision.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
 import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts'
@@ -210,6 +212,35 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       type: 'board.configured',
       card: '$board',
     },
+    prepare: ({ writer }) => {
+      if (!values.session) {
+        return
+      }
+
+      const session = findSession({
+        state: writer.state,
+        ref: sessionRef({
+          state: writer.state,
+          ref: String(values.session),
+        }),
+      })
+
+      if (session.taskId && session.taskId !== HYDRA_CARD) {
+        applyDecision({
+          writer,
+          decision: decideSession({
+            state: writer.state,
+            ref: session.id,
+            task: null,
+            meta: {
+              ...m,
+              id: undefined,
+              ifRevision: undefined,
+            },
+          }),
+        })
+      }
+    },
     decide: ({ state }) => {
       checkMemoryApproval()
 
@@ -262,9 +293,10 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       }) : undefined
 
       if (session && session.taskId && session.taskId !== HYDRA_CARD) {
-        throw new HydraError({
-          message: 'detach the task worker before making it Hydra',
-          code: 'CONFLICT',
+        inform({
+          task: session.taskId,
+          reason: 'Worker detached from its task before becoming Hydra',
+          clear: `Use pnyx-axi task attach ${session.taskId} --session <other-session> to assign another worker`,
         })
       }
 

@@ -285,6 +285,44 @@ test(
     })
     const joined = pages.map(page => page.text).join('\n\n')
     expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(joined) / 4))
+    await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'first-pass',
+      ],
+    })
+    const overlapping = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'second-pass',
+      ],
+    })
+    expect(overlapping.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    const incomplete = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'second-pass',
+      ],
+    })
+    expect(incomplete.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('history snapshot') }))
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'last-inscribe',
+        '--count',
+      ],
+    })).totalTokens).toBeGreaterThanOrEqual(0)
   },
   120_000,
 )

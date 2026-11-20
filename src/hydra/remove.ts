@@ -139,6 +139,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     id,
     state,
   })
+  const recordedWork = await removalWork({ paths: plan.paths })
 
   for (const card of Object.values(state.cards)) {
     const copy = card.copy
@@ -168,8 +169,6 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
       help: ['Land and record the copy’s work before removing this Hydra'],
     })
   }
-
-  const recordedWork = await removalWork({ paths: plan.paths })
 
   requireRemovalIdle()
 
