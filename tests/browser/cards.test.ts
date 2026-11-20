@@ -445,7 +445,8 @@ test(
           })
         }
 
-        return frames.filter(frame => frame.left < frame.visibleLeft || frame.right > frame.visibleRight)
+        return frames.filter(frame =>
+          frame.left < frame.visibleLeft || frame.right > frame.visibleRight)
       })
       expect(hiddenFrames).toEqual([])
     }
