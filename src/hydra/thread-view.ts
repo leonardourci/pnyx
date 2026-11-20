@@ -36,12 +36,9 @@ export function hydraThreadView({
     } : entry)
   const transcript = joinMessageParts({ entries })
   const messages = page.messages ?? []
-  const {
-    held,
-    working,
-  } = hydraChatQueue({ state })
+  const { working } = hydraChatQueue({ state })
   const conversation = hydraConversation({
-    messages: messages.filter(message => !held.includes(message.id)),
+    messages,
     transcript,
     provider: card?.agent?.provider,
     actions: page.actions ?? [],

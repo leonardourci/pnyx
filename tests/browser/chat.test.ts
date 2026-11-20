@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import type { Page } from 'playwright-core'
 import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 import { appendRecords } from '../setup/transcripts.ts'
@@ -648,5 +648,224 @@ test(
     const sent = counts.findIndex(count => count > 0)
     expect(sent).toBeGreaterThanOrEqual(0)
     expect(new Set(counts.slice(sent))).toEqual(new Set([1]))
+  },
+)
+
+test(
+  'sending in either chat interrupts the turn, keeps the bubble, and Stop adds no conversation text',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'interrupt' })
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Keep working',
+      partial: 'Working on it',
+      hold: true,
+    })
+    const hydraSession = await hydra.chat({ text: 'Keep working' })
+    const workerTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Keep working too'),
+      partial: 'Working too',
+      hold: true,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'interrupt',
+        '--harness',
+        'claude',
+        '--text',
+        'Keep working too',
+      ],
+    })
+    onTestFinished(() => {
+      turn.release(); workerTurn.release()
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    await page.locator('[data-task]').getByText(
+      'Task interrupt',
+      { exact: true },
+    )
+      .click()
+
+    for (const [
+      field,
+      chat,
+      session,
+      text,
+      stop,
+    ] of [
+        [
+          'Reply to Hydra',
+          'Hydra conversation',
+          hydraSession,
+          'Answer this instead',
+          'Stop Hydra',
+        ],
+        [
+          'Message worker',
+          'Task interrupt conversation',
+          worker,
+          'Answer this too',
+          'Stop worker',
+        ],
+      ] as const) {
+      const nextTurn = pnyx.claude.plan({
+        hydra: hydra.id,
+        match: ({ text: input }) => input.includes(text),
+        partial: 'New reply',
+        reply: 'Must not finish after Stop',
+        hold: true,
+      })
+      onTestFinished(() => nextTurn.release())
+      const conversation = page.getByRole(
+        'region',
+        { name: chat },
+      )
+      await page.getByRole(
+        'textbox',
+        {
+          name: field,
+          exact: true,
+        },
+      ).fill(text)
+      await page.keyboard.press('Enter')
+      await until({
+        what: 'the new input to reach the interrupted session',
+        check: () => session.received.some(input => input.includes(text)),
+      })
+      await conversation.getByText(
+        'New reply',
+        { exact: true },
+      ).waitFor()
+      expect(await conversation.getByRole(
+        'button',
+        { name: 'Send now' },
+      ).count()).toBe(0)
+      expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
+        .count()).toBe(1)
+      const rows = await conversation.locator('[data-entry-id]').count()
+      await page.getByRole(
+        'button',
+        {
+          name: stop,
+          exact: true,
+        },
+      ).click()
+      await until({
+        what: 'the stopped turn to end',
+        check: () => session.answered === session.received.length,
+      })
+      await nextFrames({
+        page,
+        count: SETTLING_FRAMES,
+      })
+      expect(await conversation.locator('[data-entry-id]').count()).toBe(rows)
+      expect(await conversation.locator('.chat-error').count()).toBe(0)
+      expect(await conversation.getByText('Must not finish after Stop').count()).toBe(0)
+      expect(await conversation.locator('[aria-label="You"]').filter({ hasText: text })
+        .count()).toBe(1)
+    }
+  },
+)
+
+test.each([
+  { target: 'Hydra' },
+  { target: 'worker' },
+])(
+  'a refused $target send shows its error on the same bubble and Retry delivers the same id once',
+  async ({ target }) => {
+    const hydra = await pnyx.hydra()
+    await hydra.startTask({
+      key: 'retry-input',
+      harness: 'codex',
+    })
+    const socket = await hydra.page()
+    await socket.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    socket.close()
+    const text = `Retry the ${target} input`
+    pnyx.codex.plan({
+      hydra: hydra.id,
+      match: ({ text: input }) => input.includes(text),
+      refuse: true,
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+
+    if (target === 'worker') {
+      await page.locator('[data-task]').getByText(
+        'Task retry-input',
+        { exact: true },
+      )
+        .click()
+    }
+
+    const label = target === 'Hydra' ? 'Hydra conversation' : 'Task retry-input conversation'
+    const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
+    const conversation = page.getByRole(
+      'region',
+      { name: label },
+    )
+    await page.getByRole(
+      'textbox',
+      {
+        name: field,
+        exact: true,
+      },
+    ).fill(text)
+    await page.keyboard.press('Enter')
+    const row = conversation.locator('.message-row').filter({ hasText: text })
+    await row.getByRole(
+      'button',
+      {
+        name: 'Retry',
+        exact: true,
+      },
+    ).waitFor()
+    expect(await row.getByRole('alert').textContent()).toContain('refused')
+    const id = await row.locator('[data-entry-id]').getAttribute('data-entry-id')
+    const element = await row.elementHandle()
+    await row.getByRole(
+      'button',
+      {
+        name: 'Retry',
+        exact: true,
+      },
+    ).click()
+    await until({
+      what: 'the second attempt to finish after the one-shot refusal',
+      check: () => pnyx.codex.sessions.some(session => {
+        const received = session.received.some(input => input.includes(text))
+
+        return received && session.answered === session.received.length
+      }),
+    })
+    await row.locator('xpath=following-sibling::*').getByText(
+      'Recorded reply.',
+      { exact: true },
+    )
+      .first()
+      .waitFor()
+    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
+      .filter(input => input.includes(text))
+    expect(attempts).toHaveLength(2)
+    expect(await row.count()).toBe(1)
+    expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
+    expect(await element?.evaluate(row => row.isConnected)).toBe(true)
+    expect(await row.getByRole('alert').count()).toBe(0)
+    expect(await row.locator('.receipt').count()).toBe(0)
+    expect(await row.locator('time').count()).toBe(1)
   },
 )

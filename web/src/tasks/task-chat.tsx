@@ -2,7 +2,7 @@ import { statusLabel } from '#tasks/card-status.ts'
 import { observedStatus } from './observed-status.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
-import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
+import { useCardAgent, RepositoryPicker } from '#web-workers/card-agent.tsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -12,6 +12,7 @@ import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
 import { stored, save as saveLocal } from '#web-app/connection-storage.ts'
 import type { Command } from '#web-app/connection.ts'
+import { sendChatMessage } from '#web-hydra/chat-send.ts'
 import { Messages, type ChatEntry } from '#web-hydra/messages.tsx'
 import { ActionBubble } from '#web-hydra/action-bubble.tsx'
 import { useChatScroll } from '#web-hydra/chat-scroll.ts'
@@ -227,6 +228,7 @@ export function TaskChat({
 
       return {
         ...entry,
+        unsent: entry.receipt === 'failed' && entry.waiting !== 'stopped' ? entry.waiting : entry.unsent,
         waiting: intent?.patch.targetAgent
           ? queuedAgentLabel({ agent: intent.patch.targetAgent }) : entry.waiting,
         checking: intent?.stage === 'unknown',
@@ -250,9 +252,9 @@ export function TaskChat({
   }) => {
     const existing = resource.snapshot().intents.find(intent => intent.id === id)
 
-    if (existing) {
+    if (existing && existing.stage !== 'confirmed') {
       resource.retry({ id })
-    } else {
+    } else if (!existing) {
       resource.enqueue({
         id,
         targets: [card.id],
@@ -273,18 +275,13 @@ export function TaskChat({
 
     try {
       resource.sending({ id })
-      await command({
-        name: outside ? 'reply' : 'task',
-        args: outside ? [
-          card.id,
-          text,
-          id,
-        ] : cardSendArgs({
-          card: card.id,
-          text,
-          id,
-          agent: targetAgent,
-        }),
+      await sendChatMessage({
+        command,
+        card: card.id,
+        text,
+        id,
+        agent: targetAgent,
+        outside,
         onChecking: () => resource.unknown({
           id,
           error: new CommandFailure({
@@ -394,28 +391,18 @@ export function TaskChat({
           thinkingDetails={view.thinkingDetails}
           assistantLabel="Worker"
           notify={notify}
-          retry={({ id }) => {
+          retry={({
+            id,
+            replyId,
+            text,
+            targetAgent,
+          }) => {
             scroll.toEnd()
-            const intent = resource.snapshot().intents.find(intent => intent.id === id)
-
-            if (intent) {
-              send({
-                id,
-                text: intent.patch.text,
-                targetAgent: intent.patch.targetAgent,
-              })
-            } else {
-              const entry = entries.find(entry => entry.id === id)
-              const reply = card.replies?.find(reply => reply.id === entry?.replyId)
-
-              if (reply?.worker && reply.text) {
-                send({
-                  id: reply.id,
-                  text: reply.text,
-                  targetAgent: reply.worker.agent,
-                })
-              }
-            }
+            send({
+              id: replyId ?? id,
+              text,
+              targetAgent,
+            })
           }}
         />
       </Chat>
