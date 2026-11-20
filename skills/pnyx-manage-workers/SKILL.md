@@ -1,6 +1,6 @@
 ---
 name: pnyx-manage-workers
-description: Use when you are Hydra and a worker needs more than task create - an owner's harness or model override, a dispatch rule change, another launch route, a lost or ended worker, a queue, moving a worker to another task, a browser grant, a flagged task copy or a permission request.
+description: Use when you are Hydra and a worker needs more than task create: an owner's harness or model override, a dispatch rule change, another launch route, a lost or ended worker, a queue, moving a worker to another task, a browser grant, a flagged task copy or a permission request.
 user-invocable: false
 metadata:
   internal: true

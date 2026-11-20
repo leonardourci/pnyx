@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
@@ -9,7 +9,7 @@ import { createDigestContext } from '#hydra/digest-context.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { HYDRA_SKILLS } from '#setup/skill-names.ts'
+import { HYDRA_SKILLS, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
@@ -1384,7 +1384,7 @@ test(
   },
 )
 
-// The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written, and the contract's links open there.
+// The skill text under skills/ is what Pnyx writes into Hydra's folder, so a change to it reaches the agent as written.
 test(
   'Hydra\'s folder holds the shipped skills as written, and every reference its contract links, before its first turn',
   async () => {
@@ -1447,22 +1447,30 @@ test(
   async () => {
     const hydra = await pnyx.hydra()
     const first = await hydra.chat({ text: 'hello' })
-    const stale = join(
+    const installed = join(
       first.cwd,
       '.agents',
       'skills',
-      HYDRA_SKILLS[0],
+      ORCHESTRATE_SKILL,
       'references',
-      'dropped.md',
     )
     writeFileSync(
-      stale,
+      join(
+        installed,
+        'dropped.md',
+      ),
       'old guidance',
     )
 
     await hydra.chat({ text: 'hello again' })
 
-    expect(existsSync(stale)).toBe(false)
+    expect(readdirSync(installed).sort()).toEqual(readdirSync(join(
+      import.meta.dirname,
+      '..',
+      'skills',
+      ORCHESTRATE_SKILL,
+      'references',
+    )).sort())
   },
 )
 

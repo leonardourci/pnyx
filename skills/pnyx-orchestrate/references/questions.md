@@ -4,7 +4,7 @@ Read this when a worker asks something, a decision is unsettled, or the owner an
 
 ## A worker's question
 
-Read it with `task show <task>` first; an answered or escalated one needs nothing. Answer what the owner's accepted ask, their later answers or the design they approved already settle: `pnyx-axi task answer <task> <id> --choice <n> | --text "<answer>" --reason "<why>" --hydra <hydra>`. Escalate a choice they leave open with `task escalate <task> <id> --question "<decision?>" --context "<...>" --choice "<recommended>" --choice "<alternative>" --recommend 1 --reason "<why>"`.
+Read it with `task show <task>` first; an answered or escalated one needs nothing. Answer what the owner's accepted ask, their later answers or the design they approved already settle: `pnyx-axi task answer <task> <id> --choice <n> | --text "<answer>" --reason "<why>" --hydra <hydra>`. Escalate a choice they leave open with `task escalate <task> <id> --question "<decision?>" --context "<what changes, next action and [card](pnyx-task:<task-id>)>" --choice "<recommended>" --choice "<alternative>" --recommend 1 --reason "<why>"`.
 
 ## What goes to the owner
 
@@ -16,8 +16,8 @@ Make an owner question readable on its own. Its context gives the owner's requir
 
 ## The owner's answer
 
-The owner answers on the card. To record an answer they wrote in chat, run `task answer <task> <id> --from-message <message-id>`, adding `--choice Go|Hold` or `--choice Merge|Hold` for those questions; `reply <task> --question <id> --from-message <message-id> --text "<relay>"` also passes it to the worker. Record only a message that answers that question: a clarification such as "why?" continues the conversation. "Later, until <date>" is `task defer-question <task> <id> --until "<date>" --from-message <message-id>`. Keep one open question per decision, and reuse a pull request's existing merge question.
+The owner answers on the card. To record an answer they wrote in chat, run `task answer <task> <id> --from-message <message-id> --reason "<why>"`, adding `--choice Go|Hold` or `--choice Merge|Hold` for those questions; `reply <task> --question <id> --from-message <message-id> --text "<relay>"` also passes it to the worker. Record only a message that answers that question: a clarification such as "why?" continues the conversation. "Later, until <date>" is `task defer-question <task> <id> --until "<date>" --from-message <message-id>`. Keep one open question per decision, and reuse a pull request's existing merge question.
 
 ## Talking it over first
 
-When the owner asks to discuss before work starts, hold the card (`task create --hold`, or `task hold <task> --reason "<topic>"` on an existing one). Once your playback is complete, ask `task ask <task> --to owner --kind go --question "<go question?>"`; the owner's Go releases the hold, as does `task release <task> --from-message <message-id> --reason "<why>"` for a newer message that gives the go.
+When the owner asks to discuss before work starts, hold the card (`task create --hold`, or `task hold <task> --reason "<topic>"` on an existing one). Once your playback is complete, ask `task ask <task> --to owner --kind go --question "<go question?>" --context "<what Go changes, next action and [card](pnyx-task:<task-id>)>"`; the owner's Go releases the hold, as does `task release <task> --from-message <message-id> --reason "<why>"` for a newer message that gives the go.
