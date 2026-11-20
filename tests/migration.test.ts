@@ -872,7 +872,12 @@ test(
             {
               id: 'custom:retired-rule',
               title: 'Research',
-              rule: [['kind:investigation']],
+              rule: [['!kind:investigation']],
+            },
+            {
+              id: 'custom:other-match',
+              title: 'Workers',
+              rule: [['worker:none']],
             },
             {
               id: 'custom:old-builds',
@@ -1018,6 +1023,13 @@ test(
       ],
     })).task
     expect(ordinary.column).toBe('custom:retired-rule')
+    await imported.owner({
+      args: [
+        'column',
+        'delete',
+        'custom:other-match',
+      ],
+    })
     expect(ordinary.status).toBeUndefined()
     expect(ordinary.asks).toContainEqual(expect.objectContaining({
       id: 'legacy-question',

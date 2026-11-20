@@ -138,9 +138,17 @@ export function migrateColumns({
     index,
   ) => column !== layout[index])
   const columns = rulesChanged ? updated : layout
+  const manual = new Set(updated.filter((
+    column,
+    index,
+  ) => column.rule?.length === 0 && layout[index]?.rule?.length).map(column => column.id))
   const fallback = fallbackColumn({ columns })
   const placements = Object.fromEntries(Object.values(state.cards)
     .flatMap(card => {
+      if (manual.has(card.column)) {
+        return []
+      }
+
       const staleNeedsYou = columns.some(column => column.id === card.column && column.role === 'needs_you')
         && !ownerGates({ card }).length
 
