@@ -14,11 +14,12 @@ export function dragSnapshot({ element }: { element: HTMLElement }) {
     node.removeAttribute('aria-describedby')
   }
 
-  snapshot.style.margin = '0'
-  snapshot.style.width = '100%'
-  snapshot.style.height = '100%'
-  snapshot.style.transform = 'none'
-  snapshot.style.position = 'relative'
+  snapshot.classList.add(
+    'relative!',
+    'm-0!',
+    'size-full!',
+    'transform-none!',
+  )
   snapshot.inert = true
 
   return snapshot

@@ -6,6 +6,7 @@ const DIMENSIONS = [
   'left',
   'top',
   'fontSize',
+  'maxHeight',
 ] as const
 const TRANSFORMS = [
   'translate',
@@ -18,6 +19,7 @@ const VARIABLES = {
   codeFont: '--text-code',
   projectCardWidth: '--project-card-width',
   sliderFill: '--fill',
+  settingsSearchHeight: '--settings-search-height',
 } as const
 
 type Dimension = typeof DIMENSIONS[number]
@@ -50,4 +52,27 @@ export function runtimeStyle({ ...values }: RuntimeStyle): CSSProperties {
   }
 
   return style
+}
+
+export function applyRuntimeStyle({
+  element,
+  values,
+}: {
+  element: HTMLElement
+  values: RuntimeStyle
+}) {
+  for (const [
+    property,
+    value,
+  ] of Object.entries(runtimeStyle(values))) {
+    const name = property.replace(
+      /[A-Z]/g,
+      letter => `-${letter.toLowerCase()}`,
+    )
+    const setting = typeof value === 'number' ? `${value}px` : String(value)
+    element.style.setProperty(
+      name,
+      setting,
+    )
+  }
 }

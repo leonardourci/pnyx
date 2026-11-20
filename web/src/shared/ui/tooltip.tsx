@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
 export const HOVER_CLAIM = 'pnyx-tooltip'
@@ -156,13 +157,18 @@ export function Tooltip({
       }
 
       element.showPopover()
-      element.style.left = `${Math.max(
-        GAP,
-        Math.min(
-          rect.left + rect.width / 2 - element.offsetWidth / 2,
-          innerWidth - element.offsetWidth - GAP,
-        ),
-      )}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          left: Math.max(
+            GAP,
+            Math.min(
+              rect.left + rect.width / 2 - element.offsetWidth / 2,
+              innerWidth - element.offsetWidth - GAP,
+            ),
+          ),
+        },
+      })
       const aboveSpace = Math.max(
         0,
         rect.top - GAP * 2,
@@ -175,8 +181,18 @@ export function Tooltip({
       const fitsBelow = element.offsetHeight <= belowSpace
       const above = fitsAbove || (!fitsBelow && aboveSpace >= belowSpace)
       const available = above ? aboveSpace : belowSpace
-      element.style.maxHeight = `${available}px`
-      element.style.top = `${above ? rect.top - element.offsetHeight - GAP : rect.bottom + GAP}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          maxHeight: available,
+        },
+      })
+      applyRuntimeStyle({
+        element,
+        values: {
+          top: above ? rect.top - element.offsetHeight - GAP : rect.bottom + GAP,
+        },
+      })
       const focused = document.activeElement
 
       if (!(focused instanceof HTMLElement) || !anchor.current?.contains(focused)) {

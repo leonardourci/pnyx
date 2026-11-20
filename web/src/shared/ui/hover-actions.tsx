@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { useId, useEffect, useLayoutEffect, useRef, useState, useCallback, type ReactNode, type RefObject } from 'react'
 import { frame, cancelFrame } from 'motion/react'
 import { HOVER_CLAIM } from './tooltip.tsx'
@@ -43,8 +44,13 @@ export function HoverActions({
           innerHeight - element.offsetHeight - VIEWPORT_GAP,
         ),
       )
-      element.style.left = `${left}px`
-      element.style.top = `${top}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          left,
+          top,
+        },
+      })
     },
     [anchor],
   )

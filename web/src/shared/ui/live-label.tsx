@@ -98,12 +98,16 @@ export function LiveLabel<Value>({
         return
       }
 
-      element.style.maxWidth = 'none'
-      element.style.width = 'max-content'
+      element.classList.add(
+        'max-w-none!',
+        'w-max!',
+      )
       // Rounded up: a width short by a fraction of a pixel would end the label in an ellipsis.
       setWidth(Math.ceil(element.getBoundingClientRect().width))
-      element.style.maxWidth = ''
-      element.style.width = ''
+      element.classList.remove(
+        'max-w-none!',
+        'w-max!',
+      )
     },
     [shownKey],
   )

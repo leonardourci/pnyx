@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { FloatingPanel } from './floating-panel.tsx'
 import { Icon } from '#web-shared/icons.tsx'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
@@ -45,20 +46,30 @@ export function Menu({
         const anchor = trigger.current?.getBoundingClientRect()
 
         if (anchor) {
-          element.style.left = `${Math.max(
-            8,
-            Math.min(
-              anchor.right - element.offsetWidth,
-              innerWidth - element.offsetWidth - 8,
-            ),
-          )}px`
-          element.style.top = `${Math.max(
-            8,
-            Math.min(
-              anchor.bottom + 5,
-              innerHeight - element.offsetHeight - 8,
-            ),
-          )}px`
+          applyRuntimeStyle({
+            element,
+            values: {
+              left: Math.max(
+                8,
+                Math.min(
+                  anchor.right - element.offsetWidth,
+                  innerWidth - element.offsetWidth - 8,
+                ),
+              ),
+            },
+          })
+          applyRuntimeStyle({
+            element,
+            values: {
+              top: Math.max(
+                8,
+                Math.min(
+                  anchor.bottom + 5,
+                  innerHeight - element.offsetHeight - 8,
+                ),
+              ),
+            },
+          })
         }
       }
 
@@ -211,20 +222,30 @@ export function ContextMenu({
       }
 
       element.showPopover()
-      element.style.left = `${Math.max(
-        8,
-        Math.min(
-          at.x,
-          innerWidth - element.offsetWidth - 8,
-        ),
-      )}px`
-      element.style.top = `${Math.max(
-        8,
-        Math.min(
-          at.y,
-          innerHeight - element.offsetHeight - 8,
-        ),
-      )}px`
+      applyRuntimeStyle({
+        element,
+        values: {
+          left: Math.max(
+            8,
+            Math.min(
+              at.x,
+              innerWidth - element.offsetWidth - 8,
+            ),
+          ),
+        },
+      })
+      applyRuntimeStyle({
+        element,
+        values: {
+          top: Math.max(
+            8,
+            Math.min(
+              at.y,
+              innerHeight - element.offsetHeight - 8,
+            ),
+          ),
+        },
+      })
       element.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
     },
     [at],

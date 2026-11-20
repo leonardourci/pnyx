@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { FloatingPanel } from './floating-panel.tsx'
 import { suggestionMatch, type SuggestionMatch } from '#hydra/suggestion-matches.ts'
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
@@ -110,28 +111,48 @@ export function SuggestionPicker<T extends PickerItem>({
         }
 
         const above = bounds.top > innerHeight - bounds.bottom
-        element.style.width = `${Math.min(
-          bounds.width,
-          innerWidth - 16,
-        )}px`
-        element.style.maxHeight = `${Math.min(
-          320,
-          Math.max(
-            80,
-            (above ? bounds.top : innerHeight - bounds.bottom) - 16,
-          ),
-        )}px`
-        element.style.left = `${Math.max(
-          8,
-          Math.min(
-            bounds.left,
-            innerWidth - element.offsetWidth - 8,
-          ),
-        )}px`
-        element.style.top = `${Math.max(
-          8,
-          above ? bounds.top - element.offsetHeight - 8 : bounds.bottom + 8,
-        )}px`
+        applyRuntimeStyle({
+          element,
+          values: {
+            width: Math.min(
+              bounds.width,
+              innerWidth - 16,
+            ),
+          },
+        })
+        applyRuntimeStyle({
+          element,
+          values: {
+            maxHeight: Math.min(
+              320,
+              Math.max(
+                80,
+                (above ? bounds.top : innerHeight - bounds.bottom) - 16,
+              ),
+            ),
+          },
+        })
+        applyRuntimeStyle({
+          element,
+          values: {
+            left: Math.max(
+              8,
+              Math.min(
+                bounds.left,
+                innerWidth - element.offsetWidth - 8,
+              ),
+            ),
+          },
+        })
+        applyRuntimeStyle({
+          element,
+          values: {
+            top: Math.max(
+              8,
+              above ? bounds.top - element.offsetHeight - 8 : bounds.bottom + 8,
+            ),
+          },
+        })
       }
 
       position()

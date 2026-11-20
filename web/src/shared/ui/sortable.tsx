@@ -1196,7 +1196,7 @@ export function SortableWorkspace({
     const y = to.top - from.top + (nest ? 0 : (to.height - from.height) * grab.y)
     const centerX = x + (to.width - from.width * CARD_SIZING.nest.dropScale) / 2
     const centerY = y + (to.height - from.height * CARD_SIZING.nest.dropScale) / 2
-    const restore = defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } })({
+    const restore = defaultDropAnimationSideEffects({ className: { active: 'opacity-0!' } })({
       active,
       dragOverlay,
       ...rest,
@@ -1204,7 +1204,7 @@ export function SortableWorkspace({
     const hidden = landing && !nest ? landingCard : null
 
     if (hidden) {
-      hidden.style.opacity = '0'
+      hidden.classList.add('opacity-0!')
     }
 
     const duration = motionDuration({ speed: nest ? 'slow' : 'base' })
@@ -1255,7 +1255,7 @@ export function SortableWorkspace({
       }
     } finally {
       restore?.()
-      hidden?.style.removeProperty('opacity')
+      hidden?.classList.remove('opacity-0!')
 
       if (landingDrop.current === landing) {
         landingDrop.current = null

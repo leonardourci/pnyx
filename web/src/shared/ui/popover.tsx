@@ -1,3 +1,4 @@
+import { applyRuntimeStyle } from './runtime-style.ts'
 import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { FloatingPanel } from './floating-panel.tsx'
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
@@ -53,24 +54,34 @@ export function Popover({
         const anchor = button.current?.getBoundingClientRect()
 
         if (anchor) {
-          element.style.left = `${Math.max(
-            8,
-            Math.min(
-              anchor.left,
-              innerWidth - element.offsetWidth - 8,
-            ),
-          )}px`
+          applyRuntimeStyle({
+            element,
+            values: {
+              left: Math.max(
+                8,
+                Math.min(
+                  anchor.left,
+                  innerWidth - element.offsetWidth - 8,
+                ),
+              ),
+            },
+          })
           const above = anchor.top - element.offsetHeight - 6
           const under = anchor.bottom + 6
           const fitsBelow = innerHeight - under >= element.offsetHeight
           const top = fitsBelow && (below || above < 8) ? under : above
-          element.style.top = `${Math.max(
-            8,
-            Math.min(
-              top,
-              innerHeight - element.offsetHeight - 8,
-            ),
-          )}px`
+          applyRuntimeStyle({
+            element,
+            values: {
+              top: Math.max(
+                8,
+                Math.min(
+                  top,
+                  innerHeight - element.offsetHeight - 8,
+                ),
+              ),
+            },
+          })
         }
       }
 
