@@ -149,9 +149,11 @@ export function cardStatus({
     }
   }
 
+  const unassigned = card.mirror ? 'not started' : noWorkerText({ card })
+
   return {
     kind: card.agent ? 'unknown' : 'not-started',
-    text: card.agent ? 'activity unknown' : card.mirror ? 'not started' : noWorkerText({ card }),
+    text: card.agent ? 'activity unknown' : unassigned,
   }
 }
 
