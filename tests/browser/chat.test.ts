@@ -17,7 +17,7 @@ const ARRIVAL_FRAMES = 2
 const tallParagraph = ({ label }: { label: string }) => `${label}\n\n${'A line of the release notes that fills the width. '.repeat(6)}`
 
 interface Frame {
-  label: string
+  label: string | null
   fromBottom: number
   scrolls: boolean
   firstLoaded?: string
@@ -50,22 +50,31 @@ function recordPaintedChats() {
 
     for (const chat of document.querySelectorAll<HTMLElement>('.chat-messages')) {
       const box = chat.getBoundingClientRect()
-      const loaded = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')]
-      const shown = loaded.filter(row => {
-        const bounds = row.getBoundingClientRect()
+      const loaded = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')].flatMap(row => {
+        const id = row.dataset.entryId
 
-        return bounds.bottom > box.top && bounds.top < box.bottom
+        return id === undefined ? [] : [
+          {
+            id,
+            bounds: row.getBoundingClientRect(),
+          },
+        ]
       })
+      const shown = loaded.filter(({ bounds }) => bounds.bottom > box.top
+        && bounds.top < box.bottom)
 
       if (shown.length) {
         frames.push({
-          label: chat.getAttribute('aria-label')!,
+          label: chat.getAttribute('aria-label'),
           fromBottom: chat.scrollHeight - chat.clientHeight - chat.scrollTop,
           scrolls: chat.scrollHeight > chat.clientHeight + 1,
-          firstLoaded: loaded[0]?.dataset.entryId,
-          shownFromBottom: Object.fromEntries(shown.map(row => [
-            row.dataset.entryId!,
-            Math.round(box.bottom - row.getBoundingClientRect().bottom),
+          firstLoaded: loaded[0]?.id,
+          shownFromBottom: Object.fromEntries(shown.map(({
+            id,
+            bounds,
+          }) => [
+            id,
+            Math.round(box.bottom - bounds.bottom),
           ])),
         })
       }
@@ -93,6 +102,25 @@ const framesOf = async ({
 }) => (await page.evaluate(() => (window as unknown as { chatFrames: Frame[] }).chatFrames))
   .filter(frame => frame.label === label)
 
+const latestFrame = async ({
+  page,
+  label,
+}: {
+  page: Page
+  label: string
+}) => {
+  const latest = (await framesOf({
+    page,
+    label,
+  })).at(-1)
+
+  if (!latest) {
+    throw new Error(`${label} painted no frame`)
+  }
+
+  return latest
+}
+
 const movedRows = ({ frames }: { frames: Frame[] }) => frames.slice(1).flatMap((
   frame,
   index,
@@ -101,7 +129,7 @@ const movedRows = ({ frames }: { frames: Frame[] }) => frames.slice(1).flatMap((
     id,
     offset,
   ]) => {
-    const before = frames[index]!.shownFromBottom[id]
+    const before = frames[index]?.shownFromBottom[id]
 
     return before !== undefined && Math.abs(before - offset) > 1
   })
@@ -239,8 +267,7 @@ test(
       page,
       label: 'Hydra conversation',
     })
-    expect(opened.length).toBeGreaterThan(0)
-    expect(opened.at(-1)!.scrolls).toBe(true)
+    expect(opened.at(-1)?.scrolls).toBe(true)
     expect(offEnd({ frames: opened })).toEqual([])
     expect(movedRows({ frames: opened })).toEqual([])
 
@@ -282,12 +309,16 @@ test(
       page,
       label: 'Task notes conversation',
     })
-    expect(taskOpened.length).toBeGreaterThan(0)
-    expect(taskOpened.at(-1)!.scrolls).toBe(true)
+    expect(taskOpened.at(-1)?.scrolls).toBe(true)
     expect(offEnd({ frames: taskOpened })).toEqual([])
     expect(movedRows({ frames: taskOpened })).toEqual([])
     const heights = await card.evaluate(element => {
-      const column = element.closest<HTMLElement>('.column-cards')!
+      const column = element.closest<HTMLElement>('.column-cards')
+
+      if (!column) {
+        throw new Error('The open card sits in no column')
+      }
+
       const css = getComputedStyle(column)
 
       return {
@@ -481,11 +512,7 @@ test(
     )
     const loadedFirst = await conversation.locator('[data-entry-id]').first()
       .getAttribute('data-entry-id')
-    const box = (await conversation.boundingBox())!
-    await page.mouse.move(
-      box.x + box.width / 2,
-      box.y + box.height / 2,
-    )
+    await conversation.hover()
     const pastTheTop = await conversation.evaluate(chat => chat.scrollTop + chat.clientHeight)
     await page.mouse.wheel(
       0,
@@ -504,10 +531,10 @@ test(
     })
     await until({
       what: 'the reading position to paint',
-      check: async () => (await framesOf({
+      check: async () => (await latestFrame({
         page,
         label: 'Hydra conversation',
-      })).at(-1)!.fromBottom > 1,
+      })).fromBottom > 1,
     })
     const reading = (await framesOf({
       page,
@@ -516,10 +543,10 @@ test(
     heldOlderAnswers.splice(0).forEach(release => release())
     await until({
       what: 'older messages to load above',
-      check: async () => (await framesOf({
+      check: async () => (await latestFrame({
         page,
         label: 'Hydra conversation',
-      })).at(-1)!.firstLoaded !== loadedFirst,
+      })).firstLoaded !== loadedFirst,
     })
     await nextFrames({
       page,
@@ -529,10 +556,11 @@ test(
       page,
       label: 'Hydra conversation',
     })).slice(reading)
-    const firstShown = frames[0]!.shownFromBottom
-    const lastShown = frames.at(-1)!.shownFromBottom
-    const shared = Object.keys(firstShown).filter(id => lastShown[id] !== undefined)
-    expect(shared.length).toBeGreaterThan(0)
+    const [readingFrame] = frames
+    const settledFrame = frames.at(-1)
+    const stillShown = Object.keys(readingFrame?.shownFromBottom ?? {})
+      .filter(id => settledFrame?.shownFromBottom[id] !== undefined)
+    expect(stillShown.length).toBeGreaterThan(0)
     expect(movedRows({ frames })).toEqual([])
     expect(await page.getByText('The transcript is unavailable').count()).toBe(0)
 
@@ -544,9 +572,9 @@ test(
       page,
       count: ARRIVAL_FRAMES,
     })
-    expect((await framesOf({
+    expect((await latestFrame({
       page,
       label: 'Hydra conversation',
-    })).at(-1)!.fromBottom).toBeLessThanOrEqual(1)
+    })).fromBottom).toBeLessThanOrEqual(1)
   },
 )

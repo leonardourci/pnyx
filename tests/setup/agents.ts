@@ -147,7 +147,11 @@ export function fakeClaude() {
   const recordedReply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
-  const recordedAssistant = claudeRecording.turn.find(m => m.type === 'assistant')!
+  const recordedAssistant = claudeRecording.turn.find(m => m.type === 'assistant')
+
+  if (!recordedAssistant) {
+    throw new Error('The recorded Claude turn holds no assistant message')
+  }
 
   const query = (({
     prompt,

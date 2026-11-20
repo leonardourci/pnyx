@@ -481,8 +481,8 @@ export function TaskChat({
 
           scroll.toEnd()
           await send({
-            id: args[2]!,
-            text: args[1]!,
+            id: args[2] ?? crypto.randomUUID(),
+            text: args[1] ?? '',
           })
 
           return {}

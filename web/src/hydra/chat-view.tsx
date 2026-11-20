@@ -150,7 +150,7 @@ export function Chat({
   title,
   scroll,
   older,
-  loadingEarlier = false,
+  loadingEarlier,
   error,
   status,
   children,
@@ -158,7 +158,7 @@ export function Chat({
   title: string
   scroll: ChatScroll
   older?: OlderRows
-  loadingEarlier?: boolean
+  loadingEarlier: boolean
   error?: string
   status?: ReactNode
   children: ReactNode

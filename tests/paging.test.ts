@@ -137,7 +137,7 @@ test(
       ],
     ).flat())
 
-    const commented = loaded.conversation.entries.find(entry => entry.text === 'question 15')!
+    const commented = loaded.conversation.entries.find(entry => entry.text === 'question 15')
     const freshTab = await hydra.page()
 
     const readPage = async ({ args }: { args: string[] }) => {
@@ -155,8 +155,8 @@ test(
     let revealed = await readPage({ args: [] })
     await loadEarlierMessages({
       page: revealed,
-      until: commented.at,
-      message: commented.id,
+      until: commented?.at,
+      message: commented?.id,
       load: async ({ before }) => {
         revealed = await readPage({ args: [before] })
 
@@ -214,12 +214,17 @@ test(
         name: 'thread',
         args: ['notes'],
       }) as unknown as ThreadReceipt
-      expect(first.thread.older).toBeTruthy()
+      const olderCursor = first.thread.older
+
+      if (!olderCursor) {
+        throw new Error('The task\'s first page has no older page')
+      }
+
       await page.send({
         name: 'thread',
         args: [
           'notes',
-          first.thread.older!,
+          olderCursor,
         ],
       })
 
@@ -295,7 +300,7 @@ test(
           '--retain',
           JSON.stringify({
             session: first.thread.session,
-            oldest: loaded()[0]!.id,
+            oldest: loaded()[0]?.id,
           }),
         ],
       }) as unknown as { thread: { entries: Entry[] } }
