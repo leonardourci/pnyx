@@ -781,11 +781,8 @@ export function HydraView({
     requestAnimationFrame(() => focusElement({ selector: `[data-settings-hydra="${CSS.escape(navigation.hydraId)}"] .search-bar-input` }))
   }
 
-  const selectProject = ({ path }: { path: string }) => {
+  const revealProject = ({ id }: { id: string }) => {
     cancelOpen()
-    setPage({ page: 'hydra' })
-    const project = state.projects?.find(project => project.path === path || project.name === path)
-    const id = project?.group?.id ?? project?.path ?? path
     setColumnRequest({
       id,
       key: crypto.randomUUID(),
@@ -798,6 +795,13 @@ export function HydraView({
         },
       },
     })
+  }
+
+  const selectProject = ({ path }: { path: string }) => {
+    setPage({ page: 'hydra' })
+    const project = state.projects?.find(project => project.path === path || project.name === path)
+    const id = project?.group?.id ?? project?.path ?? path
+    revealProject({ id })
   }
 
   useEffect(() => {
@@ -944,22 +948,6 @@ export function HydraView({
     path: p.path,
     hydra: hydraTitle(h),
   })))
-
-  const revealProject = ({ id }: { id: string }) => {
-    cancelOpen()
-    setColumnRequest({
-      id,
-      key: crypto.randomUUID(),
-    })
-    save({
-      patch: {
-        workspace: {
-          collapsed: false,
-          foldedProjects: { [id]: false },
-        },
-      },
-    })
-  }
 
   const repositoryOptions = (state.projects ?? [])
     .filter(project => !project.detached)
