@@ -52,13 +52,27 @@ test(
           'task',
           'create',
           '--no-start',
+          '--key',
+          `project-${project}`,
           '--title',
           `Project task ${project}`,
-          '--folder',
+          '--project',
           folder,
         ],
       })
     }
+
+    const referenced = await hydra.task({ key: 'project-6' })
+    const referring = await hydra.task({ key: 'project-7' })
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        referring.id,
+        '--brief',
+        `Open [@Project task 6](pnyx-task:${referenced.id})`,
+      ],
+    })
 
     const page = await openHydra({
       port: pnyx.port(),
@@ -134,6 +148,21 @@ test(
               continue
             }
 
+            let opacity = 1
+
+            for (
+              let ancestor: HTMLElement | null = element;
+              ancestor;
+              ancestor = ancestor.parentElement
+            ) {
+              opacity *= Number(getComputedStyle(ancestor).opacity)
+            }
+
+            if (opacity === 0) {
+              const identity = element.dataset.task ?? element.dataset.column
+              failures.push(`Transparent visible content: ${identity}`)
+            }
+
             const painted = document.elementsFromPoint(
               (left + right) / 2,
               (top + bottom) / 2,
@@ -173,10 +202,20 @@ test(
             throw new Error('The scroller has no visible area')
           }
 
+          const sweeps: {
+            offset: number
+            maximum: number
+          }[][] = []
+
           for (const direction of [
             1,
             -1,
           ]) {
+            const positions: {
+              offset: number
+              maximum: number
+            }[] = []
+
             for (let distance = 0; distance <= maximum + step; distance += step) {
               const offset = Math.min(
                 distance,
@@ -189,10 +228,20 @@ test(
                 behavior: 'instant',
               })
               await frame()
+              positions.push({
+                offset: horizontal ? element.scrollLeft : element.scrollTop,
+                maximum: horizontal ? element.scrollWidth - element.clientWidth
+                  : element.scrollHeight - element.clientHeight,
+              })
             }
+
+            sweeps.push(positions)
           }
 
-          return maximum
+          return {
+            maximum,
+            sweeps,
+          }
         }
 
         const sideways = await travel({
@@ -223,8 +272,26 @@ test(
       expect(stability.cards).toBe(69)
       expect(stability.failures).toEqual([])
       expect(stability.frames).toBeGreaterThan(10)
-      expect(stability.sideways).toBeGreaterThan(width)
-      expect(stability.down).toBeGreaterThan(0)
+      expect(stability.sideways.maximum).toBeGreaterThan(width)
+      expect(stability.down.maximum).toBeGreaterThan(0)
+
+      for (const travel of [
+        stability.sideways,
+        stability.down,
+      ]) {
+        expect(travel.sweeps[0]?.[0]?.offset).toBe(0)
+        const forward = travel.sweeps[0]!.at(-1)!
+        const backward = travel.sweeps[1]![0]!
+        expect(forward.offset).toBeCloseTo(
+          forward.maximum,
+          0,
+        )
+        expect(backward.offset).toBeCloseTo(
+          backward.maximum,
+          0,
+        )
+        expect(travel.sweeps[1]?.at(-1)?.offset).toBe(0)
+      }
     }
 
     await page.getByRole(
@@ -273,6 +340,35 @@ test(
           return box.width > 300 && box.left >= 0 && box.right <= innerWidth
         }),
     })
+    const sourceCard = workspace.locator(`[data-task="${referring.id}"]`)
+    await sourceCard.getByRole(
+      'button',
+      {
+        name: 'Project task 7',
+        exact: true,
+      },
+    ).click()
+    await sourceCard.getByRole(
+      'button',
+      { name: /^Open task Project task 6;/ },
+    ).click()
+    const requested = workspace.locator(`[data-task="${referenced.id}"]`)
+    await until({
+      what: 'the referenced task to receive focus',
+      check: () => requested.evaluate(element => element.contains(document.activeElement)),
+    })
+    const heldInView = await requested.evaluate(async element => {
+      const visible: boolean[] = []
+
+      for (let frame = 0; frame < 10; frame++) {
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+        const bounds = element.getBoundingClientRect()
+        visible.push(bounds.left >= 0 && bounds.right <= innerWidth)
+      }
+
+      return visible.every(Boolean)
+    })
+    expect(heldInView).toBe(true)
   },
 )
 

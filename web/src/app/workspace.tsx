@@ -630,11 +630,19 @@ export function HydraView({
   const revealWidth = revealTarget ? columnWidth({ item: revealTarget }) : 0
   const revealPadding = (phone ? WORKSPACE_SIZING.phoneFrameMargin
     : WORKSPACE_SIZING.frameMargin) / 2
+  const revealRequestKey = columnRequest && columnRequest.id === revealingColumn
+    ? columnRequest.key : undefined
   useLayoutEffect(
     () => {
       const scroller = viewport.axis.current
 
-      if (revealLeft === undefined || !kanban || !scroller) {
+      if (revealLeft === undefined || !kanban || !scroller || !revealingColumn) {
+        return
+      }
+
+      const target = kanban.querySelector<HTMLElement>(`[data-column="${CSS.escape(revealingColumn)}"]`)
+
+      if (!target) {
         return
       }
 
@@ -651,13 +659,28 @@ export function HydraView({
           behavior: 'instant',
         })
 
-        const targetRight = left + revealPadding + revealWidth
-        const reachedStart = Math.abs(scroller.scrollLeft - left) <= 1
-        const fitsAtScrollLimit = scroller.scrollLeft < left
-          && targetRight <= scroller.scrollLeft + scroller.clientWidth
+        const targetLeft = layoutOffset({
+          element: target,
+          horizontal: true,
+        })
+          - layoutOffset({
+            element: scroller,
+            horizontal: true,
+          })
+        const targetRight = targetLeft + target.offsetWidth
+        const settledPosition = Math.abs(targetLeft - left - revealPadding) <= 1
+        const settledWidth = Math.abs(target.offsetWidth - revealWidth) <= 1
+        const fits = targetLeft >= scroller.scrollLeft - 1
+          && targetRight <= scroller.scrollLeft + scroller.clientWidth + 1
+        const wideAtStart = target.offsetWidth > scroller.clientWidth
+          && Math.abs(scroller.scrollLeft - left) <= 1
 
-        if (reachedStart || fitsAtScrollLimit || left <= 0) {
+        if (settledPosition && settledWidth && (fits || wideAtStart)) {
           observer.disconnect()
+
+          if (revealRequestKey) {
+            setColumnRequest(current => current?.key === revealRequestKey ? null : current)
+          }
         }
       }
 
@@ -676,7 +699,7 @@ export function HydraView({
       kanban,
       layer,
       revealingColumn,
-      columnRequest?.key,
+      revealRequestKey,
       revealLeft,
       revealPadding,
       revealWidth,
