@@ -73,7 +73,7 @@ export function cardState({
     state,
   })
 
-  if (card.doneAt) {
+  if (status.kind === 'done' && card.doneAt) {
     const deadline = cardDoneDeadline({
       card,
       hours,
