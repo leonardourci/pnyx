@@ -288,7 +288,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         }),
       }) : undefined
 
-      if (session && session.taskId && !state.cards[session.taskId]?.automaticTask) {
+      if (session && session.taskId && session.taskId !== HYDRA_CARD) {
         throw new HydraError({
           message: 'detach the task worker before making it Hydra',
           code: 'CONFLICT',

@@ -9,6 +9,14 @@ import { checkRevision } from '#tasks/push-rules.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 
+export function isSessionSource({ source }: { source?: SourceRef }): boolean {
+  return !source || [
+    'hooks',
+    'pnyx',
+    'transcript',
+  ].includes(source.adapter)
+}
+
 export function sessionActivity({
   target,
   activity,

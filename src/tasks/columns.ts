@@ -182,10 +182,6 @@ export function refreshTasks({
   for (const card of cards) {
     permissionAttention({ card })
 
-    if (card.automaticTask) {
-      card.hidden = true
-    }
-
     if (state.configured && !card.hidden && card.id !== HYDRA_CARD) {
       card.tracking = 'declared'
     }

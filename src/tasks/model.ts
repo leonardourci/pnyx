@@ -243,9 +243,7 @@ export interface Card {
   sessionIds?: string[]
   queue?: TaskQueue
   queueNote?: string
-  // Session-only records remain addressable in History, outside the live Hydra.
   hidden?: boolean
-  automaticTask?: boolean
   tracking?: 'declared'
   status?: TaskDeclaration
   statusLog?: TaskDeclaration[]

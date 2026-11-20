@@ -1,4 +1,4 @@
-import { decideSessionFacts } from '#workers/session-facts.ts'
+import { decideSessionFacts, isSessionSource } from '#workers/session-facts.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -153,11 +153,7 @@ export function decidePush({
   const source = input.source === undefined ? undefined : parseSource({ value: input.source })
   const card = state.cards[cardId]
 
-  const sessionSource = !source || [
-    'hooks',
-    'pnyx',
-    'transcript',
-  ].includes(source.adapter)
+  const sessionSource = isSessionSource({ source })
 
   const agent = fields.agent ?? session?.agent
 

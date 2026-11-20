@@ -66,7 +66,7 @@ const COMMAND_HELP: Record<string, string> = {
 Summarize the Hydra as a page shows it: shown cards per column, opened cards, the owner's latest Hydra message and unavailable refs.
 --full prints the whole view, without the event-ID index, steering history, source captures, context notes or Hydra message history.
 Repeat --card for opened cards.
---hidden includes hidden and automatic cards.
+--hidden includes hidden cards.
 On a page connection, this also updates that tab's interests.
 The Activity view still reads full history with the history command.
 `,

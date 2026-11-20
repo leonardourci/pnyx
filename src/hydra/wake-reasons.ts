@@ -354,7 +354,7 @@ function ordinaryReasons({
     ]
   }
 
-  if (event.type === 'task.report' && card && !card.automaticTask && card.id !== HYDRA_CARD
+  if (event.type === 'task.report' && card && card.id !== HYDRA_CARD
     && reportActor({ actor: event.actor }) && pnyxRunsHydra({ state })) {
     return [
       {
@@ -365,7 +365,7 @@ function ordinaryReasons({
     ]
   }
 
-  if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card || card.automaticTask
+  if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card
     || !hostedHydra({ state })) {
     return []
   }
@@ -634,7 +634,7 @@ export function eventReasons({
     const changedOwnReadiness = card.id === affected
       && (event.type === 'task.dependencies' || Boolean(card.prerequisites?.length))
 
-    if (card.hidden || card.automaticTask || (!changedOwnReadiness && !dependsOnChange({
+    if (card.hidden || (!changedOwnReadiness && !dependsOnChange({
       card,
       visited: new Set(),
     }))) {

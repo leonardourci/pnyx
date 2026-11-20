@@ -113,6 +113,10 @@ test(
       CHANGELOG_MESSAGE,
     ])
     expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toHaveLength(1)
+    expect(rows({
+      text: 'select key from cards where hydra_id = $1 order by key',
+      values: [hydra.id],
+    })).toEqual([{ key: '$hydra' }])
 
     const { messages } = await hydra.owner({
       args: [

@@ -286,7 +286,6 @@ function cardSummary({
       sessions: state.sessions,
     }).state ?? null,
     hidden: card.hidden === true,
-    automatic_task: card.automaticTask === true,
     done_at: nullable({ value: card.doneAt }),
     created_seq: card.createdSeq,
     updated_seq: card.updatedSeq,
