@@ -366,7 +366,7 @@ function ordinaryReasons({
       {
         kind: 'report',
         card: card.id,
-        detail: 'a stored result is ready in the report queue',
+        detail: `stored result at seq ${event.seq}. Read it with task history ${card.id} --full`,
       },
     ]
   }

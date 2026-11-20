@@ -278,15 +278,36 @@ export async function hydraCheck({
     typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`)
   }
 
+  const agents = await checkAttachments({
+    state: loadHydra({ hydraId }).state,
+    connect,
+  })
   const state = loadHydra({ hydraId }).state
-  const pendingReports = new Map((state.contextNotes ?? []).filter(note => note.report)
-    .map(note => [
-      note.seq,
-      note,
-    ] as const))
+  const pendingReports = new Map<number, NonNullable<typeof state.contextNotes>[number]>()
+
+  for (const note of state.contextNotes ?? []) {
+    if (note.report) {
+      pendingReports.set(
+        note.seq,
+        note,
+      )
+    }
+  }
+
   const readReports: number[] = []
   const changesWithReportStatus = page.map(e => {
     const task = e.type === 'hydra.message' ? e.data.task : e.cardId
+    const note = pendingReports.get(e.seq)
+    let summary = summarize({ event: e })
+
+    if (note) {
+      summary = note.text
+    } else if (e.type === 'card.pushed') {
+      summary = e.data.attention?.filter(a => a.blocking && !a.answered)
+        .map(a => a.text ?? a.kind)
+        .join('; ') ?? 'Agent needs an answer'
+    }
+
     const change = {
       seq: e.seq,
       id: e.id,
@@ -294,13 +315,8 @@ export async function hydraCheck({
       task: task && task !== '$board' ? task : 'none',
       action: e.type === 'hydra.message' ? e.data.action : 'none',
       actor: OWNER_ACTORS.includes(e.actor) ? `owner (${e.actor})` : e.actor,
-      summary: compact({
-        text: e.type === 'card.pushed' ? e.data.attention?.filter(a => a.blocking && !a.answered)
-          .map(a => a.text ?? a.kind)
-          .join('; ') ?? 'Agent needs an answer' : summarize({ event: e }),
-      }),
+      summary: compact({ text: summary }),
     }
-    const note = pendingReports.get(e.seq)
 
     if (!note) {
       return change
@@ -350,10 +366,6 @@ export async function hydraCheck({
     )}s`,
   })))
 
-  const agents = await checkAttachments({
-    state,
-    connect,
-  })
   const hosted = hostedHydraRequest({ hydraId })
 
   if (hosted && readReports.length) {
@@ -365,6 +377,14 @@ export async function hydraCheck({
         seqs: readReports,
       },
     })
+  }
+
+  const paginationHelp: string[] = []
+
+  if (paged) {
+    paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --hydra ${hydraId}\` for the next page`)
+  } else if (requestEnv().PNYX_HOSTED !== 'hydra') {
+    paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
   }
 
   return {
@@ -389,8 +409,7 @@ export async function hydraCheck({
       ...typedHelp,
       ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
       ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
-      ...(paged ? [`Run \`pnyx-axi hydra check --after ${through} --hydra ${hydraId}\` for the next page`] : []),
-      ...(!hosted && !paged ? [`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`] : []),
+      ...paginationHelp,
     ],
   }
 }

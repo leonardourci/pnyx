@@ -350,7 +350,7 @@ export function contextNoteBlock({
   const overflow = []
 
   if (firstReport) {
-    overflow.push(`${reports.length} more worker reports; read \`pnyx-axi hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` and follow its \`through\` cursor.`)
+    overflow.push(`${reports.length} more worker reports; read \`pnyx-axi hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` and follow its \`through\` cursor when it offers another page.`)
   }
 
   const otherNotes = omitted.length - reports.length
@@ -367,5 +367,5 @@ export function contextNoteBlock({
     lines.push(`- ${overflow.join(' ')}`)
   }
 
-  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Leave reports marked handled or helper handling to the routine helper. Other notes are context only. Each report names its event seq. Read full bodies in task history or hydra messages.\n${lines.join('\n')}\n</pnyx-context>`
+  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Reports marked handled or helper handling and other notes are context. To read a full report, use task history <task> --full or hydra messages --after <seq minus one> --limit 1.\n${lines.join('\n')}\n</pnyx-context>`
 }

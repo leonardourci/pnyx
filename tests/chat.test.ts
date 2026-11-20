@@ -414,6 +414,12 @@ test(
     expect(wake).toContain('Upload started')
     expect(wake).toContain('Need the SFTP password')
     expect(wake).toContain('result: Stored findings: invoices have been verified.')
+    const storedResultSeq = wake.match(/seq (\d+) \S+ \[unhandled\]: result: Stored findings/)?.[1]
+
+    if (storedResultSeq === undefined) {
+      throw new Error('The wake did not identify the stored result')
+    }
+
     await hydra.owner({
       args: [
         'hydra',
@@ -424,6 +430,19 @@ test(
       what: 'the interrupted report turn to stop',
       check: () => queue({ hydraId: hydra.id })?.working === false,
     })
+    const pending = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(storedResultSeq) - 1),
+      ],
+    })
+    expect(pending.changes).toContainEqual(expect.objectContaining({
+      type: 'task.report',
+      reportStatus: 'unhandled',
+      summary: 'result: Stored findings: invoices have been verified.',
+    }))
     await hydra.chat({ text: 'Review the interrupted worker reports' })
     await until({
       what: 'the report to be delivered after interruption',
