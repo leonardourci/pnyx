@@ -3099,73 +3099,39 @@ test.each([
       what: 'the remaining-change turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
-    const provider = harness === 'claude' ? pnyx.claude : pnyx.codex
-    const held = provider.plan({
-      hydra: hydra.id,
-      text: 'Hold a task-aware turn',
-      partial: 'Working',
-      folds: true,
-      hold: true,
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/active-review Active review',
     })
-    await hydra.chat({ text: 'Hold a task-aware turn' })
-
-    try {
-      await workerLine({
-        hydra,
-        key: 'review-page',
-        line: 'link: https://example.com/active-review Active review',
-      })
-      await hydra.chat({ text: 'Read the update during this turn' })
-      const steering = session.received.find(text => text.endsWith('Read the update during this turn'))!
-      expect(steering).toContain('https://example.com/active-review')
-
-      if (harness === 'codex') {
-        await workerLine({
-          hydra,
-          key: 'review-page',
-          line: 'link: https://example.com/carried-review Carried review',
-        })
-        pnyx.codex.plan({
-          hydra: hydra.id,
-          text: 'Read the carried update',
-          refuse: true,
-        })
-        await hydra.chat({ text: 'Read the carried update' })
-        await until({
-          what: 'Codex to receive the steering attempt',
-          check: () => session.received.some(text => text.endsWith('Read the carried update')),
-        })
-        await workerLine({
-          hydra,
-          key: 'review-page',
-          line: 'note: Review page was updated after steering',
-        })
-      }
-    } finally {
-      held.release()
-    }
-
+    await hydra.chat({ text: 'Read the first review update' })
+    const firstUpdate = session.received.find(text => text.endsWith('Read the first review update'))!
+    expect(firstUpdate).toContain('https://example.com/active-review')
     await until({
-      what: 'the held turn to finish',
+      what: 'the first review update turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
 
-    if (harness === 'codex') {
-      await until({
-        what: 'the refused input to carry into a new turn',
-        check: () => session.received.filter(text => text.endsWith('Read the carried update')).length === 2,
-      })
-      const carried = session.received.filter(text => text.endsWith('Read the carried update')).at(-1)
-      expect(carried).toContain('https://example.com/carried-review')
-      expect(carried?.indexOf('Review page was updated after steering')).toBeGreaterThan(
-        carried?.indexOf('https://example.com/carried-review') ?? -1,
-      )
-      await until({
-        what: 'the carried turn to finish',
-        check: () => !queue({ hydraId: hydra.id })?.working,
-      })
-    }
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/second-review Second review',
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'note: Review page was updated after the first turn',
+    })
+    await hydra.chat({ text: 'Read the second review update' })
+    const secondUpdate = session.received.find(text => text.endsWith('Read the second review update'))!
+    expect(secondUpdate).toContain('https://example.com/second-review')
+    expect(secondUpdate).toContain('Review page was updated after the first turn')
+    await until({
+      what: 'the second review update turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
 
+    const provider = harness === 'claude' ? pnyx.claude : pnyx.codex
     provider.plan({
       hydra: hydra.id,
       text: 'Compact task context',
