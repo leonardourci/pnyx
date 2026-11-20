@@ -360,7 +360,7 @@ test(
         })
         await sql({
           database: homeDatabase(),
-          text: 'update schema_version set version = 6 where version > 6',
+          text: 'delete from schema_version; insert into schema_version (version) values (6)',
         })
       },
     })
