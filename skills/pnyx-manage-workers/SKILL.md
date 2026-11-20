@@ -24,7 +24,7 @@ To change rules or accounts, read `rule show` and `rule schema`, preview a patch
 
 ## Lost or ended workers
 
-- An ended outside Claude Code or Codex session: `task continue <task> --reason "<why>"` hosts it in Pnyx, and `--check` reads eligibility first.
+- An outside Claude Code or Codex session: `task continue <task> --reason "<why>"` hosts it in Pnyx, and `--check` reads presence first; a still-present session produces a notice and unknown presence needs inspection.
 - A lost worker (presence `gone`, or a session that cannot be continued) whose folder holds its work: relaunch it there without asking the owner, `task start <task> --via pnyx --replace-session <session> --folder <its folder> --reason "<why>"`. After two failed relaunches, tell the owner what failed and what the folder keeps.
 - A worker still marked interrupted after a restart continues only when you `reply` to it; send one unless its task says otherwise.
 
@@ -42,7 +42,7 @@ For a UI worker, `task start --tool browser` gives one isolated headless browser
 
 ## Task copies
 
-Pnyx keeps and flags a Done task's copy when its work did not land, and messages you. Land the work and run `task copy <task> remove`, or `task copy <task> remove --safe --reason "<why>"` when it already landed another way or is empty. Only the owner discards work that never landed.
+Pnyx keeps and flags a Done task's copy when its work did not land, and messages you. Land the work and run `task copy <task> remove`, or `task copy <task> remove --safe --reason "<why>"` when it already landed another way or is empty. No caller can discard work that never landed, including with `--discard`.
 
 ## Permission requests
 

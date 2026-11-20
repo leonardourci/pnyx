@@ -147,7 +147,7 @@ export async function settleCopy({
         reason: 'its folder was already gone',
       }
     } else if (mode === 'discard' || mode === 'safe' || !('reason' in check)) {
-      const why = mode === 'discard' ? 'discarded with the owner’s confirmation' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
+      const why = mode === 'discard' ? 'removed after its work landed' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
       pooled = mode !== 'discard' && copy.via === 'worktree' && await staysInPool({
         hydraId,
         state,

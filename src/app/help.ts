@@ -126,7 +126,7 @@ A Hydra must be on the polis reader list and include the polis in its own read l
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
 At start the server names, once, every Hydra still called by its id or by no name.
---session self picks the session running in the caller's own tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
+--session self picks the session running in the caller's own tmux pane or Herdr pane. No process is launched. Selecting a task worker as Hydra detaches it from its task and reports the change.
 --done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] [--helper-fast on|off] selects its agent, separate from Hydra’s own. Fast is off unless --helper-fast on is set or Fast is on in the Hydra’s composer, which turns it on for every worker and helper run that Hydra starts where the model has Fast; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
@@ -197,7 +197,7 @@ New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|ve
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Move a whole document to another readable polis with owner memory move --key <key> --to <polis> [--propose].
+Move a whole document to another polis with owner memory move --key <key> --to <polis> [--propose].
 Moves accept --if-revision and --if-destination-revision to detect concurrent memory changes.
 shared keeps $PNYX_HOME/owner/memory.jsonl; other poleis use owner/poleis/<polis>/memory.jsonl. Every replacement and removal stays in the log.
 New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --read-poleis <comma-separated poleis> --polis <polis>.
@@ -233,7 +233,7 @@ When it cannot queue behind that worker, it starts its own and the receipt says 
 and a note on the card say why. Repeating the same --event-id never files or starts anything twice.
 Add --start --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] to create and send directly to its worker.
 pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>] [--model <model>] [--effort <effort>] [--event-id <id>]
-Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
+Every actor may send directly. The same event ID never launches or delivers twice. With no worker,
 Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing
 harness or account starts a fresh session with the prior conversation available through task chat.
 A busy worker finishes its turn before an agent change. Stop first for an immediate change.
@@ -357,7 +357,7 @@ task create accepts --project <name|path>; task project assigns an existing task
 task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. Add --every with a positive interval in minutes, hours or days and --until for a recurring reminder. question-answered names a saved --question; answering or closing it stops the reminder. A worker start stops worker-started; task completion stops task-done, which stops immediately when the task is already done. Missed intervals produce one reminder and advance to the next future occurrence. The server fires overdue reminders on startup, keeps reminders as updates, and groups everything due in one Pnyx chat message. Owner questions use one line: N questions waiting on you, with one link per task; scheduled reminders keep their short lines. Posting reminders never wakes Hydra. Owner questions retain their four-hour cadence, including while Hydra is working; --review-minutes 0 disables automatic question reminders.
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
-It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
+A still-present outside session produces a notice; unknown presence needs inspection. The next message resumes the same session in its recorded folder.
 task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder inside the server
 (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`

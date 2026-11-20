@@ -588,7 +588,7 @@ Project add accepts a repository folder or a parent folder whose direct children
 A parent folder attaches those repositories as a named project in one transaction.
 pnyx-axi project keep <path> --hydra <keeper>
 Moves a repository’s tasks to the chosen Hydra, reporting stopped work and detached relationships.
-Work subtasks block the move. Automatic helper records stay on the source Hydra.
+Relationships among tasks moving together are retained; references to tasks staying behind are cleared with notices.
 pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
 Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with workers whose Hydra can read the home polis.
 pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
