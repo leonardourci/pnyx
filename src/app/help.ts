@@ -121,7 +121,7 @@ pnyx-axi hydra remove <id> [--hydra <caller>]
 Removal runs directly after every copy is proved safe. Copies with unlanded work stay protected for every caller. It stops workers and tools, detaches projects, discards task copies and removes its own pooled worktree slots and registrations; history and Oracle stay, and GitHub PRs stay on GitHub. Removing the last Hydra or the caller’s Hydra is reported as a notice. Agents cannot delete copies with unlanded or unproved work. Interrupted cleanup stays pending and resumes on restart.
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
-pnyx-axi hydra set [--read-poleis <comma-separated poleis>] [--polis <polis>] [--propose] [--hydra <id>]
+pnyx-axi hydra set [--polis <polis>] [--hydra <id>]
 A Hydra must be on the polis reader list and include the polis in its own read list. The default owner-memory write polis is shared.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
@@ -188,21 +188,19 @@ and are read whole with task chat <task>. Pass the printed through as the next -
 `,
   owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--to <polis>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <revision>]
 pnyx-axi owner worker-notes set|forget [--text <text>] --reason <why> [--if-revision <revision>]
-New worker headers include standing instructions from readable poleis before Hydra and project instructions. The workers key holds ${WORKER_NOTES_BUDGET} characters per polis, one rule per line.
-Owner memory reads only poleis allowed by both the Hydra reads list and each polis readers list. Writes use the Hydra's one write polis, resolved by the server. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
+New worker headers include standing instructions from all owner journals before Hydra and project instructions. The workers key holds ${WORKER_NOTES_BUDGET} characters per polis, one rule per line.
+Owner memory combines every owner journal for every caller. Writes use the Hydra's one write polis, resolved by the server. Hosted Hydra context includes a bounded copy once until it changes or compacts. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. Each polis holds ${OWNER_MEMORY_BUDGET} characters.
 Pass the revision from list unchanged as --if-revision; it guards the home polis and log position, so stale saves and home changes are refused.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
 Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Move a whole document to another polis with owner memory move --key <key> --to <polis> [--propose].
+Move a whole document to another polis with owner memory move --key <key> --to <polis>.
 Moves accept --if-revision and --if-destination-revision to detect concurrent memory changes.
 shared keeps $PNYX_HOME/owner/memory.jsonl; other poleis use owner/poleis/<polis>/memory.jsonl. Every replacement and removal stays in the log.
-New and existing Hydras read/write shared by default. Manage readers with settings set --json and access with hydra set --read-poleis <comma-separated poleis> --polis <polis>.
-Hydra may change reads, readers and memory distribution directly; widening access carries a notice. --propose remains accepted and runs the action directly.
-Use owner memory list's writable documents when editing; memory combines all readable poleis.
-These checks guard Pnyx output, not raw disk access from a local shell.
+Owner-memory writes use shared by default; hydra set --polis <polis> changes the write destination.
+Use owner memory list's writable documents when editing; memory combines all all owner journals.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
@@ -218,12 +216,12 @@ the final column cannot be deleted. Rule edits, reorder and delete run directly 
 Rules use comma-separated facts as AND, repeated --when as OR, and !fact as NOT.
 The first matching column in display order wins; --clear makes a column manual only.
 Facts: worker:none|checks|blocked|hydra|paused|ended, owner-question, held,
-pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, done, reminder-due, queued.
+pr:none|draft|open|pending|green|red|merged|closed, done, reminder-due, queued.
 Legacy worker:working remains readable in saved rules; it is no longer emitted for placement.
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--key <key>] [--folder <path>] [--column <id>] [--before <task>] [--parent <task>] [--reason <text>] [--details <text>] [--event-id <id>] [task start flags | --hold | --behind <task|session> | --on <task>... | --no-start]
+pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--key <key>] [--folder <path>] [--column <id>] [--before <task>] [--parent <task>] [--reason <text>] [--details <text>] [--event-id <id>] [task start flags | --hold | --behind <task|session> | --on <task>... | --no-start]
 Create work with --project, or put it in Ideas when no project applies. Use --parent for related work or a PR stack, one level deep.
 --project names a project attached to the Hydra (see project list).
 Create files the task and starts its worker through the dispatch rules, taking task start's flags. --hold, --behind or --on records why it waits instead,
@@ -268,10 +266,6 @@ Rename accepts only title/project edits; use task brief for the brief. Repeated 
 Workers append <code>: <text> lines to $PNYX_TASK_DIR/worker.log: needs-you, blocked, done, link and note.
 Running and idle come from hosted turns or installed hooks. Notes update the latest line without changing status.
 Pull requests are discovered from the task's recorded branches.
-pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
-Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion report a missing inventory and proceed.
-pnyx-axi task report <id> [--file <path>]
-Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
 pnyx-axi task inbox read <task> [--all]
 pnyx-axi task source register <task> <source-id> --executable <absolute-path> --argv <json-array> --cwd <absolute-path> [--timeout-ms <n> --max-bytes <n> --expires <ISO-time> --restart never|on-failure --max-runs <n>]
 pnyx-axi task source lavish <task> <source-id> --page <path> --executable <absolute-lavish-axi> [--agent-reply-file <path>] [--after <source-id> --sequence <n> --session <session> --generation <n>]
@@ -286,8 +280,6 @@ Worker inbox reads return pending instructions in order and record read acknowle
 An ack means read, never completed work. The default outcome is read; legacy incorporated/blocked outcomes remain accepted (blocked requires --note).
 Reads return the active session/generation claim. Report progress and blockers through worker.log, and questions through task ask. Use read --all for recovery history.
 Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
-pnyx-axi task build <id>
-Turns an investigation into its build; its worker keeps the context and starts a fresh branch. A missing report or review is reported as a notice.
 pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
 Gives this task a landing override or prints its rule. Without a project the defaults are pr and owner; worker changes carry a notice.
 pnyx-axi task merge <id> [--url <pull request>]
@@ -345,7 +337,7 @@ pnyx-axi task reorder <task> --behind <task|session>
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
-Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
+Dependencies name tasks in the same Hydra. Each prerequisite must complete its landing lifecycle with no owner gate or hold. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
 Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue; a queue that cannot happen answers queued: false with the reason. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 A handoff cut by a restart is settled at the next start: an uncommitted one gets its source checkout back, a committed one keeps its target. While a handoff is unresolved, starts, resumes, replies and copy removal for both tasks answer CONFLICT; move out any changed work in the folder, then restart to retry.
 Tasks accept one attached session. Explicit attach replaces an existing recipient and reports the detached session.
@@ -491,7 +483,7 @@ export function commandHelp({ command }: { command: string }): string | undefine
   }
 
   if (command === 'view') {
-    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]\nShared keys (theme, text sizes, cards and chat toggles, keyboard, saved widths) go to the shared settings. Width keys also resize the named Hydra and replace its relevant dragged/per-column widths; other Hydras keep their own overrides. settings set changes only shared settings.'
+    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]\nShared keys (theme, text sizes, cards and chat toggles, saved widths) go to the shared settings. Width keys also resize the named Hydra and replace its relevant dragged/per-column widths; other Hydras keep their own overrides. settings set changes only shared settings.'
   }
 
   if (command === 'settings') {

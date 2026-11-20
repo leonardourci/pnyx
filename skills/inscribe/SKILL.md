@@ -8,7 +8,7 @@ metadata:
 
 # inscribe
 
-Owner-memory writes use this Hydra's home polis. To read a polis, this Hydra must include it in its read list and appear on the polis's reader list or be covered by `*`. Writes to a filtered home polis proceed with a notice. By default, the home and read list both use `shared`. Use `owner memory move --key <key> --to <polis> --hydra <hydra>` to move a whole document or `project move <project> --polis <polis> --hydra <hydra>` to reassign project memory. A move that adds readers runs directly and reports the visibility change.
+Owner-memory writes use this Hydra's home polis (`shared` by default); reads combine every owner journal. Use `owner memory move --key <key> --to <polis> --hydra <hydra>` to move a whole document between journals. Project notes and Hydra notes are readable by every caller.
 
 Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 
