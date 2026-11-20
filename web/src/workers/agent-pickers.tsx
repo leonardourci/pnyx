@@ -27,7 +27,6 @@ export function AgentPickers({
   command,
   connected,
   disabled = false,
-  load = true,
   label,
   onChange,
   defaultAction = 'save',
@@ -47,7 +46,6 @@ export function AgentPickers({
   connected: boolean
   // Locks the pickers while still reading the catalogs, so the model keeps its display name.
   disabled?: boolean
-  load?: boolean
   label: string
   onChange({ next }: { next: AgentConfig }): void | Promise<unknown>
   // What a model's pin does: save it as Hydra's default, only select it because these pickers already edit that default, or show no pin.
@@ -88,7 +86,7 @@ export function AgentPickers({
     account,
     folder: account ? effective?.accounts[account]?.folder : undefined,
     command,
-    connected: connected && load && !!account,
+    connected: connected && !!account,
   })
   const picker = modelOptions({
     models: catalog.models ?? [],
