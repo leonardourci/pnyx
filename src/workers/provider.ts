@@ -357,7 +357,6 @@ export interface Provider {
     outputSchema?: Record<string, unknown>
     capabilities?: string[]
     toolScope?: 'routine'
-    // Current context before each input, with a full refresh after compaction.
     context?({ compacted }: { compacted?: boolean }): Promise<string>
     // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.
     allow?: string[]

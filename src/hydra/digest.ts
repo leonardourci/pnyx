@@ -566,11 +566,12 @@ export function hydraDigest({
     readable,
     setup,
   })
-  const before = previousCheckpoint({
+  const checkpointBefore = previousCheckpoint({
     text: previousDigest,
     hydraId,
     through: state.seq,
   })
+  const before = checkpointBefore?.parts.totals ? checkpointBefore : undefined
   const hashes: Record<string, string> = {}
   const changed: string[] = []
   const cards: string[] = []
@@ -593,37 +594,35 @@ export function hydraDigest({
     }
 
     const hash = digestHash({ text: fingerprint })
-    hashes[identity] = hash
-
-    if (!text || hash === before?.parts[identity] || key === 'totals') {
-      continue
-    }
+    const previousHash = before?.parts[identity]
 
     if (key.startsWith('task:')) {
       const card = state.cards[key.slice('task:'.length)]
 
-      if (!before && taskDone({
+      if (!previousHash && taskDone({
         state,
         card,
       })) {
         continue
       }
 
-      if (before && cards.length >= TASK_LIMIT) {
-        delete hashes[identity]
-
-        if (before?.parts[identity]) {
-          hashes[identity] = before.parts[identity]
+      if (before && hash !== previousHash && cards.length >= TASK_LIMIT) {
+        if (previousHash) {
+          hashes[identity] = previousHash
         }
 
         omitted++
         continue
       }
 
-      cards.push(text)
-    } else {
+      if (hash !== previousHash) {
+        cards.push(text)
+      }
+    } else if (text && hash !== previousHash && key !== 'totals') {
       changed.push(text)
     }
+
+    hashes[identity] = hash
   }
 
   if (before) {
@@ -675,7 +674,13 @@ export function hydraDigest({
     before ? 'Task cards (changed since your last turn):' : 'Task cards (all open cards):',
     ...cards,
     parts.get('totals') ?? 'Open cards: none',
-    `${omitted} more changed cards. Full list: \`pnyx-axi task list --hydra ${hydraId}\`; details: \`pnyx-axi task show <task> --full --hydra ${hydraId}\`.`,
+  )
+
+  if (omitted) {
+    lines.push(`${omitted} more changed cards. Full list: \`pnyx-axi task list --hydra ${hydraId}\`; details: \`pnyx-axi task show <task> --full --hydra ${hydraId}\`.`)
+  }
+
+  lines.push(
     ...changed,
     '</pnyx-digest>',
   )

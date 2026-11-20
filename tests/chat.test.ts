@@ -2852,6 +2852,11 @@ test(
         ],
       })
       expect(ownQuestion.events[0].data.block).toContain('Can Hydra use the team account?')
+      now += 60_000
+      await timer.check()
+      now += 4 * 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(4)
     } finally {
       timer.close()
       await hydra.owner({
@@ -2940,6 +2945,7 @@ test.each([
     )
     expect(nextDigest).not.toContain('Review page is ready')
     expect(nextDigest).not.toContain('https://example.com/lavish')
+    expect(nextDigest).not.toContain('more changed cards')
     expect(nextDigest).toContain('Open cards: 2 idle, 41 not started, no reason given')
     await until({
       what: 'the unchanged turn to finish',

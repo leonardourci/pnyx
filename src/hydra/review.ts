@@ -243,7 +243,7 @@ export function boardReview({
         card,
         ask,
         now,
-        after: state.hydraReview?.at ?? card.createdAt,
+        forReview: true,
       })
 
       if (reminder) {
