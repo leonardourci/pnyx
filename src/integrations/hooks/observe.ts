@@ -56,14 +56,14 @@ const PROVIDER: Record<Harness, string> = {
   claude: 'claude-code',
   codex: 'codex',
 }
-export const PR_COMMANDS = [
+const PR_COMMANDS = [
   'gh pr create',
   'gh-axi pr create',
 ]
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/
 
 // Keys of the requests hooks open, so clearing them never touches another source's.
-export const HOOK = 'hook:'
+const HOOK = 'hook:'
 const ELICITATION = `${HOOK}elicitation`
 const NOTIFICATION = `${HOOK}notification`
 
@@ -73,7 +73,7 @@ export function waitsOnHook({ attention }: { attention?: Attention[] }): boolean
   return attention?.some(a => a.blocking && !a.answered && a.key.startsWith(HOOK)) ?? false
 }
 
-export type Turn = 'working' | 'finished' | 'ended'
+type Turn = 'working' | 'finished' | 'ended'
 
 export function isHookEnvelope({ value }: { value: Record<string, unknown> }): boolean {
   return 'harness' in value
