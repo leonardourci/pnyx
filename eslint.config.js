@@ -27,6 +27,10 @@ const STYLED_WEB = [
   'web/src/settings/**/*.{ts,tsx}',
   'web/src/workers/**/*.{ts,tsx}',
   'web/src/preferences/**/*.{ts,tsx}',
+  'web/src/app/**/*.{ts,tsx}',
+  'web/src/projects/**/*.{ts,tsx}',
+  'web/src/investigations/**/*.{ts,tsx}',
+  'web/src/upgrade/**/*.{ts,tsx}',
 ]
 
 // Chat rebuild removes this temporary styling exception and its scoped file list.
