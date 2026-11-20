@@ -107,6 +107,10 @@ function ContextIndex({
   )
 }
 
+// An open card's body: the chat alone, or the details above the chat, beside it once the card is wide enough.
+const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
+const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
+
 export const HydraCard = memo(function HydraCard({
   card,
   statusOverride,
@@ -329,6 +333,7 @@ export const HydraCard = memo(function HydraCard({
     }),
     active: selected && tab === 'activity',
   })
+  const openLayout = chatOnly ? CHAT_ONLY_LAYOUT : DETAILS_AND_CHAT_LAYOUT
   const columnHeight = useColumnHeight({
     element: inlineElement,
     active: selected && !modal,
@@ -852,7 +857,7 @@ export const HydraCard = memo(function HydraCard({
           )}
         </header>
         {selected && (
-          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${chatOnly ? 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0' : 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'}`}>
+          <div className={`card-open-content grid min-h-0 flex-1 gap-3.5 pt-1.5 ${openLayout}`}>
             <div hidden={chatOnly} className="card-details flex min-h-0 min-w-0 flex-col gap-2 overflow-auto [&[hidden]]:hidden">
               <CardPanel ref={contextScroll.ref} {...panel({ id: 'context' })}>
                 {card.copy?.state === 'flagged' && <div className="copy-warning text-meta text-gold"><RichText text={card.copy.reason ?? ''} /></div>}
