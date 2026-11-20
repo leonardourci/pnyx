@@ -236,7 +236,7 @@ pnyx-axi task send <task> --text <text> --harness claude|codex [--account <name>
 Only the owner sends directly. The same event ID never launches or delivers twice. With no worker,
 Send starts one in its usual repository copy. Model/effort changes wait for the next turn; changing
 harness or account starts a fresh session with the prior conversation available through task chat.
-A busy worker finishes its turn before an agent change. Stop first for an immediate change.
+Sending to a hosted worker interrupts its current turn and delivers the message with the selected agent.
 Outside sessions keep their reply route and require Continue in Pnyx before an agent change.
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
@@ -366,7 +366,7 @@ and settings on the task. Replies and setting changes from the Hydra or \`pnyx-a
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts and
 questions wait on the task for task permission. Codex mode is its approval policy (untrusted, on-request or
-never) with its sandbox: never, or bypassPermissions, runs with full access, the others write only in the folder and Pnyx's home. Codex applies picker changes on the next turn and queues messages during a turn.
+never) with its sandbox: never, or bypassPermissions, runs with full access, the others write only in the folder and Pnyx's home. Owner messages interrupt the running turn and begin the next with the selected settings.
 --rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness,
 --account or --model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
