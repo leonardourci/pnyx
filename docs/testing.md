@@ -101,7 +101,7 @@ Rules:
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.
 - `worker-scope.test.ts`: a worker's `pnyx-axi` writes only to its own task, whichever way it was started, and keeps its reads and its own reporting; Hydra and the owner keep their rights.
 - `workers.test.ts`: starting workers and choosing their account, replies and refused answers, permissions, resumed turns and context readings through compactions and restarts, on Claude and Codex.
-- `card-input.test.ts`: sending from a card straight to its worker, harness and model changes at turn boundaries, Stop, retries and restart recovery.
+- `card-input.test.ts`: sending from a card straight to its worker, interrupting sends and harness or model changes, Stop, retries and restart recovery.
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
-- `browser/chat.test.ts`: Hydra's chat and a task's chat open on their latest row, hold still and keep new rows in view, in a card as tall as its column; older rows load without moving the ones being read and a failed load offers Retry; Focus mode keeps tool names out of the working line, and a card's status never names one.
+- `browser/chat.test.ts`: both chats interrupt and deliver sends through either provider, retain sent bubbles through held operations and refused deliveries, retry the same message, render task references as live chips, and keep Stop silent. They open on their latest row and retain the visible rows through older-page loading and Retry. Focus mode keeps tool names out of the working line, and a card's status never names one.
 - `browser/cards.test.ts`: all 61 tasks remain mounted once through column scrolling, an open card fills its column after a viewport resize, and starting its worker keeps one stored card and the same DOM node.
