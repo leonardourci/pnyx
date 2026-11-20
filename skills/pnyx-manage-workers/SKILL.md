@@ -20,7 +20,7 @@ To change rules or accounts, read `rule show` and `rule schema`, preview a patch
 
 ## Other routes
 
-`--via paseo`, `--via command [--command <name>]` and `--via firstmate` start the worker outside Pnyx's own server. Use them when the owner or the project asks; `task start --help` gives each route's flags.
+`--via command [--command <name>]` starts the worker outside Pnyx's own server. Use it when the owner or the project asks; `task start --help` gives each route's flags.
 
 ## Lost or ended workers
 

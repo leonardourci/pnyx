@@ -62,7 +62,6 @@ export const START_FLAGS = [
   'tool',
   'in-place',
   'command',
-  'paseo-url',
 ]
 
 export const flagGiven = ({ value }: { value: unknown }) =>
@@ -78,7 +77,6 @@ export function startFlags({ values }: { values: Record<string, unknown> }) {
     prompt: values.prompt as string | undefined,
     inPlace: Boolean(values['in-place']),
     commandName: values.command as string | undefined,
-    url: values['paseo-url'] as string | undefined,
   }
 }
 
@@ -101,7 +99,6 @@ export async function afterAttach({
   }
 
   const state = loadHydra({ hydraId }).state
-  const home = state.config?.hydra.home
 
   try {
     const brief = await sendReply({
@@ -113,7 +110,6 @@ export async function afterAttach({
           card: state.cards[attachment.cardId]!,
         }),
         expectedSession: attachment.data.session,
-        homes: home ? [home] : [],
         actor: meta.actor,
         id: `brief:${attachment.id}`,
       },
@@ -146,7 +142,6 @@ export function sessionRef({
     ? selfSession({
       state,
       here: {
-        paseoTerminal: requestEnv().PASEO_TERMINAL_ID,
         tmuxPane: requestEnv().TMUX_PANE,
         herdrPane: requestEnv().HERDR_PANE_ID,
       },

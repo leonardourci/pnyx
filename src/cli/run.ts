@@ -6,7 +6,6 @@ import { project, PROJECT_HELP } from '#projects/cli.ts'
 import { AxiError, exitCodeForError, runAxiCli, type AxiCliCommand } from 'axi-sdk-js'
 import type { Writable } from 'node:stream'
 import { serve, stop } from '#app/server-cli.ts'
-import { firstmateCommands, firstmateHelp } from '#integrations/firstmate/cli.ts'
 import { ORACLE_HELP, oracleCommands } from '#oracle/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp } from '#app/help.ts'
 import { helpHint } from '#app/cli-support.ts'
@@ -36,8 +35,7 @@ const HELP: Record<string, string> = {
   restart: RESTART_HELP,
 }
 
-const help = ({ command }: { command: string }) => commandHelp({ command })
-  ?? firstmateHelp({ command }) ?? HELP[command]
+const help = ({ command }: { command: string }) => commandHelp({ command }) ?? HELP[command]
 
 // A command line's help, and its name: named after the subcommand only when a usage line spells it out, so an id never splits
 // one command's lines (`card <id>` stays `card`).
@@ -147,7 +145,6 @@ export async function runCli({
           stop,
           upgrade,
           restart,
-          ...firstmateCommands,
           reply,
           agent,
           integrations: integrationsCommand,

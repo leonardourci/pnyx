@@ -4,8 +4,6 @@ import { requestEnv } from '#app/request-context.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
 import { readSettings } from '#settings/store.ts'
-import { basename } from 'node:path'
-import { homeHydraId } from '#hydra/identity.ts'
 import { requestedPolisAccess } from './access-changes.ts'
 import { memoryAgent } from './poleis.ts'
 import { canRead, hydraPolisConfig, DEFAULT_POLIS_ACCESS, type PolisAccess } from './polis-policy.ts'
@@ -115,11 +113,7 @@ export function requireCommandMemoryAccess({
   }
 
   if (name === 'hydra' && positionals[0] === 'create') {
-    let id = positionals[1]
-
-    if (id === undefined && typeof values.firstmate === 'string' && values.firstmate) {
-      id = homeHydraId({ name: basename(values.firstmate) })
-    }
+    const id = positionals[1]
 
     if (id) {
       requireHydraCapability({

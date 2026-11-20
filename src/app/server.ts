@@ -18,11 +18,8 @@ import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
-import { watchHomes } from '#integrations/firstmate/cli.ts'
-import { resolveHome } from '#integrations/firstmate/home.ts'
-import { existsSync, rmSync } from 'node:fs'
+import { rmSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
-import { join } from 'node:path'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
@@ -53,7 +50,6 @@ export const CREATION_POLL_MS = 1000
 export async function mountOwnedHydra({
   hydraId,
   url,
-  homes: given,
   catalogLocations,
   query,
   spawnCodex,
@@ -75,7 +71,6 @@ export async function mountOwnedHydra({
 }: {
   hydraId: string
   url: string
-  homes?: string[]
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
@@ -95,7 +90,6 @@ export async function mountOwnedHydra({
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Promise<MountedHydra> {
-  let homes = (given ?? []).map(path => resolveHome({ path }))
   let permanentClose: Promise<void> | undefined
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
@@ -130,7 +124,6 @@ export async function mountOwnedHydra({
   } = createThreadSubscriptions({
     hydraId,
     state: () => state,
-    homes: () => homes,
     closed: () => closed,
     send: ({
       ws,
@@ -141,31 +134,6 @@ export async function mountOwnedHydra({
     }),
     agents: () => agents,
   })
-
-  // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
-  let firstmate: ReturnType<typeof watchHomes> | undefined
-  let watchedHome: string | undefined
-
-  const followHome = () => {
-    const hydra = state.config?.hydra
-    // A recorded home that has since moved is skipped, so the Hydra still opens.
-    const home = hydra?.kind === 'firstmate' && hydra.home && existsSync(join(
-      hydra.home,
-      'state',
-    )) ? hydra.home : undefined
-
-    if (given || closed || home === watchedHome) {
-      return
-    }
-
-    firstmate?.close()
-    watchedHome = home
-    homes = home ? [resolveHome({ path: home })] : []
-    firstmate = home ? watchHomes({
-      hydraId,
-      list: homes,
-    }) : undefined
-  }
 
   const tabs = createServerClients({
     hydraId,
@@ -198,7 +166,6 @@ export async function mountOwnedHydra({
       run: () => gitFollow.reconcile({ state }),
     })
     workerLogs.reconcile({ state })
-    followHome()
 
     for (const ws of clients) {
       sendLatest({ ws })
@@ -336,7 +303,6 @@ export async function mountOwnedHydra({
       run: () => gitFollow.reconcile({ state }),
     })
     workerLogs.reconcile({ state })
-    followHome()
   }
 
   const {
@@ -547,7 +513,6 @@ export async function mountOwnedHydra({
     url,
     open,
     state: () => state,
-    homes: () => homes,
     closed: () => closed,
     send,
     kick,
@@ -714,7 +679,6 @@ export async function mountOwnedHydra({
       joinWorkers(),
     ])
     await sources.close()
-    firstmate?.close()
     review.close()
     catalogIndex.close()
     agents.close()
@@ -786,7 +750,6 @@ export async function mountOwnedHydra({
       }),
     )
     workerLogs.reconcile({ state })
-    followHome()
   } catch (error) {
     await stop()
     throw error
@@ -865,8 +828,4 @@ export async function mountOwnedHydra({
 export const SERVE_OPTIONS = {
   hydra: { type: 'string' },
   port: { type: 'string' },
-  home: {
-    type: 'string',
-    multiple: true,
-  },
 } as const

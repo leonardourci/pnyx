@@ -20,15 +20,12 @@ export type ControlInput =
     confirm?: boolean
   }
   | { key: Key }
-  | { request: true }
   | { set: string }
 
-// ask is the change in words for a Firstmate request, `<worker>` standing for the task's worker.
 export interface ControlOption {
   value: string
   label: string
   input: ControlInput
-  ask: string
 }
 
 export interface Control {
@@ -49,12 +46,10 @@ export interface Controls {
 const typed = ({
   values,
   command,
-  name,
   confirm,
 }: {
   values: string[]
   command: string
-  name: string
   confirm?: boolean
 }): ControlOption[] => values.map(value => ({
   value,
@@ -63,7 +58,6 @@ const typed = ({
     text: `/${command} ${value}`,
     ...(confirm ? { confirm } : {}),
   },
-  ask: `switch <worker> to ${name} ${value}`,
 }))
 
 const HARNESS_CONTROLS: Record<string, Controls> = {
@@ -81,7 +75,6 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             'fable',
           ],
           command: 'model',
-          name: 'model',
           confirm: true,
         }),
       },
@@ -97,7 +90,6 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             'max',
           ],
           command: 'effort',
-          name: 'effort',
           confirm: true,
         }),
       },
@@ -109,7 +101,6 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             value: 'next',
             label: 'Next mode',
             input: { key: 'shift-tab' },
-            ask: 'switch <worker> to the next permission mode',
           },
         ],
       },
@@ -122,7 +113,6 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             'off',
           ],
           command: 'fast',
-          name: 'fast mode',
         }),
       },
     ],
@@ -139,13 +129,11 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             value: 'lower',
             label: 'Lower',
             input: { key: 'shift-down' },
-            ask: 'lower the reasoning effort of <worker> by one step',
           },
           {
             value: 'raise',
             label: 'Raise',
             input: { key: 'shift-up' },
-            ask: 'raise the reasoning effort of <worker> by one step',
           },
         ],
       },
@@ -157,7 +145,6 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             value: 'toggle',
             label: 'Toggle',
             input: { text: '/fast' },
-            ask: 'toggle fast mode for <worker>',
           },
         ],
       },
@@ -169,7 +156,6 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
             value: 'toggle',
             label: 'Toggle plan',
             input: { key: 'shift-tab' },
-            ask: 'toggle Plan mode for <worker>',
           },
         ],
       },
@@ -180,17 +166,14 @@ const HARNESS_CONTROLS: Record<string, Controls> = {
 
 const set = ({
   values,
-  name,
   labels = {},
 }: {
   values: string[]
-  name: string
   labels?: Record<string, string>
 }): ControlOption[] => values.map(value => ({
   value,
   label: labels[value] ?? value,
   input: { set: value },
-  ask: `switch <worker> to ${name} ${value}`,
 }))
 
 const HOSTED_CLAUDE: Controls = {
@@ -206,7 +189,6 @@ const HOSTED_CLAUDE: Controls = {
           'haiku',
           'fable',
         ],
-        name: 'model',
       }),
     },
     {
@@ -220,7 +202,6 @@ const HOSTED_CLAUDE: Controls = {
           'xhigh',
           'max',
         ],
-        name: 'effort',
       }),
     },
     {
@@ -234,7 +215,6 @@ const HOSTED_CLAUDE: Controls = {
           'auto',
           'bypassPermissions',
         ],
-        name: 'permission mode',
         labels: {
           default: 'Ask permissions',
           acceptEdits: 'Accept edits',
@@ -261,7 +241,6 @@ const HOSTED_CODEX: Controls = {
           'gpt-6-sol',
           'gpt-6-luna',
         ],
-        name: 'model',
       }),
     },
     {
@@ -274,7 +253,6 @@ const HOSTED_CODEX: Controls = {
           'high',
           'xhigh',
         ],
-        name: 'effort',
       }),
     },
     // bypassPermissions is never under Claude Code's name, so a bypass Hydra can pass it to a Codex worker.
@@ -288,7 +266,6 @@ const HOSTED_CODEX: Controls = {
           'never',
           'bypassPermissions',
         ],
-        name: 'approval policy',
         labels: {
           'untrusted': 'Ask unless trusted',
           'on-request': 'Ask on request',
@@ -301,45 +278,11 @@ const HOSTED_CODEX: Controls = {
   note: 'Pnyx keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny. Never and Bypass permissions run with full access; the other modes write only in the task folder and Pnyx’s home.',
 }
 
-const CODEX_REQUESTS: Control[] = [
-  {
-    setting: 'model',
-    confirm: 'equals',
-    options: [
-      'gpt-6.1-sol',
-      'gpt-6-astra',
-      'gpt-6-sol',
-      'gpt-6-luna',
-    ].map(value => ({
-      value,
-      label: value,
-      input: { request: true },
-      ask: `switch <worker> to model ${value}`,
-    })),
-  },
-  {
-    setting: 'approval',
-    confirm: 'equals',
-    options: [
-      'untrusted',
-      'on-request',
-      'never',
-    ].map(value => ({
-      value,
-      label: value,
-      input: { request: true },
-      ask: `switch <worker> to approval policy ${value}`,
-    })),
-  },
-]
-
 export function harnessControls({
   provider,
-  firstmate = false,
   hosted = false,
 }: {
   provider?: string
-  firstmate?: boolean
   hosted?: boolean
 }): Controls | undefined {
   if (hosted && provider === 'claude-code') {
@@ -350,31 +293,18 @@ export function harnessControls({
     return HOSTED_CODEX
   }
 
-  const harness = provider === undefined ? undefined : HARNESS_CONTROLS[provider]
-
-  return provider === 'codex' && firstmate && harness
-    ? {
-      ...harness,
-      controls: [
-        ...CODEX_REQUESTS,
-        ...harness.controls,
-      ],
-      note: 'Every change asks Firstmate’s orchestrator in a request note. The worker reports the applied setting on its next hook or turn.',
-    }
-    : harness
+  return provider === undefined ? undefined : HARNESS_CONTROLS[provider]
 }
 
 export function findOption({
   provider,
   setting,
   value,
-  firstmate = false,
   hosted = false,
 }: {
   provider: string | undefined
   setting: string
   value: string
-  firstmate?: boolean
   hosted?: boolean
 }): {
   control: Control
@@ -382,7 +312,6 @@ export function findOption({
 } | undefined {
   const harness = harnessControls({
     provider,
-    firstmate,
     hosted,
   })
   const control = harness?.controls.find(c => c.setting === setting)
@@ -401,16 +330,8 @@ export function inputReason({
   kind: ReplyRoute['kind']
   input: ControlInput
 }): string | undefined {
-  if (kind === 'paseo-agent') {
-    return 'Change this agent\'s settings in Paseo.'
-  }
-
   if ((kind === 'pnyx') !== ('set' in input)) {
     return kind === 'pnyx' ? 'Pnyx sets this agent\'s settings directly.' : 'Only an agent Pnyx runs takes this setting directly.'
-  }
-
-  if ('request' in input) {
-    return kind === 'firstmate' ? undefined : 'This setting can only be requested through Firstmate.'
   }
 
   if (!('key' in input)) {
@@ -424,21 +345,6 @@ export function inputReason({
     case 'herdr': return `Pnyx does not press keys such as ${key} in Herdr yet.`
     default: return undefined
   }
-}
-
-export function settingRequest({
-  option,
-  task,
-  harness,
-}: {
-  option: ControlOption
-  task: string
-  harness: string
-}): string {
-  return `Pnyx: please ${option.ask.replace(
-    '<worker>',
-    `the worker on task ${task} (${harness})`,
-  )}.`
 }
 
 export function confirms({

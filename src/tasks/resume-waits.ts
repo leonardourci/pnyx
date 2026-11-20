@@ -127,7 +127,7 @@ export function resumeWaits({
   state: HydraState
   at?: string
 }): number {
-  if (state.config?.hydra.kind === 'firstmate' || !Object.values(state.cards).some(card => resumable({
+  if (!Object.values(state.cards).some(card => resumable({
     state,
     card,
   }))) {

@@ -770,10 +770,6 @@ test(
         '--rule',
         'no-such-rule',
       ],
-      NO_ROUTE: [
-        '--via',
-        'firstmate',
-      ],
     }
 
     for (const [

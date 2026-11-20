@@ -7,7 +7,6 @@ import { homeScoped } from '#store/postgres.ts'
 import type { HydraState } from './model.ts'
 import { readEvents } from './event-log.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
 import { inListOrder } from './hydra-list-order.ts'
@@ -15,7 +14,6 @@ import { inListOrder } from './hydra-list-order.ts'
 export interface HydraProjectSummary {
   name: string
   path: string
-  references: string[]
   live: number
   asks: number
 }
@@ -35,25 +33,11 @@ export interface HydraSummary {
   projects: HydraProjectSummary[]
 }
 
-// A summary is reused until the Hydra's seq, or the projects of its Firstmate home, change.
 type Cached = {
   log: string
-  home?: string
-  projects: string
   summary: HydraSummary
 }
 const summaries = new Map<string, Cached>()
-
-function projectStamp({ home }: { home?: string }): string {
-  try {
-    return home ? JSON.stringify(firstmateProjects({
-      home,
-      aliases: true,
-    })) : ''
-  } catch (error) {
-    return String(error)
-  }
-}
 
 // Unreadable Hydras remain reachable so opening one reports the error.
 export function listHydras(): HydraSummary[] {
@@ -71,14 +55,11 @@ export function listHydras(): HydraSummary[] {
       const seq = String(state.seq)
       const known = summaries.get(key)
 
-      if (known?.log === seq && known.projects === projectStamp({ home: known.home })) {
+      if (known?.log === seq) {
         return known.summary
       }
 
-      const {
-        summary,
-        home,
-      } = summarize({
+      const summary = summarize({
         id,
         state,
       })
@@ -86,8 +67,6 @@ export function listHydras(): HydraSummary[] {
         key,
         {
           log: seq,
-          home,
-          projects: projectStamp({ home }),
           summary,
         },
       )
@@ -210,14 +189,13 @@ export function editHydra({
   commands.hydra(args)
 }
 
-// A Firstmate Hydra keeps its home's name; an unreadable Hydra is left for opening to report.
 export function nameUnnamedHydras(): void {
   withRegistryLock({
     fn: () => {
       for (const id of hydraIds()) {
         const config = readableConfig({ id })
 
-        if (!config || config.hydra.kind === 'firstmate' || (config.name.trim() && config.name !== id)) {
+        if (!config || (config.name.trim() && config.name !== id)) {
           continue
         }
 

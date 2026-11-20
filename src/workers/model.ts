@@ -29,8 +29,6 @@ export interface AgentRef {
   transcriptPath?: string
   account?: string
   loginFolder?: string
-  paseoAgentId?: string
-  paseoUrl?: string
   // Set when the Pnyx server runs this agent itself instead of a terminal.
   host?: 'pnyx'
   // An adopted native session must resume even when its transcript is unavailable.
@@ -45,8 +43,6 @@ export interface TerminalFacts {
   program?: string
   tmux?: string
   tmuxPane?: string
-  paseoTerminal?: string
-  paseoHome?: string
   herdrSession?: string
   herdrPane?: string
 }
@@ -247,7 +243,7 @@ export type StartOverride = Partial<Pick<AgentConfig, 'account' | 'model' | 'eff
 export interface AgentLaunch {
   dispatch?: string
   override?: StartOverride
-  via: 'paseo' | 'command' | 'hooks' | 'pnyx'
+  via: 'command' | 'hooks' | 'pnyx'
   at: string
   folder?: string
   command?: string

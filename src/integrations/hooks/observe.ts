@@ -12,7 +12,6 @@ import type { Harness } from '#workers/providers.ts'
 const SHORT_MAX = 200
 
 export { HARNESSES, type Harness } from '#workers/providers.ts'
-// The events whose hook looks for the session's terminal; any other carries at most its Paseo terminal.
 export const TERMINAL_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',

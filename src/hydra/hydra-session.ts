@@ -47,7 +47,6 @@ export function agentNotices<T extends Record<string, Command>>({
           ...commandOptions,
           polis: { type: 'string' },
           'read-poleis': { type: 'string' },
-          firstmate: { type: 'string' },
           command: { type: 'string' },
           session: { type: 'string' },
           'command-name': { type: 'string' },

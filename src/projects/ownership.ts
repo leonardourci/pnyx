@@ -66,38 +66,29 @@ function migrationPlan({
     id,
     state,
     cards,
-  }) => {
-    if (state.config?.hydra.kind === 'firstmate') {
-      const reason = 'Firstmate owns its project attachment and task moves'
+  }) => cards.flatMap(card => {
+    const refusal = moveRefusal({
+      hydraId: id,
+      to,
+      source: state,
+      target,
+      card,
+      moving: cards.map(card => card.id),
+    })
+    const openPR = card.links.find(link => link.kind === 'github_pr' && link.state === 'open')
 
-      return cards.length ? cards.map(card => `${card.id} (${card.title}): ${reason}`)
-        : [`Hydra ${id}: ${reason}`]
+    if (openPR) {
+      inform({
+        task: card.id,
+        reason: `Moving a task with open pull request ${openPR.url}`,
+        clear: `Use pnyx-axi task refresh-links ${card.id} --hydra ${to} to refresh it`,
+      })
     }
 
-    return cards.flatMap(card => {
-      const refusal = moveRefusal({
-        hydraId: id,
-        to,
-        source: state,
-        target,
-        card,
-        moving: cards.map(card => card.id),
-      })
-      const openPR = card.links.find(link => link.kind === 'github_pr' && link.state === 'open')
+    const reason = refusal?.message
 
-      if (openPR) {
-        inform({
-          task: card.id,
-          reason: `Moving a task with open pull request ${openPR.url}`,
-          clear: `Use pnyx-axi task refresh-links ${card.id} --hydra ${to} to refresh it`,
-        })
-      }
-
-      const reason = refusal?.message
-
-      return reason ? [`${card.id} (${card.title}): ${reason}`] : []
-    })
-  })
+    return reason ? [`${card.id} (${card.title}): ${reason}`] : []
+  }))
 
   if (refused.length) {
     throw new HydraError({

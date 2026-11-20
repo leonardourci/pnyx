@@ -84,13 +84,6 @@ export function queueGap({
     task,
   })
 
-  if (state.config?.hydra.kind === 'firstmate') {
-    return {
-      reason: 'Firstmate owns its worker assignments',
-      clear: 'Ask Firstmate to queue this task',
-    }
-  }
-
   const started = startedGap({ card })
 
   if (started) {

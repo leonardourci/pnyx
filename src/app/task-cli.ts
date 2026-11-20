@@ -27,7 +27,6 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { askHost } from './server-state.ts'
-import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
 import { createCommand } from '#workers/create.ts'
@@ -98,7 +97,6 @@ export const TASK_OPTIONS: Options = {
   harness: { type: 'string' },
   account: { type: 'string' },
   prompt: { type: 'string' },
-  'paseo-url': { type: 'string' },
   check: { type: 'boolean' },
   via: { type: 'string' },
   command: { type: 'string' },
@@ -171,7 +169,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     positionals,
   })
   const m = meta({ values })
-  const url = values['paseo-url'] as string | undefined
   let creatingWorker: AgentConfig | undefined
   const createText = String(values.ask ?? values.brief ?? values.title ?? '')
 
@@ -444,10 +441,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         ...(m.details ? { details: m.details } : {}),
       },
     })
-  }
-
-  if (action === 'paseo') {
-    return paseoStatus({ url })
   }
 
   if (action === 'send-now') {
@@ -878,7 +871,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         })) : [],
         declarations: task.statusLog?.length ?? 0,
         ...(task.hold ? { hold: task.hold } : {}),
-        firstmate: task.mirror ? 'mirrored' : 'none',
       },
       help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
     }
@@ -973,7 +965,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         hydraId,
         state,
         card,
-        homes: [],
         selectedSession: session !== undefined,
         before: values.before as string | undefined,
       }),
@@ -1271,7 +1262,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action !== 'attach' && action !== 'detach') {
     throw new AxiError(
-      'Use task create, list, show, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, paseo, sessions, attach or detach',
+      'Use task create, list, show, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, sessions, attach or detach',
       'VALIDATION_ERROR',
     )
   }

@@ -438,25 +438,9 @@ test(
 )
 
 test(
-  'removal runs for the caller and page without confirmation while Firstmate stays unchanged',
+  'removal runs for the caller and page without confirmation',
   async () => {
     const caller = await pnyx.hydra()
-    const firstmate = await pnyx.hydra()
-    await firstmate.owner({
-      args: [
-        'hydra',
-        'set',
-        '--firstmate',
-        firstmate.folder({ name: 'home' }),
-      ],
-    })
-    expect((await caller.ownerRefused({
-      args: [
-        'hydra',
-        'remove',
-        firstmate.id,
-      ],
-    })).code).toBe('CONFLICT')
     const target = await pnyx.hydra()
     const page = await caller.page()
     const result = await page.send({

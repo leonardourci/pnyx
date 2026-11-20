@@ -317,18 +317,6 @@ export function HydraView({
     },
     [],
   )
-  useEffect(
-    () => {
-      if (projectRequest && state.config?.hydra.kind === 'firstmate') {
-        notify({ text: 'Firstmate manages this Hydra’s projects.' }); setProjectRequest(false)
-      }
-    },
-    [
-      projectRequest,
-      state.config?.hydra.kind,
-      notify,
-    ],
-  )
   useScrollingClass()
   const modalTask = useModalTask({ hydraId: navigation.hydraId })
   const {

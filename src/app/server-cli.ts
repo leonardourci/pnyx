@@ -8,8 +8,6 @@ import { STOP_TIMEOUT_MS, type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
 import { PNYX_ROOT } from '#upgrade/runner.ts'
 import { HydraError } from '#store/errors.ts'
-import { resolveHome } from '#integrations/firstmate/home.ts'
-import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import { stopOldHost } from '#workers/children.ts'
 
@@ -51,7 +49,6 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     server = await startServer({
       hydraId,
       port,
-      homes: values.home,
       upgradeRoot: PNYX_ROOT,
       zeroCache: true,
     })
@@ -75,19 +72,12 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     throw error
   }
 
-  // Homes given here are watched for this Hydra; a Hydra's recorded home is watched by the server itself.
-  const homes = (values.home ?? []).map(path => resolveHome({ path }))
-  const firstmate = homes.length > 0 ? watchHomes({
-    hydraId,
-    list: homes,
-  }) : undefined
-  const watching = homes.length > 0 ? `firstmate: ${JSON.stringify(`watching ${homes.length} home${homes.length === 1 ? '' : 's'}`)}\n` : ''
   const skipped = Object.entries(server.skipped).map(([
     id,
     reason,
   ]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
     .join('')
-  process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
+  process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
   const signal = await new Promise<NodeJS.Signals>(resolve => {
     for (const name of [
       'SIGINT',
@@ -101,13 +91,9 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     }
   })
 
-  const watched = firstmate?.close()
   await server.close()
 
-  return {
-    server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped',
-    ...(watched ? { firstmate: watched } : {}),
-  }
+  return { server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped' }
 }
 
 export async function stop(args: string[]): Promise<Record<string, unknown>> {

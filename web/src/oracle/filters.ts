@@ -170,7 +170,7 @@ export function filterOptions({
       type: 'project',
       label: project.name,
       icon: 'project',
-      values: project.references,
+      values: [project.path],
       words: project.path,
     })),
     ...WHEN_FILTERS,

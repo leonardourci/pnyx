@@ -149,15 +149,13 @@ export function cardStatus({
     }
   }
 
-  const unassigned = card.mirror ? 'not started' : noWorkerText({ card })
-
   return {
     kind: card.agent ? 'unknown' : 'not-started',
-    text: card.agent ? 'activity unknown' : unassigned,
+    text: card.agent ? 'activity unknown' : noWorkerText({ card }),
   }
 }
 
-const neverStarted = ({ card }: { card: Card }) => !card.agent && !card.mirror && !card.launch
+const neverStarted = ({ card }: { card: Card }) => !card.agent && !card.launch
 
 export function noWorkerText({ card }: { card: Card }): string {
   if (!neverStarted({ card })) {

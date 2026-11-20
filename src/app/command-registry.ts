@@ -178,7 +178,6 @@ export const COMMAND_REGISTRY = {
     }) => values.inscribe !== true && (
       [
         'list',
-        'homes',
         'show',
         'messages',
         'message',
@@ -192,7 +191,6 @@ export const COMMAND_REGISTRY = {
     scope: {
       reads: [
         'list',
-        'homes',
         'show',
         'messages',
         'message',

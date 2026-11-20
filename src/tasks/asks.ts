@@ -122,12 +122,8 @@ async function handToHydra({
 }): Promise<Output> {
   const state = loadHydra({ hydraId }).state
   const message = state.hydraMessages?.find(m => m.id === id)
-  const firstmate = hydraConfig({
-    state,
-    id: hydraId,
-  }).hydra.kind === 'firstmate'
 
-  if (!message || firstmate || !await readServer({ hydraId })) {
+  if (!message || !await readServer({ hydraId })) {
     return {}
   }
 
@@ -341,7 +337,6 @@ async function answerCommand({
     request: {
       card: ref,
       text: '',
-      homes: [],
       actor: m.actor,
       ...(m.id ? { id: m.id } : {}),
       ...(reason ? { reason } : {}),

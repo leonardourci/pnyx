@@ -490,7 +490,6 @@ async function commandCopy({
   }
 }
 
-// A project task works in its own copy unless the start says otherwise; Firstmate Hydras make their own.
 export async function taskFolder({
   hydraId,
   task,
@@ -507,10 +506,6 @@ export async function taskFolder({
   meta: Meta
 }): Promise<string | undefined> {
   const state = loadHydra({ hydraId }).state
-
-  if (state.config?.hydra.kind === 'firstmate') {
-    return folder
-  }
 
   const card = findCard({
     state,

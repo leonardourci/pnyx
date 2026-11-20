@@ -131,9 +131,9 @@ export function queueCardInput({
 }
 
 function requireCardInputTarget({ card }: { card: Card }) {
-  if (card.automaticTask || card.id === HYDRA_CARD) {
+  if (card.id === HYDRA_CARD) {
     throw new HydraError({
-      message: 'Choose a task rather than the Hydra or a helper record',
+      message: 'Choose a task rather than the Hydra',
       code: 'CONFLICT',
     })
   }
@@ -154,10 +154,9 @@ function requireCardInputTarget({ card }: { card: Card }) {
     })
   }
 
-  const firstmate = !!card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')
   const outside = !!card.sessionIds?.length && card.agent?.host !== 'pnyx'
 
-  if (firstmate || outside) {
+  if (outside) {
     throw new HydraError({
       message: 'Continue this worker in Pnyx before changing its agent',
       code: 'NO_ROUTE',

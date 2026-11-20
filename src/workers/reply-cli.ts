@@ -8,15 +8,10 @@ export const reply = guard({
   handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
-      home: {
-        type: 'string',
-        multiple: true,
-      },
       actor: { type: 'string' },
       text: { type: 'string' },
       file: { type: 'string' },
       'idempotency-key': { type: 'string' },
-      'resolve-key': { type: 'string' },
       answer: { type: 'string' },
       json: { type: 'string' },
       seen: { type: 'string' },
@@ -48,13 +43,13 @@ export const reply = guard({
         throw invalid({ message: '--question and --from-message are required together' })
       }
 
-      if (values.answer !== undefined || values['resolve-key'] !== undefined || values['task-message']) {
-        throw invalid({ message: '--question cannot be combined with --answer, --resolve-key or --task-message' })
+      if (values.answer !== undefined || values['task-message']) {
+        throw invalid({ message: '--question cannot be combined with --answer or --task-message' })
       }
     }
 
-    if (values['task-message'] && (values.answer !== undefined || values['resolve-key'] !== undefined)) {
-      throw invalid({ message: '--task-message takes context text; answer requests with reply --answer or --resolve-key' })
+    if (values['task-message'] && values.answer !== undefined) {
+      throw invalid({ message: '--task-message takes context text; answer requests with reply --answer' })
     }
 
     const file = values.file as string | undefined
@@ -118,7 +113,6 @@ export const reply = guard({
       request: {
         card: ref,
         text: text!,
-        homes: (values.home as string[] | undefined) ?? [],
         actor: meta({ values }).actor,
         reason: meta({ values }).reason,
         ask: question ? {
@@ -127,7 +121,6 @@ export const reply = guard({
           choice,
         } : undefined,
         ...(values['idempotency-key'] ? { id: values['idempotency-key'] as string } : {}),
-        ...(values['resolve-key'] ? { resolveKey: values['resolve-key'] as string } : {}),
         ...(answer ? { answer } : {}),
       },
     })
@@ -174,22 +167,19 @@ export const reply = guard({
   },
 })
 
-export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>] [--task-message]
+export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--idempotency-key <key>] [--task-message]
        pnyx-axi reply <task> --question <question> --from-message <owner-message> [--choice Go|Hold|Merge] --text <relay> [--idempotency-key <key>]
        pnyx-axi reply <id> --answer <request key> --json <answer> [--seen <request id>] [--idempotency-key <key>]
 --question records an owner answer and its outgoing relay together before attempting delivery. Hydra
 must name an owner message newer than the question; Go/Hold and Merge/Hold also take --choice.
 The source words stay separate from --text. Failed, queued or unknown delivery does not reopen the
 question. Retry a failed delivery with the same key to preserve its saved answer and relay.
---question cannot be combined with --answer, --resolve-key or --task-message. Ordinary replies do
+--question cannot be combined with --answer or --task-message. Ordinary replies do
 not answer task questions.
-A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
-be passed with --home, and --resolve-key answers that open decision.
 --task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)
 gets an inbox notice from the Hydra's server after the instruction is persisted. Pending IDs survive
 a stopped server and replay on worker opening or resumption until read or explicitly acknowledged.
-A worker inbox read records receipt and stops reminders; acknowledgements never mean work is complete. Native tasks reached
-through Paseo also receive inbox notices through its agent API. A terminal task receives a notice
+A worker inbox read records receipt and stops reminders; acknowledgements never mean work is complete. A terminal task receives a notice
 only with a verified live process and empty tmux composer. Drafts and permission prompts defer it;
 other terminal backends report uncertainty without typing. Timed recovery allows three notifications
 or two busy/held deferrals before one durable unread-instruction result wakes Hydra. Holds stay held.

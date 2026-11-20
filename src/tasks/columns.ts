@@ -182,18 +182,8 @@ export function refreshTasks({
   for (const card of cards) {
     permissionAttention({ card })
 
-    if (card.automaticTask || card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
-      card.hidden = true
-    }
-
-    if (card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId !== '@home')
-      || (state.configured && !card.hidden && card.id !== HYDRA_CARD)) {
+    if (state.configured && !card.hidden && card.id !== HYDRA_CARD) {
       card.tracking = 'declared'
-    }
-
-    // Legacy Firstmate home cards were grouping parents, not work.
-    if ((state.configured || card.tracking) && card.parentId && state.cards[card.parentId]?.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
-      delete card.parentId
     }
 
     // Workers on it keeps its cards until the Hydra moves onto the default columns, which places them by status.

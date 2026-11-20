@@ -19,7 +19,6 @@ export interface ProjectRow {
 }
 interface ProjectsState {
   rows: ProjectRow[]
-  readonly: boolean
   revision: number
 }
 interface ProjectPatch {
@@ -112,7 +111,6 @@ function createProjects() {
           ...(state?.rows ?? []).filter(row => row.path !== patch.path),
           row,
         ],
-        readonly: state?.readonly ?? false,
         revision: state?.revision ?? 0,
       }
     },
@@ -165,7 +163,6 @@ function createProjects() {
     },
     read: ({ receipt }) => ({
       rows: Array.isArray(receipt.projects) ? receipt.projects as ProjectRow[] : [],
-      readonly: receipt.readonly === true,
       revision: Number(receipt.revision ?? 0),
     }),
   })
@@ -274,15 +271,9 @@ export function useProjectsResource({
 
   return {
     projects: snapshot.view?.rows ?? [],
-    readonly: snapshot.view?.readonly ?? false,
     loaded: snapshot.confirmed !== null,
     error: snapshot.error,
     intents: snapshot.intents,
     mutate,
-    refresh: () => resource.refresh({
-      command,
-      name: 'project',
-      args: ['list'],
-    }),
   }
 }
