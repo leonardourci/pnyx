@@ -477,6 +477,7 @@ test(
             select hydra_id, 'codex:retired-migration-worker', 'retired-session-card',
               (data::jsonb || jsonb_build_object('id', 'codex:retired-migration-worker',
                 'taskId', 'retired-session-card', 'originCardId', 'retired-session-card',
+                'title', 'Keep this independent session title',
                 'agent', jsonb_build_object('provider', 'codex', 'sessionId', 'retired-migration-worker')))::json
             from sessions where hydra_id = $1 and task_id = $2`,
         })
@@ -515,6 +516,7 @@ test(
       expect.objectContaining({
         id: 'codex:retired-migration-worker',
         taskId: null,
+        title: 'Keep this independent session title',
       }),
     ]))
     expect(rows({
