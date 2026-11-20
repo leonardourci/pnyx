@@ -1035,6 +1035,11 @@ export function HydraView({
   }
 
   const showWorkspace = workspaceWindow.mounted && (loaded || hydra.creating) && page === 'hydra'
+  const fontSizes = {
+    uiFont: `${view.fontSize}px`,
+    chatFont: `${view.chatFontSize}px`,
+    codeFont: `${view.codeFontSize}px`,
+  }
 
   return (
     <KeyboardProvider
@@ -1075,9 +1080,7 @@ export function HydraView({
           data-connected={connected}
           style={runtimeStyle({
             width: workspaceWindow.width,
-            uiFont: `${view.fontSize}px`,
-            chatFont: `${view.chatFontSize}px`,
-            codeFont: `${view.codeFontSize}px`,
+            ...fontSizes,
           })}
         >
           <Panel
@@ -1459,11 +1462,7 @@ export function HydraView({
                 data-ui-surface="settings"
                 data-settings-hydra={navigation.hydraId}
                 hidden={!active || page !== 'settings'}
-                style={runtimeStyle({
-                  uiFont: `${view.fontSize}px`,
-                  chatFont: `${view.chatFontSize}px`,
-                  codeFont: `${view.codeFontSize}px`,
-                })}
+                style={runtimeStyle(fontSizes)}
               >
                 <ProfileSurface name="settings" hydraId={navigation.hydraId}>
                   <SettingsPage
