@@ -7,7 +7,6 @@ import type { ChatScroll } from './chat-scroll.ts'
 // The next older rows load once the first row comes within a screen and a half above the visible ones.
 const OLDER_MARGIN = '150% 0px 0px 0px'
 
-// The frame every chat sits in, Hydra's and each task's: its width, insets and gaps.
 export const CHAT_FRAME = 'chat-frame [--chat-max:var(--spacing-chat-max)] [--chat-pad:var(--spacing-chat-pad)] [--chat-gap:var(--spacing-chat-gap)] [--chat-inset:max(calc(var(--chat-pad)_+_var(--chat-scrollbar,0px)),calc((100%_-_var(--chat-max))/2))] [&>:is(.composer,.agent-change-choice,.compaction-queue,.save-checking,.waiting-decisions)]:mx-(--chat-inset) [&>.waiting-decisions]:px-0 [&>.composer]:mb-3 [&_.composer-bar]:h-auto'
 
 export interface OlderRows {
@@ -107,6 +106,15 @@ function OlderSentinel({
   )
 }
 
+export function ChatError({ text }: { text?: string }) {
+  return (
+    <p className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert">
+      <Icon name="error" size={ICON_SIZE.control} />
+      {text}
+    </p>
+  )
+}
+
 function JumpToLatest({ scroll }: { scroll: ChatScroll }) {
   return (
     <>
@@ -123,8 +131,6 @@ function JumpToLatest({ scroll }: { scroll: ChatScroll }) {
   )
 }
 
-// One chat, the same for Hydra and every task: it opens on its latest row, loads older rows as the owner reads up,
-// and shows one status line under its rows. The rows and what follows them come as children.
 export function Chat({
   title,
   scroll,
@@ -165,7 +171,7 @@ export function Chat({
             loadingEarlier={loadingEarlier}
             notify={notify}
           />
-          {error && <p role="alert">{error}</p>}
+          {error && <ChatError text={error} />}
           {children}
         </div>
       </div>

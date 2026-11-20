@@ -2,7 +2,9 @@ import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Compaction } from '#workers/compaction/model.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
+import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
 import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendRecords, appendToolCalls } from './setup/transcripts.ts'
 
@@ -44,7 +46,7 @@ const WORKER_NOTES = 70
 const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End of notes.`
 
 test(
-  'chat opens on its newest 20 entries, and reading older pages reaches every message once, in order, with a long reply whole',
+  'chat opens on its newest 20 entries, reading older pages reaches every message once, in order, with a long reply whole, and revealing an older message reads back only until it',
   async () => {
     const hydra = await pnyx.hydra()
     let session
@@ -134,6 +136,38 @@ test(
         index + 1 === 5 ? LONG_REPLY : `answer ${index + 1}`,
       ],
     ).flat())
+
+    // A comment on question 15 carries its message and time; a fresh tab opens on the latest page.
+    const commented = loaded.conversation.entries.find(entry => entry.text === 'question 15')!
+    const reader = await hydra.page()
+
+    const readPage = async ({ args }: { args: string[] }) => {
+      const receipt = await reader.send({
+        name: 'thread',
+        args: [
+          '$hydra',
+          ...args,
+        ],
+      }) as unknown as { thread: ThreadPage }
+
+      return receipt.thread
+    }
+
+    let revealed = await readPage({ args: [] })
+    await loadEarlierMessages({
+      page: revealed,
+      until: commented.at,
+      message: commented.id,
+      load: async ({ before }) => {
+        revealed = await readPage({ args: [before] })
+
+        return revealed
+      },
+    })
+    reader.close()
+    const revealedTexts = revealed.conversation?.entries.map(entry => entry.text)
+    expect(revealedTexts).toContain('question 15')
+    expect(revealedTexts).not.toContain('question 1')
   },
 )
 

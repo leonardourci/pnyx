@@ -1,6 +1,5 @@
 import { useLayoutEffect, useState, type RefObject } from 'react'
 
-// The height an open card takes unless the owner resized it: its column's, inside the column's padding.
 export function useColumnHeight({
   element,
   active,

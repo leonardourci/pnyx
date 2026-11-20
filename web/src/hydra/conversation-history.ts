@@ -71,7 +71,6 @@ export async function loadEarlierMessages({
   }
 }
 
-// The thread arguments that open a chat, restoring the range it had loaded by its session and oldest entry.
 export function threadArgs({
   card,
   page,

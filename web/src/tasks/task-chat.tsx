@@ -32,7 +32,6 @@ const replies = new Map<string, ReplyResource>()
 // Workers have no wake queue; only Hydra's status line counts queued updates.
 const NO_UPDATES: [] = []
 
-// A task's conversation with its worker: the same chat as Hydra's, sending to the task.
 export function TaskChat({
   hydraId,
   storageIdentity,

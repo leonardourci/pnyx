@@ -14,7 +14,6 @@ import { knownCards } from '#tasks/select.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
 import { InlineButton } from '#web-shared/ui/controls.tsx'
-import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { InlineQuestions } from '#web-tasks/questions.tsx'
 import { AnsweredQuestions } from '#web-tasks/answered-questions.tsx'
@@ -35,7 +34,7 @@ import { chatDecisions, type ChatDecision } from './chat-questions.ts'
 import { compactionRuns,hydraDown,keepStreamedKeys,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
 import { useChatScroll } from './chat-scroll.ts'
 import { useChatThread } from './chat-thread.ts'
-import { CHAT_FRAME, Chat } from './chat-view.tsx'
+import { CHAT_FRAME, Chat, ChatError } from './chat-view.tsx'
 import { centerMessage } from './comment-motion.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { Composer } from './composer.tsx'
@@ -825,7 +824,7 @@ export function HydraChat({
             {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
           </p>
         )}
-        {errors.map(a => <p key={a.key} className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert"><Icon name="error" size={ICON_SIZE.control} />{a.text}</p>)}
+        {errors.map(a => <ChatError key={a.key} text={a.text} />)}
         {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
         {card && (
           <InlinePermissions

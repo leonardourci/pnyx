@@ -12,6 +12,10 @@ beforeAll(async () => {
 
 const EXCHANGES = 12
 const WORKER_MESSAGES = 40
+// Painted frames after a load for its rows to come into view and take their size, and after one change, a new row or
+// a Jump, for it to paint.
+const SETTLING_FRAMES = 10
+const ARRIVAL_FRAMES = 2
 // Enough lines that the conversation is several screens tall.
 const paragraph = ({ label }: { label: string }) => `${label}\n\n${'A line of the release notes that fills the width. '.repeat(6)}`
 
@@ -238,7 +242,7 @@ test(
     })
     await nextFrames({
       page,
-      count: 10,
+      count: SETTLING_FRAMES,
     })
     const opened = await framesOf({
       page,
@@ -260,7 +264,7 @@ test(
     })
     await nextFrames({
       page,
-      count: 2,
+      count: ARRIVAL_FRAMES,
     })
     expect(offEnd({
       frames: await framesOf({
@@ -281,7 +285,7 @@ test(
     })
     await nextFrames({
       page,
-      count: 10,
+      count: SETTLING_FRAMES,
     })
     const taskOpened = await framesOf({
       page,
@@ -316,7 +320,7 @@ test(
     })
     await nextFrames({
       page,
-      count: 2,
+      count: ARRIVAL_FRAMES,
     })
     expect(offEnd({
       frames: await framesOf({
@@ -507,7 +511,7 @@ test(
     })
     await nextFrames({
       page,
-      count: 10,
+      count: SETTLING_FRAMES,
     })
     const frames = (await framesOf({
       page,
@@ -523,7 +527,7 @@ test(
     ).click()
     await nextFrames({
       page,
-      count: 2,
+      count: ARRIVAL_FRAMES,
     })
     expect((await framesOf({
       page,

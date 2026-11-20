@@ -118,7 +118,6 @@ export function useChatThread({
     until?: string
     message?: string
   }) => {
-    scroll.read()
     setLoadingEarlier(true)
 
     try {

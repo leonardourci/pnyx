@@ -187,7 +187,6 @@ export function recordEntries({
   })
 }
 
-// Whether a page that shows these traces holds rows of this kind.
 export function showsKind({
   kind,
   tools,
