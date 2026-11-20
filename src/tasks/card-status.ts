@@ -174,8 +174,7 @@ export function workerGap({ card }: { card: Card }): string {
 }
 
 export const statusLabel = ({ status }: { status: CardStatus }) => {
-  const label = status.kind === 'working' ? 'running' : status.text
-  const text = label.replace(
+  const text = status.text.replace(
     /^./,
     c => c.toUpperCase(),
   )
