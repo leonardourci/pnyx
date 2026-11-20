@@ -214,8 +214,7 @@ export function reconcileAsks({
 }): HydraEvent[] {
   const card = state.cards[event.cardId]
 
-  if (!card || isManagedTask({ card }) || state.config?.hydra.kind === 'firstmate'
-    || event.type === 'task.ask.closed') {
+  if (!card || isManagedTask({ card }) || event.type === 'task.ask.closed') {
     return []
   }
 

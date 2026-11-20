@@ -164,7 +164,7 @@ function ProjectPreview({
   state: HydraState
 }) {
   const tasks = Object.values(state.cards)
-    .filter(card => liveTask({ card }) && project.references.includes(card.project ?? ''))
+    .filter(card => liveTask({ card }) && card.project === project.path)
 
   return (
     <>

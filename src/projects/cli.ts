@@ -66,7 +66,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   ] = positionals
   const m = meta({ values })
   const current = loadHydra({ hydraId }).state
-  const readonly = current.config?.hydra.kind === 'firstmate'
 
   const settings = values['command-name'] !== undefined || values.command !== undefined || values['brings-own-folder'] !== undefined
   const landing = values.landing === undefined
@@ -259,7 +258,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       detail,
     ]))
     const listedState = loadHydra({ hydraId }).state
-    const listedReadonly = listedState.config?.hydra.kind === 'firstmate'
     const attachments = ownAttachments ? projectsFor({ state: listedState }) : []
     const projects = projectRows({
       state: listedState,
@@ -280,12 +278,11 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
     const listed: Output = {
       hydraId,
-      readonly: listedReadonly,
       revision: listedState.projectsRevision ?? 0,
       projects: projects.length ? projects : 'none: no projects attached',
     }
 
-    if (ownAttachments && projects.length === 0 && !listedReadonly) {
+    if (ownAttachments && projects.length === 0) {
       listed.help = [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`]
     }
 
@@ -296,13 +293,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     throw new HydraError({
       message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project keep <path>, project set <name|path> or project remove <name|path>',
       code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (readonly) {
-    throw new HydraError({
-      message: 'This Hydra’s projects are managed by Firstmate',
-      code: 'READ_ONLY',
     })
   }
 
@@ -352,13 +342,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         card: '$projects',
       },
       decide: ({ state }) => {
-        if (state.config?.hydra.kind === 'firstmate') {
-          throw new HydraError({
-            message: 'This Hydra’s projects are managed by Firstmate',
-            code: 'READ_ONLY',
-          })
-        }
-
         const before = findProject({
           state,
           ref: project.path,
@@ -535,13 +518,6 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         card: '$projects',
       },
       decide: ({ state }) => {
-        if (state.config?.hydra.kind === 'firstmate') {
-          throw new HydraError({
-            message: 'This Hydra’s projects are managed by Firstmate',
-            code: 'READ_ONLY',
-          })
-        }
-
         const before = state.projects?.find(p => sameProjectPath({
           left: p.path,
           right: path,
@@ -646,7 +622,7 @@ A project is a folder on this laptop, shown by its folder name. Relative paths a
 Clone runs git directly; --into always names the destination. No agent receives the URL.
 Remove detaches only; tasks and history stay. Add the path again to re-attach.
 A project belongs to one Hydra. Attaching its folder to another Hydra is refused.
-Existing duplicate attachments keep working until the owner chooses a keeper. Firstmate-linked Hydras list their home’s projects read-only.
+Existing duplicate attachments keep working until the owner chooses a keeper.
 Set saves a named start command; an empty --command clears it. --brings-own-folder declares that the command creates its worker’s folder.
 Workers start in their task's own copy: a git worktree on branch <hydra-name-slug>/<task-title-slug> with no upstream, kept under the Hydra's folder.
 --copy sets a command run in the project folder instead; it gets PNYX_TASK, PNYX_TASK_TITLE and PNYX_PROJECT and prints the new folder's path last.

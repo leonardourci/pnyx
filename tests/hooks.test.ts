@@ -1,3 +1,4 @@
+import { base as eventBase } from '#app/command-meta.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
@@ -185,30 +186,147 @@ test(
         userLine({ content: `New instructions for task outside, in order (Pnyx inbox IDs ["earlier"]):\n\n${'Keep the retry loop bounded. '.repeat(60)}` }),
       ].join(''),
     )
+    const terminalEnv = {
+      ...process.env,
+      TMUX: '/tmp/pnyx-hook-tmux,123,0',
+      TMUX_PANE: '%7',
+      HERDR_SESSION: 'hook-session',
+      HERDR_PANE_ID: 'hook-pane',
+    }
     const runs = [
       await hook({
         event: 'SessionStart',
+        env: terminalEnv,
         payload: {
           ...base,
           source: 'startup',
         },
       }),
-      await hook({
-        event: 'UserPromptSubmit',
-        payload: {
-          ...base,
-          prompt: 'Fix the flaky login test\nwith more detail below',
-        },
-      }),
     ]
+    const started = await until({
+      what: 'SessionStart pane facts',
+      check: () => sessionFacts({ session: 'outside-1' }),
+    })
+    expect(started.terminal).toMatchObject({
+      tmux: '/tmp/pnyx-hook-tmux',
+      tmuxPane: '%7',
+      herdrSession: 'hook-session',
+      herdrPane: 'hook-pane',
+    })
+    runs.push(await hook({
+      event: 'UserPromptSubmit',
+      env: {
+        ...terminalEnv,
+        TMUX_PANE: '%8',
+        HERDR_PANE_ID: 'prompt-pane',
+      },
+      payload: {
+        ...base,
+        prompt: 'Fix the flaky login test\nwith more detail below',
+      },
+    }))
     const working = await until({
       what: 'the session facts',
-      check: () => sessionFacts({ session: 'outside-1' }),
+      check: async () => {
+        const facts = await sessionFacts({ session: 'outside-1' })
+
+        return facts?.terminal?.tmuxPane === '%8' && facts?.terminal?.herdrPane === 'prompt-pane' && facts
+      },
     })
     expect(working).toMatchObject({
       title: 'Fix the flaky login test',
       activity: 'working',
+      terminal: {
+        tmux: '/tmp/pnyx-hook-tmux',
+        tmuxPane: '%8',
+        herdrSession: 'hook-session',
+        herdrPane: 'prompt-pane',
+      },
     })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: {
+          event: {
+            ...eventBase({
+              state: writer.state,
+              cardId: 'legacy-hook-observation',
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'hook:claude',
+                id: 'legacy-outside-observation',
+              },
+            }),
+            type: 'card.pushed',
+            data: {
+              key: 'claude:outside-1',
+              agent: working.agent,
+              terminal: { tty: '/dev/ttys99998' },
+              settings: { fast: 'on' },
+              activity: 'working',
+              source: {
+                adapter: 'hooks',
+                instanceId: 'claude',
+                objectId: 'outside-1',
+                observedAt: new Date().toISOString(),
+              },
+            },
+          },
+        },
+      }),
+    })
+    expect(await sessionFacts({ session: 'outside-1' })).toMatchObject({
+      terminal: { tty: '/dev/ttys99998' },
+      settings: { fast: 'true' },
+    })
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: {
+          event: {
+            ...eventBase({
+              state: writer.state,
+              cardId: 'legacy-hook-observation',
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'hook:claude',
+                id: 'legacy-outside-settings',
+              },
+            }),
+            type: 'card.pushed',
+            data: {
+              key: 'claude:outside-1',
+              settings: {
+                model: 'recorded-hook-model',
+                fast: 'off',
+              },
+              source: {
+                adapter: 'transcript',
+                objectId: base.transcript_path,
+                observedAt: new Date().toISOString(),
+              },
+            },
+          },
+        },
+      }),
+    })
+    expect((await sessionFacts({ session: 'outside-1' })).settings).toMatchObject({
+      model: 'recorded-hook-model',
+      fast: 'false',
+    })
+    const allCards = parsed(await pnyxAxi({
+      args: [
+        'page',
+        '--hidden',
+        '--full',
+        '--hydra',
+        'default',
+      ],
+      env: process.env,
+    })).page.cards
+    expect(allCards).not.toHaveProperty('legacy-hook-observation')
     await hook({
       event: 'PreToolUse',
       payload: {

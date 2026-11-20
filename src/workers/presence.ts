@@ -4,8 +4,6 @@ import { uptime } from 'node:os'
 import type { HydraState } from '#app/model.ts'
 import type { AgentSession } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
-import { localPaseoUrl } from '#integrations/paseo/url.ts'
-import { openPaseo, type Connect } from '#integrations/paseo/client.ts'
 
 export type Presence = {
   state: 'present' | 'gone' | 'unknown'
@@ -118,57 +116,14 @@ export function terminalPresence({
 
 export async function checkAttachments({
   state,
-  connect = openPaseo,
   probe = terminalPresence,
 }: {
   state: HydraState
-  connect?: Connect
-  probe?({ session }: { session: AgentSession }): Presence
+  probe?({ session }: { session: AgentSession }): Presence | Promise<Presence>
 }) {
   const sessions = Object.values(state.sessions ?? {})
     .filter(s => (s.taskId && state.cards[s.taskId] && liveTask({ card: state.cards[s.taskId] }))
       || state.config?.hydra.session === s.id)
-  const endpoints = new Map<string, Promise<Map<string, Presence>>>()
-
-  const paseo = ({ url }: { url: string }) => {
-    let result = endpoints.get(url)
-
-    if (!result) {
-      result = (async () => {
-        const client = await connect({ url: localPaseoUrl({ url }) })
-
-        try {
-          const attached = sessions.filter(s => s.agent.paseoUrl === url && s.agent.paseoAgentId)
-          const rows = await Promise.all(attached.map(async s => {
-            const current = await client.agents.ref(s.agent.paseoAgentId!).refresh()
-
-            return [
-              s.id,
-              current && !current.agent.archivedAt
-                ? {
-                  state: 'present' as const,
-                  detail: 'Paseo still has this agent session.',
-                }
-                : {
-                  state: 'gone' as const,
-                  detail: 'Paseo no longer has this agent session.',
-                },
-            ] as const
-          }))
-
-          return new Map<string, Presence>(rows)
-        } finally {
-          await client.close().catch(() => undefined)
-        }
-      })()
-      endpoints.set(
-        url,
-        result,
-      )
-    }
-
-    return result
-  }
 
   return Promise.all(sessions.map(async session => {
     let presence: Presence
@@ -178,20 +133,8 @@ export async function checkAttachments({
         state: 'present',
         detail: 'Pnyx runs this agent; its next message resumes the session.',
       }
-    } else if (session.agent.paseoUrl && session.agent.paseoAgentId) {
-      try {
-        presence = (await paseo({ url: session.agent.paseoUrl })).get(session.id) ?? {
-          state: 'unknown',
-          detail: 'Paseo did not answer for this agent.',
-        }
-      } catch {
-        presence = {
-          state: 'unknown',
-          detail: 'Paseo is unreachable; the agent may still exist.',
-        }
-      }
     } else {
-      presence = probe({ session })
+      presence = await probe({ session })
     }
 
     const seen = seenAt({ session })

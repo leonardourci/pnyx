@@ -5,8 +5,9 @@ import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
 import { SCHEMA_VERSION } from '#store/schema.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { binaries, sql } from './setup/postgres.ts'
-import { parsed, pnyxAxi, rows, startPnyx, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -96,7 +97,8 @@ async function backToSchema1({
   })
   await sql({
     database: legacy,
-    text: `${SCHEMA_1}; alter table hydras add column removed boolean not null default false`,
+    text: `${SCHEMA_1}; alter table hydras add column removed boolean not null default false;
+      alter table cards alter column automatic_task set default false`,
   })
   const data = execFileSync(
     join(
@@ -132,7 +134,7 @@ async function backToSchema1({
   )
   await sql({
     database: legacy,
-    text: 'alter table hydras drop column removed',
+    text: 'alter table hydras drop column removed; alter table cards alter column automatic_task drop default',
   })
   const [{ last }] = await sql({
     database: legacy,
@@ -306,7 +308,7 @@ test(
 )
 
 test(
-  'upgrading removes per-card widths while preserving project widths, heights and history',
+  'upgrading removes retired card sizing and session flags while preserving tasks, layout and history',
   async () => {
     const hydra = await pnyx.hydra()
     const task = await hydra.owner({
@@ -316,6 +318,8 @@ test(
         '--no-start',
         '--title',
         'Keep my size',
+        '--key',
+        'kept-session-task',
       ],
     })
     const layout = {
@@ -397,6 +401,151 @@ test(
       ],
     })
     expect(refused.code).toBe('VALIDATION_ERROR')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'kept-session-task',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'codex',
+          sessionId: 'kept-migration-worker',
+        },
+        activity: 'finished',
+      }),
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Keep this Hydra through the upgrade',
+      reply: 'Ready for the upgrade.',
+    })
+    const session = await hydra.chat({ text: 'Keep this Hydra through the upgrade' })
+    await until({
+      what: 'Hydra to finish its turn before the upgrade',
+      check: () => session.answered === 1,
+    })
+    const beforeHydraUpgrade = await hydra.task({ key: HYDRA_CARD })
+    const beforeSessionUpgrade = await hydra.task({ key: task.card.id })
+    await pnyx.restart({
+      whileStopped: async () => {
+        await closePostgres()
+        const database = homeDatabase()
+        const values = [
+          hydra.id,
+          task.card.id,
+        ]
+        await sql({
+          database,
+          text: `alter table cards add column if not exists automatic_task boolean not null default false;
+            alter table cards alter column automatic_task drop default`,
+        })
+        await sql({
+          database,
+          values: [
+            hydra.id,
+            HYDRA_CARD,
+          ],
+          text: 'update cards set automatic_task = true where hydra_id = $1 and id = $2',
+        })
+        await sql({
+          database,
+          values,
+          text: `insert into cards
+            select (jsonb_populate_record(null::cards, to_jsonb(card) || jsonb_build_object(
+              'id', 'retired-session-card', 'key', 'codex:retired-migration-worker',
+              'title', 'Retired outside session', 'hidden', true, 'automatic_task', true))).*
+            from cards card where hydra_id = $1 and id = $2`,
+        })
+        await sql({
+          database,
+          values,
+          text: `insert into card_bodies
+            select hydra_id, 'retired-session-card', (data::jsonb || jsonb_build_object(
+              'id', 'retired-session-card', 'key', 'codex:retired-migration-worker',
+              'title', 'Retired outside session', 'hidden', true, 'automaticTask', true,
+              'sessionIds', jsonb_build_array('codex:retired-migration-worker'),
+              'agent', jsonb_build_object('provider', 'codex', 'sessionId', 'retired-migration-worker')))::json
+            from card_bodies where hydra_id = $1 and card_id = $2`,
+        })
+        await sql({
+          database,
+          values,
+          text: `insert into sessions
+            select hydra_id, 'codex:retired-migration-worker', 'retired-session-card',
+              (data::jsonb || jsonb_build_object('id', 'codex:retired-migration-worker',
+                'taskId', 'retired-session-card', 'originCardId', 'retired-session-card',
+                'title', 'Keep this independent session title',
+                'agent', jsonb_build_object('provider', 'codex', 'sessionId', 'retired-migration-worker')))::json
+            from sessions where hydra_id = $1 and task_id = $2`,
+        })
+        await sql({
+          database,
+          text: 'delete from schema_version; insert into schema_version (version) values (8)',
+        })
+      },
+    })
+    expect(await hydra.task({ key: task.card.id })).toEqual(beforeSessionUpgrade)
+    const page = await hydra.owner({
+      args: [
+        'page',
+        '--hidden',
+        '--full',
+      ],
+    })
+    expect(page.page.cards).not.toHaveProperty('retired-session-card')
+    expect(page.page.cards[HYDRA_CARD]).toMatchObject({
+      id: beforeHydraUpgrade.id,
+      key: beforeHydraUpgrade.key,
+      title: beforeHydraUpgrade.title,
+    })
+    const sessions = await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+        '--full',
+      ],
+    })
+    expect(sessions.sessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'codex:kept-migration-worker',
+        taskId: task.card.id,
+      }),
+      expect.objectContaining({
+        id: 'codex:retired-migration-worker',
+        taskId: null,
+        title: 'Keep this independent session title',
+      }),
+    ]))
+    expect(rows({
+      text: 'select id, task_id from sessions where hydra_id = $1 and id in ($2, $3) order by id',
+      values: [
+        hydra.id,
+        'codex:kept-migration-worker',
+        'codex:retired-migration-worker',
+      ],
+    })).toEqual([
+      {
+        id: 'codex:kept-migration-worker',
+        task_id: task.card.id,
+      },
+      {
+        id: 'codex:retired-migration-worker',
+        task_id: null,
+      },
+    ])
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Write after the session flag upgrade',
+      ],
+    })
+    expect(await hydra.task({ key: created.card.id })).toMatchObject({ title: 'Write after the session flag upgrade' })
   },
 )
 

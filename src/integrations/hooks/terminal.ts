@@ -373,43 +373,6 @@ async function tmuxSend({
   return delivery
 }
 
-async function paseo({
-  route,
-  text,
-}: {
-  route: Extract<TerminalRoute, { kind: 'paseo' }>
-  text: string
-}): Promise<Delivery> {
-  const home = route.home ? [
-    '--home',
-    route.home,
-  ] : []
-
-  return typeThenEnter(
-    {
-      command: 'paseo',
-      type: [
-        'terminal',
-        'send-keys',
-        ...home,
-        route.terminal,
-        '-l',
-        '--',
-        pasted({ text }),
-      ],
-      enter: [
-        'terminal',
-        'send-keys',
-        ...home,
-        route.terminal,
-        'Enter',
-      ],
-      options: {},
-      text,
-    },
-  )
-}
-
 async function herdr({
   route,
   text,
@@ -598,10 +561,6 @@ export async function typeInto({
       route,
       text: body,
     })
-    case 'paseo': return await paseo({
-      route,
-      text: body,
-    })
     case 'herdr': return await herdr({
       route,
       text: body,
@@ -643,32 +602,6 @@ export async function pressKey({
           ],
         }),
         command: 'tmux',
-        typed: false,
-      }) ?? { state: 'delivered' }
-    }
-    case 'paseo': {
-      const home = route.home ? [
-        '--home',
-        route.home,
-      ] : []
-      const keys = key === 'enter' ? ['Enter'] : [
-        '-l',
-        '--',
-        SEQUENCE[key],
-      ]
-
-      return outcome({
-        result: await run({
-          command: 'paseo',
-          args: [
-            'terminal',
-            'send-keys',
-            ...home,
-            route.terminal,
-            ...keys,
-          ],
-        }),
-        command: 'paseo',
         typed: false,
       }) ?? { state: 'delivered' }
     }

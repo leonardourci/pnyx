@@ -254,7 +254,7 @@ export function followWorkerLogs({
     }
 
     for (const card of Object.values(state.cards)) {
-      if (card.mirror || watches.has(card.id)) {
+      if (watches.has(card.id)) {
         continue
       }
 

@@ -8,23 +8,9 @@ import { landingRule } from '#tasks/delivery/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 
-export function projectsFor({
-  state,
-  aliases = false,
-}: {
-  state: HydraState
-  aliases?: boolean
-}): (HydraProject & { aliases?: string[] })[] {
-  const hydra = state.config?.hydra
-  const projects = hydra?.kind === 'firstmate' && hydra.home
-    ? firstmateProjects({
-      home: hydra.home,
-      aliases,
-    }) : state.projects ?? []
-
-  return [...projects].sort((
+export function projectsFor({ state }: { state: HydraState }): HydraProject[] {
+  return [...state.projects ?? []].sort((
     a,
     b,
   ) => Number(a.detached) - Number(b.detached)

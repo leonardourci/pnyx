@@ -2,7 +2,6 @@ import type { SourceObservation } from '#tasks/observations.ts'
 import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
 import type { HydraProject, TaskCopy } from '#projects/model.ts'
-import type { FirstmateRecord } from '#integrations/firstmate/model.ts'
 import type { ReportCall } from '#investigations/model.ts'
 import type { Column, HydraColumn } from '#tasks/columns-model.ts'
 import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
@@ -320,10 +319,6 @@ export type HydraChange = EventBase & (
     }
   }
   | {
-    type: 'task.mirrored'
-    data: FirstmateRecord
-  }
-  | {
     type: 'task.launched'
     data: AgentLaunch
   }
@@ -463,7 +458,6 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.ask.closed',
   'task.ask.deferred',
   'task.ask.reopened',
-  'task.mirrored',
   'hydra.message',
   'hydra.status',
   'hydra.received',

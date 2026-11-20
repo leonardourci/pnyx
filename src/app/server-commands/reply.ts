@@ -15,7 +15,6 @@ export function replyCommand({
   send,
   hydraId,
   state,
-  homes,
   closed,
   kick,
   startWorker,
@@ -23,7 +22,6 @@ export function replyCommand({
   name: unknown
   hydraId: string
   state(): HydraState
-  homes(): string[]
   closed(): boolean
   kick(): void
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
@@ -51,10 +49,7 @@ export function replyCommand({
     ref: args[0],
   })
 
-  const found = replyRoute({
-    card,
-    homes: homes(),
-  })
+  const found = replyRoute({ card })
 
   if ('reason' in found && name !== 'task-message') {
     throw new HydraError({
@@ -122,10 +117,6 @@ export function replyCommand({
       hydraId,
       '--actor',
       'web',
-      ...homes().flatMap(h => [
-        '--home',
-        h,
-      ]),
       ...rest,
     ],
     done: ({

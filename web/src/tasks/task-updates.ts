@@ -49,12 +49,8 @@ export function taskTimeline({
   columns: UpdateColumns
 }): TaskUpdate[] {
   const updates = new Map<string, TaskUpdate>()
-  // Firstmate reuses a decision key, the default one most of all: a question after its answer is a new decision.
-  const rounds = new Map<string, number>()
-  const answered = new Set<string>()
   const reasked = new Set<string>()
-  let intent = ''
-  let lastWords = ''
+  let latestStatusOrMove = ''
 
   for (const event of events.toSorted((
     a,
@@ -80,27 +76,6 @@ export function taskTimeline({
       ...row,
     }
 
-    if (row.decision?.questionId?.startsWith('firstmate:')) {
-      const key = row.decision.questionId
-
-      if (row.decision.question && answered.delete(key)) {
-        rounds.set(
-          key,
-          (rounds.get(key) ?? 0) + 1,
-        )
-      }
-
-      if (row.decision.answer) {
-        answered.add(key)
-      }
-
-      update.id = `${key}:${rounds.get(key) ?? 0}`
-      update.decision = {
-        ...row.decision,
-        questionId: update.id,
-      }
-    }
-
     const followsReask = reasked.has(row.decision?.questionId ?? '')
 
     if (row.decision && (row.decision.liftsHold || (followsReask && row.decision.answer))) {
@@ -121,27 +96,12 @@ export function taskTimeline({
       })
     }
 
-    if (event.type === 'card.noted' && row.kind === 'ask' && event.data?.source === 'firstmate') {
-      // Firstmate rewrites the whole intent when a request is added; show only what is new.
-      const added = update.note.startsWith(intent)
-        ? update.note.slice(intent.length).trim()
-        : update.note
-      intent = update.note
-
-      if (!added) {
-        continue
-      }
-
-      update.note = added
-    }
-
-    // A Firstmate move repeats the worker's last status as its reason.
-    if (event.type === 'card.moved' && lastWords && update.note.endsWith(lastWords)) {
+    if (event.type === 'card.moved' && latestStatusOrMove && update.note.endsWith(latestStatusOrMove)) {
       update.note = ''
     }
 
     if (update.note && (row.kind === 'status' || event.type === 'card.moved')) {
-      lastWords = update.note
+      latestStatusOrMove = update.note
     }
 
     const prior = updates.get(update.id)

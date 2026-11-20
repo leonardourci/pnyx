@@ -1,5 +1,7 @@
+import { applySessionFacts, isSessionSource } from '#workers/session-facts.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { observeSession, sessionId } from '#workers/session-attachments.ts'
+import { observeSession, sessionByRef, sessionId } from '#workers/session-attachments.ts'
 import { applyReplyReceipt } from '#workers/reduce.ts'
 import { currentSettings } from '#workers/sessions.ts'
 import { refreshTasks } from './columns.ts'
@@ -29,6 +31,37 @@ export function applyCardEvent({
         return false
       }
 
+      if (event.cardId !== HYDRA_CARD && isSessionSource({ source })) {
+        const agent = fields.agent ?? sessionByRef({
+          state,
+          ref: key,
+        })?.agent
+
+        if (agent) {
+          if (fields.settings) {
+            fields.settings = currentSettings({ settings: fields.settings })
+          }
+
+          applySessionFacts({
+            state,
+            event: {
+              ...event,
+              type: 'session.observed',
+              data: {
+                key,
+                source,
+                fields: {
+                  ...fields,
+                  agent,
+                },
+              },
+            },
+          })
+
+          return true
+        }
+      }
+
       card = {
         id: event.cardId,
         key,
@@ -38,11 +71,6 @@ export function applyCardEvent({
         attention: [],
         links: [],
         sourceRefs: [],
-        ...(fields.agent && (!source || [
-          'hooks',
-          'paseo',
-          'pnyx',
-        ].includes(source.adapter)) ? { automaticTask: true } : {}),
         column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
@@ -269,8 +297,7 @@ export function applyCardEvent({
       const before = event.data.before, after = event.data.after
       const changed = before?.state !== after?.state || before?.note !== after?.note
         || before?.closed !== after?.closed || before?.source !== after?.source
-      const manual = !after?.source && before?.source !== 'firstmate'
-        && !(!after && before?.source === 'hooks')
+      const manual = !after?.source && !(!after && before?.source === 'hooks')
 
       const undone = event.undoes ? card.statusLog?.findIndex(d => d.id === event.undoes) ?? -1 : -1
 

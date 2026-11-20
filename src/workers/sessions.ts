@@ -87,8 +87,6 @@ export function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
     'agentType',
     'cwd',
     'transcriptPath',
-    'paseoAgentId',
-    'paseoUrl',
     'account',
     'loginFolder',
   ] as const

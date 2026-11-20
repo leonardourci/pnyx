@@ -1,3 +1,4 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { workerData, type MessagePort } from 'node:worker_threads'
 import pg from 'pg'
 import { errorDetails } from './error-details.ts'
@@ -62,6 +63,19 @@ const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHE
 if (!PAGE_PUBLICATION) {
   throw new Error('schema.sql has no pnyx_page publication')
 }
+
+const REMOVE_AUTOMATIC_TASK = `with retired as (
+    delete from cards where to_jsonb(cards)->>'automatic_task' = 'true' and id <> '${HYDRA_CARD}'
+    returning hydra_id, id
+  )
+  update sessions set task_id = null, data = jsonb_set(data::jsonb, '{taskId}', 'null'::jsonb)::json
+    from retired where sessions.hydra_id = retired.hydra_id
+      and (sessions.task_id = retired.id or sessions.data->>'taskId' = retired.id);
+  update card_bodies set data = (data::jsonb - 'automaticTask')::json
+    where data::jsonb ? 'automaticTask';
+  update card_references set data = (data::jsonb - 'automaticTask')::json
+    where data::jsonb ? 'automaticTask';
+  alter table cards drop column if exists automatic_task`
 
 const ADD_HYDRA_REMOVAL = 'alter table hydras add column if not exists removed boolean not null default false'
 
@@ -132,7 +146,7 @@ async function requireSchema({
           'create publication pnyx_page for table',
           'alter publication pnyx_page set table',
         )};
-        ${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+        ${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')
@@ -142,7 +156,7 @@ async function requireSchema({
     return
   }
 
-  if ((current === 5 || current === 6 || current === 7) && migrate) {
+  if ((current === 5 || current === 6 || current === 7 || current === 8) && migrate) {
     await client.query('begin')
 
     try {
@@ -153,7 +167,7 @@ async function requireSchema({
         'alter publication pnyx_page set table',
       ))
 
-      await client.query(`${REMOVE_CARD_WIDTHS}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
+      await client.query(`${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
       await client.query('rollback')

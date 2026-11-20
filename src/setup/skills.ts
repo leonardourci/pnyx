@@ -19,6 +19,7 @@ const LEGACY_SKILLS = [
   'pnyx-hydra-workers',
   'pnyx-hydra-columns',
   'pnyx-hydra-firstmate',
+  'pnyx-firstmate-as-hydra',
   'pnyx-setup',
   'pnyx-worker',
   'pnyx-inscribe',
@@ -39,10 +40,8 @@ export const skillSource = ({ name }: { name: string }) => join(
 
 export function removeLegacyHydraSkills({
   folder,
-  owns = () => true,
 }: {
   folder: string
-  owns?: ({ path }: { path: string }) => boolean
 }) {
   for (const name of LEGACY_SKILLS.filter(name => name !== 'pnyx-worker' && name !== 'pnyx')) {
     const path = join(
@@ -65,7 +64,7 @@ export function removeLegacyHydraSkills({
       && lstatSync(join(
         path,
         'SKILL.md',
-      )).isFile() && owns({ path })) {
+      )).isFile()) {
       rmSync(
         path,
         { recursive: true },
@@ -119,34 +118,12 @@ function syncReferences({
 export function copySkills({
   folder,
   names,
-  owns = () => true,
   missing,
 }: {
   folder: string
   names: readonly string[]
-  owns?: ({ path }: { path: string }) => boolean
   missing?: ({ path }: { path: string }) => void
 }): string[] {
-  for (const name of names) {
-    const path = join(
-      folder,
-      '.agents',
-      'skills',
-      name,
-    )
-
-    if (lstatSync(
-      path,
-      { throwIfNoEntry: false },
-    ) && !owns({ path })) {
-      throw new HydraError({
-        code: 'SKILL_CONFLICT',
-        message: `cannot replace existing skill at ${path}`,
-        help: ['Move the existing skill aside, then rerun `pnyx-axi setup hydra`'],
-      })
-    }
-  }
-
   const installed: string[] = []
 
   for (const name of names) {
@@ -212,6 +189,8 @@ export function prepareHelperFolder({
     folder,
     { recursive: true },
   )
+
+  removeLegacyHydraSkills({ folder })
 
   for (const name of HYDRA_SKILLS) {
     rmSync(

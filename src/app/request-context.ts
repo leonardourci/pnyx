@@ -45,7 +45,6 @@ export const IDENTITY = [
   'PNYX_HOSTED',
   'TMUX_PANE',
   'HERDR_PANE_ID',
-  'PASEO_TERMINAL_ID',
 ] as const
 
 export const requestEnv = (): NodeJS.ProcessEnv => current.getStore()?.env ?? process.env
