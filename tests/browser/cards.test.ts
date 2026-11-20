@@ -218,7 +218,13 @@ test(
       ],
     })).toEqual([{ id: task }])
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
-    // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
-    expect(await taskCard.evaluate((element, original) => element === original, card)).toBe(true)
+
+    expect(await taskCard.evaluate(
+      (
+        element,
+        original,
+      ) => element === original,
+      card,
+    )).toBe(true)
   },
 )
