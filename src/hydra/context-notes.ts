@@ -1,7 +1,7 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { askWording } from '#tasks/ask-state.ts'
 import { ownerActor, reportActor } from '#app/actors.ts'
-import { needsMain } from '#routine-helper/state.ts'
+import { activeHelperBatches, needsMain } from '#routine-helper/state.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { historyCommand } from './history-command.ts'
 
@@ -296,8 +296,8 @@ export function contextReportStatus({
     return 'handled'
   }
 
-  const leased = Object.values(state.helper?.runs ?? {}).some(batch =>
-    !batch.error && (batch.seqs.includes(note.seq) || (note.task !== undefined && batch.tasks.includes(note.task))))
+  const leased = activeHelperBatches({ state }).some(batch =>
+    batch.seqs.includes(note.seq) || (note.task !== undefined && batch.tasks.includes(note.task)))
 
   return leased ? 'helper handling' : 'unhandled'
 }
