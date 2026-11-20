@@ -403,6 +403,39 @@ test(
     ))
     expect(markup).toContain('activity-working')
     expect(markup).toContain('Thinking')
+    const nativeTools: Record<string, CurrentAction> = {
+      [child.card.id]: {
+        at: '2000-01-01T00:00:00.000Z',
+        done: false,
+        calls: [
+          {
+            id: 'current-native-tool',
+            tool: 'Bash',
+          },
+        ],
+        work: {
+          runningTurns: ['current-turn'],
+          runningTools: ['current-native-tool'],
+          unsettledInputs: [],
+          pendingControls: [],
+          queue: {
+            knowledge: 'known',
+            count: 0,
+          },
+          background: {
+            knowledge: 'known',
+            tasks: [],
+          },
+        },
+      },
+    }
+    expect(resultMeta({
+      result,
+      state,
+      actions: nativeTools,
+      keys: () => '',
+      now: Date.now(),
+    })).toContain('Working')
     held.release()
   },
 )
