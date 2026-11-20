@@ -100,6 +100,7 @@ function follow({
   let file: FSWatcher | undefined
   let polling: ReturnType<typeof setInterval> | undefined
   let previous: string | undefined
+  let notificationFailed = false
 
   const notify = ({ filename }: { filename?: string } = {}) => {
     if (!closed) {
@@ -112,7 +113,8 @@ function follow({
             name: `watch ${path}`,
             run: () => changed({ filename }),
             retry: () => {
-              previous = ''
+              notificationFailed = true
+              poll()
             },
           })
         }
@@ -167,7 +169,8 @@ function follow({
       }
     }
 
-    const changed = previous !== undefined && current !== previous
+    const changed = notificationFailed || (previous !== undefined && current !== previous)
+    notificationFailed = false
     previous = current
 
     if (changed) {
@@ -188,7 +191,6 @@ function follow({
       interval,
     )
     polling.unref()
-    pollChanged()
   }
 
   background({

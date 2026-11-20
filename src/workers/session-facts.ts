@@ -140,12 +140,15 @@ export function applySessionFacts({
       via = 'paseo'
     }
 
+    const task = state.cards[event.data.task ?? '']
+    const canAttach = task && !fields.agent.agentId && !task.agent && !task.sessionIds?.length
+
     session = {
       id,
       createdBy: event.id,
       agent: { ...fields.agent },
       originCardId: event.data.task ?? '',
-      taskId: fields.agent.agentId ? null : event.data.task ?? null,
+      taskId: canAttach ? task.id : null,
       attention: [],
       sourceRefs: [],
       launch: {

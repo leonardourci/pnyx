@@ -13,10 +13,13 @@ test(
     )
     let attempts = 0
     let observed: string | undefined
+    writeFileSync(
+      path,
+      'before append',
+    )
     const watcher = watchPath({
       path,
       interval: 20,
-      poll: true,
       changed: () => {
         attempts++
 

@@ -3133,6 +3133,32 @@ test(
         '-',
       ],
       input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'unassigned-observation',
+        },
+        activity: 'ended',
+      }),
+    })
+    expect((await hydra.task({ key: 'observed' })).status).toBe('running')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })).sessions).toContainEqual(expect.objectContaining({
+      id: 'claude:unassigned-observation',
+      task: 'none',
+    }))
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
         title: null,
         agent: {
           provider: 'claude',
