@@ -227,8 +227,9 @@ the final column cannot be deleted. Rule edits, reorder and delete first return 
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
 Rules use comma-separated facts as AND, repeated --when as OR, and !fact as NOT.
 The first matching column in display order wins; --clear makes a column manual only.
-Facts: worker:none|working|checks|blocked|hydra|paused|ended, owner-question, held,
+Facts: worker:none|checks|blocked|hydra|paused|ended, owner-question, held,
 pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, done, reminder-due, queued.
+Legacy worker:working remains readable in saved rules; it is no longer emitted for placement.
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]

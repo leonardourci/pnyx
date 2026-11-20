@@ -34,6 +34,7 @@ export type HydraChange = EventBase & (
   | {
     type: 'session.observed'
     data: {
+      key?: string
       cursor?: NonNullable<AgentSession['activityCursor']>
       fields: import('#tasks/model.ts').PushFields & { agent: import('#workers/model.ts').AgentRef }
       before?: import('#tasks/model.ts').PushFields

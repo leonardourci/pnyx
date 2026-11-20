@@ -52,6 +52,7 @@ export function decideSessionFacts({
   task,
   session,
   cursor,
+  key,
 }: {
   state: HydraState
   fields: PushFields & { agent: AgentSession['agent'] }
@@ -60,6 +61,7 @@ export function decideSessionFacts({
   task?: Card
   session?: AgentSession
   cursor?: AgentSession['activityCursor']
+  key?: string
 }): Decision {
   const agent = fields.agent
   const owner = task ?? sessionTask({
@@ -92,6 +94,7 @@ export function decideSessionFacts({
       }),
       type: 'session.observed',
       data: {
+        key,
         cursor,
         fields: {
           ...fields,
