@@ -14,6 +14,7 @@ import { readSavedCommands,saveCommands } from '#web-hydra/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
+import { createPendingTurns, pendingTurns } from '#web-workers/pending-turns.ts'
 import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
@@ -199,6 +200,7 @@ export function createHydraConnection({
         scope: `${namespace}/hydra/${id}/`,
         confirmed: emptyHydra(),
       }),
+      turns: createPendingTurns({ scope: `${namespace}/hydra/${id}/turns` }),
       hasSnapshot: false,
       ready: false,
       subscribed: false,
@@ -465,6 +467,10 @@ export function createHydraConnection({
       upgrade,
       latest: scope.latest,
       actions: scope.actions,
+      pendingTurns: pendingTurns({
+        resource: scope.turns,
+        hydraStatus: resource.confirmed.hydraStatus,
+      }),
       navigation: {
         hydraId: scope.id,
         page: scope.id === selected && (location.pathname.endsWith('/settings/') || new URLSearchParams(location.search).has('settings')) ? 'settings' : 'hydra',
@@ -990,6 +996,7 @@ export function createHydraConnection({
       after: state,
     })
     scope.resource.confirm({ state })
+    scope.turns.confirm({ state: state.cards })
   }
 
   const receive = ({ message }: { message: ServerMessage }) => {

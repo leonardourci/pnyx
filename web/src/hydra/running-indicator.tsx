@@ -12,6 +12,7 @@ export function Running({
   since,
   running,
   label,
+  statusName: labelName,
   reading,
   waiting,
   state,
@@ -20,6 +21,7 @@ export function Running({
   since: string | null
   running: boolean
   label: string
+  statusName?: string
   reading: QueuedUpdate[]
   waiting: QueuedUpdate[]
   state: HydraState
@@ -31,6 +33,11 @@ export function Running({
   ] = useState(() => Date.now())
   useEffect(
     () => {
+      if (!running || !since) {
+        return
+      }
+
+      setNow(Date.now())
       const timer = setInterval(
         () => setNow(Date.now()),
         1000,
@@ -38,7 +45,10 @@ export function Running({
 
       return () => clearInterval(timer)
     },
-    [],
+    [
+      running,
+      since,
+    ],
   )
 
   const words = queueWords({
@@ -51,22 +61,31 @@ export function Running({
   return (
     <div
       className="chat-running absolute left-4 bottom-1.5 z-3 flex flex-wrap items-center gap-y-1 gap-x-2 py-0.5 pr-2 pl-0 rounded-card bg-surface text-muted text-meta tabular-nums max-w-[calc(100%-_--spacing(8))] [&_.working-dots_i]:size-1.25 in-[.chat-frame]:static in-[.chat-frame]:mx-(--chat-inset) in-[.chat-frame]:max-w-[calc(100%-2*var(--chat-inset))] in-[.chat-frame]:py-1 in-[.chat-frame]:px-0 in-[.chat-frame]:flex-none"
-      title={since ? `Started ${clock({
+      title={running && since ? `Started ${clock({
         at: since,
         seconds: true,
       })}` : undefined}
     >
       <span
-        className="chat-running-status inline-flex items-center gap-2 min-w-0 max-w-full [&>:not(.action-bubble)]:shrink-0 [&>:not(.action-bubble)]:whitespace-nowrap"
-        role="status"
-        aria-label={statusName({
-          running,
-          label,
-          words,
-        })}
+        className="chat-running-status inline-flex items-center gap-2 min-w-0 max-w-full [&>:not(.action-bubble,.chat-status-label)]:shrink-0 [&>:not(.action-bubble,.chat-status-label)]:whitespace-nowrap"
       >
         {running && <WorkingDots />}
-        {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
+        {running && since && (
+          <span aria-hidden="true">{duration({
+            ms: Math.max(
+              0,
+              now - Date.parse(since),
+            ),
+          })}
+          </span>
+        )}
+        <span
+          className="chat-status-label min-w-0 break-words"
+          role="status"
+          aria-label={labelName}
+          data-status={label}
+        >{label}
+        </span>
         {children}
         {words && (
           <Tooltip
@@ -107,26 +126,6 @@ export function Running({
 
     </div>
   )
-}
-
-function statusName({
-  running,
-  label,
-  words,
-}: {
-  running: boolean
-  label: string
-  words: string | null
-}): string | undefined {
-  if (running && words) {
-    return `${label}. ${words}`
-  }
-
-  if (running) {
-    return label
-  }
-
-  return words ?? undefined
 }
 
 function queueWords({

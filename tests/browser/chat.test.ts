@@ -402,14 +402,8 @@ test(
       )
         .click()
       const working = [
-        page.locator('.hydra-chat').getByRole(
-          'status',
-          { name: /^Running(?:\.|$)/ },
-        ),
-        page.locator('[data-task]').getByRole(
-          'status',
-          { name: /^Running(?:\.|$)/ },
-        ),
+        page.locator('.hydra-chat .chat-running-status'),
+        page.locator('[data-task] .chat-running-status'),
       ]
 
       for (const line of working) {
@@ -417,7 +411,7 @@ test(
       }
 
       await page.locator('[data-task] .agent-activity').focus()
-      expect(await page.getByRole('tooltip').textContent()).toBe('running')
+      expect(await page.getByRole('tooltip').textContent()).toBe('working')
 
       await setFocusMode({
         hydra,
@@ -426,9 +420,17 @@ test(
       await until({
         what: 'both working lines to stop naming the tool',
         check: async () => {
-          const texts = await Promise.all(working.map(line => line.textContent()))
+          const labelsOnly = await Promise.all(working.map(async line => {
+            const text = await line.textContent()
+            const labelVisible = await line.getByText(
+              'Working',
+              { exact: true },
+            ).isVisible()
 
-          return texts.every(text => text !== null && !text.includes('Running a command'))
+            return labelVisible && text !== null && !text.includes('Running a command')
+          }))
+
+          return labelsOnly.every(Boolean)
         },
       })
     } finally {
