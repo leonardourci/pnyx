@@ -197,7 +197,6 @@ function follow({
       interval,
     )
     polling.unref()
-    pollChanged()
   }
 
   background({
