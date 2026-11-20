@@ -1,6 +1,5 @@
-import { requestEnv } from '#app/request-context.ts'
 import { inform } from '#app/command-notices.ts'
-import { workerIdentity } from './worker-identity.ts'
+import { requirePermissionApprover } from './worker-identity.ts'
 import { randomUUID } from 'node:crypto'
 import { permissionAnswer, permissionEvent } from './permission-rules.ts'
 import type { PermissionRequest } from './model.ts'
@@ -12,7 +11,6 @@ import { isHelper } from '#routine-helper/leases.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { HydraError } from '#store/errors.ts'
-import { HYDRA_ACTOR } from '#app/actors.ts'
 import { explained } from '#app/cli-support.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
@@ -272,22 +270,12 @@ export function createPermissionBridge({
           })
         }
 
-        // Hydra runs pnyx-axi unasked, so it must not clear its own prompts with it.
-        const worker = workerIdentity({ actor })
-        const ownWorker = worker?.task === card.id || worker?.task === card.key
-        const env = requestEnv()
-        const hydraIdentity = actor === HYDRA_ACTOR || env.PNYX_ACTOR === HYDRA_ACTOR
-          || env.PNYX_TASK === HYDRA_CARD
-        const callerHydra = env.PNYX_HYDRA
-        const ownHydra = card.id === HYDRA_CARD && hydraIdentity
-          && (callerHydra === undefined || callerHydra === hydraId)
-        const ownSession = actor === `session:${request.session}`
-
-        if (choice === 'allow' && (ownHydra || ownWorker || ownSession)) {
-          throw new HydraError({
-            message: 'An agent cannot approve its own permission request',
-            code: 'NO_ROUTE',
-            help: ['The owner answers it in Hydra’s chat'],
+        if (choice === 'allow') {
+          requirePermissionApprover({
+            actor,
+            hydraId,
+            card,
+            session: request.session,
           })
         }
 

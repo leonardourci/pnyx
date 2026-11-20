@@ -1,4 +1,6 @@
 import { requireHandoffAvailable } from './handoff-checkout.ts'
+import { requirePermissionApprover } from './worker-identity.ts'
+import { cardSessionId } from './session-attachments.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
@@ -296,6 +298,15 @@ export async function sendReply({
 
         if ('error' in checked) {
           throw invalid({ message: checked.error })
+        }
+
+        if (open.kind === 'permission' && checked.answer.choice === 'allow') {
+          requirePermissionApprover({
+            actor: request.actor ?? 'cli',
+            hydraId,
+            card,
+            session: cardSessionId({ card }),
+          })
         }
 
         text = answerText({
