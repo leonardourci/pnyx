@@ -1,13 +1,17 @@
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
+import { withWriter } from '#app/writer.ts'
+import { applyDecision } from '#app/decision.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
+import * as transcriptReader from '#workers/transcript-read.ts'
 import { flushLogs } from '#app/diagnostics.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
@@ -997,5 +1001,173 @@ test(
       what: 'finished subagent prompt to clear',
       check: async () => (await hydra.task({ key: 'attached' })).status === 'running',
     })
+  },
+)
+
+test(
+  'outside recovery resets rotated snapshots and ignores rebound transcript batches',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const folder = hydra.folder({ name: 'recovery-races' })
+    const rotated = join(
+      folder,
+      'rotated.jsonl',
+    )
+    const rebound = join(
+      folder,
+      'rebound.jsonl',
+    )
+    const replacement = join(
+      folder,
+      'replacement.jsonl',
+    )
+    const timestamp = Date.now()
+    const startedAt = new Date(timestamp).toISOString()
+    const finishedAt = new Date(timestamp + 1).toISOString()
+    const start = `${JSON.stringify({
+      type: 'user',
+      timestamp: startedAt,
+      message: {
+        role: 'user',
+        content: 'Offline work',
+      },
+    })}\n`
+    const finish = `${JSON.stringify({
+      type: 'assistant',
+      timestamp: finishedAt,
+      message: {
+        stop_reason: 'end_turn',
+        content: [],
+      },
+    })}\n`
+    const padding = `${JSON.stringify({
+      type: 'padding',
+      text: 'x'.repeat(1024),
+    })}\n`
+
+    for (const [
+      sessionId,
+      path,
+    ] of [
+        [
+          'rotated-recovery',
+          rotated,
+        ],
+        [
+          'rebound-recovery',
+          rebound,
+        ],
+      ]) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          sessionId!,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent: {
+            provider: 'claude',
+            sessionId,
+            transcriptPath: path,
+          },
+        }),
+      })
+    }
+
+    const nativeRead = transcriptReader.readTranscript
+    let rotatedOnce = false
+    let reboundOnce = false
+    const spy = vi.spyOn(
+      transcriptReader,
+      'readTranscript',
+    ).mockImplementation(({
+      cursor,
+      ...options
+    }) => {
+      const tail = nativeRead({
+        cursor,
+        ...options,
+      })
+
+      if (cursor.source === rotated && tail && !rotatedOnce) {
+        rotatedOnce = true
+        const next = `${rotated}.next`
+        writeFileSync(
+          next,
+          start + padding.repeat(3000) + finish,
+        )
+        renameSync(
+          next,
+          rotated,
+        )
+      }
+
+      if (cursor.source === rebound && tail && !reboundOnce) {
+        reboundOnce = true
+        withWriter({
+          hydraId: hydra.id,
+          fn: ({ writer }) => {
+            const session = writer.state.sessions!['claude:rebound-recovery']!
+            applyDecision({
+              writer,
+              decision: decideSessionFacts({
+                state: writer.state,
+                session,
+                fields: {
+                  agent: {
+                    ...session.agent,
+                    transcriptPath: replacement,
+                  },
+                  activity: 'working',
+                },
+                meta: {
+                  actor: 'pnyx',
+                  at: startedAt,
+                },
+              }),
+            })
+          },
+        })
+      }
+
+      return tail
+    })
+    onTestFinished(() => spy.mockRestore())
+    await pnyx.restart({
+      whileStopped: () => {
+        writeFileSync(
+          rotated,
+          start + padding.repeat(2000),
+        )
+        writeFileSync(
+          rebound,
+          finish,
+        )
+        writeFileSync(
+          replacement,
+          start,
+        )
+      },
+    })
+    const sessions = (await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+        '--full',
+      ],
+    })).sessions
+    expect(rotatedOnce).toBe(true)
+    expect(reboundOnce).toBe(true)
+    expect.soft(sessions).toContainEqual(expect.objectContaining({
+      id: 'claude:rotated-recovery',
+      activity: 'finished',
+      activityCursor: expect.objectContaining({ pos: Buffer.byteLength(readFileSync(rotated)) }),
+    }))
+    const bound = sessions.find((session: { id: string }) => session.id === 'claude:rebound-recovery')
+    expect(bound.agent.transcriptPath).toBe(replacement)
+    expect.soft(bound.activity).toBe('working')
+    expect.soft(bound.activityCursor?.source).not.toBe(rebound)
   },
 )

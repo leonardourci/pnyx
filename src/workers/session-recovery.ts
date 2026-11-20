@@ -39,13 +39,19 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
           break
         }
 
-        if (through === undefined) {
+        if (through === undefined || tail.reset) {
           through = tail.size
         }
 
         withWriter({
           hydraId,
           fn: ({ writer }) => {
+            const bound = writer.state.sessions?.[session.id]
+
+            if (!bound || bound.agent.transcriptPath !== path) {
+              return
+            }
+
             for (const line of tail.lines) {
               const current = writer.state.sessions?.[session.id]
 
