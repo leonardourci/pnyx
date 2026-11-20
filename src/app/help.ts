@@ -122,7 +122,7 @@ Removal runs directly after every copy is proved safe. Copies with unlanded work
 pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 pnyx-axi hydra set [--polis <polis>] [--hydra <id>]
-A Hydra must be on the polis reader list and include the polis in its own read list. The default owner-memory write polis is shared.
+The default owner-memory write polis is shared.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
 At start the server names, once, every Hydra still called by its id or by no name.
@@ -200,7 +200,7 @@ Move a whole document to another polis with owner memory move --key <key> --to <
 Moves accept --if-revision and --if-destination-revision to detect concurrent memory changes.
 shared keeps $PNYX_HOME/owner/memory.jsonl; other poleis use owner/poleis/<polis>/memory.jsonl. Every replacement and removal stays in the log.
 Owner-memory writes use shared by default; hydra set --polis <polis> changes the write destination.
-Use owner memory list's writable documents when editing; memory combines all all owner journals.
+Use owner memory list's writable documents when editing; memory combines all owner journals.
 `,
   column: `usage: pnyx-axi column list
 pnyx-axi column create --title <title> [--id custom:<id>]
