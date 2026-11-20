@@ -239,9 +239,16 @@ export async function mergeCommand({
         })
       } catch (error) {
         if (error instanceof MergeRejectedError) {
+          const rejectedMeta = {
+            ...meta,
+            id: meta.id ? `${meta.id}:rejected` : undefined,
+          }
           commit({
             hydraId,
-            meta,
+            meta: {
+              ...meta,
+              id: meta.id ? `${meta.id}:rejected` : undefined,
+            },
             intent: {
               type: 'card.linked',
               card: card.id,
@@ -261,7 +268,7 @@ export async function mergeCommand({
                   ...current,
                   mergeAttempt: undefined,
                 },
-                meta,
+                meta: rejectedMeta,
               })
             },
           })

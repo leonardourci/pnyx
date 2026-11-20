@@ -1213,7 +1213,38 @@ test(
         'Hold',
       ],
     })
-    const submitted = await asHydra.run({ args: merge })
+    publish({
+      checks: '0 passed, 1 failed, 1 total',
+      mergeBehavior: 'rejected',
+    })
+    expect((await asHydra.refused({
+      args: [
+        ...merge,
+        '--event-id',
+        'rejected-merge',
+      ],
+    })).code).toBe('MERGE_FAILED')
+    const rejected = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'gate',
+        '--full',
+      ],
+    })
+    const rejectedLink = rejected.task.links.find((entry: { url: string }) => entry.url === url)
+    expect(rejectedLink.mergeAttempt ?? null).toBeNull()
+    publish({
+      checks: '0 passed, 1 failed, 1 total',
+      mergeBehavior: 'queued',
+    })
+    const submitted = await asHydra.run({
+      args: [
+        ...merge,
+        '--event-id',
+        'corrected-merge',
+      ],
+    })
     const notices = submitted.notices.map((notice: { reason: string }) => notice.reason).join('\n')
     expect(notices).toContain('owner')
     expect(notices).toContain('red')
@@ -1221,11 +1252,11 @@ test(
       'queued',
       'unknown',
     ]).toContain(submitted.merge)
-    expect(merges({ number: 21 })).toBe(1)
+    expect(merges({ number: 21 })).toBe(2)
 
     await pnyx.restart()
     await asHydra.run({ args: merge })
-    expect(merges({ number: 21 })).toBe(1)
+    expect(merges({ number: 21 })).toBe(2)
   },
 )
 
