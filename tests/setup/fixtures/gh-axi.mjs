@@ -176,7 +176,7 @@ if (args[0] === 'api') {
   )
 
   if (existsSync(malformed) && read({ file: malformed }).branch === branch) {
-    console.log('pull_requests[2]{url}:\n  "https://github.com/example/repo/pull/1"')
+    console.log('pull_requests[1]{url}:\n  null')
     process.exit(0)
   }
 

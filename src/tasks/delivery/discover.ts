@@ -193,10 +193,30 @@ export async function discoverPullRequests({
         continue
       }
 
-      let output: { pull_requests?: { url: string }[] }
+      let requests: ReturnType<typeof parseLink>[]
 
       try {
-        output = decode(result.stdout) as typeof output
+        const output = decode(result.stdout)
+
+        if (!output || typeof output !== 'object' || !('pull_requests' in output)
+          || !Array.isArray(output.pull_requests)) {
+          throw new Error('Expected a pull request list')
+        }
+
+        requests = output.pull_requests.map(request => {
+          if (!request || typeof request !== 'object' || !('url' in request)
+            || typeof request.url !== 'string') {
+            throw new Error('Expected a pull request URL')
+          }
+
+          const link = parseLink({ input: { url: request.url } })
+
+          if (link.kind !== 'github_pr') {
+            throw new Error('Expected a GitHub pull request URL')
+          }
+
+          return link
+        })
       } catch (error) {
         log({
           level: 'warn',
@@ -208,7 +228,7 @@ export async function discoverPullRequests({
         continue
       }
 
-      for (const request of output.pull_requests ?? []) {
+      for (const request of requests) {
         withWriter({
           hydraId,
           fn: ({ writer }) => {
@@ -226,7 +246,7 @@ export async function discoverPullRequests({
                 ref: card.id,
                 url: request.url,
                 link: {
-                  ...parseLink({ input: { url: request.url } }),
+                  ...request,
                   src: 'branch',
                 },
                 meta: {

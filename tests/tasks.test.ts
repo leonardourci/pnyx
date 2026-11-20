@@ -3124,6 +3124,31 @@ test(
       ],
     })).task
     expect(stillAssigned.agent.sessionId).toBe('observed')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'observed',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: null,
+        agent: {
+          provider: 'claude',
+          sessionId: 'observed',
+        },
+      }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })).sessions).toContainEqual(expect.objectContaining({
+      id: 'claude:observed',
+      title: 'none',
+    }))
   },
 )
 

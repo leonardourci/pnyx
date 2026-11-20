@@ -188,9 +188,9 @@ export function applySessionFacts({
     }
   }
 
-  if (fields.title) {
-    session.title = fields.title
-    session.titleSet = true
+  if (fields.title !== undefined) {
+    session.title = fields.title ?? session.autoTitle?.text
+    session.titleSet = fields.title !== null
   }
 
   if (fields.autoTitle) {

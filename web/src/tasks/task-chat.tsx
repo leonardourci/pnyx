@@ -1,4 +1,5 @@
-import { cardStatus, statusLabel } from '#tasks/card-status.ts'
+import { statusLabel } from '#tasks/card-status.ts'
+import { observedStatus } from './observed-status.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, cardSendArgs, RepositoryPicker } from '#web-workers/card-agent.tsx'
@@ -342,7 +343,7 @@ export function TaskChat({
     card: card.id,
   }).tools
   const since = card.workingSince ?? null
-  const status = statusLabel({ status: cardStatus({ card, cards: state.cards }) })
+  const status = statusLabel({ status: observedStatus({ card, state }) })
   const statusLine = (
     <Running
       since={since}
