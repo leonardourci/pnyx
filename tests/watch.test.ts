@@ -1,3 +1,4 @@
+import { quietNativeWatch } from './setup/watch.ts'
 import { watchPath } from '#app/watch.ts'
 import { writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,6 +18,7 @@ test(
       path,
       'before append',
     )
+    const native = quietNativeWatch({ root: path })
     const watcher = watchPath({
       path,
       interval: 20,
@@ -39,6 +41,7 @@ test(
         path,
         'one append',
       )
+      native.change({ path })
       await until({
         what: 'the unchanged file to be reconciled',
         check: () => observed === 'one append',
