@@ -118,11 +118,6 @@ export function SuggestionPicker<T extends PickerItem>({
               bounds.width,
               innerWidth - 16,
             ),
-          },
-        })
-        applyRuntimeStyle({
-          element,
-          values: {
             maxHeight: Math.min(
               320,
               Math.max(
@@ -142,11 +137,6 @@ export function SuggestionPicker<T extends PickerItem>({
                 innerWidth - element.offsetWidth - 8,
               ),
             ),
-          },
-        })
-        applyRuntimeStyle({
-          element,
-          values: {
             top: Math.max(
               8,
               above ? bounds.top - element.offsetHeight - 8 : bounds.bottom + 8,

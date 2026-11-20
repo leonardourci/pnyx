@@ -32,11 +32,11 @@ const CHAT_STYLES = [
 const FIXED_STYLE_VALUE = ':matches([value.type="Literal"], [value.type="UnaryExpression"][value.argument.type="Literal"], [value.type="TemplateLiteral"][value.expressions.length=0])'
 const STYLE_RESTRICTIONS = [
   {
-    selector: 'JSXAttribute[name.name="style"] > JSXExpressionContainer > :not(CallExpression[callee.name="runtimeStyle"])',
+    selector: 'JSXAttribute[name.name="style"]:not([value.type="JSXExpressionContainer"]), JSXAttribute[name.name="style"] > JSXExpressionContainer > :not(CallExpression[callee.name="runtimeStyle"])',
     message: 'Use theme classes for fixed styles and runtimeStyle for measured geometry or owner-selected sizes.',
   },
   {
-    selector: `CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property${FIXED_STYLE_VALUE}, CallExpression[callee.name="applyRuntimeStyle"] > ObjectExpression > Property[key.name="values"] > ObjectExpression > Property${FIXED_STYLE_VALUE}`,
+    selector: `CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property${FIXED_STYLE_VALUE}, CallExpression[callee.name="applyRuntimeStyle"] > ObjectExpression > Property:matches([computed=false][key.name="values"], [key.value="values"]) > ObjectExpression > Property${FIXED_STYLE_VALUE}`,
     message: 'Fixed values belong in the theme or a shared component; runtimeStyle accepts computed values only.',
   },
 ]
@@ -117,7 +117,7 @@ export default tseslint.config(
           },
           restrict: [
             {
-              pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[.*\\]|\\[[a-zA-Z-]+:.+\\])(?:/[^:]+)?!?$',
+              pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[.*\\]|\\[[a-zA-Z0-9_-]+:.+\\])(?:/[^:]+)?!?$',
               message: 'Use a theme token or a shared utility instead of an arbitrary value.',
             },
             {
@@ -125,7 +125,7 @@ export default tseslint.config(
               message: 'Use a theme token or a shared utility instead of an arbitrary value.',
             },
             {
-              pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[[^\\[\\]]*|\\[[a-zA-Z-]+:[^\\[\\]]*)$',
+              pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[[^\\[\\]]*|\\[[a-zA-Z0-9_-]+:[^\\[\\]]*)$',
               message: 'Keep class names complete; computed values belong in runtimeStyle.',
             },
           ],

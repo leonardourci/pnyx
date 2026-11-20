@@ -39,6 +39,10 @@ test(
         rule: 'no-restricted-syntax',
       },
       {
+        source: 'applyRuntimeStyle({ element, "values": { left: 317 } })',
+        rule: 'no-restricted-syntax',
+      },
+      {
         source: 'applyRuntimeStyle({ element, values: { left: -317 } })',
         rule: 'no-restricted-syntax',
       },
@@ -103,6 +107,10 @@ test(
         rule: 'better-tailwindcss/no-restricted-classes',
       },
       {
+        source: '<div className="[--card2_width:317px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
         source: '<div className="![color:red]" />',
         rule: 'better-tailwindcss/no-restricted-classes',
       },
@@ -120,6 +128,10 @@ test(
       },
       {
         source: '<div style={{ width: 317 }} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style="width: 317px" />',
         rule: 'no-restricted-syntax',
       },
       {
