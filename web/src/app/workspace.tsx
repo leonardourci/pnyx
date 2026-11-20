@@ -549,24 +549,39 @@ export function HydraView({
       key: creatingTask.identity,
     } : null)
 
+  const expandedProjectWidths = new Map<string, number>()
+
+  for (const id of expandedIds) {
+    const card = state.cards[id]
+
+    if (!card) {
+      continue
+    }
+
+    const project = taskProjectGroup({
+      state,
+      card,
+    })
+    const width = expandedTaskWidth({ card })
+    const previous = expandedProjectWidths.get(project) ?? 0
+    expandedProjectWidths.set(
+      project,
+      Math.max(
+        previous,
+        width,
+      ),
+    )
+  }
+
   const columnWidth = ({ item }: { item: ProjectColumnData }) => {
     if (view.workspace.foldedProjects.includes(item.id)) {
       return WORKSPACE_SIZING.foldedColumn
     }
 
-    const opened = expandedIds.map(id => state.cards[id]).filter((card): card is Card =>
-      !!card && taskProjectGroup({
-        state,
-        card,
-      }) === item.id)
-
     return projectWidth({
       id: item.id,
       widths: view.workspace.projectWidths,
-      expandedWidth: Math.max(
-        0,
-        ...opened.map(card => expandedTaskWidth({ card })),
-      ),
+      expandedWidth: expandedProjectWidths.get(item.id) ?? 0,
       viewport: viewport.width,
     }).width
   }
@@ -1333,22 +1348,7 @@ export function HydraView({
                           <SortGroup id={`project-columns:${navigation.hydraId}`} items={columns.map(column => column.id)}>
                             {columns.map(c => {
                               const items = c.cards
-                              const openIds = expandedIds.filter(id => {
-                                const card = state.cards[id]
-
-                                return card && taskProjectGroup({
-                                  state,
-                                  card,
-                                }) === c.id
-                              })
-
-                              const openedWidths = openIds.map(id => expandedTaskWidth({
-                                card: state.cards[id]!,
-                              }))
-                              const expandedWidth = Math.max(
-                                0,
-                                ...openedWidths,
-                              )
+                              const expandedWidth = expandedProjectWidths.get(c.id) ?? 0
 
                               return (
                                 <ProjectColumn
