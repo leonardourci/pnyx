@@ -4,7 +4,7 @@ import { useDraftSnapshot, type ChatDrafts } from './chat-drafts.ts'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraChatQueue } from '#hydra/chat-queue.ts'
-import { hostedHydra,hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
@@ -179,8 +179,8 @@ export function HydraChat({
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
-  const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
-  const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
+  const config = hydraConfig({ state }), card = state.cards[HYDRA_CARD]
+  const offerProject = !!addProject && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
   const thread = useChatThread({
     card: HYDRA_CARD,
@@ -204,8 +204,6 @@ export function HydraChat({
     upgradeRunning,
     working,
   } = chatQueue
-  // From the Hydra's own state, so a first send shows its working dots before the server's queue arrives.
-  const hosted = hostedHydra({ state })
   const inFlight = pending.filter(item => item.failed === undefined)
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
@@ -506,7 +504,7 @@ export function HydraChat({
   }
 
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
-  const running = working || (hosted && inFlight.length > 0)
+  const running = working || inFlight.length > 0
   const lookupState = useRef(state)
   lookupState.current = state
   const lookup = useMemo(
@@ -662,7 +660,7 @@ export function HydraChat({
     ],
   )
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
-  const down = hosted ? hydraDown({ status: state.hydraStatus }) : undefined
+  const down = hydraDown({ status: state.hydraStatus })
   const showsTools = traces({
     view,
     card: HYDRA_CARD,
@@ -738,6 +736,7 @@ export function HydraChat({
           })}
           toolDetails={view.toolDetails}
           thinkingDetails={view.thinkingDetails}
+
           retry={retry}
         />
         <DispatchProposals

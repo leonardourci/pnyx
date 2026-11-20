@@ -65,28 +65,19 @@ function migrationPlan({
     id,
     state,
     cards,
-  }) => {
-    if (state.config?.hydra.kind === 'firstmate') {
-      const reason = 'Firstmate owns its project attachment and task moves'
-
-      return cards.length ? cards.map(card => `${card.id} (${card.title}): ${reason}`)
-        : [`Hydra ${id}: ${reason}`]
-    }
-
-    return cards.flatMap(card => {
-      const refusal = moveRefusal({
-        hydraId: id,
-        to,
-        source: state,
-        target,
-        card,
-      })
-      const openPR = card.links.find(link => link.kind === 'github_pr' && link.state === 'open')
-      const reason = refusal?.message ?? (openPR ? `open pull request ${openPR.url}` : undefined)
-
-      return reason ? [`${card.id} (${card.title}): ${reason}`] : []
+  }) => cards.flatMap(card => {
+    const refusal = moveRefusal({
+      hydraId: id,
+      to,
+      source: state,
+      target,
+      card,
     })
-  })
+    const openPR = card.links.find(link => link.kind === 'github_pr' && link.state === 'open')
+    const reason = refusal?.message ?? (openPR ? `open pull request ${openPR.url}` : undefined)
+
+    return reason ? [`${card.id} (${card.title}): ${reason}`] : []
+  }))
 
   if (refused.length) {
     throw new HydraError({

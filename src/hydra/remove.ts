@@ -60,13 +60,6 @@ function removalTarget({
     })
   }
 
-  if (state.config?.hydra.kind === 'firstmate') {
-    throw new HydraError({
-      message: 'Cannot remove a Firstmate Hydra',
-      code: 'CONFLICT',
-    })
-  }
-
   return state
 }
 

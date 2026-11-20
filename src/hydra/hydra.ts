@@ -110,17 +110,14 @@ export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 
   return `<pnyx-report from=${quoted({ value: message.actor })}${task}${kind} message=${quoted({ value: message.id })}>\n${body}\n</pnyx-report>`
 }
 
-// Hydra is a session the Pnyx server runs, not a Firstmate home or an outside agent.
 export function hostedHydra({ state }: { state: HydraState }): boolean {
-  return hydraConfig({ state }).hydra.kind !== 'firstmate' && state.cards[HYDRA_CARD]?.agent?.host === 'pnyx'
+  return state.cards[HYDRA_CARD]?.agent?.host === 'pnyx'
 }
 
-// Pnyx runs this Hydra's agent, or starts it on the next message: not a Firstmate home or an outside agent.
 export function pnyxRunsHydra({ state }: { state: HydraState }): boolean {
   const agent = state.cards[HYDRA_CARD]?.agent
-  const runsHere = !agent || agent.host === 'pnyx'
 
-  return hydraConfig({ state }).hydra.kind !== 'firstmate' && runsHere
+  return !agent || agent.host === 'pnyx'
 }
 
 // The mode a hosted Hydra's session runs in, once it matches the composer's; none mid-switch.

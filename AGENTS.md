@@ -20,7 +20,7 @@ For owner-facing trials in this repository, use an isolated `PNYX_HOME` and port
 
 Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
 
-Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: each test file gets a scratch home, its own copy of a migrated database and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.
+Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, Herdr, tmux or any real terminal: each test file gets a scratch home, its own copy of a migrated database and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.
 
 Every change to behaviour adds or updates tests for it; instruction-only and behaviour-preserving changes need none. Integration tests go in `tests/<area>.test.ts`, run through real `pnyx-axi` commands and the page's data calls against a scratch home and Postgres, with tricky edge cases in the same file. Shared setup goes in `tests/setup/`. A test must survive a rename or refactor that keeps behaviour; write no duplicate, cosmetic or snapshot tests. A bug fix starts with a test that reproduces the bug, and the PR shows that each new test of new or changed behaviour fails without its change.
 
@@ -46,10 +46,10 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 | `src/routine-helper/` | the routine helper: its state, leases, runner and commands |
 | `src/setup/` | setup checks, the hook and skill installers, skill names and the login service |
 | `src/upgrade/` | `/upgrade` and `pnyx-axi upgrade`: the queue, runner and restart |
-| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery. Their commands live in `src/integrations/cli.ts` |
+| `src/integrations/<name>/` | one source per folder (`hooks`, `github`, `command`); each keeps both its reading side and its reply delivery. Their commands live in `src/integrations/cli.ts` |
 | `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/`, and one folder per feature beside them |
 | `setup/` | hook templates per harness |
-| `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `inscribe`, `pnyx-set-up`) |
+| `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `inscribe`, `pnyx-set-up`) |
 | `scripts/build/` | `pnpm run build`, which builds beside `dist` and replaces it only after the build passed |
 | `scripts/fixtures/` | `pnpm refresh-agent-fixtures`, which records the agent sessions the fakes replay |
 | `tests/` | the test suite: one `<area>.test.ts` per area driving a real server through `pnyx-axi` and the page's data calls, a few checks of the real page in `browser/`, and the shared setup, fakes and fixtures in `setup/` |
@@ -63,12 +63,11 @@ CodeRabbit is the on-request challenger before merge, replacing a separate agent
 
 ## Design rules
 
-- Pnyx is a view plus a reply queue over existing tools. Pnyx runs the agents it is asked to start; Hydra still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server inside the Pnyx server, which stops them when it stops and resumes a turn it cut from the saved session when it starts again; a start can instead go through the local Paseo daemon, a Firstmate home or the Hydra's own command, and Pnyx never watches over those.
+- Pnyx is a view plus a reply queue over existing tools. Pnyx runs the agents it is asked to start; Hydra still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server inside the Pnyx server, which stops them when it stops and resumes a turn it cut from the saved session when it starts again; a start can instead go through the Hydra's own command, and Pnyx never watches over those.
 - The server (`pnyx-axi serve`) is the only writer of Hydra state, and `pnyx-axi` is its client: every command except `serve`, `stop`, `restart`, `setup`, `upgrade` and help runs in the server. Pnyx's own data lives in Postgres (`src/store/schema.sql`), one database per Pnyx home. Every change is an event appended to the `events` table, which is append-only. The server keeps each Hydra in memory; each command commits its events and the rows they changed in one transaction, which moves the Hydra's `seq` only from the value the command started at.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same Hydra.
 - No AI model calls or model tokens anywhere in the Hydra's logic. Oracle searches tasks, events and notes with a derived SQLite index, never agent transcripts. Queries catch up only unread events; no index work runs in the background. The server's only token is a local per-install auth token for writes; a Hydra's page also gets it as an HttpOnly cookie for `/zero`. Updates are pushed: the browser gets live agent activity, conversation pages and command receipts over one WebSocket to the server, and Hydra data over Zero's socket at `/zero`. `serve` also runs zero-cache as its child for the page's reads, proxied at `/zero` on the server's own port, with no mutators; zero-cache builds each read from the named queries in `src/store/zero-schema.ts` through the server's `/zero-query` endpoint.
 - Hooks are fast and always exit 0, and they never wait on a network call, browser or model. They print nothing, except the session-start hook, which prints a short summary of the Hydra's open work for the session's project.
-- The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send and inbox commands. The one write is `setup hydra`, which adds the Hydra skills as local, git-excluded skills in the home; Firstmate's tracked files never change.
 - GitHub pull request state comes from `gh-axi`.
 - The CLI follows [AXI](https://axi.md/): compact TOON output, minimal default fields, explicit empty states, structured errors, no prompts and next-step hints.
 

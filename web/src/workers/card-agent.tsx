@@ -67,7 +67,7 @@ export function useCardAgent({
     effort: card.settings?.effort,
   }
   const agent = chosen ?? attached ?? effective?.dispatch.default[0] ?? { harness: DEFAULT_HARNESS }
-  const outside = !!card?.mirror || !!card?.agent && card.agent.host !== 'pnyx'
+  const outside = !!card?.agent && card.agent.host !== 'pnyx'
   const settings = (
     <ComposerSettings>
       <AgentPickers

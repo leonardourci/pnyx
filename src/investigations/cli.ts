@@ -235,7 +235,6 @@ export async function buildCommand({
         }),
         actor: 'pnyx',
         id: `build:${event.id}`,
-        homes: [],
       },
     })
 

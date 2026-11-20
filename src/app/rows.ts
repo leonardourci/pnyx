@@ -286,7 +286,6 @@ function cardSummary({
       sessions: state.sessions,
     }).state ?? null,
     hidden: card.hidden === true,
-    automatic_task: card.automaticTask === true,
     done_at: nullable({ value: card.doneAt }),
     created_seq: card.createdSeq,
     updated_seq: card.updatedSeq,
@@ -371,11 +370,10 @@ function stateRows({
       id: hydraId,
       config: configRest,
       removed: config?.removed === true,
-      // ponytail: a Firstmate home's projects change without an event; the row catches up on the next write.
       summary: summarize({
         id: hydraId,
         state,
-      }).summary,
+      }),
     },
   })
 

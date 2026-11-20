@@ -107,6 +107,10 @@ test(
       CHANGELOG_MESSAGE,
     ])
     expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toHaveLength(1)
+    expect(rows({
+      text: 'select key from cards where hydra_id = $1 order by key',
+      values: [hydra.id],
+    })).toEqual([{ key: '$hydra' }])
 
     const { messages } = await hydra.owner({
       args: [
@@ -771,8 +775,6 @@ test(
           agent: {
             provider: 'claude',
             sessionId: 'attachment-probe',
-            paseoAgentId: 'attachment-probe',
-            paseoUrl: 'ws://127.0.0.1:1/ws',
           },
           activity: 'finished',
         }),
@@ -792,12 +794,12 @@ test(
             '--hydra',
             hydra.id,
           ],
-          connect: () => new Promise((
-            resolve,
-            reject,
-          ) => {
+          probe: () => new Promise(resolve => {
             checkingAttachments = true
-            releaseRead = () => reject(new Error('The attachment probe ended'))
+            releaseRead = () => resolve({
+              state: 'unknown',
+              detail: 'The attachment probe ended',
+            })
           }),
         }),
       })
@@ -1520,7 +1522,35 @@ test(
       )
     }
 
+    const retiredSkills = [
+      'pnyx-firstmate-as-hydra',
+      'pnyx-hydra-firstmate',
+    ].map(name => join(
+      session.cwd,
+      '.agents',
+      'skills',
+      name,
+    ))
+
+    for (const folder of retiredSkills) {
+      mkdirSync(
+        folder,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          folder,
+          'SKILL.md',
+        ),
+        'Retired Firstmate integration',
+      )
+    }
+
     await hydra.chat({ text: 'hello again' })
+
+    for (const folder of retiredSkills) {
+      expect(existsSync(folder)).toBe(false)
+    }
 
     for (const folder of [
       withReferences,

@@ -137,10 +137,7 @@ function requireCardInputTarget({ card }: { card: Card }) {
     })
   }
 
-  const firstmate = !!card.mirror || card.sourceRefs.some(source => source.adapter === 'firstmate')
-  const outside = !!card.sessionIds?.length && card.agent?.host !== 'pnyx'
-
-  if (firstmate || outside) {
+  if (card.sessionIds?.length && card.agent?.host !== 'pnyx') {
     throw new HydraError({
       message: 'Continue this worker in Pnyx before changing its agent',
       code: 'NO_ROUTE',

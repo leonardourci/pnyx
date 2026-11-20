@@ -330,7 +330,6 @@ export function createDiagnosticRecovery({
           expectedSession: candidate.sessionId,
           text: original.data.text,
           id: message,
-          homes: [],
           actor: 'pnyx',
         },
       })

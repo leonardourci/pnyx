@@ -316,7 +316,6 @@ export function parseAutoTitle({ value: rawValue }: { value: unknown }): AutoTit
   }
 }
 
-// Explicit attachments survive folder changes; Firstmate joins also honor its recorded terminal.
 // task is the PNYX_TASK a session was started with: the task it works on, or
 // Hydra's own marker; it outranks the folder join for a session not seen yet.
 export function joinedKey({
@@ -339,13 +338,8 @@ export function joinedKey({
 
   if (recorded) {
     const task = recorded.taskId ? state.cards[recorded.taskId] : undefined
-    const managed = task?.sourceRefs.some(r => r.adapter === 'firstmate')
 
-    const matchesTerminal = !task?.terminal?.paseoTerminal
-      || task.terminal.paseoTerminal === terminal?.paseoTerminal
-
-    return task && (!managed || matchesTerminal)
-      ? task.key : key
+    return task ? task.key : key
   }
 
   if (key in state.keys) {
@@ -360,7 +354,6 @@ export function joinedKey({
       colon,
     ) && r.objectId === sessionId))
 
-  const session = terminal?.paseoTerminal
   const hinted = task ? state.cards[task] : undefined
 
   if (!joined && task === HYDRA_CARD) {
@@ -373,7 +366,6 @@ export function joinedKey({
 
   if (joined) {
     return (!joined.agent || joined.agent.sessionId === sessionId)
-      && (!joined.terminal?.paseoTerminal || joined.terminal.paseoTerminal === session)
       ? joined.key
       : key
   }
@@ -382,18 +374,9 @@ export function joinedKey({
     return key
   }
 
-  const tty = terminal?.tty
-  const ownTerminal = ({ card: c }: { card: Card }) =>
-    !!session && c.terminal?.paseoTerminal === session
-  const succeeds = ({ card: c }: { card: Card }) => !!tty
-    && (c.activity === 'ended' || !c.terminal?.tty || c.terminal.tty === tty)
-  const matches = Object.values(state.cards).filter(c => c.folder === folder
-    && (c.agent
-      ? ownTerminal({ card: c }) && succeeds({ card: c })
-      : !c.terminal?.paseoTerminal || ownTerminal({ card: c })))
-  const own = matches.filter(card => ownTerminal({ card }))
+  const matches = Object.values(state.cards).filter(c => c.folder === folder && !c.agent)
 
-  return own.length === 1 ? own[0]!.key : matches.length === 1 ? matches[0]!.key : key
+  return matches.length === 1 ? matches[0]!.key : key
 }
 
 // The card's value for a push field, null when absent. An auto title counts as absent.

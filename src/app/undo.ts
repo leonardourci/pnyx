@@ -192,7 +192,6 @@ export function decideUndo({
     'task.report',
     'task.report-reviewed',
     'task.landing',
-    'task.mirrored',
     'task.permission',
     'hydra.message',
     'hydra.status',

@@ -1,17 +1,10 @@
-import { REPORT_PROGRESS_SKILL, CLI_SKILL, HYDRA_SKILLS } from '#setup/skill-names.ts'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hookStatus } from '#setup/hooks.ts'
-import { skillSource, skillStatus } from '#setup/skills.ts'
-import { paseoStatus } from '#integrations/paseo/launch.ts'
-import type { Connect } from '#integrations/paseo/client.ts'
+import { skillStatus } from '#setup/skills.ts'
 import { loadHydra } from '#app/store.ts'
 import { onPath } from '#setup/check.ts'
 import { COMMON, guard, parse, type Output } from '#app/cli-support.ts'
-import { AxiError } from 'axi-sdk-js'
-import { hydraIds } from '#app/home-migration.ts'
-import { canonical } from '#store/paths.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { pullRequestNote } from '#integrations/github/pull-request.ts'
 import { withWriter } from '#app/writer.ts'
@@ -20,41 +13,14 @@ import { harvestTranscripts, appendNote } from '#integrations/hooks/harvest.ts'
 
 export async function integrations({
   hydraId,
-  url,
-  connect,
 }: {
   hydraId: string
-  url?: string
-  connect?: Connect
 }): Promise<Output> {
   const config = hydraConfig({
     state: loadHydra({ hydraId }).state,
     id: hydraId,
   })
   const hooks = hookStatus()
-  const paseo = await paseoStatus({
-    url,
-    connect,
-  }).then(
-    () => 'running',
-    (error: Error) => `not running: ${error.message}`,
-  )
-  const home = config.hydra.kind === 'firstmate' ? config.hydra.home : undefined
-  const skills = home ? HYDRA_SKILLS.map(name => ({
-    name,
-    path: join(
-      home,
-      '.agents',
-      'skills',
-      name,
-      'SKILL.md',
-    ),
-  })) : []
-  const skillState = !home || skills.some(({ path }) => !existsSync(path)) ? 'missing'
-    : skills.every(({
-      name,
-      path,
-    }) => readFileSync(path).equals(readFileSync(skillSource({ name })))) ? 'current' : 'outdated'
 
   return {
     hydraId,
@@ -70,18 +36,6 @@ export async function integrations({
         status: hooks === 'current' ? 'ready' : `hook script ${hooks}`,
         setup: 'pnyx-axi setup hooks',
         docs: 'Claude Code and Codex sessions report to the Hydra through them',
-      },
-      {
-        name: 'paseo',
-        status: paseo,
-        setup: 'paseo start',
-        docs: 'https://paseo.sh',
-      },
-      {
-        name: 'firstmate',
-        status: home ? `Hydra ${home}; skills ${skillState}` : 'not configured for this Hydra',
-        setup: `pnyx-axi setup hydra --home <firstmate home> --hydra ${hydraId}`,
-        docs: 'Run `pnyx-axi hydra homes` to list the Firstmate homes and their Hydras',
       },
       {
         name: 'command',
@@ -100,105 +54,28 @@ export async function integrations({
   }
 }
 
-export const INTEGRATIONS_HELP = `usage: pnyx-axi integrations [--hydra <id>] [--paseo-url <url>]
-Lists global skills, hooks, Paseo, Firstmate, the Hydra command and GitHub: whether each is ready and the
+export const INTEGRATIONS_HELP = `usage: pnyx-axi integrations [--hydra <id>]
+Lists global skills, hooks, the Hydra command and GitHub: whether each is ready and the
 command that sets it up. It only reads; nothing is installed or started.
 `
 
 export const integrationsCommand = guard({
   handler: ({ args }) => {
     const {
-      values,
       hydraId,
     } = parse({
       args,
       options: {
         ...COMMON,
-        'paseo-url': { type: 'string' },
       },
       positionals: 0,
     })
 
     return integrations({
       hydraId,
-      url: values['paseo-url'] as string | undefined,
     })
   },
 })
-
-export function firstmateHomes({ base }: { base?: string }): Output {
-  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE
-
-  if (!root) {
-    throw new AxiError(
-      'missing --base',
-      'VALIDATION_ERROR',
-      ['Run `pnyx-axi hydra homes --base <folder holding the homes>`, or set FIRSTMATE_FACTORY_BASE'],
-    )
-  }
-
-  let names: string[] = []
-
-  try {
-    names = readdirSync(
-      root,
-      { withFileTypes: true },
-    ).filter(d => d.isDirectory())
-      .map(d => d.name)
-  } catch { /* No such folder: no homes. */ }
-
-  const homes = names.map(name => join(
-    root,
-    name,
-  )).filter(path =>
-    [
-      'state',
-      'config',
-    ].every(dir => existsSync(join(
-      path,
-      dir,
-    ))) && existsSync(join(
-      path,
-      'bin',
-      'fm-send.sh',
-    )))
-  let hydras: {
-    id: string
-    home?: string
-  }[] = []
-
-  try {
-    hydras = hydraIds().map(id => ({
-      id,
-      home: loadHydra({ hydraId: id }).state.config?.hydra.home,
-    }))
-  } catch { /* An unreadable Hydra links no home. */ }
-
-  if (!homes.length) {
-    return {
-      base: root,
-      homes: 'none: no Firstmate homes found',
-      help: ['Pass --base <folder holding the homes>'],
-    }
-  }
-
-  const rows = homes.map(home => {
-    const real = canonical({ path: home }) ?? home
-    const hydraId = hydras.find(b => b.home === real)?.id
-
-    return {
-      home: real,
-      hydraId: hydraId ?? 'none',
-      ...(hydraId ? {} : { create: `pnyx-axi hydra create --firstmate ${real}` }),
-    }
-  })
-
-  return {
-    base: root,
-    homes: rows,
-    help: ['Each home gets its own Hydra; run the create command of a home without one'],
-  }
-}
 
 // Collects the notes sources already recorded: the cards' transcripts from where
 // the last read stopped, and each linked pull request's title and description.

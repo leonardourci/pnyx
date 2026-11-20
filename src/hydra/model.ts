@@ -6,10 +6,8 @@ import type { EventBase } from '#store/events.ts'
 export interface HydraIdentity {
   agent?: AgentConfig
   id: string
-  kind: 'agent' | 'firstmate'
   name: string
   session?: string
-  home?: string
 }
 
 export interface HydraConfig {
