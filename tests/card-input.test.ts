@@ -84,7 +84,7 @@ test(
 )
 
 test(
-  'a harness switch waits for the live turn and carries its recorded conversation',
+  'a harness switch interrupts the live turn and carries its recorded conversation',
   async () => {
     const hydra = await pnyx.hydra()
     const {
@@ -126,23 +126,8 @@ test(
       'switch-next',
     ]
     await hydra.owner({ args })
-    const queued = await hydra.owner({
-      args: [
-        'task',
-        'chat',
-        'switch',
-      ],
-    })
-    expect(queued.thread.entries).toContainEqual(expect.objectContaining({
-      text: 'Continue with the regression fix',
-      receipt: 'queued',
-      waiting: 'Queued · codex',
-    }))
-    expect(worker.closed).toBe(false)
-    expect(pnyx.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(0)
-    held.release()
     await until({
-      what: 'the next harness starts after the current turn',
+      what: 'the next harness starts without releasing the old turn',
       check: () => pnyx.codex.sessions.some(session =>
         session.cwd === folder && session.answered === 1),
     })
@@ -157,7 +142,7 @@ test(
       ],
     })
     expect(currentThread.thread.entries).toContainEqual(expect.objectContaining({
-      text: 'The parser now rejects an empty input',
+      text: 'Recorded reply.',
     }))
 
     const selected = await hydra.owner({
@@ -170,7 +155,7 @@ test(
       ],
     })
     expect(selected.thread.entries).not.toContainEqual(expect.objectContaining({
-      text: 'The parser now rejects an empty input',
+      text: 'Recorded reply.',
     }))
     expect(next.cwd).toBe(folder)
     expect(worker.closed).toBe(true)
@@ -193,11 +178,30 @@ test(
     })).pending).toBe(0)
     expect(await hydra.owner({ args })).toMatchObject({ state: 'delivered' })
     expect(pnyx.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'switch',
+        '--harness',
+        'codex',
+        '--model',
+        'gpt-6-luna',
+        '--text',
+        'Continue from the idle session',
+      ],
+    })
+    await until({
+      what: 'the idle Codex session to take its next input',
+      check: () => next.answered === 2,
+    })
+    expect(next.received[1]).toContain('Continue from the idle session')
+    expect(pnyx.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
 )
 
 test(
-  'same-harness model changes wait for the next turn and keep the session, and the card send reaches it under the owner\'s id',
+  'same-harness model changes interrupt the turn and keep the session, and the card send reaches it under the owner\'s id',
   async () => {
     const hydra = await pnyx.hydra()
     const {
@@ -224,7 +228,6 @@ test(
       what: 'the current turn is held',
       check: () => worker.received.length === 2,
     })
-    const before = worker.model
     await hydra.owner({
       args: [
         'task',
@@ -242,9 +245,6 @@ test(
         MODEL_SEND,
       ],
     })
-    expect(worker.model).toBe(before)
-    expect(worker.received).toHaveLength(2)
-    held.release()
     await until({
       what: 'the same session receives its next turn',
       check: () => worker.answered === 3,
@@ -252,6 +252,25 @@ test(
     expect(worker.model).toBe('sonnet')
     expect(worker.received[2]).toContain('Check the new model')
     expect(worker.uuids[2]).toBe(MODEL_SEND)
+    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'model',
+        '--text',
+        'Change the idle model',
+        '--harness',
+        'claude',
+        '--model',
+        'opus',
+      ],
+    })
+    await until({
+      what: 'the idle session to take its new model',
+      check: () => worker.answered === 4,
+    })
+    expect(worker.model).toBe('opus')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
   },
 )
@@ -330,7 +349,7 @@ test(
 )
 
 test(
-  'Stop cancels a queued switch and the next Send changes harness immediately',
+  'a Send after Stop changes harness immediately',
   async () => {
     const hydra = await pnyx.hydra()
     const {
@@ -360,35 +379,10 @@ test(
     await hydra.owner({
       args: [
         'task',
-        'send',
-        'stop-switch',
-        '--text',
-        'Wait for this switch',
-        '--harness',
-        'codex',
-        '--event-id',
-        'cancel-switch',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'task',
         'stop',
         'stop-switch',
       ],
     })
-    const stopped = await hydra.owner({
-      args: [
-        'task',
-        'chat',
-        'stop-switch',
-      ],
-    })
-    expect(stopped.thread.entries).toContainEqual(expect.objectContaining({
-      text: 'Wait for this switch',
-      receipt: 'failed',
-      waiting: 'stopped',
-    }))
     expect(pnyx.codex.sessions.filter(session => session.cwd === folder)).toHaveLength(0)
     await hydra.owner({
       args: [
@@ -479,7 +473,7 @@ test(
 )
 
 test(
-  'a queued harness switch survives a Pnyx restart without a second launch',
+  'a delivered harness switch survives a Pnyx restart without a second launch',
   async () => {
     const hydra = await pnyx.hydra()
     const {
@@ -518,6 +512,11 @@ test(
       'restart-switch',
     ]
     await hydra.owner({ args })
+    await until({
+      what: 'the switch to finish before restart',
+      check: () => pnyx.codex.sessions.some(session =>
+        session.cwd === folder && session.answered === 1),
+    })
     await pnyx.restart({ whileStopped: () => held.release() })
     await until({
       what: 'the saved switch reaches the new harness',

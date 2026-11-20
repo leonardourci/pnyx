@@ -35,6 +35,7 @@ export interface NativeSession extends Omit<HostedSession, 'run' | 'attach' | 's
 }
 
 const MAX_PENDING_EVENTS = 1024
+const INTERRUPT_SETTLE_MS = 30_000
 
 type EventType = Exclude<HostedEvent, string>['type']
 type CriticalType = HostedFact['type'] | 'structured' | 'compaction'
@@ -88,6 +89,8 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
   let observe: (({ event }: { event: HostedEvent }) => string | void) | undefined
   let stopError: Error | undefined
   let failure: Error | undefined
+  let inputGeneration = 0
+  const turnWaiters = new Set<() => void>()
   const readers = new Set<{
     queue: HostedEvent[]
     wake(): void
@@ -173,6 +176,12 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
     texts.clear()
     structured = undefined
     work.runningTurns = []
+
+    for (const resume of turnWaiters) {
+      resume()
+    }
+
+    turnWaiters.clear()
     work.queue = { knowledge: 'unknown' }
 
     if (result.queued !== undefined) {
@@ -474,6 +483,46 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
     }
   }
 
+  const interruptTurn = async ({ cancelQueued }: { cancelQueued: boolean }) => {
+    if (!work.runningTurns.length && !work.unsettledInputs.length) {
+      return
+    }
+
+    if (!work.runningTurns.length) {
+      await native.interrupt({ cancelQueued })
+
+      return
+    }
+
+    let resume = () => {}
+    const settled = new Promise<void>((
+      resolve,
+      reject,
+    ) => {
+      const timer = setTimeout(
+        () => reject(new Error('The interrupted turn did not end')),
+        INTERRUPT_SETTLE_MS,
+      )
+
+      resume = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+
+      turnWaiters.add(resume)
+    })
+
+    try {
+      await Promise.all([
+        native.interrupt({ cancelQueued }),
+        settled,
+      ])
+    } finally {
+      resume()
+      turnWaiters.delete(resume)
+    }
+  }
+
   return {
     id: native.id,
     path: native.path,
@@ -487,9 +536,13 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
         value,
       }),
     }),
-    interrupt: ({ cancelQueued }) => control({
-      run: () => native.interrupt({ cancelQueued }),
-    }),
+    interrupt: ({ cancelQueued }) => {
+      if (cancelQueued) {
+        inputGeneration += 1
+      }
+
+      return control({ run: () => interruptTurn({ cancelQueued }) })
+    },
     close() {
       try {
         native.close()
@@ -521,6 +574,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
 
       const messages = async function* () {
         for await (const message of input) {
+          const generation = inputGeneration
           work.unsettledInputs.push(message.id)
           emit({
             event: {
@@ -531,6 +585,26 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
               },
             },
           })
+
+          if (message.ownerMessageId && work.runningTurns.length) {
+            emit({ event: 'carried' })
+            await interruptTurn({ cancelQueued: false })
+          }
+
+          if (generation !== inputGeneration) {
+            emit({
+              event: {
+                type: 'input',
+                receipt: {
+                  inputId: message.id,
+                  phase: 'refused',
+                  stopped: true,
+                },
+              },
+            })
+            continue
+          }
+
           yield message
         }
       }

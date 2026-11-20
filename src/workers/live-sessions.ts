@@ -768,6 +768,7 @@ export function createLiveSessions({
             phase: activity.receipt.phase,
             taken: activity.receipt.at,
             stopped: activity.receipt.stopped,
+            error: activity.receipt.error,
           })
         }
 

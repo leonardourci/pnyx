@@ -135,12 +135,14 @@ export function createHostedDelivery({
     phase,
     taken,
     stopped,
+    error,
   }: {
     entry: Live
     inputId: string
     phase: InputReceipt['phase']
     taken?: string
     stopped?: true
+    error?: string
   }) => {
     const pending = entry.pendingDirect.get(inputId)
 
@@ -166,7 +168,7 @@ export function createHostedDelivery({
         card: pending.card,
         inputId,
         state: 'failed',
-        detail: stopped ? 'stopped' : 'the agent refused this message; nothing was delivered',
+        detail: stopped ? 'stopped' : error ?? 'the agent refused this message; nothing was delivered',
       })
 
       return

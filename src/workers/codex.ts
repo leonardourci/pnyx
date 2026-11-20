@@ -1444,6 +1444,7 @@ export function codexProvider({
                         receipt: {
                           inputId,
                           phase: 'refused',
+                          error: (error as Error).message,
                         },
                       },
                     })

@@ -116,6 +116,7 @@ export type HostedInput = {
 }
 export type InputReceipt = {
   inputId: string
+  error?: string
   // refused: the provider did not give this input to the agent; stopped says an owner Stop cancelled it.
   phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string

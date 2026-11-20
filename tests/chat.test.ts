@@ -88,16 +88,10 @@ test(
     })
 
     await until({
-      what: 'the queue to show Hydra working',
-      check: () => queue({ hydraId: hydra.id })?.working === true,
-    })
-    expect(session.answered).toBe(0)
-
-    turn.release()
-    await until({
-      what: 'Hydra to answer all three messages',
+      what: 'Hydra to interrupt and answer the new messages without releasing the old turn',
       check: () => session.answered === 3,
     })
+    turn.release()
     await until({
       what: 'the queue to show Hydra idle',
       check: () => queue({ hydraId: hydra.id })?.working === false,
@@ -581,7 +575,7 @@ test(
     const page = await hydra.page()
     const wakeTurn = pnyx.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('more worker reports'),
+      match: ({ text }) => text.includes('Why you are woken') && text.includes('more worker reports'),
       hold: true,
     })
     const replacementTurn = pnyx.claude.plan({
@@ -612,14 +606,6 @@ test(
         })
       }
 
-      await hydra.owner({
-        args: [
-          'hydra',
-          'send',
-          '--text',
-          'Keep the owner message intact under the report cap',
-        ],
-      })
       await hydra.owner({
         args: [
           'task',
@@ -682,6 +668,14 @@ test(
         what: 'the timed review to join the report wake',
         check: () => queueBox({ hydraId: hydra.id })?.waiting.some(update => update.kind === 'timed review'),
       })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Keep the owner message intact under the report cap',
+        ],
+      })
       turn.release()
       await until({
         what: 'owner and bounded wake delivered',
@@ -689,7 +683,7 @@ test(
           && queue({ hydraId: hydra.id })?.working === true,
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
-      const wake = session.received.find(text => text.includes('more worker reports'))!
+      const wake = session.received.find(text => text.includes('Why you are woken') && text.includes('more worker reports'))!
       expect(wake).toContain('- report: from worker:burst-0,')
       expect(wake).not.toContain('- report: from worker:burst-299,')
       expect(wake).toContain('Some wake details were shortened or omitted.')
@@ -1326,6 +1320,13 @@ test(
     })
     await hydra.chat({ text: 'plan the migration' })
 
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'and the backups',
+      partial: 'Checking backups',
+      hold: true,
+    })
+
     for (const text of [
       'also check the indexes',
       'and the backups',
@@ -1408,11 +1409,7 @@ test(
       recoveredOwnerMessages.push(messages[0]?.text)
     }
 
-    expect(recoveredOwnerMessages).toEqual([
-      'plan the migration',
-      'also check the indexes',
-      'and the backups',
-    ])
+    expect(recoveredOwnerMessages).toEqual(['and the backups'])
 
     const { messages } = await hydra.owner({
       args: [
@@ -1682,11 +1679,11 @@ test(
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
       hydra: hydra.id,
-      text: 'draft the notes',
-      partial: 'Draft',
+      text: '/compact',
+      compacting: true,
       hold: true,
     })
-    const session = await hydra.chat({ text: 'draft the notes' })
+    const session = await hydra.chat({ text: '/compact' })
     await hydra.owner({
       args: [
         'hydra',
@@ -1746,11 +1743,11 @@ test(
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
       hydra: hydra.id,
-      text: 'draft the notes',
-      partial: 'Draft',
+      text: '/compact',
+      compacting: true,
       hold: true,
     })
-    const session = await hydra.chat({ text: 'draft the notes' })
+    const session = await hydra.chat({ text: '/compact' })
     await hydra.owner({
       args: [
         'hydra',

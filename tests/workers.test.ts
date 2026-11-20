@@ -639,7 +639,7 @@ test(
 )
 
 test(
-  'a worker turn a restart cuts resumes in the same session, the owner\'s message sent meanwhile waits in its inbox once, and the chat shows only that message as the owner\'s, with or without the session named',
+  'a worker turn a restart cuts resumes in the same session, the owner\'s message interrupts and is delivered once, and the chat shows only that message as the owner\'s, with or without the session named',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'migration' })
@@ -671,6 +671,12 @@ test(
       ],
     })
     const cut = await hydra.agent({ cwd: folder })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Also migrate the archive'),
+      partial: 'Archive migration',
+      hold: true,
+    })
     await hydra.owner({
       args: [
         'reply',
@@ -680,14 +686,14 @@ test(
       ],
     })
 
+    await until({
+      what: 'the worker to take the owner input',
+      check: () => cut.received.some(text => text.includes('Also migrate the archive')),
+    })
     await pnyx.restart()
     const resumed = await until({
       what: 'the worker to resume after the restart',
       check: () => pnyx.claude.sessions.find(session => session.cwd === folder && session.resumed),
-    })
-    await until({
-      what: 'the resumed worker to hear of the unread message',
-      check: () => resumed.received.some(message => message.includes('inbox')),
     })
     const inbox = await hydra.as({ session: resumed }).run({
       args: [
@@ -1024,7 +1030,7 @@ test(
 )
 
 test(
-  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Hydra\'s steering, marks the card stopped, and refuses a worker asking to Stop',
+  'Stop on a worker keeps delivered owner input and unread Hydra steering, marks the card stopped, and refuses a worker asking to Stop',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'stoppable' })
@@ -1063,6 +1069,12 @@ test(
     })
     const hydraSession = await hydra.chat({ text: 'look at the stoppable task' })
 
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('owner follow-up'),
+      partial: 'Following up',
+      hold: true,
+    })
     await hydra.owner({
       args: [
         'reply',
@@ -1114,7 +1126,7 @@ test(
     })).stopped).toMatch(/^task-/)
     expect((await hydra.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
-      what: 'the owner\'s reply to read as not delivered',
+      what: 'the owner\'s reply to remain delivered',
       check: async () => (await hydra.owner({
         args: [
           'task',
@@ -1125,7 +1137,7 @@ test(
         text: string
         receipt?: string
       }) =>
-        entry.text === 'owner follow-up' && entry.receipt === 'failed'),
+        entry.text === 'owner follow-up' && entry.receipt === 'delivered'),
     })
     expect(JSON.stringify((await hydra.task({ key: 'stoppable' })).attention)).toContain('interrupted')
 
@@ -1142,7 +1154,7 @@ test(
     expect(times({
       sessions: [worker],
       text: 'owner follow-up',
-    })).toBe(0)
+    })).toBe(1)
   },
 )
 
