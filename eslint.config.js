@@ -4,10 +4,28 @@ import objectParams from './eslint/object-params.js'
 import stylistic from '@stylistic/eslint-plugin'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
+import tailwind from 'eslint-plugin-better-tailwindcss'
 
 // A specifier into another folder: one that climbs with ../ or descends with ./<folder>/.
 const OTHER_FOLDER = /^(\.\.\/|\.\/.*\/)/
 const USE_ALIASES = 'Import a file in another folder through the package.json aliases: #<folder>/<file>.ts for src/, #web-<folder>/<file> for web/src/.'
+
+const IMPORT_RESTRICTIONS = [
+  {
+    selector: `ImportExpression[source.value=${OTHER_FOLDER}]`,
+    message: USE_ALIASES,
+  },
+  {
+    selector: `TSImportType[argument.literal.value=${OTHER_FOLDER}]`,
+    message: USE_ALIASES,
+  },
+]
+
+// Chat rebuild removes this temporary styling exception and its scoped file list.
+const CHAT_STYLES = [
+  'web/src/hydra/**/*.{ts,tsx}',
+  'web/src/tasks/worker-chat.tsx',
+]
 
 export default tseslint.config(
   {
@@ -35,6 +53,54 @@ export default tseslint.config(
   {
     files: ['web/**'],
     languageOptions: { globals: globals.browser },
+  },
+  {
+    files: ['web/**/*.{ts,tsx}'],
+    ignores: CHAT_STYLES,
+    plugins: { 'better-tailwindcss': tailwind },
+    settings: {
+      'better-tailwindcss': {
+        entryPoint: './web/src/index.css',
+        selectors: {
+          extends: [
+            {
+              kind: 'variable',
+              name: '^(?:.*CLASSES|.*_CLASS|.*_TONE|VARIANTS|SIZES|ROWS|BADGE_COLORS|DATE_EDITOR|SETTING_STACK|appearance|tone|border|selection|layout|fill|button|color|vertical|classes|className)$',
+              match: [
+                { type: 'strings' },
+                { type: 'objectValues' },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    rules: {
+      'better-tailwindcss/enforce-consistent-class-order': 'error',
+      'better-tailwindcss/no-restricted-classes': [
+        'error',
+        {
+          selectors: {
+            extends: [
+              {
+                kind: 'variable',
+                name: '.*',
+                match: [
+                  { type: 'strings' },
+                  { type: 'objectValues' },
+                ],
+              },
+            ],
+          },
+          restrict: [
+            {
+              pattern: '(?:^|:)(?:!?[a-zA-Z0-9-]+-\\[.*\\]|\\[[a-zA-Z-]+:[^\\]]+\\])(?:/[^:]+)?!?$',
+              message: 'Use a theme token or a shared utility instead of an arbitrary value.',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     plugins: {
@@ -283,13 +349,24 @@ export default tseslint.config(
       ],
       'no-restricted-syntax': [
         'error',
+        ...IMPORT_RESTRICTIONS,
+      ],
+    },
+  },
+  {
+    files: ['web/**/*.{ts,tsx}'],
+    ignores: CHAT_STYLES,
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...IMPORT_RESTRICTIONS,
         {
-          selector: `ImportExpression[source.value=${OTHER_FOLDER}]`,
-          message: USE_ALIASES,
+          selector: 'JSXAttribute[name.name="style"] > JSXExpressionContainer > :not(CallExpression[callee.name="runtimeStyle"])',
+          message: 'Use theme classes for fixed styles and runtimeStyle for measured geometry or owner-selected sizes.',
         },
         {
-          selector: `TSImportType[argument.literal.value=${OTHER_FOLDER}]`,
-          message: USE_ALIASES,
+          selector: 'CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property[value.type="Literal"]',
+          message: 'Fixed values belong in the theme or a shared component; runtimeStyle accepts computed values only.',
         },
       ],
     },
