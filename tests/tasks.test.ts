@@ -641,6 +641,29 @@ test(
       launch: 'held',
       hold: 'The owner wants to talk first',
     })
+    const goQuestion = (held.help[0] as string).split('`')[1]!
+      .replace(
+        '<go question?>',
+        'Rename the API now?',
+      )
+      .replace(
+        '<what Go changes>',
+        'Go starts the rename',
+      )
+    const goArgs = goQuestion.match(/"[^"]*"|\S+/g)!.slice(1)
+      .map(arg => arg.replace(
+        /^"|"$/g,
+        '',
+      ))
+    expect(await hydra.owner({
+      args: [
+        ...goArgs,
+        '--actor',
+        'hydra',
+        '--reason',
+        'The owner wants to talk first',
+      ],
+    })).toMatchObject({ ask: expect.any(String) })
 
     const start = await hydra.ownerRefused({
       args: [

@@ -27,7 +27,7 @@ const QUESTION_CHOICES: Record<NonNullable<Ask['kind']>, string> = {
 }
 
 export function goQuestionCommand({ task }: { task: string }): string {
-  return `pnyx-axi task ask ${task} --to owner --kind go --question "<go question?>" --context "<what Go changes>"`
+  return `pnyx-axi task ask ${task} --to owner --kind go --question "<go question?>" --context "<what Go changes>. [Card](pnyx-task:${encodeURIComponent(task)})"`
 }
 
 export function holdBlocker({
