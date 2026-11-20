@@ -311,6 +311,35 @@ test(
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
+      beforeLoad: async ({ page }) => {
+        let refusedOlder = false
+        await page.routeWebSocket(
+          /\/ws(\?|$)/,
+          socket => {
+            const server = socket.connectToServer()
+            socket.onMessage(message => {
+              const sent = JSON.parse(String(message))
+              const older = sent.name === 'task' && sent.args?.[0] === 'updates'
+              && sent.args.includes('--before')
+
+              if (older && !refusedOlder) {
+                refusedOlder = true
+                socket.send(JSON.stringify({
+                  type: 'error',
+                  scope: sent.scope,
+                  id: sent.id,
+                  code: 'UPDATES_UNAVAILABLE',
+                  error: 'The updates are unavailable',
+                }))
+
+                return
+              }
+
+              server.send(message)
+            })
+          },
+        )
+      },
     })
     await page.getByRole(
       'button',
@@ -327,10 +356,31 @@ test(
       },
     ).click()
     const updates = page.locator(`[data-task="${card.id}"] .update-row`)
+    const region = page.getByRole(
+      'region',
+      {
+        name: 'Task updates',
+        exact: true,
+      },
+    )
+    await region.getByRole('alert').waitFor()
+    expect(await updates.count()).toBe(50)
+    const beforeRetry = await updates.elementHandles()
+    await region.getByRole(
+      'button',
+      {
+        name: 'Try again',
+        exact: true,
+      },
+    ).click()
     await until({
       what: 'every update loaded without scrolling',
       check: async () => await updates.count() === 66,
     })
+    expect(await page.evaluate(
+      nodes => nodes.every(node => node.isConnected),
+      beforeRetry,
+    )).toBe(true)
     const originals = await updates.elementHandles()
     const retained = await page.locator(`[data-task="${card.id}"] [role="tabpanel"]:visible`).evaluate(async element => {
       const rows = [...element.querySelectorAll('.update-row')]
@@ -359,11 +409,18 @@ test(
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
+      const maximum = element.scrollHeight - element.clientHeight
+      element.scrollTop = maximum
+      const bottom = element.scrollTop
       observer.disconnect()
 
-      return rows.every(row => row.isConnected) && !rows.some(row => removed.includes(row))
+      return {
+        retained: rows.every(row => row.isConnected) && !rows.some(row => removed.includes(row)),
+        bottom,
+      }
     })
-    expect(retained).toBe(true)
+    expect(retained.retained).toBe(true)
+    expect(retained.bottom).toBeGreaterThan(0)
     await hydra.owner({
       args: [
         'task',
@@ -376,6 +433,31 @@ test(
     await until({
       what: 'the live update',
       check: async () => await updates.count() === 67,
+    })
+    await hydra.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: Array.from(
+          { length: HISTORY_EDITS },
+          (
+            _,
+            index,
+          ) => ({
+            op: 'task.brief',
+            task: 'history',
+            brief: `Live burst ${index}`,
+          }),
+        ),
+      }),
+    })
+    await until({
+      what: 'every burst update without replacing history',
+      check: async () => await updates.count() === 132,
     })
     expect(await page.evaluate(
       nodes => nodes.every(node => node.isConnected),

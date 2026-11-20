@@ -11,12 +11,10 @@ export type CardUpdates = {
   loading: boolean
   error: string | undefined
   // Reads the page after the last one held; does nothing while a read is on its way or nothing is older.
-  older(): Promise<void>
+  loadOlder(): Promise<void>
   retry(): void
 }
 
-// A card's Updates, read from the server a page at a time: the newest page when the card opens and whenever the Hydra
-// moves on, older pages when asked.
 export function useCardUpdates({
   task,
   command,
@@ -82,7 +80,30 @@ export function useCardUpdates({
 
       const readNewest = async () => {
         try {
-          const page = await read({})
+          let page = await read({})
+          const newestHeld = latest.current?.events[0]?.seq
+
+          while (page.older !== undefined && newestHeld !== undefined
+            && (page.events.at(-1)?.seq ?? 0) > newestHeld) {
+            const before = page.older
+            const older = await read({ before })
+
+            if (reading.current !== current) {
+              return
+            }
+
+            if (older.older !== undefined && older.older >= before) {
+              throw new Error('The update history cursor did not advance')
+            }
+
+            page = {
+              events: [
+                ...page.events,
+                ...older.events,
+              ],
+              older: older.older,
+            }
+          }
 
           if (reading.current !== current) {
             return
@@ -126,7 +147,7 @@ export function useCardUpdates({
     list,
     loading: loading && !list,
     error,
-    older: async () => {
+    loadOlder: async () => {
       const before = latest.current?.older
 
       if (before === undefined || olderReading.current) {

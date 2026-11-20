@@ -23,7 +23,7 @@ export function TaskUpdates({
     list,
     loading,
     error,
-    older,
+    loadOlder,
     retry,
   } = useCardUpdates({
     task: card.id,
@@ -35,7 +35,7 @@ export function TaskUpdates({
   useEffect(
     () => {
       if (connected && list?.older !== undefined && !error) {
-        void older()
+        loadOlder()
       }
     },
     [
