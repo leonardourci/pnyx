@@ -10,6 +10,7 @@ import { commandArguments, editTargets } from './pending-state.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Scope, Request, HydraListResource } from './connection-model.ts'
 import type { Receipt } from './connection.ts'
+import { turnTarget } from '#web-workers/pending-turns.ts'
 
 const chatRead = ({ request }: { request: { name: string } }) => request.name === 'thread'
 
@@ -319,6 +320,41 @@ export function createConnectionRequests({
         })
       }
 
+      const state = scope.resource.snapshot().confirmed
+      const target = turnTarget({
+        name,
+        args,
+        state,
+      })
+
+      if (target) {
+        const existing = scope.turns.snapshot().intents.find(intent => intent.id === id)
+
+        if (existing?.stage === 'refused' || existing?.stage === 'unknown') {
+          scope.turns.retry({ id })
+        } else if (!existing) {
+          const card = state.cards[target]
+          const message = name === 'reply' ? args[2] : argument({
+            args,
+            flag: '--event-id',
+          })
+          const wasWorking = (card?.sessionActivity ?? card?.activity) === 'working'
+          scope.turns.enqueue({
+            id,
+            targets: [target],
+            delivery: 'idempotent',
+            patch: {
+              card: target,
+              message,
+              afterSeq: state.seq,
+              wasWorking,
+              turnStartedAt: card?.turnStartedAt,
+              stoppedAt: card?.stoppedAt,
+            },
+          })
+        }
+      }
+
       requests.set(
         id,
         {
@@ -413,6 +449,11 @@ export function createConnectionRequests({
         })
       }
 
+      scope.turns.refuse({
+        id: request.id,
+        error,
+      })
+
       if (request.creation) {
         hydras.refuse({
           id: request.creation,
@@ -428,6 +469,24 @@ export function createConnectionRequests({
 
       request.reject({ error })
     } else {
+      const reply = message.reply && typeof message.reply === 'object' ? message.reply : undefined
+      const replyFailed = reply && 'state' in reply && reply.state === 'failed'
+
+      if (message.state === 'failed' || replyFailed) {
+        const replyDetail = replyFailed && 'detail' in reply ? reply.detail : undefined
+        const reason = typeof replyDetail === 'string' ? replyDetail : message.detail
+        const detail = typeof reason === 'string' ? reason : 'Turn could not start'
+        scope.turns.refuse({
+          id: request.id,
+          error: new CommandFailure({
+            message: detail,
+            code: 'START_FAILED',
+          }),
+        })
+      } else {
+        scope.turns.accept({ id: request.id })
+      }
+
       if (request.optimistic) {
         scope.resource.acknowledge({
           id: request.id,

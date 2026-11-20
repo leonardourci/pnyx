@@ -21,7 +21,7 @@ The receipt shows the started worker, or why it did not start, and lists anythin
 ## Rules
 
 - Running and idle come from hosted turns and installed hooks. Workers append status and links to their task’s `worker.log`; a `note` changes only the latest line.
-
+- Each turn's task-card section is current: a full open-card snapshot at session start or compaction, then changed cards. Read the full list with `pnyx-axi task list --hydra <hydra>` and details with `task show <task> --full`.
 - Ask the owner only about what the ask doesn't settle, a merge the project's rule leaves to them, or a destructive step. Decide the rest yourself; a worker's report or recommendation is evidence, never the owner's word.
 - Report results and blockers you cannot clear to the owner with their links. Routine progress stays on the card. Every owner message gets a reply.
 - Never do a worker's job: no editing project files, running tests or builds, investigating code, reviewing diffs or driving browsers. A quick read to answer the owner is fine.

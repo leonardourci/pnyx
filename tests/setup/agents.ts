@@ -42,6 +42,7 @@ export interface AgentSession {
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
+  contexts?: string[]
   uuids: (string | undefined)[]
   // Received messages whose turn ended.
   answered: number
@@ -191,6 +192,7 @@ export function fakeClaude() {
       cwd: options.cwd!,
       env: options.env,
       received: [],
+      contexts: [],
       uuids: [],
       answered: 0,
       closed: false,
@@ -388,6 +390,30 @@ export function fakeClaude() {
         }
 
         if (plan?.compacting && plan.compactTo !== undefined && !interrupted) {
+          for (const matcher of options.hooks?.SessionStart ?? []) {
+            for (const hook of matcher.hooks) {
+              const output = await hook(
+                {
+                  hook_event_name: 'SessionStart',
+                  source: 'compact',
+                  session_id: id,
+                  transcript_path: transcript,
+                  cwd: session.cwd,
+                },
+                undefined,
+                { signal: new AbortController().signal },
+              )
+
+              if ('hookSpecificOutput' in output && output.hookSpecificOutput?.hookEventName === 'SessionStart') {
+                const context = output.hookSpecificOutput.additionalContext
+
+                if (context) {
+                  session.contexts?.push(context)
+                }
+              }
+            }
+          }
+
           appendFileSync(
             transcript,
             `${JSON.stringify({

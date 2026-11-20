@@ -15,6 +15,7 @@ import { runForClient } from '#app/request-context.ts'
 import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
+import { startReviewTimer } from '#hydra/review-timer.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
@@ -699,7 +700,11 @@ test(
       expect(wake).toContain('- report: from worker:burst-0,')
       expect(wake).not.toContain('- report: from worker:burst-299,')
       expect(wake).toContain('Some wake details were shortened or omitted.')
-      expect(wake.length).toBeLessThan(12_000)
+      const updates = wake.replace(
+        /<pnyx-digest[\s\S]*?<\/pnyx-digest>\s*/,
+        '',
+      )
+      expect(updates.length).toBeLessThan(12_000)
       expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
       expect(wake).not.toContain('Long report body '.repeat(30))
       expect(wake).toContain('Open decisions (1):')
@@ -1200,6 +1205,8 @@ test(
       env: process.env,
     })).stdout
     expect(digest).toContain('Invoice report handled in background')
+    expect(digest.split('\n').find(line => line.startsWith(`- ${id} ·`)))
+      .toContain('helper: Invoice report is ready.')
     expect(digest).toMatch(/\[unhandled\] \(progress\): New invoice progress during the helper lease/)
     const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice report handled in background/)?.[1]
     expect(reportSeq).toBeDefined()
@@ -1267,6 +1274,8 @@ test(
         check: () => main.received.some(text => text.includes('Summarize the invoice status')),
       })
       const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
+      expect(delivered.split('\n').find(line => line.startsWith(`- ${id} ·`)))
+        .toContain('helper: Invoice report is ready.')
       expect(delivered).toContain('[handled]')
       expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
     } finally {
@@ -2672,6 +2681,537 @@ test(
       hydra,
       text: 'held after the stop',
     })
+    page.close()
+  },
+)
+
+test(
+  'timed reviews wake Hydra for a quiet running card and stay quiet for healthy or unchanged work',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const previous = (await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })).settings.reviewMinutes
+    await hydra.chat({ text: 'Prepare heartbeat review' })
+    await until({
+      what: 'Hydra to finish preparing',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"reviewMinutes":1}',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'heartbeat-worker',
+        '--title',
+        'Heartbeat fixture',
+        '--no-start',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'heartbeat-worker',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Heartbeat fixture',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'heartbeat-fixture',
+        },
+        activity: 'working',
+      }),
+    })
+    const task = await hydra.task({ key: 'heartbeat-worker' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        task.id,
+        '--actor',
+        `worker:${task.id}`,
+        '--kind',
+        'progress',
+        '--text',
+        'Worker started preparing the change',
+      ],
+    })
+    expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
+    let now = Date.now()
+    await hydra.owner({
+      args: [
+        'task',
+        'remind',
+        'heartbeat-worker',
+        new Date(now + 30 * 60_000).toISOString(),
+      ],
+    })
+    let wakes = 0
+    const timer = startReviewTimer({
+      hydraId: hydra.id,
+      now: () => now,
+      wake: () => {
+        wakes++
+      },
+      interval: () => () => {},
+    })
+
+    try {
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(0)
+      now += 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(1)
+      const review = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(review.events[0].data.block).toContain('quiet worker: Running with no update since')
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(1)
+      withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => {
+          writer.append({
+            event: {
+              v: writer.state.v,
+              seq: writer.state.seq + 1,
+              id: 'heartbeat-green-pr',
+              cardId: task.id,
+              actor: 'pnyx',
+              at: new Date(now).toISOString(),
+              type: 'card.linked',
+              data: {
+                url: 'https://github.com/example/app/pull/42',
+                before: null,
+                after: {
+                  kind: 'github_pr',
+                  url: 'https://github.com/example/app/pull/42',
+                  state: 'open',
+                  draft: false,
+                  checks: '1 passed, 0 failed, 1 total',
+                  checkedAt: new Date(now).toISOString(),
+                },
+              },
+            },
+          })
+        },
+      })
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(2)
+      const green = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(green.events[0].data.block).toContain('green unmerged PR: https://github.com/example/app/pull/42')
+      expect(green.events[0].data.block).toContain('quiet worker: Running with no update since')
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(2)
+      await hydra.owner({
+        args: [
+          'task',
+          'ask',
+          'heartbeat-worker',
+          '--to',
+          'owner',
+          '--question',
+          'Which account?',
+          '--context',
+          `An account choice is needed. [Heartbeat](pnyx-task:${task.id})`,
+          '--choice',
+          'Personal',
+          '--choice',
+          'Team',
+          '--recommend',
+          '1',
+          '--actor',
+          'hydra',
+        ],
+      })
+      now += 4 * 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(3)
+      const overdue = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(overdue.events[0].data.block).toContain('question reminder:')
+      expect(overdue.events[0].data.block).toContain('Which account?')
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(3)
+      withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => {
+          writer.append({
+            event: {
+              v: writer.state.v,
+              seq: writer.state.seq + 1,
+              id: 'heartbeat-hydra-question',
+              cardId: HYDRA_CARD,
+              actor: 'hydra',
+              at: new Date(now).toISOString(),
+              type: 'task.asked',
+              data: {
+                id: 'hydra-account',
+                audience: 'owner',
+                question: 'Can Hydra use the team account?',
+              },
+            },
+          })
+        },
+      })
+      now += 4 * 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(4)
+      const ownQuestion = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(ownQuestion.events[0].data.block).toContain('Can Hydra use the team account?')
+      now += 60_000
+      await timer.check()
+      now += 4 * 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(4)
+    } finally {
+      timer.close()
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({ reviewMinutes: previous }),
+        ],
+      })
+    }
+  },
+)
+
+test.each([
+  { harness: 'claude' },
+  { harness: 'codex' },
+])(
+  'each Hydra turn receives changed task cards with worker links and skips unchanged cards ($harness)',
+  async ({ harness }) => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await chooseAgent({
+      page,
+      agent: { harness },
+    })
+    const { worker: reviewWorker } = await hydra.startTask({ key: 'review-page' })
+    await hydra.startTask({ key: 'unchanged-card' })
+
+    for (let index = 0; index < 41; index++) {
+      expect((await page.send({
+        name: 'task',
+        args: [
+          'create',
+          '--key',
+          `snapshot-${index}`,
+          '--title',
+          `Snapshot card ${index}`,
+          '--no-start',
+        ],
+      })).type).toBe('receipt')
+    }
+
+    const session = await hydra.chat({ text: 'Read the initial cards' })
+    expect(session.received[0]).toContain('Snapshot card 40')
+    await until({
+      what: 'the initial turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/lavish Design review',
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/preview App preview',
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'send',
+        'review-page',
+        '--text',
+        'Use the blue layout on the review page',
+        '--harness',
+        'claude',
+      ],
+    })
+    await until({
+      what: 'the owner message to reach the worker',
+      check: () => reviewWorker.received.some(text => text.includes('Use the blue layout on the review page')) && reviewWorker.answered === 2,
+    })
+    await until({
+      what: 'the worker to finish its reply',
+      check: async () => (await hydra.task({ key: 'review-page' })).status === 'idle',
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'note: Review page is in progress',
+    })
+    const reviewTask = await hydra.task({ key: 'review-page' })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        reviewTask.id,
+        '--actor',
+        `worker:${reviewTask.id}`,
+        '--kind',
+        'progress',
+        '--text',
+        'Review page is ready',
+      ],
+    })
+    await hydra.chat({ text: 'Read the changed cards' })
+    const changed = session.received.find(text => text.endsWith('Read the changed cards'))!
+    const digest = changed.slice(
+      0,
+      changed.indexOf('</pnyx-digest>'),
+    )
+    expect(digest).toContain('Task cards (changed since your last turn):')
+    expect(digest).toContain('Review page is ready')
+    expect(digest).toContain('owner: Use the blue layout on the review page')
+    expect(digest.indexOf('owner: Use the blue layout')).toBeLessThan(digest.indexOf('latest: Review page is ready'))
+    expect(digest).toContain('https://example.com/lavish')
+    expect(digest).toContain('https://example.com/preview')
+    expect(digest).not.toContain('unchanged-card')
+    expect(digest).toContain('Open cards: 2 idle, 41 not started, no reason given')
+    await until({
+      what: 'the changed turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the unchanged cards' })
+    const unchanged = session.received.find(text => text.endsWith('Read the unchanged cards'))!
+    const nextDigest = unchanged.slice(
+      0,
+      unchanged.indexOf('</pnyx-digest>'),
+    )
+    expect(nextDigest).not.toContain('Review page is ready')
+    expect(nextDigest).not.toContain('Use the blue layout on the review page')
+    expect(nextDigest).not.toContain('https://example.com/lavish')
+    expect(nextDigest).not.toContain('more changed cards')
+    expect(nextDigest).toContain('Open cards: 2 idle, 41 not started, no reason given')
+    await until({
+      what: 'the unchanged turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+
+    for (let index = 0; index < 41; index++) {
+      expect((await page.send({
+        name: 'task',
+        args: [
+          'rename',
+          `snapshot-${index}`,
+          '--title',
+          `Changed snapshot card ${index}`,
+        ],
+      })).type).toBe('receipt')
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'new-overflow-card',
+        '--title',
+        'New overflow card',
+        '--no-start',
+      ],
+    })
+    const overflowCard = await hydra.task({ key: 'new-overflow-card' })
+    await hydra.chat({ text: 'Read the capped changes' })
+    const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
+    expect(capped).toContain('2 more changed cards')
+    expect(capped).toContain('pnyx-axi task list')
+    expect(capped).toContain('Changed snapshot card 39')
+    expect(capped).not.toContain('Changed snapshot card 40')
+    await until({
+      what: 'the capped turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'new-overflow-card',
+      ],
+    })
+    await hydra.chat({ text: 'Read the remaining change' })
+    const remainder = session.received.find(text => text.endsWith('Read the remaining change'))!
+    expect(remainder).toContain('Changed snapshot card 40')
+    expect(remainder).not.toContain('Changed snapshot card 39')
+    expect(remainder).toContain(`${overflowCard.id} is no longer listed`)
+    await until({
+      what: 'the remaining-change turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    const provider = harness === 'claude' ? pnyx.claude : pnyx.codex
+    const held = provider.plan({
+      hydra: hydra.id,
+      text: 'Hold a task-aware turn',
+      partial: 'Working',
+      folds: true,
+      hold: true,
+    })
+    await hydra.chat({ text: 'Hold a task-aware turn' })
+
+    try {
+      await workerLine({
+        hydra,
+        key: 'review-page',
+        line: 'link: https://example.com/active-review Active review',
+      })
+      await hydra.chat({ text: 'Read the update during this turn' })
+      const steering = session.received.find(text => text.endsWith('Read the update during this turn'))!
+      expect(steering).toContain('https://example.com/active-review')
+
+      if (harness === 'codex') {
+        await workerLine({
+          hydra,
+          key: 'review-page',
+          line: 'link: https://example.com/carried-review Carried review',
+        })
+        pnyx.codex.plan({
+          hydra: hydra.id,
+          text: 'Read the carried update',
+          refuse: true,
+        })
+        await hydra.chat({ text: 'Read the carried update' })
+        await until({
+          what: 'Codex to receive the steering attempt',
+          check: () => session.received.some(text => text.endsWith('Read the carried update')),
+        })
+        await workerLine({
+          hydra,
+          key: 'review-page',
+          line: 'note: Review page was updated after steering',
+        })
+      }
+    } finally {
+      held.release()
+    }
+
+    await until({
+      what: 'the held turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+
+    if (harness === 'codex') {
+      await until({
+        what: 'the refused input to carry into a new turn',
+        check: () => session.received.filter(text => text.endsWith('Read the carried update')).length === 2,
+      })
+      const carried = session.received.filter(text => text.endsWith('Read the carried update')).at(-1)
+      expect(carried).toContain('https://example.com/carried-review')
+      expect(carried?.indexOf('Review page was updated after steering')).toBeGreaterThan(
+        carried?.indexOf('https://example.com/carried-review') ?? -1,
+      )
+      await until({
+        what: 'the carried turn to finish',
+        check: () => !queue({ hydraId: hydra.id })?.working,
+      })
+    }
+
+    provider.plan({
+      hydra: hydra.id,
+      text: 'Compact task context',
+      compacting: true,
+      compactTo: 500,
+    })
+    const answers = session.answered
+    await hydra.chat({ text: 'Compact task context' })
+    await until({
+      what: 'the compacted turn to finish',
+      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the full snapshot after compaction' })
+    const afterCompact = session.received.find(text => text.endsWith('Read the full snapshot after compaction'))!
+    const snapshot = harness === 'claude' ? session.contexts?.at(-1) : afterCompact
+    expect(snapshot).toContain('Task cards (all open cards):')
+    expect(snapshot).toContain('Changed snapshot card 0')
+    expect(snapshot).toContain('Changed snapshot card 40')
+    expect(snapshot).toContain('https://example.com/lavish')
+    expect(snapshot).toContain('https://example.com/active-review')
+    await until({
+      what: 'the post-compaction turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+
+    for (let index = 0; index < 41; index++) {
+      expect((await page.send({
+        name: 'task',
+        args: [
+          'hide',
+          `snapshot-${index}`,
+        ],
+      })).type).toBe('receipt')
+    }
+
+    await hydra.chat({ text: 'Read the hidden-card changes' })
+    const hidden = session.received.find(text => text.endsWith('Read the hidden-card changes'))!
+    expect(hidden.match(/is no longer listed/g)).toHaveLength(40)
+    expect(hidden).toContain('1 more changed cards')
+    await until({
+      what: 'the hidden-card turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the last hidden-card change' })
+    const lastHidden = session.received.find(text => text.endsWith('Read the last hidden-card change'))!
+    expect(lastHidden.match(/is no longer listed/g)).toHaveLength(1)
     page.close()
   },
 )
