@@ -92,7 +92,7 @@ export function ContextMenu({
       onClick={e => {
         const button = (e.target as Element).closest('button')
 
-        if (button && !button.hasAttribute('data-menu-keep')) {
+        if (button) {
           close()
         }
       }}
