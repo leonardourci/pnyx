@@ -1201,6 +1201,8 @@ test(
       env: process.env,
     })).stdout
     expect(digest).toContain('Invoice report handled in background')
+    expect(digest.split('\n').find(line => line.startsWith(`- ${id} ·`)))
+      .toContain('helper: Invoice report is ready.')
     expect(digest).toMatch(/\[unhandled\] \(progress\): New invoice progress during the helper lease/)
     const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice report handled in background/)?.[1]
     expect(reportSeq).toBeDefined()
@@ -1268,6 +1270,8 @@ test(
         check: () => main.received.some(text => text.includes('Summarize the invoice status')),
       })
       const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
+      expect(delivered.split('\n').find(line => line.startsWith(`- ${id} ·`)))
+        .toContain('helper: Invoice report is ready.')
       expect(delivered).toContain('[handled]')
       expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
     } finally {

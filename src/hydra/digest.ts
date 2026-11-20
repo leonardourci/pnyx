@@ -62,6 +62,7 @@ function taskLine({
   }).text
   const latest = currentState({ card })
   const ownerMessage = latestOwnerMessage({ card })
+  const helperOutcome = state.helper?.outcomes.findLast(outcome => outcome.task === card.id)
   const session = card.sessionIds?.[0] ? state.sessions?.[card.sessionIds[0]] : undefined
   const activity = card.sessionActivity ?? card.activity
   const worker = card.agent
@@ -116,6 +117,10 @@ function taskLine({
       text: latest.text,
       size: 160,
     })}`)
+  }
+
+  if (helperOutcome) {
+    lines.push(`helper: ${clip({ text: helperOutcome.summary })}`)
   }
 
   if (unwatched.length) {
