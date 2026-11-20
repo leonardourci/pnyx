@@ -30,7 +30,10 @@ export type RuntimeStyle = Partial<Record<Dimension, number | string>>
 export function runtimeStyle({ ...values }: RuntimeStyle): CSSProperties {
   const style: Record<string, number | string> = {}
 
-  for (const property of [...DIMENSIONS, ...TRANSFORMS]) {
+  for (const property of [
+    ...DIMENSIONS,
+    ...TRANSFORMS,
+  ]) {
     const value = values[property]
 
     if (value !== undefined) {
