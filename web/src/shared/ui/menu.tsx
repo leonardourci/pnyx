@@ -1,202 +1,6 @@
 import { applyRuntimeStyle } from './runtime-style.ts'
 import { FloatingPanel } from './floating-panel.tsx'
-import { Icon } from '#web-shared/icons.tsx'
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
-import { Button } from './controls.tsx'
-
-function MenuSurface({
-  variant = 'menu',
-  className = '',
-  ...props
-}: ComponentProps<'div'> & { variant?: 'menu' | 'confirm' }) {
-  const layout = variant === 'confirm'
-    ? 'delete-confirm flex'
-    : 'menu-items z-30 max-h-menu-height max-w-menu-viewport min-w-menu rounded-lg p-1'
-
-  const Surface = variant === 'confirm' ? 'div' : FloatingPanel
-
-  return <Surface {...props} className={`${layout} [&>.button]:flex [&>.button]:min-h-8.5 [&>.button]:w-full [&>.button]:justify-start [&>.button]:rounded-sm [&>.button]:border-0 [&>.button]:px-2.5 [&>.button]:py-1.75 [&>.button]:text-left [&>.button]:text-ui [&>.button]:text-ink [&>.button]:normal-case ${className}`} />
-}
-
-export function Menu({
-  label,
-  children,
-}: {
-  label: string
-  children: ReactNode
-}) {
-  const [
-    open,
-    setOpen,
-  ] = useState(false)
-  const root = useRef<HTMLDivElement>(null)
-  const trigger = useRef<HTMLButtonElement>(null)
-  const menu = useRef<HTMLDivElement>(null)
-  useLayoutEffect(
-    () => {
-      const element = menu.current
-
-      if (!open || !element) {
-        return
-      }
-
-      element.showPopover()
-
-      const position = () => {
-        const anchor = trigger.current?.getBoundingClientRect()
-
-        if (anchor) {
-          applyRuntimeStyle({
-            element,
-            values: {
-              left: Math.max(
-                8,
-                Math.min(
-                  anchor.right - element.offsetWidth,
-                  innerWidth - element.offsetWidth - 8,
-                ),
-              ),
-            },
-          })
-          applyRuntimeStyle({
-            element,
-            values: {
-              top: Math.max(
-                8,
-                Math.min(
-                  anchor.bottom + 5,
-                  innerHeight - element.offsetHeight - 8,
-                ),
-              ),
-            },
-          })
-        }
-      }
-
-      position()
-      const observer = new ResizeObserver(position)
-      observer.observe(element)
-      window.addEventListener(
-        'resize',
-        position,
-      )
-      document.addEventListener(
-        'scroll',
-        position,
-        true,
-      )
-
-      return () => {
-        observer.disconnect()
-        window.removeEventListener(
-          'resize',
-          position,
-        )
-        document.removeEventListener(
-          'scroll',
-          position,
-          true,
-        )
-      }
-    },
-    [open],
-  )
-  useEffect(
-    () => {
-      if (!open) {
-        return
-      }
-
-      const outside = (event: PointerEvent) => {
-        if (!root.current?.contains(event.target as Node)) {
-          setOpen(false)
-        }
-      }
-
-      document.addEventListener(
-        'pointerdown',
-        outside,
-      )
-
-      return () => document.removeEventListener(
-        'pointerdown',
-        outside,
-      )
-    },
-    [open],
-  )
-
-  return (
-    <div
-      className="menu relative"
-      ref={root}
-      onKeyDown={event => {
-        if (event.key === 'Escape') {
-          event.stopPropagation(); setOpen(false); trigger.current?.focus()
-        }
-      }}
-    >
-      <Button
-        ref={trigger}
-        aria-label={label}
-        aria-expanded={open}
-        onClick={() => setOpen(value => !value)}
-      ><Icon name="more" />
-      </Button>
-      {open && (
-        <MenuSurface
-          ref={menu}
-          popover="manual"
-          // eslint-disable-next-line pnyx/object-params -- React owns the div event signature.
-          onClick={e => {
-            const button = (e.target as Element).closest('button')
-
-            if (button && !button.hasAttribute('data-menu-keep')) {
-              setOpen(false)
-            }
-          }}
-        >{children}
-        </MenuSurface>
-      )}
-    </div>
-  )
-}
-
-export function DeleteItem({
-  label,
-  disabled,
-  refusal,
-  confirm,
-}: {
-  label: string
-  disabled?: boolean
-  refusal?: string
-  confirm(): Promise<unknown>
-}) {
-  const [
-      asking,
-      setAsking,
-    ] = useState(false), [
-      busy,
-      setBusy,
-    ] = useState(false)
-
-  return asking && refusal ? <p className="delete-refused m-0 max-w-65 px-2.5 py-1.75 text-ui text-muted" role="status">{refusal}</p> : asking ? (
-    <MenuSurface variant="confirm" aria-label={`Confirm ${label}`}>
-      <Button
-        data-menu-keep
-        disabled={busy}
-        onClick={() => {
-          setBusy(true)
-          void confirm().then(() => setAsking(false))
-            .finally(() => setBusy(false))
-        }}
-      >Yes
-      </Button>
-      <Button data-menu-keep disabled={busy} onClick={() => setAsking(false)}>No</Button>
-    </MenuSurface>
-  ) : <Button data-menu-keep disabled={disabled} onClick={() => setAsking(true)}>{label}</Button>
-}
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 
 export function ContextMenu({
   label,
@@ -272,8 +76,8 @@ export function ContextMenu({
   )
 
   return (
-    <MenuSurface
-      className="context-menu"
+    <FloatingPanel
+      className="context-menu menu-items z-30 max-h-menu-height max-w-menu-viewport min-w-menu rounded-lg p-1 [&>.button]:flex [&>.button]:min-h-8.5 [&>.button]:w-full [&>.button]:justify-start [&>.button]:rounded-sm [&>.button]:border-0 [&>.button]:px-2.5 [&>.button]:py-1.75 [&>.button]:text-left [&>.button]:text-ui [&>.button]:text-ink [&>.button]:normal-case"
       role="menu"
       aria-label={label}
       ref={menu}
@@ -293,7 +97,7 @@ export function ContextMenu({
         }
       }}
     >{children}
-    </MenuSurface>
+    </FloatingPanel>
   )
 }
 

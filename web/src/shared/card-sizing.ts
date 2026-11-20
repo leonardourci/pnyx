@@ -49,7 +49,7 @@ export const CARD_SIZING = {
   },
 } as const
 
-export function cardGrid({
+function cardGrid({
   width,
   gap = WORKSPACE_SIZING.cardGap,
 }: {
