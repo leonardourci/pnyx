@@ -292,14 +292,14 @@ export function contextReportStatus({
   note: ContextNote
   state: HydraState
 }): 'handled' | 'helper handling' | 'unhandled' {
+  if (note.handled) {
+    return 'handled'
+  }
+
   const leased = activeHelperBatches({ state }).some(batch =>
     batch.seqs.includes(note.seq) || (note.task !== undefined && batch.tasks.includes(note.task)))
 
-  if (leased) {
-    return 'helper handling'
-  }
-
-  return note.handled ? 'handled' : 'unhandled'
+  return leased ? 'helper handling' : 'unhandled'
 }
 
 export function contextNoteBlock({

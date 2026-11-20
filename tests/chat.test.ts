@@ -1152,17 +1152,10 @@ test(
       task: id,
       reportStatus: 'handled',
     }))
-    await hydra.chat({ text: 'Summarize the invoice status' })
-    await until({
-      what: 'main to read the handled report',
-      check: () => main.received.some(text => text.includes('Summarize the invoice status')),
-    })
-    const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
-    expect(delivered).toContain('[handled]')
-    expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
-    pnyx.claude.plan({
+    const scopeTurn = pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice scope needs a decision'),
+      hold: true,
       reply: JSON.stringify({
         outcomes: [
           {
@@ -1186,10 +1179,41 @@ test(
       ],
     })
     await until({
-      what: 'main to see the escalated report',
-      check: () => main.received.some(text => text.includes('Invoice scope needs a decision')),
+      what: 'a later helper batch to hold the same task',
+      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_ACTOR?.startsWith('helper:')
+        && session.received.some(text => text.includes('Invoice scope needs a decision'))),
     })
-    const escalated = main.received.find(text => text.includes('Invoice scope needs a decision'))!
+
+    try {
+      const earlierReport = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          String(Number(reportSeq) - 1),
+        ],
+      })
+      expect(earlierReport.changes).toContainEqual(expect.objectContaining({
+        seq: Number(reportSeq),
+        reportStatus: 'handled',
+      }))
+      await hydra.chat({ text: 'Summarize the invoice status' })
+      await until({
+        what: 'main to read the handled report',
+        check: () => main.received.some(text => text.includes('Summarize the invoice status')),
+      })
+      const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
+      expect(delivered).toContain('[handled]')
+      expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
+    } finally {
+      scopeTurn.release()
+    }
+
+    await until({
+      what: 'main to see the escalated report',
+      check: () => main.received.some(text => text.includes('[unhandled]: Invoice scope needs a decision')),
+    })
+    const escalated = main.received.find(text => text.includes('[unhandled]: Invoice scope needs a decision'))!
     expect(escalated).toContain('[unhandled]')
   },
 )
