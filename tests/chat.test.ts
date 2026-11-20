@@ -7,6 +7,7 @@ import { runForClient } from '#app/request-context.ts'
 import { hydraCheck } from '#workers/workers.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
+import { startReviewTimer } from '#hydra/review-timer.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
@@ -693,7 +694,10 @@ test(
       expect(wake).toContain('- report: from worker:burst-0,')
       expect(wake).not.toContain('- report: from worker:burst-299,')
       expect(wake).toContain('Some wake details were shortened or omitted.')
-      const updates = wake.replace(/<pnyx-digest[\s\S]*?<\/pnyx-digest>\s*/, '')
+      const updates = wake.replace(
+        /<pnyx-digest[\s\S]*?<\/pnyx-digest>\s*/,
+        '',
+      )
       expect(updates.length).toBeLessThan(12_000)
       expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
       expect(wake).not.toContain('Long report body '.repeat(30))
@@ -2642,6 +2646,223 @@ test(
       text: 'held after the stop',
     })
     page.close()
+  },
+)
+
+test(
+  'timed reviews wake Hydra for a quiet running card and stay quiet for healthy or unchanged work',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const previous = (await hydra.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })).settings.reviewMinutes
+    await hydra.chat({ text: 'Prepare heartbeat review' })
+    await until({
+      what: 'Hydra to finish preparing',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"reviewMinutes":1}',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'heartbeat-worker',
+        '--title',
+        'Heartbeat fixture',
+        '--no-start',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'heartbeat-worker',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Heartbeat fixture',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'heartbeat-fixture',
+        },
+        activity: 'working',
+      }),
+    })
+    expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
+    let now = Date.now()
+    let wakes = 0
+    const timer = startReviewTimer({
+      hydraId: hydra.id,
+      now: () => now,
+      wake: () => {
+        wakes++
+      },
+      interval: () => () => {},
+    })
+
+    try {
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(0)
+      now += 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(1)
+      const review = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(review.events[0].data.block).toContain('quiet worker: Running with no update since')
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(1)
+      const task = await hydra.task({ key: 'heartbeat-worker' })
+      withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => {
+          writer.append({
+            event: {
+              v: writer.state.v,
+              seq: writer.state.seq + 1,
+              id: 'heartbeat-green-pr',
+              cardId: task.id,
+              actor: 'pnyx',
+              at: new Date(now).toISOString(),
+              type: 'card.linked',
+              data: {
+                url: 'https://github.com/example/app/pull/42',
+                before: null,
+                after: {
+                  kind: 'github_pr',
+                  url: 'https://github.com/example/app/pull/42',
+                  state: 'open',
+                  draft: false,
+                  checks: '1 passed, 0 failed, 1 total',
+                },
+              },
+            },
+          })
+        },
+      })
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(2)
+      const green = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(green.events[0].data.block).toContain('green unmerged PR: https://github.com/example/app/pull/42')
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(2)
+      await hydra.owner({
+        args: [
+          'task',
+          'ask',
+          'heartbeat-worker',
+          '--to',
+          'owner',
+          '--question',
+          'Which account?',
+          '--context',
+          `An account choice is needed. [Heartbeat](pnyx-task:${task.id})`,
+          '--choice',
+          'Personal',
+          '--choice',
+          'Team',
+          '--recommend',
+          '1',
+          '--actor',
+          'hydra',
+        ],
+      })
+      now += 4 * 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(3)
+      const overdue = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(overdue.events[0].data.block).toContain('question reminder:')
+      expect(overdue.events[0].data.block).toContain('Which account?')
+      now += 60_000
+      await timer.check()
+      expect(wakes).toBe(3)
+      withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => {
+          writer.append({
+            event: {
+              v: writer.state.v,
+              seq: writer.state.seq + 1,
+              id: 'heartbeat-hydra-question',
+              cardId: HYDRA_CARD,
+              actor: 'hydra',
+              at: new Date(now).toISOString(),
+              type: 'task.asked',
+              data: {
+                id: 'hydra-account',
+                audience: 'owner',
+                question: 'Can Hydra use the team account?',
+              },
+            },
+          })
+        },
+      })
+      now += 4 * 60 * 60_000
+      await timer.check()
+      expect(wakes).toBe(4)
+      const ownQuestion = await hydra.owner({
+        args: [
+          'history',
+          '--kind',
+          'hydra.review',
+          '--limit',
+          '1',
+          '--full',
+        ],
+      })
+      expect(ownQuestion.events[0].data.block).toContain('Can Hydra use the team account?')
+    } finally {
+      timer.close()
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({ reviewMinutes: previous }),
+        ],
+      })
+    }
   },
 )
 

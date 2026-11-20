@@ -59,7 +59,7 @@ function timedReview({
     ])),
   })
   const flags = review.flags
-    .filter(flag => flag.kind !== 'memory behind' && flag.kind !== 'question reminder')
+    .filter(flag => flag.kind !== 'memory behind')
     .map(flag => JSON.stringify([
       flag.kind,
       flag.task,

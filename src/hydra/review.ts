@@ -9,9 +9,12 @@ import type { Card } from '#tasks/model.ts'
 import { failedChecks, pendingChecks, ranChecks } from '#tasks/delivery/model.ts'
 import { liveTask, taskDone } from '#tasks/select.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
-import { mergeApproved, readyBacklog } from './wake-reasons.ts'
+import { readyBacklog } from './wake-reasons.ts'
 import { taskMention, taskMentions } from './mentions.ts'
 import { questionReminder } from '#tasks/question-reminders.ts'
+import { cardStatus, currentState } from '#tasks/card-status.ts'
+import { BUSY_MS } from '#workers/host.ts'
+import { pausedDeclaration } from '#tasks/lifecycle.ts'
 
 export const MINUTE_MS = 60_000
 export { QUESTION_REMINDER_MS } from '#tasks/question-reminders.ts'
@@ -20,7 +23,7 @@ const LEFT_OFF_STALE_DAYS = 7
 const LEFT_OFF_STALE_MS = LEFT_OFF_STALE_DAYS * 24 * 60 * MINUTE_MS
 
 export interface ReviewFlag {
-  kind: 'approved merge is green' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind' | 'stale left-off' | 'prerequisite unmet'
+  kind: 'green unmerged PR' | 'quiet worker' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind' | 'stale left-off' | 'prerequisite unmet'
   task: string
   detail: string
   reminder?: string
@@ -118,9 +121,28 @@ export function boardReview({
     const session = cardSessionId({ card }) ?? ''
     const recorded = state.sessions?.[session]?.lastSeen ?? card.updatedAt
     const observed = workerSeenAt[session] ?? 0
-    const seen = observed > 0 ? observed : Date.parse(recorded)
+    const latest = currentState({ card })
+    const seen = Math.max(
+      observed,
+      Date.parse(recorded),
+      Date.parse(latest?.at ?? card.workingSince ?? recorded),
+    )
     const quietAt = new Date(seen).toISOString()
     const activity = card.sessionActivity ?? card.activity ?? 'unknown'
+    const status = cardStatus({
+      card,
+      cards: state.cards,
+      sessions: state.sessions,
+    })
+
+    if (status.kind === 'working' && !pausedDeclaration({ card }) && now - seen >= BUSY_MS) {
+      flags.push({
+        kind: 'quiet worker',
+        task: card.id,
+        detail: `Running with no update since ${quietAt}`,
+      })
+    }
+
     lines.push(`- ${ref} column: ${column}; declaration: ${declaration?.state ?? 'none'} (${elapsed({
       at: declaration?.at,
       now,
@@ -177,12 +199,9 @@ export function boardReview({
       const finished = ranChecks({ checks }) && !pendingChecks({ checks })
       const green = !link.draft && finished && !failedChecks({ checks })
 
-      if (green && mergeApproved({
-        state,
-        card,
-      })) {
+      if (green) {
         flags.push({
-          kind: 'approved merge is green',
+          kind: 'green unmerged PR',
           task: card.id,
           detail: link.url,
         })
@@ -202,7 +221,16 @@ export function boardReview({
         })
       }
     }
+  }
 
+  const questionCards = [...live]
+  const hydra = state.cards[HYDRA_CARD]
+
+  if (hydra) {
+    questionCards.push(hydra)
+  }
+
+  for (const card of questionCards) {
     for (const ask of openAsks({ card })) {
       const at = ask.escalated?.at ?? ask.at
       const wording = askWording({ ask }).question
@@ -215,6 +243,7 @@ export function boardReview({
         card,
         ask,
         now,
+        after: state.hydraReview?.at ?? card.createdAt,
       })
 
       if (reminder) {
