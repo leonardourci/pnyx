@@ -127,6 +127,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Read the worker chat',
       ],
@@ -199,6 +200,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'One task, one card',
         '--folder',

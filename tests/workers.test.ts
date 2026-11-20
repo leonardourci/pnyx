@@ -47,6 +47,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--title',
         'Next worker',
         '--folder',
@@ -72,7 +73,7 @@ test(
     })
     expect(pending.information).toContain('existing session')
     expect((await hydra.task({ key: 'original-worker' })).worker).toBe(`codex:${worker.id}`)
-    expect((await hydra.task({ key: task })).worker).toBe('none')
+    expect((await hydra.task({ key: task })).worker).toBe('none: not started, no reason given')
     expect(worker.closed).toBe(false)
     await hydra.owner({ args })
     const next = await until({
@@ -95,6 +96,7 @@ test(
       args: [
         'task',
         'create',
+        '--no-start',
         '--key',
         'detached-worker',
         '--title',
@@ -142,10 +144,10 @@ test(
       what: 'the detached session to finish',
       check: () => activity() === 'finished',
     })
-    expect((await hydra.task({ key: 'detached-worker' })).worker).toBe('none')
+    expect((await hydra.task({ key: 'detached-worker' })).worker).toMatch(/^none(?::|$)/)
     await pnyx.restart()
     expect(activity()).toBe('finished')
-    expect((await hydra.task({ key: 'detached-worker' })).worker).toBe('none')
+    expect((await hydra.task({ key: 'detached-worker' })).worker).toMatch(/^none(?::|$)/)
   },
 )
 
