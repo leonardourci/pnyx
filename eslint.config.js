@@ -104,6 +104,10 @@ export default tseslint.config(
               message: 'Use a theme token or a shared utility instead of an arbitrary value.',
             },
             {
+              pattern: '/\\[(?:.*\\]!?|[^\\[\\]]*)$',
+              message: 'Use a theme token or a shared utility instead of an arbitrary value.',
+            },
+            {
               pattern: '(?:^|:)!?(?:[a-zA-Z0-9-]+-\\[[^\\[\\]]*|\\[[a-zA-Z-]+:[^\\[\\]]*)$',
               message: 'Keep class names complete; computed values belong in runtimeStyle.',
             },
@@ -375,7 +379,7 @@ export default tseslint.config(
           message: 'Use theme classes for fixed styles and runtimeStyle for measured geometry or owner-selected sizes.',
         },
         {
-          selector: 'CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property[value.type="Literal"]',
+          selector: 'CallExpression[callee.name="runtimeStyle"] > ObjectExpression > Property:matches([value.type="Literal"], [value.type="UnaryExpression"][value.argument.type="Literal"], [value.type="TemplateLiteral"][value.expressions.length=0])',
           message: 'Fixed values belong in the theme or a shared component; runtimeStyle accepts computed values only.',
         },
       ],

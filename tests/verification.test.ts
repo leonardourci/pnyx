@@ -19,6 +19,26 @@ test(
     const linter = new ESLint()
     const cases = [
       {
+        source: '<div className="text-sm/[17px]" />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div className={`text-sm/[${height}px]`} />',
+        rule: 'better-tailwindcss/no-restricted-classes',
+      },
+      {
+        source: '<div style={runtimeStyle({ left: -317 })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style={runtimeStyle({ left: +317 })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
+        source: '<div style={runtimeStyle({ left: `317px` })} />',
+        rule: 'no-restricted-syntax',
+      },
+      {
         source: 'const itemClassName = "text-ink flex"; <div className={itemClassName} />',
         rule: 'better-tailwindcss/enforce-consistent-class-order',
       },
@@ -103,7 +123,7 @@ test(
       ).toContain(rule)
     }
 
-    const valid = 'const width = window.innerWidth; <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width })} />'
+    const valid = 'const width = window.innerWidth; <div className="flex w-card-chat text-ink hover:text-gold [&>span]:truncate" style={runtimeStyle({ width, left: -width, top: +width, fontSize: `${width}px` })} />'
     const reports = await linter.lintText(
       valid,
       { filePath: 'web/src/shared/ui/lint-policy.tsx' },
