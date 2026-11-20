@@ -1,3 +1,4 @@
+import { git } from './setup/upgrade.ts'
 import { migrateDefaultRule } from '#tasks/column-defaults.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
@@ -3250,7 +3251,44 @@ test(
   'building a completed investigation reopens its task before its existing worker receives the build',
   async () => {
     const hydra = await pnyx.hydra()
-    const folder = hydra.folder({ name: 'investigation-build' })
+    const project = hydra.folder({ name: 'investigation-build' })
+    git({
+      cwd: project,
+      args: [
+        'init',
+        '-q',
+        '--initial-branch=main',
+      ],
+    })
+    writeFileSync(
+      join(
+        project,
+        'README.md',
+      ),
+      'Investigation fixture\n',
+    )
+    git({
+      cwd: project,
+      args: [
+        'add',
+        'README.md',
+      ],
+    })
+    git({
+      cwd: project,
+      args: [
+        'commit',
+        '-qm',
+        'Initial project',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
     await hydra.owner({
       args: [
         'task',
@@ -3261,8 +3299,8 @@ test(
         'Research',
         '--kind',
         'investigation',
-        '--folder',
-        folder,
+        '--project',
+        project,
       ],
     })
     await hydra.owner({
@@ -3272,14 +3310,22 @@ test(
         'research',
       ],
     })
-    const worker = await hydra.agent({ cwd: folder })
+    const initial = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'research',
+        '--full',
+      ],
+    })).task
+    const worker = await hydra.agent({ cwd: initial.copy.path })
     await until({
       what: 'the investigation turn to finish',
       check: async () => (await hydra.task({ key: 'research' })).status === 'idle',
     })
     const report = join(
-      folder,
-      'report.md',
+      process.env.TMPDIR!,
+      `investigation-report-${hydra.id}.md`,
     )
     writeFileSync(
       report,
@@ -3311,6 +3357,11 @@ test(
         '--none',
       ],
     })
+    await workerLine({
+      hydra,
+      key: 'research',
+      line: 'done: Investigation complete',
+    })
     await hydra.owner({
       args: [
         'outcome',
@@ -3321,6 +3372,26 @@ test(
       ],
     })
     expect((await hydra.task({ key: 'research' })).column).toBe(await hydra.column({ role: 'done' }))
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'dependent',
+        '--title',
+        'Dependent build',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'depend',
+        'dependent',
+        '--on',
+        'research',
+      ],
+    })
+    expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(true)
     await hydra.owner({
       args: [
         'task',
@@ -3338,10 +3409,26 @@ test(
       ],
     })).task
     expect(reopened.agent.sessionId).toBe(worker.id)
+    expect(reopened.copy.path).toBe(initial.copy.path)
+    expect(reopened.copy.state).toBe('active')
+    expect(existsSync(reopened.copy.path)).toBe(true)
+    expect(reopened.workerLog.status).toBeUndefined()
+    expect(reopened.report.id).toBe(stored.id)
+    expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(false)
     await until({
       what: 'the existing session to receive the build',
       check: () => pnyx.claude.sessions.some(session => session.id === worker.id
         && session.received.some(text => text.includes('The owner approved building this.'))),
     })
+    await hydra.owner({
+      args: [
+        'outcome',
+        'research',
+        'done',
+        '--note',
+        'Build complete',
+      ],
+    })
+    expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(true)
   },
 )

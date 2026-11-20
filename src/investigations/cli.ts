@@ -1,3 +1,5 @@
+import { applyDecision } from '#app/decision.ts'
+import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import { sendReply } from '#workers/reply.ts'
@@ -114,6 +116,20 @@ function reopen({
     actor: 'pnyx',
     at: new Date().toISOString(),
   }
+
+  if (card.outcome) {
+    applyDecision({
+      writer,
+      decision: decideOutcome({
+        state: writer.state,
+        ref: card.id,
+        outcome: null,
+        source: card.outcome.source,
+        meta,
+      }),
+    })
+  }
+
   const queued = roleColumn({
     columns: hydraConfig({
       state: writer.state,

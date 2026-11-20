@@ -277,6 +277,18 @@ export function applyTask({
     }
 
     if (event.type === 'task.kind') {
+      if (event.data.before === 'investigation' && event.data.after === 'build') {
+        delete card.outcome
+
+        if (card.workerLog?.status?.code === 'done') {
+          delete card.workerLog.status
+        }
+
+        if (card.status?.state === 'done') {
+          delete card.status
+        }
+      }
+
       card.kind = event.data.after
     }
 
