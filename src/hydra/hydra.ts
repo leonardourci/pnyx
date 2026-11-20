@@ -130,11 +130,3 @@ export function hydraMode({ state }: { state: HydraState }): string | undefined 
 
   return hostedHydra({ state }) && settled ? running : undefined
 }
-
-// Codex's never runs with the same full access as Bypass permissions.
-export function hydraBypasses({ state }: { state: HydraState }): boolean {
-  const mode = hydraMode({ state })
-  const codexNever = mode === 'never' && state.cards[HYDRA_CARD]?.agent?.provider === 'codex'
-
-  return mode === 'bypassPermissions' || codexNever
-}

@@ -19,8 +19,6 @@ import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { AgentRef } from '#workers/model.ts'
 
-export { operationLabel } from './operation-label.ts'
-
 export function operationEvent({
   state,
   operation,
