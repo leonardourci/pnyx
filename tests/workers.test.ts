@@ -1,3 +1,4 @@
+import { withWriter } from '#app/writer.ts'
 import { query } from '#store/postgres.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -1890,6 +1891,25 @@ test(
       what: 'idle worker status',
       check: async () => (await hydra.task({ key: 'facts' })).status === 'idle',
     })
+    const facts = await hydra.task({ key: 'facts' })
+    withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: `legacy-block:${facts.id}`,
+          at: new Date().toISOString(),
+          cardId: facts.id,
+          actor: `worker:${facts.id}`,
+          type: 'task.declared',
+          data: {
+            state: 'blocked',
+            note: 'Saved worker block',
+          },
+        },
+      }),
+    })
     const path = join(
       worker.env.PNYX_TASK_DIR!,
       'worker.log',
@@ -1958,6 +1978,7 @@ test(
         '--full',
       ],
     })
+    expect((await hydra.task({ key: 'facts' })).column).toBe(await hydra.column({ role: 'queued' }))
     expect(done.task.links).toContainEqual({
       kind: 'url',
       url: 'https://example.com/preview',
