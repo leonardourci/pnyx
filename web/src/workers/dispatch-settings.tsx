@@ -37,7 +37,7 @@ function CandidateRow({
 }: ComponentProps<'div'> & { add?: boolean }) {
   const appearance = add
     ? 'dispatch-add border-b-0 [&>.account-model-picker]:col-span-full [&>.account-model-picker]:justify-self-start [&>.account-model-picker>.button]:min-h-6 [&>.account-model-picker>.button]:gap-1 [&>.account-model-picker>.button]:text-meta'
-    : 'dispatch-candidate border-b border-subtle [&_.select-menu]:top-field-menu [&_.select-menu]:bottom-auto [&>.dispatch-remove-slot]:-col-start-2 [&>.dispatch-remove-slot]:justify-self-end [&>.hydra-agent-pickers]:col-span-7 [&>.hydra-agent-pickers]:col-start-1 [&>.hydra-agent-pickers]:grid [&>.hydra-agent-pickers]:grid-cols-subgrid [&>.hydra-agent-pickers]:gap-x-normal max-phone:[&>.hydra-agent-pickers]:flex max-phone:[&>.hydra-agent-pickers]:basis-full [&>.hydra-agent-pickers>*]:justify-self-start [&>.hydra-agent-pickers>.tooltip-anchor]:col-start-7 [&>.hydra-agent-pickers>.tooltip-anchor]:justify-self-center [&>.hydra-agent-pickers>:nth-child(2_of_.picker-field)]:col-start-3 [&>.hydra-agent-pickers>:nth-child(3_of_.picker-field)]:col-start-5 [&>.hydra-agent-pickers>[role=alert]]:col-span-full'
+    : 'dispatch-candidate border-b border-subtle [&_.hydra-agent-pickers_.select-menu]:top-field-menu [&_.hydra-agent-pickers_.select-menu]:bottom-auto [&>.dispatch-remove-slot]:-col-start-2 [&>.dispatch-remove-slot]:justify-self-end [&>.hydra-agent-pickers]:col-span-7 [&>.hydra-agent-pickers]:col-start-1 [&>.hydra-agent-pickers]:grid [&>.hydra-agent-pickers]:grid-cols-subgrid [&>.hydra-agent-pickers]:gap-x-normal max-phone:[&>.hydra-agent-pickers]:flex max-phone:[&>.hydra-agent-pickers]:basis-full [&>.hydra-agent-pickers>*]:justify-self-start [&>.hydra-agent-pickers>.tooltip-anchor]:col-start-7 [&>.hydra-agent-pickers>.tooltip-anchor]:justify-self-center [&>.hydra-agent-pickers>:nth-child(2_of_.picker-field)]:col-start-3 [&>.hydra-agent-pickers>:nth-child(3_of_.picker-field)]:col-start-5 [&>.hydra-agent-pickers>[role=alert]]:col-span-full'
 
   return <div {...props} className={`col-span-full grid grid-cols-subgrid items-center px-0 py-2 max-phone:flex max-phone:flex-wrap max-phone:gap-(--settings-column-gap) max-phone:py-(--settings-column-gap) ${appearance}`} />
 }
@@ -442,7 +442,6 @@ function ConfirmRemove({
         onClick={() => setOpen(true)}
       ><Icon name="close" size={ICON_SIZE.inline} />
       </Button>
-      {/* Always mounted so it can unfold from the x; hidden, it cannot be reached. Focus starts on Cancel, the safe choice. */}
       <div
         className="dispatch-confirm invisible absolute top-1/2 right-0 z-2 flex -translate-y-1/2 items-center gap-1.5 bg-surface py-0.5 pr-0 pl-2.5 text-meta whitespace-nowrap shadow-dispatch clip-dispatch-closed transition-dispatch-closed data-open:visible data-open:clip-dispatch-open data-open:transition-dispatch-open motion-reduce:transition-none motion-reduce:data-open:transition-none [&_.button]:min-h-6.5 [&_.button]:px-2.5 [&_.button]:py-0.5 [&_.button]:text-meta"
         role="group"

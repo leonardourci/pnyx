@@ -55,7 +55,7 @@ export function MenuHead({
   back?(): void
 }) {
   return (
-    <div className="account-model-head flex min-h-7 items-center gap-1.5 [&>strong]:text-ui ">
+    <div className="account-model-head flex min-h-7 items-center gap-1.5 [&>strong]:text-ui">
       {back && (
         <IconButton
           icon="arrow_left"
