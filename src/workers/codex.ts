@@ -1580,8 +1580,13 @@ export function codexProvider({
                     continue
                   }
 
+                  let text = message.text
+
                   try {
-                    const text = context ? `${await context({})}\n\n${message.text}` : message.text
+                    if (context) {
+                      text = `${await context({})}\n\n${message.text}`
+                    }
+
                     await rpc.request({
                       method: 'turn/steer',
                       params: {
@@ -1613,7 +1618,10 @@ export function codexProvider({
                       correlationId: message.id,
                       error,
                     })
-                    carried.push(message)
+                    carried.push({
+                      ...message,
+                      text,
+                    })
                     emit({
                       event: {
                         type: 'input',

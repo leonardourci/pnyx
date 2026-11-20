@@ -3002,6 +3002,19 @@ test.each([
       const steering = session.received.find(text => text.endsWith('Read the update during this turn'))!
       expect(steering).toContain('https://example.com/active-review')
 
+      if (harness === 'codex') {
+        await workerLine({
+          hydra,
+          key: 'review-page',
+          line: 'link: https://example.com/carried-review Carried review',
+        })
+        pnyx.codex.plan({
+          hydra: hydra.id,
+          text: 'Read the carried update',
+          refuse: true,
+        })
+        await hydra.chat({ text: 'Read the carried update' })
+      }
     } finally {
       held.release()
     }
@@ -3010,6 +3023,19 @@ test.each([
       what: 'the held turn to finish',
       check: () => !queue({ hydraId: hydra.id })?.working,
     })
+
+    if (harness === 'codex') {
+      await until({
+        what: 'the refused input to carry into a new turn',
+        check: () => session.received.filter(text => text.endsWith('Read the carried update')).length === 2,
+      })
+      const carried = session.received.filter(text => text.endsWith('Read the carried update')).at(-1)
+      expect(carried).toContain('https://example.com/carried-review')
+      await until({
+        what: 'the carried turn to finish',
+        check: () => !queue({ hydraId: hydra.id })?.working,
+      })
+    }
 
     provider.plan({
       hydra: hydra.id,
