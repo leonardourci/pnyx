@@ -646,12 +646,23 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         type: 'task.queue',
         card: task,
       },
-      decide: ({ state }) => decideQueue({
-        state,
-        task,
-        behind,
-        meta: m,
-      }),
+      decide: ({ state }) => {
+        const unqueuedSince = action === 'reorder' && !findCard({
+          state,
+          ref: task,
+        }).queue
+
+        if (unqueuedSince) {
+          return { skipped: 'stale' }
+        }
+
+        return decideQueue({
+          state,
+          task,
+          behind,
+          meta: m,
+        })
+      },
     })
   }
 

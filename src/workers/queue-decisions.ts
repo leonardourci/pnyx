@@ -9,7 +9,7 @@ import { HydraError } from '#store/errors.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Blocker } from '#tasks/owner-gates.ts'
-import { findSession } from './session-attachments.ts'
+import { findSession, sessionByRef } from './session-attachments.ts'
 import { queueWorker, workerQueue } from './queue.ts'
 
 function startedGap({ card }: { card: Card }): Blocker | undefined {
@@ -87,7 +87,7 @@ export function queueGap({
   }
 
   const workerlessTask = anchor !== undefined && !anchor.queue && !anchor.sessionIds?.length
-  const session = workerlessTask ? undefined : findSession({
+  const session = workerlessTask ? undefined : sessionByRef({
     state,
     ref: anchor?.queue?.session ?? behind,
   })
