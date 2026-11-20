@@ -22,6 +22,7 @@ import { CardTitle } from './card-title.tsx'
 import { CardShell, CardContent, AnimatedCardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
 import { CARD_SIZING } from '#web-shared/card-sizing.ts'
+import { useColumnHeight } from './card-height.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -328,9 +329,13 @@ export const HydraCard = memo(function HydraCard({
     }),
     active: selected && tab === 'activity',
   })
+  const columnHeight = useColumnHeight({
+    element: inlineElement,
+    active: selected && !modal,
+  })
   const height = Math.max(
     CARD_SIZING.open.minHeight,
-    view.cardHeights[card.id] ?? CARD_SIZING.open.height,
+    view.cardHeights[card.id] ?? columnHeight ?? CARD_SIZING.open.height,
   )
   const [
     reminding,
