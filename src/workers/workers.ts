@@ -298,7 +298,7 @@ export async function hydraCheck({
   const changesWithReportStatus = page.map(e => {
     const task = e.type === 'hydra.message' ? e.data.task : e.cardId
     const note = pendingReports.get(e.seq)
-    let summary = summarize({ event: e })
+    let summary: string
 
     if (note) {
       summary = note.text
@@ -306,6 +306,8 @@ export async function hydraCheck({
       summary = e.data.attention?.filter(a => a.blocking && !a.answered)
         .map(a => a.text ?? a.kind)
         .join('; ') ?? 'Agent needs an answer'
+    } else {
+      summary = summarize({ event: e })
     }
 
     const change = {
@@ -331,9 +333,14 @@ export async function hydraCheck({
       readReports.push(e.seq)
     }
 
-    return {
+    const reportChange = {
       ...change,
       reportStatus,
+    }
+
+    return note.progress === undefined ? reportChange : {
+      ...reportChange,
+      progressCount: note.progress,
     }
   })
 

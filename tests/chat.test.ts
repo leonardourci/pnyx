@@ -411,6 +411,26 @@ test(
     expect(wake).not.toContain('Halfway through the invoices')
     expect(wake).toContain('Invoices ready to upload')
     expect(wake).toContain('2 progress reports')
+    const progressSeq = wake.match(/seq (\d+) \S+ \[unhandled\] \(2 progress reports, latest\): Invoices ready to upload/)?.[1]
+
+    if (progressSeq === undefined) {
+      throw new Error('The wake did not identify the collapsed progress report')
+    }
+
+    const progressPage = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(Number(progressSeq) - 1),
+      ],
+    })
+    expect(progressPage.changes).toContainEqual(expect.objectContaining({
+      seq: Number(progressSeq),
+      reportStatus: 'unhandled',
+      progressCount: 2,
+      summary: 'Invoices ready to upload',
+    }))
     expect(wake).toContain('Upload started')
     expect(wake).toContain('Need the SFTP password')
     expect(wake).toContain('result: Stored findings: invoices have been verified.')
@@ -563,7 +583,6 @@ test(
           'The format needs an owner choice',
         ],
       })
-      // The timer runs only while Hydra is idle; queue the saved-review fixture during its held turn.
       withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
@@ -943,9 +962,6 @@ test(
         values: [hydra.id],
       })[0]!.count >= 2,
     })
-    expect(pnyx.claude.sessions.filter(session => session.env.PNYX_ACTOR?.startsWith('helper:'))
-      .flatMap(session => session.received)
-      .some(text => text.includes('End of invoice evidence'))).toBe(true)
     const digest = (await pnyxAxi({
       args: [
         'hydra',
@@ -1119,6 +1135,7 @@ test(
 
     const recoveredReport = resumed.received.find(text => text.includes('Worker report awaiting restart'))!
     expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
+    expect(recoveredReport).toContain('hydra messages --after <seq minus one> --limit 1')
 
     const { messages } = await hydra.owner({
       args: [

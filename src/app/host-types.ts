@@ -214,7 +214,6 @@ export interface Host {
   }): void
   // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
   unread({ seq }: { seq: number }): void
-  // Adds queued reports to the running Hydra turn's read receipt.
   reportsRead({ seqs }: { seqs: number[] }): void
   // The changes waiting for Hydra's next check turn and the ones its running turn is reading.
   queue(): HydraQueue

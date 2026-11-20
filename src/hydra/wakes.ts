@@ -3,7 +3,7 @@ import { decisionsBlock } from '#tasks/decisions.ts'
 import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
 import { clip } from './digest.ts'
-import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
+import { ownerActor } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
 import { readEvents, scanEvents } from '#app/event-log.ts'
@@ -128,7 +128,6 @@ export function wakeText({
 
       const escaped = sealed({ text: line })
 
-      // Helper batches apply their own input budget before claiming report leases.
       if (!pick && used + escaped.length + 1 > WAKE_UPDATE_CHARS) {
         overflow = true
         break
@@ -141,7 +140,9 @@ export function wakeText({
 
   if (reports.length) {
     const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
-    const notice = `${count} arrived while you were busy.`
+    const notice = pick
+      ? `${count} arrived while you were busy. Handle them together and answer once.`
+      : `${count} arrived while you were busy.`
 
     if (pick || used + notice.length + 1 <= WAKE_UPDATE_CHARS) {
       lines.push(notice)
@@ -181,7 +182,9 @@ export function wakeText({
     lines.push('Some wake details were shortened or omitted.')
   }
 
-  if (check || overflow) {
+  if (pick && check) {
+    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+  } else if (check || overflow) {
     lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
   }
 
@@ -387,7 +390,7 @@ export function findHydraTurnToResume({
     types: ['hydra.message'],
     after: lastFinishedTurnSeq,
   })) {
-    if (event.type !== 'hydra.message' || event.actor === HYDRA_ACTOR || event.data.kind === 'progress') {
+    if (event.type !== 'hydra.message' || !ownerActor({ actor: event.actor })) {
       continue
     }
 
@@ -438,6 +441,6 @@ export function findHydraTurnToResume({
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.\n${REPLY_RULES}</pnyx-wake>`,
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${REPLY_RULES}</pnyx-wake>`,
   }
 }
