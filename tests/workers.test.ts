@@ -2087,6 +2087,39 @@ test(
       line: 'done: outside work complete',
     })
     expect((await hydra.task({ key: 'completed-worker' })).status).toBe('done')
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--command',
+        'test -n "$PNYX_TASK_DIR" && printf "note: command update\\n" >> "$PNYX_TASK_DIR/worker.log"',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'command-worker',
+        '--title',
+        'Command worker',
+        '--folder',
+        hydra.folder({ name: 'command-worker' }),
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'command-worker',
+        '--via',
+        'command',
+      ],
+    })
+    await until({
+      what: 'the command worker to write through its task directory environment',
+      check: async () => (await hydra.task({ key: 'command-worker' })).latest === 'command update',
+    })
   },
 )
 
