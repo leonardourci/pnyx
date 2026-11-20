@@ -1,6 +1,6 @@
 ---
 name: follow-conventions
-description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors and installed-version APIs. Read before writing or reviewing Pnyx code.
+description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors, installed-version APIs and one-line Markdown paragraphs. Read before writing or reviewing Pnyx code or docs.
 ---
 
 # Follow conventions
