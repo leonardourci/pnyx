@@ -38,7 +38,7 @@ import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
 import { findProject } from '#projects/read.ts'
-import { decideQueue } from '#workers/queue-decisions.ts'
+import { decideQueue, queueGap } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
 import { taskSpend } from '#workers/task-spend.ts'
@@ -615,6 +615,28 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       value: values.behind as string | undefined,
       what: '--behind <task|session>',
     })
+    const state = loadHydra({ hydraId }).state
+    const card = findCard({
+      state,
+      ref: task,
+    })
+    const gap = action === 'reorder' && !card.queue ? {
+      reason: `${card.id} is not queued`,
+      clear: `Run \`pnyx-axi task queue ${card.id} --behind <task|session>\` to queue it`,
+    } : behind !== undefined && queueGap({
+      state,
+      task,
+      behind,
+    })
+
+    if (gap) {
+      return {
+        task: card.id,
+        queued: false,
+        reason: gap.reason,
+        help: [gap.clear],
+      }
+    }
 
     return commit({
       hydraId,
@@ -624,16 +646,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         card: task,
       },
       decide: ({ state }) => {
-        if (action === 'reorder' && !findCard({
-          state,
-          ref: task,
-        }).queue) {
-          throw new HydraError({
-            message: 'only a queued task can be reordered',
-            code: 'CONFLICT',
-          })
-        }
-
         return decideQueue({
           state,
           task,
