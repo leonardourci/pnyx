@@ -2,7 +2,7 @@ import { readMemoryContext } from '#memory/context.ts'
 import { createDigestContext } from './digest-context.ts'
 import { stopHydraInputs } from './stop-inputs.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
-import { contextNoteBlock, contextTurnNotes, contextReportStatus } from './context-notes.ts'
+import { contextNoteBlock, contextTurnNotes, contextReportStatus, type ContextNote } from './context-notes.ts'
 import { agentChangeKind, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
@@ -21,6 +21,7 @@ import { applyDecision } from '#app/decision.ts'
 import { hydraAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
+import type { HydraState } from '#app/model.ts'
 import type { Writer } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { memoryConditions } from '#memory/conditions.ts'
@@ -169,6 +170,40 @@ export function createHydraTurns({
 
   let outcomesPresented = 0
   const contextPresented = new Map<string, number>()
+
+  const readContextNote = ({
+    note,
+    state,
+  }: {
+    note: ContextNote
+    state: HydraState
+  }) => {
+    if (note.report) {
+      const status = contextReportStatus({
+        note,
+        state,
+      })
+
+      if (status === 'helper handling') {
+        return
+      }
+
+      if (note.task && status === 'unhandled') {
+        const task = note.task
+        const taskLeased = activeHelperBatches({ state }).some(batch => batch.tasks.includes(task))
+
+        if (!taskLeased) {
+          mainTasks.add(task)
+        }
+      }
+    }
+
+    contextPresented.set(
+      note.id,
+      note.seq,
+    )
+  }
+
   const helperBatchesPresented = new Set<string>()
   const hydraInstructions = () =>
     `You are Hydra for Pnyx Hydra "${hydraId}". Your contract is AGENTS.md in your current folder; follow it. Use pnyx-axi with --hydra ${hydraId}; PNYX_ACTOR=hydra is already set. Projects attach later; your current folder belongs to Hydra.`
@@ -868,17 +903,10 @@ export function createHydraTurns({
         })
 
         for (const note of contextTurnNotes({ notes })) {
-          if (note.report && contextReportStatus({
+          readContextNote({
             note,
             state: contextState,
-          }) === 'helper handling') {
-            continue
-          }
-
-          contextPresented.set(
-            note.id,
-            note.seq,
-          )
+          })
         }
 
         entry.activity = 'working'
@@ -1130,17 +1158,11 @@ export function createHydraTurns({
     const selected = new Set(seqs)
 
     for (const note of state.contextNotes ?? []) {
-      const readable = note.report && selected.has(note.seq)
-        && contextReportStatus({
+      if (note.report && selected.has(note.seq)) {
+        readContextNote({
           note,
           state,
-        }) !== 'helper handling'
-
-      if (readable) {
-        contextPresented.set(
-          note.id,
-          note.seq,
-        )
+        })
       }
     }
   }

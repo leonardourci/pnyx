@@ -512,6 +512,38 @@ test(
           'Keep the owner message intact under the report cap',
         ],
       })
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Export format',
+          '--key',
+          'budget-decision',
+        ],
+      })
+      const decisionTask = await hydra.task({ key: 'budget-decision' })
+      await hydra.as({ session }).run({
+        args: [
+          'task',
+          'ask',
+          'budget-decision',
+          '--to',
+          'owner',
+          '--question',
+          'Which export format?',
+          '--context',
+          `The format determines the export implementation. [Export format](pnyx-task:${decisionTask.id})`,
+          '--choice',
+          'CSV',
+          '--choice',
+          'JSON',
+          '--recommend',
+          '1',
+          '--reason',
+          'The format needs an owner choice',
+        ],
+      })
       // The timer runs only while Hydra is idle; queue the saved-review fixture during its held turn.
       withWriter({
         hydraId: hydra.id,
@@ -554,6 +586,9 @@ test(
       expect(wake).toBeDefined()
       expect(wake.length).toBeLessThan(12_000)
       expect(wake).not.toContain('Long report body '.repeat(30))
+      expect(wake).toContain('Open decisions (1):')
+      expect(wake).toContain('Which export format?')
+
       const reviewBefore = wake.match(/history --kind hydra.review --before (\d+) --limit 1 --full/)?.[1]
       expect(reviewBefore).toBeDefined()
       expect(wake).not.toContain('End of timed review evidence')
@@ -632,6 +667,104 @@ test(
       turn.release()
       page.close()
       wakeTurn.release()
+    }
+  },
+)
+
+test(
+  'reports in an owner turn reserve their tasks while the helper takes other work',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const first = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Hold reservation setup',
+      hold: true,
+    })
+    const main = await hydra.chat({ text: 'Hold reservation setup' })
+    const reserved = await hydra.startTask({ key: 'reserved-report' })
+    const available = await hydra.startTask({ key: 'available-report' })
+    const reservedTask = await hydra.task({ key: 'reserved-report' })
+    const availableTask = await hydra.task({ key: 'available-report' })
+    await hydra.as({ session: reserved.worker }).run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        reservedTask.id,
+        '--text',
+        'Reserved owner-turn report',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'stop',
+      ],
+    })
+    first.release()
+    const ownerTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Review reserved owner report',
+      hold: true,
+    })
+    const helperTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Granted tasks:'),
+      hold: true,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: availableTask.id,
+            status: 'still_waiting',
+            summary: 'No action needed.',
+          },
+        ],
+      }),
+    })
+
+    try {
+      await hydra.chat({ text: 'Review reserved owner report' })
+      await until({
+        what: 'main to read the owner-turn report',
+        check: () => main.received.some(text => text.includes('Reserved owner-turn report')),
+      })
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'auto',
+        ],
+      })
+      await hydra.as({ session: available.worker }).run({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          availableTask.id,
+          '--text',
+          'Available helper report',
+        ],
+      })
+      const granted = await until({
+        what: 'helper to take available work',
+        check: () => rows<{ tasks: string[] }>({
+          text: "select data->'data'->'tasks' as tasks from events where hydra_id = $1 and type = 'hydra.helper-started' order by seq desc limit 1",
+          values: [hydra.id],
+        })[0]?.tasks,
+      })
+      expect(granted).toEqual([availableTask.id])
+    } finally {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'off',
+        ],
+      })
+      helperTurn.release()
+      ownerTurn.release()
     }
   },
 )
