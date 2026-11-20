@@ -21,7 +21,7 @@ The web UI uses Tailwind v4 tokens in `web/src/index.css` and the shared control
 
 The migration stack enables these rules for shared UI first, then each converted screen through `STYLED_WEB` in `eslint.config.js`. The final screen change covers all web source except the marked chat rebuild scope.
 
-Measured geometry and owner-selected font sizes use `runtimeStyle`, which accepts a closed set of dimensions, transforms and named CSS variables. Use `style={runtimeStyle({ width: measuredWidth })}` for a measured width and a theme class for a fixed width. ESLint rejects literals in `runtimeStyle` object arguments.
+Measured geometry and owner-selected font sizes use the closed runtime-style helpers. `runtimeStyle` supplies React style props; `applyRuntimeStyle` applies the same allowed dimensions, transforms and named CSS variables to an existing DOM node. Use `style={runtimeStyle({ width: measuredWidth })}` or `applyRuntimeStyle({ element, values: { left: measuredLeft } })` for measured geometry and theme classes for fixed values. ESLint rejects fixed helper values, including signed numbers and expression-free templates, and direct DOM style access outside the helper module. Class-list calls follow the same arbitrary-value and ordering rules as JSX.
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
