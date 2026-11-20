@@ -1,3 +1,4 @@
+import { git } from '#projects/git.ts'
 import { inform } from '#app/command-notices.ts'
 import { copyFingerprint, removalWork } from './removal-work.ts'
 import { hydraPool, protectedCopiesFolder, removeHydraPool } from '#projects/remove-pool.ts'
@@ -81,11 +82,44 @@ async function prepareRemoval({
     ...pool.slots.map(slot => slot.path),
   ])
 
+  const records = new Map<string, typeof cards[number]>()
+
+  for (const path of paths) {
+    const candidates = cards.filter(card => card.copy?.path === path).sort((
+      left,
+      right,
+    ) => right.updatedSeq - left.updatedSeq)
+    let selected = candidates.find(card => card.copy?.state !== 'removed')
+
+    if (!selected && existsSync(path)) {
+      const branch = await git({
+        cwd: path,
+        args: [
+          'rev-parse',
+          '--abbrev-ref',
+          'HEAD',
+        ],
+      })
+
+      if (branch.ok) {
+        selected = candidates.find(card => card.copy?.branch === branch.out.trim())
+      }
+    }
+
+    if (selected) {
+      records.set(
+        path,
+        selected,
+      )
+    }
+  }
+
   return {
     copies,
     pool,
-    recorded,
+    recorded: new Set(records.keys()),
     paths,
+    records,
   }
 }
 
@@ -141,10 +175,10 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   })
   const recordedWork = await removalWork({ paths: plan.paths })
 
-  for (const card of Object.values(state.cards)) {
+  for (const card of plan.records.values()) {
     const copy = card.copy
 
-    if (copy && plan.paths.has(copy.path)) {
+    if (copy) {
       const check = await checkCopy({
         card,
         copy,
@@ -166,7 +200,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
     throw new HydraError({
       message: `Copy ${unknown.path} has no recorded landing proof`,
       code: 'CONFLICT',
-      help: ['Land and record the copy’s work before removing this Hydra'],
+      help: ['This slot has no matching task record; inspect and remove it manually after landing its work'],
     })
   }
 
@@ -275,10 +309,34 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     })
   }
 
+  let records: Awaited<ReturnType<typeof prepareRemoval>>['records'] = new Map()
+
   const verify = async ({ path }: { path: string }) => {
     const fingerprint = await copyFingerprint({ path })
 
     if (fingerprint !== undefined && approvedWork?.[path] !== fingerprint) {
+      refuseChangedWork()
+    }
+
+    if (fingerprint === undefined) {
+      return
+    }
+
+    const card = records.get(path)
+
+    if (!card?.copy) {
+      refuseChangedWork()
+
+      return
+    }
+
+    const check = await checkCopy({
+      card,
+      copy: card.copy,
+    })
+    const checked = await copyFingerprint({ path })
+
+    if ((!check.gone && (!check.clean || !check.landed)) || checked !== fingerprint) {
       refuseChangedWork()
     }
   }
@@ -291,6 +349,8 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       id,
       state,
     })
+
+    records = plan.records
 
     if (!approvedWork) {
       refuseChangedWork()
@@ -318,7 +378,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       if (copy.via === 'worktree') {
         const failure = await removeCopy({
           copy,
-          force: true,
+          force: false,
         })
 
         if (failure) {

@@ -846,6 +846,162 @@ process.exit(result.status ?? 1)
     }
 
     rmSync(workPath)
+    const currentTask = (await target.owner({
+      args: [
+        'task',
+        'show',
+        'changed',
+        '--full',
+      ],
+    })).task
+    const lease = join(
+      hydraDir({ hydraId: target.id }),
+      `helper-lease-${encodeURIComponent(currentTask.id)}.json`,
+    )
+    writeFileSync(
+      lease,
+      JSON.stringify({
+        actor: 'helper:active',
+        holders: [
+          {
+            id: 'active',
+            pid: process.pid,
+          },
+        ],
+      }),
+    )
+
+    try {
+      expect((await target.ownerRefused({
+        args: [
+          'task',
+          'copy',
+          'changed',
+          'remove',
+          '--discard',
+        ],
+      })).code).toBe('TASK_LEASED')
+      expect(existsSync(copy)).toBe(true)
+    } finally {
+      rmSync(
+        lease,
+        { force: true },
+      )
+    }
+
+    const trackedRace = join(
+      copy,
+      'tracked-race.txt',
+    )
+    writeFileSync(
+      trackedRace,
+      'landed version',
+    )
+    landWork({
+      copy,
+      project: folder,
+    })
+    writeFileSync(
+      trackedRace,
+      'original unsaved work',
+    )
+    rmSync(
+      counter,
+      { force: true },
+    )
+    writeFileSync(
+      join(
+        gitBin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { existsSync, readFileSync, writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+let count = 0
+if (args[0] === '-C' && args[1] === ${JSON.stringify(copy)} && args[2] === 'status' && args.includes('--untracked-files=normal')) {
+  count = existsSync(${JSON.stringify(counter)}) ? Number(readFileSync(${JSON.stringify(counter)}, 'utf8')) + 1 : 1
+  writeFileSync(${JSON.stringify(counter)}, String(count))
+  if (count === 1) writeFileSync(${JSON.stringify(trackedRace)}, 'landed version')
+}
+const result = spawnSync('/usr/bin/git', args)
+if (count === 2) writeFileSync(${JSON.stringify(trackedRace)}, 'original unsaved work')
+process.stdout.write(result.stdout ?? '')
+process.stderr.write(result.stderr ?? '')
+process.exit(result.status ?? 1)
+`,
+      { mode: 0o755 },
+    )
+    process.env.PATH = `${gitBin}:${previousPath}`
+
+    try {
+      expect((await caller.ownerRefused({
+        args: [
+          'hydra',
+          'remove',
+          target.id,
+        ],
+      })).code).toBe('CONFLICT')
+      expect(readFileSync(
+        trackedRace,
+        'utf8',
+      )).toBe('original unsaved work')
+    } finally {
+      process.env.PATH = previousPath
+    }
+
+    writeFileSync(
+      trackedRace,
+      'landed version',
+    )
+    const lateWork = join(
+      copy,
+      'late-untracked.txt',
+    )
+    writeFileSync(
+      join(
+        gitBin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+if (args.includes('worktree') && args.includes('remove') && args.at(-1) === ${JSON.stringify(copy)}) {
+  writeFileSync(${JSON.stringify(lateWork)}, 'Keep the late edit')
+}
+const result = spawnSync('/usr/bin/git', args)
+process.stdout.write(result.stdout ?? '')
+process.stderr.write(result.stderr ?? '')
+process.exit(result.status ?? 1)
+`,
+      { mode: 0o755 },
+    )
+    process.env.PATH = `${gitBin}:${previousPath}`
+
+    try {
+      const kept = await target.owner({
+        args: [
+          'task',
+          'copy',
+          'changed',
+          'remove',
+          '--discard',
+        ],
+      })
+      expect(kept.copy.state).toBe('flagged')
+      expect(readFileSync(
+        lateWork,
+        'utf8',
+      )).toBe('Keep the late edit')
+    } finally {
+      process.env.PATH = previousPath
+      rmSync(
+        lateWork,
+        { force: true },
+      )
+    }
+
     const tool = spawn(
       process.execPath,
       [
