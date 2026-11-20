@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import type { Card, ReminderRepeat } from './model.ts'
@@ -121,9 +122,10 @@ export function reminderRepeat({
     state,
     card,
   })) {
-    throw new HydraError({
-      code: 'VALIDATION_ERROR',
-      message: 'This task is already done; --until task-done would stop at once',
+    inform({
+      task: card.id,
+      reason: 'Task is already done; its recurring reminder stops immediately',
+      clear: `Use pnyx-axi task remind ${card.id} <time> --every <interval> --until worker-started to wait for another run`,
     })
   }
 
@@ -133,12 +135,20 @@ export function reminderRepeat({
   }
 
   if (until === 'question-answered') {
-    const ask = card.asks?.find(ask => ask.id === question && ask.audience === 'owner' && !ask.answered && !ask.closed)
+    const ask = card.asks?.find(ask => ask.id === question)
 
     if (!ask) {
       throw new HydraError({
         code: 'VALIDATION_ERROR',
         message: 'Choose an open owner question with --question <id>',
+      })
+    }
+
+    if (ask.answered || ask.closed || ask.audience !== 'owner') {
+      inform({
+        task: card.id,
+        reason: 'Question is answered, closed or directed to Hydra; recurrence uses its recorded answer state',
+        clear: `Use pnyx-axi task remind ${card.id} clear to remove it`,
       })
     }
 

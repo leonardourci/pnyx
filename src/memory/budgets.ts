@@ -1,5 +1,5 @@
+import { inform } from '#app/command-notices.ts'
 import type { Learning } from './learnings.ts'
-import { HydraError } from '#store/errors.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 
 export const OWNER_MEMORY_BUDGET = 24000
@@ -30,7 +30,6 @@ export const memorySize = ({ memory }: { memory: Memory }) =>
     0,
   )
 
-// A save over budget is refused unless it shrinks the memory, so curating an overfull memory still works.
 export function checkBudget({
   memory,
   key,
@@ -51,10 +50,9 @@ export function checkBudget({
   ) ? memory[key]!.text.length : 0) + (after?.length ?? 0)
 
   if (after !== null && size > budget && size > used) {
-    throw new HydraError({
-      message: `${layer} memory would use ${size} of ${budget} characters`,
-      code: 'MEMORY_FULL',
-      help: [`Load the ${INSCRIBE_SKILL} skill: merge, shorten or forget entries, then save again`],
+    inform({
+      reason: `${layer} memory uses ${size} of ${budget} characters`,
+      clear: `Use pnyx-axi ${layer.toLowerCase()} memory list and ${layer.toLowerCase()} memory forget, or the ${INSCRIBE_SKILL} skill, to curate it`,
     })
   }
 }

@@ -111,10 +111,7 @@ export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       task: 'text',
       message: 'text',
     },
-    required: [
-      'task',
-      'message',
-    ],
+    required: ['task'],
   },
   link: {
     fields: {

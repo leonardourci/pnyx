@@ -178,6 +178,7 @@ export interface WorkerLog {
 }
 
 export interface Card {
+  notices?: import('#app/command-notices.ts').CommandNotice[]
   branches?: {
     repository: string
     branch: string

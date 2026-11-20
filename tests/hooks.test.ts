@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os'
 import { base as eventBase } from '#app/command-meta.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -10,7 +11,7 @@ import { flushLogs } from '#app/diagnostics.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
@@ -417,6 +418,98 @@ test(
     }[])
       .filter(entry => entry.role === 'user' || entry.role === 'You')
       .map(entry => entry.text)).toEqual(['Fix the flaky login test'])
+
+    const replacement = {
+      ...working.agent,
+      sessionId: 'outside-replacement',
+    }
+    await assignedHydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-replacement',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: replacement,
+        terminal: { tty: '/dev/ttys99998' },
+      }),
+    })
+    const replacementId = (await sessionFacts({ session: 'outside-replacement' })).id
+    const replaced = await assignedHydra.owner({
+      args: [
+        'task',
+        'attach',
+        'outside-hook-chat',
+        '--session',
+        replacementId,
+      ],
+    })
+    expect(replaced.notices).toBeDefined()
+    expect((await assignedHydra.task({ key: 'outside-hook-chat' })).worker).toBe(replacementId)
+    const sessions = await assignedHydra.owner({
+      args: [
+        'task',
+        'sessions',
+      ],
+    })
+    expect(sessions.sessions).toContainEqual(expect.objectContaining({
+      id: working.id,
+      task: 'none',
+    }))
+    const project = assignedHydra.folder({ name: 'queued-attachment' })
+    await assignedHydra.owner({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'task',
+        'rename',
+        'outside-hook-chat',
+        '--project',
+        project,
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'queued-attachment',
+        '--title',
+        'Queued work',
+        '--project',
+        project,
+      ],
+    })
+    await assignedHydra.owner({
+      args: [
+        'task',
+        'queue',
+        'queued-attachment',
+        '--behind',
+        'outside-hook-chat',
+      ],
+    })
+    expect((await assignedHydra.task({ key: 'queued-attachment' })).queue).toBeDefined()
+    const attached = await assignedHydra.owner({
+      args: [
+        'task',
+        'attach',
+        'queued-attachment',
+        '--session',
+        replacementId,
+      ],
+    })
+    expect(attached.notices).toBeDefined()
+    expect((await assignedHydra.task({ key: 'queued-attachment' })).queue).toBeUndefined()
+    expect((await assignedHydra.task({ key: 'queued-attachment' })).worker).toBe(replacementId)
 
     await flushLogs()
     const onLogs = logFiles().map(file => readFileSync(
@@ -1323,5 +1416,76 @@ test(
     expect(bound.agent.transcriptPath).toBe(replacement)
     expect.soft(bound.activity).toBe('working')
     expect.soft(bound.activityCursor?.source).not.toBe(rebound)
+  },
+)
+
+test(
+  'setup preserves a custom skill and reports how to install the shipped one',
+  async () => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-skill-conflict-',
+    ))
+    onTestFinished(() => rmSync(
+      home,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const env = {
+      ...process.env,
+      HOME: home,
+      PNYX_HOME: join(
+        home,
+        '.pnyx',
+      ),
+    }
+    const customSkill = join(
+      home,
+      '.agents',
+      'skills',
+      'pnyx-cli',
+    )
+    mkdirSync(
+      customSkill,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        customSkill,
+        'SKILL.md',
+      ),
+      'Keep my local skill',
+    )
+    const installed = await pnyxAxi({
+      args: [
+        'setup',
+        'skills',
+      ],
+      env,
+    })
+    expect(
+      installed.status,
+      installed.stdout,
+    ).toBe(0)
+    expect(parsed(installed).notices).toContainEqual(expect.objectContaining({
+      reason: expect.stringContaining(customSkill),
+      clear: expect.stringContaining('pnyx-axi setup skills'),
+    }))
+    expect(readFileSync(
+      join(
+        customSkill,
+        'SKILL.md',
+      ),
+      'utf8',
+    )).toBe('Keep my local skill')
+    expect(existsSync(join(
+      home,
+      '.agents',
+      'skills',
+      'pnyx-report-progress',
+      'SKILL.md',
+    ))).toBe(true)
   },
 )

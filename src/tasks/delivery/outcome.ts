@@ -1,8 +1,8 @@
+import { inform } from '#app/command-notices.ts'
 import type { HydraState, Decision } from '#app/model.ts'
 import type { Outcome } from './model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HydraError } from '#store/errors.ts'
 import { decided } from '#app/decision.ts'
 
 // source: the adapter observing this outcome. An observed outcome changes or
@@ -29,10 +29,10 @@ export function decideOutcome(
   const observed = card.outcome?.source
 
   if (observed && source !== observed && !(source === undefined && observed === 'hooks')) {
-    throw new HydraError({
-      message: `card ${card.id}'s outcome comes from ${observed} and cannot be changed here`,
-      code: 'SOURCE_OWNED',
-      help: [`Run \`pnyx-axi move ${card.id} <column>\` to pin the card instead`],
+    inform({
+      task: card.id,
+      reason: `Outcome from ${observed} replaced; a later observation can update it`,
+      clear: `Use pnyx-axi outcome ${card.id} --clear to clear the override`,
     })
   }
 

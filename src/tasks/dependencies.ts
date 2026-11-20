@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { reportReviewGaps } from '#investigations/inventory.ts'
 import { openAsks } from './ask-state.ts'
 import { holdBlocker, ownerGates, questionBlockers, type Blocker } from './owner-gates.ts'
@@ -290,11 +291,11 @@ export function requireReady({
     card,
   })
 
-  if (blockers.length) {
-    throw new HydraError({
-      message: `task ${card.id} is not ready: ${blockers.map(blocker => blocker.reason).join('; ')}`,
-      code: 'TASK_NOT_READY',
-      help: [...new Set(blockers.map(blocker => blocker.clear))],
+  for (const blocker of blockers) {
+    inform({
+      task: card.id,
+      reason: blocker.reason,
+      clear: blocker.clear,
     })
   }
 }

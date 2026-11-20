@@ -1,3 +1,5 @@
+import { inform } from '#app/command-notices.ts'
+import { requirePermissionApprover } from './worker-identity.ts'
 import { randomUUID } from 'node:crypto'
 import { permissionAnswer, permissionEvent } from './permission-rules.ts'
 import type { PermissionRequest } from './model.ts'
@@ -9,7 +11,6 @@ import { isHelper } from '#routine-helper/leases.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { HydraError } from '#store/errors.ts'
-import { HYDRA_ACTOR } from '#app/actors.ts'
 import { explained } from '#app/cli-support.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
@@ -262,18 +263,19 @@ export function createPermissionBridge({
 
         // A question or form is the worker asking; the helper leaves its answer to main or the owner.
         if (isHelper({ actor }) && (!helperPermission({ request }) || answer !== undefined)) {
-          throw new HydraError({
-            message: 'This request asks a question; leave it to the main Hydra',
-            code: 'MAIN_ONLY',
+          inform({
+            task: card.id,
+            reason: 'Helper answered a question or form',
+            clear: `Use pnyx-axi task show ${card.id} --full to inspect the answer`,
           })
         }
 
-        // Hydra runs pnyx-axi unasked, so it must not clear its own prompts with it.
-        if (card.id === HYDRA_CARD && actor === HYDRA_ACTOR) {
-          throw new HydraError({
-            message: 'Hydra cannot answer its own permission request',
-            code: 'NO_ROUTE',
-            help: ['The owner answers it in Hydra’s chat'],
+        if (choice === 'allow') {
+          requirePermissionApprover({
+            actor,
+            hydraId,
+            card,
+            session: request.session,
           })
         }
 

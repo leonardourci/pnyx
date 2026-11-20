@@ -44,7 +44,6 @@ function releaseReason({
 
 export type Settle = 'check' | 'safe' | 'discard'
 
-// Only the owner discards work that never landed; anything else unsafe is flagged for Hydra.
 export async function settleCopy({
   hydraId,
   ref,
@@ -93,11 +92,19 @@ export async function settleCopy({
     })
 
     const requireSafe = () => {
+      if (mode === 'discard' && (!check.clean || !check.landed)) {
+        throw new HydraError({
+          message: `The copy of ${card.id} contains unlanded work`,
+          code: 'CONFLICT',
+          help: ['Land its current work before removing the copy'],
+        })
+      }
+
       if (mode === 'safe' && copy.via === 'worktree' && (!check.clean || !check.landed)) {
         throw new HydraError({
           message: `the copy of ${card.id} has uncommitted changes or unproved work, so it is not safe to remove`,
           code: 'CONFLICT',
-          help: ['Land the current work first; discarding it needs the owner'],
+          help: ['Land the current work first'],
         })
       }
     }
@@ -139,7 +146,7 @@ export async function settleCopy({
         reason: 'its folder was already gone',
       }
     } else if (mode === 'discard' || mode === 'safe' || !('reason' in check)) {
-      const why = mode === 'discard' ? 'discarded with the owner’s confirmation' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
+      const why = mode === 'discard' ? 'removed after its work landed' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
       pooled = mode !== 'discard' && copy.via === 'worktree' && await staysInPool({
         hydraId,
         state,
@@ -148,7 +155,7 @@ export async function settleCopy({
       // The project's copy tool owns the folders it makes, so Pnyx only lets them go.
       const failed = copy.via === 'command' || pooled ? undefined : await removeCopy({
         copy,
-        force: mode === 'discard',
+        force: false,
       })
       after = failed
         ? {
@@ -222,7 +229,7 @@ export async function settleCopy({
         if (after.state === 'flagged') {
           const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
             + `Prove its current work landed, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`. `
-            + `Discarding work that never landed needs the owner: \`pnyx-axi task copy ${now.id} remove --discard --hydra ${hydraId}\`.`
+            + 'Work that never landed must be landed before retrying.'
           applyDecision({
             writer,
             decision: hydraEvent({

@@ -192,6 +192,7 @@ export type HydraChange = EventBase & (
       hold: string
       answers?: string
       message: AnswerMessage
+      direct?: true
     }
   }
   | {

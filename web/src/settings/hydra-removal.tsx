@@ -9,12 +9,10 @@ export function HydraRemoval({
   hydras,
   command,
   connected,
-  showConfirmation,
 }: {
   hydras: HydraSummary[]
   command: Command
   connected: boolean
-  showConfirmation(): void
 }) {
   const [
     error,
@@ -62,10 +60,6 @@ export function HydraRemoval({
                     hydra.id,
                   ],
                 })
-
-                if (currentVisit.current) {
-                  showConfirmation()
-                }
               } catch (error) {
                 if (currentVisit.current) {
                   setError(error instanceof Error ? error.message : String(error))

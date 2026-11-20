@@ -16,13 +16,13 @@ The page groups tasks by project. Ideas is first and contains tasks without an a
 - `task arrange <task> [--before <task>]` sets visual order within a project and parent. State groups stay needs you, running, waiting/queued/paused, then done. `task reorder --behind` still changes a worker queue, not visual order.
 - `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":{"<project-id>":true}}}'` saves project layout. Project ids are repository paths or the group's id. Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed` fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
 
-A repository can have only one Hydra. New duplicate attachments are refused. Existing duplicates remain usable and Setup and Settings ask the owner for a keeper. Only the owner runs `project keep <repo-path> --hydra <keeper>`. It moves every task and records each move, or lists all blockers and moves nothing. Never choose the keeper for the owner.
+Duplicate repository attachments proceed with a notice naming their Hydras. Setup and Settings suggest a keeper. Use `project keep <repo-path> --hydra <keeper>`. It moves every task and records each move, reporting the relationships it adjusts and the commands that restore them. Choose the keeper from the owner’s instructions and the work recorded in each Hydra.
 
 ## Lifecycle compatibility
 
 Lifecycle columns remain internal compatibility state. Their rules still drive completion, queues and manual overrides. They do not create visible project columns. Ordinary activity and worker.log lines update state automatically; do not create or move lifecycle columns to organize the page.
 
-Use the legacy `column list`, `column rule`, `column create|rename|describe|reorder|delete` and `move` commands only for an explicit lifecycle-rule request or a correction. Read their help and inspect the confirmation before repeating with its token. Existing `column resize` and `layout` values remain available for old clients; use `view set` for project widths.
+Use the legacy `column list`, `column rule`, `column create|rename|describe|reorder|delete` and `move` commands only for an explicit lifecycle-rule request or a correction. Read their help and inspect the result; an agent change proceeds directly and reports its placement changes. Existing `column resize` and `layout` values remain available for old clients; use `view set` for project widths.
 
 Rely on checked completion and recorded PR merges. A finished turn or passing local checks does not declare completion. Done cards hide after 1 hour by default, subject to the shared setting and task overrides. Parents stay open while any child is unfinished.
 

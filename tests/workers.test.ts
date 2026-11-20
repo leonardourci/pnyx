@@ -614,6 +614,107 @@ test(
       column: needsYou,
     })
 
+    const asSession = hydra.as({
+      session: worker,
+      env: {
+        ...worker.env,
+        PNYX_ACTOR: `session:${request.session}`,
+        PNYX_TASK: undefined,
+        PNYX_STEERING_WORKER: undefined,
+      },
+    })
+    expect((await asSession.refused({
+      args: [
+        'task',
+        'permission',
+        'cleanup',
+        request.id,
+        'allow',
+        '--actor',
+        'cli',
+      ],
+    })).code).toBe('NO_ROUTE')
+    const outsideTask = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Outside permission',
+        '--key',
+        'outside-self-approval',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'outside-self-approval',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'outside-self-approval',
+          cwd: hydra.folder({ name: 'outside-self-approval' }),
+        },
+        terminal: {
+          tmux: '/tmp/pnyx-outside-test',
+          tmuxPane: '%9',
+          tty: '/dev/ttys99999',
+          pid: '999999',
+        },
+        attention: [
+          {
+            key: 'hook:tool:Bash',
+            kind: 'permission',
+            text: 'Read the test fixture?',
+            blocking: true,
+          },
+        ],
+      }),
+    })
+    const outsideActor = hydra.as({
+      session: worker,
+      env: {
+        ...worker.env,
+        PNYX_ACTOR: 'session:claude-code:outside-self-approval',
+        PNYX_TASK: undefined,
+        PNYX_STEERING_WORKER: undefined,
+      },
+    })
+    expect((await outsideActor.refused({
+      args: [
+        'reply',
+        outsideTask.card.id,
+        '--answer',
+        'hook:tool:Bash',
+        '--json',
+        '{"choice":"allow"}',
+        '--actor',
+        'cli',
+      ],
+    })).code).toBe('NO_ROUTE')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        outsideTask.card.id,
+        '--full',
+      ],
+    })).task.attention.find((item: { key: string }) => item.key === 'hook:tool:Bash')).not.toHaveProperty('answered')
+    const asWorker = hydra.as({ session: worker })
+    expect((await asWorker.refused({
+      args: [
+        'task',
+        'permission',
+        'cleanup',
+        request.id,
+        'allow',
+      ],
+    })).code).toBe('NO_ROUTE')
+
     await hydra.owner({
       args: [
         'task',
@@ -661,6 +762,17 @@ test(
         ],
       })).task.permissions.find((pending: { status: string }) => pending.status === 'pending'),
     })
+    expect((await asWorker.refused({
+      args: [
+        'task',
+        'permission',
+        'cleanup',
+        second.id,
+        'allow',
+        '--actor',
+        'cli',
+      ],
+    })).code).toBe('NO_ROUTE')
     await hydra.owner({
       args: [
         'task',
@@ -671,6 +783,122 @@ test(
       ],
     })
     expect(await allowed).toMatchObject({ behavior: 'allow' })
+    const promoted = await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--session',
+        'claude-code:outside-self-approval',
+      ],
+    })
+    expect(promoted.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('detached from its task') }))
+    expect((await hydra.task({ key: outsideTask.card.id })).worker).toBe('none')
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'show',
+      ],
+    })).hydra.hydra.session).toBe('claude-code:outside-self-approval')
+
+    const outsideFolder = hydra.folder({ name: 'present-outside-session' })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'present-outside',
+        '--title',
+        'Continue outside work',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'present-outside',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'present-outside',
+          cwd: outsideFolder,
+        },
+        terminal: {
+          tty: '/dev/ttys99111',
+          pid: '989898',
+        },
+        activity: 'working',
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        'present-outside',
+      ],
+    })
+    const psBin = hydra.folder({ name: 'presence-process' })
+    writeFileSync(
+      join(
+        psBin,
+        'ps',
+      ),
+      `#!/usr/bin/env node
+if (process.argv.includes('989898')) process.stdout.write('ttys99111\\n')
+else {
+  const result = require('node:child_process').spawnSync('/bin/ps', process.argv.slice(2))
+  process.stdout.write(result.stdout ?? '')
+  process.stderr.write(result.stderr ?? '')
+  process.exit(result.status ?? 1)
+}
+`,
+      { mode: 0o755 },
+    )
+    const previousPath = process.env.PATH
+    process.env.PATH = `${psBin}:${previousPath}`
+
+    try {
+      expect(await hydra.owner({
+        args: [
+          'task',
+          'continue',
+          'present-outside',
+          '--check',
+        ],
+      })).toMatchObject({
+        canContinue: true,
+        state: 'present',
+      })
+      const continued = await hydra.owner({
+        args: [
+          'task',
+          'continue',
+          'present-outside',
+        ],
+      })
+      expect(continued.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still present') }))
+      expect(continued.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('hidden task') }))
+    } finally {
+      process.env.PATH = previousPath
+    }
+
+    await hydra.owner({
+      args: [
+        'reply',
+        'present-outside',
+        '--text',
+        'Resume the saved outside work',
+      ],
+    })
+    const resumed = await hydra.agent({ cwd: outsideFolder })
+    expect(resumed.resumed).toBe(true)
+    await until({
+      what: 'the resumed outside session to receive its message',
+      check: () => resumed.received.some(text => text.includes('Resume the saved outside work')),
+    })
   },
 )
 
@@ -1060,7 +1288,7 @@ test(
 )
 
 test(
-  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Hydra\'s steering, marks the card stopped, and refuses a worker asking to Stop',
+  'Stop on a worker cancels the owner\'s unread reply as not delivered but keeps Hydra\'s steering, marks the card stopped, and permits a worker asking to Stop with a notice',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'stoppable' })
@@ -1116,38 +1344,15 @@ test(
       ],
     })
 
-    for (const args of [
-      [
-        'task',
-        'stop',
-        'stoppable',
-      ],
-      [
-        'task',
-        'send-now',
-        'stoppable',
-        'anything',
-      ],
-      [
-        'hydra',
-        'stop',
-      ],
-      [
-        'hydra',
-        'cancel',
-        'anything',
-      ],
-    ]) {
-      expect((await hydra.as({ session: worker }).refused({ args })).code).toBe('OWNER_ONLY')
-    }
-
-    expect((await hydra.owner({
+    const stopped = await hydra.as({ session: worker }).run({
       args: [
         'task',
         'stop',
         'stoppable',
       ],
-    })).stopped).toMatch(/^task-/)
+    })
+    expect(stopped.notices).toBeDefined()
+    expect(stopped.stopped).toMatch(/^task-/)
     expect((await hydra.task({ key: 'stoppable' })).status).toBe('ended')
     await until({
       what: 'the owner\'s reply to read as not delivered',

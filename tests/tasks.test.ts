@@ -315,7 +315,7 @@ test(
 )
 
 test(
-  'a hold is released only by an owner message sent after it, not by an earlier one or one Hydra wrote',
+  'a hold releases with an older or agent message, with a notice, and an owner go message releases it without a notice',
   async () => {
     const hydra = await pnyx.hydra()
     const before = await hydra.owner({
@@ -353,24 +353,72 @@ test(
     for (const message of [
       before.message,
       byHydra.message,
+      undefined,
     ]) {
-      expect(
-        (await hydra.ownerRefused({
-          args: [
-            'task',
-            'release',
-            'still-held',
-            '--from-message',
-            message,
-            '--reason',
-            'Released',
-          ],
-        })).code,
-        message,
-      ).toBe('VALIDATION_ERROR')
+      const source = message ?? (await hydra.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Proceed with the rename',
+        ],
+      })).message
+      const go = await hydra.owner({
+        args: [
+          'task',
+          'ask',
+          'still-held',
+          '--to',
+          'owner',
+          '--kind',
+          'go',
+          '--question',
+          'Proceed with the rename?',
+        ],
+      })
+      const released = await hydra.owner({
+        args: [
+          'task',
+          'release',
+          'still-held',
+          '--from-message',
+          source,
+          '--reason',
+          'Released',
+        ],
+      })
+      expect(released.notices).toBeDefined()
+      const releasedTask = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'still-held',
+          '--full',
+        ],
+      })).task
+      const answeredGo = releasedTask.asks.find((ask: { id: string }) => ask.id === go.ask)
+      expect(answeredGo.choice).toBe('Go')
+      expect(answeredGo.fromMessage ?? null).toBeNull()
+      expect((await hydra.task({ key: 'still-held' })).hold).toBeUndefined()
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'release',
+          'still-held',
+          '--from-message',
+          'missing-release-message',
+        ],
+      })).code).toBe('NOT_FOUND')
+      await hydra.owner({
+        args: [
+          'task',
+          'hold',
+          'still-held',
+          '--reason',
+          'Discuss the rename',
+        ],
+      })
     }
-
-    expect((await hydra.task({ key: 'still-held' })).hold).toBeDefined()
 
     const go = await hydra.owner({
       args: [
@@ -933,18 +981,10 @@ test(
           to,
         ],
       })
-      expect(preview.confirmation).toBe('needed')
-      expect((await hydra.task({ key: 'later' })).column).not.toBe(to)
+      expect(preview).not.toHaveProperty('confirmation')
+      expect((await hydra.task({ key: 'later' })).column).toBe(to)
 
-      return hydra.owner({
-        args: [
-          'move',
-          'later',
-          to,
-          '--confirm',
-          preview.token,
-        ],
-      })
+      return preview
     }
 
     const parked = await move({ to: board.parked })
@@ -1883,7 +1923,7 @@ test(
 )
 
 test(
-  'owner questions require a decision, context, card link, choices and recommendation; updates never ask for a decision',
+  'owner question presentation defaults carry notices, invalid choices stay invalid, and updates never ask for a decision',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({
@@ -1894,6 +1934,91 @@ test(
     const asHydra = hydra.as({ session })
     const card = await hydra.task({ key: 'questions' })
     const context = `Archived invoices change totals. After the answer I will build the export. [Export \\[scope\\]](pnyx-task:${card.id})`
+    const asWorker = hydra.as({ session: worker })
+    const managed = await asHydra.run({
+      args: [
+        'task',
+        'ask',
+        'questions',
+        '--to',
+        'owner',
+        '--question',
+        'Choose an export format?',
+        '--choice',
+        'CSV',
+        '--choice',
+        'JSON',
+      ],
+    })
+    const deferred = await asWorker.run({
+      args: [
+        'task',
+        'defer-question',
+        'questions',
+        managed.ask,
+        '--until',
+        '2099-01-01T09:00:00Z',
+      ],
+    })
+    expect(deferred.notices).toBeDefined()
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'questions',
+        '--full',
+      ],
+    })).task.asks).toContainEqual(expect.objectContaining({
+      id: managed.ask,
+      deferredUntil: '2099-01-01T09:00:00.000Z',
+    }))
+    const discussed = await asWorker.run({
+      args: [
+        'task',
+        'discuss-question',
+        'questions',
+        managed.ask,
+        '--text',
+        'CSV works with the existing importer',
+      ],
+    })
+    expect(discussed.notices).toBeDefined()
+    const answered = await asWorker.run({
+      args: [
+        'task',
+        'answer',
+        'questions',
+        managed.ask,
+        '--choice',
+        'CSV',
+      ],
+    })
+    expect(answered.notices).toBeDefined()
+    const reopened = await asWorker.run({
+      args: [
+        'task',
+        'reopen-question',
+        'questions',
+        managed.ask,
+      ],
+    })
+    expect(reopened.event).toBeDefined()
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'questions',
+        '--full',
+      ],
+    })).task.asks.find((ask: { id: string }) => ask.id === managed.ask).answered).toBeUndefined()
+    await asHydra.run({
+      args: [
+        'task',
+        'close-question',
+        'questions',
+        managed.ask,
+      ],
+    })
     const fields = [
       [
         '--question',
@@ -1915,26 +2040,47 @@ test(
       ],
     ]
 
-    for (let omitted = 0; omitted < fields.length; omitted++) {
-      const refused = await asHydra.refused({
+    const accepted = async ({ args }: { args: string[] }) => {
+      const result = await asHydra.run({ args })
+      expect(result.notices).toBeDefined()
+      expect((await hydra.task({ key: 'questions' })).notices).toBeDefined()
+      await asHydra.run({
         args: [
           'task',
-          'ask',
+          'close-question',
           'questions',
-          '--to',
-          'owner',
-          ...fields.filter((
-            _,
-            index,
-          ) => index !== omitted).flat(),
+          result.ask,
           '--reason',
-          'Accounting decision',
+          'Presentation checked',
+          '--evidence',
+          'The question was recorded',
         ],
       })
-      expect(refused.code).toBe('VALIDATION_ERROR')
     }
 
-    expect((await asHydra.refused({
+    for (let omitted = 0; omitted < fields.length; omitted++) {
+      const args = [
+        'task',
+        'ask',
+        'questions',
+        '--to',
+        'owner',
+        ...fields.filter((
+          _,
+          index,
+        ) => index !== omitted).flat(),
+        '--reason',
+        'Accounting decision',
+      ]
+
+      if (omitted === 0 || omitted === 2) {
+        expect((await asHydra.refused({ args })).code).toBe('VALIDATION_ERROR')
+      } else {
+        await accepted({ args })
+      }
+    }
+
+    await accepted({
       args: [
         'task',
         'ask',
@@ -1950,14 +2096,14 @@ test(
         '--reason',
         'Accounting decision',
       ],
-    })).code).toBe('VALIDATION_ERROR')
+    })
 
     for (const question of [
       '?',
       'Ready for review',
       'Ship CSV? Or JSON?',
     ]) {
-      expect((await asHydra.refused({
+      await accepted({
         args: [
           'task',
           'ask',
@@ -1970,7 +2116,7 @@ test(
           '--reason',
           'Accounting decision',
         ],
-      })).code).toBe('VALIDATION_ERROR')
+      })
     }
 
     for (const badContext of [
@@ -1979,7 +2125,7 @@ test(
       '[Wrong](pnyx-task:another-card)',
       `Totals change after the answer. ](pnyx-task:${card.id})`,
     ]) {
-      expect((await asHydra.refused({
+      await accepted({
         args: [
           'task',
           'ask',
@@ -1994,7 +2140,7 @@ test(
           '--reason',
           'Accounting decision',
         ],
-      })).code).toBe('VALIDATION_ERROR')
+      })
     }
 
     await workerLine({
@@ -2015,20 +2161,8 @@ test(
     expect(beforeReminder.task.workerLog.status).toMatchObject({ code: 'needs-you' })
 
     const confirmColumnChange = async ({ args }: { args: string[] }) => {
-      const preview = await hydra.owner({ args })
-      expect(preview).toMatchObject({
-        confirmation: 'needed',
-        token: expect.stringMatching(/\S/),
-      })
-
-      const result = await hydra.owner({
-        args: [
-          ...args,
-          '--confirm',
-          preview.token,
-        ],
-      })
-      expect(result.confirmation).not.toBe('needed')
+      const result = await hydra.owner({ args })
+      expect(result).not.toHaveProperty('confirmation')
     }
 
     await hydra.owner({
@@ -2251,7 +2385,7 @@ test(
       text: 'select summary from hydras where id = $1',
       values: [hydra.id],
     })[0]?.summary.asks).toBe(0)
-    expect((await asHydra.refused({
+    expect((await asHydra.run({
       args: [
         'task',
         'escalate',
@@ -2260,8 +2394,8 @@ test(
         '--reason',
         'Accounting decision',
       ],
-    })).code).toBe('VALIDATION_ERROR')
-    expect((await asHydra.refused({
+    })).notices).toBeDefined()
+    expect((await asHydra.run({
       args: [
         'task',
         'escalate',
@@ -2274,7 +2408,7 @@ test(
         '--reason',
         'Accounting decision',
       ],
-    })).code).toBe('VALIDATION_ERROR')
+    })).notices).toBeDefined()
     await asHydra.run({
       args: [
         'task',
@@ -2435,7 +2569,6 @@ test(
       '--event-id',
       'batch-open-only',
     ]
-    expect((await asHydra.refused({ args: answer })).code).toBe('OWNER_ONLY')
     const malformedSnapshot = JSON.stringify([
       ...keys,
       'not-a-question-key',
@@ -2447,8 +2580,9 @@ test(
       index,
     ) => answer[index - 1] === '--choice' ? '1' : value)
     expect((await hydra.ownerRefused({ args: numericChoice })).code).toBe('VALIDATION_ERROR')
-    await hydra.owner({ args: answer })
-    const repeated = await hydra.owner({ args: answer })
+    const answered = await asHydra.run({ args: answer })
+    expect(answered.notices).toBeDefined()
+    const repeated = await asHydra.run({ args: answer })
     expect(repeated.answers.every((receipt: { repeat?: boolean }) => receipt.repeat)).toBe(true)
     const differentRetry = answer.map((
       value,
@@ -2500,7 +2634,7 @@ test(
         'Everything',
       ],
     })
-    const recovered = await hydra.owner({ args: answer })
+    const recovered = await asHydra.run({ args: answer })
     expect(recovered.answers).toMatchObject([
       { repeat: true },
       { repeat: true },
@@ -3382,16 +3516,27 @@ test(
         'research',
       ],
     })
-    await hydra.owner({
+    const missingReport = await hydra.owner({
+      args: [
+        'outcome',
+        'research',
+        'done',
+        '--note',
+        'Report pending',
+      ],
+    })
+    expect(missingReport.notices).toBeDefined()
+    expect((await hydra.task({ key: 'research' })).notices).toBeDefined()
+    const review = await hydra.owner({
       args: [
         'task',
         'report-review',
         'research',
         '--report',
         stored.id,
-        '--none',
       ],
     })
+    expect(review.notices).toBeDefined()
     await workerLine({
       hydra,
       key: 'research',
@@ -3466,5 +3611,285 @@ test(
       ],
     })
     expect((await hydra.task({ key: 'dependent' })).readiness.ready).toBe(true)
+  },
+)
+
+test(
+  'workers can manage task policies and receipts retain their notices on the card',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'policies',
+        '--title',
+        'Policy defaults',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'prerequisite',
+        '--title',
+        'Prerequisite',
+      ],
+    })
+    const staying = await hydra.owner({
+      args: [
+        'task',
+        'move',
+        'policies',
+        '--to-hydra',
+        hydra.id,
+      ],
+    })
+    expect(staying.state).toBe('unchanged')
+    expect(staying.notices).toBeDefined()
+    const actor = [
+      '--actor',
+      'worker:policies',
+    ]
+
+    for (const args of [
+      [
+        'task',
+        'depend',
+        'policies',
+        '--on',
+        'prerequisite',
+      ],
+      [
+        'task',
+        'hold',
+        'policies',
+      ],
+      [
+        'task',
+        'tools',
+        'policies',
+        '--grant',
+        'browser',
+      ],
+      [
+        'task',
+        'landing',
+        'policies',
+        '--landing',
+        'branch',
+      ],
+      [
+        'task',
+        'owner-ask',
+        'policies',
+        '--text',
+        'Keep the result visible',
+      ],
+    ]) {
+      const receipt = await hydra.owner({
+        args: [
+          ...args,
+          ...actor,
+        ],
+      })
+      expect(receipt.notices).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          reason: expect.any(String),
+          clear: expect.stringContaining('pnyx-axi'),
+        }),
+      ]))
+      expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
+      const saved = (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'policies',
+          '--full',
+        ],
+      })).task
+
+      if (args[1] === 'depend') {
+        expect(saved.prerequisites).toEqual([(await hydra.task({ key: 'prerequisite' })).id])
+      }
+
+      if (args[1] === 'hold') {
+        expect(saved.hold.reason).toBe('Discussion hold requested by worker:policies')
+      }
+
+      if (args[1] === 'owner-ask') {
+        expect(saved.ask).toContainEqual(expect.objectContaining({
+          text: 'Keep the result visible',
+          actor: 'worker:policies',
+        }))
+      }
+    }
+
+    const full = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'policies',
+        '--full',
+      ],
+    })
+    expect(full.task.tools).toContain('browser')
+    expect(full.task.landing).toEqual({
+      landing: 'branch',
+      merge: 'owner',
+    })
+    const batch = await pnyxAxi({
+      args: [
+        'apply',
+        '--file',
+        '-',
+        '--hydra',
+        hydra.id,
+      ],
+      env: {
+        ...process.env,
+        PNYX_ACTOR: 'worker:policies',
+        PNYX_HYDRA: hydra.id,
+      },
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.owner-ask',
+            task: 'policies',
+            text: 'Keep this additional instruction visible',
+          },
+          {
+            op: 'task.brief',
+            task: 'prerequisite',
+            brief: 'Unrelated task instruction',
+          },
+        ],
+      }),
+    })
+    expect(
+      batch.status,
+      batch.stdout,
+    ).toBe(0)
+    const unrelated = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'prerequisite',
+        '--full',
+      ],
+    })).task
+    expect(unrelated.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: 'Ask recorded without a saved owner message' }))
+
+    const released = await hydra.owner({
+      args: [
+        'task',
+        'release',
+        'policies',
+        '--reason',
+        'Continue the task',
+        ...actor,
+      ],
+    })
+    expect(released.notices).toBeDefined()
+    expect((await hydra.task({ key: 'policies' })).hold).toBeUndefined()
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'policies',
+        '--intent',
+        'Policy notices reviewed',
+      ],
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'policies',
+        '--full',
+      ],
+    })).task.notices).toEqual([])
+    const overdue = await hydra.owner({
+      args: [
+        'task',
+        'remind',
+        'policies',
+        '2000-01-01T00:00:00Z',
+      ],
+    })
+    expect(overdue.notices).toContainEqual(expect.objectContaining({ reason: 'Reminder time has passed; the reminder is due now' }))
+    await hydra.owner({
+      args: [
+        'task',
+        'remind',
+        'policies',
+        'clear',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'outcome',
+        'policies',
+        'done',
+        '--note',
+        'Finished policy changes',
+      ],
+    })
+    const stoppedRecurrence = await hydra.owner({
+      args: [
+        'task',
+        'remind',
+        'policies',
+        'in 1 hour',
+        '--every',
+        '1 hour',
+        '--until',
+        'task-done',
+      ],
+    })
+    expect(stoppedRecurrence.notices).toContainEqual(expect.objectContaining({ reason: 'Task is already done; its recurring reminder stops immediately' }))
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'policies',
+        '--full',
+      ],
+    })).task.reminder).toBeUndefined()
+
+    const investigation = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--kind',
+        'investigation',
+        '--title',
+        'Investigation without a report',
+      ],
+    })
+    const completed = await hydra.owner({
+      args: [
+        'outcome',
+        investigation.card.id,
+        'done',
+        '--note',
+        'Closed by explicit request',
+      ],
+    })
+    expect(completed.notices).toContainEqual(expect.objectContaining({
+      task: investigation.card.id,
+      reason: 'Investigation has no stored report',
+    }))
+    const saved = await hydra.task({ key: investigation.card.id })
+    expect(saved.status).toBe('done')
+    expect(saved.notices).toContainEqual(expect.objectContaining({
+      reason: 'Investigation has no stored report',
+    }))
   },
 )

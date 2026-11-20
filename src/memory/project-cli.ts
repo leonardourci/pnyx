@@ -1,3 +1,6 @@
+import { inform } from '#app/command-notices.ts'
+import { projectIdentity } from '#projects/sources.ts'
+import { canReadProject } from './poleis.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from './conditions.ts'
 import { learningChange, staleLearnings } from './learnings.ts'
@@ -26,7 +29,9 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
     },
     positionals: 1,
   })
+  const action = positionals[0] ?? 'list'
   const project = await findReadableProject({
+    writing: true,
     hydraId,
     state: loadHydra({ hydraId }).state,
     ref: required({
@@ -35,7 +40,6 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
     }),
     attached: true,
   })
-  const action = positionals[0] ?? 'list'
   const learning = learningChange({
     action,
     kind: values.kind as string | undefined,
@@ -45,6 +49,24 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   })
 
   if (action === 'list') {
+    const identity = await projectIdentity(project)
+
+    if (!canReadProject({
+      hydraId,
+      state: loadHydra({ hydraId }).state,
+      id: identity.id,
+    })) {
+      inform({
+        reason: 'Project memory is filtered by the caller’s visibility settings',
+        clear: `Use pnyx-axi project move ${project.path} --polis <polis> or hydra set --read-poleis <poleis> to change visibility`,
+      })
+
+      return {
+        project: project.name,
+        memory: 'none: project memory is filtered',
+      }
+    }
+
     const view = await projectMemoryView({
       ...project,
       hydraId,
@@ -95,6 +117,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
 
   if (action === 'confirm') {
     const view = await projectMemoryView({
+      writing: true,
       ...project,
       hydraId,
     })

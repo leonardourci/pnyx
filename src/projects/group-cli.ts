@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -95,16 +96,16 @@ export function attachProjectGroup({
           })
 
           if ((!before || before.detached) && others.length) {
-            throw new HydraError({
-              message: `${path} belongs to Hydra ${others.map(hydra => hydra.id).join(', ')}`,
-              code: 'CONFLICT',
+            inform({
+              reason: `${path} is also attached to Hydra ${others.map(hydra => hydra.id).join(', ')}`,
+              clear: `Use pnyx-axi project keep "${path}" --hydra <keeper> to consolidate it`,
             })
           }
 
           if (before?.group && before.group.id !== group.id) {
-            throw new HydraError({
-              message: `${path} already belongs to project ${before.group.name}`,
-              code: 'CONFLICT',
+            inform({
+              reason: `${path} moved from project ${before.group.name}`,
+              clear: `Use pnyx-axi project group "${before.group.name}" "${path}" to restore its group`,
             })
           }
 

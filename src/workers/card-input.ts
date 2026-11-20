@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { background } from '#app/background.ts'
@@ -11,7 +12,6 @@ import { withWriter } from '#app/writer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import { candidateIssues } from './dispatch-check.ts'
 import type { AgentConfig, Reply } from './model.ts'
@@ -35,9 +35,9 @@ export function validateCardInput({
   actor: string
 }) {
   if (!ownerActor({ actor })) {
-    throw new HydraError({
-      message: 'Only the owner sends directly from a card',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Message sent from a card by an agent',
+      clear: 'pnyx-axi reply <task> --text "<message>"',
     })
   }
 
@@ -131,14 +131,32 @@ export function queueCardInput({
 }
 
 function requireCardInputTarget({ card }: { card: Card }) {
-  if (!liveTask({ card }) || card.id === HYDRA_CARD || card.queue) {
+  if (card.id === HYDRA_CARD) {
     throw new HydraError({
-      message: 'Choose an active, unqueued task',
+      message: 'Choose a task rather than the Hydra',
       code: 'CONFLICT',
     })
   }
 
-  if (card.sessionIds?.length && card.agent?.host !== 'pnyx') {
+  if (card.hidden) {
+    inform({
+      task: card.id,
+      reason: 'Message sent to a hidden task',
+      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+    })
+  }
+
+  if (card.queue) {
+    inform({
+      task: card.id,
+      reason: 'Message sent while the task remains queued',
+      clear: `Use pnyx-axi task unqueue ${card.id} to release its queue`,
+    })
+  }
+
+  const outside = !!card.sessionIds?.length && card.agent?.host !== 'pnyx'
+
+  if (outside) {
     throw new HydraError({
       message: 'Continue this worker in Pnyx before changing its agent',
       code: 'NO_ROUTE',

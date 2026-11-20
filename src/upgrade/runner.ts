@@ -170,8 +170,7 @@ async function unknownOnFailure<T>({ read }: { read(): Promise<T> }) {
   }
 }
 
-// Every reason the folder cannot be upgraded as it is; Pnyx never stashes or switches for the owner.
-export async function refusals({ root }: { root: string }): Promise<string[]> {
+async function upgradeFacts({ root }: { root: string }): Promise<string[]> {
   const branch = await unknownOnFailure({
     read: () => git({
       root,
@@ -232,10 +231,26 @@ const startCommitFile = async ({ root }: { root: string }) => resolve(
 )
 
 // The commit a cut upgrade began on; undefined when none was cut.
-const cutCommit = ({ startFile }: { startFile: string }) => existsSync(startFile) ? readFileSync(
-  startFile,
-  'utf8',
-).trim() : undefined
+function upgradeStart({ startFile }: { startFile: string }): {
+  from: string
+  stashes: string[]
+} | undefined {
+  if (!existsSync(startFile)) {
+    return undefined
+  }
+
+  const text = readFileSync(
+    startFile,
+    'utf8',
+  ).trim()
+
+  return text.startsWith('{') ? JSON.parse(text) : {
+    from: text,
+    stashes: [],
+  }
+}
+
+const cutCommit = ({ startFile }: { startFile: string }) => upgradeStart({ startFile })?.from
 
 export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
   state: 'upgraded' | 'current' | 'failed' | 'refused' | 'stopped'
@@ -296,7 +311,7 @@ async function upgrade({
   signal?: AbortSignal
 }): Promise<UpgradeResult> {
   const steps: UpgradeStep[] = []
-  const reasons = await refusals({ root })
+  const reasons = await upgradeFacts({ root })
   const head = await unknownOnFailure({
     read: () => git({
       root,
@@ -306,16 +321,6 @@ async function upgrade({
       ],
     }),
   })
-
-  if (reasons.length) {
-    return {
-      state: 'refused',
-      steps,
-      reasons,
-      from: head,
-      to: await unknownOnFailure({ read: () => remoteMain({ root }) }),
-    }
-  }
 
   if (signal?.aborted) {
     return {
@@ -335,7 +340,14 @@ async function upgrade({
   }
 
   const startFile = await startCommitFile({ root })
-  const began = cutCommit({ startFile })
+  const previousAttempt = upgradeStart({ startFile })
+  const began = previousAttempt?.from
+  const savedStashes = previousAttempt?.stashes ?? []
+
+  for (const saved of savedStashes) {
+    reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Pnyx folder to restore it.`)
+  }
+
   const cut = began !== undefined
   // An upgrade cut before it ended is finished from the commit it began on, or goes back to it.
   const from = cut ? began : head
@@ -343,7 +355,10 @@ async function upgrade({
   if (!cut) {
     replaceFile({
       path: startFile,
-      text: `${from}\n`,
+      text: JSON.stringify({
+        from,
+        stashes: savedStashes,
+      }),
     })
   }
 
@@ -358,7 +373,10 @@ async function upgrade({
       )
     }
 
-    return result
+    return {
+      ...result,
+      reasons,
+    }
   }
 
   let to: string | undefined
@@ -398,6 +416,44 @@ async function upgrade({
     await step({
       name: 'pull',
       work: async () => {
+        const changes = await git({
+          root,
+          args: [
+            'status',
+            '--porcelain',
+            '--untracked-files=all',
+          ],
+        })
+
+        if (changes) {
+          await git({
+            root,
+            args: [
+              'stash',
+              'push',
+              '--include-untracked',
+              '-m',
+              'Pnyx upgrade saved local work',
+            ],
+          })
+          const saved = await git({
+            root,
+            args: [
+              'rev-parse',
+              'refs/stash',
+            ],
+          })
+          savedStashes.push(saved)
+          replaceFile({
+            path: startFile,
+            text: JSON.stringify({
+              from,
+              stashes: savedStashes,
+            }),
+          })
+          reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Pnyx folder to restore it.`)
+        }
+
         await git({
           root,
           args: [

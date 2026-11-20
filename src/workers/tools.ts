@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { steeringHeld } from './steering.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskDone } from '#tasks/select.ts'
@@ -49,15 +50,6 @@ export function recordTools({
   })
 }
 
-export function requireToolAuthority({ meta }: { meta: Meta }): void {
-  if (workerIdentity({ actor: meta.actor })) {
-    throw new HydraError({
-      message: 'Ask Hydra with task ask for a tool grant',
-      code: 'HYDRA_ONLY',
-    })
-  }
-}
-
 export function writeTools({
   writer,
   task,
@@ -71,7 +63,6 @@ export function writeTools({
   revoke?: string[]
   meta: Meta
 }) {
-  requireToolAuthority({ meta })
   const additions = toolNames({ names: grant })
   const removals = toolNames({ names: revoke })
 
@@ -84,16 +75,26 @@ export function writeTools({
     state: writer.state,
     card,
   }))) {
-    throw new HydraError({
-      message: 'Reopen this task before changing its tools',
-      code: 'CONFLICT',
+    inform({
+      reason: 'Tools changed on a finished or hidden task',
+      clear: 'pnyx-axi task unhide <task> or pnyx-axi outcome <task> --clear',
+      task: card.id,
     })
   }
 
   if (steeringHeld({ card })) {
-    throw new HydraError({
-      message: 'Release the discussion hold before changing tools',
-      code: 'TASK_HELD',
+    inform({
+      reason: 'Tools changed while the discussion hold remains',
+      clear: 'pnyx-axi task release <task> --reason "<why>"',
+      task: card.id,
+    })
+  }
+
+  if (workerIdentity({ actor: meta.actor })) {
+    inform({
+      task: card.id,
+      reason: 'Tools changed by a worker',
+      clear: `Use pnyx-axi task tools ${card.id} --revoke browser`,
     })
   }
 

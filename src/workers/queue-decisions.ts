@@ -1,4 +1,5 @@
 import { sameProjectPath } from '#projects/identity.ts'
+import { inform } from '#app/command-notices.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -7,7 +8,6 @@ import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
-import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Blocker } from '#tasks/owner-gates.ts'
 import { findSession, sessionByRef } from './session-attachments.ts'
@@ -50,10 +50,18 @@ function visibleTask({
     ref: task,
   })
 
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+  if (card.id === HYDRA_CARD) {
     throw new HydraError({
       message: 'choose a visible task',
       code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (card.hidden) {
+    inform({
+      task: card.id,
+      reason: 'Queue changed for a hidden task',
+      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
     })
   }
 

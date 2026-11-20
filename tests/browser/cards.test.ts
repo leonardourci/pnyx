@@ -1066,3 +1066,71 @@ test(
     )).toBe(true)
   },
 )
+
+test(
+  'command notices remain visible after reload and clear after a clean write',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'notice-card',
+        '--title',
+        'Command notices',
+      ],
+    })
+    const task = (await hydra.task({ key: 'notice-card' })).id
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const taskCard = page.locator(`[data-task="${task}"]`)
+    await taskCard.locator('.card-open').click()
+    const held = await hydra.owner({
+      args: [
+        'task',
+        'hold',
+        task,
+        '--actor',
+        `worker:${task}`,
+      ],
+    })
+    expect(held.notices).toBeDefined()
+    const notice = 'Discussion hold changed by an agent'
+    await taskCard.getByText(
+      notice,
+      { exact: false },
+    ).waitFor()
+    await page.reload()
+    await page.locator(`[data-task="${task}"]`).getByText(
+      notice,
+      { exact: false },
+    )
+      .waitFor()
+    await hydra.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.brief',
+            task,
+            brief: 'Updated instructions',
+          },
+        ],
+      }),
+    })
+    await page.locator(`[data-task="${task}"]`).getByText(
+      notice,
+      { exact: false },
+    )
+      .waitFor({ state: 'detached' })
+  },
+)

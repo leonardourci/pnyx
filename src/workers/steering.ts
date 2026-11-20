@@ -128,9 +128,10 @@ export function applySteering({
 
     message.recovery = recovery
   } else {
-    const message = pendingSteering({ card })[0]
+    const message = card.steering?.find(message =>
+      message.id === event.data.message && !message.ack && !message.stopped)
 
-    if (!message || message.id !== event.data.message || !sameClaim({
+    if (!message || !sameClaim({
       current: steeringClaim({ card }),
       claim: event.data.ack.claim,
     })) {

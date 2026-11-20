@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { hydraActor } from '#app/request-context.ts'
@@ -9,7 +10,7 @@ import type { Card } from '#tasks/model.ts'
 import { harnessControls } from './controls.ts'
 import type { AgentRef } from './model.ts'
 import { nativeIdle } from './native-session.ts'
-import { agentPermissionNeedsOwner } from './permission-level.ts'
+import { agentPermissionIncreases } from './permission-level.ts'
 import { sessionId } from './session-attachments.ts'
 
 // A setting changed on a hosted agent: recorded, applied to its live process, or the process replaced once it settles.
@@ -75,13 +76,13 @@ export function createLiveSettings({
           })
         }
 
-        if (hydraActor({ actor }) && setting === 'mode' && agentPermissionNeedsOwner({
+        if (hydraActor({ actor }) && setting === 'mode' && agentPermissionIncreases({
           card,
           value,
         })) {
-          throw new HydraError({
-            message: 'Only the owner can raise an agent’s permission level',
-            code: 'OWNER_ONLY',
+          inform({
+            reason: 'Agent permission level increased',
+            clear: 'pnyx-axi agent <task> mode <mode>',
           })
         }
 

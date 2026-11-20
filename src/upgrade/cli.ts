@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
@@ -17,7 +18,7 @@ export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check] [--now] [--stop] 
 Pulls main into the Pnyx folder, installs and builds, checks that the new build can migrate a copy of the database and import every Hydra still kept in events.jsonl (\`setup postgres --check\`), then restarts the server once no agent is mid-turn, or after 15 minutes at most; --now restarts right after the build. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting. An upgrade cut before it ended leaves the previous build working, and the next upgrade finishes it.
 The running server does the upgrade, as it does for /upgrade in Hydra's chat, and this command waits for it, printing each step as it goes; the Hydra's chat (--hydra, else the default one) shows it too. Ctrl-C only stops the waiting. With no server running, the upgrade runs here, and Ctrl-C stops it and goes back to the previous version. A server that runs but does not answer, or does not run the named Hydra, refuses it; \`pnyx-axi restart\` replaces a stuck server.
 --stop stops the upgrade the server is pulling, installing, building or checking, whichever Hydra asked for it, and goes back to the previous version; a built upgrade waiting to restart cannot be stopped.
-A folder off main or with local changes is refused. --check only says whether there is something to upgrade: a newer main, or an upgrade cut after its pull.
+An off-main checkout updates its current branch; local changes are saved in a named Git stash, reported with its restore command. --check only says whether there is something to upgrade: a newer main, or an upgrade cut after its pull.
 `
 
 const OPTIONS = {
@@ -106,7 +107,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
     throw new AxiError(
       `Upgrade finished, but the restart failed; the upgraded code remains on disk.\n${outcome.error}`,
       'UPGRADE_FAILED',
-      ['Run `pnyx-axi restart`'],
+      [
+        ...(outcome.reasons ?? []),
+        'Run `pnyx-axi restart`',
+      ],
     )
   }
 
@@ -114,7 +118,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
     throw new AxiError(
       `Upgrade failed${outcome.failed ? ` while ${STEP_WORDS[outcome.failed][1].toLowerCase()}` : ''}; ${outcome.rolledBack ? 'went back to the previous version' : 'going back to the previous version failed, so the folder may be partly upgraded'}.\n${outcome.error}`,
       'UPGRADE_FAILED',
-      ['Fix the cause, then run `pnyx-axi upgrade` again'],
+      [
+        ...(outcome.reasons ?? []),
+        'Fix the cause, then run `pnyx-axi upgrade` again',
+      ],
     )
   }
 
@@ -123,12 +130,19 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
       throw new AxiError(
         `Upgrade stopped; going back to the previous version failed, so the folder may be partly upgraded.\n${outcome.error}`,
         'UPGRADE_STOPPED',
-        ['Fix the cause, then run `pnyx-axi upgrade` again'],
+        [
+          ...(outcome.reasons ?? []),
+          'Fix the cause, then run `pnyx-axi upgrade` again',
+        ],
       )
     }
 
     return {
       steps: outcome.steps,
+      notices: outcome.reasons?.map(reason => ({
+        reason,
+        clear: 'Use pnyx-axi upgrade --check to check the installed version',
+      })),
       result: 'stopped: Upgrade stopped; nothing changed',
     }
   }
@@ -136,6 +150,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
   if (outcome.state === 'current') {
     return {
       steps: outcome.steps,
+      notices: outcome.reasons?.map(reason => ({
+        reason,
+        clear: 'Use pnyx-axi upgrade --check to check the installed version',
+      })),
       result: 'none: Pnyx is already up to date',
     }
   }
@@ -143,6 +161,10 @@ function report({ outcome }: { outcome: Outcome }): Record<string, unknown> {
   const upgraded = {
     steps: outcome.steps,
     result: 'Upgraded',
+    notices: outcome.reasons?.map(reason => ({
+      reason,
+      clear: 'Use pnyx-axi upgrade --check to check the installed version',
+    })),
   }
 
   if (!outcome.to) {
@@ -385,13 +407,11 @@ export async function upgradeIn({
     } : { upgrade: 'none: Pnyx is up to date' }
   }
 
-  // Hydra can only propose it (owner-only); a worker cannot restart the server under everyone.
   if (workerIdentity()) {
-    throw new AxiError(
-      'Only the owner can upgrade Pnyx',
-      'OWNER_ONLY',
-      ['Ask the owner to run `pnyx-axi upgrade` or send /upgrade in Hydra\'s chat'],
-    )
+    inform({
+      reason: 'Upgrade requested by a worker',
+      clear: 'Use pnyx-axi upgrade --stop to stop a queued upgrade',
+    })
   }
 
   // The server runs this for a terminal; in a terminal no server is up, so nothing is there to stop.

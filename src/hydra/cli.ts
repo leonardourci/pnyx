@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { removeHydraCommand } from './remove.ts'
 import { requestedPolisAccess, widensPolisReads } from '#memory/access-changes.ts'
 import { readMemoryContext } from '#memory/context.ts'
@@ -15,6 +16,8 @@ import { hydraConfig } from './config.ts'
 import { readServer, askHost } from '#app/server-state.ts'
 import { HydraError } from '#store/errors.ts'
 import { findSession } from '#workers/session-attachments.ts'
+import { decideSession } from '#workers/sessions.ts'
+import { applyDecision } from '#app/decision.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
 import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts'
@@ -30,7 +33,7 @@ import { SETTING_FLAGS, sharedSettingFlags, visibleSettings } from '#settings/cl
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
-import { workerIdentity, workerRefusal } from '#workers/worker-identity.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 import { hydraHistory, hydraInscribe } from './history-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
@@ -201,34 +204,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     checkSettings({ patch: shared })
   }
 
-  const changesMemory = values['read-poleis'] !== undefined || values.polis !== undefined
-
-  if (changesMemory && values.propose) {
-    if (action === 'create') {
-      throw new HydraError({
-        message: 'Create the Hydra before proposing a change with hydra set',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    requestedPolisAccess({
-      reads: values['read-poleis'],
-      polis: values.polis,
-    })
-    const proposal = memoryPermission({
-      hydraId: id,
-      name: 'hydra',
-      args,
-      propose: true,
-      actor: m.actor,
-      widening: false,
-    })
-
-    if (proposal) {
-      return proposal
-    }
-  }
-
   const committed = onlySettings ? undefined : commit({
     hydraId: id,
     create: action === 'create',
@@ -236,6 +211,40 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     intent: {
       type: 'board.configured',
       card: '$board',
+    },
+    prepare: ({ writer }) => {
+      if (!values.session) {
+        return
+      }
+
+      const session = findSession({
+        state: writer.state,
+        ref: sessionRef({
+          state: writer.state,
+          ref: String(values.session),
+        }),
+      })
+
+      if (session.taskId && session.taskId !== HYDRA_CARD) {
+        inform({
+          task: session.taskId,
+          reason: 'Worker detached from its task before becoming Hydra',
+          clear: `Use pnyx-axi task attach ${session.taskId} --session <other-session> to assign another worker`,
+        })
+        applyDecision({
+          writer,
+          decision: decideSession({
+            state: writer.state,
+            ref: session.id,
+            task: null,
+            meta: {
+              ...m,
+              id: undefined,
+              ifRevision: undefined,
+            },
+          }),
+        })
+      }
     },
     decide: ({ state }) => {
       checkMemoryApproval()
@@ -288,13 +297,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         }),
       }) : undefined
 
-      if (session && session.taskId && session.taskId !== HYDRA_CARD) {
-        throw new HydraError({
-          message: 'detach the task worker before making it Hydra',
-          code: 'CONFLICT',
-        })
-      }
-
       const hydraRequest = hydraActor({ actor: m.actor })
 
       if (hydraRequest && session && raisesPermission({
@@ -302,9 +304,9 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         before: state.cards[HYDRA_CARD]?.settings?.mode,
         after: session.settings?.mode,
       })) {
-        throw new HydraError({
-          message: 'Only the owner can raise Hydra’s permission level by changing its session',
-          code: 'OWNER_ONLY',
+        inform({
+          reason: 'Hydra permission level increased through its session',
+          clear: 'pnyx-axi hydra set --session <session>',
         })
       }
 
@@ -401,10 +403,9 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           return { skipped: 'unchanged' }
         }
 
-        throw new HydraError({
-          message: `Hydra already exists with other settings: ${id}`,
-          code: 'CONFLICT',
-          help: [`Run \`pnyx-axi hydra set --hydra ${id}\` with the settings to change`],
+        inform({
+          reason: `Hydra ${id} already exists; updated its requested settings`,
+          clear: `Use pnyx-axi hydra set --hydra ${id} to change its settings`,
         })
       }
 
@@ -613,7 +614,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
 
     if (action === 'usage-refresh' && workerIdentity({ actor: meta({ values }).actor })) {
-      throw workerRefusal({ message: 'hydra usage refresh is refused for a worker: it refreshes the plan limits every Hydra shares' })
+      inform({
+        reason: 'Worker refreshed plan limits shared by every Hydra',
+        clear: 'pnyx-axi hydra usage',
+      })
     }
 
     return readServer({ hydraId }).then(server => server ? askHost({

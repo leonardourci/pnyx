@@ -1,8 +1,6 @@
 import { hydraDir } from '#app/home-migration.ts'
 import { once } from 'node:events'
 import { hydraRemoval, infoPath, processStart } from '#app/server-state.ts'
-import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
 import { spawn } from 'node:child_process'
 import { stopOldHost, trackChildren } from '#workers/children.ts'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,16 +14,6 @@ import { git } from './setup/upgrade.ts'
 let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx()
-  const last = await pnyx.hydra({ id: 'default' })
-  const refusal = await last.ownerRefused({
-    args: [
-      'hydra',
-      'remove',
-      last.id,
-    ],
-  })
-  expect(refusal.code).toBe('CONFLICT')
-  expect(refusal.error).toContain('last Hydra')
 })
 
 function projectFolder({
@@ -70,8 +58,60 @@ function projectFolder({
   return folder
 }
 
+function landWork({
+  copy,
+  project,
+}: {
+  copy: string
+  project: string
+}) {
+  git({
+    cwd: copy,
+    args: [
+      'add',
+      '--all',
+      '--force',
+      '.',
+    ],
+  })
+  const changed = git({
+    cwd: copy,
+    args: [
+      'status',
+      '--porcelain',
+    ],
+  })
+
+  if (changed.trim()) {
+    git({
+      cwd: copy,
+      args: [
+        'commit',
+        '-m',
+        'Land fixture work',
+      ],
+    })
+  }
+
+  const head = git({
+    cwd: copy,
+    args: [
+      'rev-parse',
+      'HEAD',
+    ],
+  }).trim()
+  git({
+    cwd: project,
+    args: [
+      'merge',
+      '--no-edit',
+      head,
+    ],
+  })
+}
+
 test(
-  'removal requires owner confirmation, discards unlanded copies, detaches only its projects and keeps history searchable after restart',
+  'removal protects unlanded copies then runs directly, detaches its projects and keeps history searchable after restart',
   async () => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra({
@@ -269,51 +309,36 @@ test(
     )
 
     const session = await caller.chat({ text: 'remove the other Hydra' })
-    const proposal = await caller.as({ session }).run({
+    const unsafe = await caller.as({ session }).refused({
       args: [
         'hydra',
         'remove',
         target.id,
       ],
     })
-    expect(proposal.confirmation).toBe('needed')
-    expect(proposal.action).toContain('Tasks: 2')
-    expect(proposal.action).toContain('Copies: 2.')
-    expect(proposal.action).toContain(copy)
-    expect(proposal.action).toContain(`${pooled} (unrecorded checkout; landing unknown)`)
-    expect(proposal.action).toContain('https://github.com/o/shop/pull/999')
-    const preview = await caller.owner({
+    expect(unsafe.code).toBe('CONFLICT')
+    expect(unsafe.error).toContain('unlanded')
+    expect((await caller.ownerRefused({
       args: [
-        'approval',
-        'confirm',
-        proposal.token,
-      ],
-    })
-    expect(preview.preview).toMatchObject({
-      name: 'hydra',
-      args: [
+        'hydra',
         'remove',
         target.id,
       ],
-    })
-    expect(preview.preview).not.toHaveProperty('removalWork')
+    })).code).toBe('CONFLICT')
     expect(existsSync(copy)).toBe(true)
-    expect((await caller.as({ session }).refused({
-      args: [
-        'approval',
-        'confirm',
-        proposal.token,
-        '--confirm',
-        proposal.token,
-      ],
-    })).code).toBe('OWNER_ONLY')
+    landWork({
+      copy,
+      project: folder,
+    })
+    landWork({
+      copy: pooled,
+      project: folder,
+    })
     await caller.owner({
       args: [
-        'approval',
-        'confirm',
-        proposal.token,
-        '--confirm',
-        proposal.token,
+        'hydra',
+        'remove',
+        target.id,
       ],
     })
     expect(existsSync(copy)).toBe(false)
@@ -413,59 +438,33 @@ test(
 )
 
 test(
-  'removal refuses the caller, and Settings uses the same confirmation',
+  'removal runs for the caller and page without confirmation',
   async () => {
     const caller = await pnyx.hydra()
-    expect((await caller.ownerRefused({
-      args: [
-        'hydra',
-        'remove',
-        caller.id,
-      ],
-    })).code).toBe('CONFLICT')
     const target = await pnyx.hydra()
     const page = await caller.page()
-    const proposal = await page.send({
+    const result = await page.send({
       name: 'hydra',
       args: [
         'remove',
         target.id,
       ],
     })
-
-    if (proposal.type !== 'receipt' || typeof proposal.token !== 'string') {
-      throw new Error('Expected a command receipt')
-    }
-
-    expect(proposal.confirmation).toBe('needed')
-    await target.owner({
-      args: [
-        'task',
-        'create',
-        '--no-start',
-        '--title',
-        'Created after the preview',
-      ],
+    expect(result).toMatchObject({
+      type: 'receipt',
+      removed: target.id,
     })
-    const stale = await caller.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposal.token,
-        '--confirm',
-        proposal.token,
-      ],
-    })
-    expect(stale.code).toBe('CONFLICT')
-    expect(stale.error).toContain('target changed')
-    await caller.owner({
-      args: [
-        'approval',
-        'dismiss',
-        proposal.token,
-      ],
-    })
+    expect(result).not.toHaveProperty('confirmation')
     page.close()
+    const own = await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        caller.id,
+      ],
+    })
+    expect(own.removed).toBe(caller.id)
+    expect(own.notices).toBeDefined()
   },
 )
 
@@ -662,20 +661,11 @@ test(
         locked,
       ],
     })
-    const proposed = await caller.owner({
+    const failed = await caller.ownerRefused({
       args: [
         'hydra',
         'remove',
         target.id,
-      ],
-    })
-    const failed = await caller.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposed.token,
-        '--confirm',
-        proposed.token,
       ],
     })
     expect(failed.code).toBe('CONFLICT')
@@ -757,7 +747,7 @@ test(
 )
 
 test(
-  'an ignored file written while stopping tools requires fresh approval and keeps the copy',
+  'new ignored work written during landing checks or while stopping tools keeps the copy until a direct retry',
   async ({ onTestFinished }) => {
     const caller = await pnyx.hydra()
     const target = await pnyx.hydra()
@@ -801,10 +791,217 @@ test(
       ),
       'new-work.txt\n',
     )
+    landWork({
+      copy,
+      project: folder,
+    })
     const workPath = join(
       copy,
       'new-work.txt',
     )
+    const gitBin = target.folder({ name: 'git-during-landing-check' })
+    const counter = join(
+      gitBin,
+      'status-count',
+    )
+    writeFileSync(
+      join(
+        gitBin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { existsSync, readFileSync, writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+const result = spawnSync('/usr/bin/git', args)
+if (args[0] === '-C' && args[1] === ${JSON.stringify(copy)} && args[2] === 'status' && args.includes('--untracked-files=normal')) {
+  const count = existsSync(${JSON.stringify(counter)}) ? Number(readFileSync(${JSON.stringify(counter)}, 'utf8')) + 1 : 1
+  writeFileSync(${JSON.stringify(counter)}, String(count))
+  if (count === 2) writeFileSync(${JSON.stringify(workPath)}, 'keep during landing check')
+}
+process.stdout.write(result.stdout ?? '')
+process.stderr.write(result.stderr ?? '')
+process.exit(result.status ?? 1)
+`,
+      { mode: 0o755 },
+    )
+    const previousPath = process.env.PATH
+    process.env.PATH = `${gitBin}:${previousPath}`
+
+    try {
+      const duringCheck = await caller.ownerRefused({
+        args: [
+          'hydra',
+          'remove',
+          target.id,
+        ],
+      })
+      expect(duringCheck.code).toBe('CONFLICT')
+      expect(readFileSync(
+        workPath,
+        'utf8',
+      )).toBe('keep during landing check')
+    } finally {
+      process.env.PATH = previousPath
+    }
+
+    rmSync(workPath)
+    const currentTask = (await target.owner({
+      args: [
+        'task',
+        'show',
+        'changed',
+        '--full',
+      ],
+    })).task
+    const lease = join(
+      hydraDir({ hydraId: target.id }),
+      `helper-lease-${encodeURIComponent(currentTask.id)}.json`,
+    )
+    writeFileSync(
+      lease,
+      JSON.stringify({
+        actor: 'helper:active',
+        holders: [
+          {
+            id: 'active',
+            pid: process.pid,
+          },
+        ],
+      }),
+    )
+
+    try {
+      expect((await target.ownerRefused({
+        args: [
+          'task',
+          'copy',
+          'changed',
+          'remove',
+          '--discard',
+        ],
+      })).code).toBe('TASK_LEASED')
+      expect(existsSync(copy)).toBe(true)
+    } finally {
+      rmSync(
+        lease,
+        { force: true },
+      )
+    }
+
+    const trackedRace = join(
+      copy,
+      'tracked-race.txt',
+    )
+    writeFileSync(
+      trackedRace,
+      'landed version',
+    )
+    landWork({
+      copy,
+      project: folder,
+    })
+    writeFileSync(
+      trackedRace,
+      'original unsaved work',
+    )
+    rmSync(
+      counter,
+      { force: true },
+    )
+    writeFileSync(
+      join(
+        gitBin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { existsSync, readFileSync, writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+let count = 0
+if (args[0] === '-C' && args[1] === ${JSON.stringify(copy)} && args[2] === 'status' && args.includes('--untracked-files=normal')) {
+  count = existsSync(${JSON.stringify(counter)}) ? Number(readFileSync(${JSON.stringify(counter)}, 'utf8')) + 1 : 1
+  writeFileSync(${JSON.stringify(counter)}, String(count))
+  if (count === 1) writeFileSync(${JSON.stringify(trackedRace)}, 'landed version')
+}
+const result = spawnSync('/usr/bin/git', args)
+if (count === 2) writeFileSync(${JSON.stringify(trackedRace)}, 'original unsaved work')
+process.stdout.write(result.stdout ?? '')
+process.stderr.write(result.stderr ?? '')
+process.exit(result.status ?? 1)
+`,
+      { mode: 0o755 },
+    )
+    process.env.PATH = `${gitBin}:${previousPath}`
+
+    try {
+      expect((await caller.ownerRefused({
+        args: [
+          'hydra',
+          'remove',
+          target.id,
+        ],
+      })).code).toBe('CONFLICT')
+      expect(readFileSync(
+        trackedRace,
+        'utf8',
+      )).toBe('original unsaved work')
+    } finally {
+      process.env.PATH = previousPath
+    }
+
+    writeFileSync(
+      trackedRace,
+      'landed version',
+    )
+    const lateWork = join(
+      copy,
+      'late-untracked.txt',
+    )
+    writeFileSync(
+      join(
+        gitBin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+if (args.includes('worktree') && args.includes('remove') && args.at(-1) === ${JSON.stringify(copy)}) {
+  writeFileSync(${JSON.stringify(lateWork)}, 'Keep the late edit')
+}
+const result = spawnSync('/usr/bin/git', args)
+process.stdout.write(result.stdout ?? '')
+process.stderr.write(result.stderr ?? '')
+process.exit(result.status ?? 1)
+`,
+      { mode: 0o755 },
+    )
+    process.env.PATH = `${gitBin}:${previousPath}`
+
+    try {
+      const kept = await target.owner({
+        args: [
+          'task',
+          'copy',
+          'changed',
+          'remove',
+          '--discard',
+        ],
+      })
+      expect(kept.copy.state).toBe('flagged')
+      expect(readFileSync(
+        lateWork,
+        'utf8',
+      )).toBe('Keep the late edit')
+    } finally {
+      process.env.PATH = previousPath
+      rmSync(
+        lateWork,
+        { force: true },
+      )
+    }
+
     const tool = spawn(
       process.execPath,
       [
@@ -830,20 +1027,11 @@ test(
       'message',
     )
     trackChildren({ hydraId: target.id }).spawned({ child: tool })
-    const proposed = await caller.owner({
+    const refused = await caller.ownerRefused({
       args: [
         'hydra',
         'remove',
         target.id,
-      ],
-    })
-    const refused = await caller.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposed.token,
-        '--confirm',
-        proposed.token,
       ],
     })
     expect(refused.code).toBe('CONFLICT')
@@ -863,21 +1051,15 @@ test(
     })
     await pnyx.restart()
     expect(existsSync(copy)).toBe(true)
-    const retry = await caller.owner({
+    landWork({
+      copy,
+      project: folder,
+    })
+    await caller.owner({
       args: [
         'hydra',
         'remove',
         target.id,
-      ],
-    })
-    expect(retry.confirmation).toBe('needed')
-    await caller.owner({
-      args: [
-        'approval',
-        'confirm',
-        retry.token,
-        '--confirm',
-        retry.token,
       ],
     })
     expect(existsSync(copy)).toBe(false)
@@ -952,63 +1134,6 @@ test(
       ),
       'utf8',
     )).toBe('base')
-  },
-)
-
-test(
-  'an applying removal can only be dismissed after the interrupted approval is recovered',
-  async () => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra()
-    const proposed = await caller.owner({
-      args: [
-        'hydra',
-        'remove',
-        target.id,
-      ],
-    })
-    withWriter({
-      hydraId: caller.id,
-      fn: ({ writer }) => {
-        const decision = hydraEvent({
-          state: writer.state,
-          meta: {
-            actor: 'web',
-            at: new Date().toISOString(),
-          },
-          cardId: '$hydra',
-          change: {
-            type: 'hydra.dispatch-progress',
-            data: {
-              token: proposed.token,
-              status: 'applying',
-            },
-          },
-        })
-
-        if ('event' in decision) {
-          writer.append({ event: decision.event })
-        }
-      },
-    })
-    const refusal = await caller.ownerRefused({
-      args: [
-        'approval',
-        'dismiss',
-        proposed.token,
-      ],
-    })
-    expect(refusal.code).toBe('CONFLICT')
-    expect(refusal.error).toContain('already applying')
-    await pnyx.restart()
-    const dismissed = await caller.owner({
-      args: [
-        'approval',
-        'dismiss',
-        proposed.token,
-      ],
-    })
-    expect(dismissed.state).toBe('dismissed')
   },
 )
 
@@ -1120,20 +1245,11 @@ test(
       path,
       JSON.stringify([{ pid: child.pid }]),
     )
-    const proposed = await caller.owner({
+    const refused = await caller.ownerRefused({
       args: [
         'hydra',
         'remove',
         target.id,
-      ],
-    })
-    const refused = await caller.ownerRefused({
-      args: [
-        'approval',
-        'confirm',
-        proposed.token,
-        '--confirm',
-        proposed.token,
       ],
     })
     expect(refused.error).toContain('Cannot verify recorded processes')
@@ -1150,20 +1266,15 @@ test(
       ),
       'included in the retry preview',
     )
-    const retry = await caller.owner({
+    landWork({
+      copy,
+      project: folder,
+    })
+    await caller.owner({
       args: [
         'hydra',
         'remove',
         target.id,
-      ],
-    })
-    await caller.owner({
-      args: [
-        'approval',
-        'confirm',
-        retry.token,
-        '--confirm',
-        retry.token,
       ],
     })
     expect(existsSync(copy)).toBe(false)

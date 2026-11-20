@@ -1,7 +1,7 @@
-import { AxiError } from 'axi-sdk-js'
-import { WORKER_OWN_COMMANDS } from '#app/command-registry.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { HydraError } from '#store/errors.ts'
+import type { Card } from '#tasks/model.ts'
 
 const WORKER_PREFIX = 'worker:'
 
@@ -45,14 +45,33 @@ export function defaultActor(): string {
   return identity?.task ? `${WORKER_PREFIX}${identity.task}` : 'cli'
 }
 
-// The refusal of a command a worker may not run, listing what it may.
-export function workerRefusal({ message }: { message: string }): AxiError {
-  return new AxiError(
-    message,
-    'WORKER_SCOPE',
-    [
-      `A worker may run on its own task: ${WORKER_OWN_COMMANDS.join(', ')}; it reads any task or Hydra`,
-      'Ask Hydra with `pnyx-axi task ask <task> --question "<what you need>"` for anything else',
-    ],
-  )
+export function requirePermissionApprover({
+  actor,
+  hydraId,
+  card,
+  session,
+}: {
+  actor: string
+  hydraId: string
+  card: Pick<Card, 'id' | 'key'>
+  session?: string
+}): void {
+  const worker = workerIdentity({ actor })
+  const ownWorker = worker?.task === card.id || worker?.task === card.key
+  const env = requestEnv()
+  const hydraIdentity = actor === 'hydra' || env.PNYX_ACTOR === 'hydra' || env.PNYX_TASK === HYDRA_CARD
+  const ownHydra = card.id === HYDRA_CARD && hydraIdentity
+    && (env.PNYX_HYDRA === undefined || env.PNYX_HYDRA === hydraId)
+  const ownSession = session !== undefined && [
+    actor,
+    env.PNYX_ACTOR,
+  ].includes(`session:${session}`)
+
+  if (ownHydra || ownWorker || ownSession) {
+    throw new HydraError({
+      message: 'An agent cannot approve its own permission request',
+      code: 'NO_ROUTE',
+      help: ['The owner or another agent answers the pending request'],
+    })
+  }
 }

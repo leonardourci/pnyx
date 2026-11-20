@@ -1,5 +1,5 @@
+import { inform } from '#app/command-notices.ts'
 import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
 import type { ReportCall } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 
@@ -45,22 +45,33 @@ export function reportReviewGaps({
   return missing.map(call => `report decision ${call.task}/${call.ask} is missing from its inventory`)
 }
 
-export function requireReportReview({
+export function informReportReviewGaps({
   state,
   card,
 }: {
   state: HydraState
   card: Card
 }): void {
+  if (card.kind === 'investigation' && !card.report) {
+    inform({
+      task: card.id,
+      reason: 'Investigation has no stored report',
+      clear: `Use pnyx-axi task report ${card.id} --file <path> to store one`,
+    })
+
+    return
+  }
+
   const gaps = reportReviewGaps({
     state,
     card,
   })
 
-  if (gaps.length) {
-    throw new HydraError({
-      message: gaps.join('; '),
-      code: 'REPORT_REVIEW_REQUIRED',
+  if (card.report && gaps.length) {
+    inform({
+      task: card.id,
+      reason: gaps.join('; '),
+      clear: `Use pnyx-axi task report-review ${card.id} --report ${card.report.id} --none or --call <task>/<question>`,
     })
   }
 }

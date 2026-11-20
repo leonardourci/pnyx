@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { AxiError } from 'axi-sdk-js'
 import { INHERITED } from '#workers/host.ts'
 import { AUTH_ENV } from '#workers/dispatch.ts'
@@ -412,10 +413,10 @@ export async function restart(args: string[]): Promise<Record<string, unknown>> 
   const actor = requestEnv().PNYX_ACTOR ?? 'cli'
 
   if ((actor !== 'cli' && actor !== 'owner') || workerIdentity()) {
-    throw new AxiError(
-      'Only the owner can restart Pnyx',
-      'OWNER_ONLY',
-    )
+    inform({
+      reason: 'Restart requested by an agent; hosted turns resume after restart',
+      clear: 'Use pnyx-axi status to inspect the restarted server',
+    })
   }
 
   return restartPnyx()

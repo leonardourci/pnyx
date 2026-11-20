@@ -1,4 +1,4 @@
-import { BROWSER_TOOL, recordTools, requireToolAuthority } from './tools.ts'
+import { BROWSER_TOOL, recordTools } from './tools.ts'
 import { loadHydra } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { askHost } from '#app/server-state.ts'
@@ -25,10 +25,6 @@ export async function toolsCommand({
     state,
     ref: task,
   })
-
-  if (values.grant || values.revoke) {
-    requireToolAuthority({ meta })
-  }
 
   if (values.available && !values.grant && !values.revoke) {
     return {

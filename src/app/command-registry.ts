@@ -3,7 +3,6 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 
 type Args = { args: string[] }
 
-// Who may run each command and how long the page waits for it. Every allow-list is read from here.
 type Entry = {
   // The page may run it through the server.
   page?: true
@@ -11,10 +10,6 @@ type Entry = {
   agent?: true
   // The page may send it again after a lost answer: repeating it changes nothing.
   repeatable?: true
-  // What a Pnyx-run worker may run without asking; an empty string allows the whole command.
-  worker?: string[]
-  // What a worker's pnyx-axi may run: reads of any task or Hydra, which an empty string opens for the whole command, and the
-  // subcommands it may write only on its own task. A command that refuses a worker itself keeps its own error. Anything unlisted is refused.
   scope?: {
     reads?: string[]
     own?: string[]
@@ -32,8 +27,7 @@ type Entry = {
     positionals: string[]
     values: Record<string, unknown>
   }): boolean
-  // Hydra may only propose these; the owner confirms.
-  ownerOnly?({ args }: Args): boolean
+  agentNotices?({ args }: Args): boolean
 }
 
 const flag = ({
@@ -62,16 +56,10 @@ export const COMMAND_REGISTRY = {
         'performance',
       ],
     },
-    worker: [
-      'timeline',
-      'health',
-      'performance',
-      'cpu-profile',
-    ],
   },
   approval: {
     page: true,
-    ownerOnly: () => true,
+    agentNotices: () => true,
   },
   project: {
     readOnly: ({ positionals }) => matchesReadScope({
@@ -150,16 +138,6 @@ export const COMMAND_REGISTRY = {
         'source',
       ],
     },
-    worker: [
-      'show',
-      'tools',
-      'refresh-links',
-      'history',
-      'chat',
-      'messages',
-      'inbox read',
-      'inbox ack',
-    ],
     helper: {
       reads: [
         'list',
@@ -175,7 +153,7 @@ export const COMMAND_REGISTRY = {
         'permission',
       ],
     },
-    ownerOnly: ({ args }) => (args[0] === 'permission' && args[1] === HYDRA_CARD)
+    agentNotices: ({ args }) => (args[0] === 'permission' && args[1] === HYDRA_CARD)
       || (args[0] === 'copy' && flag({
         args,
         name: '--discard',
@@ -224,11 +202,6 @@ export const COMMAND_REGISTRY = {
       ],
       own: ['send'],
     },
-    worker: [
-      'send',
-      'history',
-      'message',
-    ],
     helper: {
       reads: [
         'check',
@@ -261,7 +234,7 @@ export const COMMAND_REGISTRY = {
         'now',
       ],
     },
-    ownerOnly: ({ args }) => [
+    agentNotices: ({ args }) => [
       'confirm',
       'dismiss',
     ].includes(args[0] ?? ''),
@@ -277,7 +250,6 @@ export const COMMAND_REGISTRY = {
   move: { page: true },
   link: {
     page: true,
-    worker: [''],
     scope: { own: [''] },
   },
   outcome: { page: true },
@@ -343,7 +315,7 @@ export const COMMAND_REGISTRY = {
   agent: {
     agent: true,
     repeatable: true,
-    ownerOnly: ({ args }) => args[1] === 'mode',
+    agentNotices: ({ args }) => args[1] === 'mode',
   },
   reply: {
     agent: true,
@@ -365,16 +337,16 @@ export const COMMAND_REGISTRY = {
       args,
     }),
     scope: { reads: ['check'] },
-    ownerOnly: ({ args }) => args[0] !== 'check',
+    agentNotices: ({ args }) => args[0] !== 'check',
   },
   restart: {
     scope: { reads: [''] },
-    ownerOnly: () => true,
+    agentNotices: () => true,
   },
   upgrade: {
     readOnly: ({ args }) => args.includes('--check'),
     scope: { reads: [''] },
-    ownerOnly: ({ args }) => !args.includes('--check'),
+    agentNotices: ({ args }) => !args.includes('--check'),
   },
 } as const satisfies Record<string, Entry>
 
@@ -397,29 +369,19 @@ export const waitsOnAgent = ({ name }: { name: string }) => registered({ name })
 
 export const repeatable = ({ name }: { name: string }) => registered({ name })?.repeatable === true
 
-// A worker runs these without asking; any other pnyx-axi command still asks.
-export const WORKER_COMMANDS = entries.flatMap(([
-  name,
-  entry,
-]) => (entry.worker ?? []).map(sub => `pnyx-axi ${name}${sub ? ` ${sub}` : ''}`))
+export const WORKER_COMMANDS = ['pnyx-axi']
 
 export const workerScope = ({ name }: { name: string }) => registered({ name })?.scope
-
-// Every command a worker may run on its own task, for the refusal that lists them.
-export const WORKER_OWN_COMMANDS = entries.flatMap(([
-  name,
-  entry,
-]) => (entry.scope?.own ?? []).map(sub => `${name}${sub ? ` ${sub}` : ''}`))
 
 export const helperReads = ({ name }: { name: string }): string[] =>
   registered({ name })?.helper?.reads ?? []
 
 export const HELPER_TASK_WRITES: HelperAction[] = [...COMMAND_REGISTRY.task.helper.writes]
 
-export const ownerOnlyCommand = ({
+export const agentNoticeCommand = ({
   name,
   args,
-}: { name: string } & Args): boolean => registered({ name })?.ownerOnly?.({ args }) ?? false
+}: { name: string } & Args): boolean => registered({ name })?.agentNotices?.({ args }) ?? false
 
 function matchesReadScope({
   name,
@@ -452,5 +414,4 @@ export function readOnlyCommand({
   }) ?? false
 }
 
-// Hydra and its routine helper run any pnyx-axi command without asking; the rules above refuse what they may not do.
 export const HYDRA_COMMANDS = ['pnyx-axi']

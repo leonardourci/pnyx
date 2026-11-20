@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { ownerQuestionGroups, decisionKey } from '#tasks/question-groups.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -726,10 +727,9 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'move') {
     if (workerIdentity({ actor: m.actor })) {
-      throw new HydraError({
-        message: 'Only the owner or Hydra moves a task to another Hydra',
-        code: 'OWNER_ONLY',
-        help: ['Ask Hydra with `pnyx-axi task ask <task> --question "<why the task should move>"`'],
+      inform({
+        reason: 'Task moved by a worker',
+        clear: 'pnyx-axi task move <task> --to-hydra <hydra>',
       })
     }
 
@@ -826,6 +826,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         }),
         attention: attentionLabel({ card: task }),
         key: task.key,
+        ...(task.notices?.length ? { notices: task.notices } : {}),
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
         ask: task.ask?.length ? task.ask.slice(-TASK_DETAIL_LIMIT).map(ask => ({
           ...ask,

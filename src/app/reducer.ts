@@ -194,6 +194,12 @@ export function replayOwned({
       state,
       event,
     })) {
+      const card = state.cards[event.cardId]
+
+      if (card && event.notices) {
+        card.notices = event.notices
+      }
+
       stopReminders({
         state,
         event,

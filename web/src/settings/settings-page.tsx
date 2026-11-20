@@ -19,7 +19,6 @@ import { About } from '#web-app/about.tsx'
 import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { keyActionsMatching } from '#web-preferences/key-search.ts'
 import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
-import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -320,14 +319,7 @@ function ResetWidths({
   }
 
   return (
-    <InlineConfirm
-      label="Reset widths in every Hydra"
-      trigger="Reset widths in every Hydra"
-      action="Reset widths"
-      message="Restore the saved column and chat widths in every Hydra?"
-      disabled={false}
-      confirm={reset}
-    />
+    <Button onClick={reset}>Reset widths in every Hydra</Button>
   )
 }
 
@@ -584,7 +576,6 @@ export function SettingsPage({
   startUpgrade,
   initialQuery = '',
   accountSetup,
-  showConfirmation,
   hidden = false,
 }: Saving & {
   hydras: HydraSummary[]
@@ -595,7 +586,6 @@ export function SettingsPage({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
-  showConfirmation(): void
   // The search the page opens with, such as a setting the Oracle sent here.
   initialQuery?: string
   accountSetup?: AgentConfig['harness']
@@ -746,7 +736,6 @@ export function SettingsPage({
         hydras={hydras}
         command={command}
         connected={connected}
-        showConfirmation={showConfirmation}
       />
       <RepositoryOwnership hydras={hydras} commandFor={commandFor} connected={connected} />
       <SettingsSearch ref={sticky}>

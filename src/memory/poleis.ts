@@ -1,9 +1,9 @@
+import { inform } from '#app/command-notices.ts'
 import { createHash } from 'node:crypto'
 import { ownerRevision } from './owner-memory-log.ts'
 import { sharesWithMore } from './access-changes.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { hydraActor, requestEnv } from '#app/request-context.ts'
-import { proposeOwnerCommand } from '#app/confirmations.ts'
 import { findProject, projectsFor } from '#projects/read.ts'
 import { projectIdentity } from '#projects/sources.ts'
 import type { HydraState } from '#app/model.ts'
@@ -57,10 +57,12 @@ export function polisAccess({
     writablePolis,
     write: () => {
       if (writablePolis === undefined) {
-        throw new HydraError({
-          message: 'Memory is unavailable',
-          code: 'NOT_FOUND',
+        inform({
+          reason: `Writing the configured polis ${access.polis} while its memory is filtered from this caller`,
+          clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> and settings set to change memory visibility`,
         })
+
+        return access.polis
       }
 
       return writablePolis
@@ -90,9 +92,11 @@ export function canReadProject({
 export function requireProjectMemory({
   hydraId,
   id,
+  writing = false,
 }: {
   hydraId: string
   id: string
+  writing?: boolean
 }): void {
   const state = loadHydra({ hydraId }).state
 
@@ -101,6 +105,15 @@ export function requireProjectMemory({
     state,
     id,
   })) {
+    if (writing) {
+      inform({
+        reason: 'Writing project memory outside the caller’s read scope',
+        clear: `Use pnyx-axi project move <project> --polis <polis> or hydra set --hydra ${hydraId} --read-poleis <poleis> to change visibility`,
+      })
+
+      return
+    }
+
     throw new HydraError({
       message: 'project not found',
       code: 'NOT_FOUND',
@@ -176,21 +189,37 @@ export async function findReadableProject({
   state,
   ref,
   attached = false,
+  writing = false,
 }: {
   hydraId: string
   state: HydraState
   ref: string
   attached?: boolean
+  writing?: boolean
 }) {
-  return findProject({
+  const projects = await readableProjects({
+    hydraId,
     state,
-    ref,
-    attached,
-    projects: await readableProjects({
-      hydraId,
-      state,
-    }),
   })
+
+  try {
+    return findProject({
+      state,
+      ref,
+      attached,
+      projects,
+    })
+  } catch (error) {
+    if (!writing || !(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+      throw error
+    }
+
+    return findProject({
+      state,
+      ref,
+      attached,
+    })
+  }
 }
 
 export function memoryHydras() {
@@ -257,27 +286,25 @@ export function memoryPermission({
   actor: string
 }) {
   if (!memoryCaller({ hydraId })) {
-    throw new HydraError({
-      message: 'Memory is unavailable',
-      code: 'NOT_FOUND',
+    inform({
+      reason: `Changing memory configuration for Hydra ${hydraId} from another Hydra`,
+      clear: `Use pnyx-axi hydra show --hydra ${hydraId} to inspect its configuration`,
     })
   }
 
   checkMemoryApproval()
 
   if (propose) {
-    return proposeOwnerCommand({
-      hydraId,
-      name,
-      args: args.filter(arg => arg !== '--propose'),
+    inform({
+      reason: `Requested ${name} ${args[0] ?? ''} directly; confirmation is no longer needed`,
+      clear: `Use pnyx-axi ${name} --help to inspect its commands`,
     })
   }
 
   if (widening && (memoryAgent() || hydraActor({ actor }))) {
-    throw new HydraError({
-      message: 'Widening memory access needs the owner’s Confirm',
-      code: 'OWNER_ONLY',
-      help: ['Repeat with --propose'],
+    inform({
+      reason: 'Memory access widened by an agent',
+      clear: 'Use pnyx-axi settings show and settings set to inspect or change memory access',
     })
   }
 
@@ -315,9 +342,9 @@ export function memoryMovePermission({
     poleis: settings.poleis,
     polis: destination,
   })) {
-    throw new HydraError({
-      message: 'Memory is unavailable',
-      code: 'NOT_FOUND',
+    inform({
+      reason: `Moving memory to ${destination} outside the caller’s read scope`,
+      clear: `Use pnyx-axi hydra set --hydra ${hydraId} --read-poleis <poleis> to change visibility`,
     })
   }
 

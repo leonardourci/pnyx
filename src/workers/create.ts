@@ -54,18 +54,15 @@ function requireWaitTargets({
   state,
   wait,
   values,
-  meta,
 }: {
   state: HydraState
   wait?: Wait
   values: Values
-  meta: Meta
 }): void {
   if (wait === 'depend') {
     prerequisiteCards({
       state,
       prerequisites: values.on as string[],
-      meta,
     })
   }
 
@@ -256,7 +253,6 @@ export async function createCommand({
     state,
     wait: chosen,
     values,
-    meta,
   })
 
   const created = (await localTaskCommand({

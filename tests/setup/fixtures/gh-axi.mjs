@@ -66,6 +66,11 @@ if (args[0] === 'api') {
         process.exit(1)
       }
 
+      if (pr.mergeBehavior === 'rejected') {
+        console.log('error: HTTP 405: Pull request cannot be merged')
+        process.exit(1)
+      }
+
       pr.merges = (pr.merges ?? 0) + 1
 
       if (pr.mergeBehavior === 'queued') {

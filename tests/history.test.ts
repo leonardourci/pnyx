@@ -285,6 +285,81 @@ test(
     })
     const joined = pages.map(page => page.text).join('\n\n')
     expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(joined) / 4))
+    await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'first-pass',
+        '--event-id',
+        'first-pass-start',
+      ],
+    })
+    const overlapping = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'second-pass',
+      ],
+    })
+    expect(overlapping.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    const retried = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'first-pass',
+        '--event-id',
+        'first-pass-start',
+      ],
+    })
+    expect(retried.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    expect((await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'second-pass',
+        '--through',
+        String(Number.MAX_SAFE_INTEGER),
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+
+    const incomplete = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'second-pass',
+      ],
+    })
+    expect(incomplete.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('history snapshot') }))
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'last-inscribe',
+        '--count',
+      ],
+    })).totalTokens).toBe(0)
+    const completed = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        incomplete.milestone,
+        '--count',
+      ],
+    })
+    expect(completed.boundary).toBe(incomplete.through)
+    expect(completed.totalTokens).toBe(0)
   },
   120_000,
 )
