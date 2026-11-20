@@ -120,7 +120,10 @@ export function findWorkerTurnToResume({
   let lastTurn = scanEvents({
     ...(session?.launchId ? {} : { cardId }),
     hydraId,
-    types: ['card.pushed', 'session.observed'],
+    types: [
+      'card.pushed',
+      'session.observed',
+    ],
     descending: true,
   }).find(event => {
     if (event.type === 'session.observed') {
