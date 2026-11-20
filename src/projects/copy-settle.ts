@@ -44,7 +44,7 @@ function releaseReason({
 
 export type Settle = 'check' | 'safe' | 'discard'
 
-// Only the owner discards work that never landed; anything else unsafe is flagged for Hydra.
+// Copy removal keeps work whose landing cannot be proved.
 export async function settleCopy({
   hydraId,
   ref,
@@ -93,11 +93,19 @@ export async function settleCopy({
     })
 
     const requireSafe = () => {
+      if (mode === 'discard' && (!check.clean || !check.landed)) {
+        throw new HydraError({
+          message: `The copy of ${card.id} contains unlanded work`,
+          code: 'CONFLICT',
+          help: ['Land its current work before removing the copy'],
+        })
+      }
+
       if (mode === 'safe' && copy.via === 'worktree' && (!check.clean || !check.landed)) {
         throw new HydraError({
           message: `the copy of ${card.id} has uncommitted changes or unproved work, so it is not safe to remove`,
           code: 'CONFLICT',
-          help: ['Land the current work first; discarding it needs the owner'],
+          help: ['Land the current work first'],
         })
       }
     }

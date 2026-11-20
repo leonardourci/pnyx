@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -80,9 +81,19 @@ function migrationPlan({
         source: state,
         target,
         card,
+        moving: cards.map(card => card.id),
       })
       const openPR = card.links.find(link => link.kind === 'github_pr' && link.state === 'open')
-      const reason = refusal?.message ?? (openPR ? `open pull request ${openPR.url}` : undefined)
+
+      if (openPR) {
+        inform({
+          task: card.id,
+          reason: `Moving a task with open pull request ${openPR.url}`,
+          clear: `Use pnyx-axi task refresh-links ${card.id} --hydra ${to} to refresh it`,
+        })
+      }
+
+      const reason = refusal?.message
 
       return reason ? [`${card.id} (${card.title}): ${reason}`] : []
     })
@@ -109,9 +120,9 @@ export async function keepProject({
   meta: Meta
 }) {
   if (!ownerActor({ actor: meta.actor })) {
-    throw new HydraError({
-      message: 'Only the owner can choose a repository keeper',
-      code: 'OWNER_ONLY',
+    inform({
+      reason: 'Repository keeper selected by an agent',
+      clear: 'pnyx-axi project keep <path> --hydra <keeper>',
     })
   }
 
@@ -179,6 +190,10 @@ export async function keepProject({
         ids,
         stateFor: ({ id }) => writers.get(id)!.state,
       })
+      const moving = {
+        tasks: current.flatMap(({ cards }) => cards.map(card => card.id)),
+        sessions: current.flatMap(({ cards }) => cards.flatMap(card => card.sessionIds ?? [])),
+      }
       const moved: string[] = []
       const attempt = meta.id ?? randomUUID()
 
@@ -198,6 +213,7 @@ export async function keepProject({
             to: hydraId,
             move: `${attempt}:${id}:${card.id}`,
             meta: sourceMeta,
+            moving,
           })
           moved.push(card.id)
         }

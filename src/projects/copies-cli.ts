@@ -1,10 +1,6 @@
-import { proposeOwnerCommand } from '#app/confirmations.ts'
-import { createHash } from 'node:crypto'
 import type { Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { runsInBypass } from '#hydra/hydra-session.ts'
-import { HYDRA_ACTOR } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
 import { checkCopy } from './copy-check.ts'
@@ -53,50 +49,6 @@ export async function copyCommand({
       message: 'Use task copy <task> [remove [--safe | --discard]]',
       code: 'VALIDATION_ERROR',
     })
-  }
-
-  const hydraDiscards = values.discard && meta.actor === HYDRA_ACTOR
-
-  if (hydraDiscards && !runsInBypass({ hydraId })) {
-    return proposeOwnerCommand({
-      hydraId,
-      name: 'task',
-      args: [
-        'copy',
-        ref,
-        'remove',
-        '--discard',
-      ],
-    })
-  }
-
-  // The owner's browser click is already the confirmation; the CLI asks for a token.
-  if (values.discard && meta.actor !== 'web' && card.copy && card.copy.state !== 'removed') {
-    const token = createHash('sha256').update(JSON.stringify({
-      hydraId,
-      card: card.id,
-      path: card.copy.path,
-      revision: card.revision,
-      actor: meta.actor,
-    }))
-      .digest('hex')
-      .slice(
-        0,
-        24,
-      )
-
-    if (values.confirm !== token) {
-      return {
-        confirmation: 'needed',
-        token,
-        action: `Discard the copy of ${card.id} at ${card.copy.path}, including uncommitted changes; its branch stays`,
-        check: await checkCopy({
-          card,
-          copy: card.copy,
-        }),
-        help: ['Repeat the same command with --confirm <token>'],
-      }
-    }
   }
 
   const {

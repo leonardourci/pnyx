@@ -1071,7 +1071,7 @@ const merges = ({ number }: { number: number }) => readFileSync(
   .filter(line => line.includes('PUT') && line.includes(`/pulls/${number}/merge`)).length
 
 test(
-  'Hydra merges a pull request only on the owner\'s Merge answer with green checks, a Hold blocks it, and a merge is submitted once, even after a restart',
+  'Hydra submits a merge despite owner defaults, Hold and red checks, shows the facts, and submits once after restart',
   async () => {
     const hydra = await pnyx.hydra()
     await createProject({
@@ -1114,7 +1114,10 @@ test(
         mergeBehavior,
       }),
     )
-    publish({ checks: '0 passed, 1 failed, 1 total' })
+    publish({
+      checks: '0 passed, 1 failed, 1 total',
+      mergeBehavior: 'queued',
+    })
     await hydra.owner({
       args: [
         'link',
@@ -1154,39 +1157,14 @@ test(
         'Hold',
       ],
     })
-    expect((await asHydra.refused({ args: merge })).code).toBe('FORBIDDEN')
-
-    const go = await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        'Merge PR #21 now.',
-      ],
-    })
-    await asHydra.run({
-      args: [
-        'task',
-        'answer',
-        'gate',
-        ask.id,
-        '--from-message',
-        go.message,
-        '--choice',
-        'Merge',
-        '--reason',
-        'The owner now says to merge this pull request',
-      ],
-    })
-    // Approved, but the checks are red: nothing is submitted.
-    expect((await asHydra.refused({ args: merge })).code).toBe('CONFLICT')
-    expect(merges({ number: 21 })).toBe(0)
-
-    publish({
-      checks: '1 passed, 0 failed, 1 total',
-      mergeBehavior: 'queued',
-    })
-    await asHydra.run({ args: merge })
+    const submitted = await asHydra.run({ args: merge })
+    const notices = submitted.notices.map((notice: { reason: string }) => notice.reason).join('\n')
+    expect(notices).toContain('owner')
+    expect(notices).toContain('red')
+    expect([
+      'queued',
+      'unknown',
+    ]).toContain(submitted.merge)
     expect(merges({ number: 21 })).toBe(1)
 
     await pnyx.restart()
@@ -1196,7 +1174,7 @@ test(
 )
 
 test(
-  'Hydra merges a private repository whose branch rules GitHub hides while enforcing approval and readable checks',
+  'Hydra submits private-repository merges with unreadable or failing evidence and records each gap',
   async () => {
     const repo = 'private'
     const rulesError = 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN'
@@ -1289,17 +1267,6 @@ test(
         url,
       ],
     })
-    const ask = await until({
-      what: 'private repository merge question',
-      check: async () => (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          'private',
-          '--full',
-        ],
-      })).task.asks?.find((candidate: { kind: string }) => candidate.kind === 'merge'),
-    })
     const session = await hydra.chat({ text: 'Review the private repository pull request.' })
     const asHydra = hydra.as({ session })
     const merge = [
@@ -1309,94 +1276,142 @@ test(
       '--url',
       url,
     ]
-    expect((await asHydra.refused({ args: merge })).code).toBe('FORBIDDEN')
+    const cases = [
+      {
+        evidence: {
+          classic: null,
+          check: {
+            ...run,
+            conclusion: 'failure',
+          },
+        },
+        reason: 'check is not green',
+      },
+      {
+        evidence: {
+          error: 'error: HTTP 404: Not Found',
+          classic: {},
+        },
+        reason: 'classic protection unreadable',
+      },
+      {
+        evidence: {
+          error: 'error: HTTP 403: Forbidden',
+          classic: {},
+        },
+        reason: 'classic protection unreadable',
+      },
+      {
+        evidence: {
+          error: 'error: "Resource not found"\ncode: NOT_FOUND',
+          classic: {},
+        },
+        reason: 'classic protection unreadable',
+      },
+      {
+        evidence: {
+          check: {
+            ...run,
+            status: 'in_progress',
+            conclusion: '',
+          },
+        },
+        reason: 'check still running',
+      },
+      {
+        evidence: {
+          check: {
+            ...run,
+            app: { id: 43 },
+          },
+        },
+        reason: 'missing required check',
+      },
+      {
+        evidence: { error: 'error: HTTP 500: server error' },
+        reason: 'branch rules unreadable',
+      },
+      {
+        evidence: {
+          error: '',
+          rules: {},
+        },
+        reason: 'branch rules unreadable',
+      },
+      {
+        evidence: { classic: {} },
+        reason: 'classic protection unreadable',
+      },
+    ]
+
+    for (const sample of cases) {
+      writeFileSync(
+        join(
+          folder,
+          '22.json',
+        ),
+        JSON.stringify({
+          state: 'open',
+          head,
+          checks: '1 passed, 0 failed, 1 total',
+          mergeBehavior: 'queued',
+        }),
+      )
+      publish(sample.evidence)
+      await hydra.owner({
+        args: [
+          'link',
+          'private',
+          '--url',
+          url,
+          '--remove',
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'link',
+          'private',
+          '--url',
+          url,
+        ],
+      })
+      const result = await asHydra.run({ args: merge })
+      expect(result.merge).toBe('queued')
+      const reason = expect.stringContaining(sample.reason)
+      const expectedNotice = expect.objectContaining({ reason })
+      expect(result.notices).toEqual(expect.arrayContaining([expectedNotice]))
+      expect((await hydra.task({ key: 'private' })).notices).toBeDefined()
+    }
+
+    writeFileSync(
+      join(
+        folder,
+        '22.json',
+      ),
+      JSON.stringify({
+        state: 'open',
+        head,
+        checks: '1 passed, 0 failed, 1 total',
+      }),
+    )
+    publish({ classic: null })
     await hydra.owner({
       args: [
-        'task',
-        'answer',
+        'link',
         'private',
-        ask.id,
-        '--choice',
-        'Merge',
+        '--url',
+        url,
+        '--remove',
       ],
     })
-
-    publish({
-      classic: null,
-      check: {
-        ...run,
-        conclusion: 'failure',
-      },
+    await hydra.owner({
+      args: [
+        'link',
+        'private',
+        '--url',
+        url,
+      ],
     })
-    const failed = await asHydra.refused({ args: merge })
-    expect(failed.code).toBe('CONFLICT')
-    expect(failed.error).toContain('check is not green')
-    // Every way GitHub hides a private repository's rules counts as hidden, not unreadable; unreadable classic protection keeps the merge refused.
-    publish({
-      error: 'error: HTTP 404: Not Found',
-      classic: {},
-    })
-    const hiddenAs404 = await asHydra.refused({ args: merge })
-    expect(hiddenAs404.code).toBe('CONFLICT')
-    expect(hiddenAs404.error).toContain('classic protection unreadable')
-    expect(hiddenAs404.error).not.toContain('branch rules unreadable')
-    publish({
-      error: 'error: HTTP 403: Forbidden',
-      classic: {},
-    })
-    const hiddenAs403 = await asHydra.refused({ args: merge })
-    expect(hiddenAs403.code).toBe('CONFLICT')
-    expect(hiddenAs403.error).toContain('classic protection unreadable')
-    expect(hiddenAs403.error).not.toContain('branch rules unreadable')
-    publish({
-      error: 'error: "Resource not found"\ncode: NOT_FOUND',
-      classic: {},
-    })
-    const hiddenAsNotFound = await asHydra.refused({ args: merge })
-    expect(hiddenAsNotFound.code).toBe('CONFLICT')
-    expect(hiddenAsNotFound.error).toContain('classic protection unreadable')
-    expect(hiddenAsNotFound.error).not.toContain('branch rules unreadable')
-    publish({
-      check: {
-        ...run,
-        status: 'in_progress',
-        conclusion: '',
-      },
-    })
-    expect(await asHydra.refused({ args: merge })).toMatchObject({
-      code: 'CONFLICT',
-      error: expect.stringContaining('check still running'),
-    })
-    publish({
-      check: {
-        ...run,
-        app: { id: 43 },
-      },
-    })
-    expect(await asHydra.refused({ args: merge })).toMatchObject({
-      code: 'CONFLICT',
-      error: expect.stringContaining('missing required check'),
-    })
-    publish({ error: 'error: HTTP 500: server error' })
-    expect(await asHydra.refused({ args: merge })).toMatchObject({
-      code: 'CONFLICT',
-      error: expect.stringContaining('branch rules unreadable'),
-    })
-    publish({
-      error: '',
-      rules: {},
-    })
-    expect(await asHydra.refused({ args: merge })).toMatchObject({
-      code: 'CONFLICT',
-      error: expect.stringContaining('branch rules unreadable'),
-    })
-
-    publish({ classic: {} })
-    expect(await asHydra.refused({ args: merge })).toMatchObject({
-      code: 'CONFLICT',
-      error: expect.stringContaining('classic protection unreadable'),
-    })
-    publish({ classic: null })
     const result = await asHydra.run({ args: merge })
     expect(result.merge).toBe('merged')
     expect(result.head).toBe(head)
@@ -1410,7 +1425,7 @@ test(
       .split('\n')
       .map(line => JSON.parse(line) as string[])
     const submissions = calls.filter(args => args.includes('PUT') && args.includes(`/repos/o/${repo}/pulls/22/merge`))
-    expect(submissions).toHaveLength(1)
+    expect(submissions).toHaveLength(cases.length + 1)
     expect(submissions[0]).toContain(`sha=${head}`)
   },
 )
@@ -1882,7 +1897,7 @@ test(
 )
 
 test(
-  'attaching a repository to another Hydra refuses without moving existing work',
+  'attaching a repository to another Hydra succeeds with its existing owner visible and keeps existing work',
   async () => {
     const owner = await pnyx.hydra()
     const other = await pnyx.hydra()
@@ -1905,27 +1920,32 @@ test(
         path,
       ],
     })
-    const refused = await other.ownerRefused({
+    const attached = await other.owner({
       args: [
         'project',
         'add',
         path,
       ],
     })
-    expect(refused.code).toBe('CONFLICT')
-    expect(refused.error).toContain(owner.id)
+    const expectedOwner = expect.objectContaining({ reason: expect.stringContaining(owner.id) })
+    expect(attached.notices).toEqual(expect.arrayContaining([expectedOwner]))
     expect((await owner.task({ key: task.card.id })).title).toBe('Keep this work')
     expect((await other.owner({
       args: [
         'project',
         'list',
       ],
-    })).projects).toBe('none: no projects attached')
+    })).projects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path,
+        state: 'attached',
+      }),
+    ]))
   },
 )
 
 test(
-  'legacy duplicates stay usable until an atomic keeper choice clears all task blockers',
+  'a keeper choice moves open work atomically, reports its defaults and preserves dependencies within the moved group',
   async () => {
     const owner = await pnyx.hydra()
     const path = owner.folder({ name: 'legacy-shared' })
@@ -2054,16 +2074,6 @@ test(
         task.card.id,
       ],
     })
-    const refused = await owner.ownerRefused({
-      args: [
-        'project',
-        'keep',
-        path,
-      ],
-    })
-    expect(refused.code).toBe('CONFLICT')
-    expect(refused.error).toContain(task.card.id)
-    expect(refused.error).toContain(dependent.card.id)
     expect((await legacy.task({ key: free.card.id })).title).toBe('Independent work')
     expect((await legacy.task({ key: task.card.id })).title).toBe('Legacy work')
     expect((await legacy.task({ key: dependent.card.id })).title).toBe('Dependent work')
@@ -2074,15 +2084,6 @@ test(
         free.card.id,
       ],
     })).code).toBe('NOT_FOUND')
-    await legacy.owner({
-      args: [
-        'task',
-        'undepend',
-        dependent.card.id,
-        '--on',
-        task.card.id,
-      ],
-    })
     const extra = legacy.folder({ name: 'legacy-extra' })
     await legacy.owner({
       args: [
@@ -2116,6 +2117,9 @@ test(
     ]))
     expect((await owner.task({ key: task.card.id })).title).toBe('Legacy work')
     expect((await owner.task({ key: dependent.card.id })).title).toBe('Dependent work')
+    const prerequisites = (await owner.task({ key: dependent.card.id })).prerequisites
+    expect(prerequisites).toContainEqual(expect.objectContaining({ id: task.card.id }))
+    expect(kept.notices).toBeDefined()
     expect((await owner.task({ key: free.card.id })).title).toBe('Independent work')
     expect(rows({
       text: 'select hydra_id, type from events where card_id = $1 and type in (\'task.moved-in\', \'task.moved-out\') order by type',
@@ -3807,7 +3811,16 @@ test(
         parent,
       ],
     })
-    expect((await source.ownerRefused({
+    await source.owner({
+      args: [
+        'task',
+        'depend',
+        workChild.card.id,
+        '--on',
+        parent,
+      ],
+    })
+    const moved = await source.owner({
       args: [
         'task',
         'move',
@@ -3815,22 +3828,11 @@ test(
         '--to-hydra',
         keeper.id,
       ],
-    })).code).toBe('CONFLICT')
-    expect((await keeper.ownerRefused({
-      args: [
-        'project',
-        'keep',
-        path,
-      ],
-    })).code).toBe('CONFLICT')
-    await source.owner({
-      args: [
-        'task',
-        'parent',
-        workChild.card.id,
-        'none',
-      ],
     })
+    expect(moved.notices).toBeDefined()
+    expect((await source.task({ key: workChild.card.id })).parent).toBe('none')
+    expect((await source.task({ key: workChild.card.id })).prerequisites).toEqual([])
+    expect((await source.task({ key: workChild.card.id })).notices).toBeDefined()
     await keeper.owner({
       args: [
         'project',
@@ -4003,13 +4005,15 @@ test(
         '',
       ],
     })
-    expect((await target.ownerRefused({
+    const attached = await target.owner({
       args: [
         'project',
         'add',
         path,
       ],
-    })).code).toBe('CONFLICT')
+    })
+    expect(attached.notices).toBeDefined()
+    expect(JSON.stringify(attached)).not.toContain('Private memory sentinel')
     expect((await source.owner({
       args: [
         'project',
@@ -4028,12 +4032,13 @@ test(
         path,
       ],
     })
-    expect(shown).not.toHaveProperty('memory')
+    expect(shown.memory).toBe('none: project memory is filtered')
+    expect(shown.notices).toBeDefined()
     expect(shown.attachment).toEqual(expect.objectContaining({
       path,
       state: 'attached',
     }))
-    expect((await source.ownerRefused({
+    const filtered = await source.owner({
       args: [
         'project',
         'memory',
@@ -4041,7 +4046,9 @@ test(
         '--project',
         path,
       ],
-    })).code).toBe('NOT_FOUND')
+    })
+    expect(filtered.memory).toBe('none: project memory is filtered')
+    expect(filtered.notices).toBeDefined()
     const env = {
       ...process.env,
       PNYX_ACTOR: 'hydra',
@@ -4063,7 +4070,7 @@ test(
     }))
     expect(foreignProjects.projects).toBe('none: no projects attached')
     expect(foreignProjects.help ?? []).not.toContainEqual(expect.stringContaining('project add'))
-    expect((await pnyxAxi({
+    const foreignShown = parsed(await pnyxAxi({
       env: foreignHydra,
       args: [
         'project',
@@ -4072,19 +4079,28 @@ test(
         '--hydra',
         source.id,
       ],
-    })).stdout).toContain('NOT_FOUND')
-    expect((await pnyxAxi({
+    }))
+    expect(foreignShown.memory).toBe('none: project memory is filtered')
+    expect(foreignShown.notices).toBeDefined()
+    const foreignRemoved = await pnyxAxi({
       env: foreignHydra,
       args: [
         'project',
         'remove',
         path,
-        '--reason',
-        'Attempt to detach another Hydra attachment',
         '--hydra',
         source.id,
       ],
-    })).stdout).toContain('NOT_FOUND')
+    })
+    expect(foreignRemoved.status).toBe(0)
+    expect(parsed(foreignRemoved).notices).toBeDefined()
+    await source.owner({
+      args: [
+        'project',
+        'add',
+        path,
+      ],
+    })
     expect(parsed(await pnyxAxi({
       env,
       args: [
@@ -4105,7 +4121,8 @@ test(
       ],
     }))
     expect(shownToHydra.attachment).toEqual(expect.objectContaining({ path }))
-    expect(shownToHydra).not.toHaveProperty('memory')
+    expect(shownToHydra.memory).toBe('none: project memory is filtered')
+    expect(shownToHydra.notices).toBeDefined()
     const removed = await pnyxAxi({
       env,
       args: [

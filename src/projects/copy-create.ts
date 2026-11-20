@@ -1,3 +1,4 @@
+import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, realpathSync } from 'node:fs'
@@ -66,7 +67,7 @@ async function verifyCopyBranch({
 }
 
 // ponytail: an attached session stands for a live worker; a presence check could replace it.
-function refuseShared({
+function noteShared({
   hydraId,
   path,
 }: {
@@ -79,10 +80,9 @@ function refuseShared({
     && Object.values(loadHydra({ hydraId: id }).state.cards).some(card => working({ card })))
 
   if (busy.length) {
-    throw new HydraError({
-      message: `a worker of Hydra ${busy.join(', ')} already runs in ${path}`,
-      code: 'CONFLICT',
-      help: ['Start without --in-place so the worker gets its own copy'],
+    inform({
+      reason: `A worker of Hydra ${busy.join(', ')} already uses ${path}`,
+      clear: 'Start without --in-place or --folder to use a separate copy',
     })
   }
 }
@@ -534,7 +534,7 @@ export async function taskFolder({
       project: p,
       ref: given,
     }))) {
-      refuseShared({
+      noteShared({
         hydraId,
         path: given,
       })
@@ -562,7 +562,7 @@ export async function taskFolder({
 
   if (inPlace || ownFolder) {
     if (inPlace) {
-      refuseShared({
+      noteShared({
         hydraId,
         path: project.path,
       })
@@ -574,11 +574,13 @@ export async function taskFolder({
   const live = liveCopy({ card })
 
   if (live && live.project !== project.path) {
-    throw new HydraError({
-      message: `task ${card.id} still has a copy of ${live.project} at ${live.path}`,
-      code: 'CONFLICT',
-      help: [`Settle it first with \`pnyx-axi task copy ${card.id} remove --hydra ${hydraId}\``],
+    inform({
+      task: card.id,
+      reason: `Continuing in the existing copy of ${live.project} at ${live.path}`,
+      clear: `Use pnyx-axi task copy ${card.id} remove after landing its work to use the new project`,
     })
+
+    return live.path
   }
 
   const current = live && isFolder({ path: live.path }) ? live : undefined
