@@ -97,21 +97,23 @@ test(
     }
     replayOwned({
       state,
-      events: [{
-        ...base({
-          state,
-          cardId: task,
-          meta: {
-            ...meta,
-            id: 'create-occupied-task',
+      events: [
+        {
+          ...base({
+            state,
+            cardId: task,
+            meta: {
+              ...meta,
+              id: 'create-occupied-task',
+            },
+          }),
+          type: 'task.created',
+          data: {
+            key: task,
+            title: 'Occupied task',
           },
-        }),
-        type: 'task.created',
-        data: {
-          key: task,
-          title: 'Occupied task',
         },
-      }],
+      ],
     })
     applySessionMove({
       state,
