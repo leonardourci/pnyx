@@ -8,7 +8,7 @@ export interface SourceCommand {
   cwd: string
 }
 
-export interface SourceRun {
+interface SourceRun {
   id: string
   server: string
   at: string

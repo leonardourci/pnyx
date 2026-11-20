@@ -87,7 +87,7 @@ export const SETTINGS_FILTER: Filter = {
   ],
   words: 'actions preferences',
 }
-export const KIND_FILTERS: Filter[] = [
+const KIND_FILTERS: Filter[] = [
   {
     id: 'kind:tasks',
     type: 'kind',

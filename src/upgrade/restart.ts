@@ -20,7 +20,7 @@ export const RESTART_SIGNAL = 'SIGUSR2'
 
 // A server Pnyx starts never takes the caller's Pnyx or terminal identity, nor a worker's or Hydra's login,
 // so its agents get the owner's environment plus what their card names.
-export function serverEnvironment(): NodeJS.ProcessEnv {
+function serverEnvironment(): NodeJS.ProcessEnv {
   const actor = process.env.PNYX_ACTOR ?? ''
   const agent = /^(worker:|helper:|hydra$)/.test(actor) || process.env.PNYX_HOSTED !== undefined
     || process.env.PNYX_TASK !== undefined
@@ -106,7 +106,7 @@ function running(): Running | undefined {
   }
 }
 
-export async function waitFor({
+async function waitFor({
   check,
   timeout,
   progress,

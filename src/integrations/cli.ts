@@ -11,7 +11,7 @@ import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { harvestTranscripts, appendNote } from '#integrations/hooks/harvest.ts'
 
-export async function integrations({
+async function integrations({
   hydraId,
 }: {
   hydraId: string

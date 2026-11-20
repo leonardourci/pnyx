@@ -17,7 +17,7 @@ export function isSessionSource({ source }: { source?: SourceRef }): boolean {
   ].includes(source.adapter)
 }
 
-export function sessionActivity({
+function sessionActivity({
   target,
   activity,
   at,

@@ -23,9 +23,9 @@ import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
 
-export const task = guard({ handler: ({ args }) => taskCommand({ args }) })
+const task = guard({ handler: ({ args }) => taskCommand({ args }) })
 
-export const history = guard({
+const history = guard({
   handler: async ({ args }) => {
     const options: Options = {
       ...COMMON,
@@ -194,7 +194,7 @@ export const history = guard({
   },
 })
 
-export const undo = guard({
+const undo = guard({
   handler: ({ args }) => {
     const {
       values,

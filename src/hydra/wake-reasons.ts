@@ -668,20 +668,6 @@ export function eventReasons({
   return reasons
 }
 
-// A change wakes a hosted Hydra for a check turn exactly when it has a reason to give.
-export function wakesHydra({
-  state,
-  event,
-}: {
-  state: HydraState
-  event: HydraEvent
-}): boolean {
-  return eventReasons({
-    state,
-    event,
-  }).length > 0
-}
-
 // Why Hydra is woken by these changes: one line per fact, oldest first, each fact once.
 export function wakeReasons({
   state,

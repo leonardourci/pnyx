@@ -46,7 +46,7 @@ export function needsPullRequestFollow({ state }: { state: HydraState }): boolea
 }
 
 // What the task's own worker should hear about this change, if anything. Comments count from the first read, which only sets their baseline.
-export function workerNews({
+function workerNews({
   card,
   link,
   status,

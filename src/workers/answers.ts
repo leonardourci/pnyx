@@ -7,17 +7,9 @@ import { replyRoute } from './reply-route.ts'
 // typed into the prompt's own "Type something" line (single-choice questions only).
 export type QuestionAnswer = { pick: number[] } | { text: string }
 
-export const CHOICES = [
-  'allow',
-  'deny',
-  'approve',
-  'revise',
-  'accept',
-  'decline',
-] as const
-export type ChoiceName = (typeof CHOICES)[number]
+type ChoiceName = 'allow' | 'deny' | 'approve' | 'revise' | 'accept' | 'decline'
 
-export type FieldValue = string | number | boolean
+type FieldValue = string | number | boolean
 
 export interface Answer {
   answers?: QuestionAnswer[]
@@ -79,10 +71,6 @@ const CODEX_PERMISSION: Choice[] = [
     text: 'optional',
   },
 ]
-
-// A question's options are picked by digit, and a form's choices are each a Down key
-// away, so longer lists are left to the terminal.
-export { MAX_OPTIONS } from './native-prompts.ts'
 
 // Names one request exactly as it was shown, so an answer lands only on the prompt
 // it was written for: a later request under the same key with other text,

@@ -1,4 +1,3 @@
-import { SummaryPanel } from '#web-shared/ui/summary-panel.tsx'
 import { QuestionActions, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -132,26 +131,5 @@ export function ReviewReadiness({
         />
       )}
     </QuestionPanel>
-  )
-}
-
-export function ReviewSummary({
-  request,
-  open,
-}: {
-  request: ReviewRequest
-  open(): void
-}) {
-  return (
-    <SummaryPanel
-      as="div"
-      tone="accent"
-      className="card-question"
-      aria-label="Pull request review summary"
-    >
-      <strong className="eyebrow">{reviewState({ request })}</strong>
-      <CollapsibleText text={request.link.title ?? request.link.url} />
-      <Button variant="primary" onClick={open}>Answer</Button>
-    </SummaryPanel>
   )
 }

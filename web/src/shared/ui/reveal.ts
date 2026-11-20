@@ -4,11 +4,11 @@ import type { Token, Tokens } from 'marked'
 // Letters typed in the last EDGE ms are still fading in.
 export const EDGE = 60
 // How long a backlog takes to play out while the reply streams, and after it ends.
-export const CATCHUP = 400
-export const FINISH = 300
-export const WINDOW = 1000
+const CATCHUP = 400
+const FINISH = 300
+const WINDOW = 1000
 // Chars per ms.
-export const MIN_SPEED = 120 / 1000
+const MIN_SPEED = 120 / 1000
 // How far the tail check looks back for an opener and ahead for its closer.
 const REACH = 200
 const FROM_START = 400

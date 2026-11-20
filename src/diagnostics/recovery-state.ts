@@ -7,9 +7,9 @@ import { activeHelperBatches } from '#routine-helper/state.ts'
 import { nativeIdle } from '#workers/native-work.ts'
 import type { NativeHealth } from './health.ts'
 
-export const RECOVERY_ATTEMPTS = 2
+const RECOVERY_ATTEMPTS = 2
 export const RECOVERY_PAUSE_MS = 30_000
-export const RECOVERY_WINDOW_MS = 30 * 60_000
+const RECOVERY_WINDOW_MS = 30 * 60_000
 
 export interface RecoveryAttempt {
   message: string

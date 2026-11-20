@@ -18,7 +18,7 @@ export interface HelperBatch {
 export const HELPER_SUMMARY_CHARS = 280
 export const HELPER_SUMMARY_WORDS = 40
 
-export type HelperOutcomeStatus = 'handled' | 'still_waiting' | 'needs_main'
+type HelperOutcomeStatus = 'handled' | 'still_waiting' | 'needs_main'
 
 export type HelperOutcome = {
   task: string

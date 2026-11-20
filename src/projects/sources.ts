@@ -8,7 +8,7 @@ const GIT_TIMEOUT_MS = 5000
 const ROOT_SOURCES = /^(AGENTS\.md|CLAUDE\.md|README(?:\.[^/]+)?)$/i
 const SKILL_SOURCE = /^(?:\.agents\/skills|\.claude\/skills|skills)\/.*\.md$/
 
-export const contentHash = ({ text }: { text: string }) => createHash('sha256').update(text)
+const contentHash = ({ text }: { text: string }) => createHash('sha256').update(text)
   .digest('hex')
 
 // Off the event loop: the server answers every other client while git reads a project.
@@ -32,7 +32,7 @@ async function git({
   return result.status === 0 ? result.stdout.trimEnd() : undefined
 }
 
-export function normalizedRemote({
+function normalizedRemote({
   remote,
   path,
 }: {

@@ -25,7 +25,7 @@ const HELPER_ACTIONS: Record<string, HelperAction> = {
   permission: 'permission',
 }
 
-export async function hostRequestUnlocked({
+async function hostRequestUnlocked({
   host,
   body: raw,
   usage = {},

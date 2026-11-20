@@ -21,7 +21,7 @@ Commit with Conventional Commits, split by concern. Push the branch and open a d
 
 Run `pnpm deslop` before marking the pull request ready; see [Verification](docs/development.md#verification) for the checks and CI approval steps. The owner runs deslop for pull requests from forks.
 
-Both required checks, `deslop` and `Lint, build and tests`, must pass. The owner reviews and merges with a merge commit.
+Both required checks, `deslop` and `Lint, build and tests`, must pass. The latter also runs `pnpm knip`, which rejects unused files, exports and dependencies. The owner reviews and merges with a merge commit.
 
 ## CodeRabbit challenger review
 

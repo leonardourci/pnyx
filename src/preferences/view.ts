@@ -6,7 +6,7 @@ import { COLUMNS } from '#tasks/columns-model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 import { hydraConfig } from '#hydra/config.ts'
 
-export const DEFAULT_WIDTHS = {
+const DEFAULT_WIDTHS = {
   column: 460,
   hydra: 520,
 } as const

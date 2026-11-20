@@ -14,7 +14,7 @@ const EVENT_POLL_MS = 500
 
 // A hosted session's hook card never gets an activity, so the session decides
 // for every card that names its transcript.
-export function watchedTranscripts({ state }: { state: HydraState }): Set<string> {
+function watchedTranscripts({ state }: { state: HydraState }): Set<string> {
   return new Set(Object.values(state.cards).flatMap(card => {
     const session = state.sessions?.[cardSessionId({ card }) ?? '']
     const activity = session?.sessionActivity ?? session?.activity

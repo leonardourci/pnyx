@@ -15,7 +15,7 @@ export interface LogRead {
 
 // Appended by an older Pnyx's repair command after it closed a torn line with a newline. Readers skip the
 // line it names; it is not a Hydra event and takes no sequence number.
-export interface RepairMarker {
+interface RepairMarker {
   v: typeof EVENT_VERSION
   type: 'log.repaired'
   at: string

@@ -14,9 +14,9 @@ import { notifySteering } from './inbox-delivery.ts'
 import { agentActivity } from './activity.ts'
 import { terminalPresence, type Presence } from './presence.ts'
 
-export const STEERING_GRACE_MS = 90_000
-export const STEERING_RING_LIMIT = 3
-export const STEERING_DEFERRAL_LIMIT = 2
+const STEERING_GRACE_MS = 90_000
+const STEERING_RING_LIMIT = 3
+const STEERING_DEFERRAL_LIMIT = 2
 
 function oldestUnread({ card }: { card: Card }): SteeringMessage | undefined {
   if (!liveTask({ card }) || card.id === HYDRA_CARD) {

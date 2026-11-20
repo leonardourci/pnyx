@@ -1,44 +1,6 @@
 import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
-import { completionGaps, requireNoDependencyCycle } from './dependencies.ts'
-import type { Card, TaskWait } from './model.ts'
-import { findCard } from './push-rules.ts'
-import { isManagedTask } from './select.ts'
-
-export function validateWait({
-  state,
-  card,
-  ref,
-  condition,
-}: {
-  state: HydraState
-  card: Card
-  ref: string
-  condition: TaskWait['condition']
-}): TaskWait {
-  const dependency = findCard({
-    state,
-    ref,
-  })
-
-  if (isManagedTask({ card: dependency })) {
-    throw new HydraError({
-      message: 'waits must name native tasks in this Hydra',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  requireNoDependencyCycle({
-    state,
-    task: card.id,
-    targets: [dependency.id],
-  })
-
-  return {
-    task: dependency.id,
-    condition,
-  }
-}
+import { completionGaps } from './dependencies.ts'
+import type { TaskWait } from './model.ts'
 
 export function waitReadiness({
   state,

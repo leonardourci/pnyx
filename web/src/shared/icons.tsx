@@ -18,7 +18,7 @@ const EVEN_ODD = 'fill-rule="evenodd"'
 // Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
 const BOLD_STROKE = 16
 // Line icons draw this many screen pixels wide at every size, so a 14 px and a 24 px icon match in weight.
-export const ICON_STROKE = 1.5
+const ICON_STROKE = 1.5
 // Identity files draw in a 512-unit box.
 const ICON_BOX = 512
 // Tabler draws in a 24-unit box.

@@ -57,7 +57,7 @@ export function binaries(): string {
   return found.bin
 }
 
-export async function freePort(): Promise<number> {
+async function freePort(): Promise<number> {
   const server = createServer()
   await new Promise<void>(resolve => server.listen(
     0,

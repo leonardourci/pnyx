@@ -6,7 +6,7 @@ import { log } from './diagnostics.ts'
 import { DEFAULT_HYDRA } from './home-migration.ts'
 import { IDENTITY, requestExitCode, requestInvocation, runForClient } from './request-context.ts'
 
-export type RunRequest = {
+type RunRequest = {
   argv: string[]
   cwd: string
   env: Partial<Record<(typeof IDENTITY)[number], string>>

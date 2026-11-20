@@ -304,7 +304,7 @@ export function learningConditions({ states }: {
   }
 }
 
-export function expiredLearning({
+function expiredLearning({
   line,
   now,
   conditions,

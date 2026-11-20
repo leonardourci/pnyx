@@ -3,10 +3,10 @@ import { composing } from '#web-shared/ime.ts'
 
 export const INPUT = 'input'
 
-export type FocusMove = 'next' | 'previous' | 'escape'
+type FocusMove = 'next' | 'previous' | 'escape'
 
 // Focus outside the cycle counts as the input, so a stray focus always rejoins it.
-export function moveFocus<T>({
+function moveFocus<T>({
   controls,
   from,
   move,
@@ -32,7 +32,7 @@ export function moveFocus<T>({
   return order[(at + step + order.length) % order.length]!
 }
 
-export function recoverFocus<T>({
+function recoverFocus<T>({
   before,
   controls,
   lost,
@@ -62,7 +62,7 @@ const NOT_TEXT = [
   'image',
 ]
 
-export function controlKind({
+function controlKind({
   tag,
   type = '',
   role,
@@ -127,7 +127,7 @@ const caretMoves = ({
   : caret.value.slice(caret.end).includes('\n')
 
 // ↓ stops on the last control rather than wrapping, so holding it never lands back in the bar.
-export function arrowFocus<T>({
+function arrowFocus<T>({
   controls,
   from,
   key,
@@ -178,7 +178,7 @@ export function arrowFocus<T>({
 }
 
 // Where → or Enter enters a preview: a setting's own control before its Reset to default, else the first control.
-export const enterPreview = <T>({
+const enterPreview = <T>({
   controls,
   own,
 }: {
@@ -196,7 +196,7 @@ interface Row {
 }
 
 // Near the first row the pane scrolls to its top, so the first group's heading stays in view.
-export function bufferedScroll({
+function bufferedScroll({
   scrollTop,
   viewport,
   rows,

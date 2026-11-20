@@ -114,7 +114,7 @@ function OlderSentinel({
   )
 }
 
-export function ChatError({ text }: { text?: string }) {
+function ChatError({ text }: { text?: string }) {
   return (
     <p className="chat-error flex items-start gap-2 border border-red/35 rounded-card bg-red/8 text-red text-ui wrap-anywhere max-w-full mt-4.5 py-2.5 px-3 [&>svg]:mt-0.5" role="alert">
       <Icon name="error" size={ICON_SIZE.control} />

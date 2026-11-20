@@ -28,7 +28,7 @@ export function AnsweredQuestions({
   ))
 }
 
-export function AnsweredQuestion({
+function AnsweredQuestion({
   card,
   ask,
   command,

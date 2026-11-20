@@ -24,7 +24,7 @@ export interface HistoryMilestone extends HydraOperation {
   summary?: string
 }
 
-export function lastMilestone({
+function lastMilestone({
   state,
   kind,
 }: {
@@ -64,7 +64,7 @@ export function inscribeSince({ state }: { state: HydraState }): string {
   })?.id ?? 'origin'
 }
 
-export function historyBoundary({
+function historyBoundary({
   state,
   since,
 }: {
@@ -125,7 +125,7 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   return result
 }
 
-export function taskWords({ event }: { event: HydraEvent }): {
+function taskWords({ event }: { event: HydraEvent }): {
   action: string
   text: string
 } | undefined {
@@ -404,7 +404,7 @@ export function historyMessages({
 }
 
 // How many log positions one read covers, so a statement never runs long however large the range.
-export const HISTORY_WINDOW = 4000
+const HISTORY_WINDOW = 4000
 
 export interface HistoryMessage {
   seq: number

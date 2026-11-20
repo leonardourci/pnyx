@@ -53,7 +53,7 @@ export interface ProjectMemory {
   events: ProjectMemoryEvent[]
 }
 
-export const projectMemorySize = ({ documents }: Pick<ProjectMemory, 'documents'>) => Object.values(documents).reduce(
+const projectMemorySize = ({ documents }: Pick<ProjectMemory, 'documents'>) => Object.values(documents).reduce(
   (
     size,
     text,

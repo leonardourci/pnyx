@@ -62,7 +62,7 @@ export interface AgentSession {
   }): Promise<PermissionResult | null>
 }
 
-export interface TurnPlan {
+interface TurnPlan {
   // The next prompt ending with this text, or the one match accepts, takes the plan.
   text?: string
   match?({ text }: { text: string }): boolean

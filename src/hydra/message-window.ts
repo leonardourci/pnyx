@@ -5,7 +5,7 @@ import { nativeWindow, type NativeSource } from './native-window.ts'
 import type { SessionEntry } from './transcripts-read.ts'
 
 // A read holds at most this many transcript messages, unless they all share one log position.
-export const NATIVE_LIMIT = 2000
+const NATIVE_LIMIT = 2000
 
 export interface MessageWindow {
   events: HydraEvent[]

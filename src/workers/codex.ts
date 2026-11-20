@@ -908,7 +908,7 @@ const windowLabel = ({ minutes }: { minutes: number }) => {
   return `${Math.round(minutes / 60)}h`
 }
 
-export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsage {
+function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsage {
   const limits = object({ value: rateLimits })
 
   return {

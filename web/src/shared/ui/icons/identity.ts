@@ -1,7 +1,7 @@
 // Identity icons: game-icons.net silhouettes (CC BY 3.0), plus a few drawn for Pnyx, for Hydras, the default columns
 // and some composer controls.
 // Plain data, so Node tests can read it; icon.tsx loads the files. Settings › About credits every author listed here.
-export type IdentityKind = 'hydra' | 'column' | 'control'
+type IdentityKind = 'hydra' | 'column' | 'control'
 
 export interface IdentityIcon {
   id: string

@@ -107,7 +107,7 @@ export const SETTINGS_SECTIONS = [
   note?: string
 }[]
 
-export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]['id']
+type SettingsSection = (typeof SETTINGS_SECTIONS)[number]['id']
 
 export interface CatalogEntry {
   id: string

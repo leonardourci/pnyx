@@ -42,7 +42,7 @@ interface OperationSchema {
   required: string[]
 }
 
-export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
+const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
   'task.create': {
     fields: {
       as: 'text',

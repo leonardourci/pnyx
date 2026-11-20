@@ -26,7 +26,7 @@ const HISTORY_TYPES = [
   'task.intent',
 ]
 
-export function hydraHistoryWindow({
+function hydraHistoryWindow({
   hydraId,
   state,
 }: {
@@ -61,7 +61,7 @@ export function hydraHistoryWindow({
   }
 }
 
-export function hydraHistoryPage({
+function hydraHistoryPage({
   hydraId,
   since,
   after,

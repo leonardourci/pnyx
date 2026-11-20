@@ -307,7 +307,7 @@ function withoutRunners({ words }: { words: string[] }): string[] {
 }
 
 // Only the first command names the work: `cd x && pnpm test | tail` is "Running tests".
-export function shellOf({ command }: { command: string }): Shell | undefined {
+function shellOf({ command }: { command: string }): Shell | undefined {
   let line = command.split('\n')[0]!
 
   while (LEADING_CD.test(line)) {

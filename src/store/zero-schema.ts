@@ -378,7 +378,7 @@ const REFERENCE_LIMIT = 1_000
 export const LIST_LIMIT = 100
 
 // The Hydra-wide fields the page reads; the rest of hydra_values is the server's.
-export const PAGE_VALUES = [
+const PAGE_VALUES = [
   'queue',
   'configured',
   'configRevision',

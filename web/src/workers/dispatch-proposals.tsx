@@ -13,7 +13,7 @@ const COMMAND_PREVIEW_FIELDS = [
   'cwd',
 ]
 
-export function useDispatchProposals({
+function useDispatchProposals({
   state,
   command,
   notify,

@@ -2,19 +2,7 @@ import { activeCompaction } from '#workers/compaction/state.ts'
 import { steeringHeld } from '#workers/steering.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import type { Card } from '#tasks/model.ts'
-import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
-
-export function taskUpdates({ card }: { card: Card }): ThreadEntry[] {
-  return (card.statusLog ?? []).filter(s => s.note.trim() && s.actor !== 'web')
-    .map(s => ({
-      id: `update:${s.id}`,
-      kind: 'message',
-      role: 'assistant',
-      text: s.note,
-      at: s.at,
-      task: card.id,
-    }))
-}
+import type { ThreadEntry } from './transcripts-read.ts'
 
 // Only what Pnyx knows; a worker it does not run reads its inbox on its own time.
 function waitingReason({ card }: { card: Card }) {
@@ -143,40 +131,4 @@ export function taskReceipt({
   }
 
   return entry
-}
-
-export function withTaskReceipts({
-  native,
-  saved,
-}: {
-  native: ThreadPage
-  saved: ThreadPage
-}): ThreadPage {
-  const receipts = saved.entries.filter(e => e.receipt !== undefined || e.delivery)
-  const matched = new Set<string>()
-  const entries = native.entries.map(entry => {
-    const receipt = entry.kind === 'message' && entry.role.startsWith('user') && entry.replyId
-      ? receipts.find(r => !matched.has(r.id) && r.replyId === entry.replyId
-        && (r.part ?? 0) === (entry.part ?? 0)) : undefined
-
-    if (receipt) {
-      matched.add(receipt.id)
-
-      return receipt
-    }
-
-    return entry
-  })
-
-  return {
-    ...native,
-    entries: [
-      ...entries,
-      ...receipts.filter(r => !matched.has(r.id)),
-    ]
-      .sort((
-        a,
-        b,
-      ) => (a.at ?? '').localeCompare(b.at ?? '')),
-  }
 }

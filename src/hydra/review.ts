@@ -17,12 +17,11 @@ import { BUSY_MS } from '#workers/host.ts'
 import { pausedDeclaration } from '#tasks/lifecycle.ts'
 
 export const MINUTE_MS = 60_000
-export { QUESTION_REMINDER_MS } from '#tasks/question-reminders.ts'
 
 const LEFT_OFF_STALE_DAYS = 7
 const LEFT_OFF_STALE_MS = LEFT_OFF_STALE_DAYS * 24 * 60 * MINUTE_MS
 
-export interface ReviewFlag {
+interface ReviewFlag {
   kind: 'green unmerged PR' | 'quiet worker' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind' | 'stale left-off' | 'prerequisite unmet'
   task: string
   detail: string

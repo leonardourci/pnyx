@@ -87,7 +87,7 @@ function boundedWork({
   }
 }
 
-export function nativeHealth({
+function nativeHealth({
   sessions,
   limit,
 }: {

@@ -36,7 +36,7 @@ function mergeComments({
   ]
 }
 
-export function createChatDrafts({
+function createChatDrafts({
   text = '',
   comments = [],
   save,

@@ -54,9 +54,6 @@ export function filterCards({
     ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
-export const shownActivity = ({ card }: { card: Card }) =>
-  card.sessionActivity && card.sessionActivity !== 'ended' ? card.sessionActivity : card.activity
-
 export function cardState({
   card,
   hours,

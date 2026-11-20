@@ -295,7 +295,7 @@ const modifiers = [
   'Shift',
 ]
 
-export function parseBinding({
+function parseBinding({
   binding,
   platform,
 }: {
@@ -518,7 +518,7 @@ export const emptyProgress = (): KeyProgress => ({
   until: 0,
 })
 
-export function matchesPress({
+function matchesPress({
   event,
   stroke,
 }: {

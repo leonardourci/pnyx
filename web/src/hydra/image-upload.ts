@@ -94,20 +94,3 @@ export function uploadImage({
     request.send(file)
   })
 }
-
-export async function uploadImages({ files }: { files: File[] }) {
-  const {
-    images,
-    failures,
-  } = checkImages({ files })
-  const uploads = await Promise.allSettled(images.map(file => uploadImage({ file })))
-
-  return {
-    lines: uploads.flatMap(upload => upload.status === 'fulfilled' ? [upload.value] : []),
-    failures: [
-      ...failures,
-      ...uploads.flatMap(upload => upload.status === 'rejected'
-        ? [(upload.reason as Error).message] : []),
-    ],
-  }
-}

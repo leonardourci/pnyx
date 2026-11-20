@@ -56,7 +56,7 @@ export interface ChangeEntry {
   unchanged?: true
 }
 
-export function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
+function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
   return join(
     pnyxHome(),
     'config',
@@ -65,7 +65,7 @@ export function configPath({ accounts = false }: { accounts?: boolean } = {}): s
 }
 
 // The change log is the saved heads dispatch: one line per change, each carrying the whole document.
-export const changesPath = () => join(
+const changesPath = () => join(
   pnyxHome(),
   'config',
   'dispatch-changes.jsonl',
@@ -88,14 +88,14 @@ function templatePath({ accounts = false }: { accounts?: boolean } = {}): string
 }
 
 // Unlike owner config, a missing shipped template is a broken install, so this throws instead of reading as empty.
-export function readTemplate({ accounts = false }: { accounts?: boolean } = {}): Fields {
+function readTemplate({ accounts = false }: { accounts?: boolean } = {}): Fields {
   return JSON.parse(readFileSync(
     templatePath({ accounts }),
     'utf8',
   )) as Fields
 }
 
-export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
+function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
   const template = readTemplate() as Partial<HeadsDispatch>
 
   return {
@@ -104,7 +104,7 @@ export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
   }
 }
 
-export function templateAccounts(): { accounts: Record<string, Account> } {
+function templateAccounts(): { accounts: Record<string, Account> } {
   const template = readTemplate({ accounts: true }) as { accounts: Record<string, Account> }
 
   for (const account of Object.values(template.accounts)) {
@@ -142,7 +142,7 @@ export function candidates({ value }: { value: unknown }): Candidate[] {
   return value as Candidate[]
 }
 
-export function readConfig({ path }: { path: string }): Fields {
+function readConfig({ path }: { path: string }): Fields {
   try {
     const value: unknown = JSON.parse(readFileSync(
       path,
@@ -449,7 +449,7 @@ function hydraFiles(): HydraFiles[] {
 }
 
 // Each Hydra's own dispatch and accounts merge into the shared ones once, the newest last; the shared Hydra pin still wins.
-export function mergeHydraFiles(): void {
+function mergeHydraFiles(): void {
   if (existsSync(changesPath())) {
     return
   }

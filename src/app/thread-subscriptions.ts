@@ -19,7 +19,7 @@ import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
 import { createThreadDelivery } from './thread-delivery.ts'
 
-export const LIVE_TEXT_DELAY_MS = 80
+const LIVE_TEXT_DELAY_MS = 80
 
 interface PreparedThread {
   thread: ThreadPage

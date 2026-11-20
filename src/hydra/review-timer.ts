@@ -10,10 +10,8 @@ import { boardReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '#workers/presence.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { readSettings } from '#settings/store.ts'
-import { DEFAULT_REVIEW_MINUTES } from '#settings/settings.ts'
 import { background } from '#app/background.ts'
 
-export const REVIEW_MS = DEFAULT_REVIEW_MINUTES * MINUTE_MS
 const REVIEW_POLL_MS = 15_000
 
 function schedule({

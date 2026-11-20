@@ -1,4 +1,4 @@
-export const MAX_ITEM_BYTES = 64 * 1024
+const MAX_ITEM_BYTES = 64 * 1024
 
 // Strings longer than the first limit are cut; the next limit applies only if the item is still over.
 const STRING_LIMITS = [

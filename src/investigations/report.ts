@@ -14,7 +14,7 @@ import { TASK_KINDS, type Card, type TaskKind } from '#tasks/model.ts'
 import { readEvents } from '#app/event-log.ts'
 
 // Big enough for a long written investigation, small enough to keep each log line readable.
-export const REPORT_MAX_CHARS = 100_000
+const REPORT_MAX_CHARS = 100_000
 
 export function investigationLine({
   hydraId,

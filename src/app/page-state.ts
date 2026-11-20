@@ -14,7 +14,7 @@ export interface PageInterest {
 type ServerOnly = 'eventIds' | 'contextNotes' | 'questionReminders' | 'hydraMessages'
 export type PageState = Omit<HydraState, ServerOnly>
 
-export function ownerMessage({ messages }: {
+function ownerMessage({ messages }: {
   messages: HydraState['hydraMessages']
 }): HydraState['hydraOwnerMessage'] {
   const ownerSend = ({ message }: { message: HydraMessage }) =>
@@ -28,7 +28,7 @@ export function ownerMessage({ messages }: {
   }
 }
 
-export function pageCard({ card }: { card: Card }): Card {
+function pageCard({ card }: { card: Card }): Card {
   const visible = { ...card }
   delete visible.steering
   delete visible.externalSources

@@ -59,7 +59,7 @@ interface Cursor {
   event: string
 }
 
-export const searchPath = ({ hydraId }: { hydraId: string }) => join(
+const searchPath = ({ hydraId }: { hydraId: string }) => join(
   hydraDir({ hydraId }),
   'oracle.db',
 )

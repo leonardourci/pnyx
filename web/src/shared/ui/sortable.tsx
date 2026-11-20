@@ -457,7 +457,7 @@ export function nestingRefusal({
   return null
 }
 
-export function DragNestHint() {
+function DragNestHint() {
   const {
     active,
     over,

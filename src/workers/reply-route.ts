@@ -32,7 +32,7 @@ export function terminalFacts({ value }: { value: unknown }): TerminalFacts | un
   return Object.keys(facts).length ? facts : undefined
 }
 
-export type TerminalHost =
+type TerminalHost =
   | {
     kind: 'tmux'
     socket: string

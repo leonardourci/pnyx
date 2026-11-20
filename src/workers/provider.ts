@@ -285,7 +285,7 @@ export const modelOption = ({
   : models.find(option => option.isDefault || option.value === 'default') ?? models[0]
 
 // Whether the model an agent runs has a Fast tier.
-export const fastModel = ({
+const fastModel = ({
   models,
   model,
 }: {

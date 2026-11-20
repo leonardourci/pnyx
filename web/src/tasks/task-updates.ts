@@ -182,7 +182,7 @@ function closings({ updates }: { updates: TaskUpdate[] }): TaskUpdate[] {
   ]
 }
 
-export type UpdateGroupType = 'single' | 'workers' | 'changes' | 'moment' | 'decisions' | 'exchange'
+type UpdateGroupType = 'single' | 'workers' | 'changes' | 'moment' | 'decisions' | 'exchange'
 
 export interface UpdateGroup {
   type: UpdateGroupType

@@ -11,14 +11,7 @@ export const AGENT_FLAG = /^[\w.:/[\]-]{1,100}$/
 
 // queued: recorded before the send. delivery_unknown: the route could not confirm
 // the send either way, so it is never resent blindly.
-export const REPLY_STATES = [
-  'queued',
-  'delivered',
-  'delivery_unknown',
-  'failed',
-] as const
-
-export type ReplyState = (typeof REPLY_STATES)[number]
+export type ReplyState = 'queued' | 'delivered' | 'delivery_unknown' | 'failed'
 
 export interface AgentRef {
   provider: string
@@ -216,12 +209,6 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
-export const QUOTA_BUCKETS = [
-  'high',
-  'medium',
-  'low',
-] as const
-
 export interface AgentConfig {
   harness: Harness
   account?: string
@@ -229,7 +216,7 @@ export interface AgentConfig {
   effort?: string
   mode?: string
   fast?: boolean
-  quota?: (typeof QUOTA_BUCKETS)[number]
+  quota?: 'high' | 'medium' | 'low'
 }
 
 // A task's own copy of its project: a git worktree Pnyx made, or the folder the

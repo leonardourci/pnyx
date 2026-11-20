@@ -49,7 +49,7 @@ export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> 
   chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
 
 // A card is drawn as one box over this room, so word joiners keep it on one line and a long name is cut.
-export function cardLabel({ name }: { name: string }) {
+function cardLabel({ name }: { name: string }) {
   const letters = Array.from(
     LETTERS.segment(name),
     letter => letter.segment === ' ' ? NO_BREAK_SPACE : letter.segment,

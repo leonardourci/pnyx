@@ -46,7 +46,7 @@ export function storedOffers(): Partial<Record<Harness, string[]>> {
   return offers
 }
 
-export function storedModels({ key }: { key: string }): ModelOption[] | undefined {
+function storedModels({ key }: { key: string }): ModelOption[] | undefined {
   const value = readModels()[key]
   const models = (Array.isArray(value) ? value as Partial<ModelOption>[] : [])
     .filter((model): model is ModelOption => typeof model?.value === 'string' && typeof model.label === 'string')
@@ -55,7 +55,7 @@ export function storedModels({ key }: { key: string }): ModelOption[] | undefine
 }
 
 // ponytail: read-modify-write without a lock, so two servers storing at once can drop one key; it is read again on the next start.
-export function storeModels({
+function storeModels({
   key,
   models,
 }: {

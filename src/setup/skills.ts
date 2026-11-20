@@ -38,7 +38,7 @@ export const skillSource = ({ name }: { name: string }) => join(
   'SKILL.md',
 )
 
-export function removeLegacyHydraSkills({
+function removeLegacyHydraSkills({
   folder,
 }: {
   folder: string
@@ -115,7 +115,7 @@ function syncReferences({
   }
 }
 
-export function copySkills({
+function copySkills({
   folder,
   names,
   missing,
@@ -333,7 +333,7 @@ function canonicalPath({ path }: { path: string }): string {
   )
 }
 
-export function skillLinks(
+function skillLinks(
   {
     userHome = homedir(),
     claudeConfigDir = process.env.CLAUDE_CONFIG_DIR,

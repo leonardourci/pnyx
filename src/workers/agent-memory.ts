@@ -60,7 +60,7 @@ export function watchAgent({
 }
 
 // The resident memory of each root's whole process tree in one `ps` listing: the root and everything it started.
-export function treeMemory({
+function treeMemory({
   listing,
   roots,
 }: {

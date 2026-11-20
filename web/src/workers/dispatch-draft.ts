@@ -5,7 +5,7 @@ import { canonical, checkDispatch, patchChanges, pointer, type DispatchChange, t
 // Hydra's own agent: Settings edits it under Hydra's default agent, not in the workers' table.
 export const HYDRA_RULE = 'hydra'
 
-export const CANDIDATE_FIELDS = [
+const CANDIDATE_FIELDS = [
   'model',
   'effort',
   'mode',
@@ -224,14 +224,6 @@ export function candidateMarks({
     invalid: boolean
   }>
 }
-
-export const candidatesAt = ({
-  draft,
-  rule,
-}: {
-  draft: Draft
-  rule: RuleAt
-}) => rule === 'default' ? draft.default : draft.rules[rule]!.candidates
 
 export function withCandidates({
   draft,

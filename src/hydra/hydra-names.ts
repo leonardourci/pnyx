@@ -1,5 +1,5 @@
 // Every Hydra gets one of these names, with the identity icon of the same id in lowercase; a rename keeps the icon.
-export const HYDRA_NAMES = [
+const HYDRA_NAMES = [
   'Athena',
   'Apollo',
   'Artemis',

@@ -83,6 +83,9 @@ jobs:
           for job in "$typecheck" "$eslint" "$css" "$build"; do wait "$job" || failed=1; done
           exit "$failed"
 
+      - name: Unused code and dependencies
+        run: pnpm run knip
+
       - name: Tests
         env:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files

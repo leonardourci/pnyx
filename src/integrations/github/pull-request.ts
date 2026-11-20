@@ -247,7 +247,7 @@ function parsePullRequestDetails({ input }: { input: unknown }): PullRequestDeta
   }
 }
 
-export interface PullRequestChecks {
+interface PullRequestChecks {
   summary: string
   failed: number
   pending: number
