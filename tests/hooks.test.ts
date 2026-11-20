@@ -201,27 +201,45 @@ test(
           source: 'startup',
         },
       }),
-      await hook({
-        event: 'UserPromptSubmit',
-        env: terminalEnv,
-        payload: {
-          ...base,
-          prompt: 'Fix the flaky login test\nwith more detail below',
-        },
-      }),
     ]
+    const started = await until({
+      what: 'SessionStart pane facts',
+      check: () => sessionFacts({ session: 'outside-1' }),
+    })
+    expect(started.terminal).toMatchObject({
+      tmux: '/tmp/pnyx-hook-tmux',
+      tmuxPane: '%7',
+      herdrSession: 'hook-session',
+      herdrPane: 'hook-pane',
+    })
+    runs.push(await hook({
+      event: 'UserPromptSubmit',
+      env: {
+        ...terminalEnv,
+        TMUX_PANE: '%8',
+        HERDR_PANE_ID: 'prompt-pane',
+      },
+      payload: {
+        ...base,
+        prompt: 'Fix the flaky login test\nwith more detail below',
+      },
+    }))
     const working = await until({
       what: 'the session facts',
-      check: () => sessionFacts({ session: 'outside-1' }),
+      check: async () => {
+        const facts = await sessionFacts({ session: 'outside-1' })
+
+        return facts?.terminal?.tmuxPane === '%8' && facts?.terminal?.herdrPane === 'prompt-pane' && facts
+      },
     })
     expect(working).toMatchObject({
       title: 'Fix the flaky login test',
       activity: 'working',
       terminal: {
         tmux: '/tmp/pnyx-hook-tmux',
-        tmuxPane: '%7',
+        tmuxPane: '%8',
         herdrSession: 'hook-session',
-        herdrPane: 'hook-pane',
+        herdrPane: 'prompt-pane',
       },
     })
     await hook({
