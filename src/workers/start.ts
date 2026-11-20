@@ -430,6 +430,13 @@ export async function startTask({
   inPlace?: boolean
   meta: Meta
 }): Promise<Output> {
+  const how = startRoute({
+    via,
+    commandName,
+    replacement,
+    override,
+    tools,
+  })
   const state = loadHydra({ hydraId }).state
   const card = findCard({
     state,
@@ -444,14 +451,6 @@ export async function startTask({
   requireCopyAvailable({
     hydraId,
     task: card.id,
-  })
-
-  const how = startRoute({
-    via,
-    commandName,
-    replacement,
-    override,
-    tools,
   })
 
   if (meta.id && startRecorded({

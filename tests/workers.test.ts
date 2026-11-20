@@ -2586,31 +2586,11 @@ test(
           [
             'task',
             'start',
-            'outside-routes',
+            'missing-task',
             '--via',
             'unknown',
           ],
           'unknown',
-        ],
-        [
-          [
-            'task',
-            'start',
-            'outside-routes',
-            '--via',
-            'firstmate',
-          ],
-          'firstmate',
-        ],
-        [
-          [
-            'task',
-            'start',
-            'outside-routes',
-            '--via',
-            'paseo',
-          ],
-          'paseo',
         ],
         [
           [
@@ -2845,6 +2825,21 @@ test(
       folder,
       { recursive: true },
     )
+
+    expect(await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'start',
+        '--via',
+        'paseo',
+        '--event-id',
+        'hydra-command-launch',
+      ],
+    })).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      error: expect.stringContaining('paseo'),
+    })
+
     expect(await hydra.owner({
       args: [
         'hydra',
