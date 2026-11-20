@@ -139,7 +139,7 @@ export function findWorkerTurnToResume({
   for (const event of observations) {
     const activity = sessionFields({ event, state })?.activity
 
-    if (activity === 'finished' || activity === 'ended') {
+    if (activity === 'finished' || activity === 'ended' || activity === 'interrupted') {
       boundary = event.seq
       break
     }

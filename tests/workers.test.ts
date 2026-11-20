@@ -2433,5 +2433,35 @@ test(
         '--full',
       ],
     })).task.activity).toBe('interrupted')
+
+    for (const activity of [
+      'interrupted',
+      'working',
+    ]) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          'migration',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent,
+          activity,
+        }),
+      })
+    }
+
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Pnyx restarted'),
+      hold: true,
+    })
+    await pnyx.restart()
+    await until({
+      what: 'the new cut turn to resume independently after interruption',
+      check: () => pnyx.claude.sessions.filter(session => session.cwd === folder).length === 5,
+    })
   },
 )
