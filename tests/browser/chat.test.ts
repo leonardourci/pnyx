@@ -1148,7 +1148,8 @@ test.each([
         }) => entry.text === text && entry.receipt === 'failed')
       },
     })
-    await row.getByRole('alert').waitFor()
+    await row.getByRole('alert').filter({ hasText: 'refused this turn' })
+      .waitFor()
     expect(await bubble.evaluate(node => node.isConnected)).toBe(true)
     await row.getByRole(
       'button',
