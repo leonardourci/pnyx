@@ -160,6 +160,8 @@ export function applySessionFacts({
 
   if (event.data.cursor) {
     session.activityCursor = { ...event.data.cursor }
+
+    return
   }
 
   session.agent = {
@@ -206,7 +208,7 @@ export function applySessionFacts({
     session.terminal = { ...fields.terminal }
   }
 
-  if (fields.attention !== undefined) {
+  if (fields.attention !== undefined && !staleActivity) {
     session.attention = fields.attention.map(item => ({ ...item }))
   }
 

@@ -874,6 +874,36 @@ test(
       what: 'child prompt projected to the task',
       check: async () => (await hydra.task({ key: 'attached' })).status === 'needs you',
     })
+    const childFacts = await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+        '--full',
+      ],
+    })
+    const childSession = childFacts.sessions.find((session: { agent: { agentId?: string } }) =>
+      session.agent.agentId === 'child-agent')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        assigned.id,
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: childSession.agent,
+        activity: 'ended',
+        attention: [],
+        source: {
+          adapter: 'transcript',
+          instanceId: 'recovered',
+          objectId: 'child-agent',
+          observedAt: '2025-01-01T00:00:00Z',
+        },
+      }),
+    })
+    expect((await hydra.task({ key: 'attached' })).status).toBe('needs you')
     const changes = await hydra.owner({
       args: [
         'hydra',
