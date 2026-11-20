@@ -6,7 +6,7 @@ import { commit, required, withHelp, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { parseOperation, ApplyError, type Operation } from '#app/apply/schema.ts'
 import { planTaskChange, type TaskOperation } from './plans.ts'
-import { requireStartOrReason } from './intake.ts'
+import { START_FLAGS } from '#workers/cli.ts'
 
 const ACTION_FLAGS: Record<string, string[]> = {
   create: [
@@ -23,6 +23,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
     'before',
     'kind',
     'hold',
+    'no-start',
   ],
   brief: [
     'brief',
@@ -91,9 +92,9 @@ export function validateLocalTaskFlags({
     })
   }
 
-  if (action !== 'start' && action !== 'intake' && Array.isArray(values.tool) && values.tool.length) {
+  if (action !== 'start' && action !== 'create' && Array.isArray(values.tool) && values.tool.length) {
     throw new HydraError({
-      message: '--tool is only valid for task start and task intake',
+      message: '--tool is only valid for task start and task create',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -117,6 +118,14 @@ export function validateLocalTaskFlags({
       'account',
       'model',
       'effort',
+    )
+  }
+
+  if (action === 'create' && !values.start) {
+    allowed.push(
+      'behind',
+      'on',
+      ...START_FLAGS,
     )
   }
 
@@ -168,6 +177,7 @@ export async function localTaskCommand({
         'from-message': 'message',
         'wait-for': 'waitFor',
         'ready-when': 'readyWhen',
+        'no-start': 'noStart',
       }
       input[names[field] ?? field] = values[field]
     }
@@ -207,13 +217,6 @@ export async function localTaskCommand({
     return undefined
   }
 
-  if (operation.op === 'task.create') {
-    requireStartOrReason({
-      actor: meta.actor,
-      waits: Boolean(operation.hold),
-    })
-  }
-
   if (operation.op === 'task.create' && operation.key === undefined) {
     operation.key = `task:${meta.id ?? randomUUID()}`
   }
@@ -251,10 +254,7 @@ export async function localTaskCommand({
     help: ({ output }) => {
       const id = (output.card as { id?: string } | undefined)?.id ?? '<id>'
 
-      return [
-        `Run \`pnyx-axi task start ${id} --hydra ${hydraId}\` to start a worker`,
-        `Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`,
-      ]
+      return [`Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`]
     },
   })
 }

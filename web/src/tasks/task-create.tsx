@@ -193,6 +193,8 @@ export function TaskCreate({
           )
         }
       }
+    } else {
+      args.push('--no-start')
     }
 
     args.push(
