@@ -5,8 +5,9 @@ import pg from 'pg'
 import { beforeAll, expect, test } from 'vitest'
 import { closePostgres, homeDatabase } from '#store/postgres.ts'
 import { SCHEMA_VERSION } from '#store/schema.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { binaries, sql } from './setup/postgres.ts'
-import { parsed, pnyxAxi, rows, startPnyx, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -416,6 +417,17 @@ test(
         activity: 'finished',
       }),
     })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Keep this Hydra through the upgrade',
+      reply: 'Ready for the upgrade.',
+    })
+    const session = await hydra.chat({ text: 'Keep this Hydra through the upgrade' })
+    await until({
+      what: 'Hydra to finish its turn before the upgrade',
+      check: () => session.answered === 1,
+    })
+    const beforeHydraUpgrade = await hydra.task({ key: HYDRA_CARD })
     const beforeSessionUpgrade = await hydra.task({ key: task.card.id })
     await pnyx.restart({
       whileStopped: async () => {
@@ -429,6 +441,14 @@ test(
           database,
           text: `alter table cards add column if not exists automatic_task boolean not null default false;
             alter table cards alter column automatic_task drop default`,
+        })
+        await sql({
+          database,
+          values: [
+            hydra.id,
+            HYDRA_CARD,
+          ],
+          text: 'update cards set automatic_task = true where hydra_id = $1 and id = $2',
         })
         await sql({
           database,
@@ -475,6 +495,11 @@ test(
       ],
     })
     expect(page.page.cards).not.toHaveProperty('retired-session-card')
+    expect(page.page.cards[HYDRA_CARD]).toMatchObject({
+      id: beforeHydraUpgrade.id,
+      key: beforeHydraUpgrade.key,
+      title: beforeHydraUpgrade.title,
+    })
     const sessions = await hydra.owner({
       args: [
         'task',
