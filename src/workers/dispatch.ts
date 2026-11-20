@@ -334,7 +334,7 @@ export function startCandidates({
   }))
 }
 
-export function overrideAccounts({
+function overrideAccounts({
   config,
   harness,
   project,
@@ -458,7 +458,7 @@ function howChosen({
 }
 
 // Known spendPriority ranks first and unknown quota after it; list order breaks a tie.
-export async function chooseCandidate({
+async function chooseCandidate({
   config,
   rule = 'default',
   project,
@@ -787,7 +787,7 @@ export async function startsNow({
 }
 
 // A Pnyx-hosted agent takes only the values its own setting pickers offer.
-export function hostedOverride({
+function hostedOverride({
   harness,
   override,
 }: {

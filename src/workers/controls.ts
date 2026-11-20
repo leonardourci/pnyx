@@ -1,12 +1,7 @@
 import { fastWord } from './transcript-content.ts'
 import type { ReplyRoute } from './reply-route.ts'
 
-export const KEYS = [
-  'shift-tab',
-  'shift-up',
-  'shift-down',
-] as const
-export type Key = (typeof KEYS)[number]
+export type Key = 'shift-tab' | 'shift-up' | 'shift-down'
 export const KEY_LABEL: Record<Key, string> = {
   'shift-tab': 'Shift+Tab',
   'shift-up': 'Shift+Up',

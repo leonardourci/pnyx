@@ -197,7 +197,7 @@ const LIMIT_LABELS: Record<string, string> = {
 }
 
 // Each request reports the plan window it was checked against.
-export function claudeLimit({ info }: { info: SDKRateLimitInfo }) {
+function claudeLimit({ info }: { info: SDKRateLimitInfo }) {
   const label = LIMIT_LABELS[info.rateLimitType ?? '']
 
   if (!label || typeof info.utilization !== 'number') {

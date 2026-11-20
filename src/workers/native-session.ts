@@ -2,7 +2,7 @@ export { nativeIdle } from './native-work.ts'
 import { randomUUID } from 'node:crypto'
 import type { AskPermission, HostedEvent, HostedFact, HostedInput, HostedSession, HostedUsage, NativePermission, NativeWork, TurnOutcome, AnswerReceipt } from './provider.ts'
 
-export type NativeResult = {
+type NativeResult = {
   type: 'result'
   turn: string
   inputIds: string[]

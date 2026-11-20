@@ -7,17 +7,9 @@ import { replyRoute } from './reply-route.ts'
 // typed into the prompt's own "Type something" line (single-choice questions only).
 export type QuestionAnswer = { pick: number[] } | { text: string }
 
-export const CHOICES = [
-  'allow',
-  'deny',
-  'approve',
-  'revise',
-  'accept',
-  'decline',
-] as const
-export type ChoiceName = (typeof CHOICES)[number]
+type ChoiceName = 'allow' | 'deny' | 'approve' | 'revise' | 'accept' | 'decline'
 
-export type FieldValue = string | number | boolean
+type FieldValue = string | number | boolean
 
 export interface Answer {
   answers?: QuestionAnswer[]

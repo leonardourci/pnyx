@@ -24,7 +24,7 @@ export interface CompactInput {
   at: string
 }
 
-export interface BuiltinCommand {
+interface BuiltinCommand {
   command: string
   description: string
   source: string
