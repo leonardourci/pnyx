@@ -33,7 +33,8 @@ export function agentActivity({
   const activeChild = Object.values(sessions ?? {}).some(child => child.agent.agentId
     && child.agent.provider === agent.provider && child.agent.sessionId === agent.sessionId
     && (child.sessionActivity ?? child.activity) === 'working')
-  const childWorking = !agent.agentId && (sessions ? activeChild : card.facts?.childWorking ?? childSeen())
+  const observedChildWorking = sessions ? activeChild : card.facts?.childWorking ?? childSeen()
+  const childWorking = !agent.agentId && observedChildWorking
 
   if (activity === 'working' || childWorking) {
     return 'working'

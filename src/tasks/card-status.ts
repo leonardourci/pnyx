@@ -16,7 +16,7 @@ export interface CardStatus {
 
 // An answer on its way leaves its question with the worker; a failed one comes back to the owner.
 const inFlight = ({ question }: { question: OwnerQuestion }) =>
-  !!question.delivery && question.delivery.state in ANSWER_STATES
+  question.delivery?.state === 'queued' || question.delivery?.state === 'delivery_unknown'
 
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
 export const waitingQuestions = ({
