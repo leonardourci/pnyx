@@ -54,8 +54,8 @@ const SCOPE_ACTIONS: Record<HelperScope, HelperAction[]> = {
   ],
 }
 
-export const HELPER_TASKS = 3
-export const HELPER_INPUT_CHARS = 24_000
+const HELPER_TASKS = 3
+const HELPER_INPUT_CHARS = 24_000
 
 type HelperScope = 'routine' | 'owner'
 export type HelperAction = 'reply' | 'continue' | 'answer' | 'permission'

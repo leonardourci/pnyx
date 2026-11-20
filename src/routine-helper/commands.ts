@@ -24,7 +24,7 @@ function denied(): void {
   })
 }
 
-export function commandLease({
+function commandLease({
   name,
   args,
   env = requestEnv(),
