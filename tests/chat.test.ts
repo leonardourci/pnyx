@@ -693,7 +693,8 @@ test(
       expect(wake).toContain('- report: from worker:burst-0,')
       expect(wake).not.toContain('- report: from worker:burst-299,')
       expect(wake).toContain('Some wake details were shortened or omitted.')
-      expect(wake.length).toBeLessThan(12_000)
+      const updates = wake.replace(/<pnyx-digest[\s\S]*?<\/pnyx-digest>\s*/, '')
+      expect(updates.length).toBeLessThan(12_000)
       expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
       expect(wake).not.toContain('Long report body '.repeat(30))
       expect(wake).toContain('Open decisions (1):')
@@ -2641,6 +2642,193 @@ test(
       text: 'held after the stop',
     })
     page.close()
+  },
+)
+
+test.each([
+  { harness: 'claude' },
+  { harness: 'codex' },
+])(
+  'each Hydra turn receives changed task cards with worker links and skips unchanged cards ($harness)',
+  async ({ harness }) => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await chooseAgent({
+      page,
+      agent: { harness },
+    })
+    page.close()
+    await hydra.startTask({ key: 'review-page' })
+    await hydra.startTask({ key: 'unchanged-card' })
+
+    for (let index = 0; index < 41; index++) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          `snapshot-${index}`,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({ title: `Snapshot card ${index}` }),
+      })
+    }
+
+    const session = await hydra.chat({ text: 'Read the initial cards' })
+    expect(session.received[0]).toContain('Snapshot card 40')
+    await until({
+      what: 'the initial turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/lavish Design review',
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'link: https://example.com/preview App preview',
+    })
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'note: Review page is ready',
+    })
+    await hydra.chat({ text: 'Read the changed cards' })
+    const changed = session.received.find(text => text.endsWith('Read the changed cards'))!
+    const digest = changed.slice(
+      0,
+      changed.indexOf('</pnyx-digest>'),
+    )
+    expect(digest).toContain('Task cards (changed since your last turn):')
+    expect(digest).toContain('Review page is ready')
+    expect(digest).toContain('https://example.com/lavish')
+    expect(digest).toContain('https://example.com/preview')
+    expect(digest).not.toContain('unchanged-card')
+    expect(digest).toContain('Open cards: 2 idle, 41 not started, no reason given')
+    await until({
+      what: 'the changed turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the unchanged cards' })
+    const unchanged = session.received.find(text => text.endsWith('Read the unchanged cards'))!
+    const nextDigest = unchanged.slice(
+      0,
+      unchanged.indexOf('</pnyx-digest>'),
+    )
+    expect(nextDigest).not.toContain('Review page is ready')
+    expect(nextDigest).not.toContain('https://example.com/lavish')
+    expect(nextDigest).toContain('Open cards: 2 idle, 41 not started, no reason given')
+    await until({
+      what: 'the unchanged turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+
+    for (let index = 0; index < 41; index++) {
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          `snapshot-${index}`,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({ title: `Changed snapshot card ${index}` }),
+      })
+    }
+
+    await hydra.chat({ text: 'Read the capped changes' })
+    const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
+    expect(capped).toContain('1 more changed cards')
+    expect(capped).toContain('pnyx-axi task list')
+    expect(capped).toContain('Changed snapshot card 39')
+    expect(capped).not.toContain('Changed snapshot card 40')
+    await until({
+      what: 'the capped turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the remaining change' })
+    const remainder = session.received.find(text => text.endsWith('Read the remaining change'))!
+    expect(remainder).toContain('Changed snapshot card 40')
+    expect(remainder).not.toContain('Changed snapshot card 39')
+    await until({
+      what: 'the remaining-change turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    const provider = harness === 'claude' ? pnyx.claude : pnyx.codex
+    const held = provider.plan({
+      hydra: hydra.id,
+      text: 'Hold a task-aware turn',
+      partial: 'Working',
+      folds: true,
+      hold: true,
+    })
+    await hydra.chat({ text: 'Hold a task-aware turn' })
+
+    try {
+      await workerLine({
+        hydra,
+        key: 'review-page',
+        line: 'link: https://example.com/active-review Active review',
+      })
+      await hydra.chat({ text: 'Read the update during this turn' })
+      const steering = session.received.find(text => text.endsWith('Read the update during this turn'))!
+      expect(steering).toContain('https://example.com/active-review')
+    } finally {
+      held.release()
+    }
+
+    await until({
+      what: 'the held turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    provider.plan({
+      hydra: hydra.id,
+      text: 'Compact task context',
+      compacting: true,
+      compactTo: 500,
+    })
+    const answers = session.answered
+    await hydra.chat({ text: 'Compact task context' })
+    await until({
+      what: 'the compacted turn to finish',
+      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the full snapshot after compaction' })
+    const afterCompact = session.received.find(text => text.endsWith('Read the full snapshot after compaction'))!
+    const snapshot = harness === 'claude' ? session.contexts?.at(-1) : afterCompact
+    expect(snapshot).toContain('Task cards (all open cards):')
+    expect(snapshot).toContain('Changed snapshot card 0')
+    expect(snapshot).toContain('Changed snapshot card 40')
+    expect(snapshot).toContain('https://example.com/lavish')
+    expect(snapshot).toContain('https://example.com/active-review')
+    await until({
+      what: 'the post-compaction turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+
+    for (let index = 0; index < 41; index++) {
+      await hydra.owner({
+        args: [
+          'task',
+          'hide',
+          `snapshot-${index}`,
+        ],
+      })
+    }
+
+    await hydra.chat({ text: 'Read the hidden-card changes' })
+    const hidden = session.received.find(text => text.endsWith('Read the hidden-card changes'))!
+    expect(hidden.match(/is no longer listed/g)).toHaveLength(40)
+    expect(hidden).toContain('1 more changed cards')
+    await until({
+      what: 'the hidden-card turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
+    await hydra.chat({ text: 'Read the last hidden-card change' })
+    const lastHidden = session.received.find(text => text.endsWith('Read the last hidden-card change'))!
+    expect(lastHidden.match(/is no longer listed/g)).toHaveLength(1)
   },
 )
 
