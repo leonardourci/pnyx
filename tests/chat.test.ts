@@ -553,7 +553,7 @@ test(
           args: [
             'send',
             '--actor',
-            'worker:burst',
+            `worker:burst-${index}`,
             '--text',
             `Report ${index}: ${body}`,
           ],
@@ -638,6 +638,9 @@ test(
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
       const wake = session.received.find(text => text.includes('more worker reports'))!
+      expect(wake).toContain('- report: from worker:burst-0,')
+      expect(wake).not.toContain('- report: from worker:burst-299,')
+      expect(wake).toContain('Some wake details were shortened or omitted.')
       expect(wake.length).toBeLessThan(12_000)
       expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
       expect(wake).not.toContain('Long report body '.repeat(30))
@@ -664,6 +667,23 @@ test(
         ],
       })
       expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
+      const detailsAfter = wake.match(/Run `pnyx-axi hydra check --after (\d+)/)?.[1]
+
+      if (detailsAfter === undefined) {
+        throw new Error('The bounded wake did not provide its remaining updates cursor')
+      }
+
+      const remainingUpdates = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          detailsAfter,
+        ],
+      })
+      expect(remainingUpdates.through).toBeGreaterThan(Number(detailsAfter))
+      expect(remainingUpdates.help).toContainEqual(expect.stringContaining('for the next page'))
+
       const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
 
       if (after === undefined) {
@@ -791,7 +811,7 @@ test(
           ],
         })
         expect(rest.through).toBeGreaterThan(Number(cursor))
-        const pending = rest.changes.filter((change: { actor: string }) => change.actor === 'worker:burst')
+        const pending = rest.changes.filter((change: { actor: string }) => change.actor.startsWith('worker:burst-'))
         reports.push(...pending)
         cursor = String(rest.through)
 
