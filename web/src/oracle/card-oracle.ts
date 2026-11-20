@@ -4,12 +4,12 @@ import type { SearchFilters } from '#oracle/filters.ts'
 import type { Command } from '#web-app/connection.ts'
 
 // Typing waits this long before searching; a Hydra event refreshes the results at most this often.
-export const SEARCH_DELAY = 180
-export const REFRESH_DELAY = 2000
+const SEARCH_DELAY = 180
+const REFRESH_DELAY = 2000
 
 // Every search box ranks cards through the Hydra server's search, the same
 // full-text ranking as `pnyx-axi oracle` and recorded history.
-export const findCards = async ({
+const findCards = async ({
   command,
   query,
   live = false,
@@ -55,7 +55,7 @@ export interface Search {
 const keyOf = ({ search }: { search: Search }) => `${search.text}${search.filters ? `\n${JSON.stringify(search.filters)}` : ''}`
 
 // Events only refresh the shown query, so they never postpone a search; stale answers are dropped.
-export function searchSchedule({
+function searchSchedule({
   find,
   show,
   cancel,
