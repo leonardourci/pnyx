@@ -387,8 +387,8 @@ export async function startTask({
       })
     }
 
-    if (how === 'pnyx') {
-      return await askHost({
+    const started = how === 'pnyx'
+      ? await askHost({
         hydraId,
         body: {
           action: 'start',
@@ -409,27 +409,30 @@ export async function startTask({
           ...(meta.reason ? { reason: meta.reason } : {}),
         },
       }) as Output
-    }
-
-    return await startAgent({
-      hydraId,
-      task,
-      harness: harness ?? agent.harness,
-      agent: {
-        ...agent,
-        ...dispatch?.override,
-      },
-      dispatch,
-      prompt: await taskPrompt({
+      : await startAgent({
         hydraId,
-        card,
-        prompt,
-      }),
-      folder,
-      url,
-      meta,
-      connect,
-    })
+        task,
+        harness: harness ?? agent.harness,
+        agent: {
+          ...agent,
+          ...dispatch?.override,
+        },
+        dispatch,
+        prompt: await taskPrompt({
+          hydraId,
+          card,
+          prompt,
+        }),
+        folder,
+        url,
+        meta,
+        connect,
+      })
+
+    return {
+      ...started,
+      rule: dispatch?.rule,
+    }
   } finally {
     release()
   }
