@@ -266,7 +266,6 @@ export async function removeHydraPool({
       args: [
         'worktree',
         'remove',
-        '--force',
         slot.path,
       ],
     })

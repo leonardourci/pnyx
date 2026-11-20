@@ -155,7 +155,7 @@ export async function settleCopy({
       // The project's copy tool owns the folders it makes, so Pnyx only lets them go.
       const failed = copy.via === 'command' || pooled ? undefined : await removeCopy({
         copy,
-        force: mode === 'discard',
+        force: false,
       })
       after = failed
         ? {
@@ -229,7 +229,7 @@ export async function settleCopy({
         if (after.state === 'flagged') {
           const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
             + `Prove its current work landed, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`. `
-            + `Discarding work that never landed needs the owner: \`pnyx-axi task copy ${now.id} remove --discard --hydra ${hydraId}\`.`
+            + 'Work that never landed must be landed before retrying.'
           applyDecision({
             writer,
             decision: hydraEvent({
