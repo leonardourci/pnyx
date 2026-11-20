@@ -53,10 +53,16 @@ test(
     // eslint-disable-next-line pnyx/object-params -- Playwright owns the browser callback signature.
     const stability = await column.evaluate(async element => {
       const tasks = [...element.querySelectorAll<HTMLElement>('[data-task]')]
-      const positions = new Map(tasks.map(task => [task, task.getBoundingClientRect().top + element.scrollTop]))
+      const positions = new Map(tasks.map(task => [
+        task,
+        task.getBoundingClientRect().top + element.scrollTop,
+      ]))
 
       const scroll = async ({ top }: { top: number }) => {
-        element.scrollTo({ top, behavior: 'instant' })
+        element.scrollTo({
+          top,
+          behavior: 'instant',
+        })
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       }
 
