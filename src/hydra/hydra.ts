@@ -2,7 +2,7 @@ import { inform } from '#app/command-notices.ts'
 import { reportActor } from '#app/actors.ts'
 import type { HydraState, HydraChange, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { requireReportReview } from '#investigations/inventory.ts'
+import { informReportReviewGaps } from '#investigations/inventory.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { HydraError } from '#store/errors.ts'
 import { EVENT_VERSION } from '#store/events.ts'
@@ -32,7 +32,7 @@ export function hydraEvent({
     const card = state.cards[cardId]
 
     if (card) {
-      requireReportReview({
+      informReportReviewGaps({
         state,
         card,
       })
@@ -41,7 +41,7 @@ export function hydraEvent({
         inform({
           task: card.id,
           reason: 'Task hidden with an open report question',
-          clear: `Use pnyx-axi task questions ${card.id} to inspect it`,
+          clear: `Use pnyx-axi task show ${card.id} --full to inspect it`,
         })
       }
     }

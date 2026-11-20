@@ -226,6 +226,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       })
 
       if (session.taskId && session.taskId !== HYDRA_CARD) {
+        inform({
+          task: session.taskId,
+          reason: 'Worker detached from its task before becoming Hydra',
+          clear: `Use pnyx-axi task attach ${session.taskId} --session <other-session> to assign another worker`,
+        })
         applyDecision({
           writer,
           decision: decideSession({
@@ -291,14 +296,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           ref: String(values.session),
         }),
       }) : undefined
-
-      if (session && session.taskId && session.taskId !== HYDRA_CARD) {
-        inform({
-          task: session.taskId,
-          reason: 'Worker detached from its task before becoming Hydra',
-          clear: `Use pnyx-axi task attach ${session.taskId} --session <other-session> to assign another worker`,
-        })
-      }
 
       const hydraRequest = hydraActor({ actor: m.actor })
 
