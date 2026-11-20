@@ -39,7 +39,6 @@ function running({ state }: { state: HydraState }): boolean {
     || Boolean(card?.attention.some(item => item.key === INTERRUPTED))
 }
 
-// Worked out the same way before taking the lock and under it.
 function timedReview({
   memory,
   state,
@@ -166,8 +165,11 @@ export function startReviewTimer({
         fn: ({ writer }) => {
           const current = writer.state
           const previous = current.hydraReview?.at
-          const cadence = minutes * MINUTE_MS
-          const deadline = (previous ? Date.parse(previous) : started) + cadence
+          const cadence = readSettings().settings.reviewMinutes * MINUTE_MS
+          const deadline = Math.max(
+            previous ? Date.parse(previous) : started,
+            emptyAt,
+          ) + cadence
 
           const unavailable = running({ state: current }) || !pnyxRunsHydra({ state: current })
 

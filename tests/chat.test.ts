@@ -2704,6 +2704,11 @@ test(
         activity: 'working',
       }),
     })
+    await workerLine({
+      hydra,
+      key: 'heartbeat-worker',
+      line: 'note: Worker started preparing the change',
+    })
     expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
     let now = Date.now()
     let wakes = 0
@@ -2779,6 +2784,7 @@ test(
         ],
       })
       expect(green.events[0].data.block).toContain('green unmerged PR: https://github.com/example/app/pull/42')
+      expect(green.events[0].data.block).toContain('quiet worker: Running with no update since')
       now += 60_000
       await timer.check()
       expect(wakes).toBe(2)

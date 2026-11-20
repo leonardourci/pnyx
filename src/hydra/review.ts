@@ -119,15 +119,18 @@ export function boardReview({
     const column = columns.find(column => column.id === card.column)?.title ?? card.column
     const declaration = card.status
     const session = cardSessionId({ card }) ?? ''
-    const recorded = state.sessions?.[session]?.lastSeen ?? card.updatedAt
+    const recorded = state.sessions?.[session]?.lastSeen
     const observed = workerSeenAt[session] ?? 0
     const latest = currentState({ card })
-    const seen = Math.max(
-      observed,
-      Date.parse(recorded),
-      Date.parse(latest?.at ?? recorded),
-      Date.parse(card.workingSince ?? recorded),
-    )
+    const workerTimes = [recorded, latest?.at, card.workingSince]
+      .flatMap(at => at ? [Date.parse(at)] : [])
+      .filter(Number.isFinite)
+
+    if (observed > 0) {
+      workerTimes.push(observed)
+    }
+
+    const seen = workerTimes.length ? Math.max(...workerTimes) : Date.parse(card.updatedAt)
     const quietAt = new Date(seen).toISOString()
     const activity = card.sessionActivity ?? card.activity ?? 'unknown'
     const status = cardStatus({
@@ -233,7 +236,7 @@ export function boardReview({
 
   for (const card of questionCards) {
     for (const ask of openAsks({ card })) {
-      const at = ask.escalated?.at ?? ask.at
+      const at = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
       const wording = askWording({ ask }).question
       lines.push(`- ${mention({ card })} Question ${ask.id} to ${ask.audience}: ${wording} (${elapsed({
         at,
