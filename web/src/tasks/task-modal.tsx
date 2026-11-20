@@ -1,3 +1,4 @@
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
@@ -22,8 +23,8 @@ export function TaskCardModal({
     <Dialog
       title={title}
       layoutId={layoutId}
-      className="task-modal max-w-none! max-h-none! overflow-visible!"
-      style={modal.size}
+      className="task-modal max-h-none! max-w-none! overflow-visible!"
+      style={runtimeStyle(modal.size)}
       close={close}
     >
       {children}

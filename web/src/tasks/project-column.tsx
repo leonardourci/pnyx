@@ -1,8 +1,9 @@
+import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { sessionViewKey } from '#web-app/session-view.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { motionDuration } from '#web-shared/motion.ts'
-import { useCallback, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
@@ -151,7 +152,7 @@ export function ProjectColumn({
       ref={sort.setNodeRef}
       data-sort-key={sort.key}
       lifted={lifted}
-      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere max-phone:snap-start data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-inset data-[outdent-armed=true]:ring-gold ${folded ? 'folded min-w-12' : ''}`}
+      className={`project-column column group/project relative flex h-full min-h-0 flex-none flex-col overflow-visible rounded-xl border border-column-line bg-column-background wrap-anywhere data-[outdent-armed=true]:border-gold-line data-[outdent-armed=true]:ring-2 data-[outdent-armed=true]:ring-gold data-[outdent-armed=true]:ring-inset max-phone:snap-start ${folded ? 'folded min-w-12' : ''}`}
       data-column={column.id}
       data-resizing={preview !== null}
       data-outdent-armed={outdentArmed}
@@ -160,7 +161,7 @@ export function ProjectColumn({
       data-sort-scope="projects"
       data-sort-disabled={column.id === 'ideas'}
       aria-label={column.title}
-      style={{ '--project-card-width': `${width - PROJECT_CONTENT_INSET}px` } as CSSProperties}
+      style={runtimeStyle({ projectCardWidth: `${width - PROJECT_CONTENT_INSET}px` })}
       animate={{ width: folded ? 48 : width }}
       transition={preview !== null || reduced ? { duration: motionDuration({ speed: 'instant' }) / 1000 } : undefined}
     >

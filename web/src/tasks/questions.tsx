@@ -11,7 +11,7 @@ import { markdownText } from '#web-hydra/markdown-text.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { Command } from '#web-app/connection.ts'
 
-const QUESTION_FIELD_CLASS = 'ask-question border-0 p-0 m-0 flex flex-col gap-1 min-w-0 [&_legend]:p-0 [&_legend]:mb-1 [&_legend]:font-chat [&_legend]:text-meta [&_legend]:leading-question [&_legend]:font-normal [&_legend]:not-italic [&_legend]:text-ink'
+const QUESTION_FIELD_CLASS = 'ask-question m-0 flex min-w-0 flex-col gap-1 border-0 p-0 [&_legend]:mb-1 [&_legend]:p-0 [&_legend]:font-chat [&_legend]:text-meta [&_legend]:leading-question [&_legend]:font-normal [&_legend]:text-ink [&_legend]:not-italic'
 
 type Send = ({
   request,
@@ -54,7 +54,7 @@ function QuestionField({
   return (
     <fieldset className={QUESTION_FIELD_CLASS} disabled={locked}>
       <legend>Question {index + 1}{question.multiSelect && <span className="small muted"> · pick any</span>}</legend>
-      {question.header && <CollapsibleText className="ask-header mr-1.75 py-px px-1.5 rounded-sm bg-subtle text-gold text-meta font-sans font-normal leading-[normal] uppercase tracking-question align-middle" text={question.header} />}
+      {question.header && <CollapsibleText className="ask-header mr-1.75 rounded-sm bg-subtle px-1.5 py-px align-middle font-sans text-meta leading-browser font-normal tracking-question text-gold uppercase" text={question.header} />}
       <CollapsibleText text={question.question} />
       <QuestionOptions>
         {question.options.map((

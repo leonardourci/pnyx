@@ -1,5 +1,4 @@
 import { ICON_SIZE } from '#web-shared/icons.tsx'
-import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 import type { ComponentProps, ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
@@ -19,18 +18,16 @@ export function CardShell({
   tint?: string
 }) {
   const border = selected || lifted ? 'border-gold-line' : 'border-line select-none hover:border-control has-[.card-open:focus-visible]:border-gold'
-  const selection = selected ? 'selected' : ''
+  const selection = selected ? 'selected min-h-0' : 'min-h-24'
 
   return (
     <article
       {...props}
-      style={{
-        minHeight: selected ? 0 : CARD_SIZING.closed.minHeight,
-        ...style,
-      }}
+      // eslint-disable-next-line no-restricted-syntax -- Motion forwards its own animation styles through this host component.
+      style={style}
       data-nest-armed={nesting}
       data-label-color={tint}
-      className={`card group/card relative m-0 flex min-h-0 min-w-0 w-full shrink-0 cursor-pointer flex-col gap-1.75 overflow-clip rounded-card border bg-card-fill px-2.75 pt-2.25 pb-2.5 touch-pan-y transition-colors duration-150 motion-reduce:transition-none has-[.resize:active]:transition-colors backdrop:bg-shadow data-[nest-armed=true]:border-gold-line data-[nest-armed=true]:ring-2 data-[nest-armed=true]:ring-inset data-[nest-armed=true]:ring-gold ${border} ${selection} ${className}`}
+      className={`card group/card relative m-0 flex w-full min-w-0 shrink-0 cursor-pointer touch-pan-y flex-col gap-1.75 overflow-clip rounded-card border bg-card-fill px-2.75 pt-2.25 pb-2.5 transition-colors duration-150 backdrop:bg-shadow has-[.resize:active]:transition-colors data-[nest-armed=true]:border-gold-line data-[nest-armed=true]:ring-2 data-[nest-armed=true]:ring-gold data-[nest-armed=true]:ring-inset motion-reduce:transition-none ${border} ${selection} ${className}`}
     />
   )
 }
@@ -80,7 +77,7 @@ export function CardPanel({
   className = '',
   ...props
 }: ComponentProps<'div'>) {
-  return <div {...props} role="tabpanel" className={`card-panel flex min-h-0 min-w-0 flex-1 flex-col gap-2.25 overflow-auto [&[hidden]]:hidden [&>.detail]:flex-none [&>.detail]:overflow-visible ${className}`} />
+  return <div {...props} role="tabpanel" className={`card-panel flex min-h-0 min-w-0 flex-1 flex-col gap-2.25 overflow-auto [&>.detail]:flex-none [&>.detail]:overflow-visible [&[hidden]]:hidden ${className}`} />
 }
 
 export function CardSection({

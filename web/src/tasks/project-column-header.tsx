@@ -32,7 +32,7 @@ export function ProjectColumnHeader({
     <header onPointerDown={drag.pointerDown} className="project-column-heading relative flex min-h-10.75 items-center justify-between gap-2 border-b border-column-line px-2 py-1.25 group-[.folded]/project:h-full group-[.folded]/project:border-0 group-[.folded]/project:p-2">
       <div className={`contents ${hint ? 'invisible' : ''}`} aria-hidden={hint}>
         <Button
-          className="min-w-0 touch-none justify-start gap-2 [&>strong]:truncate group-[.folded]/project:self-start group-[.folded]/project:[writing-mode:vertical-rl]"
+          className="min-w-0 touch-none justify-start gap-2 group-[.folded]/project:self-start group-[.folded]/project:writing-vertical [&>strong]:truncate"
           {...drag.attributes}
           onKeyDown={keyDown}
           aria-disabled={undefined}

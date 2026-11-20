@@ -3,7 +3,7 @@ import { CARD_SIZING, WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
 import type { Card } from '#tasks/model.ts'
 
 export const PROJECT_CONTENT_INSET = 18
-export const SUBTASK_INDENT = 26
+export const SUBTASK_INDENT = WORKSPACE_SIZING.subtaskIndent
 
 export function expandedTaskWidth({
   card,

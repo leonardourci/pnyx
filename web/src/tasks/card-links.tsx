@@ -66,7 +66,7 @@ export function LinkChip({
   return (
     <Tooltip delay={LINK_TOOLTIP_DELAY} content={tooltip}>
       <a
-        className="card-link inline-flex items-center gap-1.25 max-w-full min-w-0 py-0.5 px-1.75 border border-line rounded-full bg-background text-ink text-meta no-underline [&>span]:truncate [&_svg]:shrink-0"
+        className="card-link inline-flex max-w-full min-w-0 items-center gap-1.25 rounded-full border border-line bg-background px-1.75 py-0.5 text-meta text-ink no-underline [&_svg]:shrink-0 [&>span]:truncate"
         href={link.url}
         target="_blank"
         rel="noreferrer"
@@ -101,11 +101,11 @@ export function CardLinks({
   }
 
   return (
-    <div className={`card-links shrink-0 flex flex-wrap items-center gap-1.25 [&_h3]:basis-full [&_h3]:m-0 ${expanded ? 'expanded' : ''}`} aria-label="Task links">
+    <div className={`card-links flex shrink-0 flex-wrap items-center gap-1.25 [&_h3]:m-0 [&_h3]:basis-full ${expanded ? 'expanded' : ''}`} aria-label="Task links">
       {expanded && <h3 className="eyebrow">Links</h3>}
       {shown.map(link => <LinkChip key={link.url} link={link} expanded={expanded} />)}
       {links.length > limit && (
-        <Button className="quiet text-meta py-0.5 px-1.25" aria-expanded={all} onClick={() => setAll(value => !value)}>
+        <Button className="quiet px-1.25 py-0.5 text-meta" aria-expanded={all} onClick={() => setAll(value => !value)}>
           {all ? 'Show fewer' : `+${links.length - limit}${expanded ? ' more' : ''}`}
         </Button>
       )}

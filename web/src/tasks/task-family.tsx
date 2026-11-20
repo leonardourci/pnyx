@@ -4,7 +4,7 @@ import { useKept } from '#web-shared/stable.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
-import { memo, useCallback, useEffect, useRef, type CSSProperties, type ReactNode, type ComponentProps } from 'react'
+import { memo, useCallback, useEffect, useRef, type ReactNode, type ComponentProps } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -12,13 +12,12 @@ import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { compareTasks, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
 import { SUBTASK_INDENT } from './project-layout.ts'
-import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 
 function Subtasks({
   children,
   ...props
 }: ComponentProps<'div'>) {
-  return <div {...props} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-[calc(var(--subtask-indent)-_--spacing(0.25))]">{children}</div>
+  return <div {...props} className="subtasks mt-1.75 flex flex-col gap-1.75 border-l border-line pl-subtask">{children}</div>
 }
 
 export interface FamilyCard {
@@ -160,11 +159,7 @@ export function TaskFamily({
     card,
     ...children,
   ].filter(item => selected.includes(item.id))
-  const style = {
-    '--closed-card-min': `${CARD_SIZING.closed.minWidth}px`,
-    '--subtask-indent': `${SUBTASK_INDENT}px`,
-  } as CSSProperties
-  const className = `task-family min-w-0 flex-[1_1_var(--closed-card-min)] ${opened.length || childrenOpen && children.length ? 'family-open basis-full' : ''}`
+  const className = `task-family min-w-0 flex-task task-family-sizing ${opened.length || childrenOpen && children.length ? 'family-open basis-full' : ''}`
 
   return (
     <DraggableFamily
@@ -172,7 +167,6 @@ export function TaskFamily({
       hydra={hydraId}
       layout="position"
       className={className}
-      style={style}
       data-family={card.id}
     >
       <FamilyTask
