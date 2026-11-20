@@ -28,17 +28,13 @@ reviews:
         - hand-writes something the stack already provides;
         - is hard to follow: it needs a comment to say what it does, or it is a packed one-liner, a long call chain, a clever trick or a nested condition. Three plain named steps beat one chained line.
         A "looks off" item you cannot prove still blocks: the author either fixes it or writes in the PR why it stays.
-        - Skip what lint already covers. Apply AGENTS.md and the configured skill guidelines only within their applyTo scopes. Use the review-code and audit-tests checklists for Bugs, Tests and Simpler. Give each finding a location, concrete problem and suggested fix; skip execution steps and flag missing evidence instead.
+        - Skip what lint already covers. Apply AGENTS.md and the configured skill guidelines only within their applyTo scopes. Give each finding a location, concrete problem and suggested fix; skip execution steps and flag missing evidence instead.
         - If a part has nothing to flag, say so plainly in one line. Do not pad the review.
 knowledge_base:
   code_guidelines:
     filePatterns:
       - files: '.agents/skills/follow-conventions/SKILL.md'
         applyTo: '**'
-      - files: '.agents/skills/review-code/SKILL.md'
-        applyTo: '**'
-      - files: '.agents/skills/audit-tests/SKILL.md'
-        applyTo: 'src/**,web/**,scripts/**,tests/**'
       - files: '.agents/skills/write-front-end/SKILL.md'
         applyTo: 'web/**'
       - files: '.agents/skills/write-ci-workflow/SKILL.md'

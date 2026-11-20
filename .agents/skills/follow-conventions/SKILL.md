@@ -1,11 +1,11 @@
 ---
 name: follow-conventions
-description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors and installed-version APIs. Read before writing or reviewing Pnyx code.
+description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors, installed-version APIs and one-line Markdown paragraphs. Read before writing or reviewing Pnyx code or docs.
 ---
 
 # Follow conventions
 
-`AGENTS.md` holds the layout, design rules and the one-object-parameter rule, and `pnpm run lint` enforces formatting. This skill adds the rest. Cleaning up code that drifted from these rules is [deslop](../deslop/SKILL.md).
+`AGENTS.md` holds the layout, design rules and the one-object-parameter rule, and `pnpm run lint` enforces formatting. This skill adds the rest. `pnpm deslop` reviews and cleans up code that drifted from these rules.
 
 ## Files and concerns
 
@@ -21,23 +21,26 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 - In new code, avoid nesting ternaries: a second level of branching reads better as a small named helper.
 - Write conditions in their positive form. A `const skip = !known` flag feeding an inverted branch makes the reader flip it twice.
 - Delete dead branches: an arm an earlier guard handled, a check on an already narrowed value, a fallback no caller can reach.
+- Give every wait a deadline or attempt limit that fails with the last observed state. No `for (;;)` or `while (true)` polling without one; tests wait with `until` from `tests/setup/pnyx.ts`.
 
 ## Imports
 
 - Import a file in the same folder as `./file.ts`. Import every other file through the `package.json` aliases, even inside the same feature: `#tasks/model.ts` for `src/tasks/model.ts` and `#web-shared/ui/icon.tsx` for `web/src/shared/ui/icon.tsx`. ESLint rejects `../`.
 - Write the file's real extension in the import: `.ts` under `src/`, `.ts` or `.tsx` under `web/src/`.
+- Use static imports. A dynamic `import()` is only for a module that must load lazily.
 
 ## Names and values
 
 - Give a value with meaning (a timeout, a limit, a retry count, a cutoff) a named constant, declared after the imports, and share it between every site that uses it. Structural literals such as a `0` index need no name.
-- Name each meaningful intermediate value. Avoid vague names (`tmp`, `data`, `res`, `obj`) and long `&&` or `||` chains inside one condition; name the checks instead. [review-code](../review-code/SKILL.md) lists the shorthand new code never uses, such as conditional spreads and `??=`.
+- Name each meaningful intermediate value. Avoid vague names (`tmp`, `data`, `res`, `obj`) and long `&&` or `||` chains inside one condition; name the checks instead. Deslop's shipped `kill-ai-slop` skill lists the shorthand to unpack into named steps, such as conditional spreads and logical assignment.
 - Pass a function directly when a callback only forwards its argument: `.map(toRow)`, not `.map(card => toRow(card))`.
 
 ## Decisions and errors
 
 - Write a rule the code checks in more than one place once, as a named helper every site imports.
 - Throw a `HydraError` with its code at the failure site; `guard()` turns it into the CLI's structured error. A `catch` that doesn't recognize an error rethrows it.
-- Never drop an error to make code tidy. A deliberate fire-and-forget says in a short comment why losing the failure is safe.
+- Never drop an error to make code tidy. Give a deliberate fire-and-forget a helper or named step whose name says losing its failure is safe.
+- A derived cache that several processes read, such as the Oracle's `oracle.db` read by the server and its search workers, resolves corrections and deletions against the saved event log and cursors, never against one process's memory.
 
 ## Provider boundaries
 
@@ -47,5 +50,6 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 
 - A refactor changes form, never outcomes: every input path keeps its result, guard order, side effects and error. Run `pnpm run lint` after each structural edit.
 - Write library and Node calls from the installed version's types, not from memory, and avoid deprecated APIs. Node 22.13 is the floor.
-- Comment only for a non-obvious reason or constraint that no name can carry; rename instead of explaining.
 - A change to behavior, CLI output or setup updates its docs, CLI help and shipped skills in the same change.
+- Keep each Markdown prose paragraph on one source line.
+- In tests, never expect an event's `seq` from a `seq` read in a separate operation, since another writer can append between the reads. Find the event by the ID the command returned, in one snapshot.

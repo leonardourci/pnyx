@@ -6,7 +6,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for the issue, review and merge proces
 
 ## Build and test
 
-Use Node 22.13 or newer and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one. The browser journeys also need Google Chrome.
+Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in `package.json`. The tests also need PostgreSQL 15 or newer installed (`brew install postgresql@17`, or `sudo apt-get install postgresql` on Ubuntu); a test run starts its own throwaway cluster on a random port and never uses a running one.
 
 ```sh
 pnpm install
@@ -23,7 +23,7 @@ Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type l
 
 Imports across folders use the `package.json` aliases: `#<folder>/<file>.ts` resolves to `src/` and `#web-<folder>/<file>` to `web/src/`. Built code resolves `#…` to `dist/`, so anything that runs TypeScript from `src/` passes `--conditions=source`, or its `#` imports load the built files. Vitest (`vitest.config.ts`), `pnpm dev:server` and the Vite scripts pass it. A child the server starts with `execFile` and a login service installed from source take it from `SOURCE_CONDITIONS` in `src/app/source-conditions.ts`. The session-start hook adds it when its CLI is a `.ts` file.
 
-See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conventions](../.agents/skills/follow-conventions/SKILL.md#files-and-concerns) for when to split a file. `pnpm run lint` and `pnpm test` give deterministic verification. Each test file runs in its own process with a scratch home, its own copy of a migrated database and no inherited agent identity; see [Testing](testing.md) for the layout and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The browser journeys cover the chat and the board; check any other page change in the local preview and show it in the pull request's screenshots.
+See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conventions](../.agents/skills/follow-conventions/SKILL.md#files-and-concerns) for when to split a file. `pnpm run lint` and `pnpm test` give deterministic verification. Each test file runs in its own process with a scratch home, its own copy of a migrated database and no inherited agent identity; see [Testing](testing.md) for the layout and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. Check page changes in an isolated local preview and show them in the pull request's screenshots.
 
 Owner actions in the app run in the server, which holds each Hydra in memory and is its only writer, so no command waits on another writer's lock. A validation or permission refusal returns its reason at once. The writer applies a command's events to its loaded state, retains changed properties for the lifecycle rules' before-state and records which cards they touched. It then commits the events, those cards' rows and the small rows that read across cards in one Postgres transaction, which updates the Hydra's `seq` only from the value it read. A command that throws or loses that race commits nothing, and the Hydra is read back from its rows. Rows reloaded from Postgres must match a cold replay of the events.
 
@@ -85,19 +85,19 @@ Choose a unique `<name>.pnyx` for each trial and share the stable URL portless p
 
 Run `pnpm deslop` on clean, committed work. Pushed runs need an open pull request: `Tests` runs only on pull requests, and deslop waits for its checks. See [deslop's README](https://github.com/leonardourci/deslop#readme) for tool usage and proof details.
 
-`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full integration and browser suite runs in CI. `checkFixAttempts` is 0: check failures return to the caller for a fix and a new run.
+`deslop.config.json` selects the first matching kind for each path and combines their requirements. The local code commands below are `pnpm lint:fix`, `pnpm typecheck`, `pnpm lint:css` and `pnpm build`. The full test suite runs in CI. `checkFixAttempts` is 0: check failures return to the caller for a fix and a new run.
 
 | Kind | Local commands | CI check | Review instructions |
 |---|---|---|---|
-| Workflow | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop, write-ci-workflow |
-| Fixture | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop |
-| Shipped skill text | None | Lint, build and tests | Project, deslop |
-| Docs | None | Test scope | Project, deslop |
+| Workflow | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop, write-ci-workflow |
+| Fixture | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop |
+| Shipped skill text | None | Lint, build and tests | Project, conventions, kill-ai-slop |
+| Docs | None | Test scope | Project, conventions, kill-ai-slop |
 | Tests | Code commands | Lint, build and tests | Project, conventions, audit-tests |
-| UI | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop, write-front-end |
-| Back-end | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, deslop |
+| UI | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop, write-front-end |
+| Back-end | Code commands | Lint, build and tests | Project, conventions, review-code, audit-tests, kill-ai-slop |
 
-Project means `AGENTS.md`; conventions means `follow-conventions`. The instruction map uses Pnyx's contributor skills for `review-code`, `audit-tests` and `kill-ai-slop` (the local deslop skill).
+Project means `AGENTS.md`; conventions means `follow-conventions`. `review-code`, `audit-tests` and `kill-ai-slop` are deslop's shipped skills; the instruction map adds Pnyx's `follow-conventions`, `write-front-end` and `write-ci-workflow`.
 
 `Tests` runs on `pull_request` with read-only permissions, no secrets and no path filters. `Test scope` installs the selector from package.json without lifecycle hooks and reads the merge diff, including both paths of renames. It runs tests when the selection names `Lint, build and tests`. Docs-only changes skip that job, satisfying branch protection. The docs kind names `Test scope` because deslop requires a successful CI check to publish proof. A failed scope job still runs tests behind the approved `ci` environment. Description edits start no run; new pushes cancel older runs.
 
@@ -138,7 +138,7 @@ The page's metrics use the existing fire-and-forget log path: `web/src/app/ui-me
 
 The single runtime switch is the existing Logs setting. `pnyx-axi settings set --json '{"logs":"off"}'` disconnects the performance observers, input capture listeners and metrics timer, cancels drag sampling, and drops pending metric aggregates. Ordinary warning/error logging keeps its existing behavior. Logs On resumes collection. No owner text, field values, task titles, DOM paths or keystrokes enter these metrics; action names are static tokens.
 
-The required CI job runs the ordinary suite with the normal renderer, then runs the dedicated performance journey alone with `PNYX_PERFORMANCE=1` for its 50ms drag/scroll budget. It rebuilds with `VITE_PNYX_PROFILE=1` and repeats that journey for local task redraws and DOM bounds; every other journey keeps the normal build. The normal build uses the ordinary React renderer. For React measurements, run `VITE_PNYX_PROFILE=1 pnpm run build` (or the same flag with `pnpm run web:dev`). That one build flag aliases `react-dom/client` to `react-dom/profiling`, emits source maps for Chrome stack attribution and enables `ProfileSurface` in `web/src/app/profile-surface.tsx`. Rebuild without the flag after diagnosis. Normal builds bypass the profiler boundaries and collect only browser measurements.
+The normal build uses the ordinary React renderer. For React measurements, run `VITE_PNYX_PROFILE=1 pnpm run build` (or the same flag with `pnpm run web:dev`). That one build flag aliases `react-dom/client` to `react-dom/profiling`, emits source maps for Chrome stack attribution and enables `ProfileSurface` in `web/src/app/profile-surface.tsx`. Rebuild without the flag after diagnosis. Normal builds bypass the profiler boundaries and collect only browser measurements.
 
 Components and flows use the same API:
 

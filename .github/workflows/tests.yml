@@ -35,9 +35,13 @@ jobs:
         run: |
           git diff --no-renames --name-only -z HEAD^1 HEAD > "$RUNNER_TEMP/paths"
           node --input-type=module -e "
-            import { readFileSync } from 'node:fs'
-            // The selector is installed in the runner's temporary directory, resolved at runtime.
-            const { select } = await import(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop/src/config.js')
+            import { readFileSync, realpathSync } from 'node:fs'
+            import { createRequire } from 'node:module'
+            const deslop = realpathSync(process.env.RUNNER_TEMP + '/deslop-scope/node_modules/deslop')
+            const requireFromDeslop = createRequire(deslop + '/package.json')
+            const { createJiti } = requireFromDeslop('jiti')
+            const jiti = createJiti(deslop)
+            const { select } = await jiti.import(deslop + '/src/config.ts')
             const config = JSON.parse(readFileSync('deslop.config.json', 'utf8'))
             const paths = readFileSync(process.argv[1], 'utf8').split('\0').filter(Boolean)
             if (!paths.length) throw new Error('Empty change list')
@@ -79,25 +83,10 @@ jobs:
           for job in "$typecheck" "$eslint" "$css" "$build"; do wait "$job" || failed=1; done
           exit "$failed"
 
-      # Integration files, then browser journeys; the runner image carries PostgreSQL and Google Chrome.
       - name: Tests
         env:
           PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
         run: pnpm exec vitest run
-
-      - name: Check workspace latency
-        env:
-          PNYX_PERFORMANCE: '1'
-          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
-        run: pnpm exec vitest run --project performance
-
-      - name: Profile the workspace
-        env:
-          VITE_PNYX_PROFILE: '1'
-          PNYX_KEEP_TEST_FILES: ${{ runner.temp }}/test-files
-        run: |
-          pnpm run build
-          pnpm exec vitest run --project performance
 
       # The tests' scratch homes and the Postgres log, so a failure only CI shows can be read.
       - name: Keep the test files

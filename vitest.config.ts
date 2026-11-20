@@ -2,8 +2,6 @@ import { defineConfig } from 'vitest/config'
 
 // Source files resolve their #imports to .ts through the `source` condition, as `node --conditions=source` does.
 const conditions = ['source']
-const BROWSER_TIMEOUT_MS = 120_000
-const PERFORMANCE_JOURNEY = process.env.PNYX_PERFORMANCE === '1' || process.env.VITE_PNYX_PROFILE === '1'
 
 export default defineConfig({
   resolve: { conditions },
@@ -14,7 +12,8 @@ export default defineConfig({
     },
   },
   test: {
-    provide: { uiProfile: process.env.VITE_PNYX_PROFILE === '1' },
+    include: ['tests/*.test.ts'],
+    maxWorkers: '50%',
     pool: 'forks',
     execArgv: [
       '--conditions=source',
@@ -37,43 +36,5 @@ export default defineConfig({
     // Bounds for a stuck test, not speed targets: every wait ends as soon as its condition holds.
     testTimeout: 60_000,
     hookTimeout: 60_000,
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: 'integration',
-          include: ['tests/*.test.ts'],
-          // Each file runs a server, git and pnyx-axi processes; more files at once than half the cores starve each
-          // other of CPU. When half the cores is one worker, Vitest runs a project of group order 0 after every numbered
-          // group, so this project takes order 1 to run first.
-          sequence: { groupOrder: 1 },
-          maxWorkers: '50%',
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: 'e2e',
-          include: ['tests/e2e/*.test.ts'],
-          exclude: ['tests/e2e/performance.test.ts'],
-          // A browser journey runs zero-cache and Chrome beside its server. The journeys run after the integration files and on
-          // a quarter of the cores, so they starve neither those files nor each other of CPU.
-          sequence: { groupOrder: 2 },
-          maxWorkers: '25%',
-          testTimeout: BROWSER_TIMEOUT_MS,
-          hookTimeout: BROWSER_TIMEOUT_MS,
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: 'performance',
-          include: PERFORMANCE_JOURNEY ? ['tests/e2e/performance.test.ts'] : [],
-          sequence: { groupOrder: 3 },
-          testTimeout: BROWSER_TIMEOUT_MS,
-          hookTimeout: BROWSER_TIMEOUT_MS,
-        },
-      },
-    ],
   },
 })

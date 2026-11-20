@@ -82,8 +82,8 @@ importers:
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.4(@types/node@22.20.5)(jiti@2.7.0)(yaml@2.9.1))
       deslop:
-        specifier: github:leonardourci/deslop#e7c248c3be3de930a8ff2138b8a93e1cf9deac08
-        version: https://codeload.github.com/leonardourci/deslop/tar.gz/e7c248c3be3de930a8ff2138b8a93e1cf9deac08
+        specifier: https://github.com/leonardourci/deslop/releases/download/v0.1.1/deslop.tgz
+        version: https://github.com/leonardourci/deslop/releases/download/v0.1.1/deslop.tgz
       eslint:
         specifier: ^10.12.0
         version: 10.12.0(jiti@2.7.0)
@@ -99,9 +99,6 @@ importers:
       motion:
         specifier: 14.14.0
         version: 14.14.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      playwright-core:
-        specifier: 1.64.1
-        version: 1.64.1
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -1875,10 +1872,10 @@ packages:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
 
-  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/e7c248c3be3de930a8ff2138b8a93e1cf9deac08:
-    resolution: {gitHosted: true, integrity: sha512-MGgPY+f/twG7jSzJFiiv7nvNnzSguJj33Mu+JeHd2IB0YbFbzX6PIrGIIcOi57jxQyjFTJrOgJwQffRPZxBdBw==, tarball: https://codeload.github.com/leonardourci/deslop/tar.gz/e7c248c3be3de930a8ff2138b8a93e1cf9deac08}
-    version: 0.1.0
-    engines: {node: '>=22.13'}
+  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.1/deslop.tgz:
+    resolution: {integrity: sha512-J5CGnUFJRvmXc5BfAbFBmvH+LiyF95PJ4Ok8aZxNfVxIq8CwgIGJMcM/1p+rjQk0DPLk7O3nKj1dHs02V6GNdw==, tarball: https://github.com/leonardourci/deslop/releases/download/v0.1.1/deslop.tgz}
+    version: 0.1.1
+    engines: {node: '>=22.18'}
     hasBin: true
 
   detect-libc@2.1.2:
@@ -2931,11 +2928,6 @@ packages:
   pkg-up@3.1.0:
     resolution: {integrity: sha512-nDywThFk1i4BQK4twPQ6TA4RT8bDY96yeuCVBWL3ePARCiEKDRSrNGbFIgUJpLp+XeIR65v8ra7WuJOFUBtkMA==}
     engines: {node: '>=8'}
-
-  playwright-core@1.64.1:
-    resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
-    engines: {node: '>=20'}
-    hasBin: true
 
   possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}
@@ -5449,7 +5441,7 @@ snapshots:
 
   dequal@2.0.3: {}
 
-  deslop@https://codeload.github.com/leonardourci/deslop/tar.gz/e7c248c3be3de930a8ff2138b8a93e1cf9deac08:
+  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.1/deslop.tgz:
     dependencies:
       '@eslint/eslintrc': 3.3.7
       '@eslint/js': 10.0.1(eslint@10.15.0(jiti@2.7.0))
@@ -6478,8 +6470,6 @@ snapshots:
   pkg-up@3.1.0:
     dependencies:
       find-up: 3.0.0
-
-  playwright-core@1.64.1: {}
 
   possible-typed-array-names@1.1.0: {}
 

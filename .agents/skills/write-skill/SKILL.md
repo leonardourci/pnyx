@@ -12,7 +12,7 @@ Skills follow the [Agent Skills](https://agentskills.io) format: a folder holdin
 
 ## Naming and frontmatter
 
-- [ ] Name the action, verb first where it reads naturally (`review-code`, `write-front-end`, `pnyx-manage-workers`), not the tool that runs it or a vague category. Use lowercase letters, numbers and single hyphens. The frontmatter `name` must equal the folder name.
+- [ ] Name the action, verb first where it reads naturally (`write-pull-request`, `write-front-end`, `pnyx-manage-workers`), not the tool that runs it or a vague category. Use lowercase letters, numbers and single hyphens. The frontmatter `name` must equal the folder name.
 - [ ] Give the frontmatter `name` and `description`. The description, under 1,024 characters, says what the skill does and when to read it, with the words a future agent would match on. Add `paths` only when the skill applies to a fixed set of files, as `write-front-end` does for `web/**`.
 
 ## Body
@@ -21,7 +21,7 @@ Skills follow the [Agent Skills](https://agentskills.io) format: a folder holdin
 - [ ] Point to the rule's home (`AGENTS.md`, `docs/`, another skill) instead of restating it, so rules have one home and cannot drift apart. A skill holds what an agent needs only while doing that task.
 - [ ] Keep it short. Detail needed only sometimes goes in a `references/` file the body links to.
 - [ ] Describe the current project. A skill never asks for session journals, handoff files or a running history of reviews and test results.
-- [ ] Apply [deslop](../deslop/SKILL.md) to the text.
+- [ ] Run `pnpm deslop` on the committed text.
 
 ## Registration
 
