@@ -150,14 +150,14 @@ export function wakeText({
   }
 
   if (pick && check) {
-    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   } else if (check || overflow) {
-    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
+    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
   }
 
   if (reviewOverflow) {
     const reviewedThrough = state.hydraReview?.seq ?? state.seq
-    lines.push(`Read \`pnyx-axi history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
+    lines.push(`Read \`pnyx history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
   }
 
   lines.push(decisionsText({
@@ -405,12 +405,12 @@ export function findHydraTurnToResume({
 
   const interruptedWork = unfinishedWork.join(' and ') || 'a turn'
   const ownerReads = unansweredMessages.map(seq =>
-    `Read owner message ${seq} in full with \`pnyx-axi hydra messages --after ${seq - 1} --limit 1 --hydra ${hydraId}\`.`)
+    `Read owner message ${seq} in full with \`pnyx hydra messages --after ${seq - 1} --limit 1 --hydra ${hydraId}\`.`)
 
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx-axi hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
       ...ownerReads,
       decisionsText({
         state,

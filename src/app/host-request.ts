@@ -500,7 +500,7 @@ async function runHostRequest({
   )) {
     inform({
       reason: 'Helper requested an action outside its defaults',
-      clear: 'Use pnyx-axi task history <task> to inspect the change',
+      clear: 'Use pnyx task history <task> to inspect the change',
     })
   }
 
@@ -531,7 +531,7 @@ async function runHostRequest({
     })) {
       inform({
         reason: 'Helper acted without a current task grant',
-        clear: 'Use pnyx-axi task history <task> to inspect the change',
+        clear: 'Use pnyx task history <task> to inspect the change',
       })
     }
 

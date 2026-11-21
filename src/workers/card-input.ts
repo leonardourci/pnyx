@@ -35,7 +35,7 @@ export function validateCardInput({
   if (!ownerActor({ actor })) {
     inform({
       reason: 'Message sent from a card by an agent',
-      clear: 'pnyx-axi reply <task> --text "<message>"',
+      clear: 'pnyx reply <task> --text "<message>"',
     })
   }
 
@@ -140,7 +140,7 @@ function requireCardInputTarget({ card }: { card: Card }) {
     inform({
       task: card.id,
       reason: 'Message sent to a hidden task',
-      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
     })
   }
 
@@ -148,7 +148,7 @@ function requireCardInputTarget({ card }: { card: Card }) {
     inform({
       task: card.id,
       reason: 'Message sent while the task remains queued',
-      clear: `Use pnyx-axi task unqueue ${card.id} to release its queue`,
+      clear: `Use pnyx task unqueue ${card.id} to release its queue`,
     })
   }
 
@@ -271,7 +271,7 @@ export function createCardInputs({
       if (change === 'session') {
         const previous = current && sessionId({ agent: current })
         const history = previous
-          ? `Read the previous conversation with pnyx-axi task chat ${card.id} --session ${previous} --hydra ${hydraId}. Follow every continuation cursor before continuing.`
+          ? `Read the previous conversation with pnyx task chat ${card.id} --session ${previous} --hydra ${hydraId}. Follow every continuation cursor before continuing.`
           : ''
 
         if (previous) {

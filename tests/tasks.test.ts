@@ -8,7 +8,7 @@ import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { operation, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -301,7 +301,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: 'held for discussion: Rename the API',
-        clear: expect.stringContaining(`pnyx-axi task release ${card.id} --from-message`),
+        clear: expect.stringContaining(`pnyx task release ${card.id} --from-message`),
       }),
     ])
     const worker = await hydra.agent({ cwd: folder })
@@ -538,7 +538,7 @@ test(
     expect((await hydra.task({ key: saved.card.id })).worker).toBe('none: not started, no reason given')
 
     const session = await hydra.chat({ text: 'Also add a legend to the usage ring' })
-    expect((await pnyxAxi({
+    expect((await operation({
       args: [
         'apply',
         '--file',
@@ -614,7 +614,7 @@ test(
       launch: 'started',
       queued: expect.stringContaining('is in Ideas'),
     })
-    expect(behind.help.join('\n')).toContain('pnyx-axi task sessions')
+    expect(behind.help.join('\n')).toContain('pnyx task sessions')
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
@@ -848,7 +848,7 @@ test(
     })
     expect(docs.open).toEqual([
       expect.objectContaining({
-        clear: expect.stringContaining(`pnyx-axi task undepend ${waiting.card.id} --on ${held.card.id}`),
+        clear: expect.stringContaining(`pnyx task undepend ${waiting.card.id} --on ${held.card.id}`),
       }),
     ])
     expect((await hydra.agent({ cwd: docsFolder })).received).toHaveLength(1)
@@ -910,7 +910,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: expect.stringContaining(asked.ask),
-        clear: expect.stringContaining(`pnyx-axi task answer ${card.id} ${asked.ask}`),
+        clear: expect.stringContaining(`pnyx task answer ${card.id} ${asked.ask}`),
       }),
     ])
     expect((await hydra.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
@@ -3512,7 +3512,7 @@ test(
       expect(receipt.notices).toEqual(expect.arrayContaining([
         expect.objectContaining({
           reason: expect.any(String),
-          clear: expect.stringContaining('pnyx-axi'),
+          clear: expect.stringContaining('pnyx'),
         }),
       ]))
       expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
@@ -3554,7 +3554,7 @@ test(
       landing: 'branch',
       merge: 'owner',
     })
-    const batch = await pnyxAxi({
+    const batch = await operation({
       args: [
         'apply',
         '--file',

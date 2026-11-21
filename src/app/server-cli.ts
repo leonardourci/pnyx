@@ -1,10 +1,9 @@
+import type { Writable } from 'node:stream'
 import { parseArgs } from 'node:util'
-import { readFileSync } from 'node:fs'
-import { AxiError } from 'axi-sdk-js'
 import { SERVE_OPTIONS } from './server.ts'
 import { flagError } from './cli-support.ts'
-import { DEFAULT_PORT, infoPath, readServer, type ServerInfo } from './server-state.ts'
-import { STOP_TIMEOUT_MS, type RunningServer } from './server-transport.ts'
+import { DEFAULT_PORT } from './server-state.ts'
+import { type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
 import { PNYX_ROOT } from '#upgrade/runner.ts'
 import { HydraError } from '#store/errors.ts'
@@ -21,12 +20,19 @@ function serveFlags({ args }: { args: string[] }) {
   } catch (error) {
     throw flagError({
       error,
-      options: SERVE_OPTIONS,
     })
   }
 }
 
-export async function serve(args: string[]): Promise<Record<string, unknown>> {
+export async function serve({
+  args,
+  stdout,
+  json,
+}: {
+  args: string[]
+  stdout: Writable
+  json: boolean
+}): Promise<Record<string, unknown>> {
   const values = serveFlags({ args })
   const hydraId = values.hydra ?? 'default'
 
@@ -35,10 +41,10 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   values.port ??= process.env.PORT
 
   if (values.port !== undefined && !/^\d+$/.test(values.port)) {
-    throw new AxiError(
-      `${source} must be a number`,
-      'VALIDATION_ERROR',
-    )
+    throw new HydraError({
+      message: `${source} must be a number`,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const port = Number(values.port ?? DEFAULT_PORT)
@@ -54,19 +60,19 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     })
   } catch (error) {
     if (error instanceof HydraError) {
-      throw new AxiError(
-        error.message,
-        error.code,
-        error.help,
-      )
+      throw new HydraError({
+        message: error.message,
+        code: error.code,
+        help: error.help,
+      })
     }
 
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new AxiError(
-        `port ${port} is in use`,
-        'PORT_IN_USE',
-        [`Stop what holds port ${port}, or pick another --port`],
-      )
+      throw new HydraError({
+        message: `port ${port} is in use`,
+        code: 'PORT_IN_USE',
+        help: [`Stop what holds port ${port}, or pick another --port`],
+      })
     }
 
     throw error
@@ -77,7 +83,13 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     reason,
   ]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
     .join('')
-  process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
+  stdout.write(json ? `${JSON.stringify({
+    server: 'running',
+    hydra: hydraId,
+    url: server.url,
+    skipped: server.skipped,
+  })}\n`
+    : `server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${skipped}`)
   const signal = await new Promise<NodeJS.Signals>(resolve => {
     for (const name of [
       'SIGINT',
@@ -94,68 +106,4 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   await server.close()
 
   return { server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped' }
-}
-
-export async function stop(args: string[]): Promise<Record<string, unknown>> {
-  if (args.length > 0) {
-    throw new AxiError(
-      `unexpected argument: ${args[0]}`,
-      'VALIDATION_ERROR',
-      ['Run `pnyx-axi stop`; it stops the one server of every Hydra'],
-    )
-  }
-
-  const info = await readServer({ hydraId: 'default' })
-  const pids = info ? [info.pid] : []
-
-  if (pids.length === 0) {
-    return {
-      server: 'none: not running',
-      help: ['Run `pnyx-axi serve` to start it'],
-    }
-  }
-
-  for (const pid of pids) {
-    process.kill(
-      pid,
-      'SIGTERM',
-    )
-  }
-
-  const deadline = Date.now() + STOP_TIMEOUT_MS
-
-  // Files and pids, not /health, so a stopping server too busy to answer cannot outlast the deadline.
-  const recorded = () => {
-    try {
-      const { pid } = JSON.parse(readFileSync(
-        infoPath(),
-        'utf8',
-      )) as ServerInfo
-      process.kill(
-        pid,
-        0,
-      )
-
-      return new Set([pid])
-    } catch {
-      return new Set<number>()
-    }
-  }
-
-  for (let left = pids; left.length > 0; left = left.filter(pid => recorded().has(pid))) {
-    if (Date.now() > deadline) {
-      throw new AxiError(
-        `server pid ${left.join(', ')} did not stop`,
-        'TIMEOUT',
-        [`Check process ${left.join(', ')}`],
-      )
-    }
-
-    await new Promise(r => setTimeout(
-      r,
-      25,
-    ))
-  }
-
-  return { server: 'stopped' }
 }

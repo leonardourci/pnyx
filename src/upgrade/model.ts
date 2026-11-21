@@ -101,8 +101,8 @@ export interface UpgradeStatus {
   checkedAt: string
 }
 
-// How much of a commit the chat and the CLI show, as `pnyx-axi --version` does.
-export const COMMIT_LENGTH = 7
+// How much of a commit the chat and the CLI show, as `pnyx --version` does.
+const COMMIT_LENGTH = 7
 
 // The chat's milestone line for an upgrade, by how far it got, and the icon each draws.
 const MILESTONES = {

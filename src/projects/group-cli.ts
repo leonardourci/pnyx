@@ -98,14 +98,14 @@ export function attachProjectGroup({
           if ((!before || before.detached) && others.length) {
             inform({
               reason: `${path} is also attached to Hydra ${others.map(hydra => hydra.id).join(', ')}`,
-              clear: `Use pnyx-axi project keep "${path}" --hydra <keeper> to consolidate it`,
+              clear: `Use pnyx project keep "${path}" --hydra <keeper> to consolidate it`,
             })
           }
 
           if (before?.group && before.group.id !== group.id) {
             inform({
               reason: `${path} moved from project ${before.group.name}`,
-              clear: `Use pnyx-axi project group "${before.group.name}" "${path}" to restore its group`,
+              clear: `Use pnyx project group "${before.group.name}" "${path}" to restore its group`,
             })
           }
 

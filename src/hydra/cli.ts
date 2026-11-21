@@ -71,7 +71,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     if (!hydras.length) {
       return {
         hydras: 'none: no Hydras yet',
-        help: ['Run `pnyx-axi hydra create <id>` to add one'],
+        help: ['Run `pnyx hydra create <id>` to add one'],
       }
     }
 
@@ -98,7 +98,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           tasks,
         }
       }),
-      help: ['Run `pnyx-axi hydra show --hydra <id>` for its columns and Hydra'],
+      help: ['Run `pnyx hydra show --hydra <id>` for its columns and Hydra'],
     }
   }
 
@@ -192,7 +192,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         inform({
           task: session.taskId,
           reason: 'Worker detached from its task before becoming Hydra',
-          clear: `Use pnyx-axi task attach ${session.taskId} --session <other-session> to assign another worker`,
+          clear: `Use pnyx task attach ${session.taskId} --session <other-session> to assign another worker`,
         })
         applyDecision({
           writer,
@@ -253,7 +253,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       })) {
         inform({
           reason: 'Hydra permission level increased through its session',
-          clear: 'pnyx-axi hydra set --session <session>',
+          clear: 'pnyx hydra set --session <session>',
         })
       }
 
@@ -348,7 +348,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
         inform({
           reason: `Hydra ${id} already exists; updated its requested settings`,
-          clear: `Use pnyx-axi hydra set --hydra ${id} to change its settings`,
+          clear: `Use pnyx hydra set --hydra ${id} to change its settings`,
         })
       }
 
@@ -388,7 +388,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
   return {
     ...settings,
-    help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
+    help: ['These settings apply to every Hydra; see `pnyx settings show`'],
   }
 }
 
@@ -541,7 +541,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     if (action === 'usage-refresh' && workerIdentity({ actor: meta({ values }).actor })) {
       inform({
         reason: 'Worker refreshed plan limits shared by every Hydra',
-        clear: 'pnyx-axi hydra usage',
+        clear: 'pnyx hydra usage',
       })
     }
 

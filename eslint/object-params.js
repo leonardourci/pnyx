@@ -242,7 +242,7 @@ const boundary = ({
   }
 
   if (parent.type === 'Property') {
-    if (filename.endsWith('/src/cli/pnyx-axi.ts') && parent.key.name === 'getCommandHelp') {
+    if (filename.endsWith('/src/cli/pnyx.ts') && parent.key.name === 'getCommandHelp') {
       return true // AXI supplies a command name.
     }
 

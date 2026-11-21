@@ -62,7 +62,7 @@ function request({ body }: { body: unknown }): RunRequest {
   }
 }
 
-// Runs a pnyx-axi command line for a client, in the client's identity and folder, and answers with exactly what it printed.
+// Runs a pnyx command line for a client, in the client's identity and folder, and answers with exactly what it printed.
 export async function runForRequest({ body }: { body: unknown }): Promise<RunAnswer> {
   const {
     argv,
@@ -98,8 +98,6 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
           stdout: sink,
         }),
       )
-      // The SDK also sets the process exit code for a refused command line; the server keeps its own, and the
-      // request's status comes only from its own record.
       process.exitCode = before
       const exitCode = requestExitCode() ?? 0
 

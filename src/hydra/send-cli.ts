@@ -312,6 +312,6 @@ export function hydraMessages({
       })
       : `none: no messages after seq ${after}`,
     through,
-    ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
+    ...(events.length > limit ? { help: [`Run \`pnyx hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
   }
 }

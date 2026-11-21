@@ -1,4 +1,4 @@
-import { AxiError } from 'axi-sdk-js'
+import { HydraError } from '#store/errors.ts'
 import { asRecord } from '#app/command-validation.ts'
 import type { TaskOperation } from '#tasks/plans.ts'
 import type { DeliveryOperation } from '#tasks/delivery/plans.ts'
@@ -12,20 +12,20 @@ export interface ApplyIssue {
   reason: string
 }
 
-export class ApplyError extends AxiError {
+export class ApplyError extends HydraError {
   readonly errors: ApplyIssue[]
   constructor({
     errors,
-    help = ['Run `pnyx-axi apply --help`'],
+    help = ['Run `pnyx apply --help`'],
   }: {
     errors: ApplyIssue[]
     help?: string[]
   }) {
-    super(
-      'Apply validation failed; nothing written',
-      'VALIDATION_ERROR',
+    super({
+      message: 'Apply validation failed; nothing written',
+      code: 'VALIDATION_ERROR',
       help,
-    )
+    })
     this.errors = errors
   }
 }

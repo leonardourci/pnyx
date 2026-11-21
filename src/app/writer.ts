@@ -470,7 +470,7 @@ export function eventWriter({
           inform({
             task,
             reason: 'Helper changed a task outside its default scope',
-            clear: 'Use pnyx-axi task history <task> to inspect the change',
+            clear: 'Use pnyx task history <task> to inspect the change',
           })
         }
       }

@@ -1,5 +1,5 @@
+import { HydraError } from '#store/errors.ts'
 import { setTimeout as delay } from 'node:timers/promises'
-import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { KEY_LABEL, confirms, findOption, harnessControls, inputReason } from './controls.ts'
 import { replyRoute } from './reply-route.ts'
@@ -68,7 +68,7 @@ function agentSummary({
   return {
     agent,
     controls,
-    help: ready ? [`Run \`pnyx-axi agent ${card.id} ${ready.setting} ${ready.options.split(' ')[0]}\` to change it`] : ['No setting can be changed on this route'],
+    help: ready ? [`Run \`pnyx agent ${card.id} ${ready.setting} ${ready.options.split(' ')[0]}\` to change it`] : ['No setting can be changed on this route'],
   }
 }
 
@@ -96,10 +96,10 @@ export const agent = guard({
 
     if (values['cancel-compact']) {
       if (positionals.length !== 1) {
-        throw new AxiError(
-          'Compaction controls take only the card ID',
-          'VALIDATION_ERROR',
-        )
+        throw new HydraError({
+          message: 'Compaction controls take only the card ID',
+          code: 'VALIDATION_ERROR',
+        })
       }
 
       return askHost({
@@ -114,11 +114,11 @@ export const agent = guard({
 
     if (positionals.length < 3) {
       if (positionals.length === 2) {
-        throw new AxiError(
-          'give a setting and a value',
-          'VALIDATION_ERROR',
-          [`Run \`pnyx-axi agent ${ref}\` to list them`],
-        )
+        throw new HydraError({
+          message: 'give a setting and a value',
+          code: 'VALIDATION_ERROR',
+          help: [`Run \`pnyx agent ${ref}\` to list them`],
+        })
       }
 
       return agentSummary({
@@ -145,11 +145,11 @@ export const agent = guard({
     })
 
     if (!picked) {
-      throw new AxiError(
-        `card ${card.id} offers no ${setting} ${value}`,
-        'VALIDATION_ERROR',
-        [`Run \`pnyx-axi agent ${card.id}\` to list its settings and values`],
-      )
+      throw new HydraError({
+        message: `card ${card.id} offers no ${setting} ${value}`,
+        code: 'VALIDATION_ERROR',
+        help: [`Run \`pnyx agent ${card.id}\` to list its settings and values`],
+      })
     }
 
     const {
@@ -236,27 +236,9 @@ export const agent = guard({
     } else if (receipt.state !== 'delivered') {
       out.help = [`The change may have landed${receipt.detail ? ` (${receipt.detail})` : ''}; check the session before sending again`]
     } else if (!confirmed) {
-      out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`pnyx-axi card ${card.id}\` to check`]
+      out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`pnyx card ${card.id}\` to check`]
     }
 
     return out
   },
 })
-
-export const AGENT_HELP = `usage: pnyx-axi agent <id> [<setting> <value>] [--cancel-compact] [--idempotency-key <key>]
-Without a setting, lists the card's harness, settings and the ones Pnyx can change, with values.
-With one, types what the harness's own interface takes into the session, on the card's reply
-route (receipts as for reply), then reads the setting back from the transcript:
-  Claude Code: model opus|sonnet|haiku|fable (/model), effort low|medium|high|xhigh|max (/effort),
-    fast on|off (/fast), mode next (Shift+Tab). Claude Code saves a typed model, effort or fast
-    mode as the default for new sessions; one more Enter answers its confirmation, if shown.
-  Direct Codex sessions: effort lower|raise (Shift+Down, Shift+Up), fast toggle (/fast), collaboration toggle
-    (Shift+Tab, Plan or Default). Codex picks model and approval mode only in its own pickers.
-An agent Pnyx runs (task start) takes its provider’s model, effort and mode directly. Codex takes
-model gpt-6.1-sol|gpt-6-astra|gpt-6-sol|gpt-6-luna, effort low|medium|high|xhigh, and mode
-untrusted|on-request|never for its next turn. Claude Code takes model opus|sonnet|haiku|fable, effort low|medium|high|xhigh|max
-and mode default|acceptEdits|plan|auto|bypassPermissions directly through the Hydra's server, nothing typed.
-Terminal and Herdr press only Enter and refuse the keys. Nothing is typed while the session
-waits on a permission prompt or question.
-A setting the session has not reported yet is confirmed by its next hook or turn.
-`

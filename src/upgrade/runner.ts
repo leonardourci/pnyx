@@ -5,7 +5,7 @@ import { runFile } from '#app/run-process.ts'
 import { replaceFile } from '#store/storage.ts'
 import type { UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
 
-// The checkout this pnyx-axi runs from: src/upgrade and dist/upgrade both sit two folders down.
+// The checkout this pnyx runs from: src/upgrade and dist/upgrade both sit two folders down.
 export const PNYX_ROOT = join(
   import.meta.dirname,
   '..',
@@ -531,7 +531,7 @@ async function upgrade({
         root,
         command: process.execPath,
         args: [
-          'dist/cli/pnyx-axi.js',
+          'dist/cli/pnyx.js',
           'setup',
           'postgres',
           '--check',

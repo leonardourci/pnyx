@@ -17,7 +17,7 @@ const GUARDED = [
   'firstmate',
   'herdr',
   'tmux',
-  'pnyx-axi',
+  'pnyx',
   'quota-axi',
   'launchctl',
   'systemctl',

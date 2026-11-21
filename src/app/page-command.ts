@@ -1,4 +1,3 @@
-import { AxiError } from 'axi-sdk-js'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
@@ -68,7 +67,7 @@ export async function runPageCommand({ argv }: { argv: string[] }): Promise<Page
     }
   } catch (error) {
     // A reply that failed unexpectedly may or may not have reached its agent; the page says so instead of a reason.
-    if (!(error instanceof AxiError) && [
+    if (!(error instanceof HydraError) && [
       'agent',
       'reply',
       'inbox-follow',
@@ -82,10 +81,7 @@ export async function runPageCommand({ argv }: { argv: string[] }): Promise<Page
     let code = 'UNKNOWN'
     let help: string[] | undefined
 
-    if (error instanceof AxiError) {
-      code = error.code
-      help = error.suggestions
-    } else if (error instanceof HydraError) {
+    if (error instanceof HydraError) {
       code = error.code
       help = error.help
     }

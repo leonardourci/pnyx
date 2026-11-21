@@ -45,7 +45,7 @@ export function runCommand({
     throw new HydraError({
       message: 'the Hydra command did not start',
       code: 'COMMAND_ERROR',
-      help: ['Check it with `pnyx-axi hydra show`'],
+      help: ['Check it with `pnyx hydra show`'],
     })
   }
 

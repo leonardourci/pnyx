@@ -4,7 +4,7 @@ export function notUndoable({ message }: { message: string }): HydraError {
   return new HydraError({
     message,
     code: 'NOT_UNDOABLE',
-    help: ['Run `pnyx-axi history` to find an undoable edit'],
+    help: ['Run `pnyx history` to find an undoable edit'],
   })
 }
 

@@ -171,7 +171,7 @@ export function messageLookup({
     card,
   ]
   const continuation = ({ cursor }: { cursor: string }) =>
-    `pnyx-axi ${command.join(' ')} --hydra ${hydraId} --cursor ${cursor} --budget ${page.budget} --limit ${page.limit}`
+    `pnyx ${command.join(' ')} --hydra ${hydraId} --cursor ${cursor} --budget ${page.budget} --limit ${page.limit}`
   const help: string[] = []
 
   if (page.older) {

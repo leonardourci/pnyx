@@ -503,7 +503,7 @@ async function chooseCandidate({
     throw new HydraError({
       message: `no heads dispatch rule ${rule}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi rule list`; Hydra must choose a rule for the task'],
+      help: ['Run `pnyx rule list`; Hydra must choose a rule for the task'],
     })
   }
 
@@ -521,7 +521,7 @@ async function chooseCandidate({
     throw new HydraError({
       message: 'heads dispatch needs a registered main account',
       code: 'NO_ACCOUNTS',
-      help: ['Run `pnyx-axi rule init`, then set the accounts and account order with `pnyx-axi rule apply`'],
+      help: ['Run `pnyx rule init`, then set the accounts and account order with `pnyx rule apply`'],
     })
   }
 

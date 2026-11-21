@@ -1,6 +1,6 @@
+import { HydraError } from '#store/errors.ts'
 import { readInput } from '#app/request-context.ts'
 import { createHash, randomUUID } from 'node:crypto'
-import { AxiError, exitCodeForError } from 'axi-sdk-js'
 import { guard, parse, meta, required, COMMON, type Output } from '#app/cli-support.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
@@ -54,11 +54,11 @@ export const apply = guard({
     })
 
     if (values.full && !values.check) {
-      throw new AxiError(
-        '--full requires --check',
-        'VALIDATION_ERROR',
-        ['Use --check --full for complete before/after records without writing'],
-      )
+      throw new HydraError({
+        message: '--full requires --check',
+        code: 'VALIDATION_ERROR',
+        help: ['Use --check --full for complete before/after records without writing'],
+      })
     }
 
     const file = required({
@@ -108,11 +108,11 @@ export const apply = guard({
 
       if (duplicate) {
         if (values.full) {
-          throw new AxiError(
-            'This apply already has a recorded receipt; full preview requires a fresh event id',
-            'VALIDATION_ERROR',
-            ['Run task history <task> --full for original event data, or omit --event-id to preview current state'],
-          )
+          throw new HydraError({
+            message: 'This apply already has a recorded receipt; full preview requires a fresh event id',
+            code: 'VALIDATION_ERROR',
+            help: ['Run task history <task> --full for original event data, or omit --event-id to preview current state'],
+          })
         }
 
         return {
@@ -195,29 +195,3 @@ export const apply = guard({
     return compactReceipt({ output })
   },
 })
-
-// The SDK's error formatter has no extension fields; apply adds its validation table here.
-// eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the error formatter signature.
-export function formatApplyError(error: unknown): {
-  output: string
-  exitCode: number
-} {
-  if (error instanceof ApplyError) {
-    const rows = error.errors.map(issue => `  ${issue.operation === null ? 'null' : issue.operation},${JSON.stringify(issue.path)},${JSON.stringify(issue.code)},${JSON.stringify(issue.reason)}`)
-
-    return {
-      output: `error: ${JSON.stringify(error.message)}\ncode: ${error.code}\napplied: false\nerrors[${rows.length}]{operation,path,code,reason}:\n${rows.join('\n')}\n`,
-      exitCode: 2,
-    }
-  }
-
-  const message = error instanceof Error ? error.message : String(error)
-  const code = error instanceof AxiError ? error.code : 'UNKNOWN'
-  const suggestions = error instanceof AxiError ? error.suggestions : []
-  const help = suggestions.length ? `help[${suggestions.length}]: ${suggestions.map(line => JSON.stringify(line)).join(',')}\n` : ''
-
-  return {
-    output: `error: ${JSON.stringify(message)}\ncode: ${code}\n${help}`,
-    exitCode: exitCodeForError(error),
-  }
-}

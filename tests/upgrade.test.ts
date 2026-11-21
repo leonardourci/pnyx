@@ -285,7 +285,7 @@ test(
       folder.install,
       'dist',
       'cli',
-      'pnyx-axi.js',
+      'pnyx.js',
     ))).toBe(true)
     await until({
       what: 'Hydra to get the message sent during the upgrade',

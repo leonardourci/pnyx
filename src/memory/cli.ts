@@ -321,7 +321,7 @@ export const owner = guard({
 
     if (key === 'workers') {
       checkWorkerNotes({
-        command: 'pnyx-axi owner worker-notes set',
+        command: 'pnyx owner worker-notes set',
         text: after,
         reason: m.reason,
       })
@@ -391,7 +391,7 @@ export function hydraMemory({
     throw new HydraError({
       message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} belong in owner memory`,
       code: 'VALIDATION_ERROR',
-      help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
+      help: [`Run \`pnyx owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
     })
   }
 

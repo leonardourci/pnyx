@@ -125,7 +125,7 @@ export function reminderRepeat({
     inform({
       task: card.id,
       reason: 'Task is already done; its recurring reminder stops immediately',
-      clear: `Use pnyx-axi task remind ${card.id} <time> --every <interval> --until worker-started to wait for another run`,
+      clear: `Use pnyx task remind ${card.id} <time> --every <interval> --until worker-started to wait for another run`,
     })
   }
 
@@ -148,7 +148,7 @@ export function reminderRepeat({
       inform({
         task: card.id,
         reason: 'Question is answered, closed or directed to Hydra; recurrence uses its recorded answer state',
-        clear: `Use pnyx-axi task remind ${card.id} clear to remove it`,
+        clear: `Use pnyx task remind ${card.id} clear to remove it`,
       })
     }
 

@@ -17,21 +17,21 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
   if (card.sessionIds?.length) {
     return {
       reason: `${card.id} already has worker ${card.sessionIds.join(', ')}`,
-      clear: `Reply to that worker with \`pnyx-axi reply ${card.id} --text "<message>"\`, or run \`pnyx-axi task detach ${card.id}\` first`,
+      clear: `Reply to that worker with \`pnyx reply ${card.id} --text "<message>"\`, or run \`pnyx task detach ${card.id}\` first`,
     }
   }
 
   if (card.status?.state === 'done' || card.outcome) {
     return {
       reason: `${card.id} is finished`,
-      clear: 'File a follow-up with `pnyx-axi task create`',
+      clear: 'File a follow-up with `pnyx task create`',
     }
   }
 
   if (card.copy?.state === 'active') {
     return {
       reason: `${card.id} has an active copy of its own`,
-      clear: `Run \`pnyx-axi task copy ${card.id} remove --safe\` once its work has landed`,
+      clear: `Run \`pnyx task copy ${card.id} remove --safe\` once its work has landed`,
     }
   }
 
@@ -61,7 +61,7 @@ function visibleTask({
     inform({
       task: card.id,
       reason: 'Queue changed for a hidden task',
-      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
     })
   }
 
@@ -106,7 +106,7 @@ export function queueGap({
   if (anchor?.id === card.id) {
     return {
       reason: 'a task cannot queue behind itself',
-      clear: `Run \`pnyx-axi task start ${card.id}\` to give it a worker`,
+      clear: `Run \`pnyx task start ${card.id}\` to give it a worker`,
     }
   }
 
@@ -123,14 +123,14 @@ export function queueGap({
   if (!current) {
     return {
       reason: `${behind} has no live task worker to queue behind`,
-      clear: `Run \`pnyx-axi task sessions\` for live workers, or start this task with \`pnyx-axi task start ${card.id}\``,
+      clear: `Run \`pnyx task sessions\` for live workers, or start this task with \`pnyx task start ${card.id}\``,
     }
   }
 
   if (!current.project) {
     return {
       reason: `queued tasks use the worker’s project, and ${current.id} is in Ideas`,
-      clear: 'Queue it behind a worker on an attached project; `pnyx-axi task sessions` lists live workers',
+      clear: 'Queue it behind a worker on an attached project; `pnyx task sessions` lists live workers',
     }
   }
 
@@ -140,7 +140,7 @@ export function queueGap({
   })) {
     return {
       reason: `queued tasks use the worker’s project: ${card.id} is in ${card.project ?? 'Ideas'}, ${current.id} in ${current.project}`,
-      clear: `Run \`pnyx-axi task project ${card.id} --project <project>\` to match the worker’s project`,
+      clear: `Run \`pnyx task project ${card.id} --project <project>\` to match the worker’s project`,
     }
   }
 
@@ -171,7 +171,7 @@ export function queueRequestGap({
   if (reorder && !card.queue) {
     return {
       reason: `${card.id} is not queued`,
-      clear: `Run \`pnyx-axi task queue ${card.id} --behind <task|session>\` to queue it`,
+      clear: `Run \`pnyx task queue ${card.id} --behind <task|session>\` to queue it`,
     }
   }
 

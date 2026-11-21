@@ -3,9 +3,7 @@ import { childRepositories, attachProjectGroup, projectGroupCommand } from './gr
 import { keepProject } from './ownership.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { sameProjectPath } from './identity.ts'
-import { PROJECT_MEMORY_BUDGET } from '#memory/project-memory.ts'
 import { projectMemoryCommand } from '#memory/project-cli.ts'
-import { WORKER_NOTES_BUDGET } from '#memory/workers.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { runFile } from '#app/run-process.ts'
 import { isAbsolute, resolve } from 'node:path'
@@ -152,7 +150,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     if (projects.length === 0) {
-      listed.help = [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`]
+      listed.help = [`Run \`pnyx project add <path> --hydra ${hydraId}\` to attach one`]
     }
 
     return listed
@@ -395,7 +393,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             .join(', ')
           inform({
             reason: `Project ${path} is also attached to Hydra ${owners}`,
-            clear: `Use pnyx-axi project keep "${path}" --hydra <keeper> to consolidate it`,
+            clear: `Use pnyx project keep "${path}" --hydra <keeper> to consolidate it`,
           })
         }
 
@@ -439,41 +437,3 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project group <name> <repo-path>... [--hydra <id>]
-Groups attached repositories into one project column, preserving each repository's settings and memory.
-Project add accepts a repository folder or a parent folder whose direct children are repositories.
-A parent folder attaches those repositories as a named project in one transaction.
-pnyx-axi project keep <path> --hydra <keeper>
-Moves a repository’s tasks to the chosen Hydra, reporting stopped work and detached relationships.
-Relationships among tasks moving together are retained; references to tasks staying behind are cleared with notices.
-pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
-Standing worker instructions (${WORKER_NOTES_BUDGET} characters) are included verbatim in each new worker header for this project. Use owner worker-notes to share instructions with every worker.
-pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
-
-Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
-List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
-New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
-Use memory save at the end of inscribe; --used "<exact lines, newline-separated>" with --reason refreshes used lines and advances only the others.
-Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed from preferences, learnings or standing worker instructions, with the date and reason of that change.
-Preferences and learnings persist independently of profile refreshes. Writes accept --reason, --event-id and --if-revision.
-
-pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
-pnyx-axi project add --clone <url> --into <folder> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
-pnyx-axi project list [--hydra <id>]
-pnyx-axi project show <name|path> [--hydra <id>]
-pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
-pnyx-axi project remove <name|path> [--hydra <id>]
-pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]
-pnyx-axi project set <name|path> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
-
-A project is a folder on this laptop, shown by its folder name. Relative paths are accepted.
-Clone runs git directly; --into always names the destination. No agent receives the URL.
-Remove detaches only; tasks and history stay. Add the path again to re-attach.
-A project may be attached to several Hydras. Duplicate attachments show a notice and the project keep command.
-Set saves a named start command; an empty --command clears it. --brings-own-folder declares that the command creates its worker’s folder.
-Workers start in their task's own copy: a git worktree on branch <hydra-name-slug>/<task-title-slug> with no upstream, kept under the Hydra's folder.
---copy sets a command run in the project folder instead; it gets PNYX_TASK, PNYX_TASK_TITLE and PNYX_PROJECT and prints the new folder's path last.
-An empty --copy restores git worktree copies.
-Landing rules say where a worker's job stops. --landing pr (the default): commit, push and open a pull request; --landing branch: commit on the task's branch only.
---merge owner (the default): the owner merges; --merge hydra: Hydra may merge with task merge once every check is green.
-Writes accept --event-id and --if-revision (project list shows the projects revision).`

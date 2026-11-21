@@ -472,7 +472,7 @@ async function commandCopy({
     throw new HydraError({
       message: run.status !== 0 ? `the copy command of ${project.name} failed: ${run.stderr.trim().slice(-500)}` : `the copy command of ${project.name} must print the new folder's absolute path last, other than the project folder`,
       code: 'COPY_FAILED',
-      help: ['Fix it with `pnyx-axi project set <name> --copy <shell command>`, or start with --in-place'],
+      help: ['Fix it with `pnyx project set <name> --copy <shell command>`, or start with --in-place'],
     })
   }
 
@@ -543,7 +543,7 @@ export async function taskFolder({
       throw new HydraError({
         message: '--in-place needs a task with an attached project',
         code: 'VALIDATION_ERROR',
-        help: [`Run \`pnyx-axi task project ${card.id} --project <name> --hydra ${hydraId}\``],
+        help: [`Run \`pnyx task project ${card.id} --project <name> --hydra ${hydraId}\``],
       })
     }
 
@@ -572,7 +572,7 @@ export async function taskFolder({
     inform({
       task: card.id,
       reason: `Continuing in the existing copy of ${live.project} at ${live.path}`,
-      clear: `Use pnyx-axi task copy ${card.id} remove after landing its work to use the new project`,
+      clear: `Use pnyx task copy ${card.id} remove after landing its work to use the new project`,
     })
 
     return live.path

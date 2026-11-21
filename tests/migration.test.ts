@@ -7,7 +7,7 @@ import { closePostgres, homeDatabase } from '#store/postgres.ts'
 import { SCHEMA_VERSION } from '#store/schema.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { binaries, sql } from './setup/postgres.ts'
-import { parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -589,7 +589,7 @@ test(
 )
 
 // Each check gets only the PATH it names, so whether pg_dump is found does not depend on the machine's own folders.
-const dataCheck = ({ path }: { path: string }) => pnyxAxi({
+const dataCheck = ({ path }: { path: string }) => operation({
   args: [
     'setup',
     'postgres',

@@ -600,7 +600,7 @@ async function answerGroup({
   if (!ownerActor({ actor: meta.actor })) {
     inform({
       reason: 'Question group answered by an agent',
-      clear: 'pnyx-axi task questions',
+      clear: 'pnyx task questions',
     })
   }
 
@@ -895,7 +895,7 @@ export function askCommand({
   if (!explained({ meta: m })) {
     inform({
       reason: 'Question escalated without a reason',
-      clear: 'Use pnyx-axi task escalate <task> <question> --reason "<why>" to record one',
+      clear: 'Use pnyx task escalate <task> <question> --reason "<why>" to record one',
     })
   }
 

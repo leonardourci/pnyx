@@ -487,7 +487,6 @@ test(
           argv: [
             'task',
             'create',
-            '--no-start',
             '--title',
             'Unauthorized',
             '--key',

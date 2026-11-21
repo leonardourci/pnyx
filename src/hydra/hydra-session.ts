@@ -82,7 +82,7 @@ export function agentNotices<T extends Record<string, Command>>({
       })) {
         inform({
           reason: `Agent requested ${name} directly`,
-          clear: `Use pnyx-axi ${name} --help to inspect or change its settings`,
+          clear: `Use pnyx ${name} --help to inspect or change its settings`,
         })
       }
 

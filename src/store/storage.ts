@@ -351,9 +351,9 @@ export function acquireLock({
   }
 
   throw new HydraError({
-    message: `Hydra is locked by another pnyx-axi writer after ${timeout}ms: ${path} (owner: ${owner})`,
+    message: `Hydra is locked by another pnyx writer after ${timeout}ms: ${path} (owner: ${owner})`,
     code: 'LOCKED',
-    help: [`Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`],
+    help: [`Retry, or remove ${path} and ${takeover} if no pnyx process is running`],
   })
 }
 

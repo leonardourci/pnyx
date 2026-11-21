@@ -10,7 +10,6 @@ import { toolsCommand } from '#workers/tools-cli.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
-import { AxiError } from 'axi-sdk-js'
 import { WRITE, parse, meta, required, commit, explained, integer, HISTORY_LIMIT, clip, type Options, type Output } from './cli-support.ts'
 import { sourceCommand } from '#task-sources/cli.ts'
 import { inboxCommand } from '#workers/inbox-cli.ts'
@@ -654,14 +653,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       return {
         hydraId,
         tasks: 'none: no tasks on this Hydra',
-        help: [`Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add one`],
+        help: [`Run \`pnyx task create --title <title> --hydra ${hydraId}\` to add one`],
       }
     }
 
-    const help = [`Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`]
+    const help = [`Run \`pnyx task show <id> --hydra ${hydraId}\` for one task`]
 
     if (!fields.length) {
-      help.push(`Run \`pnyx-axi task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`)
+      help.push(`Run \`pnyx task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`)
     }
 
     return {
@@ -676,7 +675,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     if (workerIdentity({ actor: m.actor })) {
       inform({
         reason: 'Task moved by a worker',
-        clear: 'pnyx-axi task move <task> --to-hydra <hydra>',
+        clear: 'pnyx task move <task> --to-hydra <hydra>',
       })
     }
 
@@ -819,7 +818,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         declarations: task.statusLog?.length ?? 0,
         ...(task.hold ? { hold: task.hold } : {}),
       },
-      help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
+      help: [`Run \`pnyx task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx task history ${task.id} --hydra ${hydraId}\` for its events`],
     }
 
     if (task.asks?.length) {
@@ -1210,10 +1209,10 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action !== 'attach' && action !== 'detach') {
-    throw new AxiError(
-      'Use task create, list, show, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, sessions, attach or detach',
-      'VALIDATION_ERROR',
-    )
+    throw new HydraError({
+      message: 'Use task create, list, show, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, sessions, attach or detach',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const ref = required({

@@ -77,7 +77,7 @@ export function writeTools({
   }))) {
     inform({
       reason: 'Tools changed on a finished or hidden task',
-      clear: 'pnyx-axi task unhide <task> or pnyx-axi outcome <task> --clear',
+      clear: 'pnyx task unhide <task> or pnyx outcome <task> --clear',
       task: card.id,
     })
   }
@@ -85,7 +85,7 @@ export function writeTools({
   if (steeringHeld({ card })) {
     inform({
       reason: 'Tools changed while the discussion hold remains',
-      clear: 'pnyx-axi task release <task> --reason "<why>"',
+      clear: 'pnyx task release <task> --reason "<why>"',
       task: card.id,
     })
   }
@@ -94,7 +94,7 @@ export function writeTools({
     inform({
       task: card.id,
       reason: 'Tools changed by a worker',
-      clear: `Use pnyx-axi task tools ${card.id} --revoke browser`,
+      clear: `Use pnyx task tools ${card.id} --revoke browser`,
     })
   }
 
@@ -152,7 +152,7 @@ export function toolInstructions({
   return [
     'Use the harness’s native tools, MCP servers, plugins and apps as configured by the owner.',
     tools.includes(BROWSER_TOOL) ? 'Use chrome-devtools-axi with your own isolated headless browser. Run chrome-devtools-axi stop when finished. Do not control the owner’s browser.' : undefined,
-    worker && !tools.includes(BROWSER_TOOL) ? 'For an isolated browser, ask Hydra with pnyx-axi task ask; Hydra grants browser with task tools --grant browser.' : undefined,
+    worker && !tools.includes(BROWSER_TOOL) ? 'For an isolated browser, append needs-you: <request> to worker.log; Hydra manages tool grants through the UI.' : undefined,
   ].filter(Boolean).join(' ')
 }
 

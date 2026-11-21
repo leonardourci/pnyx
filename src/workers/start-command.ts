@@ -98,7 +98,7 @@ export async function startCommand({
         throw new HydraError({
           message: `Hydra ${hydraId} has no start command`,
           code: 'NO_COMMAND',
-          help: [`Run \`pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'\``],
+          help: [`Run \`pnyx hydra set --hydra ${hydraId} --command '<shell command>'\``],
         })
       }
 
@@ -119,7 +119,7 @@ export async function startCommand({
         throw new HydraError({
           message: `Hydra ${hydraId} has no start command`,
           code: 'NO_COMMAND',
-          help: [`Run \`pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'\``],
+          help: [`Run \`pnyx hydra set --hydra ${hydraId} --command '<shell command>'\``],
         })
       }
 
@@ -249,8 +249,8 @@ export async function startCommand({
     folder: claimed.cwd,
     help: [
       role === 'hydra'
-        ? `Its first session becomes the Hydra; check \`pnyx-axi hydra show --hydra ${hydraId}\``
-        : `Its session attaches to ${target} when its hooks first report; check \`pnyx-axi task show ${target} --hydra ${hydraId}\``,
+        ? `Its first session becomes the Hydra; check \`pnyx hydra show --hydra ${hydraId}\``
+        : `Its session attaches to ${target} when its hooks first report; check \`pnyx task show ${target} --hydra ${hydraId}\``,
     ],
   }
 }

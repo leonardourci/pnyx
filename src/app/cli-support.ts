@@ -1,8 +1,7 @@
+import { requestEnv } from '#app/request-context.ts'
 import { withCommandNotices, inform } from './command-notices.ts'
 import { parseArgs, type ParseArgsConfig } from 'node:util'
-import { AxiError } from 'axi-sdk-js'
 import type { EventType, HydraState, HydraEvent, Decision } from './model.ts'
-import { helpFlags } from '#cli/help.ts'
 import { DEFAULT_HYDRA } from './home-migration.ts'
 import type { Meta } from './command-meta.ts'
 import { HYDRA_ACTOR } from './actors.ts'
@@ -15,7 +14,6 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '#memory/workers.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { landingWording } from '#tasks/delivery/rule.ts'
-import { requestInvocation } from '#app/request-context.ts'
 import { defaultActor } from '#workers/worker-identity.ts'
 
 export const HISTORY_LIMIT = 20
@@ -51,50 +49,13 @@ export const WRITE: Options = {
   confirm: { type: 'string' },
 }
 
-export function helpHint(): string {
-  const invocation = requestInvocation()
-
-  return invocation.name ? `Run \`pnyx-axi ${invocation.name} --help\`` : 'Run the command with --help'
-}
-
-// Translates a node:util parseArgs error. An unknown flag is named, with the valid flags inline.
-export function flagError({
-  error,
-  options,
-}: {
+export function flagError({ error }: {
   error: unknown
-  options: Options
-}): AxiError {
-  const message = (error as Error).message
-
-  if ((error as { code?: string }).code !== 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
-    return new AxiError(
-      message,
-      'VALIDATION_ERROR',
-      [helpHint()],
-    )
-  }
-
-  // The subcommand's documented flags plus the global ones it accepts.
-  const invocation = requestInvocation()
-  const flags = invocation.help
-    ? [
-      ...new Set([
-        ...helpFlags({ help: invocation.help }),
-        ...[
-          'hydra',
-          'event-id',
-          'if-revision',
-        ].filter(name => name in options).map(name => `--${name}`),
-      ]),
-    ]
-    : Object.keys(options).map(name => `--${name}`)
-
-  return new AxiError(
-    `unknown flag ${/'([^']+)'/.exec(message)?.[1] ?? message}${invocation.name ? ` for \`${invocation.name}\`` : ''}`,
-    'VALIDATION_ERROR',
-    [`Valid flags: ${flags.filter(flag => flag !== '--help').join(', ')} (--help always allowed)`],
-  )
+}): HydraError {
+  return new HydraError({
+    message: (error as Error).message,
+    code: 'VALIDATION_ERROR',
+  })
 }
 
 export function parse({
@@ -119,16 +80,14 @@ export function parse({
   } catch (error) {
     throw flagError({
       error,
-      options,
     })
   }
 
   if (parsed.positionals.length > positionals) {
-    throw new AxiError(
-      `unexpected argument: ${parsed.positionals[positionals]}`,
-      'VALIDATION_ERROR',
-      [helpHint()],
-    )
+    throw new HydraError({
+      message: `unexpected argument: ${parsed.positionals[positionals]}`,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const seen = new Set<string>()
@@ -139,11 +98,10 @@ export function parse({
     }
 
     if (seen.has(token.name)) {
-      throw new AxiError(
-        `repeated scalar flag --${token.name}`,
-        'VALIDATION_ERROR',
-        [helpHint()],
-      )
+      throw new HydraError({
+        message: `repeated scalar flag --${token.name}`,
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     seen.add(token.name)
@@ -159,7 +117,8 @@ export function parse({
 }
 
 // The Hydra a command line names; without --hydra, the default one. The worker-scope check resolves it the same way.
-export const commandHydra = ({ hydra }: { hydra?: string }): string => hydra ?? DEFAULT_HYDRA
+export const commandHydra = ({ hydra }: { hydra?: string }): string =>
+  hydra ?? requestEnv().PNYX_HYDRA ?? DEFAULT_HYDRA
 
 export function required({
   value,
@@ -169,11 +128,10 @@ export function required({
   what: string
 }): string {
   if (!value) {
-    throw new AxiError(
-      `missing ${what}`,
-      'VALIDATION_ERROR',
-      [helpHint()],
-    )
+    throw new HydraError({
+      message: `missing ${what}`,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   return value
@@ -191,10 +149,10 @@ export function integer({
   }
 
   if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new AxiError(
-      `${flag} must be a non-negative integer`,
-      'VALIDATION_ERROR',
-    )
+    throw new HydraError({
+      message: `${flag} must be a non-negative integer`,
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   return Number(value)
@@ -236,7 +194,7 @@ export function explained({ meta }: { meta: Meta }): string {
   if (meta.actor === HYDRA_ACTOR && !reason) {
     inform({
       reason: 'No reason was supplied for this change',
-      clear: 'Use pnyx-axi with --reason "<why>" to record the reason',
+      clear: 'Use pnyx with --reason "<why>" to record the reason',
     })
   }
 
@@ -296,7 +254,7 @@ function receipt({
       message: event.id,
       hydra: event.data.hydra,
       state: 'queued',
-      help: ['Hydra can read this in `pnyx-axi hydra messages`; no worker was launched'],
+      help: ['Hydra can read this in `pnyx hydra messages`; no worker was launched'],
     }
   }
 
@@ -350,7 +308,7 @@ function receipt({
         'blocked',
         'done',
       ].includes(phase) ? 'Hydra wake eligible; owner delivery not confirmed' : 'No Hydra wake from this lifecycle declaration',
-      help: [`Run \`pnyx-axi hydra send --task ${card.id} --text "<actionable result with links>"\` to queue a result for Hydra; lifecycle status does not deliver a result to the owner`],
+      help: [`Run \`pnyx hydra send --task ${card.id} --text "<actionable result with links>"\` to queue a result for Hydra; lifecycle status does not deliver a result to the owner`],
     }
   }
 
@@ -401,11 +359,11 @@ function originalReceipt(
     || intent.accepts?.includes(original.type)
 
   if (!sameType || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {
-    throw new AxiError(
-      `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
-      'IDEMPOTENCY_CONFLICT',
-      ['Retry with a new --event-id'],
-    )
+    throw new HydraError({
+      message: `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
+      code: 'IDEMPOTENCY_CONFLICT',
+      help: ['Retry with a new --event-id'],
+    })
   }
 
   return {
@@ -563,27 +521,7 @@ export function commit(
 }
 
 export function guard<T = Output>({ handler }: { handler: ({ args }: { args: string[] }) => T }) {
-  const mapped = ({ error }: { error: unknown }): never => {
-    if (error instanceof HydraError) {
-      throw new AxiError(
-        error.message,
-        error.code,
-        error.help,
-      )
-    }
-
-    throw error
-  }
-
-  return (args: string[]): T => {
-    try {
-      const result = withCommandNotices({ run: () => handler({ args }) })
-
-      return result instanceof Promise ? result.catch(error => mapped({ error })) as T : result
-    } catch (error) {
-      return mapped({ error })
-    }
-  }
+  return (args: string[]): T => withCommandNotices({ run: () => handler({ args }) })
 }
 
 // A long text cut for a default view, with its full length so the reader knows what --full adds.
@@ -598,20 +536,6 @@ export function clip({
     0,
     limit,
   )}… (truncated, ${text.length} chars total)` : text
-}
-
-// Adds next steps to a write's receipt; a no-op receipt keeps none.
-export function withHelp({
-  output,
-  help,
-}: {
-  output: Output
-  help: ({ output }: { output: Output }) => string[]
-}): Output {
-  return output.card ? {
-    ...output,
-    help: help({ output }),
-  } : output
 }
 
 function summary({ event }: { event: HydraEvent }): string {

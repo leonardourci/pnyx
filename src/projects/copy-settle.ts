@@ -228,7 +228,7 @@ export async function settleCopy({
 
         if (after.state === 'flagged') {
           const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
-            + `Prove its current work landed, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`. `
+            + `Prove its current work landed, then run \`pnyx task copy ${now.id} remove --hydra ${hydraId}\`. `
             + 'Work that never landed must be landed before retrying.'
           applyDecision({
             writer,

@@ -98,7 +98,7 @@ export function sourceTask({
     inform({
       task: card.id,
       reason: 'External source action on a hidden task',
-      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
     })
   }
 
@@ -113,7 +113,7 @@ export function sourceTask({
     inform({
       task: card.id,
       reason: 'External source changed by another actor',
-      clear: `Use pnyx-axi task source list ${card.id} to inspect its sources`,
+      clear: `Use pnyx task source list ${card.id} to inspect its sources`,
     })
   }
 
@@ -451,7 +451,7 @@ export function handleResult({
     inform({
       task: card.id,
       reason: 'Source result handled before its steering message was acknowledged',
-      clear: `Use pnyx-axi task inbox read ${card.id} to inspect its pending instructions`,
+      clear: `Use pnyx task inbox read ${card.id} to inspect its pending instructions`,
     })
   }
 

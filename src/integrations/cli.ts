@@ -28,19 +28,19 @@ async function integrations({
       {
         name: 'skills',
         status: skillStatus(),
-        setup: 'pnyx-axi setup skills',
+        setup: 'pnyx setup skills',
         docs: `${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} are available in every project or copy through global skill links`,
       },
       {
         name: 'hooks',
         status: hooks === 'current' ? 'ready' : `hook script ${hooks}`,
-        setup: 'pnyx-axi setup hooks',
+        setup: 'pnyx setup hooks',
         docs: 'Claude Code and Codex sessions report to the Hydra through them',
       },
       {
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
-        setup: `pnyx-axi hydra set --hydra ${hydraId} --command '<shell command>'`,
+        setup: `pnyx hydra set --hydra ${hydraId} --command '<shell command>'`,
         docs: 'Started with PNYX_HOME, PNYX_WORKER_HOME, PNYX_HYDRA, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
       },
       {
@@ -53,11 +53,6 @@ async function integrations({
     help: ['Run a row\'s setup command to enable it'],
   }
 }
-
-export const INTEGRATIONS_HELP = `usage: pnyx-axi integrations [--hydra <id>]
-Lists global skills, hooks, the Hydra command and GitHub: whether each is ready and the
-command that sets it up. It only reads; nothing is installed or started.
-`
 
 export const integrationsCommand = guard({
   handler: ({ args }) => {
@@ -148,7 +143,7 @@ export const harvest = guard({
 
         out.help = [
           ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
-          values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
+          values.card ? `Run \`pnyx card ${cards[0]!.id}\` to see its notes` : "Run `pnyx card <id>` to see a card's notes",
         ]
 
         return out

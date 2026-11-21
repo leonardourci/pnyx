@@ -7,7 +7,7 @@ import { appendFileSync, existsSync } from 'node:fs'
 import { transcriptPath } from '#workers/claude.ts'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
-import { parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
@@ -449,7 +449,7 @@ test(
 test(
   'the Oracle refuses a Hydra that does not exist and makes no folder for it',
   async () => {
-    const run = await pnyxAxi({
+    const run = await operation({
       args: [
         'oracle',
         'invoice',

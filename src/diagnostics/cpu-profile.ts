@@ -9,7 +9,7 @@ import { oneDecimal } from '#app/log-line.ts'
 import { HydraError } from '#store/errors.ts'
 
 export const PROFILE_SECONDS = 10
-export const PROFILE_MAX_SECONDS = 60
+const PROFILE_MAX_SECONDS = 60
 const MICROS_PER_MS = 1000
 const MS_PER_SECOND = 1000
 const PROFILE_FUNCTIONS = 20

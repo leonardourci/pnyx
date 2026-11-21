@@ -11,7 +11,6 @@ import { hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory, writableOwnerMemory } from '#memory/owner-memory.ts'
 import { checkAttachments } from './presence.ts'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { AxiError } from 'axi-sdk-js'
 import { HYDRA_ACTOR, OWNER_ACTORS, reportActor } from '#app/actors.ts'
 import type { HydraEvent, EventType } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -98,16 +97,16 @@ export async function hydraCheck({
   if (wait > 0 && wait <= maxWaitSeconds && requestEnv().PNYX_HOSTED === 'hydra') {
     inform({
       reason: 'Hosted Hydra check returns immediately so its turn can finish',
-      clear: 'Use pnyx-axi hydra check without --wait; Pnyx wakes Hydra when work changes',
+      clear: 'Use pnyx hydra check without --wait; Pnyx wakes Hydra when work changes',
     })
     wait = 0
   }
 
   if (wait > maxWaitSeconds) {
-    throw new AxiError(
-      '--wait is at most 3600 seconds',
-      'VALIDATION_ERROR',
-    )
+    throw new HydraError({
+      message: '--wait is at most 3600 seconds',
+      code: 'VALIDATION_ERROR',
+    })
   }
 
   const hosted = hostedHydraRequest({ hydraId })
@@ -326,7 +325,7 @@ export async function hydraCheck({
   const typedHelp: string[] = []
 
   if (typed.length) {
-    typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx-axi task chat <task> --hydra ${hydraId}\` shows them whole`)
+    typedHelp.push(`Words with a time were typed into the worker's session; \`pnyx task chat <task> --hydra ${hydraId}\` shows them whole`)
   }
 
   const readReports: number[] = []
@@ -410,9 +409,9 @@ export async function hydraCheck({
   const paginationHelp: string[] = []
 
   if (paged) {
-    paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --hydra ${hydraId}\` for the next page`)
+    paginationHelp.push(`Run \`pnyx hydra check --after ${through} --hydra ${hydraId}\` for the next page`)
   } else if (requestEnv().PNYX_HOSTED !== 'hydra') {
-    paginationHelp.push(`Run \`pnyx-axi hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
+    paginationHelp.push(`Run \`pnyx hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
   }
 
   const output: Output = {
@@ -435,8 +434,8 @@ export async function hydraCheck({
     help: [
       ...directWordsHelp,
       ...typedHelp,
-      ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx-axi task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
-      ...(requests.length ? [`Answer a worker's request with \`pnyx-axi task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
+      ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
+      ...(requests.length ? [`Answer a worker's request with \`pnyx task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
       ...paginationHelp,
     ],
   }
@@ -473,11 +472,11 @@ function compact({ text }: { text: string }): string {
 const hydraCheckHandler = guard({
   handler: ({ args }) => hydraCheck({ args }).catch((error: unknown) => {
     if (error instanceof HydraError) {
-      throw new AxiError(
-        error.message,
-        error.code,
-        error.help,
-      )
+      throw new HydraError({
+        message: error.message,
+        code: error.code,
+        help: error.help,
+      })
     }
 
     throw error

@@ -9,7 +9,7 @@ const WAIT_MS = 100
 // Bound how long messages remain held if the restart process does not complete.
 const RESTART_WAIT_MS = 60_000
 // A built upgrade restarts at the next moment no agent is mid-turn, but never later than this.
-export const RESTART_PENDING_MS = 15 * 60_000
+const RESTART_PENDING_MS = 15 * 60_000
 // How often a built upgrade looks for a moment no agent is mid-turn.
 const IDLE_POLL_MS = 1000
 
@@ -24,13 +24,6 @@ let building: {
   id: string
   stopping: AbortController
 } | undefined
-
-// Stops it from any Hydra, as \`pnyx-axi upgrade --stop\` does; it goes back as a failed step does.
-export function stopUpgrade(): boolean {
-  building?.stopping.abort()
-
-  return building !== undefined
-}
 
 const shortHome = ({ path }: { path: string }) => path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path
 
@@ -312,7 +305,7 @@ export function upgradeQueue({
       })
     },
 
-    // The one entry for /upgrade in Hydra's chat and \`pnyx-axi upgrade\`; answers with the upgrade to watch.
+    // The one entry for /upgrade in Hydra's chat and \`pnyx upgrade\`; answers with the upgrade to watch.
     request({ id }: { id: string }): UpgradeOperation {
       // One upgrade at a time: a second request while one waits or runs changes nothing.
       const existing = state().upgrades?.find(operation => operation.id === id) ?? active()

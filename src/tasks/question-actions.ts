@@ -81,7 +81,7 @@ export function decideQuestionAction({
       inform({
         task: card.id,
         reason: 'Deferred a question without a newer owner instruction',
-        clear: `Use pnyx-axi task defer-question ${card.id} ${id} --until clear to clear the deferral`,
+        clear: `Use pnyx task defer-question ${card.id} ${id} --until clear to clear the deferral`,
       })
     }
   }
@@ -90,7 +90,7 @@ export function decideQuestionAction({
     inform({
       task: card.id,
       reason: 'Owner question deferred or discussed by an agent',
-      clear: `Use pnyx-axi task defer-question ${card.id} ${id} --until clear to clear the deferral`,
+      clear: `Use pnyx task defer-question ${card.id} ${id} --until clear to clear the deferral`,
     })
   }
 
@@ -102,7 +102,7 @@ export function decideQuestionAction({
       inform({
         task: card.id,
         reason: 'An answer is already being delivered while this question is deferred',
-        clear: `Use pnyx-axi task show ${card.id} --full to inspect its delivery`,
+        clear: `Use pnyx task show ${card.id} --full to inspect its delivery`,
       })
     }
 

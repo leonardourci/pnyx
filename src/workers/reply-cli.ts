@@ -1,4 +1,4 @@
-import { AxiError } from 'axi-sdk-js'
+import { HydraError } from '#store/errors.ts'
 import { readInput } from '#app/request-context.ts'
 import { loadHydra } from '#app/store.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
@@ -58,11 +58,11 @@ export const reply = guard({
 
     if (request !== undefined) {
       if (values.text !== undefined || file !== undefined || values.json === undefined) {
-        throw new AxiError(
-          '--answer takes --json with the answer, not --text or --file',
-          'VALIDATION_ERROR',
-          ['Run `pnyx-axi reply --help`'],
-        )
+        throw new HydraError({
+          message: '--answer takes --json with the answer, not --text or --file',
+          code: 'VALIDATION_ERROR',
+          help: ['Run `pnyx reply --help`'],
+        })
       }
 
       try {
@@ -74,24 +74,24 @@ export const reply = guard({
           ...(seen !== undefined ? { seen } : {}),
         }
       } catch {
-        throw new AxiError(
-          '--json is not valid JSON',
-          'VALIDATION_ERROR',
-          ['Example: --json \'{"choice":"allow"}\''],
-        )
+        throw new HydraError({
+          message: '--json is not valid JSON',
+          code: 'VALIDATION_ERROR',
+          help: ['Example: --json \'{"choice":"allow"}\''],
+        })
       }
     } else if (values.json !== undefined || values.seen !== undefined) {
-      throw new AxiError(
-        '--json and --seen go with --answer',
-        'VALIDATION_ERROR',
-        ['Run `pnyx-axi reply --help`'],
-      )
+      throw new HydraError({
+        message: '--json and --seen go with --answer',
+        code: 'VALIDATION_ERROR',
+        help: ['Run `pnyx reply --help`'],
+      })
     } else if ((values.text === undefined) === (file === undefined)) {
-      throw new AxiError(
-        'give either --text or --file',
-        'VALIDATION_ERROR',
-        ['Run `pnyx-axi reply --help`'],
-      )
+      throw new HydraError({
+        message: 'give either --text or --file',
+        code: 'VALIDATION_ERROR',
+        help: ['Run `pnyx reply --help`'],
+      })
     }
 
     let text = (values.text as string | undefined) ?? (answer ? '' : undefined)
@@ -100,10 +100,10 @@ export const reply = guard({
       try {
         text = readInput({ file: file })
       } catch (error) {
-        throw new AxiError(
-          `cannot read reply text from ${file}: ${(error as Error).message}`,
-          'VALIDATION_ERROR',
-        )
+        throw new HydraError({
+          message: `cannot read reply text from ${file}: ${(error as Error).message}`,
+          code: 'VALIDATION_ERROR',
+        })
       }
     }
 
@@ -160,40 +160,9 @@ export const reply = guard({
     } else if (receipt.state === 'queued') {
       out.help = ["Check the task's inbox or the session before sending again; a retry with the same key does not resend"]
     } else {
-      out.help = [`Run \`pnyx-axi history --card ${receipt.card} --kind replied\` for its receipts`]
+      out.help = [`Run \`pnyx history --card ${receipt.card} --kind replied\` for its receipts`]
     }
 
     return out
   },
 })
-
-export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--idempotency-key <key>] [--task-message]
-       pnyx-axi reply <task> --question <question> --from-message <owner-message> [--choice Go|Hold|Merge] --text <relay> [--idempotency-key <key>]
-       pnyx-axi reply <id> --answer <request key> --json <answer> [--seen <request id>] [--idempotency-key <key>]
---question records an owner answer and its outgoing relay together before attempting delivery. Hydra
-must name an owner message newer than the question; Go/Hold and Merge/Hold also take --choice.
-The source words stay separate from --text. Failed, queued or unknown delivery does not reopen the
-question. Retry a failed delivery with the same key to preserve its saved answer and relay.
---question cannot be combined with --answer or --task-message. Ordinary replies do
-not answer task questions.
---task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)
-gets an inbox notice from the Hydra's server after the instruction is persisted. Pending IDs survive
-a stopped server and replay on worker opening or resumption until read or explicitly acknowledged.
-A worker inbox read records receipt and stops reminders; acknowledgements never mean work is complete. A terminal task receives a notice
-only with a verified live process and empty tmux composer. Drafts and permission prompts defer it;
-other terminal backends report uncertainty without typing. Timed recovery allows three notifications
-or two busy/held deferrals before one durable unread-instruction result wakes Hydra. Holds stay held.
-Unattached sessions and dedicated native commands retain their direct delivery routes.
-Receipts: queued, then delivered, delivery_unknown or failed. Retrying the same --idempotency-key
-resends only after a failed send.
---answer answers an agent's open question, permission, plan or MCP form prompt (its request key, from
-\`pnyx-axi card <id>\`) by pressing the keys that prompt expects in the session's tmux pane (other
-terminals are answered in the session itself):
-  question:   --json '{"answers":[{"pick":[2]},{"pick":[1,3]},{"text":"free text"}]}'  one per question,
-              options numbered from 1; text only for a single-choice question
-  permission: --json '{"choice":"allow"}' or '{"choice":"deny","text":"do this instead"}'
-  plan:       --json '{"choice":"approve"}' or '{"choice":"revise","text":"what to change"}'
-  MCP form:   --json '{"choice":"accept","values":{"name":"Ada","count":2,"agree":true}}' or '{"choice":"decline"}'
---seen refuses the answer when the request changed since that id was shown. A delivered answer marks
-the request answered; the session's own hooks close it once it moves on.
-`

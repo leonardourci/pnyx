@@ -43,7 +43,7 @@ export const building = ({
   wait?: string
 }) => `${wait ? `while [ ! -f '${wait}' ]; do sleep 0.05; done\n` : ''}${fail ? 'echo "type error in build" >&2; exit 1\n' : ''}echo ${version} > built.txt
 mkdir -p dist/cli
-echo "process.stderr.write('data check ${dataExit}'); process.exit(${dataExit})" > dist/cli/pnyx-axi.js
+echo "process.stderr.write('data check ${dataExit}'); process.exit(${dataExit})" > dist/cli/pnyx.js
 `
 
 export function upgradeFolder({ root }: { root: string }) {

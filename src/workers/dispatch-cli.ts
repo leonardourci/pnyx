@@ -233,7 +233,7 @@ function parsedDocument({ json }: { json?: string }): unknown {
   try {
     return JSON.parse(json) as unknown
   } catch {
-    return invalid({ message: '--json must be a heads dispatch document; run `pnyx-axi rule schema`' })
+    return invalid({ message: '--json must be a heads dispatch document; run `pnyx rule schema`' })
   }
 }
 
@@ -275,7 +275,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     const { state } = loadHydra({ hydraId })
     const help = [
       'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
-      'Run `pnyx-axi rule show` for the editable document and its revision',
+      'Run `pnyx rule show` for the editable document and its revision',
     ]
 
     if (onTemplate()) {
@@ -307,7 +307,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
       revision,
       document,
       issues: dispatchIssues({ document }).map(found => `${found.level} ${found.path}: ${found.problem}`),
-      help: ['Change it with `pnyx-axi rule apply --file <patch.json> --check`, then without --check'],
+      help: ['Change it with `pnyx rule apply --file <patch.json> --check`, then without --check'],
     }
   }
 
@@ -365,7 +365,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   if (action === 'init') {
     return {
       ...initConfig({ meta: meta({ values }) }),
-      help: ['Fix login folders and remove accounts you do not use with `pnyx-axi rule apply` before starting workers; Pnyx stores no credentials'],
+      help: ['Fix login folders and remove accounts you do not use with `pnyx rule apply` before starting workers; Pnyx stores no credentials'],
     }
   }
 
@@ -536,24 +536,4 @@ function accountCommand({ args }: { args: string[] }): Output {
 export const dispatchCommands = {
   rule: guard({ handler: ruleCommand }),
   account: guard({ handler: accountCommand }),
-}
-export const DISPATCH_HELP = {
-  rule: `usage: pnyx-axi rule list|show|schema|init
-pnyx-axi rule now [--json '<document>']
-pnyx-axi rule apply --file <patch.json|-> | --json '<envelope>' [--check] [--propose] [--if-revision <revision>] [--event-id <id>]
-pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>'
-pnyx-axi rule set <name> [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
-pnyx-axi rule propose set|remove|accounts <same arguments>
-pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
-pnyx-axi rule remove <name>
-pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>]
-Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders; every section but main is required. It is saved as a change log in the Pnyx home, and the two JSON files beside it are rewritten from that log, so change it only through rule apply or its shortcuts. rule show prints it with its revision; rule schema lists every field and allowed value.
-rule now shows which candidate of each rule would start right now from current quota, for the saved document or the one --json gives; each login's reading is kept for a minute.
-rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}} from a file, stdin or --json, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose applies directly with an informational notice, and a repeated --event-id returns its first receipt. Hydra applies settings directly and records each change in chat. Candidate permission increases apply directly with a notice.
-set, remove and accounts are shortcuts for one patch. Each provider and account pair appears once within a rule, whatever the model or controls; a candidate without an account is its own pair. A change that adds a duplicate is refused and saves nothing; an existing duplicate stays readable so it can be removed. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
-  account: `usage: pnyx-axi account list
-pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--label <display name>]
-pnyx-axi account propose set|remove <same arguments>
-pnyx-axi account remove <name>
-Only names, display labels and login folders are stored, never credentials. Registering the first account also registers claude:default and codex:default for the logins found on this machine, so main and the worker orders that name them keep working. A candidate's account runs on that login only, never another account. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first. To remove the last account, rule apply one patch that also sets main to claude:default or codex:default.`,
 }
