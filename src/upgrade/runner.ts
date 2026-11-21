@@ -268,7 +268,7 @@ export async function runUpgrade({
   signal,
 }: {
   root?: string
-  progress?({ steps }: { steps: UpgradeStep[] }): void
+  progress?({ steps }: { steps: UpgradeStep[] }): void | Promise<void>
   // Aborting stops the running step and goes back, as a failed step does.
   signal?: AbortSignal
 } = {}): Promise<UpgradeResult> {
@@ -307,7 +307,7 @@ async function upgrade({
   signal,
 }: {
   root: string
-  progress({ steps }: { steps: UpgradeStep[] }): void
+  progress({ steps }: { steps: UpgradeStep[] }): void | Promise<void>
   signal?: AbortSignal
 }): Promise<UpgradeResult> {
   const steps: UpgradeStep[] = []
@@ -395,7 +395,7 @@ async function upgrade({
       seconds: 0,
     }
     steps.push(entry)
-    progress({ steps })
+    await progress({ steps })
 
     try {
       signal?.throwIfAborted()
@@ -408,7 +408,7 @@ async function upgrade({
       throw error
     } finally {
       entry.seconds = Math.round((Date.now() - started) / 1000)
-      progress({ steps })
+      await progress({ steps })
     }
   }
 

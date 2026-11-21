@@ -56,7 +56,7 @@ export function upgradeQueue({
   }: {
     operation: UpgradeOperation
     eventId?: string
-  }): void
+  }): Promise<void>
   // Whether an agent on any Hydra this server runs is mid-turn.
   midTurn(): boolean
   closing(): boolean
@@ -108,7 +108,7 @@ export function upgradeQueue({
     const operation = state().upgrades?.find(item => item.id === id && item.state === 'restarting')
 
     if (operation) {
-      record({
+      await record({
         operation: {
           ...operation,
           state: 'failed',
@@ -135,7 +135,7 @@ export function upgradeQueue({
       state: 'running',
       startedAt: at(),
     }
-    record({ operation: running })
+    await record({ operation: running })
     underway.add(running.id)
     const mine = {
       id: running.id,
@@ -153,7 +153,7 @@ export function upgradeQueue({
       result = await runUpgrade({
         root: root!,
         signal: mine.stopping.signal,
-        progress: ({ steps }) => record({
+        progress: async ({ steps }) => await record({
           operation: {
             ...running,
             steps: structuredClone(steps),
@@ -173,7 +173,7 @@ export function upgradeQueue({
 
     if (outcome !== 'upgraded') {
       underway.delete(running.id)
-      record({
+      await record({
         operation: {
           ...running,
           ...rest,
@@ -191,7 +191,7 @@ export function upgradeQueue({
       state: 'waiting',
       restartBy: new Date(Date.now() + pendingMs).toISOString(),
     }
-    record({ operation: waiting })
+    await record({ operation: waiting })
     await restartWhenIdle({ waiting })
   }
 
@@ -213,7 +213,7 @@ export function upgradeQueue({
       return
     }
 
-    record({
+    await record({
       operation: {
         ...waiting,
         state: 'restarting',
@@ -237,7 +237,7 @@ export function upgradeQueue({
         await run({ queued })
       } catch (error) {
         underway.delete(queued.id)
-        record({
+        await record({
           operation: {
             ...queued,
             state: 'failed',
@@ -250,7 +250,7 @@ export function upgradeQueue({
     },
   })
 
-  const refuse = ({
+  const refuse = async ({
     id,
     folder,
     reason,
@@ -268,7 +268,7 @@ export function upgradeQueue({
       steps: [],
       reasons: [reason],
     }
-    record({
+    await record({
       operation: refused,
       eventId: `${id}:hosted`,
     })
@@ -277,7 +277,7 @@ export function upgradeQueue({
   }
 
   return {
-    restart({ id }: { id: string }) {
+    async restart({ id }: { id: string }) {
       if (state().upgrades?.some(operation => operation.id === id)) {
         return
       }
@@ -289,7 +289,7 @@ export function upgradeQueue({
         })
       }
 
-      record({
+      await record({
         operation: {
           id,
           state: 'restarting',
@@ -313,7 +313,7 @@ export function upgradeQueue({
     },
 
     // The one entry for /upgrade in Hydra's chat and \`pnyx-axi upgrade\`; answers with the upgrade to watch.
-    request({ id }: { id: string }): UpgradeOperation {
+    async request({ id }: { id: string }): Promise<UpgradeOperation> {
       // One upgrade at a time: a second request while one waits or runs changes nothing.
       const existing = state().upgrades?.find(operation => operation.id === id) ?? active()
 
@@ -322,7 +322,7 @@ export function upgradeQueue({
       }
 
       if (!root) {
-        return refuse({
+        return await refuse({
           id,
           folder: '',
           reason: 'This Pnyx server has no folder to upgrade.',
@@ -331,7 +331,7 @@ export function upgradeQueue({
 
       // Another Hydra's upgrade still builds or waits to restart; a second build in the same folder would be cut by that restart.
       if (upgradeUnderway()) {
-        return refuse({
+        return await refuse({
           id,
           folder: shortHome({ path: root }),
           reason: 'Another upgrade is already running.',
@@ -345,7 +345,7 @@ export function upgradeQueue({
         queuedAt: at(),
         steps: [],
       }
-      record({
+      await record({
         operation: queued,
         eventId: `${id}:hosted`,
       })
@@ -384,11 +384,11 @@ export function upgradeQueue({
 
     // After a restart: the upgrade that restarted this server is done, a queued one queues again,
     // and one a stop cut mid-run failed and may have left the folder partly upgraded.
-    recover() {
+    async recover() {
       for (const operation of state().upgrades ?? []) {
         // A built upgrade that waited to restart runs its new code now, whatever restarted this server.
         if (operation.state === 'restarting' || operation.state === 'waiting') {
-          record({
+          await record({
             operation: {
               ...operation,
               state: 'done',
@@ -402,7 +402,7 @@ export function upgradeQueue({
         } else if (operation.state === 'queued') {
           enqueue({ queued: operation })
         } else if (operation.state === 'running') {
-          record({
+          await record({
             operation: {
               ...operation,
               state: 'failed',
