@@ -7,7 +7,6 @@ import type { LatestMessage,ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import { createPendingResource } from '#web-shared/pending-intents.ts'
 import type { Command,Receipt } from './connection.ts'
-import type { watchHydra } from './hydra-views.ts'
 import { type HydraResource } from './pending-state.ts'
 import type { createPendingTurns } from '#web-workers/pending-turns.ts'
 
@@ -38,8 +37,6 @@ export interface Scope {
   restoredSaves: boolean
   error: string
   loadError: string
-  // The load error came from a Zero view, which reads again only once a retry builds it anew.
-  readFailed?: boolean
   subscriptionTimer?: ReturnType<typeof setTimeout>
   subscriptionAttempt: number
   readonly thread: ThreadPage | null
@@ -52,7 +49,6 @@ export interface Scope {
   command: Command
   leases: number
   creation?: Creation
-  views?: ReturnType<typeof watchHydra>
 }
 export interface Request {
   id: string

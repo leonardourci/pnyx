@@ -1,10 +1,9 @@
+import { withDefaults } from '#settings/settings.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import type { ConnectionState } from '@rocicorp/zero'
 import type { HydraState } from '#app/model.ts'
+import type { HydraSummary } from '#app/server-hydras.ts'
 import { emptyHydra } from '#app/reducer.ts'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
-import type { HydraSummary } from '#app/server-hydras.ts'
-import type { Settings } from '#settings/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -20,11 +19,11 @@ import { reconnectDelay,retainedReadings,withChanges } from './connection-protoc
 import { createConnectionRequests } from './connection-requests.ts'
 import { dropSnapshots, save } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
-import { watchHydra, watchInstallation } from './hydra-views.ts'
+import { applyPageChanges, type HomePage } from '#app/socket-state.ts'
+import type { SocketCursor } from '#app/socket-history.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
 import { shouldReload } from './view.ts'
-import { closePageZero, openPageZero } from './zero.ts'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
 const RECOVERY_TIMEOUT_MS = 25_000
@@ -40,37 +39,12 @@ const PERMANENT_SCOPE_ERRORS = new Set([
   'OWNER_ONLY',
 ])
 
-// Why Zero stopped reading, for each state in which it no longer tries by itself.
-const ZERO_STOPPED: Partial<Record<ConnectionState['name'], string>> = {
-  'error': 'This page stopped receiving updates after an error.',
-  'needs-auth': 'This page stopped receiving updates because its access was refused.',
-  'closed': 'This page stopped receiving updates.',
-}
-
 const emptyQueue = (): HydraQueue => ({
   waiting: [],
   reading: [],
 })
 
-type WatchHydra = ({
-  hydraId,
-  publish,
-}: Omit<Parameters<typeof watchHydra>[0], 'zero'>) => ReturnType<typeof watchHydra>
-
-type WatchInstallation = ({
-  hydras,
-  settings,
-  upgrade,
-}: Omit<Parameters<typeof watchInstallation>[0], 'zero'>) => ReturnType<typeof watchInstallation>
-
-// The page reads each Hydra, the Hydra list and the shared settings through Zero; tests pass their own sources.
-export function createHydraConnection({
-  watch,
-  watchShared,
-}: {
-  watch?: WatchHydra
-  watchShared?: WatchInstallation
-} = {}) {
+export function createHydraConnection() {
   const origin = location.origin
   const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
     ?? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? ''
@@ -96,14 +70,10 @@ export function createHydraConnection({
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let upgrade: UpgradeStatus | undefined
-  // Why the Hydra list, shared settings or upgrade check could not be read.
-  let installationError = ''
-  let zeroState: ConnectionState['name'] | undefined
-  let installationViews: ReturnType<WatchInstallation> | undefined
+  let home: HomePage | undefined
+  let homeCursor: SocketCursor | undefined
+  let homeReady = false
   let watchdog: ReturnType<typeof setInterval> | undefined
-  let readRecovery: ReturnType<typeof setTimeout> | undefined
-  let readAttempt = 0
-  let refreshingReads = false
   let staleSince: number | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
@@ -233,7 +203,6 @@ export function createHydraConnection({
               index,
             ) => args[index - 1] === '--card'),
           })
-          // The answer comes from Zero; the server only learns which cards' activity to send.
           // Losing this send is safe: every subscribe sends scope.page again.
           command({
             scope,
@@ -402,7 +371,6 @@ export function createHydraConnection({
       message: string
       action?: 'reload' | 'retry'
     } | null = null
-    const stopped = zeroState && ZERO_STOPPED[zeroState]
 
     if (reloadError) {
       recovery = {
@@ -414,21 +382,11 @@ export function createHydraConnection({
         message: scope.error,
         action: 'retry',
       }
-    } else if (stopped) {
-      recovery = {
-        message: stopped,
-        action: 'retry',
-      }
     } else if (scope.loadError) {
       recovery = { message: scope.loadError }
 
-      if (scope.failed || scope.readFailed) {
+      if (scope.failed) {
         recovery.action = 'retry'
-      }
-    } else if (installationError) {
-      recovery = {
-        message: installationError,
-        action: 'retry',
       }
     }
 
@@ -441,7 +399,7 @@ export function createHydraConnection({
       viewKey: scope.viewKey,
       storageHydra: scope.identity,
       connected: scope.ready && socket?.readyState === WebSocket.OPEN
-        && (zeroState === undefined || zeroState === 'connected')
+        && homeReady
         && resource.confirmed.seq >= (scope.expectedSeq ?? 0),
       offline,
       loaded: scope.hasSnapshot || scope.failed,
@@ -620,8 +578,6 @@ export function createHydraConnection({
       }
 
       clearTimeout(scope.subscriptionTimer)
-      scope.views?.close()
-      scope.views = undefined
       scope.subscription = null
       scope.subscribed = false
       scope.ready = false
@@ -636,7 +592,6 @@ export function createHydraConnection({
     scope.failed = false
     scope.subscriptionTimer = setTimeout(
       () => {
-        scope.views?.retry()
         subscribe({ scope })
         publish()
       },
@@ -656,41 +611,6 @@ export function createHydraConnection({
     )
   }
 
-  const readData = ({ scope }: { scope: Scope }) => {
-    if (scope.views) {
-      return scope.views
-    }
-
-    const options = {
-      hydraId: scope.id,
-      publish: ({
-        state,
-        queue,
-      }: {
-        state: HydraState
-        queue: HydraQueue
-      }) => {
-        scope.queue = queue
-        receiveState({
-          scope,
-          state,
-        })
-      },
-      failed: ({ message }: { message: string }) => {
-        scope.loadError = message
-        scope.readFailed = true
-        recoverReads()
-        publish()
-      },
-    }
-    scope.views = watch ? watch(options) : watchHydra({
-      ...options,
-      zero: openPageZero({ installation }),
-    })
-
-    return scope.views
-  }
-
   const markStale = () => {
     if (staleSince !== undefined || ![...scopes.values()].some(scope => scope.hasSnapshot)) {
       return
@@ -706,7 +626,7 @@ export function createHydraConnection({
   }
 
   const reconcileReads = () => {
-    if (staleSince === undefined || zeroState !== 'connected' || !physicalHydra || readsFailed()) {
+    if (staleSince === undefined || !homeReady || !physicalHydra) {
       return
     }
 
@@ -726,179 +646,6 @@ export function createHydraConnection({
       ms: performance.now() - staleSince,
     })
     staleSince = undefined
-    readAttempt = 0
-  }
-
-  const readInstallation = () => {
-    const options = {
-      hydras: ({ rows }: { rows: HydraSummary[] }) => {
-        updateHydras({ rows })
-
-        for (const hydra of rows) {
-          subscribe({ scope: scopeFor({ id: hydra.id }) })
-        }
-
-        publish()
-      },
-      settings: ({
-        settings,
-        revision,
-      }: {
-        settings: Settings
-        revision: number
-      }) => {
-        setLogMode({ mode: settings.logs })
-        sharedSettings().receive({
-          state: {
-            settings,
-            revision,
-          },
-        })
-      },
-      upgrade: ({ status }: { status: UpgradeStatus | undefined }) => {
-        upgrade = status
-        publish()
-      },
-      failure: ({ message = '' }: { message?: string }) => {
-        installationError = message
-        recoverReads()
-        publish()
-      },
-      connection: ({ state }: { state: ConnectionState['name'] }) => {
-        if (zeroState !== state) {
-          log({
-            operation: 'page.zero',
-            status: state,
-          })
-        }
-
-        zeroState = state
-
-        if (state !== 'connected') {
-          markStale()
-        } else {
-          reconcileReads()
-        }
-
-        recoverReads()
-        publish()
-      },
-    }
-
-    return watchShared ? watchShared(options) : watchInstallation({
-      ...options,
-      zero: openPageZero({ installation }),
-    })
-  }
-
-  // A closed Zero client never reads again, so the page opens a new one and reads every view through it.
-  const reopenZero = () => {
-    for (const scope of scopes.values()) {
-      scope.views?.close()
-      scope.views = undefined
-    }
-
-    installationViews?.close()
-    closePageZero()
-    zeroState = undefined
-    installationError = ''
-    installationViews = readInstallation()
-
-    for (const scope of scopes.values()) {
-      if (scope.subscribed) {
-        const refs = scope.page?.filter((
-          _,
-          index,
-        ) => scope.page?.[index - 1] === '--card') ?? []
-        void readData({ scope }).open({ refs })
-          .catch((error: unknown) => {
-            log({
-              level: 'warn',
-              operation: 'page.zero',
-              hydraId: scope.id,
-              error,
-            })
-          })
-      }
-    }
-  }
-
-  const readsFailed = () => {
-    const stopped = !!(zeroState && ZERO_STOPPED[zeroState])
-    const queryFailed = [...scopes.values()].some(scope => scope.subscribed && scope.readFailed)
-
-    return stopped || !!installationError || queryFailed
-  }
-
-  function recoverReads() {
-    if (!active || !readsFailed() || readRecovery || refreshingReads) {
-      return
-    }
-
-    markStale()
-
-    readRecovery = setTimeout(
-      async () => {
-        readRecovery = undefined
-
-        if (!active || !readsFailed()) {
-          return
-        }
-
-        if (socket?.readyState !== WebSocket.OPEN) {
-          recoverReads()
-
-          return
-        }
-
-        const version = generation
-        refreshingReads = true
-        log({
-          operation: 'page.recovery',
-          status: 'retry',
-          count: readAttempt,
-        })
-
-        try {
-          if (zeroState && ZERO_STOPPED[zeroState]) {
-            // Refresh the HttpOnly data cookie before replacing an unauthenticated client.
-            const response = await fetch(
-              location.href,
-              {
-                cache: 'no-store',
-                signal: AbortSignal.timeout(TOKEN_REFRESH_TIMEOUT_MS),
-              },
-            )
-
-            if (!active || version !== generation) {
-              return
-            }
-
-            if (response.ok) {
-              reopenZero()
-            }
-          } else {
-            installationViews?.retry()
-
-            for (const scope of scopes.values()) {
-              if (scope.subscribed && scope.readFailed) {
-                scope.views?.retry()
-              }
-            }
-          }
-        } catch (error) {
-          log({
-            level: 'warn',
-            operation: 'page.recovery',
-            error,
-          })
-        } finally {
-          refreshingReads = false
-          recoverReads()
-        }
-      },
-      reconnectDelay({ attempt: readAttempt++ }),
-    )
   }
 
   // A card the page is still creating has no row yet, so it is on its way rather than missing.
@@ -909,11 +656,10 @@ export function createHydraConnection({
     scope: Scope
     refs: string[]
   }) => {
-    const { unavailable } = await readData({ scope }).open({ refs })
     const shown = scope.resource.snapshot().view
 
     return {
-      unavailable: unavailable.filter(ref => !shown.cards[ref] && !shown.keys[ref]),
+      unavailable: refs.filter(ref => !shown.cards[ref] && !shown.keys[ref]),
     }
   }
 
@@ -924,8 +670,6 @@ export function createHydraConnection({
 
     scope.subscribed = true
     scope.subscription = crypto.randomUUID()
-
-    readData({ scope })
 
     scope.ready = false
     scope.actions = {}
@@ -956,8 +700,6 @@ export function createHydraConnection({
     })
     scope.hasSnapshot = true
 
-    scope.readFailed = false
-
     if (scope.ready) {
       clearTimeout(scope.subscriptionTimer)
       scope.loadError = ''
@@ -967,12 +709,11 @@ export function createHydraConnection({
 
     confirmSaves({ scope })
     publish(); flush()
-    // Zero's changes reach the page here, so this line is what one write costs it; the first load always logs.
     log({
       operation: 'page.update',
       detailed: !first,
       hydraId: scope.id,
-      name: 'zero',
+      name: 'socket',
       ms: performance.now() - handling,
     })
   }
@@ -1000,6 +741,73 @@ export function createHydraConnection({
   }
 
   const receive = ({ message }: { message: ServerMessage }) => {
+    if (message.type === 'home.snapshot' || message.type === 'home.delta' || message.type === 'home.ready') {
+      const previous = home
+
+      if (message.type === 'home.snapshot') {
+        home = message.home
+        homeCursor = message.cursor
+      } else if (message.type === 'home.delta' && home && homeCursor
+        && homeCursor.epoch === message.cursor.epoch && homeCursor.seq + 1 === message.cursor.seq) {
+        home = applyPageChanges({
+          before: home,
+          changes: message.changes,
+        })
+        homeCursor = message.cursor
+      } else if (message.type === 'home.ready' && homeCursor
+        && homeCursor.epoch === message.cursor.epoch && homeCursor.seq === message.cursor.seq) {
+        homeReady = true
+        reconcileReads()
+        publish()
+
+        return
+      } else {
+        homeCursor = undefined
+        homeReady = false
+        socket?.close()
+
+        return
+      }
+
+      if (home) {
+        updateHydras({ rows: home.hydras })
+        setLogMode({ mode: home.settings.settings.logs })
+        sharedSettings().receive({
+          state: {
+            settings: withDefaults({ stored: home.settings.settings }),
+            revision: home.settings.revision,
+          },
+        })
+        upgrade = home.upgrade ?? undefined
+
+        for (const [
+          id,
+          page,
+        ] of Object.entries(home.scopes)) {
+          const scope = scopeFor({ id })
+
+          if (previous?.scopes[id]?.state !== page.state || !scope.hasSnapshot) {
+            scope.queue = page.queue
+            receiveState({
+              scope,
+              state: {
+                ...emptyHydra(),
+                ...page.state,
+              },
+            })
+          } else if (previous.scopes[id]?.queue !== page.queue) {
+            scope.queue = page.queue
+          }
+
+          subscribe({ scope })
+        }
+      }
+
+      publish()
+
+      return
+    }
+
     if (message.type === 'pong') {
       return
     }
@@ -1060,7 +868,6 @@ export function createHydraConnection({
       if (!physicalHydra) {
         physicalHydra = scope.id
         scope.subscribed = true
-        readData({ scope })
         scope.subscription = message.subscription ?? null
         watchSubscription({ scope })
         subscribe({ scope: selection() })
@@ -1135,7 +942,6 @@ export function createHydraConnection({
       })
       const wasReady = scope.ready
 
-      // The loading deadline runs until Zero has shown this Hydra too.
       if (scope.hasSnapshot) {
         clearTimeout(scope.subscriptionTimer)
         scope.loadError = ''
@@ -1167,6 +973,7 @@ export function createHydraConnection({
     markStale()
     physicalHydra = null
     listed = false
+    homeReady = false
 
     for (const scope of scopes.values()) {
       clearTimeout(scope.subscriptionTimer)
@@ -1198,6 +1005,18 @@ export function createHydraConnection({
       '/ws',
       location.href,
     )
+    url.searchParams.set(
+      'home',
+      '1',
+    )
+
+    if (homeCursor) {
+      url.searchParams.set(
+        'cursor',
+        JSON.stringify(homeCursor),
+      )
+    }
+
     url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     url.searchParams.set(
       'token',
@@ -1326,7 +1145,6 @@ export function createHydraConnection({
         count: failures > 0 ? failures : undefined,
       })
       failures = 0
-      recoverReads()
       publish()
     }
 
@@ -1498,15 +1316,7 @@ export function createHydraConnection({
 
       scope.failed = false
       scope.loadError = ''
-      scope.readFailed = false
       scope.subscribed = false
-
-      if (zeroState && ZERO_STOPPED[zeroState]) {
-        reopenZero()
-      } else {
-        installationViews?.retry()
-        scope.views?.retry()
-      }
 
       subscribe({ scope })
       publish()
@@ -1518,8 +1328,6 @@ export function createHydraConnection({
     start() {
       active = true
       dropSnapshots()
-      installationError = ''
-      installationViews = readInstallation()
       const stopLog = startPageLog({
         send: ({ lines }) => {
           if (socket?.readyState !== WebSocket.OPEN) {
@@ -1573,8 +1381,6 @@ export function createHydraConnection({
         generation++
         clearTimeout(reconnect)
         clearInterval(watchdog)
-        clearTimeout(readRecovery)
-        readRecovery = undefined
         socket?.close()
         socket = null
         disconnected()
@@ -1583,14 +1389,6 @@ export function createHydraConnection({
           clearTimeout(request.timer)
         }
 
-        for (const scope of scopes.values()) {
-          scope.views?.close()
-          scope.views = undefined
-        }
-
-        installationViews?.close()
-        installationViews = undefined
-        closePageZero()
         removeEventListener(
           'popstate',
           pop,
