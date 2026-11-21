@@ -1,4 +1,4 @@
-import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readSync, statSync } from 'node:fs'
+import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { HydraError } from './errors.ts'
 import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
@@ -117,7 +117,6 @@ function truncateTail({
   fsyncSync(fd)
 }
 
-// Only the daemon repairs canonical logs; a complete bad record before the tail is never skipped.
 export function readLog({
   path,
   after = EMPTY,
@@ -186,7 +185,7 @@ export function readLog({
 
     if (after.bytes) {
       const boundary = Buffer.allocUnsafe(1)
-      readSync(
+      const bytes = readSync(
         fd,
         boundary,
         0,
@@ -194,13 +193,14 @@ export function readLog({
         after.bytes - 1,
       )
 
-      if (boundary[0] !== 10) {
+      if (bytes !== 1 || boundary[0] !== 10) {
         throw positionError({ path })
       }
     }
 
-    if (size > after.bytes) {
-      // Complete writes from a crashed daemon may still be waiting in the OS cache.
+    const hasUnverifiedTail = size > after.bytes
+
+    if (hasUnverifiedTail) {
       fdatasyncSync(fd)
     }
 
@@ -396,10 +396,17 @@ export function appendLog({
     return prepared.position
   }
 
-  const existing = statSync(
+  const existing = lstatSync(
     path,
     { throwIfNoEntry: false },
   )
+
+  if (existing && !existing.isFile()) {
+    throw corrupt({
+      path,
+      offset: 0,
+    })
+  }
 
   if ((existing?.size ?? 0) !== after.bytes) {
     throw new HydraError({
@@ -411,12 +418,21 @@ export function appendLog({
   privateDir({ dir: dirname(path) })
   const fd = openSync(
     path,
-    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     0o600,
   )
 
   try {
-    if (fstatSync(fd).size !== after.bytes) {
+    const opened = fstatSync(fd)
+
+    if (!opened.isFile()) {
+      throw corrupt({
+        path,
+        offset: 0,
+      })
+    }
+
+    if (opened.size !== after.bytes) {
       throw new HydraError({
         message: `${path} changed before append`,
         code: 'LOG_CHANGED',

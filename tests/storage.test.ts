@@ -1,4 +1,4 @@
-import { appendFileSync, fdatasyncSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, fdatasyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
@@ -331,11 +331,18 @@ test(
       '{invalid',
     )
     expect(readSnapshot({ dir })).toBeUndefined()
+    const path = join(
+      dir,
+      'snapshot.json',
+    )
+    rmSync(path)
+    mkdirSync(path)
+    expect(readSnapshot({ dir })).toBeUndefined()
   },
 )
 
 test(
-  'a canonical log symlink cannot repair or append to another file',
+  'canonical logs refuse symlinks and directories',
   () => {
     const dir = folder()
     const protectedPath = join(
@@ -376,6 +383,18 @@ test(
       protectedPath,
       'utf8',
     )).toBe(words)
+    rmSync(path)
+    mkdirSync(path)
+    expect(() => appendLog({
+      path,
+      after: EMPTY,
+      entries: [
+        message({
+          id: 'm_new',
+          text: 'New words',
+        }),
+      ],
+    })).toThrow(/corrupt at byte 0/)
   },
 )
 

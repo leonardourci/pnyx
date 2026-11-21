@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { validLogPosition, type LogPosition } from './log.ts'
 import { privateDir, replaceFile } from './storage.ts'
@@ -15,18 +15,20 @@ export interface FileSnapshot {
 }
 
 export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined {
-  let text: string
+  let fd: number
 
   try {
-    text = readFileSync(
+    fd = openSync(
       join(
         dir,
         'snapshot.json',
       ),
-      'utf8',
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const code = (error as NodeJS.ErrnoException).code
+
+    if (code === 'ENOENT' || code === 'ELOOP') {
       return undefined
     }
 
@@ -36,13 +38,22 @@ export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined
   let snapshot: Partial<FileSnapshot> | null
 
   try {
-    snapshot = JSON.parse(text)
+    if (!fstatSync(fd).isFile()) {
+      return undefined
+    }
+
+    snapshot = JSON.parse(readFileSync(
+      fd,
+      'utf8',
+    ))
   } catch (error) {
     if (error instanceof SyntaxError) {
       return undefined
     }
 
     throw error
+  } finally {
+    closeSync(fd)
   }
 
   if (!snapshot || snapshot.v !== 1 || typeof snapshot.at !== 'string'

@@ -332,6 +332,16 @@ test(
         }),
       ],
     })).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' })
+    await expect(home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        {
+          ...native,
+          n: 2,
+        },
+      ],
+    })).rejects.toMatchObject({ code: 'INVALID_EVENT' })
     await home.close()
     const path = join(
       dir,
@@ -968,12 +978,23 @@ test(
       home.changeTask({
         hydra: 'a',
         task: 'task',
-        decide: ({ read }) => [
-          fact({
-            id: 'dependent',
-            text: `Saw ${read({ hydra: 'a' })?.tasks.get('second')?.state?.words[0]?.text}`,
-          }),
-        ],
+        decide: ({ read }) => {
+          let text: string | undefined
+
+          try {
+            text = read({ hydra: 'a' })?.tasks.get('second')?.state?.words[0]?.text
+          } catch (error) {
+            expect(error).toMatchObject({ code: 'WRITE_FAILED' })
+            text = 'Fallback'
+          }
+
+          return [
+            fact({
+              id: 'dependent',
+              text: `Saw ${text}`,
+            }),
+          ]
+        },
       }),
     ])
     expect(writes.map(write => write.status)).toEqual([

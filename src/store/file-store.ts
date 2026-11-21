@@ -342,14 +342,19 @@ export function openFileStore<Hydra, Task>({
           })
         }
 
+        let dependencyFailure: HydraError | undefined
         const facts = job.decide({
           state: structuredClone(current?.value),
           read: ({ hydra }) => {
-            if (pending.size) {
-              const failure = commit()
+            if (dependencyFailure) {
+              throw dependencyFailure
+            }
 
-              if (failure) {
-                throw failure
+            if (pending.size) {
+              dependencyFailure = commit()
+
+              if (dependencyFailure) {
+                throw dependencyFailure
               }
             }
 
@@ -359,6 +364,10 @@ export function openFileStore<Hydra, Task>({
             })
           },
         })
+
+        if (dependencyFailure) {
+          throw dependencyFailure
+        }
 
         if (facts.some(fact => fact.t === 'moved')) {
           throw new HydraError({

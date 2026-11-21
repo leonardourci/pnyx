@@ -52,7 +52,7 @@ A move first syncs a `moved` fact in the task log, then renames the folder and s
 
 ## Snapshots and recovery
 
-Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep each task's folded worker byte cursor. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported or changed cache falls back to the logs. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
+Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep each task's folded worker byte cursor. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported or changed cache falls back to the logs, as does a snapshot path that points to a symlink or another nonregular file. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
 
 Worker facts carry `off`, the byte immediately after the consumed worker line. A new worker fact advances that cursor strictly; a retry uses the same native ID. The cursor is rebuilt from native facts if the snapshot is absent.
 

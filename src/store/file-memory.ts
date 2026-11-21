@@ -176,6 +176,11 @@ export function applyFileFacts<Value>({
   const receipts: (AcceptedFact & { duplicate: boolean })[] = []
 
   for (const fact of fileJson({ value: facts })) {
+    const prepared = prepareLog({
+      path,
+      after: next.position,
+      entries: [fact],
+    })
     const fingerprint = factDigest({ entry: fact })
     const known = next.accepted.get(fact.id)
 
@@ -194,11 +199,6 @@ export function applyFileFacts<Value>({
       continue
     }
 
-    const prepared = prepareLog({
-      path,
-      after: next.position,
-      entries: [fact],
-    })
     const entry = prepared.entries[0]!
     const value = reduce({
       state: structuredClone(next.value),
@@ -323,7 +323,7 @@ function replayFile<Value>({
       value = fileJson({
         value: reduce({
           state: value,
-          entry,
+          entry: structuredClone(entry),
           id,
         }),
       })
