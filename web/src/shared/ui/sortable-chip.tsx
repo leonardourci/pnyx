@@ -1,16 +1,13 @@
-import { motion } from 'motion/react'
-import { memo, type ComponentProps } from 'react'
+import type { ComponentProps } from 'react'
 import { Chip } from './chip.tsx'
 import { useSortItem, type SortItem } from './sortable.tsx'
-
-const AnimatedChip = memo(motion.create(Chip))
 
 export function SortableChip({
   item,
   disabledSort = false,
   className = '',
   ...props
-}: ComponentProps<typeof AnimatedChip> & {
+}: ComponentProps<typeof Chip> & {
   item: SortItem
   disabledSort?: boolean
 }) {
@@ -21,8 +18,7 @@ export function SortableChip({
   const attributes = disabledSort ? {} : sort.attributes
 
   return (
-    <AnimatedChip
-      layout="position"
+    <Chip
       {...props}
       className={`${className} ${sort.isDragging ? 'opacity-0' : ''}`}
       ref={sort.setNodeRef}

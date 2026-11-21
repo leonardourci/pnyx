@@ -171,7 +171,7 @@ export function TaskFamily({
         }}
       />
       {children.length > 0 && (
-        <FoldContent open={childrenOpen} layout={false}>
+        <FoldContent open={childrenOpen}>
           <Subtasks data-sort-surface={`children:${card.id}`}>
             <SortGroup namespace={`tasks:${hydraId}`} id={`children:${card.id}`} items={shown.map(child => child.id)}>
               <ProjectTasks
