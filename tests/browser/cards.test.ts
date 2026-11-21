@@ -1221,9 +1221,13 @@ test(
     await page.press('Enter');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .hydra-title[aria-label="Edit ${name}"]');
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', ${JSON.stringify(prose)});
-    const chatBounded = await page.eval(() => {
+    await page.press('Shift+Enter');
+    const chatDraft = await page.eval(() => {
       const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
-      return field.scrollHeight > field.clientHeight && ['auto', 'scroll'].includes(getComputedStyle(field).overflowY) && field.getBoundingClientRect().height <= Math.min(innerHeight / 2, 480);
+      return {
+        bounded: field.scrollHeight > field.clientHeight && ['auto', 'scroll'].includes(getComputedStyle(field).overflowY) && field.getBoundingClientRect().height <= Math.min(innerHeight / 2, 480),
+        text: field.value,
+      };
     });
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', '');
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
@@ -1277,7 +1281,7 @@ test(
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, ...reachability, renameAtEmojiBoundary, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
+    console.log(JSON.stringify({ fields: { ...fields, ...reachability, renameAtEmojiBoundary, renameFits, titleGrows: fields.titleHeight > titleHeight }, chatDraft, card }));
   `,
     }))
     await until({
@@ -1301,7 +1305,10 @@ test(
       askEndVisible: true,
       saveReachable: true,
       multiLine: true,
-      chatBounded: true,
+    })
+    expect(result.chatDraft).toEqual({
+      bounded: true,
+      text: `${prose}\n`,
     })
     expect(result.card).toEqual({
       expanded: 'false',

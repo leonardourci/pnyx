@@ -123,6 +123,47 @@ function pasteSingleLine({ event }: { event: ClipboardEvent<HTMLTextAreaElement>
   ))
 }
 
+const implicitSubmissionInputTypes = new Set([
+  'text',
+  'search',
+  'tel',
+  'url',
+  'email',
+  'password',
+  'date',
+  'month',
+  'week',
+  'time',
+  'datetime-local',
+  'number',
+])
+
+function submitFromInput({ field }: { field: HTMLTextAreaElement }) {
+  const form = field.form
+
+  if (!form) {
+    return
+  }
+
+  const controls = Array.from(form.elements)
+  const submitter = controls.find(control =>
+    (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit')
+
+  if (submitter instanceof HTMLElement) {
+    submitter.click()
+
+    return
+  }
+
+  const hasAnotherField = controls.some(control =>
+    (control instanceof HTMLInputElement && implicitSubmissionInputTypes.has(control.type))
+    || (control !== field && control instanceof HTMLTextAreaElement && control.getAttribute('aria-multiline') === 'false'))
+
+  if (!hasAnotherField) {
+    form.requestSubmit()
+  }
+}
+
 export function Input({
   onChange,
   onKeyDown,
@@ -163,19 +204,8 @@ export function Input({
         const submit = !event.defaultPrevented && !modified
         event.preventDefault()
 
-        const form = event.currentTarget.form
-
-        if (!submit || !form) {
-          return
-        }
-
-        const button = Array.from(form.elements).find(control =>
-          (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit')
-
-        if (button instanceof HTMLElement) {
-          button.click()
-        } else if (form.querySelectorAll('textarea[aria-multiline="false"]').length === 1) {
-          form.requestSubmit()
+        if (submit) {
+          submitFromInput({ field: event.currentTarget })
         }
       }}
     />
