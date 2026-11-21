@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { loadHydra } from '#app/store.ts'
+import { eventTime } from '#app/event-log.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
 import { failHydraInput } from '#hydra/received.ts'
@@ -1547,7 +1548,10 @@ test(
 
         writer.append({ event: decision.event })
 
-        return decision.event.seq
+        return {
+          seq: decision.event.seq,
+          at: decision.event.at,
+        }
       },
     })
     await hydra.owner({
@@ -1559,13 +1563,18 @@ test(
         'After expired cursor',
       ],
     })
+    expect(eventTime({
+      hydraId: hydra.id,
+      seq: expired.seq,
+      exact: true,
+    })).toBe(expired.at)
     await pnyx.restart()
     expect((await hydra.ownerRefused({
       args: [
         'hydra',
         'check',
         '--after',
-        String(expired),
+        String(expired.seq),
       ],
     })).code).toBe('CURSOR_EXPIRED')
   },
