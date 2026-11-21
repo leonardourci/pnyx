@@ -43,8 +43,6 @@ export function Input({
   return (
     <Textarea
       {...props}
-      rows={1}
-      data-single-line
       aria-multiline={false}
       onChange={event => {
         event.currentTarget.value = event.currentTarget.value.replace(
@@ -75,7 +73,7 @@ export function Input({
 
           if (button) {
             button.click()
-          } else if (form?.querySelectorAll('[data-single-line]').length === 1) {
+          } else if (form?.querySelectorAll('textarea[aria-multiline="false"]').length === 1) {
             form.requestSubmit()
           }
         }
