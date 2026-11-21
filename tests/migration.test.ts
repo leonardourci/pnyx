@@ -681,7 +681,7 @@ test(
 
     const walBefore = rows({text: "select current_setting('wal_level') as level"})
     expect(walBefore).toEqual([{level: 'replica'}])
-    const setup = await pnyxAxi({
+    const setup = await operation({
       args: [
         'setup',
         'postgres',
