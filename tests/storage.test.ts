@@ -1,4 +1,4 @@
-import { appendFileSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
@@ -316,5 +316,50 @@ test(
       '{invalid',
     )
     expect(readSnapshot({ dir })).toBeUndefined()
+  },
+)
+
+test(
+  'a canonical log symlink cannot repair or append to another file',
+  () => {
+    const dir = folder()
+    const protectedPath = join(
+      dir,
+      'owner-words.txt',
+    )
+    const path = join(
+      dir,
+      'task.log',
+    )
+    const words = 'Owner words must survive'
+    writeFileSync(
+      protectedPath,
+      words,
+    )
+    symlinkSync(
+      protectedPath,
+      path,
+    )
+    expect(() => readLog({
+      path,
+      accept: () => undefined,
+    })).toThrow()
+    expect(() => appendLog({
+      path,
+      after: {
+        bytes: Buffer.byteLength(words),
+        n: 1,
+      },
+      entries: [
+        message({
+          id: 'm_new',
+          text: 'New words',
+        }),
+      ],
+    })).toThrow()
+    expect(readFileSync(
+      protectedPath,
+      'utf8',
+    )).toBe(words)
   },
 )

@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, fsyncSync, ftruncateSync, openSync, readSync, statSync } from 'node:fs'
+import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, openSync, readSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { HydraError } from './errors.ts'
 import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
@@ -127,7 +127,7 @@ export function readLog({
   try {
     fd = openSync(
       path,
-      'r+',
+      constants.O_RDWR | constants.O_NOFOLLOW,
     )
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -337,7 +337,7 @@ export function appendLog({
   privateDir({ dir: dirname(path) })
   const fd = openSync(
     path,
-    'a',
+    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
     0o600,
   )
 
@@ -353,6 +353,7 @@ export function appendLog({
       fd,
       path,
       data: buffer,
+      dataOnly: true,
     })
 
     if (!existing) {

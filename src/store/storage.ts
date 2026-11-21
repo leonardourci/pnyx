@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { HydraError } from './errors.ts'
 import { pnyxHome } from './paths.ts'
@@ -71,10 +71,12 @@ export function writeOpenFile({
   fd,
   path,
   data,
+  dataOnly = false,
 }: {
   fd: number
   path: string
   data: string | Buffer
+  dataOnly?: boolean
 }): void {
   fchmodSync(
     fd,
@@ -98,7 +100,11 @@ export function writeOpenFile({
     written += bytes
   }
 
-  fsyncSync(fd)
+  if (dataOnly) {
+    fdatasyncSync(fd)
+  } else {
+    fsyncSync(fd)
+  }
 }
 
 // Writes the whole file beside the old one and renames it into place, so a reader sees one or the other.
