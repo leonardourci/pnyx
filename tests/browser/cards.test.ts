@@ -1252,6 +1252,13 @@ test(
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
     await page.press('Shift+Enter');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]', ${JSON.stringify('A'.repeat(MAX_BRIEF_LENGTH + 1))});
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .task-create button:disabled');
+    const canSaveOversizedDescription = await page.eval(() => {
+      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      return Array.from(form.querySelectorAll('button')).some(button => button.textContent.trim() === 'Save task' && !button.disabled);
+    });
+    if (canSaveOversizedDescription) throw new Error('Save task accepts an oversized description');
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
@@ -1569,3 +1576,4 @@ test.each([
     })
   },
 )
+import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'

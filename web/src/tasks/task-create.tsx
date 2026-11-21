@@ -9,6 +9,11 @@ import { hasPendingImage } from '#web-hydra/draft.ts'
 import { useCardAgent, RepositoryPicker, type RepositoryOption } from '#web-workers/card-agent.tsx'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from '#web-app/connection.ts'
+import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
+
+function descriptionExceedsLimit({ text }: { text: string }): boolean {
+  return text.length > MAX_BRIEF_LENGTH && !!text.trim()
+}
 
 export interface TaskDraft {
   title: string
@@ -119,12 +124,14 @@ export function TaskCreate({
     commentsKey: `${storageIdentity}:new:${attempt.current}:comments`,
     saveText: ({ text }) => prompt.set(text),
   })
-  const imagesLoading = useSyncExternalStore(
+  const description = useSyncExternalStore(
     drafts.subscribe,
-    () => hasPendingImage({ text: drafts.read().text }),
+    () => drafts.read().text,
   )
+  const imagesLoading = hasPendingImage({ text: description })
+  const descriptionTooLong = descriptionExceedsLimit({ text: description })
   const needsRepository = repositories.length > 1 && !repository
-  const disabled = !connected || busy || !title.trim() || imagesLoading
+  const disabled = !connected || busy || !title.trim() || imagesLoading || descriptionTooLong
 
   const save = async ({
     start = false,
@@ -133,7 +140,10 @@ export function TaskCreate({
     start?: boolean
     text?: string
   } = {}) => {
-    if (disabled || hasPendingImage({ text }) || needsRepository && start) {
+    const invalidDescription = hasPendingImage({ text }) || descriptionExceedsLimit({ text })
+    const missingRepository = start && needsRepository
+
+    if (disabled || invalidDescription || missingRepository) {
       return
     }
 
@@ -288,6 +298,7 @@ export function TaskCreate({
         }}
         notify={notify}
       />
+      {descriptionTooLong && <p className="muted small">A description holds up to {MAX_BRIEF_LENGTH} characters</p>}
       <div className="flex min-w-0 items-center gap-2">
         <Button
           disabled={disabled}
