@@ -769,6 +769,11 @@ export function createHydraConnection() {
       } else if (message.type === 'home.ready' && homeCursor
         && homeCursor.epoch === message.cursor.epoch && homeCursor.seq === message.cursor.seq) {
         homeReady = true
+
+        if (home) {
+          updateHydras({ rows: home.hydras })
+        }
+
         reconcileReads()
         publish()
 
@@ -811,7 +816,9 @@ export function createHydraConnection() {
             scope.queue = page.queue
           }
 
-          subscribe({ scope })
+          if (homeReady) {
+            subscribe({ scope })
+          }
         }
       }
 
@@ -883,6 +890,10 @@ export function createHydraConnection() {
         scope.subscription = message.subscription ?? null
         watchSubscription({ scope })
         subscribe({ scope: selection() })
+
+        for (const id of Object.keys(home?.scopes ?? {})) {
+          subscribe({ scope: scopeFor({ id }) })
+        }
 
         for (const hydra of hydras.snapshot().view) {
           subscribe({ scope: scopeFor({ id: hydra.id }) })
