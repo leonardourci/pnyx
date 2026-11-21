@@ -284,7 +284,7 @@ export function createRoutineHelper({
     }
   }
 
-  const append = ({ change }: { change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }> }) => {
+  const append = async ({ change }: { change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }> }) => {
     const id = change.type === 'hydra.helper-finished'
       ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`
     const transaction = change.type === 'hydra.helper-finished' ? {
@@ -363,13 +363,13 @@ export function createRoutineHelper({
     }
 
     if (transaction) {
-      withWriter({
+      await withWriter({
         hydraId,
         transaction,
         fn: save,
       })
     } else {
-      withWriter({
+      await withWriter({
         hydraId,
         fn: save,
       })
@@ -404,7 +404,7 @@ export function createRoutineHelper({
       }),
     })
     await defer({
-      run: () => append({ change }),
+      run: async () => await append({ change }),
       cleanup: true,
     })
   }
@@ -834,7 +834,7 @@ export function createRoutineHelper({
 
       try {
         await defer({
-          run: () => append({
+          run: async () => await append({
             change: {
               type: 'hydra.helper-started',
               data: batch,
