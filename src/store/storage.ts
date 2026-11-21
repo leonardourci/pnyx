@@ -36,8 +36,8 @@ export function privateDir({
     )
   }
 
-  if (durable && firstCreated) {
-    const parent = dirname(resolve(firstCreated))
+  if (durable) {
+    const parent = dirname(resolve(firstCreated ?? dir))
 
     for (let current = resolve(dir); current !== parent; current = dirname(current)) {
       syncDirectory({ dir: current })

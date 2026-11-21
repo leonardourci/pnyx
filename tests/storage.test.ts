@@ -1,9 +1,14 @@
-import { appendFileSync, fdatasyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { appendLog, readLog, type LogEntry, type LogFact, type LogPosition } from '#store/log.ts'
 import { readSnapshot, writeSnapshot } from '#store/snapshot.ts'
+import { createHydraFiles } from '#store/file-home.ts'
+
+vi.hoisted(() => {
+  vi.resetModules()
+})
 
 vi.mock(
   'node:fs',
@@ -13,6 +18,7 @@ vi.mock(
     return {
       ...filesystem,
       fdatasyncSync: vi.fn(filesystem.fdatasyncSync),
+      fsyncSync: vi.fn(filesystem.fsyncSync),
     }
   },
 )
@@ -41,6 +47,168 @@ const message = ({
   id,
   text,
 })
+
+async function recordSyncs({
+  reject,
+}: {
+  reject?: ({ inode }: { inode: number }) => boolean
+} = {}) {
+  const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+  const synced = new Set<number>()
+
+  // eslint-disable-next-line pnyx/object-params -- Node's sync replacement receives a file descriptor.
+  const syncFile: typeof filesystem.fsyncSync = fd => {
+    const inode = filesystem.fstatSync(fd).ino
+
+    if (reject?.({ inode })) {
+      throw Object.assign(
+        new Error('directory sync outage'),
+        { code: 'EIO' },
+      )
+    }
+
+    filesystem.fsyncSync(fd)
+    synced.add(inode)
+  }
+
+  vi.mocked(fsyncSync).mockImplementation(syncFile)
+
+  return {
+    synced,
+    restore: () => vi.mocked(fsyncSync).mockImplementation(filesystem.fsyncSync),
+  }
+}
+
+test(
+  'an append publishes the new log directory in its parent',
+  async () => {
+    const parent = folder()
+    const syncs = await recordSyncs()
+
+    try {
+      appendLog({
+        path: join(
+          parent,
+          'logs/task.log',
+        ),
+        after: EMPTY,
+        entries: [
+          message({
+            id: 'new',
+            text: 'Saved',
+          }),
+        ],
+      })
+      expect(syncs.synced.has(statSync(parent).ino)).toBe(true)
+      expect(syncs.synced.has(statSync(join(
+        parent,
+        'logs',
+      )).ino)).toBe(true)
+    } finally {
+      syncs.restore()
+    }
+  },
+)
+
+test(
+  'recovery finishes a failed sync of a new log name before returning its position',
+  async () => {
+    const parent = folder()
+    const inode = statSync(parent).ino
+    const path = join(
+      parent,
+      'task.log',
+    )
+    let outage = true
+    const syncs = await recordSyncs({
+      reject: ({ inode: current }) => outage && existsSync(path) && current === inode,
+    })
+
+    try {
+      expect(() => appendLog({
+        path,
+        after: EMPTY,
+        entries: [
+          message({
+            id: 'uncertain',
+            text: 'Saved',
+          }),
+        ],
+      })).toThrow(/sync outage/)
+      expect(existsSync(path)).toBe(true)
+      outage = false
+      syncs.synced.clear()
+      expect(readLog({
+        path,
+        accept: () => undefined,
+      }).n).toBe(1)
+      expect(syncs.synced.has(inode)).toBe(true)
+    } finally {
+      syncs.restore()
+    }
+  },
+)
+
+test(
+  'retrying Hydra creation syncs the home even when its hydras directory already exists',
+  async () => {
+    const home = folder()
+    const inode = statSync(home).ino
+    let outage = true
+    const syncs = await recordSyncs({ reject: ({ inode: current }) => outage && current === inode })
+    const creating = {
+      home,
+      hydra: 'a',
+      entries: [
+        {
+          ...message({
+            id: 'config',
+            text: 'Config',
+          }),
+          t: 'config',
+        },
+      ],
+    }
+
+    try {
+      expect(() => createHydraFiles(creating)).toThrow(/sync outage/)
+      expect(existsSync(join(
+        home,
+        'hydras',
+      ))).toBe(true)
+      outage = false
+      syncs.synced.clear()
+      expect(createHydraFiles(creating).n).toBe(1)
+      expect(syncs.synced.has(inode)).toBe(true)
+    } finally {
+      syncs.restore()
+    }
+  },
+)
+
+test(
+  'facts that change during JSON encoding are refused before a log is created',
+  () => {
+    const path = join(
+      folder(),
+      'task.log',
+    )
+    expect(() => appendLog({
+      path,
+      after: EMPTY,
+      entries: [
+        {
+          ...message({
+            id: 'spoofed',
+            text: 'Original',
+          }),
+          toJSON: () => ({ unexpected: true }),
+        },
+      ],
+    })).toThrow(/plain JSON/)
+    expect(existsSync(path)).toBe(false)
+  },
+)
 
 test(
   'task logs retain native ids and Unicode while resuming at a saved byte position',
@@ -95,10 +263,13 @@ test(
       bytes: statSync(path).size,
       n: 3,
     })
-    expect(readFileSync(
+    expect(JSON.parse(readFileSync(
       path,
       'utf8',
-    ).startsWith(`{"n":1,"at":"${AT}","by":"owner","t":"say","id":"${first.id}"`)).toBe(true)
+    ).split('\n')[0]!)).toEqual({
+      n: 1,
+      ...first,
+    })
     const before = readFileSync(path)
     expect(() => appendLog({
       path,
@@ -250,7 +421,7 @@ test(
       },
       {
         bytes: end.bytes - 1,
-        n: 0,
+        n: 1,
       },
     ]) {
       expect(() => readLog({

@@ -1,5 +1,6 @@
 import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { HydraError } from './errors.ts'
 import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
 
@@ -30,6 +31,33 @@ export interface LogFact {
 
 export interface LogEntry extends LogFact {
   n: number
+}
+
+export function plainJson<Value>({ value }: { value: Value }): Value {
+  try {
+    const encoded = JSON.stringify(value)
+
+    if (encoded === undefined) {
+      throw new Error('undefined is not a JSON value')
+    }
+
+    const decoded = JSON.parse(encoded) as Value
+
+    if (!isDeepStrictEqual(
+      value,
+      decoded,
+    )) {
+      throw new Error('the value changes when encoded as JSON')
+    }
+
+    return decoded
+  } catch (cause) {
+    throw new HydraError({
+      code: 'INVALID_EVENT',
+      message: 'file-store values must be plain JSON',
+      cause,
+    })
+  }
 }
 
 const EMPTY: LogPosition = {
@@ -178,6 +206,7 @@ export function readLog({
     }
 
     const size = opened.size
+    syncDirectory({ dir: dirname(path) })
 
     if (after.bytes > size) {
       throw positionError({ path })
@@ -347,19 +376,21 @@ export function prepareLog({
       })
     }
 
-    const numbered = entryOf({
-      value: {
+    const numbered = plainJson({
+      value: entryOf({
+        value: {
+          n: after.n + index + 1,
+          at,
+          by,
+          t,
+          id,
+          ...fields,
+        },
+        path,
+        offset: after.bytes,
         n: after.n + index + 1,
-        at,
-        by,
-        t,
-        id,
-        ...fields,
-      },
-      path,
-      offset: after.bytes,
-      n: after.n + index + 1,
-      writing: true,
+        writing: true,
+      }),
     })
     numberedEntries.push(numbered)
 
@@ -415,7 +446,10 @@ export function appendLog({
     })
   }
 
-  privateDir({ dir: dirname(path) })
+  privateDir({
+    dir: dirname(path),
+    durable: true,
+  })
   const fd = openSync(
     path,
     constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT
