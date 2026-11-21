@@ -1216,7 +1216,10 @@ test(
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
     const titleField = '[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]';
-    await page.fill(titleField, ${JSON.stringify(title.replace('complete title', 'complete\r\n title'))});
+    await page.fill(titleField, ${JSON.stringify(title.replace(
+      'complete title',
+      'complete\r\n title',
+    ))});
     const normalizedTitle = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').value);
     await page.press('Shift+Enter');
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]', ${JSON.stringify(prose)});
@@ -1246,7 +1249,10 @@ test(
         ],
       }).length === 1,
     })
-    const { fields, card } = JSON.parse(result)
+    const {
+      fields,
+      card,
+    } = JSON.parse(result)
     expect(fields).toMatchObject({
       renameFits: true,
       titleFits: true,
