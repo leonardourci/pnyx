@@ -19,6 +19,7 @@ export const NEITHER_REASON = 'Neither requires less than 15,000 tokens since th
 export const canSkipCompaction = ({ tokens }: { tokens: number }) => tokens < NEITHER_LIMIT
 
 export interface HistoryMilestone extends HydraOperation {
+  receipts?: Extract<HydraEvent, { type: 'hydra.operation' }>[]
   seq: number
   through: number
   summary?: string
@@ -735,6 +736,14 @@ export function applyHistory({
     through,
     seq: event.seq,
   }
+
+  if (event.type === 'hydra.operation' && operation.kind === 'inscribe') {
+    milestone.receipts = [
+      ...previous?.receipts ?? [],
+      structuredClone(event),
+    ]
+  }
+
   state.historyMilestones = [
     ...milestones.filter(item => item.id !== operation.id),
     milestone,

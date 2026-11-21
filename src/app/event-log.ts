@@ -1,7 +1,7 @@
 import { log } from './diagnostics.ts'
 import type { HydraEvent } from './model.ts'
 import { query } from '#store/postgres.ts'
-import { hydraExists } from './store.ts'
+import { heldHydra, hydraExists } from './store.ts'
 import { hydraDir } from './home-migration.ts'
 import { readLog } from './legacy-log.ts'
 
@@ -104,6 +104,79 @@ export function readEvents({ ...selection }: EventSelection): HydraEvent[] {
   return selectedEvents(selection)
 }
 
+export function readChanges({ ...selection }: EventSelection): HydraEvent[] {
+  const live = heldHydra({ hydraId: selection.hydraId })
+  const milestones = live?.state.historyMilestones ?? []
+  const receipts = milestones.flatMap(milestone => milestone.receipts ?? [])
+  const recent = [
+    ...live?.pending ?? [],
+    ...live?.changes ?? [],
+    ...receipts,
+  ]
+  let cards = selection.cardIds
+
+  if (!cards && selection.cardId !== undefined) {
+    cards = [selection.cardId]
+  }
+
+  const matches = recent.filter(event => {
+    const withinRange = event.seq > (selection.after ?? 0)
+      && (selection.before === undefined || event.seq < selection.before)
+
+    if (!withinRange) {
+      return false
+    }
+
+    if (selection.types && !selection.types.includes(event.type)) {
+      return false
+    }
+
+    if (selection.ids && !selection.ids.includes(event.id)) {
+      return false
+    }
+
+    if (selection.seqs && !selection.seqs.includes(event.seq)) {
+      return false
+    }
+
+    if (!cards || cards.includes(event.cardId)) {
+      return true
+    }
+
+    if (event.type === 'task.session') {
+      return cards.includes(event.data.before ?? '') || cards.includes(event.data.after ?? '')
+    }
+
+    if (event.type !== 'hydra.message') {
+      return false
+    }
+
+    return cards.includes(event.data.task ?? '') || cards.some(card =>
+      event.data.text.includes(card) || event.data.text.includes(encodeURIComponent(card)))
+  })
+  const events = new Map(selectedEvents(selection).map(event => [
+    event.seq,
+    event,
+  ]))
+
+  for (const event of matches) {
+    events.set(
+      event.seq,
+      event,
+    )
+  }
+
+  const ordered = [...events.values()].sort((
+    a,
+    b,
+  ) => selection.descending ? b.seq - a.seq : a.seq - b.seq)
+
+  return ordered.slice(
+    0,
+    selection.limit,
+  )
+}
+
 const EVENT_PAGE_SIZE = 200
 
 // Scans that need old history retain only one bounded page, in either direction.
@@ -153,6 +226,31 @@ export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Ge
   }
 }
 
+export function* scanChanges({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+  let bounds: Pick<EventSelection, 'after' | 'before'> = {}
+  let page = readChanges({
+    ...selection,
+    ...bounds,
+    limit: EVENT_PAGE_SIZE,
+  })
+
+  while (page.length) {
+    yield* page
+
+    if (page.length < EVENT_PAGE_SIZE) {
+      return
+    }
+
+    const edge = page.at(-1)!.seq
+    bounds = selection.descending ? { before: edge } : { after: edge }
+    page = readChanges({
+      ...selection,
+      ...bounds,
+      limit: EVENT_PAGE_SIZE,
+    })
+  }
+}
+
 // A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.
 export function eventsOrLegacy({
   hydraId,
@@ -175,6 +273,41 @@ export function eventsOrLegacy({
 
 const POSITION_BATCH = 500
 
+interface EventClock {
+  seq: number
+  at: string
+  complete?: boolean
+}
+
+function observedTimes({ hydraId }: { hydraId: string }): EventClock[] {
+  const live = heldHydra({ hydraId })
+
+  if (!live) {
+    return []
+  }
+
+  const milestones = live.state.historyMilestones ?? []
+  const receipts = milestones.flatMap(milestone => milestone.receipts ?? [])
+  const times: EventClock[] = [
+    ...live.pending,
+    ...live.changes,
+    ...receipts,
+    ...live.state.nativeTimes?.map(clock => ({
+      ...clock,
+      complete: true,
+    })) ?? [],
+  ]
+
+  if (live.state.changedAt) {
+    times.push({
+      seq: live.state.seq,
+      at: live.state.changedAt,
+    })
+  }
+
+  return times.filter(clock => clock.seq <= live.state.seq)
+}
+
 // A native entry has a time but no log position: it takes the seq of the first event after its time, or the next seq when
 // no event follows. The `at` index finds that event without reading every later one, and each statement covers a bounded
 // batch of the distinct times.
@@ -191,6 +324,29 @@ export function eventPositions({
   const valid = entries.filter(entry => Number.isFinite(Date.parse(entry.at ?? '')))
   const times = [...new Set(valid.map(entry => new Date(entry.at!).toISOString()))]
   const seqs = new Map<string, number>()
+  const observed = observedTimes({ hydraId }).sort((
+    a,
+    b,
+  ) => a.at.localeCompare(b.at)
+    || a.seq - b.seq || Number(!a.complete) - Number(!b.complete))
+  const nextObserved = new Map<string, EventClock>()
+  let position = 0
+
+  for (const time of times.toSorted()) {
+    while (position < observed.length) {
+      const clock = observed[position]!
+
+      if (clock.at > time || (clock.complete && clock.at === time)) {
+        nextObserved.set(
+          time,
+          clock,
+        )
+        break
+      }
+
+      position++
+    }
+  }
 
   for (let start = 0; start < times.length; start += POSITION_BATCH) {
     const batch = times.slice(
@@ -200,7 +356,9 @@ export function eventPositions({
     const [found] = query({
       statements: [
         {
-          text: `select entry.at as at, coalesce((select min(seq) from events where hydra_id = $1 and at =
+          text: `select entry.at as at,
+        (select min(at) from events where hydra_id = $1 and at > entry.at) as next_at,
+        coalesce((select min(seq) from events where hydra_id = $1 and at =
         (select min(at) from events where hydra_id = $1 and at > entry.at)),
       (select coalesce(max(seq), 0) + 1 from events where hydra_id = $1)) as seq
       from unnest($2::text[]) entry(at)`,
@@ -212,13 +370,28 @@ export function eventPositions({
       ],
     }) as {
       at: string
+      next_at: string | null
       seq: number
     }[][]
 
     for (const row of found!) {
+      const clock = nextObserved.get(row.at)
+      let seq = Number(row.seq)
+
+      if (clock && (row.next_at === null || clock.at < row.next_at
+        || (clock.at === row.next_at && clock.seq < seq))) {
+        seq = clock.seq
+      } else if (row.next_at === null && !clock) {
+        const current = heldHydra({ hydraId })?.state.seq ?? 0
+        seq = Math.max(
+          seq,
+          current + 1,
+        )
+      }
+
       seqs.set(
         row.at,
-        Number(row.seq),
+        seq,
       )
     }
   }
@@ -239,16 +412,27 @@ export function eventTime({
   const [rows] = query({
     statements: [
       {
-        text: 'select at from events where hydra_id = $1 and seq <= $2 order by seq desc limit 1',
+        text: 'select at, seq from events where hydra_id = $1 and seq <= $2 order by seq desc limit 1',
         values: [
           hydraId,
           seq,
         ],
       },
     ],
-  }) as { at: string }[][]
+  }) as {
+    at: string
+    seq: number
+  }[][]
 
-  return rows![0]?.at
+  let latest = rows![0]
+
+  for (const clock of observedTimes({ hydraId })) {
+    if (clock.seq <= seq && (!latest || clock.seq > Number(latest.seq))) {
+      latest = clock
+    }
+  }
+
+  return latest?.at
 }
 
 // The log positions a time bounds: the first event recorded at or after it and the last one at or before it. Event times

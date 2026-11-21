@@ -1,6 +1,7 @@
 import { sessionId } from './session-attachments.ts'
 import { sessionFields } from './session-facts.ts'
 import { scanEvents } from '#app/event-log.ts'
+import { loadHydra } from '#app/store.ts'
 
 export function taskSessions({
   hydraId,
@@ -10,6 +11,12 @@ export function taskSessions({
   ids: Set<string>
 }): Set<string> {
   const sessions = new Set<string>()
+
+  for (const session of Object.values(loadHydra({ hydraId }).state.sessions ?? {})) {
+    if (ids.has(session.originCardId) || ids.has(session.taskId ?? '')) {
+      sessions.add(session.id)
+    }
+  }
 
   for (const event of scanEvents({
     hydraId,

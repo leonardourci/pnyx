@@ -9,7 +9,7 @@ import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { declaredState } from '#tasks/declarations.ts'
 import { briefChange } from '#tasks/updates.ts'
-import { readEvents } from './event-log.ts'
+import { readChanges } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '#memory/workers.ts'
@@ -456,11 +456,20 @@ export function commit(
       let out: Output
 
       if (seq !== undefined) {
-        // eventIds is rebuilt from this Hydra's log, so its seq always names a saved event.
-        const original = readEvents({
+        // Observations have receipts only while they remain in the daemon's recent changes.
+        const original = readChanges({
           hydraId,
           seqs: [seq],
-        })[0]!
+        })[0]
+
+        if (!original) {
+          throw new HydraError({
+            code: 'RECEIPT_EXPIRED',
+            message: `observation receipt expired: ${meta.id}`,
+            help: ['Read the current task or Hydra before sending another observation'],
+          })
+        }
+
         out = originalReceipt({
           state: writer.state,
           id: meta.id!,

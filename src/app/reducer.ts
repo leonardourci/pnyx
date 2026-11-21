@@ -53,6 +53,7 @@ function apply({
   }
 
   state.seq = event.seq
+  state.changedAt = event.at
   recordEventId({
     state,
     id: event.id,

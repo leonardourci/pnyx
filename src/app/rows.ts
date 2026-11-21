@@ -1043,7 +1043,10 @@ export function stateFromRows({
   for (const {
     id,
     seq,
-  } of events) {
+  } of [
+      ...events,
+      ...state.historyMilestones?.flatMap(milestone => milestone.receipts ?? []) ?? [],
+    ]) {
     recordEventId({
       state,
       id,

@@ -1,4 +1,4 @@
-import type { HydraState } from './model.ts'
+import type { HydraEvent, HydraState } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { homeDatabase, homeScoped, query, storable } from '#store/postgres.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
@@ -22,6 +22,8 @@ export type Held = {
   saved: SavedRows
   // The seq of the last committed write; state.seq runs ahead of it while a write appends.
   committed: number
+  changes: HydraEvent[]
+  pending: HydraEvent[]
   // Set when a failed write could not read the Hydra back; the next read or write tries again.
   stale?: boolean
   // Called after each committed write, and after a failed one is read back, so the server shows the change.
@@ -213,6 +215,8 @@ function readHydra({
     state: rows?.state ?? emptyHydra(),
     saved: rows?.saved ?? emptySaved(),
     committed: rows?.state.seq ?? 0,
+    changes: [],
+    pending: [],
     changed: () => undefined,
   }
 }

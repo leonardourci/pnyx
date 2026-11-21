@@ -1,4 +1,4 @@
-import { readEvents } from '#app/event-log.ts'
+import { readChanges } from '#app/event-log.ts'
 import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
@@ -186,7 +186,7 @@ export function hydraInscribe({
   const state = loadHydra({ hydraId }).state
   const m = meta({ values })
   const savedSeq = m.id ? state.eventIds[m.id] : undefined
-  const saved = savedSeq === undefined ? undefined : readEvents({
+  const saved = savedSeq === undefined ? undefined : readChanges({
     hydraId,
     seqs: [savedSeq],
   })[0]

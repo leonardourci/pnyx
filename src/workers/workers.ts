@@ -17,7 +17,7 @@ import type { HydraEvent, EventType } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readChanges } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { redact } from '#oracle/text.ts'
@@ -150,7 +150,7 @@ export async function hydraCheck({
         })
       },
     })
-    const read = readEvents({
+    const read = readChanges({
       hydraId,
       after: offset,
     })
