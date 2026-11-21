@@ -436,7 +436,7 @@ pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-cu
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 setup check lists what is still missing (Postgres, local config, logins, hooks, skills, quota-axi, the login
 service, project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
-setup postgres on macOS starts Homebrew's postgresql@17 service with wal_level=logical, which zero-cache needs, and
+setup postgres on macOS starts Homebrew's postgresql@17 service and
 creates this home's database (pnyx for ~/.pnyx); elsewhere it only checks. Host, port and user come from PGHOST,
 PGPORT and PGUSER, unless the postgresUrl setting names the Postgres; then setup postgres only checks it and starts
 or changes nothing.
@@ -466,8 +466,8 @@ Serves every Hydra in PNYX_HOME on 127.0.0.1 port 4747 (--port overrides it; 0 p
 Each Hydra lives at /hydra/<id>/; / opens the --hydra Hydra. A Hydra that fails to load is skipped and reported, and a Hydra created
 while the server runs is served once its folder appears. --hydra names the Hydra whose address is printed (default: default); it and
 the default Hydra must load.
-Hook events arrive on each Hydra's server.sock or through its spool. Browsers read Hydra data through Zero at /zero and get one
-WebSocket per Hydra at /hydra/<id>/ws for live agent activity, conversation pages and commands.
+Hook events arrive on each Hydra's server.sock or through its spool. Browsers read Hydra state, shared settings, live agent
+activity, conversation pages and commands over one resumed WebSocket at /hydra/<id>/ws.
 The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.
 Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|rule|account","args":[...]}
 gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write that socket's Hydra;
