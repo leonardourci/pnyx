@@ -1,0 +1,131 @@
+$ pnpm run build && vitest run
+$ node scripts/build/build.ts
+vite v8.3.4 building client environment for production...
+transforming...
+Found 5 warnings while optimizing generated CSS:
+
+Issue #1:
+│   --column-color: var(--color-green);
+│ }
+│ ::highlight(reveal-0) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 25%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #2:
+│   }
+│ }
+│ ::highlight(reveal-1) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 45%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #3:
+│   }
+│ }
+│ ::highlight(reveal-2) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 65%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #4:
+│   }
+│ }
+│ ::highlight(reveal-3) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 85%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #5:
+│   }
+│ }
+│ ::highlight(reveal-hide) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: transparent;
+│ }
+
+[plugin rolldown:vite-resolve] Module "node:async_hooks" has been externalized for browser compatibility, imported by "<isolated-worktree>/src/app/command-notices.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:util" has been externalized for browser compatibility, imported by "<isolated-worktree>/src/app/decision.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:crypto" has been externalized for browser compatibility, imported by "<isolated-worktree>/src/hydra/digest.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+✓ 7397 modules transformed.
+rendering chunks...
+computing gzip size...
+dist.next.64897/web/index.html                             0.71 kB │ gzip:   0.37 kB
+dist.next.64897/web/assets/index-BhW8pJ77.css            186.19 kB │ gzip:  32.81 kB
+dist.next.64897/web/assets/lazy-inspector-B3mO58S_.js     10.14 kB │ gzip:   3.81 kB
+dist.next.64897/web/assets/index-D5hAPEJ9.js           1,612.60 kB │ gzip: 521.75 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 679ms
+
+ RUN  v5.1.0 <isolated-worktree>
+      Running tests with seed "1795291613986"
+
+(node:86123) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ |browser| tests/browser/chat.test.ts (11 tests | 1 failed) 36105ms
+   × plain send and answer calls and saved legacy calls show their action and live task links 2352ms
+ ❯ |browser| tests/browser/cards.test.ts (11 tests | 1 failed) 43827ms
+   × an inactive Hydra cannot finish a project reveal over the selected Hydra 1048ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > an inactive Hydra cannot finish a project reveal over the selected Hydra
+AssertionError: expected [ 492 ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   492,
++ ]
+
+ ❯ tests/browser/cards.test.ts:202:30
+    200|     expect(switched.seen).toBe(true)
+    201|     expect(switched.settled).toBeGreaterThanOrEqual(10)
+    202|     expect(switched.missing).toEqual([])
+       |                              ^
+    203|   },
+    204| )
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |browser| tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links
+AssertionError: expected +0 to be 4 // Object.is equality
+
+- Expected
++ Received
+
+- 4
++ 0
+
+ ❯ tests/browser/chat.test.ts:614:18
+    612|         'button',
+    613|         { name: /^Open task Task labels;/ },
+    614|       ).count()).toBe(4)
+       |                  ^
+    615|       await labels.filter({ hasText: /^Answering the question from/ })…
+    616|         'button',
+
+Caused by: Error: Matcher did not succeed in time.
+ ❯ tests/browser/chat.test.ts:611:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 26 passed (28)
+      Tests  2 failed | 301 passed (303)
+   Start at  17:06:54
+   Duration  133.84s (tests 95%, setup 3%, import 1%, transform 1%)
+
+[ELIFECYCLE] Test failed. See above for more details.

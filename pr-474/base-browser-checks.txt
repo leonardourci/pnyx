@@ -1,0 +1,10 @@
+
+ RUN  v5.1.0 <isolated-worktree>
+      Running tests with seed "1795291613986"
+
+
+ Test Files  2 passed (2)
+      Tests  2 passed | 20 skipped (22)
+   Start at  17:10:33
+   Duration  7.16s (tests 85%, import 6%, setup 5%, transform 5%)
+

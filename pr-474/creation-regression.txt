@@ -1,0 +1,65 @@
+
+ RUN  v5.1.0 <isolated-worktree>
+      Running tests with seed "1795291561764"
+
+ ❯ |browser| tests/browser/cards.test.ts (11 tests | 1 failed | 10 skipped) 15053ms
+   × saving a task leaves its card closed and its writing fields readable 14740ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > saving a task leaves its card closed and its writing fields readable
+AssertionError: expected '' to be 'Every line remains readable in its fi…' // Object.is equality
+
+- Expected
++ Received
+
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+- Every line remains readable in its field.
+-
+
+ ❯ tests/browser/cards.test.ts:1350:44
+    1348|   `,
+    1349|     })
+    1350|     expect(JSON.parse(initialDescription)).toBe(`${prose}\n`)
+       |                                            ^
+    1351|     const editedDescription = `${prose}\nExplain the empty state and i…
+    1352|     await chrome({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  17:06:01
+   Duration  16.72s (tests 96%, import 2%, setup 1%, transform 1%)
+

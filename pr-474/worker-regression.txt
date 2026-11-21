@@ -1,0 +1,28 @@
+
+ RUN  v5.1.0 <isolated-worktree>
+      Running tests with seed "1795290533285"
+
+ ❯ |integration| tests/tasks.test.ts (26 tests | 1 failed | 25 skipped) 20502ms
+   × a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, one set to wait on Hydra itself files nothing, and a start cannot steer Hydra itself 20332ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |integration| tests/tasks.test.ts > a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, one set to wait on Hydra itself files nothing, and a start cannot steer Hydra itself
+Error: timed out waiting for the edited task description reaching its worker (last: false)
+ ❯ until tests/setup/pnyx.ts:44:13
+     42|   while (value === undefined || value === false) {
+     43|     if (performance.now() > end) {
+     44|       throw new Error(`timed out waiting for ${what} (last: ${String(v…
+       |             ^
+     45|     }
+     46|
+ ❯ tests/tasks.test.ts:505:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 25 skipped (26)
+   Start at  16:48:53
+   Duration  22.90s (tests 95%, setup 2%, transform 2%, import 1%)
+
