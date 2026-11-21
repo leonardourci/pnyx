@@ -418,7 +418,8 @@ export function appendLog({
   privateDir({ dir: dirname(path) })
   const fd = openSync(
     path,
-    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT
+      | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     0o600,
   )
 
