@@ -13,5 +13,5 @@ export function historyCommand({
 }): string {
   const end = through === undefined ? '' : ` --through ${through}`
 
-  return `pnyx-axi hydra history --hydra ${hydraId} --since ${since}${end} --budget ${budget}`
+  return `pnyx hydra history --hydra ${hydraId} --since ${since}${end} --budget ${budget}`
 }
