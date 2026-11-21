@@ -14,6 +14,14 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { viewFor } from '#preferences/view.ts'
 import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
+import { sessionTaskFields } from '#workers/session-facts.ts'
+
+function editBefore({ target }: { target: Extract<HydraEvent, { type: 'card.pushed' | 'task.edited' }> }): PushFields {
+  const fields = target.data.before ?? {}
+
+  return target.type === 'task.edited' && !target.undoes && target.data.agent
+    ? sessionTaskFields({ fields }) : fields
+}
 
 function currentValue({
   card,
@@ -24,7 +32,7 @@ function currentValue({
 }): unknown {
   if (target.type === 'card.pushed' || target.type === 'task.edited') {
     return Object.fromEntries(
-      Object.keys(target.data.before ?? {}).map(field => [
+      Object.keys(editBefore({ target })).map(field => [
         field,
         pushedValue({
           card,
@@ -71,7 +79,7 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
   const after = target.data as unknown as Record<string, unknown>
 
   return Object.fromEntries(
-    Object.keys(target.data.before ?? {}).map(field => [
+    Object.keys(editBefore({ target })).map(field => [
       field,
       after[field] ?? null,
     ]),
@@ -406,7 +414,7 @@ export function decideUndo({
   }
 
   if (target.type === 'card.pushed' || target.type === 'task.edited') {
-    const before = target.data.before!
+    const before = editBefore({ target })
     const data = {
       key: card.key,
       ...before,

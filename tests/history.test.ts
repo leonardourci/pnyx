@@ -336,14 +336,107 @@ test(
     const retry = await hydra.owner({ args })
     expect(retry.event).toEqual(first.event)
     expect(retry.duplicate).toBe('event id already applied; nothing appended')
-    await expect(hydra.owner({
+    expect((await hydra.ownerRefused({
       args: [
         'undo',
         'first-edit',
         '--event-id',
         'undo-edit',
       ],
-    })).rejects.toThrow(/event id undo-edit was already used/)
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
+  },
+)
+
+test(
+  'undoing a title edit observed by another task’s session preserves both assignments',
+  async () => {
+    const hydra = await pnyx.hydra()
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          key,
+          '--title',
+          key,
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent: {
+            provider: 'claude',
+            sessionId: key,
+          },
+          activity: 'working',
+        }),
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'first',
+        '--event-id',
+        'mixed-edit',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Renamed',
+        agent: {
+          provider: 'claude',
+          sessionId: 'second',
+        },
+        activity: 'finished',
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'undo',
+        'mixed-edit',
+        '--event-id',
+        'reverse-mixed-edit',
+      ],
+    })
+    expect((await hydra.task({ key: 'first' })).title).toBe('first')
+    await hydra.owner({
+      args: [
+        'undo',
+        'reverse-mixed-edit',
+      ],
+    })
+    expect((await hydra.task({ key: 'first' })).title).toBe('Renamed')
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      const { task } = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(task.agent.sessionId).toBe(key)
+      expect(task.sessionIds).toEqual([`claude:${key}`])
+      expect(task.activity).toBe(key === 'first' ? 'working' : 'finished')
+    }
   },
 )
 
