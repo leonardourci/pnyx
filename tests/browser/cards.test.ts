@@ -1266,8 +1266,8 @@ test(
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
       const title = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
-      const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]');
-      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
+      const description = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]');
+      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: description.scrollHeight <= description.clientHeight + 1 && description.getBoundingClientRect().height > innerHeight / 2, multiLine: description.value.endsWith('\\n') };
     });
     const reachability = await page.eval(async () => {
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
@@ -1397,7 +1397,10 @@ test(
       })).task.brief === editedDescription,
     })
     expect(await chrome({
-      script: `console.log(await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"].card-section')?.textContent));`,
+      script: `
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected [aria-label="Show task summary"]');
+    console.log(await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"].card-section')?.textContent));
+  `,
     })).toContain('Explain the empty state and its next action.')
   },
 )

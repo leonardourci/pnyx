@@ -217,10 +217,6 @@ export const HydraCard = memo(function HydraCard({
     onEdit()
     setTab('context')
 
-    if (chatOnlyPreference.current) {
-      toggleChatOnly()
-    }
-
     forgetSessionView({
       key: taskViewKey({
         hydraId,
@@ -264,8 +260,6 @@ export const HydraCard = memo(function HydraCard({
     chatOnly: prefersChatOnly,
     toggleChatOnly,
   } = useTaskChatOnly()
-  const chatOnlyPreference = useRef(prefersChatOnly)
-  chatOnlyPreference.current = prefersChatOnly
   const chatOnly = prefersChatOnly && !editing
   const wasModal = useRef(modal)
   useLayoutEffect(

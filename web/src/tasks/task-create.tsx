@@ -9,11 +9,7 @@ import { hasPendingImage } from '#web-hydra/draft.ts'
 import { useCardAgent, RepositoryPicker, type RepositoryOption } from '#web-workers/card-agent.tsx'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from '#web-app/connection.ts'
-import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
-
-function descriptionExceedsLimit({ text }: { text: string }): boolean {
-  return text.length > MAX_BRIEF_LENGTH && !!text.trim()
-}
+import { DESCRIPTION_LIMIT_MESSAGE, descriptionExceedsLimit, taskDescription } from './description.ts'
 
 export interface TaskDraft {
   title: string
@@ -156,8 +152,10 @@ export function TaskCreate({
       column,
     ]
 
-    if (text.trim()) {
-      args.push(`--brief=${text}`)
+    const savedDescription = taskDescription({ text })
+
+    if (savedDescription) {
+      args.push(`--brief=${savedDescription}`)
     }
 
     if (repository) {
@@ -295,7 +293,7 @@ export function TaskCreate({
         }}
         notify={notify}
       />
-      {descriptionTooLong && <p className="muted small">A description holds up to {MAX_BRIEF_LENGTH} characters</p>}
+      {descriptionTooLong && <p className="muted small">{DESCRIPTION_LIMIT_MESSAGE}</p>}
       <div className="flex min-w-0 items-center gap-2">
         <Button
           disabled={disabled}

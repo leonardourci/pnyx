@@ -5,7 +5,7 @@ import type { Card } from '#tasks/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { ComposerField, type ComposerFieldHandle } from '#web-hydra/composer-field.tsx'
 import { hasPendingImage } from '#web-hydra/draft.ts'
-import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
+import { DESCRIPTION_LIMIT_MESSAGE, descriptionExceedsLimit, taskDescription } from './description.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export interface TaskDraft {
@@ -69,10 +69,10 @@ export function TaskEditor({
   })
 
   const imagesLoading = hasPendingImage({ text: brief })
-  const nextBrief = brief.trim() ? brief : ''
-  const tooLong = nextBrief.length > MAX_BRIEF_LENGTH
+  const nextBrief = taskDescription({ text: brief })
+  const tooLong = descriptionExceedsLimit({ text: brief })
   const blocked = imagesLoading || tooLong
-  const blockedReason = imagesLoading ? 'Images are still loading' : `A description holds up to ${MAX_BRIEF_LENGTH} characters`
+  const blockedReason = imagesLoading ? 'Images are still loading' : DESCRIPTION_LIMIT_MESSAGE
 
   const save = () => {
     const nextTitle = title.replace(
