@@ -1310,10 +1310,26 @@ test.each([
           count.getBoundingClientRect().width > 0 && getComputedStyle(count).writingMode === 'horizontal-tb'
         );
       });
+      const projects = workspace.querySelector('.project-chips');
+      const bar = workspace.querySelector('.hydra-workspace-bar');
+      const add = bar.querySelector('[aria-label="Add project"]');
+      const controls = [bar.querySelector('[aria-label="Fold Hydra"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.hydra-drag-name'), add].filter(Boolean);
+      projects.style.maxWidth = '100px';
+      await new Promise(requestAnimationFrame);
+      const positions = controls.map(control => control.getBoundingClientRect());
+      projects.scrollLeft = projects.scrollWidth;
+      await new Promise(requestAnimationFrame);
+      const topbar = {
+        leadingActions: controls.length === 4 && positions.every((box, index) => !index || box.left >= positions[index - 1].right),
+        scrolled: projects.scrollLeft > 0,
+        pinned: controls.every((control, index) => control.getBoundingClientRect().left === positions[index].left),
+        singleEntry: !!add && ![...workspace.querySelectorAll('button')].some(button => button.textContent.trim() === 'Project'),
+      };
+      projects.style.removeProperty('max-width');
+      projects.scrollLeft = 0;
       const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
       workspace.querySelector('[aria-label="Fold Hydra"]').click();
       await new Promise(requestAnimationFrame);
-      const projects = workspace.querySelector('.project-chips');
       projects.style.maxHeight = '100px';
       const box = workspace.getBoundingClientRect();
       const chips = [...projects.querySelectorAll('button')].map(chip => chip.getBoundingClientRect());
@@ -1354,11 +1370,23 @@ test.each([
         column.getBoundingClientRect().width === expandedWidths[index]
         && column.querySelector('.column-cards').getClientRects().length > 0
       );
-      return JSON.stringify({ strip, workspaceUnfolded, folded, columnCountsUpright, unfolded });
+      workspace.querySelector('[aria-label="Fold chat"]').click();
+      await new Promise(requestAnimationFrame);
+      add?.click();
+      await new Promise(requestAnimationFrame);
+      const attachRequested = workspace.querySelector('.hydra-chat textarea')?.value.includes(' to this Hydra')
+        && document.activeElement?.tagName === 'TEXTAREA';
+      return JSON.stringify({ topbar, strip, workspaceUnfolded, folded, columnCountsUpright, unfolded, attachRequested: !!attachRequested });
     }));
     `,
     })
     expect(JSON.parse(geometry)).toEqual({
+      topbar: {
+        leadingActions: true,
+        scrolled: true,
+        pinned: true,
+        singleEntry: true,
+      },
       strip: {
         thin: true,
         bodyHidden: true,
@@ -1372,6 +1400,7 @@ test.each([
       folded: true,
       columnCountsUpright: true,
       unfolded: true,
+      attachRequested: true,
     })
   },
 )
