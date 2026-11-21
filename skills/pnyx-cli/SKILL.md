@@ -16,6 +16,8 @@ Hydra follows `pnyx-orchestrate`; workers follow `pnyx-report-progress`. Workers
 
 On recovery, read your task and steering inbox before repeating side effects. Preserve idempotency keys and reconcile uncertain delivery using its existing receipt.
 
+On `RECEIPT_EXPIRED`, read current task state before sending another observation. On `CURSOR_EXPIRED`, read `task chat` for the full native conversation, then run `hydra check` without `--after` to continue from current state.
+
 Use `task parent <task> <parent|none>` to nest an existing task or detach it. With `none`, `--before <root>` chooses its position in the same project; omitting it places the task last. Undo restores parent and order together. Nesting has one level; a task with children cannot become a child.
 
 Use `task arrange <task> [--before <task>]` for visual order within a project and parent. `task reorder --behind` remains the worker queue command. Project columns use `view set` workspace layout; lifecycle `column` commands remain compatibility controls.

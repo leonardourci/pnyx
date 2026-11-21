@@ -180,6 +180,8 @@ hydra start runs the configured command; its session becomes Hydra when its hook
 prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
+Observation retries whose receipts have expired refuse with RECEIPT_EXPIRED; read current state before another write.
+If a check's native word clock has expired, CURSOR_EXPIRED points to task chat; omit --after to resume from current state.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
 except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears, and a Hydra that Pnyx runs gets an immediate receipt with a notice and told to end its turn instead. It returns
 a compact conversations digest of the owner's queued task replies (read them whole with task history --full) and of the words
