@@ -180,7 +180,13 @@ export function readChanges({ ...selection }: EventSelection): HydraEvent[] {
 const EVENT_PAGE_SIZE = 200
 
 // Scans that need old history retain only one bounded page, in either direction.
-export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+function* scan({
+  read,
+  selection,
+}: {
+  read: (selection: EventSelection & { measured?: boolean }) => HydraEvent[]
+  selection: Omit<EventSelection, 'limit'>
+}): Generator<HydraEvent> {
   const started = performance.now()
   let pages = 0
   let count = 0
@@ -188,7 +194,7 @@ export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Ge
   const pageAt = ({ bounds }: { bounds: Pick<EventSelection, 'after' | 'before'> }) => {
     pages += 1
 
-    return selectedEvents({
+    return read({
       ...selection,
       ...bounds,
       limit: EVENT_PAGE_SIZE,
@@ -226,29 +232,18 @@ export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Ge
   }
 }
 
-export function* scanChanges({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
-  let bounds: Pick<EventSelection, 'after' | 'before'> = {}
-  let page = readChanges({
-    ...selection,
-    ...bounds,
-    limit: EVENT_PAGE_SIZE,
+export function scanEvents(selection: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+  return scan({
+    read: selectedEvents,
+    selection,
   })
+}
 
-  while (page.length) {
-    yield* page
-
-    if (page.length < EVENT_PAGE_SIZE) {
-      return
-    }
-
-    const edge = page.at(-1)!.seq
-    bounds = selection.descending ? { before: edge } : { after: edge }
-    page = readChanges({
-      ...selection,
-      ...bounds,
-      limit: EVENT_PAGE_SIZE,
-    })
-  }
+export function scanChanges(selection: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+  return scan({
+    read: readChanges,
+    selection,
+  })
 }
 
 // A Hydra's events, from its events.jsonl while it still waits to be imported, for the one-time moves of old values.

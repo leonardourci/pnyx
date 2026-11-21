@@ -61,7 +61,7 @@ const history = guard({
       throw new AxiError(
         `unknown kind: ${kind}`,
         'VALIDATION_ERROR',
-        ['Use one of pushed, moved, linked, outcome, replied, noted'],
+        ['Use one of task.edited, pushed, moved, linked, outcome, replied, noted'],
       )
     }
 

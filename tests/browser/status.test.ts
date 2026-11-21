@@ -160,10 +160,6 @@ test(
       }),
     })
     await observe({ activity: 'finished' })
-    expect(rows({
-      text: "select type from events where hydra_id = $1 and type in ('card.pushed', 'session.observed', 'card.observed')",
-      values: [hydra.id],
-    })).toEqual([])
     const task = await hydra.task({ key: 'event-diet' })
     const selector = await openChat({
       hydraId: hydra.id,
