@@ -44,6 +44,24 @@ test(
     expect(next.cards.retained).toBe(retained)
     expect(next.cards.changed).not.toBe(before.cards.changed)
     expect(before.cards.changed.title).toBe('Before')
+
+    const prototypeBefore = { values: {} }
+    const prototypeAfter = JSON.parse('{"values":{"__proto__":{"title":"Owner value"},"constructor":{"title":"Another value"}}}')
+    const prototypeChanges = pageChanges({
+      before: prototypeBefore,
+      after: prototypeAfter,
+    })!
+    const prototypeNext = applyPageChanges({
+      before: prototypeBefore,
+      changes: prototypeChanges,
+    })
+    expect(prototypeNext).toEqual(prototypeAfter)
+    expect(Object.hasOwn(
+      prototypeNext.values,
+      '__proto__',
+    )).toBe(true)
+    expect(Object.getPrototypeOf(prototypeNext.values)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(prototypeBefore.values)).toBe(Object.prototype)
   },
 )
 
@@ -169,29 +187,6 @@ test(
     } finally {
       page.close()
     }
-  },
-)
-
-test(
-  'socket object changes preserve literal prototype-named keys',
-  () => {
-    const before = { values: {} }
-    const after = JSON.parse('{"values":{"__proto__":{"title":"Owner value"},"constructor":{"title":"Another value"}}}')
-    const changes = pageChanges({
-      before,
-      after,
-    })!
-    const next = applyPageChanges({
-      before,
-      changes,
-    })
-    expect(next).toEqual(after)
-    expect(Object.hasOwn(
-      next.values,
-      '__proto__',
-    )).toBe(true)
-    expect(Object.getPrototypeOf(next.values)).toBe(Object.prototype)
-    expect(Object.getPrototypeOf(before.values)).toBe(Object.prototype)
   },
 )
 

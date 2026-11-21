@@ -29,7 +29,7 @@ function slowSocket() {
     disconnect,
     drain() {
       bufferedAmount = 0
-      vi.advanceTimersByTime(100)
+      vi.runOnlyPendingTimers()
     },
   }
 }
@@ -66,41 +66,107 @@ test(
 )
 
 test(
-  'activity coalesces within its Hydra subscription while other scopes remain separate',
+  'activity retains every card within a subscription and keeps replacement subscriptions separate',
   () => {
     vi.useFakeTimers()
     const socket = slowSocket()
-    const latest = {
+    const usage = {
+      who: {
+        provider: 'codex',
+        icon: 'codex',
+      },
+      recorded: {
+        unavailable: 0,
+        sharedHydra: false,
+      },
+      windows: [],
+    }
+    const initial: ServerMessage = {
       type: 'latest',
-      messages: {},
-      actions: {},
-    } as const
+      scope: 'one',
+      subscription: 'current',
+      messages: {
+        first: {
+          role: 'assistant',
+          text: 'First reply',
+        },
+      },
+      actions: {
+        first: {
+          calls: [],
+          done: false,
+        },
+      },
+      spend: {
+        first: {
+          total: 1,
+          unavailable: 0,
+          sharedHydra: false,
+        },
+      },
+      usage: {first: usage},
+    }
+    socket.send({message: initial})
     socket.send({
       message: {
-        ...latest,
+        type: 'latest',
         scope: 'one',
+        subscription: 'replacement',
+        messages: {replacement: null},
+        actions: {},
+      },
+    })
+    socket.send({
+      message: {
+        type: 'latest',
+        scope: 'two',
+        subscription: 'current',
+        messages: {},
+        actions: {},
+      },
+    })
+    socket.send({
+      message: {
+        type: 'latest',
+        scope: 'one',
+        subscription: 'current',
+        messages: {
+          second: {
+            role: 'assistant',
+            text: 'Second reply',
+          },
+        },
+        actions: {
+          second: {
+            calls: [],
+            done: true,
+          },
+        },
         spend: {
-          task: {
-            total: 1,
+          second: {
+            total: 2,
             unavailable: 0,
             sharedHydra: false,
           },
         },
+        usage: {second: usage},
       },
     })
     socket.send({
       message: {
-        ...latest,
-        scope: 'two',
-      },
-    })
-    socket.send({
-      message: {
-        ...latest,
+        type: 'latest',
         scope: 'one',
+        subscription: 'current',
+        messages: {
+          first: {
+            role: 'assistant',
+            text: 'Updated first reply',
+          },
+        },
+        actions: {},
         spend: {
-          task: {
-            total: 2,
+          first: {
+            total: 3,
             unavailable: 0,
             sharedHydra: false,
           },
@@ -108,19 +174,63 @@ test(
       },
     })
     socket.drain()
-    expect(socket.sent.map(message => message.scope)).toEqual([
-      'two',
-      'one',
-    ])
-    expect(socket.sent.at(-1)).toMatchObject({
-      spend: {
-        task: {
-          total: 2,
-          unavailable: 0,
-          sharedHydra: false,
+    expect(socket.sent).toEqual([
+      {
+        type: 'latest',
+        scope: 'one',
+        subscription: 'replacement',
+        messages: {replacement: null},
+        actions: {},
+      },
+      {
+        type: 'latest',
+        scope: 'two',
+        subscription: 'current',
+        messages: {},
+        actions: {},
+      },
+      {
+        type: 'latest',
+        scope: 'one',
+        subscription: 'current',
+        messages: {
+          first: {
+            role: 'assistant',
+            text: 'Updated first reply',
+          },
+          second: {
+            role: 'assistant',
+            text: 'Second reply',
+          },
+        },
+        actions: {
+          first: {
+            calls: [],
+            done: false,
+          },
+          second: {
+            calls: [],
+            done: true,
+          },
+        },
+        spend: {
+          first: {
+            total: 3,
+            unavailable: 0,
+            sharedHydra: false,
+          },
+          second: {
+            total: 2,
+            unavailable: 0,
+            sharedHydra: false,
+          },
+        },
+        usage: {
+          first: usage,
+          second: usage,
         },
       },
-    })
+    ])
     socket.close()
   },
 )
