@@ -116,13 +116,7 @@ export function agentNotices<T extends Record<string, Command>>({
         return output
       }
 
-      if (result instanceof Promise) {
-        const finish = async () => await notice({ output: await result })
-
-        return finish()
-      }
-
-      return await notice({ output: result })
+      return await notice({ output: await result })
     },
   })
 
