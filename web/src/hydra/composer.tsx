@@ -41,11 +41,13 @@ export function Composer({
   placeholder,
   sendLabel = 'Send reply',
   unavailable = false,
+  limitHeight = true,
 }: {
   fieldLabel?: string
   placeholder?: string
   sendLabel?: string
   unavailable?: boolean
+  limitHeight?: boolean
   hydraId: string
   storageIdentity: string
   card: string
@@ -325,6 +327,7 @@ export function Composer({
       {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
       <ComposerFrame
         ref={form}
+        data-limit-height={limitHeight || undefined}
         aria-busy={sending}
         // eslint-disable-next-line pnyx/object-params -- React owns form event handlers.
         onSubmit={e => {
@@ -362,6 +365,7 @@ export function Composer({
         <ComposerField
           ref={field}
           standalone={false}
+          limitHeight={limitHeight}
           id={`reply-${card}`}
           value={drafts.read().text}
           change={setDraft}
