@@ -390,7 +390,7 @@ export function hydraMemory({
     throw new HydraError({
       message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} belong in owner memory`,
       code: 'VALIDATION_ERROR',
-      help: [`Run \`pnyx owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
+      help: ['Keep owner documents in owner memory; use another key for notes specific to this Hydra'],
     })
   }
 
