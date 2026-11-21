@@ -735,7 +735,6 @@ export function ComposerField({
           className="composer-text group-[.comment-note]/composer-field:select-text bg-transparent outline-none data-[limit-height=true]:max-h-textarea data-[limit-height=true]:overflow-y-auto group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
           data-limit-height={limitHeight || undefined}
           ref={input}
-          rows={1}
           id={id}
           defaultValue={display}
           placeholder={placeholder}
