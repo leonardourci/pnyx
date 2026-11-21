@@ -472,10 +472,30 @@ export function seqsAround({
       last,
     },
   ] = rows!
+  let firstSeq = first === null ? Infinity : Number(first)
+  let lastSeq = last === null ? 0 : Number(last)
+
+  for (const clock of observedTimes({ hydraId })) {
+    const recordedAt = Date.parse(clock.at)
+
+    if (recordedAt >= time - 1000) {
+      firstSeq = Math.min(
+        firstSeq,
+        clock.seq,
+      )
+    }
+
+    if (recordedAt <= time + 1000) {
+      lastSeq = Math.max(
+        lastSeq,
+        clock.seq,
+      )
+    }
+  }
 
   return {
-    first: first === null ? Infinity : Number(first),
-    last: last === null ? 0 : Number(last),
+    first: firstSeq,
+    last: lastSeq,
   }
 }
 

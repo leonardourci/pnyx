@@ -1,5 +1,8 @@
 import { appendFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
+import { applyDecision } from '#app/decision.ts'
+import { withWriter } from '#app/writer.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
 import { transcriptPath } from '#workers/claude.ts'
 import { rows, startPnyx, until, type Hydra, type Output, type Pnyx } from './setup/pnyx.ts'
 
@@ -266,6 +269,62 @@ test(
       what: 'the native reply',
       check: () => session.answered === 1,
     })
+    const delayedAt = '2099-01-01T00:00:05.000Z'
+    appendFileSync(
+      transcriptPath({
+        cwd: session.cwd,
+        session: session.id,
+        folder: session.env.CLAUDE_CONFIG_DIR,
+      }),
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: delayedAt,
+        message: {
+          role: 'assistant',
+          content: 'NATIVE-TIME-LOOKUP',
+        },
+      })}\n`,
+    )
+    withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const native = Object.values(writer.state.sessions ?? {}).find(candidate =>
+          candidate.agent.sessionId === session.id)
+
+        if (!native) {
+          throw new Error('The native Hydra session is missing')
+        }
+
+        applyDecision({
+          writer,
+          decision: decideSessionFacts({
+            state: writer.state,
+            fields: {
+              agent: native.agent,
+              activity: 'working',
+            },
+            meta: {
+              actor: 'pnyx',
+              at: '2099-01-01T00:00:04.999Z',
+            },
+          }),
+        })
+        applyDecision({
+          writer,
+          decision: decideSessionFacts({
+            state: writer.state,
+            fields: {
+              agent: native.agent,
+              activity: 'finished',
+            },
+            meta: {
+              actor: 'pnyx',
+              at: '2099-01-01T00:00:05.001Z',
+            },
+          }),
+        })
+      },
+    })
     const live = await hydra.owner({
       args: [
         'hydra',
@@ -275,6 +334,15 @@ test(
       ],
     })
     expect(live.text).toContain('NATIVE-HISTORY-END')
+    const at = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--at',
+        delayedAt,
+      ],
+    })
+    expect(at.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
     await pnyx.restart()
     const restored = await hydra.owner({
       args: [
@@ -285,6 +353,26 @@ test(
       ],
     })
     expect(restored.text).toContain('NATIVE-HISTORY-END')
+    const restoredAt = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--at',
+        delayedAt,
+      ],
+    })
+    expect(restoredAt.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
+    const range = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--from',
+        delayedAt,
+        '--to',
+        delayedAt,
+      ],
+    })
+    expect(range.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
   },
 )
 
