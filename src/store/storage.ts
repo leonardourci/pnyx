@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -357,6 +358,92 @@ export function acquireLock({
   })
 }
 
+interface RegistryOwner {
+  dir: string
+  active: boolean
+}
+const registryContext = new AsyncLocalStorage<RegistryOwner>()
+const registryOwners = new Set<string>()
+const registryQueue = new Map<string, Promise<void>>()
+
+function ownsRegistry({ dir }: {dir: string}): boolean {
+  const owner = registryContext.getStore()
+
+  return owner?.active === true && owner.dir === dir
+}
+
+export async function withAsyncRegistryLock<T>({
+  fn,
+  timeout = nonblockingLocks.getStore() ? 0 : LOCK_TIMEOUT_MS,
+}: {
+  fn(): T | Promise<T>
+  timeout?: number
+}): Promise<T> {
+  const dir = pnyxHome()
+
+  if (ownsRegistry({dir})) {
+    return await fn()
+  }
+
+  const previous = registryQueue.get(dir)
+  const done = Promise.withResolvers<void>()
+  registryQueue.set(
+    dir,
+    done.promise,
+  )
+
+  try {
+    await previous
+    privateDir({dir})
+    const deadline = Date.now() + timeout
+    let release: (() => void) | undefined
+
+    while (!release) {
+      try {
+        release = acquireLock({
+          dir,
+          timeout: 0,
+        })
+      } catch (error) {
+        if (!(error instanceof HydraError) || error.code !== 'LOCKED' || Date.now() >= deadline) {
+          throw error
+        }
+
+        await sleep(Math.min(
+          LOCK_POLL_MS,
+          Math.max(
+            0,
+            deadline - Date.now(),
+          ),
+        ))
+      }
+    }
+
+    const owner: RegistryOwner = {
+      dir,
+      active: true,
+    }
+    registryOwners.add(dir)
+
+    try {
+      return await registryContext.run(
+        owner,
+        fn,
+      )
+    } finally {
+      owner.active = false
+      registryOwners.delete(dir)
+      release()
+    }
+  } finally {
+    done.resolve()
+
+    if (registryQueue.get(dir) === done.promise) {
+      registryQueue.delete(dir)
+    }
+  }
+}
+
 export function withRegistryLock<T>({
   fn,
   timeout,
@@ -365,10 +452,16 @@ export function withRegistryLock<T>({
   timeout?: number
 }): T {
   const dir = pnyxHome()
+
+  if (ownsRegistry({dir})) {
+    return fn()
+  }
+
   privateDir({ dir })
+  const heldInThisProcess = registryOwners.has(dir)
   const release = acquireLock({
     dir,
-    timeout,
+    timeout: heldInThisProcess ? 0 : timeout,
   })
 
   try {

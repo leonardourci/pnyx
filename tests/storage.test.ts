@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { withAsyncRegistryLock, withRegistryLock } from '#store/storage.ts'
 import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -627,5 +629,82 @@ test(
         text: 'Owner words',
       }),
     })
+  },
+)
+
+test(
+  'an async registry decision retains ownership through settlement without blocking another caller',
+  async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let firstSettled = false
+    const first = withAsyncRegistryLock({
+      fn: async () => {
+        entered.resolve()
+        await release.promise
+
+        return withRegistryLock({
+          fn: () => {
+            firstSettled = true
+
+            return 'first'
+          },
+        })
+      },
+    })
+    await entered.promise
+    expect(() => withRegistryLock({fn: () => 'unrelated'})).toThrow(expect.objectContaining({code: 'LOCKED'}))
+    const second = withAsyncRegistryLock({
+      fn: () => {
+        expect(firstSettled).toBe(true)
+
+        return 'second'
+      },
+    })
+    release.resolve()
+    expect(await Promise.all([
+      first,
+      second,
+    ])).toEqual([
+      'first',
+      'second',
+    ])
+    await expect(withAsyncRegistryLock({
+      fn: async () => {
+        throw new Error('Rejected decision')
+      },
+    })).rejects.toThrow('Rejected decision')
+    expect(await withAsyncRegistryLock({fn: () => 'after refusal'})).toBe('after refusal')
+  },
+)
+
+test(
+  'an owner migration failure reaches its caller without an unhandled rejection',
+  () => {
+    const home = folder()
+    writeFileSync(
+      join(
+        home,
+        'owner',
+      ),
+      'a file occupies the memory folder',
+    )
+    const result = execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        "import {migrateOwnerMemory} from '#memory/owner-memory.ts'; try { await migrateOwnerMemory(); console.log('unexpected success') } catch (error) { console.log('handled ' + error.code) }",
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+        },
+      },
+    )
+    expect(result.trim()).toBe('handled EEXIST')
   },
 )

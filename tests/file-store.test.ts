@@ -136,6 +136,186 @@ const create = async ({ home }: { home: ReturnType<typeof store> }) => {
 }
 
 test(
+  'a command validates all changed scopes before writing any of its facts',
+  async () => {
+    const path = homeFolder()
+    const home = store({ home: path })
+    await create({ home })
+    const logPath = join(
+      path,
+      'hydras',
+      'a',
+      'tasks',
+      'task',
+      'task.log',
+    )
+    const before = readFileSync(
+      logPath,
+      'utf8',
+    )
+
+    try {
+      await expect(home.change({
+        decide: () => [
+          {
+            hydra: 'a',
+            task: 'task',
+            facts: [
+              fact({
+                id: 'first',
+                text: 'Must not land alone',
+              }),
+            ],
+          },
+          {
+            hydra: 'missing',
+            facts: [
+              fact({
+                id: 'second',
+                text: 'Invalid later scope',
+              }),
+            ],
+          },
+        ],
+      })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+      expect(readFileSync(
+        logPath,
+        'utf8',
+      )).toBe(before)
+      expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([])
+      const receipts = await home.change({
+        decide: ({ read }) => {
+          expect(read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([])
+
+          return [
+            {
+              hydra: 'a',
+              task: 'task',
+              facts: [
+                fact({
+                  id: 'first',
+                  text: 'Both can land',
+                }),
+              ],
+            },
+            {
+              hydra: 'a',
+              facts: [
+                fact({
+                  id: 'second',
+                  text: 'Hydra decision',
+                }),
+              ],
+            },
+          ]
+        },
+      })
+      expect(receipts).toEqual([
+        {
+          id: 'first',
+          n: 2,
+          at: AT,
+          duplicate: false,
+        },
+        {
+          id: 'second',
+          n: 2,
+          at: AT,
+          duplicate: false,
+        },
+      ])
+    } finally {
+      await home.close()
+    }
+
+    const reopened = store({ home: path })
+
+    try {
+      expect(reopened.read({ hydra: 'a' })?.tasks.get('task')?.state?.words)
+        .toEqual([
+          {
+            id: 'first',
+            text: 'Both can land',
+          },
+        ])
+      expect(reopened.read({ hydra: 'a' })?.state?.words)
+        .toEqual([
+          {
+            id: 'second',
+            text: 'Hydra decision',
+          },
+        ])
+    } finally {
+      await reopened.close()
+    }
+  },
+)
+
+test(
+  'a command reads the durable queue prefix and later commands see all its changed scopes',
+  async () => {
+    const home = store({ home: homeFolder() })
+    await create({ home })
+
+    try {
+      const first = home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: () => [
+          fact({
+            id: 'prefix',
+            text: 'Earlier command',
+          }),
+        ],
+      })
+      const batch = home.change({
+        decide: ({ read }) => {
+          expect(read({ hydra: 'a' })?.tasks.get('task')?.state?.words.at(-1)?.id).toBe('prefix')
+
+          return [
+            {
+              hydra: 'a',
+              facts: [
+                fact({
+                  id: 'hydra',
+                  text: 'Hydra decision',
+                }),
+              ],
+            },
+            {
+              hydra: 'a',
+              task: 'task',
+              facts: [
+                fact({
+                  id: 'task',
+                  text: 'Task decision',
+                }),
+              ],
+            },
+          ]
+        },
+      })
+      const next = home.change({
+        decide: ({ read }) => {
+          const hydra = read({ hydra: 'a' })
+          expect(hydra?.state?.words.at(-1)?.id).toBe('hydra')
+          expect(hydra?.tasks.get('task')?.state?.words.at(-1)?.id).toBe('task')
+
+          return []
+        },
+      })
+      await Promise.all([
+        first,
+        batch,
+        next,
+      ])
+    } finally {
+      await home.close()
+    }
+  },
+)
+
+test(
   'submitted creation facts are captured before the queue runs',
   async () => {
     const home = store({ home: homeFolder() })
