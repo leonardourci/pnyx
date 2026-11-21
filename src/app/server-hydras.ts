@@ -6,7 +6,7 @@ import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.t
 import { homeScoped } from '#store/postgres.ts'
 import type { HydraState } from './model.ts'
 import { readEvents } from './event-log.ts'
-import { withRegistryLock } from '#store/storage.ts'
+import { withAsyncRegistryLock } from '#store/storage.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
 import { inListOrder } from './hydra-list-order.ts'
@@ -87,7 +87,7 @@ export async function createHydra({
   icon?: string
   attempt?: string
 }): Promise<string> {
-  return withRegistryLock({
+  return withAsyncRegistryLock({
     fn: async () => {
       const ids = hydraIds({ includeRemoved: true })
       const eventId = attempt ? creationEventId({ attempt }) : undefined
@@ -190,7 +190,7 @@ export async function editHydra({
 }
 
 export async function nameUnnamedHydras(): Promise<void> {
-  await withRegistryLock({
+  await withAsyncRegistryLock({
     fn: async () => {
       for (const id of hydraIds()) {
         const config = readableConfig({ id })
