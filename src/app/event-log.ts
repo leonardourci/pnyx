@@ -410,6 +410,16 @@ export function eventTime({
   seq: number
   exact?: boolean
 }): string | undefined {
+  if (exact) {
+    const live = heldHydra({ hydraId })
+    const recent = live?.changes.findLast(event => event.seq === seq)
+      ?? live?.pending.findLast(event => event.seq === seq)
+
+    if (recent) {
+      return recent.at
+    }
+  }
+
   const [rows] = query({
     statements: [
       {

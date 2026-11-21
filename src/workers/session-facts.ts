@@ -33,7 +33,7 @@ export function recordHydraTurn({
     id: event.id,
     seq: event.seq,
     resumes: event.id.startsWith('resume:') ? (session.hydraTurn?.resumes ?? 0) + 1 : 0,
-    finishedThrough: session.turn?.finishedThrough ?? session.turnFinishedSeq ?? 0,
+    finishedThrough: session.turnFinishedSeq ?? 0,
   }
 }
 
