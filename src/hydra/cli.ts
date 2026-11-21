@@ -76,11 +76,11 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     }
 
     return {
-      hydras: hydras.map(id => {
+      hydras: await Promise.all(hydras.map(async id => {
         let { state } = loadHydra({ hydraId: id })
 
         if (!state.config?.removing) {
-          hideDone({ hydraId: id })
+          await hideDone({ hydraId: id })
           state = loadHydra({ hydraId: id }).state
         }
 
@@ -97,7 +97,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           hydra: config.hydra.id,
           tasks,
         }
-      }),
+      })),
       help: ['Run `pnyx-axi hydra show --hydra <id>` for its columns and Hydra'],
     }
   }
@@ -167,7 +167,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     checkSettings({ patch: shared })
   }
 
-  const committed = onlySettings ? undefined : commit({
+  const committed = onlySettings ? undefined : await commit({
     hydraId: id,
     create: action === 'create',
     meta: m,
@@ -368,7 +368,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     return committed!
   }
 
-  const saved = saveSettings({
+  const saved = await saveSettings({
     // A combined edit gets one chat notice from its Hydra receipt.
     hydraId: onlySettings ? id : undefined,
     patch: shared,
@@ -417,17 +417,17 @@ export const HYDRA_OPTIONS: Options = {
   folder: { type: 'string' },
 }
 
-function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
+async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   if (args[0] === 'remove') {
     return removeHydraCommand({ args })
   }
 
   if (args[0] === 'ask') {
-    return hydraQuestion({ args: args.slice(1) })
+    return await hydraQuestion({ args: args.slice(1) })
   }
 
   if (args[0] === 'worker-notes') {
-    return hydraCommand({
+    return await hydraCommand({
       args: [
         'memory',
         ...args.slice(1),
@@ -490,7 +490,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'inscribe') {
-    return hydraInscribe({
+    return await hydraInscribe({
       values,
       positionals,
       hydraId,
@@ -498,14 +498,14 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'resize') {
-    return hydraResize({
+    return await hydraResize({
       values,
       hydraId,
     })
   }
 
   if (positionals[0] === 'memory') {
-    return hydraMemory({
+    return await hydraMemory({
       values,
       positionals,
       hydraId,
@@ -569,4 +569,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   })
 }
 
-export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+export const hydraCommandHandler = guard({
+  handler: async ({ args }) => await hydraCommand({ args }),
+})

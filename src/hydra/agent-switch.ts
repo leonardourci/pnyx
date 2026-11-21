@@ -183,7 +183,7 @@ export function createAgentSwitch({
   closing(): boolean
   hydraTurn(): Promise<void>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
   changeAgent({ change }: { change: HydraAgentChange }): void
   startOperation({
@@ -344,7 +344,7 @@ export function createAgentSwitch({
 
           if (choice === 'neither') {
             if (change.kind !== 'effort') {
-              write({
+              await write({
                 fn: ({ writer }) => harvestTranscripts({
                   writer,
                   cardIds: [HYDRA_CARD],
@@ -389,7 +389,7 @@ export function createAgentSwitch({
             return
           }
 
-          write({
+          await write({
             fn: ({ writer }) => harvestTranscripts({
               writer,
               cardIds: [HYDRA_CARD],
@@ -495,7 +495,7 @@ export function createAgentSwitch({
             })
           }
 
-          write({
+          await write({
             fn: ({ writer }) => harvestTranscripts({
               writer,
               cardIds: [HYDRA_CARD],

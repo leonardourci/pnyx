@@ -220,7 +220,7 @@ export async function removeHydraCommand({ args }: { args: string[] }): Promise<
   })
   requireRemovalIdle()
 
-  withWriter({
+  await withWriter({
     hydraId: id,
     removal: true,
     fn: ({ writer }) => {
@@ -275,8 +275,8 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
 
   const approvedWork = state.config.removalWork
 
-  const refuseChangedWork = () => {
-    withWriter({
+  const refuseChangedWork = async () => {
+    await withWriter({
       hydraId: id,
       removal: true,
       fn: ({ writer }) => {
@@ -315,7 +315,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     const fingerprint = await copyFingerprint({ path })
 
     if (fingerprint !== undefined && approvedWork?.[path] !== fingerprint) {
-      refuseChangedWork()
+      await refuseChangedWork()
     }
 
     if (fingerprint === undefined) {
@@ -325,7 +325,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     const card = records.get(path)
 
     if (!card?.copy) {
-      refuseChangedWork()
+      await refuseChangedWork()
 
       return
     }
@@ -337,7 +337,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     const checked = await copyFingerprint({ path })
 
     if ((!check.gone && (!check.clean || !check.landed)) || checked !== fingerprint) {
-      refuseChangedWork()
+      await refuseChangedWork()
     }
   }
 
@@ -353,7 +353,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
     records = plan.records
 
     if (!approvedWork) {
-      refuseChangedWork()
+      await refuseChangedWork()
     }
 
     // Every checkout is checked before the first deletion, so a changed one leaves the others in place.
@@ -403,7 +403,7 @@ export async function finishHydraRemoval({ id }: { id: string }): Promise<Output
       verify,
     })
 
-    withWriter({
+    await withWriter({
       hydraId: id,
       removal: true,
       fn: ({ writer }) => {

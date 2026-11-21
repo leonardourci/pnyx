@@ -324,7 +324,7 @@ export function createHydraOutage({
   retryDelays: number[]
   closing(): boolean
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   record({
     writer,
     agent,
@@ -362,7 +362,7 @@ export function createHydraOutage({
   })
 
   // A start worked after Hydra was down: say so in Pnyx's voice, then give Hydra the recap once the turn that started it ends.
-  const back = ({
+  const back = async ({
     down,
     turn,
     hydra,
@@ -375,7 +375,7 @@ export function createHydraOutage({
     retryTimer = undefined
     retries = 0
     const now = Date.now()
-    write({
+    await write({
       fn: ({ writer }) => {
         const meta = {
           at: new Date(now).toISOString(),
@@ -473,7 +473,7 @@ export function createHydraOutage({
   }
 
   // A start that failed: Hydra's turn is finished, and a start Pnyx may retry marks Hydra down and plans the retry.
-  const startFailed = ({
+  const startFailed = async ({
     error,
     previous,
     id,
@@ -493,7 +493,7 @@ export function createHydraOutage({
       ? `Hydra could not start: ${reason}. Pnyx is retrying; check the harness login and settings if this lasts.`
       : `Hydra could not start: ${reason}`
     // Finished rather than interrupted, so a retry or the next wake starts Hydra again; a cut turn's attention still waits for the owner.
-    write({
+    await write({
       fn: ({ writer }) => {
         const down = writer.state.hydraStatus?.state === 'down'
         const now = at()
