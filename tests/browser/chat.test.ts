@@ -528,6 +528,7 @@ test(
       hydra,
       on: false,
     })
+
     try {
       const session = await hydra.chat({ text: 'Review the work' })
       await until({
