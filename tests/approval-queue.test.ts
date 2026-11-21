@@ -62,7 +62,13 @@ test(
         recovery,
       ])
       expect(phase).toBe('waiting')
-      current.dispatchProposals = loaded.dispatchProposals.slice(1)
+      current.dispatchProposals = [
+        {
+          ...loaded.dispatchProposals[0]!,
+          status: 'failed',
+        },
+        ...loaded.dispatchProposals.slice(1),
+      ]
       queue.release.resolve()
       await recovery
       expect(append).toHaveBeenCalledTimes(1)

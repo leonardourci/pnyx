@@ -72,6 +72,7 @@ test(
     } finally {
       queue.release.resolve()
       await Promise.allSettled([decision])
+      unclaim({ path: occupied })
       unclaim({ path: next })
     }
   },

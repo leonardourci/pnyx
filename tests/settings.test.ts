@@ -402,10 +402,11 @@ test(
     })
 
     try {
-      await Promise.race([
-        entered.promise,
+      const phase = await Promise.race([
+        entered.promise.then(() => 'waiting'),
         first,
       ])
+      expect(phase).toBe('waiting')
       expect(readSettings().settings.theme).toBe('dark')
       const second = saveSettings({
         patch: { theme: 'dark' },

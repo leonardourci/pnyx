@@ -360,7 +360,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   const result = await withAsyncRegistryLock({
-    fn: async () => await commit({
+    fn: () => commit({
       hydraId,
       meta: m,
       intent: {
