@@ -153,11 +153,9 @@ const STATES: Record<string, string> = {
 
 export function pnyxSentence({
   words,
-  output = '',
   lookup,
 }: {
   words: string[]
-  output?: string
   lookup: PnyxLookup
 }): Segment[] {
   const {
@@ -179,8 +177,6 @@ export function pnyxSentence({
   }
 
   const because = flags.reason ? `: ${flags.reason}` : ''
-  const created = /^\s*id: (task-[\w-]+)/m.exec(output)?.[1]
-  const confirming = /^confirmation: needed$/m.test(output)
 
   switch (area) {
     case 'move': {
@@ -194,22 +190,34 @@ export function pnyxSentence({
       } : positionals[2] ?? 'a column'
 
       return [
-        confirming ? 'Asked to confirm moving ' : 'Moved ',
+        'Moved ',
         task({ ref: positionals[1] ?? '' }),
         ' to ',
         column,
-        confirming ? '' : because,
+        because,
       ].filter(Boolean)
     }
+    case 'send':
     case 'reply':
+      if (area === 'send' && !flags.task) {
+        return [`Sent Hydra: ${firstLine({ text: flags.text ?? '' })}`]
+      }
+
       return flags.answer !== undefined ? [
         'Answered the question from ',
         task({ ref: action }),
       ] : [
         'Sent ',
-        task({ ref: action }),
+        task({ ref: flags.task ?? action }),
         `’s worker: ${firstLine({ text: flags.text ?? '' })}`,
       ]
+    case 'answer':
+      return [
+        'Answered the question from ',
+        task({ ref: action }),
+      ]
+    case 'board':
+      return ['Read the Hydra']
     case 'link':
       return [
         'Linked ',
@@ -223,10 +231,7 @@ export function pnyxSentence({
         case 'create':
           return [
             'Created ',
-            created ? {
-              task: lookup.task({ ref: created })?.id ?? created,
-              label: lookup.task({ ref: created })?.title ?? flags.title ?? created,
-            } : `“${flags.title ?? 'a task'}”`,
+            `“${flags.title ?? 'a task'}”`,
             because,
           ]
         case 'rename': return [
