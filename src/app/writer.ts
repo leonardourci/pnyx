@@ -23,6 +23,9 @@ import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
 import { log } from './diagnostics.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
+import { durableEvent } from './event-policy.ts'
+
+const RECENT_CHANGES = 50_000
 
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
@@ -258,7 +261,7 @@ export function withWriter<T>({
         hydraId: stage.id,
         from: stage.from,
         to: stage.held.state.seq,
-        events: stage.pending,
+        events: stage.pending.filter(event => durableEvent({ event })),
       }),
       ...rows.statements,
     ])
@@ -308,6 +311,9 @@ export function withWriter<T>({
       })
       stage.held.saved = rows.next
       stage.held.committed = stage.held.state.seq
+      stage.held.pending = stage.held.pending.concat(stage.pending)
+      const recent = stage.held.changes.concat(stage.pending)
+      stage.held.changes = recent.slice(-RECENT_CHANGES)
 
       if (stage.from === 0) {
         rememberFirstEvent({
@@ -493,7 +499,7 @@ export function eventWriter({
         agent = state.sessions?.[session]?.agent
       }
 
-      if (event.type === 'card.pushed' && event.data.agent) {
+      if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.agent) {
         agent = event.data.agent
       } else if (event.type === 'session.observed' && 'fields' in event.data) {
         agent = event.data.fields.agent
@@ -545,7 +551,7 @@ export function eventWriter({
 
       onAppend({ event })
 
-      if (event.type === 'card.pushed' && event.data.source) {
+      if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.source) {
         onObserve?.({
           observation: {
             cardId: event.cardId,
@@ -587,6 +593,7 @@ export function eventWriter({
         }
 
         switch (event.type) {
+          case 'task.edited':
           case 'card.pushed':
           case 'board.configured':
           case 'card.linked':
@@ -597,7 +604,7 @@ export function eventWriter({
           case 'task.moved-in':
           case 'task.moved-out':
           case 'task.project':
-            if (event.type === 'card.pushed'
+            if ((event.type === 'card.pushed' || event.type === 'task.edited')
               && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
               break
             }
@@ -631,7 +638,12 @@ export function eventWriter({
           })
 
           if ('event' in moved) {
-            writer.append({ event: moved.event })
+            writer.append({
+              event: {
+                ...moved.event,
+                derived: true,
+              },
+            })
           }
         }
       } finally {

@@ -847,7 +847,7 @@ test(
 )
 
 test(
-  'a saved command approval runs once without another confirmation and records its applying claim',
+  'a saved command approval runs once without another confirmation or progress history',
   async () => {
     const id = 'legacy-approval'
     const folder = join(
@@ -912,7 +912,7 @@ test(
       text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress'",
       values: [id],
     })
-    expect(progress).toEqual([{ status: 'applying' }])
+    expect(progress).toEqual([])
     expect((await hydra.task({ key: 'saved-command-task' })).title).toBe('Saved command task')
     expect(await hydra.owner({
       args: [
@@ -1008,9 +1008,6 @@ test(
     expect(rows<{ status: string }>({
       text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress' order by seq",
       values: [id],
-    })).toEqual([
-      { status: 'applying' },
-      { status: 'failed' },
-    ])
+    })).toEqual([])
   },
 )

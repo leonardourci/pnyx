@@ -951,10 +951,11 @@ test(
       })
       const granted = await until({
         what: 'helper to take available work',
-        check: () => rows<{ tasks: string[] }>({
-          text: "select data->'data'->'tasks' as tasks from events where hydra_id = $1 and type = 'hydra.helper-started' order by seq desc limit 1",
-          values: [hydra.id],
-        })[0]?.tasks,
+        check: () => {
+          const helper = loadHydra({ hydraId: hydra.id }).state.helper
+
+          return Object.values(helper?.runs ?? {}).at(-1)?.tasks
+        },
       })
       expect(granted).toEqual([availableTask.id])
     } finally {
@@ -1180,10 +1181,7 @@ test(
     reportHelperTurn.release()
     await until({
       what: 'helper to finish the worker report',
-      check: () => rows<{ count: number }>({
-        text: "select count(*)::int as count from events where hydra_id = $1 and type = 'hydra.helper-finished'",
-        values: [hydra.id],
-      })[0]!.count >= 2,
+      check: () => (loadHydra({ hydraId: hydra.id }).state.helper?.usage?.batches ?? 0) >= 2,
     })
     const digest = (await pnyxAxi({
       args: [
