@@ -1,13 +1,14 @@
-import { lstatSync } from 'node:fs'
+import { lstatSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
 import { createHydraFiles, createTaskFiles, hydraFiles, moveTaskFiles, taskFiles } from './file-home.ts'
-import { appendLog, type LogFact, type LogPosition } from './log.ts'
+import { appendLog, plainJson, type LogFact, type LogPosition } from './log.ts'
 import { writeSnapshot } from './snapshot.ts'
 import { privateDir } from './storage.ts'
 import { applyFileFacts, emptyFileSegment, fileMemorySnapshot, loadFileMemory, type AcceptedFact, type FileReducers, type FileSegment, type HydraMemory } from './file-memory.ts'
 
 const GROUP_COMMIT_MS = 5
+const openHomes = new Set<string>()
 interface Scope {
   hydra: string
   task?: string
@@ -97,14 +98,32 @@ export function openFileStore<Hydra, Task>({
     dir: home,
     durable: true,
   })
+  const identity = realpathSync(home)
+
+  if (openHomes.has(identity)) {
+    throw new HydraError({
+      code: 'STORE_OPEN',
+      message: `native home is already open: ${identity}`,
+    })
+  }
+
+  openHomes.add(identity)
   const reducers = {
     reduceHydra,
     reduceTask,
   }
-  let memory = loadFileMemory({
-    home,
-    reducers,
-  })
+  let memory: Map<string, HydraMemory<Hydra, Task>>
+
+  try {
+    memory = loadFileMemory({
+      home,
+      reducers,
+    })
+  } catch (error) {
+    openHomes.delete(identity)
+    throw error
+  }
+
   let closing: Promise<void> | undefined
   let unavailable: HydraError | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -439,7 +458,9 @@ export function openFileStore<Hydra, Task>({
           const previous = pending.get(key)
 
           if (previous) {
-            previous.facts.push(...applied.appended)
+            for (const fact of applied.appended) {
+              previous.facts.push(fact)
+            }
           } else {
             pending.set(
               key,
@@ -549,19 +570,22 @@ export function openFileStore<Hydra, Task>({
         }),
       } : undefined
     },
-    createHydra: ({
+    createHydra: async ({
       hydra,
       facts,
     }: {
       hydra: string
       facts: readonly LogFact[]
-    }) =>
-      change({
+    }) => {
+      const submitted = plainJson({ value: facts })
+
+      return change({
         scope: { hydra },
         create: true,
-        decide: () => facts,
-      }),
-    createTask: ({
+        decide: () => submitted,
+      })
+    },
+    createTask: async ({
       hydra,
       task,
       facts,
@@ -569,15 +593,18 @@ export function openFileStore<Hydra, Task>({
       hydra: string
       task: string
       facts: readonly LogFact[]
-    }) =>
-      change({
+    }) => {
+      const submitted = plainJson({ value: facts })
+
+      return change({
         scope: {
           hydra,
           task,
         },
         create: true,
-        decide: () => facts,
-      }),
+        decide: () => submitted,
+      })
+    },
     changeHydra: ({
       hydra,
       decide,
@@ -744,6 +771,8 @@ export function openFileStore<Hydra, Task>({
         closing = control({
           stopping: true,
           run: snapshot,
+        }).finally(() => {
+          openHomes.delete(identity)
         })
       }
 

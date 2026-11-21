@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
@@ -23,6 +23,7 @@ vi.mock(
 )
 
 const AT = '2026-11-21T05:00:00.000Z'
+const LARGE_BATCH_SIZE = 150_000
 interface Conversation {
   title: string
   latest?: string
@@ -133,6 +134,264 @@ const create = async ({ home }: { home: ReturnType<typeof store> }) => {
     ],
   })
 }
+
+test(
+  'submitted creation facts are captured before the queue runs',
+  async () => {
+    const home = store({ home: homeFolder() })
+    const hydraFacts = [
+      fact({
+        id: 'submitted-config',
+        t: 'config',
+        name: 'Submitted',
+      }),
+    ]
+    const creatingHydra = home.createHydra({
+      hydra: 'a',
+      facts: hydraFacts,
+    })
+    hydraFacts[0]!.name = 'Changed'
+    hydraFacts.push(fact({
+      id: 'extra',
+      text: 'Not submitted',
+    }))
+    await creatingHydra
+    expect(home.read({ hydra: 'a' })?.state).toEqual({
+      title: 'Submitted',
+      words: [],
+    })
+    const taskFacts = [
+      fact({
+        id: 'submitted-task',
+        t: 'created',
+        title: 'Submitted task',
+      }),
+    ]
+    const creatingTask = home.createTask({
+      hydra: 'a',
+      task: 'task',
+      facts: taskFacts,
+    })
+    taskFacts[0]!.title = 'Changed task'
+    taskFacts.length = 0
+    await creatingTask
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state)
+      .toEqual({
+        title: 'Submitted task',
+        words: [],
+      })
+    await home.close()
+  },
+)
+
+test(
+  'one canonical home stays owned until close drains, without filesystem locks',
+  async () => {
+    const dir = homeFolder()
+    const alias = join(
+      homeFolder(),
+      'alias',
+    )
+    symlinkSync(
+      dir,
+      alias,
+    )
+    const home = store({ home: dir })
+    await create({ home })
+    expect(() => store({ home: alias })).toThrow(/already open/)
+    const closing = home.close()
+    expect(() => store({ home: dir })).toThrow(/already open/)
+    await closing
+    const reopened = store({ home: alias })
+    expect(reopened.read({ hydra: 'a' })?.tasks.has('task')).toBe(true)
+    await reopened.close()
+    rmSync(join(
+      dir,
+      'hydras/a/snapshot.json',
+    ))
+    vi.mocked(fdatasyncSync).mockImplementationOnce(() => {
+      throw Object.assign(
+        new Error('injected open failure'),
+        { code: 'EIO' },
+      )
+    })
+    expect(() => store({ home: dir })).toThrow(/injected open failure/)
+    const recovered = store({ home: dir })
+    expect(recovered.read({ hydra: 'a' })?.tasks.has('task')).toBe(true)
+    await recovered.close()
+  },
+)
+
+test(
+  'an unreadable task is isolated and an unreadable snapshot falls back to native logs',
+  async () => {
+    const dir = homeFolder()
+    let home = store({ home: dir })
+    await create({ home })
+    await home.createTask({
+      hydra: 'a',
+      task: 'healthy',
+      facts: [
+        fact({
+          id: 'healthy',
+          t: 'created',
+          title: 'Healthy',
+        }),
+      ],
+    })
+    await home.close()
+    const log = join(
+      dir,
+      'hydras/a/tasks/task/task.log',
+    )
+    const cache = join(
+      dir,
+      'hydras/a/snapshot.json',
+    )
+    const saved = readFileSync(
+      log,
+      'utf8',
+    )
+    chmodSync(
+      log,
+      0o400,
+    )
+    chmodSync(
+      cache,
+      0o000,
+    )
+
+    try {
+      home = store({ home: dir })
+      expect(home.read({ hydra: 'a' })?.tasks.get('task')?.issue?.code).toBe('LOG_UNREADABLE')
+      await expect(home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: () => [
+          fact({
+            id: 'refused',
+            text: 'Refused',
+          }),
+        ],
+      })).rejects.toMatchObject({ code: 'LOG_UNREADABLE' })
+      await home.changeTask({
+        hydra: 'a',
+        task: 'healthy',
+        decide: () => [
+          fact({
+            id: 'saved',
+            text: 'Available',
+          }),
+        ],
+      })
+      expect(readFileSync(
+        log,
+        'utf8',
+      )).toBe(saved)
+      await home.close()
+    } finally {
+      chmodSync(
+        log,
+        0o600,
+      )
+      chmodSync(
+        cache,
+        0o600,
+      )
+    }
+
+    home = store({ home: dir })
+    expect(home.read({ hydra: 'a' })?.tasks.get('healthy')?.state?.words)
+      .toEqual([
+        {
+          id: 'saved',
+          text: 'Available',
+        },
+      ])
+    await home.close()
+  },
+)
+
+test(
+  'a large queued decision commits every receipt before publishing its state',
+  async () => {
+    const dir = homeFolder()
+    const count = ({ state = 0 }: { state?: number }) => state + 1
+    let home = openFileStore({
+      home: dir,
+      reduceHydra: count,
+      reduceTask: count,
+    })
+    await home.createHydra({
+      hydra: 'a',
+      facts: [
+        fact({
+          id: 'config',
+          t: 'config',
+        }),
+      ],
+    })
+    await home.createTask({
+      hydra: 'a',
+      task: 'task',
+      facts: [
+        fact({
+          id: 'created',
+          t: 'created',
+        }),
+      ],
+    })
+    const batch = Array.from(
+      { length: LARGE_BATCH_SIZE },
+      (
+        _,
+        i,
+      ) => fact({
+        id: `bulk-${i}`,
+        text: 'Saved',
+      }),
+    )
+    const [
+      first,
+      many,
+    ] = await Promise.all([
+      home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: () => [
+          fact({
+            id: 'first',
+            text: 'First',
+          }),
+        ],
+      }),
+      home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: () => batch,
+      }),
+    ])
+    expect(first).toMatchObject([
+      {
+        id: 'first',
+        n: 2,
+      },
+    ])
+    expect(many).toHaveLength(batch.length)
+    expect(many.at(-1)).toMatchObject({
+      id: 'bulk-149999',
+      n: 150_002,
+    })
+    await home.close()
+    home = openFileStore({
+      home: dir,
+      reduceHydra: count,
+      reduceTask: count,
+    })
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state).toBe(150_002)
+    await home.close()
+  },
+)
 
 test(
   'ordered decisions see prior writes, preserve native owner ids and acknowledge durable lines',
@@ -359,7 +618,16 @@ test(
       ),
     )
     home = store({ home: dir })
-    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toHaveLength(2)
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([
+      {
+        id: 'm_native-input',
+        text: 'Read these exact words',
+      },
+      {
+        id: 'm_after-snapshot',
+        text: 'Tail words',
+      },
+    ])
     await home.close()
   },
 )
@@ -486,7 +754,7 @@ test(
 )
 
 test(
-  'concurrent writes to one task sync once, and a failed sync returns no success receipt',
+  'concurrent writes sync once and recovery syncs a failed write before acknowledging its retry',
   async () => {
     const dir = homeFolder()
     const home = store({ home: dir })
@@ -506,9 +774,26 @@ test(
       ],
     })))
     expect(fdatasyncSync).toHaveBeenCalledTimes(1)
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+    const inode = filesystem.statSync(join(
+      dir,
+      'hydras/a/tasks/task/task.log',
+    )).ino
+    let recovered = false
     vi.mocked(fdatasyncSync).mockImplementationOnce(() => {
       throw new Error('injected sync failure')
     })
+
+    // eslint-disable-next-line pnyx/object-params -- Node's sync replacement receives a file descriptor.
+    const syncFile: typeof filesystem.fdatasyncSync = fd => {
+      filesystem.fdatasyncSync(fd)
+
+      if (filesystem.fstatSync(fd).ino === inode) {
+        recovered = true
+      }
+    }
+
+    vi.mocked(fdatasyncSync).mockImplementation(syncFile)
     const uncertain = fact({
       id: 'm_uncertain',
       text: 'Accepted only after durability',
@@ -529,6 +814,8 @@ test(
           duplicate: true,
         },
       ])
+    expect(recovered).toBe(true)
+    vi.mocked(fdatasyncSync).mockImplementation(filesystem.fdatasyncSync)
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words.filter(word => word.id === uncertain.id)).toHaveLength(1)
     await home.close()
   },
@@ -700,6 +987,27 @@ test(
       task: 'task',
       decide: () => [line],
     })
+    const hydraWorker = fact({
+      id: 'hydra-worker:100',
+      t: 'worker',
+      by: 'worker',
+      off: 100,
+      text: 'Hydra report',
+    })
+    const olderHydraWorker = {
+      ...hydraWorker,
+      id: 'hydra-worker:50',
+      off: 50,
+    }
+    await home.changeHydra({
+      hydra: 'a',
+      decide: () => [hydraWorker],
+    })
+    await expect(home.changeHydra({
+      hydra: 'a',
+      decide: () => [olderHydraWorker],
+    }))
+      .rejects.toMatchObject({ code: 'INVALID_EVENT' })
     await expect(home.changeTask({
       hydra: 'a',
       task: 'task',
@@ -720,11 +1028,42 @@ test(
       'utf8',
     ))
     expect(snapshot.tasks.task.worker).toBe(37)
+    const replay = vi.fn(conversation)
+    const hydraReplay = vi.fn(conversation)
+    home = openFileStore({
+      home: dir,
+      reduceHydra: hydraReplay,
+      reduceTask: replay,
+    })
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.worker).toBe(37)
+    expect(replay).not.toHaveBeenCalled()
+    expect(hydraReplay).not.toHaveBeenCalled()
+    await expect(home.changeHydra({
+      hydra: 'a',
+      decide: () => [olderHydraWorker],
+    }))
+      .rejects.toMatchObject({ code: 'INVALID_EVENT' })
+    expect(await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [line],
+    })).toMatchObject([
+      {
+        id: line.id,
+        duplicate: true,
+      },
+    ])
+    await home.close()
     rmSync(join(
       dir,
       'hydras/a/snapshot.json',
     ))
     home = store({ home: dir })
+    await expect(home.changeHydra({
+      hydra: 'a',
+      decide: () => [olderHydraWorker],
+    }))
+      .rejects.toMatchObject({ code: 'INVALID_EVENT' })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')).toMatchObject({
       worker: 37,
       state: { latest: 'Recorded once' },
@@ -793,6 +1132,7 @@ test(
       vi.mocked(fdatasyncSync).mockImplementation(filesystem.fdatasyncSync)
     }
 
+    await expect(home.close()).rejects.toMatchObject({ code: 'STORE_UNAVAILABLE' })
     const reopened = store({ home: dir })
     expect(reopened.read({ hydra: 'a' })?.tasks.has('task')).toBe(false)
     expect(reopened.read({ hydra: 'b' })?.tasks.get('task')?.state?.title).toBe('Task')
@@ -1058,12 +1398,61 @@ test(
 )
 
 test.each([
-  { operation: 'hydra' },
-  { operation: 'task' },
-  { operation: 'move' },
+  {
+    operation: 'hydra',
+    target: 'hydras/b',
+    parents: ['hydras'],
+    request: ({ home }: { home: ReturnType<typeof store> }) => home.createHydra({
+      hydra: 'b',
+      facts: [
+        fact({
+          id: 'published-hydra',
+          t: 'config',
+          name: 'B',
+        }),
+      ],
+    }),
+  },
+  {
+    operation: 'task',
+    target: 'hydras/a/tasks/new',
+    parents: ['hydras/a/tasks'],
+    request: ({ home }: { home: ReturnType<typeof store> }) => home.createTask({
+      hydra: 'a',
+      task: 'new',
+      facts: [
+        fact({
+          id: 'published-task',
+          t: 'created',
+          title: 'New',
+        }),
+      ],
+    }),
+  },
+  {
+    operation: 'move',
+    target: 'hydras/b/tasks/task',
+    parents: [
+      'hydras/a/tasks',
+      'hydras/b/tasks',
+    ],
+    request: ({ home }: { home: ReturnType<typeof store> }) => home.moveTask({
+      from: 'a',
+      to: 'b',
+      task: 'task',
+      id: 'published-move',
+      at: AT,
+      by: 'owner',
+    }),
+  },
 ])(
   'a $operation publication stays unacknowledged while its directory sync fails',
-  async ({ operation }) => {
+  async ({
+    operation,
+    target: relativeTarget,
+    parents: relativeParents,
+    request: submit,
+  }) => {
     const dir = homeFolder()
     let home = store({ home: dir })
     await create({ home })
@@ -1081,77 +1470,15 @@ test.each([
       })
     }
 
-    const target = operation === 'hydra' ? join(
+    const target = join(
       dir,
-      'hydras/b',
+      relativeTarget,
     )
-      : operation === 'task' ? join(
-        dir,
-        'hydras/a/tasks/new',
-      ) : join(
-        dir,
-        'hydras/b/tasks/task',
-      )
-    const parents = operation === 'hydra' ? [
-      join(
-        dir,
-        'hydras',
-      ),
-    ]
-      : operation === 'task' ? [
-        join(
-          dir,
-          'hydras/a/tasks',
-        ),
-      ]
-        : [
-          join(
-            dir,
-            'hydras/a/tasks',
-          ),
-          join(
-            dir,
-            'hydras/b/tasks',
-          ),
-        ]
-
-    const request = () => {
-      if (operation === 'hydra') {
-        return home.createHydra({
-          hydra: 'b',
-          facts: [
-            fact({
-              id: 'published-hydra',
-              t: 'config',
-              name: 'B',
-            }),
-          ],
-        })
-      }
-
-      if (operation === 'task') {
-        return home.createTask({
-          hydra: 'a',
-          task: 'new',
-          facts: [
-            fact({
-              id: 'published-task',
-              t: 'created',
-              title: 'New',
-            }),
-          ],
-        })
-      }
-
-      return home.moveTask({
-        from: 'a',
-        to: 'b',
-        task: 'task',
-        id: 'published-move',
-        at: AT,
-        by: 'owner',
-      })
-    }
+    const parents = relativeParents.map(path => join(
+      dir,
+      path,
+    ))
+    const request = () => submit({ home })
 
     const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
     const synced = new Set<string>()
@@ -1186,6 +1513,7 @@ test.each([
       await expect(request()).rejects.toMatchObject({ code: 'WRITE_FAILED' })
       await expect(request()).rejects.toMatchObject({ code: 'STORE_UNAVAILABLE' })
       outage = false
+      await expect(home.close()).rejects.toMatchObject({ code: 'STORE_UNAVAILABLE' })
       home = store({ home: dir })
       expect(parents.every(parent => synced.has(parent))).toBe(true)
       expect(await request()).toMatchObject([
