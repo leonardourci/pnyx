@@ -1,0 +1,110 @@
+$ pnpm run build && vitest run
+$ node scripts/build/build.ts
+vite v8.3.4 building client environment for production...
+transforming...
+Found 5 warnings while optimizing generated CSS:
+
+Issue #1:
+│   --column-color: var(--color-green);
+│ }
+│ ::highlight(reveal-0) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 25%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #2:
+│   }
+│ }
+│ ::highlight(reveal-1) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 45%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #3:
+│   }
+│ }
+│ ::highlight(reveal-2) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 65%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #4:
+│   }
+│ }
+│ ::highlight(reveal-3) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 85%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #5:
+│   }
+│ }
+│ ::highlight(reveal-hide) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: transparent;
+│ }
+
+[plugin rolldown:vite-resolve] Module "node:util" has been externalized for browser compatibility, imported by "<isolated-worktree>/src/app/decision.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:async_hooks" has been externalized for browser compatibility, imported by "<isolated-worktree>/src/app/command-notices.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:crypto" has been externalized for browser compatibility, imported by "<isolated-worktree>/src/hydra/digest.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+✓ 7117 modules transformed.
+rendering chunks...
+computing gzip size...
+dist.next.96052/web/index.html                     0.71 kB │ gzip:   0.37 kB
+dist.next.96052/web/assets/index-BhW8pJ77.css    186.19 kB │ gzip:  32.81 kB
+dist.next.96052/web/assets/index-nO-s6Mnp.js   1,266.42 kB │ gzip: 414.08 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.01s
+
+ RUN  v5.1.0 <isolated-worktree>
+      Running tests with seed "1795295082062"
+
+ ❯ |integration| tests/observability.test.ts (8 tests | 2 failed) 41974ms
+   × commands, HTTP, history and resource samples leave bounded measurements without message text 20067ms
+   × On mode suppresses successful git lookups and counts repeated failures per interval 20034ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |integration| tests/observability.test.ts > commands, HTTP, history and resource samples leave bounded measurements without message text
+Error: timed out waiting for the server applies On logging (last: false)
+ ❯ until tests/setup/until.ts:18:13
+     16|   while (value === undefined || value === false) {
+     17|     if (performance.now() > end) {
+     18|       throw new Error(`timed out waiting for ${what} (last: ${String(v…
+       |             ^
+     19|     }
+     20|
+ ❯ tests/observability.test.ts:51:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |integration| tests/observability.test.ts > On mode suppresses successful git lookups and counts repeated failures per interval
+Error: timed out waiting for the server applies On logging (last: false)
+ ❯ until tests/setup/until.ts:18:13
+     16|   while (value === undefined || value === false) {
+     17|     if (performance.now() > end) {
+     18|       throw new Error(`timed out waiting for ${what} (last: ${String(v…
+       |             ^
+     19|     }
+     20|
+ ❯ tests/observability.test.ts:442:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 32 passed (33)
+      Tests  2 failed | 324 passed (326)
+   Start at  18:04:42
+   Duration  126.32s (tests 94%, transform 2%, setup 2%, import 1%)
+
+[ELIFECYCLE] Test failed. See above for more details.
