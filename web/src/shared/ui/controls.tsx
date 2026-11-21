@@ -70,7 +70,10 @@ function pasteSingleLine({ event }: { event: ClipboardEvent<HTMLTextAreaElement>
       remaining,
     ),
   )
-  const insert = withinLimit.length < text.length ? withinLimit.replace(/[\uD800-\uDBFF]$/u, '') : withinLimit
+  const insert = withinLimit.length < text.length ? withinLimit.replace(
+    /[\uD800-\uDBFF]$/u,
+    '',
+  ) : withinLimit
 
   if (!insert) {
     return
