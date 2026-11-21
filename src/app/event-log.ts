@@ -404,14 +404,19 @@ export function eventPositions({
 export function eventTime({
   hydraId,
   seq,
+  exact = false,
 }: {
   hydraId: string
   seq: number
+  exact?: boolean
 }): string | undefined {
   const [rows] = query({
     statements: [
       {
-        text: 'select at, seq from events where hydra_id = $1 and seq <= $2 order by seq desc limit 1',
+        text: `select at, seq from (
+          select at, seq from events where hydra_id = $1 and seq ${exact ? '=' : '<='} $2
+          union all select at, seq from observation_receipts where hydra_id = $1 and seq ${exact ? '=' : '<='} $2
+        ) clocks order by seq desc limit 1`,
         values: [
           hydraId,
           seq,
@@ -426,7 +431,9 @@ export function eventTime({
   let latest = rows![0]
 
   for (const clock of observedTimes({ hydraId })) {
-    if (clock.seq <= seq && (!latest || clock.seq > Number(latest.seq))) {
+    const withinRange = exact ? clock.seq === seq : clock.seq <= seq
+
+    if (withinRange && (!latest || clock.seq > Number(latest.seq))) {
       latest = clock
     }
   }

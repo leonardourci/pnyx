@@ -42,9 +42,11 @@ export interface Writer {
   append({
     event,
     effects,
+    receipt,
   }: {
     event: HydraEvent
     effects?: boolean
+    receipt?: boolean
   }): void
 }
 
@@ -171,6 +173,7 @@ export function withWriter<T>({
       }),
     })
     const pending: HydraEvent[] = []
+    const receipts: HydraEvent[] = []
     const committed: (() => void)[] = []
     const observations = new Map<string, SourceObservation>()
     const touched: Touched = {
@@ -185,7 +188,16 @@ export function withWriter<T>({
       transaction: id === hydraId ? transaction?.id : undefined,
       touched,
       committed,
-      onAppend: ({ event }) => pending.push(event),
+      onAppend: ({
+        event,
+        receipt,
+      }) => {
+        pending.push(event)
+
+        if (receipt && !durableEvent({ event })) {
+          receipts.push(event)
+        }
+      },
       onObserve: ({ observation }) => observations.set(
         observationKey(observation),
         observation,
@@ -197,6 +209,7 @@ export function withWriter<T>({
       held,
       writer,
       pending,
+      receipts,
       observations,
       committed,
       touched,
@@ -267,6 +280,25 @@ export function withWriter<T>({
     ])
 
     for (const stage of stages) {
+      if (stage.receipts.length) {
+        statements.push({
+          text: `insert into observation_receipts (hydra_id, id, seq, at)
+            select $1, id, seq, at from json_to_recordset($2::json) as receipt(id text, seq bigint, at text)`,
+          values: [
+            stage.id,
+            JSON.stringify(stage.receipts.map(({
+              id,
+              seq,
+              at,
+            }) => ({
+              id,
+              seq,
+              at,
+            }))),
+          ],
+        })
+      }
+
       for (const observation of stage.observations.values()) {
         statements.push(observationStatement({
           hydraId: stage.id,
@@ -373,7 +405,13 @@ export function eventWriter({
   transaction?: string
   touched?: Touched
   committed?: (() => void)[]
-  onAppend({ event }: { event: HydraEvent }): void
+  onAppend({
+    event,
+    receipt,
+  }: {
+    event: HydraEvent
+    receipt?: boolean
+  }): void
   onObserve?({ observation }: { observation: SourceObservation }): void
 }): Writer {
   const state = owned ? initial : structuredClone(initial)
@@ -403,6 +441,7 @@ export function eventWriter({
     append({
       event,
       effects = true,
+      receipt = false,
     }) {
       storable({ value: event })
       // What a worker's transcript recorded is an observation, never another Hydra session's change, so a lease never refuses it.
@@ -550,7 +589,10 @@ export function eventWriter({
         }
       }
 
-      onAppend({ event })
+      onAppend({
+        event,
+        receipt,
+      })
 
       if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.source) {
         onObserve?.({

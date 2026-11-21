@@ -522,7 +522,10 @@ export function commit(
         }
 
         if ('event' in decision) {
-          writer.append({ event: decision.event })
+          writer.append({
+            event: decision.event,
+            receipt: true,
+          })
           const { event } = decision
 
           if (event.type === 'hydra.memory' && event.data.key === 'workers') {

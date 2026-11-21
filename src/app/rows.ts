@@ -824,7 +824,7 @@ export function loadStatements({ hydraId }: { hydraId: string }): Statement[] {
     'select card_id, id, kind, source, at from notes where hydra_id = $1 order by card_id, position',
     'select data from messages where hydra_id = $1 order by position',
     'select id, data from sessions where hydra_id = $1',
-    'select id, seq from events where hydra_id = $1',
+    'select id, seq from events where hydra_id = $1 union all select id, seq from observation_receipts where hydra_id = $1',
     'select card_id, adapter, instance_id, object_id, generation, observed_at, seen_at from source_observations where hydra_id = $1',
   ].map(text => ({
     text,

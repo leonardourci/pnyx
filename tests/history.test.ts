@@ -348,6 +348,99 @@ test(
 )
 
 test(
+  'expired observation ids cannot replay stale activity after restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const receipts: {
+      key: string
+      id: string
+    }[] = []
+
+    for (const key of [
+      'explicit',
+      'generated',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          key,
+          '--title',
+          key,
+        ],
+      })
+      const first = await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+          ...(key === 'explicit' ? [
+            '--event-id',
+            'start-1',
+          ] : []),
+        ],
+        input: JSON.stringify({ activity: 'working' }),
+      })
+      receipts.push({
+        key,
+        id: first.event.id,
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({ activity: 'finished' }),
+      })
+    }
+
+    await pnyx.restart()
+
+    for (const {
+      key,
+      id,
+    } of receipts) {
+      const refused = await hydra.ownerRefused({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+          '--event-id',
+          id,
+        ],
+        input: JSON.stringify({ activity: 'working' }),
+      })
+      expect(refused.code).toBe('RECEIPT_EXPIRED')
+      const { task } = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(task.activity).toBe('finished')
+      expect(rows({
+        text: 'select id from events where hydra_id = $1 and id = $2',
+        values: [
+          hydra.id,
+          id,
+        ],
+      })).toEqual([])
+    }
+  },
+)
+
+test(
   'undoing a title edit observed by another task’s session preserves both assignments',
   async () => {
     const hydra = await pnyx.hydra()
