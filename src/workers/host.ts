@@ -5,7 +5,7 @@ import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { taskDone } from '#tasks/select.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { readEvents, scanEvents } from '#app/event-log.ts'
+import { readChanges, scanChanges } from '#app/event-log.ts'
 
 export const SETTINGS = [
   'model',
@@ -117,7 +117,18 @@ export function findWorkerTurnToResume({
     return undefined
   }
 
-  const observations = scanEvents({
+  if (session?.turn) {
+    const turn = session.turn
+    const attempt = `resume:${turn.seq}`
+
+    if (turn.resumes >= MAX_RESUMES || attempt in state.eventIds) {
+      return undefined
+    }
+
+    return attempt
+  }
+
+  const observations = scanChanges({
     hydraId,
     cardId: session?.launchId ? undefined : cardId,
     types: [
@@ -160,7 +171,7 @@ export function findWorkerTurnToResume({
 
   if (launchSeq !== undefined && (!lastTurn || launchSeq > lastTurn.seq)
     && (boundary === undefined || launchSeq > boundary)) {
-    lastTurn = readEvents({
+    lastTurn = readChanges({
       hydraId,
       seqs: [launchSeq],
     })[0]
@@ -168,7 +179,7 @@ export function findWorkerTurnToResume({
 
   if (!lastTurn || resumesInARow({
     turn: lastTurn,
-    read: ({ seq }) => readEvents({
+    read: ({ seq }) => readChanges({
       hydraId,
       seqs: [seq],
     })[0],

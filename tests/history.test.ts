@@ -253,6 +253,73 @@ const wordsOf = ({ pages }: { pages: Page[] }) => pages.flatMap(page => [...page
   .map(match => match[0]))
 
 test(
+  'completed native replies remain in history after observations leave the log and after restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Read native history',
+      reply: 'NATIVE-HISTORY-END',
+    })
+    const session = await hydra.chat({ text: 'Read native history' })
+    await until({
+      what: 'the native reply',
+      check: () => session.answered === 1,
+    })
+    const live = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'origin',
+      ],
+    })
+    expect(live.text).toContain('NATIVE-HISTORY-END')
+    await pnyx.restart()
+    const restored = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'origin',
+      ],
+    })
+    expect(restored.text).toContain('NATIVE-HISTORY-END')
+  },
+)
+
+test(
+  'an inscribe retry survives a restart without another history event',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const args = [
+      'hydra',
+      'inscribe',
+      'start',
+      '--key',
+      'stored-pass',
+      '--event-id',
+      'stored-pass-start',
+    ]
+    const first = await hydra.owner({ args })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'stored-pass',
+      ],
+    })
+    await pnyx.restart()
+    const retried = await hydra.owner({ args })
+    expect(retried.duplicate).toBe('event id already applied; nothing appended')
+    expect(retried.event).toEqual(first.event)
+    expect(retried.milestone).toBe('stored-pass')
+  },
+)
+
+test(
   'a long range of Hydra history reads page by page in log order, each reply once, where it used to time out',
   async () => {
     const {

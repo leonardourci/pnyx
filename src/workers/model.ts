@@ -240,7 +240,19 @@ export interface AgentLaunch {
   harness?: string
 }
 
+interface NativeTurn {
+  id: string
+  seq: number
+  resumes: number
+  finishedThrough: number
+}
+
 export interface AgentSession {
+  turn?: NativeTurn
+  hydraTurn?: NativeTurn
+  turnFinishedSeq?: number
+  wakeStarted?: string
+  wakeHandled?: string
   activityCursor?: {
     source: string
     identity: string

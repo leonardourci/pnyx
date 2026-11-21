@@ -1,3 +1,4 @@
+import { WAKE_TURN, WAKE_HANDLED } from './wake-ids.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import type { HydraState } from '#app/model.ts'
 import { decisionsBlock } from '#tasks/decisions.ts'
@@ -7,7 +8,7 @@ import { clip } from './digest.ts'
 import { ownerActor } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import type { AgentRef } from '#workers/model.ts'
-import { readEvents, scanEvents } from '#app/event-log.ts'
+import { readChanges, scanChanges } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
 import { hydraInputDispatched } from './received.ts'
@@ -26,31 +27,6 @@ export interface HydraQueue {
   waiting: QueuedUpdate[]
   reading: QueuedUpdate[]
 }
-
-// A wake offered again after its turn failed gets a fresh id, as each id starts one turn: wake:<through>.<try>.
-export const wakeId = ({
-  through,
-  state,
-}: {
-  through: number
-  state: HydraState
-}) => {
-  let id = `wake:${through}`
-
-  for (let attempt = 2; `${id}:hosted` in state.eventIds; attempt += 1) {
-    id = `wake:${through}.${attempt}`
-  }
-
-  return id
-}
-
-export const WAKE_ID = /^wake:(\d+)(?:\.\d+)?$/
-
-// A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
-export const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
-
-// The finished record of the turn that read a wake carries this id.
-export const WAKE_HANDLED = /^wake:(\d+):handled$/
 
 export const REPLY_RULES = [
   'Reply rules: tell the owner at once in plain words with full links when work is ready for review, merged or landed, findings are in, or a failure or blocker cannot be cleared. A decision needed goes on a question card; do not restate it in chat, only add what the card lacks.',
@@ -278,7 +254,14 @@ export function wakesThrough({
   state: HydraState
   pattern: RegExp
 }): number {
-  const covered = Object.keys(state.eventIds).flatMap(id => pattern.exec(id)?.[1] ?? [])
+  const observed = Object.values(state.sessions ?? {}).flatMap(session => [
+    session.wakeStarted ?? '',
+    session.wakeHandled ?? '',
+  ])
+  const covered = [
+    ...Object.keys(state.eventIds),
+    ...observed,
+  ].flatMap(id => pattern.exec(id)?.[1] ?? [])
     .map(Number)
 
   return Math.max(
@@ -320,7 +303,8 @@ export function findHydraTurnToResume({
   resumeMessage: string
   wakeThrough: number
 } | undefined {
-  const cutHydraTurn = scanEvents({
+  const cached = state.sessions?.[sessionId({ agent })]?.hydraTurn
+  const legacyTurn = cached ? undefined : scanChanges({
     hydraId,
     cardId: HYDRA_CARD,
     types: [
@@ -338,13 +322,16 @@ export function findHydraTurnToResume({
       : event.type === 'board.configured' && event.data.hydra?.session === sessionId({ agent })
   })
 
-  if (!cutHydraTurn || resumesInARow({
-    turn: cutHydraTurn,
-    read: ({ seq }) => readEvents({
+  const cutHydraTurn = cached ?? legacyTurn
+  const resumes = cached?.resumes ?? (legacyTurn ? resumesInARow({
+    turn: legacyTurn,
+    read: ({ seq }) => readChanges({
       hydraId,
       seqs: [seq],
     })[0],
-  }) >= MAX_RESUMES) {
+  }) : 0)
+
+  if (!cutHydraTurn || resumes >= MAX_RESUMES) {
     return undefined
   }
 
@@ -354,7 +341,7 @@ export function findHydraTurnToResume({
     return undefined
   }
 
-  const lastFinishedTurn = scanEvents({
+  const lastFinishedTurn = cached ? undefined : scanChanges({
     hydraId,
     cardId: HYDRA_CARD,
     types: [
@@ -374,18 +361,18 @@ export function findHydraTurnToResume({
     /:compact:hosted$|:hosted$/,
     '',
   )
-  const source = readEvents({
+  const source = readChanges({
     hydraId,
     types: ['hydra.message'],
     ids: [sourceId],
   })[0]
   const lastFinishedTurnSeq = Math.min(
-    lastFinishedTurn?.seq ?? 0,
+    cached?.finishedThrough ?? lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
   const unansweredMessages: number[] = []
 
-  for (const event of scanEvents({
+  for (const event of scanChanges({
     hydraId,
     types: ['hydra.message'],
     after: lastFinishedTurnSeq,

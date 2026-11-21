@@ -1,4 +1,5 @@
 import { cloneValue } from '#app/preimage.ts'
+import { recordHydraTurn } from '#workers/session-facts.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { refreshTasks } from '#tasks/columns.ts'
@@ -21,6 +22,15 @@ export function applyHydra({
   }
 
   if (event.type === 'hydra.delivered') {
+    const session = state.sessions?.[event.data.session]
+
+    if (session) {
+      recordHydraTurn({
+        session,
+        event,
+      })
+    }
+
     return true
   }
 
@@ -172,6 +182,17 @@ export function applyHydra({
     )
     state.configured = true
     const session = event.data.hydra.session
+
+    if (session && event.id.endsWith(':hosted')) {
+      const observed = state.sessions?.[session]
+
+      if (observed) {
+        recordHydraTurn({
+          session: observed,
+          event,
+        })
+      }
+    }
 
     if (session && !state.hydraSessions?.includes(session)) {
       state.hydraSessions = [
