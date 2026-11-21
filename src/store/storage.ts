@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
 import { pnyxHome } from './paths.ts'
 
@@ -12,8 +12,14 @@ const STALE_EMPTY_LOCK_MS = 10_000
 const LOCK_POLL_MS = 25
 
 // A Hydra's folder holds its spool, caches and agent files, which can quote transcripts and are as private.
-export function privateDir({ dir }: { dir: string }): void {
-  mkdirSync(
+export function privateDir({
+  dir,
+  durable = false,
+}: {
+  dir: string
+  durable?: boolean
+}): void {
+  const firstCreated = mkdirSync(
     dir,
     {
       recursive: true,
@@ -28,6 +34,16 @@ export function privateDir({ dir }: { dir: string }): void {
       dir,
       0o700,
     )
+  }
+
+  if (durable && firstCreated) {
+    const parent = dirname(resolve(firstCreated))
+
+    for (let current = resolve(dir); current !== parent; current = dirname(current)) {
+      syncDirectory({ dir: current })
+    }
+
+    syncDirectory({ dir: parent })
   }
 }
 
