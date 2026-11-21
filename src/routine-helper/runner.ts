@@ -110,7 +110,10 @@ function parseOutcomes({
 
     const summary = row.summary.trim()
 
-    const summaryWithoutLinks = summary.replace(/https?:\/\/\S+/gi, '').trim()
+    const summaryWithoutLinks = summary.replace(
+      /https?:\/\/\S+/gi,
+      '',
+    ).trim()
 
     if (summaryWithoutLinks.length > HELPER_SUMMARY_CHARS || summary.split(/\s+/).length > HELPER_SUMMARY_WORDS) {
       throw new Error('Helper returned an oversized summary')
