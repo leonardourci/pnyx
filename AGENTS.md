@@ -2,7 +2,7 @@
 
 Pnyx is a deterministic view of every agent and its work in Hydras, with a small plain CLI named `pnyx`.
 
-Vocabulary: Pnyx is the app, a **Hydra** holds its tasks (always say Hydra, never board), search is the **Oracle**, and **inscribe** is how Hydra curates and saves its memory before a reset. Everything else uses its plain name.
+Vocabulary: Pnyx is the app, a **Hydra** holds its tasks (always say Hydra, never board), search is the **Oracle**, and **inscribe** summarizes durable context before a reset and identifies memory changes to save. Everything else uses its plain name.
 
 ## Build and test
 

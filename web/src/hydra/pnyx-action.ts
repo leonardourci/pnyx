@@ -197,18 +197,27 @@ export function pnyxSentence({
         because,
       ].filter(Boolean)
     }
-    case 'send':
-    case 'reply':
-      if (area === 'send' && !flags.task) {
-        return [`Sent Hydra: ${firstLine({ text: flags.text ?? '' })}`]
+    case 'send': {
+      const message = firstLine({ text: flags.text ?? '' })
+      const excerpt = message ? `: ${message}` : ''
+
+      if (!flags.task) {
+        return [`Sent to Hydra${excerpt}`]
       }
 
+      return [
+        'Sent ',
+        task({ ref: flags.task }),
+        `’s worker${excerpt}`,
+      ]
+    }
+    case 'reply':
       return flags.answer !== undefined ? [
         'Answered the question from ',
         task({ ref: action }),
       ] : [
         'Sent ',
-        task({ ref: flags.task ?? action }),
+        task({ ref: action }),
         `’s worker: ${firstLine({ text: flags.text ?? '' })}`,
       ]
     case 'answer':

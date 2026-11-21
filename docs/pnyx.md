@@ -14,9 +14,9 @@ pnyx send --task <task> --text "Also check mobile" --hydra work
 pnyx answer <task> <question> --text "Use the existing design" --hydra work
 ```
 
-`task create` saves the task and starts its worker. Pass an explicit `--harness`, `--account`, `--model`, `--effort`, `--mode`, `--fast` or `--rule` when required. The receipt includes the task ID and whether its worker started; a failed start keeps the task and names the blocker. Configure Hydras, projects, dispatch and view settings in the UI. The Hydra header keeps its fold controls before its name; the fixed ＋ after the name requests a project attachment in chat while project chips scroll beside it. Stop a foreground server with Ctrl+C. Use `/upgrade` in Hydra's chat to upgrade.
+`task create` saves the task and starts its worker. Pass an explicit `--harness`, `--account`, `--model`, `--effort`, `--mode`, `--fast` or `--rule` when required. The receipt includes the task ID and whether its worker started. A failed start keeps the task and names the blocker. Configure Hydras, projects, dispatch and view settings in the UI. Stop a foreground server with Ctrl+C. Use `/upgrade` in Hydra's chat to upgrade.
 
-`send` addresses Hydra by default, or a task's worker with `--task`. Give `--text` or `--file <path|->`. Use `--idempotency-key` when a caller needs to reconcile an uncertain delivery without duplicating the message. A queued receipt does not confirm delivery.
+`send` addresses Hydra by default, or a task's worker with `--task`. Give `--text` or `--file <path|->`. Choose an `--idempotency-key` before the first attempt and reuse the same key and message if the receipt is lost. A queued receipt records acceptance for delivery.
 
 `answer` records an answer to a saved question and routes it to Hydra or the task's worker according to who asked. Hydra can identify an owner's answer using `--from-message <id>`.
 

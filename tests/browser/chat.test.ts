@@ -565,6 +565,10 @@ test(
             id: 'toolu_legacy',
             command: `pnyx-axi reply ${task.id} --text "Earlier call"`,
           },
+          {
+            id: 'toolu_file',
+            command: `pnyx send --task ${task.id} --file message.txt`,
+          },
         ].flatMap(({
           id,
           command,
@@ -600,12 +604,13 @@ test(
       await progress.locator(':scope > summary').click()
       const traces = progress.locator('[data-progress-kind="tool"]')
       const labels = traces.locator('.trace-label')
-      await expect.poll(() => labels.filter({ hasText: /^Sending/ }).count()).toBe(2)
+      await expect.poll(() => labels.filter({ hasText: /^Sending/ }).count()).toBe(3)
+      await expect.poll(() => labels.filter({ hasText: /’s worker$/ }).count()).toBe(1)
       await expect.poll(() => labels.filter({ hasText: /^Answering the question from/ }).count()).toBe(1)
       await expect.poll(() => traces.getByRole(
         'button',
         { name: /^Open task Task labels;/ },
-      ).count()).toBe(3)
+      ).count()).toBe(4)
       await labels.filter({ hasText: /^Answering the question from/ }).getByRole(
         'button',
         { name: /^Open task Task labels;/ },
