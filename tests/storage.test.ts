@@ -80,13 +80,16 @@ test(
       accept: ({ entry }) => loaded.push(entry),
     })
 
-    expect(loaded).toEqual(entries.map((
-      entry,
-      index,
-    ) => ({
-      n: index + 2,
-      ...entry,
-    })))
+    expect(loaded).toEqual([
+      {
+        n: 2,
+        ...entries[0],
+      },
+      {
+        n: 3,
+        ...entries[1],
+      },
+    ])
     expect(resumed).toEqual(end)
     expect(end).toEqual({
       bytes: statSync(path).size,

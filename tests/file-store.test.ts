@@ -1,4 +1,4 @@
-import { appendFileSync, fdatasyncSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { openFileStore } from '#store/file-store.ts'
@@ -16,6 +16,7 @@ vi.mock(
     return {
       ...filesystem,
       fdatasyncSync: vi.fn(filesystem.fdatasyncSync),
+      fsyncSync: vi.fn(filesystem.fsyncSync),
     }
   },
 )
@@ -138,13 +139,25 @@ test(
     const dir = homeFolder()
     const home = store({ home: dir })
     await create({ home })
+    const context = home.changeHydra({
+      hydra: 'a',
+      decide: () => [
+        fact({
+          id: 'hydra-context',
+          text: 'Root',
+        }),
+      ],
+    })
     const first = home.changeTask({
       hydra: 'a',
       task: 'task',
-      decide: ({ state }) => [
+      decide: ({
+        state,
+        read,
+      }) => [
         fact({
           id: 'm_native-user-1',
-          text: `words ${state.words.length + 1}`,
+          text: `${read({ hydra: 'a' })?.state?.words[0]?.text} words ${state.words.length + 1}`,
         }),
       ],
     })
@@ -162,6 +175,7 @@ test(
       first,
       second,
     ])
+    await context
     expect(receipts.map(receipt => receipt.map(entry => entry.id))).toEqual([
       ['m_native-user-1'],
       ['m_native-user-2'],
@@ -190,7 +204,7 @@ test(
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([
       {
         id: 'm_native-user-1',
-        text: 'words 1',
+        text: 'Root words 1',
       },
       {
         id: 'm_native-user-2',
@@ -198,6 +212,15 @@ test(
       },
     ])
     await home.close()
+    const reopened = store({ home: dir })
+    expect(reopened.read({ hydra: 'a' })?.state?.words).toEqual([
+      {
+        id: 'hydra-context',
+        text: 'Root',
+      },
+    ])
+    expect(reopened.read({ hydra: 'a' })?.tasks.get('task')?.state?.words[0]?.text).toBe('Root words 1')
+    await reopened.close()
   },
 )
 
@@ -211,12 +234,45 @@ test(
       id: 'm_native-input',
       text: 'Read these exact words',
     })
-    await home.changeTask({
+    const written = home.changeTask({
       hydra: 'a',
       task: 'task',
       decide: () => [native],
     })
-    await home.close()
+    await home.snapshot()
+    await written
+    expect(JSON.parse(readFileSync(
+      join(
+        dir,
+        'hydras/a/snapshot.json',
+      ),
+      'utf8',
+    )).tasks.task.task.n).toBe(2)
+    const queued = home.changeHydra({
+      hydra: 'a',
+      decide: () => [
+        fact({
+          id: 'm_before-close',
+          text: 'Before close',
+        }),
+      ],
+    })
+    const closing = home.close()
+    await expect(home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        fact({
+          id: 'late',
+          text: 'Too late',
+        }),
+      ],
+    }))
+      .rejects.toMatchObject({ code: 'STORE_CLOSED' })
+    await Promise.all([
+      queued,
+      closing,
+    ])
     const taskLog = join(
       dir,
       'hydras/a/tasks/task/task.log',
@@ -238,6 +294,12 @@ test(
       reduceTask: replay,
     })
     expect(replay.mock.calls.map(([call]) => call.entry.id)).toEqual(['m_after-snapshot'])
+    expect(home.read({ hydra: 'a' })?.state?.words).toEqual([
+      {
+        id: 'm_before-close',
+        text: 'Before close',
+      },
+    ])
     const retry = await home.changeTask({
       hydra: 'a',
       task: 'task',
@@ -252,6 +314,7 @@ test(
       {
         id: 'm_native-input',
         n: 2,
+        at: AT,
         duplicate: true,
       },
     ])
@@ -274,14 +337,15 @@ test(
       dir,
       'hydras/a/snapshot.json',
     )
-    const snapshot = JSON.parse(readFileSync(
-      path,
-      'utf8',
-    ))
-    snapshot.state.content.tasks.task.value.words = []
     writeFileSync(
       path,
-      JSON.stringify(snapshot),
+      readFileSync(
+        path,
+        'utf8',
+      ).replace(
+        'Read these exact words',
+        'Changed cache words',
+      ),
     )
     home = store({ home: dir })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toHaveLength(2)
@@ -313,6 +377,18 @@ test(
       'a',
       'b',
     ])
+    await expect(home.createTask({
+      hydra: 'b',
+      task: 'task',
+      facts: [
+        fact({
+          id: 'duplicate-task',
+          t: 'created',
+          title: 'Duplicate',
+        }),
+      ],
+    }))
+      .rejects.toMatchObject({ code: 'CONFLICT' })
     await home.changeTask({
       hydra: 'a',
       task: 'task',
@@ -358,9 +434,34 @@ test(
         }),
       ],
     })
+    await home.moveTask({
+      from: 'b',
+      to: 'a',
+      task: 'task',
+      id: 'move-back',
+      at: AT,
+      by: 'owner',
+    })
+    expect(await home.moveTask(moving)).toMatchObject([
+      {
+        id: 'native-move',
+        n: 3,
+        at: AT,
+        duplicate: true,
+      },
+    ])
+    expect(home.locateTask({ task: 'task' })?.hydra).toBe('a')
     await home.close()
+    rmSync(join(
+      dir,
+      'hydras/a/snapshot.json',
+    ))
+    rmSync(join(
+      dir,
+      'hydras/b/snapshot.json',
+    ))
     const reopened = store({ home: dir })
-    expect(reopened.read({ hydra: 'b' })?.tasks.get('task')?.state).toMatchObject({
+    expect(reopened.read({ hydra: 'a' })?.tasks.get('task')?.state).toMatchObject({
       copy,
       words: [
         {
@@ -504,12 +605,38 @@ test(
       dir,
       'hydras/a/tasks/task/task.log',
     )
+    const prefix = readFileSync(
+      path,
+      'utf8',
+    )
+    const badMiddle = '{invalid-middle}\n'
+    const badTail = '{invalid-final}\n'
     appendFileSync(
       path,
-      '{invalid-middle}\n{"n":2}\n',
+      badMiddle + badTail,
+    )
+    const cachePath = join(
+      dir,
+      'hydras/a/snapshot.json',
+    )
+    const changedCache = JSON.parse(readFileSync(
+      cachePath,
+      'utf8',
+    ))
+    changedCache.tasks.task.task = {
+      bytes: Buffer.byteLength(prefix + badMiddle),
+      n: 2,
+    }
+    writeFileSync(
+      cachePath,
+      JSON.stringify(changedCache),
     )
     home = store({ home: dir })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.issue).toMatchObject({ code: 'LOG_CORRUPT' })
+    expect(readFileSync(
+      path,
+      'utf8',
+    )).toBe(prefix + badMiddle + badTail)
     await expect(home.changeTask({
       hydra: 'a',
       task: 'task',
@@ -582,6 +709,10 @@ test(
       'utf8',
     ))
     expect(snapshot.tasks.task.worker).toBe(37)
+    rmSync(join(
+      dir,
+      'hydras/a/snapshot.json',
+    ))
     home = store({ home: dir })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')).toMatchObject({
       worker: 37,
@@ -655,5 +786,485 @@ test(
     expect(reopened.read({ hydra: 'a' })?.tasks.has('task')).toBe(false)
     expect(reopened.read({ hydra: 'b' })?.tasks.get('task')?.state?.title).toBe('Task')
     await reopened.close()
+  },
+)
+
+test(
+  'general decisions cannot record a folder move',
+  async () => {
+    const home = store({ home: homeFolder() })
+    await create({ home })
+    await home.createHydra({
+      hydra: 'b',
+      facts: [
+        fact({
+          id: 'config-b',
+          t: 'config',
+          name: 'B',
+        }),
+      ],
+    })
+    await expect(home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        fact({
+          id: 'raw-move',
+          t: 'moved',
+          from: 'a',
+          to: 'b',
+        }),
+      ],
+    }))
+      .rejects.toMatchObject({ code: 'INVALID_EVENT' })
+    await expect(home.createTask({
+      hydra: 'a',
+      task: 'raw-create',
+      facts: [
+        fact({
+          id: 'raw-create',
+          t: 'created',
+          title: 'No raw move',
+        }),
+        fact({
+          id: 'raw-create-move',
+          t: 'moved',
+          from: 'a',
+          to: 'b',
+        }),
+      ],
+    })).rejects.toMatchObject({ code: 'INVALID_EVENT' })
+    expect(home.locateTask({ task: 'task' })?.hydra).toBe('a')
+    expect(home.locateTask({ task: 'raw-create' })).toBeUndefined()
+    await home.close()
+  },
+)
+
+test(
+  'existing dotted Hydra ids remain valid in native folders and discovery',
+  async () => {
+    const dir = homeFolder()
+    const home = store({ home: dir })
+    await home.createHydra({
+      hydra: 'dot.name',
+      facts: [
+        fact({
+          id: 'dot-config',
+          t: 'config',
+          name: 'Dotted',
+        }),
+      ],
+    })
+    await home.createTask({
+      hydra: 'dot.name',
+      task: 'task',
+      facts: [
+        fact({
+          id: 'dot-task',
+          t: 'created',
+          title: 'Dotted task',
+        }),
+      ],
+    })
+    await home.close()
+    const reopened = store({ home: dir })
+    expect(reopened.hydras()).toEqual(['dot.name'])
+    expect(reopened.read({ hydra: 'dot.name' })?.tasks.get('task')?.state?.title).toBe('Dotted task')
+    await reopened.close()
+  },
+)
+
+test(
+  'a directory in place of one task log does not prevent healthy tasks from opening',
+  async () => {
+    const dir = homeFolder()
+    const home = store({ home: dir })
+    await create({ home })
+    await home.createTask({
+      hydra: 'a',
+      task: 'healthy',
+      facts: [
+        fact({
+          id: 'healthy-create',
+          t: 'created',
+          title: 'Healthy',
+        }),
+      ],
+    })
+    await home.close()
+    const path = join(
+      dir,
+      'hydras/a/tasks/task/task.log',
+    )
+    rmSync(path)
+    mkdirSync(path)
+    const reopened = store({ home: dir })
+    expect(reopened.read({ hydra: 'a' })?.tasks.get('task')?.issue).toMatchObject({ code: 'LOG_CORRUPT' })
+    await reopened.changeTask({
+      hydra: 'a',
+      task: 'healthy',
+      decide: () => [
+        fact({
+          id: 'healthy-word',
+          text: 'Still working',
+        }),
+      ],
+    })
+    expect(reopened.read({ hydra: 'a' })?.tasks.get('healthy')?.state?.words).toEqual([
+      {
+        id: 'healthy-word',
+        text: 'Still working',
+      },
+    ])
+    await reopened.close()
+  },
+)
+
+test(
+  'a dependent decision cannot survive when the preceding scope write failed',
+  async () => {
+    const dir = homeFolder()
+    const home = store({ home: dir })
+    await create({ home })
+    await home.createTask({
+      hydra: 'a',
+      task: 'second',
+      facts: [
+        fact({
+          id: 'second-create',
+          t: 'created',
+          title: 'Second',
+        }),
+      ],
+    })
+    appendFileSync(
+      join(
+        dir,
+        'hydras/a/tasks/second/task.log',
+      ),
+      '{unacknowledged-tail}\n',
+    )
+    const writes = await Promise.allSettled([
+      home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: () => [
+          fact({
+            id: 'first',
+            text: 'First',
+          }),
+        ],
+      }),
+      home.changeTask({
+        hydra: 'a',
+        task: 'second',
+        decide: () => [
+          fact({
+            id: 'middle',
+            text: 'Middle',
+          }),
+        ],
+      }),
+      home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: ({ read }) => [
+          fact({
+            id: 'dependent',
+            text: `Saw ${read({ hydra: 'a' })?.tasks.get('second')?.state?.words[0]?.text}`,
+          }),
+        ],
+      }),
+    ])
+    expect(writes.map(write => write.status)).toEqual([
+      'rejected',
+      'rejected',
+      'rejected',
+    ])
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([
+      {
+        id: 'first',
+        text: 'First',
+      },
+    ])
+    expect(home.read({ hydra: 'a' })?.tasks.get('second')?.state?.words).toEqual([])
+    await home.changeTask({
+      hydra: 'a',
+      task: 'second',
+      decide: () => [
+        fact({
+          id: 'middle',
+          text: 'Middle',
+        }),
+      ],
+    })
+    expect(await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: ({ read }) => [
+        fact({
+          id: 'dependent',
+          text: `Saw ${read({ hydra: 'a' })?.tasks.get('second')?.state?.words[0]?.text}`,
+        }),
+      ],
+    })).toMatchObject([
+      {
+        id: 'dependent',
+        duplicate: false,
+      },
+    ])
+    await home.close()
+    const reopened = store({ home: dir })
+    expect(reopened.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([
+      {
+        id: 'first',
+        text: 'First',
+      },
+      {
+        id: 'dependent',
+        text: 'Saw Middle',
+      },
+    ])
+    await reopened.close()
+  },
+)
+
+test.each([
+  { operation: 'hydra' },
+  { operation: 'task' },
+  { operation: 'move' },
+])(
+  'a $operation publication stays unacknowledged while its directory sync fails',
+  async ({ operation }) => {
+    const dir = homeFolder()
+    let home = store({ home: dir })
+    await create({ home })
+
+    if (operation === 'move') {
+      await home.createHydra({
+        hydra: 'b',
+        facts: [
+          fact({
+            id: 'b-config',
+            t: 'config',
+            name: 'B',
+          }),
+        ],
+      })
+    }
+
+    const target = operation === 'hydra' ? join(
+      dir,
+      'hydras/b',
+    )
+      : operation === 'task' ? join(
+        dir,
+        'hydras/a/tasks/new',
+      ) : join(
+        dir,
+        'hydras/b/tasks/task',
+      )
+    const parents = operation === 'hydra' ? [
+      join(
+        dir,
+        'hydras',
+      ),
+    ]
+      : operation === 'task' ? [
+        join(
+          dir,
+          'hydras/a/tasks',
+        ),
+      ]
+        : [
+          join(
+            dir,
+            'hydras/a/tasks',
+          ),
+          join(
+            dir,
+            'hydras/b/tasks',
+          ),
+        ]
+
+    const request = () => {
+      if (operation === 'hydra') {
+        return home.createHydra({
+          hydra: 'b',
+          facts: [
+            fact({
+              id: 'published-hydra',
+              t: 'config',
+              name: 'B',
+            }),
+          ],
+        })
+      }
+
+      if (operation === 'task') {
+        return home.createTask({
+          hydra: 'a',
+          task: 'new',
+          facts: [
+            fact({
+              id: 'published-task',
+              t: 'created',
+              title: 'New',
+            }),
+          ],
+        })
+      }
+
+      return home.moveTask({
+        from: 'a',
+        to: 'b',
+        task: 'task',
+        id: 'published-move',
+        at: AT,
+        by: 'owner',
+      })
+    }
+
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+    const synced = new Set<string>()
+    let outage = true
+
+    // eslint-disable-next-line pnyx/object-params -- Node's fsync replacement receives a file descriptor.
+    const directorySync: typeof filesystem.fsyncSync = fd => {
+      const metadata = filesystem.fstatSync(fd)
+      const parent = existsSync(target) && metadata.isDirectory() ? parents.find(path =>
+        existsSync(path) && filesystem.statSync(path).ino === metadata.ino) : undefined
+
+      if (parent) {
+        if (outage) {
+          throw Object.assign(
+            new Error('directory sync outage after rename'),
+            { code: 'EIO' },
+          )
+        }
+
+        filesystem.fsyncSync(fd)
+        synced.add(parent)
+
+        return
+      }
+
+      filesystem.fsyncSync(fd)
+    }
+
+    vi.mocked(fsyncSync).mockImplementation(directorySync)
+
+    try {
+      await expect(request()).rejects.toMatchObject({ code: 'WRITE_FAILED' })
+      await expect(request()).rejects.toMatchObject({ code: 'STORE_UNAVAILABLE' })
+      outage = false
+      home = store({ home: dir })
+      expect(parents.every(parent => synced.has(parent))).toBe(true)
+      expect(await request()).toMatchObject([
+        {
+          duplicate: true,
+          at: AT,
+        },
+      ])
+      await home.close()
+    } finally {
+      vi.mocked(fsyncSync).mockImplementation(filesystem.fsyncSync)
+    }
+  },
+)
+
+test(
+  'a multi-file sync failure reconciles both native receipts once after recovery',
+  async () => {
+    const dir = homeFolder()
+    const home = store({ home: dir })
+    await create({ home })
+    await home.createTask({
+      hydra: 'a',
+      task: 'second',
+      facts: [
+        fact({
+          id: 'second-create',
+          t: 'created',
+          title: 'Second',
+        }),
+      ],
+    })
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+    vi.mocked(fdatasyncSync).mockImplementationOnce(filesystem.fdatasyncSync)
+      .mockImplementationOnce(() => {
+        throw new Error('second file sync failure')
+      })
+    const writes = await Promise.allSettled([
+      home.changeTask({
+        hydra: 'a',
+        task: 'task',
+        decide: () => [
+          fact({
+            id: 'file-a',
+            text: 'A',
+          }),
+        ],
+      }),
+      home.changeTask({
+        hydra: 'a',
+        task: 'second',
+        decide: () => [
+          fact({
+            id: 'file-b',
+            text: 'B',
+          }),
+        ],
+      }),
+    ])
+    expect(writes.map(write => write.status)).toEqual([
+      'rejected',
+      'rejected',
+    ])
+    expect(await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        fact({
+          id: 'file-a',
+          text: 'A',
+        }),
+      ],
+    }))
+      .toMatchObject([
+        {
+          id: 'file-a',
+          duplicate: true,
+        },
+      ])
+    expect(await home.changeTask({
+      hydra: 'a',
+      task: 'second',
+      decide: () => [
+        fact({
+          id: 'file-b',
+          text: 'B',
+        }),
+      ],
+    }))
+      .toMatchObject([
+        {
+          id: 'file-b',
+          duplicate: true,
+        },
+      ])
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([
+      {
+        id: 'file-a',
+        text: 'A',
+      },
+    ])
+    expect(home.read({ hydra: 'a' })?.tasks.get('second')?.state?.words).toEqual([
+      {
+        id: 'file-b',
+        text: 'B',
+      },
+    ])
+    await home.close()
   },
 )
