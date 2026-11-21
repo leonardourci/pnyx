@@ -18,7 +18,7 @@ import { helperLeases } from '#routine-helper/state.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
 
-export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx rule init` saves them in the Pnyx home to edit'
+export const TEMPLATE_NUDGE = 'Heads dispatch uses the shipped template until you save rules in Settings'
 
 const TASK_LIMIT = 40
 const DIGEST_HASH_CHARS = 12

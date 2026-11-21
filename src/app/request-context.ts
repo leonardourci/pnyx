@@ -8,7 +8,6 @@ type Request = {
   env: NodeJS.ProcessEnv
   cwd: string
   stdin?: string
-  // The command name used in diagnostics and provenance notices.
   invocation: {
     name?: string
   }

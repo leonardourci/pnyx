@@ -161,8 +161,7 @@ const failure = ({
   process.exitCode = 1
 }
 
-// A SessionStart hook makes one bounded read and stays silent when the server is absent.
-async function context({ argv }: { argv: string[] }) {
+async function printSessionStartContext({ argv }: { argv: string[] }) {
   const server = record()
 
   if (!server || !alive(server)) {
@@ -175,16 +174,18 @@ async function context({ argv }: { argv: string[] }) {
       argv,
       timeout: CONTEXT_MS,
     })
-    process.stdout.write(answer.stdout)
+    if (answer.exitCode === 0) {
+      process.stdout.write(answer.stdout)
+    }
   } catch {
-    // Hook context is optional and never blocks a new session.
+    return
   }
 }
 
 // Sends one command line to the running server and prints its answer; when it is down, its login service starts it.
 export async function forward({ argv }: { argv: string[] }): Promise<void> {
   if (cliArguments({ argv }).argv[0] === 'context') {
-    return context({ argv })
+    return printSessionStartContext({ argv })
   }
 
   const stdin = stdinText({ argv })

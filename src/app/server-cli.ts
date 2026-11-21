@@ -59,14 +59,6 @@ export async function serve({
       zeroCache: true,
     })
   } catch (error) {
-    if (error instanceof HydraError) {
-      throw new HydraError({
-        message: error.message,
-        code: error.code,
-        help: error.help,
-      })
-    }
-
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       throw new HydraError({
         message: `port ${port} is in use`,

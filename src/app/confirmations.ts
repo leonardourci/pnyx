@@ -222,7 +222,10 @@ export const approval = guard({
         project,
         ...dispatchCommands,
       }
-      const handler = handlers[target.name as keyof typeof handlers]
+      const handler = Object.hasOwn(
+        handlers,
+        target.name,
+      ) ? handlers[target.name as keyof typeof handlers] : undefined
 
       if (typeof handler !== 'function') {
         throw new HydraError({

@@ -15,8 +15,4 @@ This adds a reporting hook to `~/.claude/settings.json` and `~/.codex/hooks.json
 
 ## Sessions and reply routes
 
-Hooks record existing sessions; they do not create tasks automatically. Attach one explicitly in the UI. Read its recorded task files and use `pnyx send --task <task> --text "<message>" --hydra <id>` to send a reply.
-
-A `push` with `title: null` clears an explicit title, allowing automatic titles again. When the push names a task and observes its session, it clears both titles.
-
-For agents started by Pnyx or a configured command, see [Starting workers and Hydra](pnyx.md#starting-workers-and-hydra). Conversation retention and steering inboxes are covered in [Task records](pnyx.md#task-records).
+Attach a recorded session to a task in the UI. Inspect it with `pnyx task show <task> --hydra <id>` and send a reply with `pnyx send --task <task> --text "<message>" --hydra <id>`. See [Provider sessions](provider-sessions.md) for hosted conversations and [Data and privacy](data.md) for retention.

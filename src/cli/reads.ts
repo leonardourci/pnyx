@@ -82,7 +82,10 @@ export function readCommand({ argv }: { argv: string[] }) {
     name = '',
     ...args
   ] = argv
-  const paths = READ_PATHS[name]
+  const paths = Object.hasOwn(
+    READ_PATHS,
+    name,
+  ) ? READ_PATHS[name] : undefined
   const allowed = paths?.some(path => path === '' || path.split(' ').every((
     word,
     index,

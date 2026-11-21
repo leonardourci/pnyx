@@ -2,24 +2,27 @@
 import { cliArguments } from './arguments.ts'
 import { installedVersion } from './version.ts'
 
-let argumentsToRun: ReturnType<typeof cliArguments> | undefined
+const argv = process.argv.slice(2)
+let argumentsToRun: ReturnType<typeof cliArguments>
 
 try {
-  argumentsToRun = cliArguments({ argv: process.argv.slice(2) })
-} catch {
-  // The command runner prints argument errors with its other validation errors.
+  argumentsToRun = cliArguments({ argv })
+} catch (error) {
+  if (!(error instanceof TypeError) || !('code' in error) || !String(error.code).startsWith('ERR_PARSE_ARGS')) {
+    throw error
+  }
+
+  argumentsToRun = { argv: [], json: false, help: false, version: false }
 }
 
-if (argumentsToRun?.version) {
+const command = argumentsToRun.argv[0]
+
+if (argumentsToRun.version) {
   const version = installedVersion()
   process.stdout.write(argumentsToRun.json ? `${JSON.stringify({ version })}\n` : `${version}\n`)
-} else if (!argumentsToRun || !argumentsToRun.argv.length || argumentsToRun.help
-  || [
-    'serve',
-    'setup',
-  ].includes(argumentsToRun.argv[0]!)) {
+} else if (!command || argumentsToRun.help || command === 'serve' || command === 'setup') {
   await import('./main.ts')
 } else {
   const { forward } = await import('./client.ts')
-  await forward({ argv: process.argv.slice(2) })
+  await forward({ argv })
 }

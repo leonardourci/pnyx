@@ -212,7 +212,6 @@ function checkWorkerScope({
   })
 }
 
-// eslint-disable-next-line pnyx/object-params -- Internal server handlers keep their shared argument-array contract.
 type Command = (args: string[]) => unknown
 
 export function workerScoped<T extends Record<string, Command>>({ commands }: { commands: T }): T {
@@ -229,7 +228,6 @@ export function workerScoped<T extends Record<string, Command>>({ commands }: { 
 
     return [
       name,
-      // eslint-disable-next-line pnyx/object-params -- Internal server handlers keep their shared argument-array contract.
       (args: string[]) => {
         return withCommandNotices({
           run: () => {

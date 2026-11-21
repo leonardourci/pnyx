@@ -13,6 +13,7 @@ import { debug } from '#diagnostics/cli.ts'
 import { readInput, recordExitCode, requestInvocation } from '#app/request-context.ts'
 import { home } from './home.ts'
 import { version } from './version.ts'
+import { withCommandNotices } from '#app/command-notices.ts'
 
 const HELP = `usage: pnyx <command> [--hydra <id>] [--json]
 
@@ -34,7 +35,12 @@ Workers append needs-you, blocked, done, link or note lines to their worker.log.
 `
 
 const CREATE_OPTIONS: Options = {
-  ...WRITE,
+  ...COMMON,
+  actor: WRITE.actor,
+  reason: WRITE.reason,
+  details: WRITE.details,
+  'event-id': WRITE['event-id'],
+  'if-revision': WRITE['if-revision'],
   title: { type: 'string' },
   brief: { type: 'string' },
   project: { type: 'string' },
@@ -125,12 +131,15 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     const m = meta({ values })
     const task = values.task as string | undefined
 
-    if (task) {
+    if (task !== undefined) {
       return {
         reply: await sendReply({
           hydraId,
           request: {
-            card: task,
+            card: required({
+              value: task,
+              what: '--task',
+            }),
             text,
             actor: m.actor,
             reason: m.reason,
@@ -263,10 +272,12 @@ export async function runCli({
   argv,
   stdout,
   stderr = stdout,
+  remote = false,
 }: {
   argv: string[]
   stdout: Writable
   stderr?: Writable
+  remote?: boolean
 }): Promise<void> {
   let json = argv.includes('--json')
 
@@ -288,13 +299,22 @@ export async function runCli({
       return
     }
 
-    let output = args[0] === 'serve'
+    const command = args[0]
+
+    if (remote && (command === 'serve' || command === 'setup')) {
+      throw new HydraError({
+        message: `${command} must run in the local CLI`,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    let output = command === 'serve'
       ? await serve({
         args: args.slice(1),
         stdout,
         json,
       })
-      : await execute({ argv: args })
+      : await withCommandNotices({ run: () => execute({ argv: args }) })
 
     if (output && typeof output === 'object' && !Array.isArray(output)) {
       output = Object.fromEntries(Object.entries(output).filter(([key]) => key !== 'help'))

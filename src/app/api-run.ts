@@ -62,7 +62,6 @@ function request({ body }: { body: unknown }): RunRequest {
   }
 }
 
-// Runs a pnyx command line for a client, in the client's identity and folder, and answers with exactly what it printed.
 export async function runForRequest({ body }: { body: unknown }): Promise<RunAnswer> {
   const {
     argv,
@@ -89,16 +88,15 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
     stdin,
     run: async () => {
       const started = performance.now()
-      const before = process.exitCode
       // Inside the server a held lock is refused at once, never waited on with the event loop blocked.
       await nonblockingLocks.run(
         true,
         () => runCli({
           argv,
           stdout: sink,
+          remote: true,
         }),
       )
-      process.exitCode = before
       const exitCode = requestExitCode() ?? 0
 
       log({

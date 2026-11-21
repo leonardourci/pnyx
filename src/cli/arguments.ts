@@ -54,13 +54,11 @@ const VALUE_FLAGS = [
   'id',
   'operation',
   'until',
-  'message',
   'batch',
 ]
 
 export function cliArguments({ argv }: { argv: string[] }) {
   const {
-    values,
     tokens,
   } = parseArgs({
     args: argv,
@@ -84,10 +82,12 @@ export function cliArguments({ argv }: { argv: string[] }) {
     },
   })
   const switches = tokens.filter(token => token.kind === 'option' && [
-    'json',
-    'help',
-    'version',
-  ].includes(token.name))
+    '--json',
+    '--help',
+    '-h',
+    '--version',
+    '-v',
+  ].includes(argv[token.index] ?? ''))
   const indexes = new Set(switches.map(token => token.index))
 
   return {
@@ -95,8 +95,8 @@ export function cliArguments({ argv }: { argv: string[] }) {
       _,
       index,
     ) => !indexes.has(index)),
-    json: values.json === true,
-    help: values.help === true,
-    version: values.version === true,
+    json: switches.some(token => token.kind === 'option' && token.name === 'json'),
+    help: switches.some(token => token.kind === 'option' && token.name === 'help'),
+    version: switches.some(token => token.kind === 'option' && token.name === 'version'),
   }
 }

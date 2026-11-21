@@ -1,6 +1,6 @@
 # Pnyx command line
 
-Pnyx runs its UI and stores work separately for each Hydra and task. The `pnyx` command handles actions that need an immediate answer. Output is plain text; add `--json` for scripts. Errors return a nonzero exit status. Use `--help` for syntax.
+The `pnyx` command handles immediate actions. Output is plain text by default. Add `--json` for scripts. Successful receipts go to stdout. Refusals go to stderr and return a nonzero exit status. Use `--help` for syntax.
 
 ```sh
 pnyx serve --hydra work
@@ -18,11 +18,15 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 
 `send` addresses Hydra by default, or a task's worker with `--task`. Give `--text` or `--file <path|->`. Use `--idempotency-key` when a caller needs to reconcile an uncertain delivery without duplicating the message. A queued receipt does not confirm delivery.
 
-`answer` records an answer to a saved task question and relays it to its worker. Hydra answering on behalf of the owner supplies `--from-message <id>` to identify the owner's source message. Answering never invents owner authority.
+`answer` records an answer to a saved question and routes it to Hydra or the task's worker according to who asked. Hydra can identify an owner's answer using `--from-message <id>`.
+
+## Migrate from pnyx-axi
+
+Stop the previous foreground server with Ctrl+C. If you installed its login service, run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README, keeping the same `PNYX_HOME`. Run `pnyx setup postgres --check` before starting the new server. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup` to reinstall the login service if you use it.
 
 ## Reads during the storage cutover
 
-The default home is `~/.pnyx`; `PNYX_HOME` selects another home. Current agent contexts still need the existing read commands while the app is connected to the file store. These reads use plain text by default and accept `--json`:
+The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Agents use the following reads while the app still stores its records in Postgres. These reads use plain text by default and accept `--json`.
 
 ```sh
 pnyx task list --hydra work --json

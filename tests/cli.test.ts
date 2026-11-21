@@ -282,6 +282,17 @@ describe(
             'Changed',
           ],
           ['report'],
+          ['toString'],
+          [
+            'send',
+            '--task=',
+            '--text',
+            'This must stay out of Hydra chat',
+          ],
+          [
+            'board',
+            '--json=false',
+          ],
           [
             'send',
             '--text',

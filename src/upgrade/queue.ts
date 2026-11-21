@@ -305,7 +305,6 @@ export function upgradeQueue({
       })
     },
 
-    // The one entry for /upgrade in Hydra's chat and \`pnyx upgrade\`; answers with the upgrade to watch.
     request({ id }: { id: string }): UpgradeOperation {
       // One upgrade at a time: a second request while one waits or runs changes nothing.
       const existing = state().upgrades?.find(operation => operation.id === id) ?? active()

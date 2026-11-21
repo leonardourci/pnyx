@@ -176,7 +176,6 @@ async function releaseAfter({
   }
 }
 
-// eslint-disable-next-line pnyx/object-params -- Internal server handlers keep their shared argument-array contract.
 type Command = (args: string[]) => unknown
 
 export function supervisedCommands<T extends Record<string, Command>>({ commands }: {
@@ -187,7 +186,6 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
     run,
   ]) => [
     name,
-    // eslint-disable-next-line pnyx/object-params -- Internal server handlers keep their shared argument-array contract.
     (args: string[]) => {
       let release = () => {}
 
@@ -216,14 +214,6 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
             message: error.message,
             code: 'VALIDATION_ERROR',
             help: ['Run the command with --help'],
-          })
-        }
-
-        if (error instanceof HydraError) {
-          throw new HydraError({
-            message: error.message,
-            code: error.code,
-            help: error.help,
           })
         }
 

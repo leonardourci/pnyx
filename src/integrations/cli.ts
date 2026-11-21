@@ -40,7 +40,7 @@ async function integrations({
       {
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
-        setup: `pnyx hydra set --hydra ${hydraId} --command '<shell command>'`,
+        setup: 'Set the Hydra command in Settings',
         docs: 'Started with PNYX_HOME, PNYX_WORKER_HOME, PNYX_HYDRA, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
       },
       {

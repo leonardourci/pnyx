@@ -13,6 +13,7 @@ import { agentNotices } from '#hydra/hydra-session.ts'
 import { workerScoped } from '#workers/worker-scope.ts'
 import { runForClient, requestInvocation, IDENTITY } from '#app/request-context.ts'
 import { HydraError } from '#store/errors.ts'
+import { ApplyError } from '#app/apply/schema.ts'
 import { readFileSync } from 'node:fs'
 import { infoPath } from '#app/server-state.ts'
 import { CLI_COMMANDS } from '#app/command-registry.ts'
@@ -68,11 +69,11 @@ export async function serverOperation({
     }
 
     const hydraIndex = rest.indexOf('--hydra')
-    const hydraId = rest[hydraIndex + 1] ?? env.PNYX_HYDRA ?? 'default'
+    const hydraId = (hydraIndex < 0 ? env.PNYX_HYDRA : rest[hydraIndex + 1]) ?? 'default'
     const forwarded = rest.filter((
       _,
       index,
-    ) => index !== hydraIndex && index !== hydraIndex + 1)
+    ) => hydraIndex < 0 || (index !== hydraIndex && index !== hydraIndex + 1))
 
     if (!forwarded.includes('--actor')) {
       forwarded.push(
@@ -148,6 +149,7 @@ export async function serverOperation({
             code,
             error: error instanceof Error ? error.message : String(error),
             help: error instanceof HydraError ? error.help : [],
+            ...(error instanceof ApplyError ? { applied: false, errors: error.errors } : {}),
           })}\n`,
         }
       }

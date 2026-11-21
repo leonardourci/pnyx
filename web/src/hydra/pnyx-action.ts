@@ -92,7 +92,6 @@ export function shellWords({ command }: { command: string }): string[] {
   ] : words
 }
 
-// The words after pnyx, past any environment assignments and runners before it.
 export function pnyxWords({ command }: { command: string }): string[] | undefined {
   const words = shellWords({ command })
   const at = words.findIndex(word => /(^|\/)pnyx(\.ts|\.js)?$/.test(word))

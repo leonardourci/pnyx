@@ -1,5 +1,4 @@
 import { readCommand } from '#cli/reads.ts'
-// The real server in the test's process, fake agents at the provider boundary, driven through pnyx and the page's socket.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -62,7 +61,6 @@ export interface Run {
   stderr: string
 }
 
-// One `pnyx` process. Async, so the server in this process keeps answering it.
 export function pnyx({
   args,
   env,
@@ -176,7 +174,6 @@ export const operation = async ({
   return serverOperation(options)
 }
 
-// Structured receipts from internal server operations.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- every command prints its own shape.
 export type Output = Record<string, any>
 
@@ -450,7 +447,6 @@ function hydraClient({
     return parsed(run)
   }
 
-  // A refusal's code and error, as pnyx prints them.
   const refused = async ({
     args,
     env,
@@ -598,7 +594,6 @@ function hydraClient({
       input,
       env: ownerEnv(),
     }),
-    // pnyx as an agent runs it, with the environment Pnyx started that agent with unless a test changes it.
     as: ({
       session,
       env = session.env,

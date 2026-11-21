@@ -187,20 +187,20 @@ const boundary = ({
     return true // A named listener keeps its identity for removal.
   }
 
-  if (filename.endsWith('/src/app/server-cli.ts') && node.type === 'FunctionDeclaration'
-    && [
-      'serve',
-      'stop',
-    ].includes(node.id?.name)) {
-    return true // AXI command handlers receive argv.
-  }
-
   if (filename.endsWith('/src/app/cli-support.ts') && parent.type === 'ReturnStatement'
     && owner({
       node,
       types: ['FunctionDeclaration'],
     })?.id?.name === 'guard') {
-    return true // The returned handler is the AXI argv adapter.
+    return true
+  }
+
+  const commandAdapter = filename.endsWith('/src/routine-helper/commands.ts')
+    || filename.endsWith('/src/workers/worker-scope.ts')
+
+  if (commandAdapter && (parent.type === 'TSTypeAliasDeclaration' && parent.id.name === 'Command'
+    || parent.type === 'ArrayExpression' && node.params[0]?.name === 'args')) {
+    return true
   }
 
   if (parent.type === 'CallExpression' && parent.arguments.includes(node)) {
@@ -242,10 +242,6 @@ const boundary = ({
   }
 
   if (parent.type === 'Property') {
-    if (filename.endsWith('/src/cli/pnyx.ts') && parent.key.name === 'getCommandHelp') {
-      return true // AXI supplies a command name.
-    }
-
     if (filename.endsWith('/web/vite.config.ts') && parent.key.name === 'configure') {
       return true // Vite's proxy configuration hook.
     }

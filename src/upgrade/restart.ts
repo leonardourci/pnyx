@@ -12,7 +12,6 @@ import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
 
-// Sent to a running `pnyx serve` to close it and start it again on the code now on disk.
 export const RESTART_SIGNAL = 'SIGUSR2'
 
 // A server Pnyx starts never takes the caller's Pnyx or terminal identity, nor a worker's or Hydra's login,
@@ -189,11 +188,13 @@ export function requestRestart() {
     child = spawn(
       process.execPath,
       [
+        '--input-type=module',
+        '--eval',
+        'const { restartPnyx } = await import(process.argv[1]); await restartPnyx()',
         join(
           PNYX_ROOT,
-          'dist/cli/pnyx.js',
+          'dist/upgrade/restart.js',
         ),
-        'restart',
       ],
       {
         detached: true,

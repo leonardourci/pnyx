@@ -495,8 +495,8 @@ export const askReport = ({
     i,
   ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
   ...(ask.details ? [`Details: \`pnyx task show ${task} --full --hydra ${hydraId}\``] : []),
-  `Answer: \`pnyx task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\``,
-  `If the owner must decide, use \`pnyx task escalate ${task} ${ask.id} --question "<decision?>" --context "<what changes, next action and [Card](pnyx-task:${encodeURIComponent(task)})>" --choice "<recommended choice>" --choice "<alternative>" --recommend 1 --reason "<why>" --hydra ${hydraId}\``,
+  `Answer with \`pnyx answer ${task} ${ask.id} --text "<answer>" --hydra ${hydraId}\` or pass --choice <n>.`,
+  'If the owner must decide, present the question and its choices in Hydra chat.',
 ].join('\n')
 
 const answeredMergeHold = ({ ask }: { ask: Ask }) =>

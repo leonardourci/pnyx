@@ -470,17 +470,7 @@ function compact({ text }: { text: string }): string {
 
 // guard catches only synchronous errors; the check can wait.
 const hydraCheckHandler = guard({
-  handler: ({ args }) => hydraCheck({ args }).catch((error: unknown) => {
-    if (error instanceof HydraError) {
-      throw new HydraError({
-        message: error.message,
-        code: error.code,
-        help: error.help,
-      })
-    }
-
-    throw error
-  }),
+  handler: hydraCheck,
 })
 
 const hydraDigestHandler = guard({

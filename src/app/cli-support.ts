@@ -116,7 +116,6 @@ export function parse({
   }
 }
 
-// The Hydra a command line names; without --hydra, the default one. The worker-scope check resolves it the same way.
 export const commandHydra = ({ hydra }: { hydra?: string }): string =>
   hydra ?? requestEnv().PNYX_HYDRA ?? DEFAULT_HYDRA
 

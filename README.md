@@ -33,7 +33,7 @@ pnyx setup postgres
 
 If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx.js` directly from the clone.
 
-The global install links this clone; keep it in place. To upgrade, send `/upgrade` in Hydra's chat; it pull `main`, install, build, check that the new build can import the data, and restart the server. The first upgrade onto a Pnyx that keeps its data in Postgres runs the installed release's upgrade, which has no such check, so prepare it with the first-move steps in [Upgrade](docs/pnyx.md).
+The global install links this clone. Send `/upgrade` in Hydra's chat to pull `main`, install dependencies, build, check the data and restart the server. If your current executable is `pnyx-axi`, follow the [migration steps](docs/pnyx.md#migrate-from-pnyx-axi).
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
@@ -61,19 +61,16 @@ PNYX_HOME=/path/to/trial portless trial.pnyx pnyx serve
 
 Choose a unique `<name>.pnyx` for each trial and share the URL portless prints. Leave `--port` unset so Pnyx uses the `PORT` portless supplies. Without portless, run `PNYX_HOME=/path/to/trial pnyx serve --port 0` and share the printed URL. Automated tests keep their random ports.
 
-Use the same `PNYX_HOME` for every command in that trial, including `stop`. A separate home still uses your normal harness logins and global skill folders.
+Use the same `PNYX_HOME` for every command in that trial. A separate home still uses your normal harness logins and global skill folders.
 
 Setup commands change user-wide configuration and report the selected home when it differs from the default. See [data and privacy](docs/data.md) before sharing a data folder or removing it.
 
 ### 2. Attach a project
 
-In another terminal, create a Hydra and attach a project:
-
-Create a Hydra and attach its projects in the UI.
+Create a Hydra and attach a project in the UI.
 
 Select **work** in the header's Hydra chips, then choose a model for your signed-in harness in Hydra's composer (a Codex model if you use only Codex).
 
-You can also type `/add-project` in Hydra's composer, or right-click the Hydra and choose **Add project**, to ask Hydra to attach a folder or clone a repository.
 
 ### 3. Talk to Hydra
 
