@@ -1,3 +1,5 @@
+import { withWriter } from '#app/writer.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
@@ -1008,5 +1010,69 @@ test(
       text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress' order by seq",
       values: [id],
     })).toEqual([])
+  },
+)
+
+test(
+  'a saved approval applies native worker settings once',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.startTask({ key: 'approved-mode' })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'approved-mode',
+        '--full',
+      ],
+    })).task.settings?.mode).not.toBe('bypassPermissions')
+    withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          id: 'native-mode-proposal',
+          seq: writer.state.seq + 1,
+          at: new Date().toISOString(),
+          actor: 'hydra',
+          cardId: HYDRA_CARD,
+          type: 'hydra.dispatch-proposed',
+          data: {
+            token: 'native-mode-approval',
+            kind: 'command',
+            shared: false,
+            before: 'legacy-context',
+            value: JSON.stringify({
+              name: 'agent',
+              args: [
+                'approved-mode',
+                'mode',
+                'bypassPermissions',
+              ],
+              cwd: process.cwd(),
+            }),
+            summary: 'Apply the saved worker mode',
+          },
+        },
+      }),
+    })
+    const args = [
+      'approval',
+      'confirm',
+      'native-mode-approval',
+      '--event-id',
+      'apply-native-mode',
+    ]
+    const applied = await hydra.owner({ args })
+    expect(applied.state).toBe('confirmed')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'approved-mode',
+        '--full',
+      ],
+    })).task.settings.mode).toBe('bypassPermissions')
+    expect(await hydra.owner({ args })).toMatchObject({ event: 'none: proposal already resolved or missing' })
   },
 )
