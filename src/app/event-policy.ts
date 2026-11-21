@@ -23,7 +23,7 @@ export function durableEvent({ event }: { event: HydraEvent }): boolean {
     case 'card.moved':
       return !event.derived
     case 'card.noted':
-      return event.actor !== 'harvest'
+      return event.actor !== 'harvest' || event.data.kind !== 'context'
     default:
       return true
   }
