@@ -58,6 +58,8 @@ describe(
         const folder = hydra.folder({ name: 'plain-cli-worker' })
         const args = [
           'task',
+          '--hydra',
+          hydra.id,
           'create',
           '--title',
           'Plain CLI task',
@@ -73,7 +75,10 @@ describe(
           'plain-create',
           '--json',
         ]
-        const first = await run({ args })
+        const first = await pnyx({
+          args,
+          env: env(),
+        })
         expect(first.status).toBe(0)
         const receipt = parsed(first)
         expect(receipt).toMatchObject({
@@ -113,7 +118,10 @@ describe(
           ],
         })).stdout).toContain('Keep this user setting')
         const worker = await hydra.agent({ cwd: folder })
-        expect(parsed(await run({ args })).task).toBe(receipt.task)
+        expect(parsed(await pnyx({
+          args,
+          env: env(),
+        })).task).toBe(receipt.task)
         expect(app.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
         const message = join(
@@ -161,6 +169,27 @@ describe(
         expect(parsed(sent).reply.reply).toEqual(expect.any(String))
         expect(parsed(repeated).reply.reply).toBe(parsed(sent).reply.reply)
         expect(worker.received.filter(text => text.includes('Check the file input too'))).toHaveLength(1)
+
+        const scoped = await pnyx({
+          args: [
+            'send',
+            '--task',
+            receipt.task,
+            '--text',
+            'Scoped worker message',
+            '--hydra',
+            hydra.id,
+            '--json',
+          ],
+          env: {
+            ...env(),
+            PNYX_WORKER_HOME: process.env.PNYX_HOME,
+            PNYX_TASK: receipt.task,
+            PNYX_ACTOR: `worker:${receipt.task}`,
+          },
+        })
+        expect(scoped.status).toBe(0)
+        expect(parsed(scoped).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('outside the worker') })]))
 
         const direct = await fetch(
           `http://127.0.0.1:${app.port()}/api/run`,

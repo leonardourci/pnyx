@@ -1,4 +1,6 @@
 import { cliArguments } from './arguments.ts'
+import { workerScoped } from '#workers/worker-scope.ts'
+import { supervisedCommands } from '#routine-helper/commands.ts'
 import { commands } from '#app/cli.ts'
 import { workerCommands } from '#workers/workers.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
@@ -66,14 +68,20 @@ const TRANSITIONAL_READ_PATHS: Record<string, string[]> = {
   logs: [''],
 }
 
-const handlers = {
-  ...commands,
-  ...workerCommands,
-  ...dispatchCommands,
-  project,
-  ...oracleCommands,
-  integrations: integrationsCommand,
-}
+const handlers = workerScoped({
+  commands: {
+    ...commands,
+    ...supervisedCommands({
+      commands: {
+        ...workerCommands,
+        ...dispatchCommands,
+        project,
+        ...oracleCommands,
+        integrations: integrationsCommand,
+      },
+    }),
+  },
+})
 
 export function readCommand({ argv }: { argv: string[] }) {
   const [
