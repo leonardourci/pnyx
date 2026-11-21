@@ -17,7 +17,7 @@ import type { HydraEvent, EventType } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { readChanges } from '#app/event-log.ts'
+import { eventTime, readChanges } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { redact } from '#oracle/text.ts'
@@ -131,8 +131,13 @@ export async function hydraCheck({
   let last = after
   // Words typed into a worker's session count once an event follows them, between the times
   // of the events at after and at the last seq read, so a check from that seq never repeats them.
-  let from = -Infinity
-  let to = -Infinity
+  const boundary = after ? eventTime({
+    hydraId,
+    seq: after,
+    exact: true,
+  }) : undefined
+  let from = after ? Date.parse(boundary ?? '') : -Infinity
+  let to = Number.isFinite(from) ? from : -Infinity
   const replies: HydraEvent[] = []
   let typed: TypedWords[] = []
 
@@ -200,6 +205,15 @@ export async function hydraCheck({
           changes.push(e)
           woken ||= !own
         }
+      }
+
+      const changedAt = Date.parse(current.changedAt ?? '')
+
+      if (Number.isFinite(changedAt)) {
+        to = Math.max(
+          to,
+          changedAt,
+        )
       }
 
       typed = typedWords({

@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
 import { runForClient } from '#app/request-context.ts'
 import { hydraCheck } from '#workers/workers.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -1409,6 +1410,164 @@ test(
     }
 
     expect(messages).toEqual(['Still unanswered'])
+  },
+)
+
+test(
+  'Hydra checks do not repeat old typed words when their observation cursor survives only in rows',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const transcript = join(
+      hydra.folder({ name: 'typed-cursor' }),
+      'session.jsonl',
+    )
+    writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        uuid: randomUUID(),
+        timestamp: '2000-01-01T00:00:00.000Z',
+        message: {
+          role: 'user',
+          content: 'Earlier native instructions',
+        },
+      })}\n`,
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'typed-cursor',
+        '--title',
+        'Typed cursor',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'typed-cursor',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'typed-cursor',
+          transcriptPath: transcript,
+        },
+        activity: 'working',
+      }),
+    })
+    const first = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+    expect(first.conversations).toContainEqual(expect.objectContaining({
+      messages: [expect.objectContaining({ text: 'Earlier native instructions' })],
+    }))
+    await pnyx.restart()
+
+    for (const args of [
+      [],
+      [
+        '--after',
+        String(first.through),
+      ],
+    ]) {
+      const checked = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          ...args,
+        ],
+      })
+      expect(checked.conversations ?? []).toEqual([])
+    }
+
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        uuid: randomUUID(),
+        timestamp: new Date().toISOString(),
+        message: {
+          role: 'user',
+          content: 'Fresh native instructions',
+        },
+      })}\n`,
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'typed-cursor',
+        '--title',
+        'After native words',
+      ],
+    })
+    const later = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(first.through),
+      ],
+    })
+    expect(later.conversations).toContainEqual(expect.objectContaining({
+      messages: [expect.objectContaining({ text: 'Fresh native instructions' })],
+    }))
+    const expired = withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const task = writer.state.cards[writer.state.keys['typed-cursor']!]!
+        const decision = decideSessionFacts({
+          state: writer.state,
+          task,
+          fields: {
+            agent: task.agent!,
+            activity: 'finished',
+          },
+          meta: {
+            id: 'internal-observation',
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+        })
+
+        if (!('event' in decision)) {
+          throw new Error('The internal observation did not change activity')
+        }
+
+        writer.append({ event: decision.event })
+
+        return decision.event.seq
+      },
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'typed-cursor',
+        '--title',
+        'After expired cursor',
+      ],
+    })
+    await pnyx.restart()
+    expect((await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(expired),
+      ],
+    })).code).toBe('CURSOR_EXPIRED')
   },
 )
 
