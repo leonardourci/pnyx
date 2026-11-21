@@ -79,8 +79,8 @@ importers:
         specifier: 1.13.0
         version: 1.13.0(@toon-format/toon@2.3.1)
       deslop:
-        specifier: https://github.com/leonardourci/deslop/releases/download/v0.1.4/deslop.tgz
-        version: https://github.com/leonardourci/deslop/releases/download/v0.1.4/deslop.tgz
+        specifier: https://github.com/leonardourci/deslop/releases/download/v0.1.5/deslop.tgz
+        version: https://github.com/leonardourci/deslop/releases/download/v0.1.5/deslop.tgz
       eslint:
         specifier: ^10.12.0
         version: 10.12.0(jiti@2.7.0)
@@ -2138,9 +2138,9 @@ packages:
     resolution: {integrity: sha512-0je+qPKHEMohvfRTCEo3CrPG6cAzAYgmzKyxRiYSSDkS6eGJdyVJm7WaYA5ECaAD9wLB2T4EEeymA5aFVcYXCA==}
     engines: {node: '>=6'}
 
-  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.4/deslop.tgz:
-    resolution: {integrity: sha512-GIUbr5WKW8N50fpHBBkRobVJN0I1zmf/ydi8dzbjE7WtrAR6nGx9itpEMZqN0NLwx2GzWymCo8R3fuE0v1vdtg==, tarball: https://github.com/leonardourci/deslop/releases/download/v0.1.4/deslop.tgz}
-    version: 0.1.4
+  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.5/deslop.tgz:
+    resolution: {integrity: sha512-uFPJIgniv8ViWH+HAFRXDwA5Ib3kptL1A2T4cTSEwddolmRN9kQtIVu3U1q9VAM85+qfcY959td0WfAcYvIL6Q==, tarball: https://github.com/leonardourci/deslop/releases/download/v0.1.5/deslop.tgz}
+    version: 0.1.5
     engines: {node: '>=22.18'}
     hasBin: true
 
@@ -5949,7 +5949,7 @@ snapshots:
 
   dequal@2.0.3: {}
 
-  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.4/deslop.tgz:
+  deslop@https://github.com/leonardourci/deslop/releases/download/v0.1.5/deslop.tgz:
     dependencies:
       '@eslint/eslintrc': 3.3.7
       '@eslint/js': 10.0.1(eslint@10.15.0(jiti@2.7.0))
