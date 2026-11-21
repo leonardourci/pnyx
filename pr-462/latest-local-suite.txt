@@ -1,0 +1,99 @@
+$ pnpm run build && vitest run
+$ node scripts/build/build.ts
+vite v8.3.4 building client environment for production...
+transforming...
+Found 5 warnings while optimizing generated CSS:
+
+Issue #1:
+│   --column-color: var(--color-green);
+│ }
+│ ::highlight(reveal-0) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 25%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #2:
+│   }
+│ }
+│ ::highlight(reveal-1) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 45%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #3:
+│   }
+│ }
+│ ::highlight(reveal-2) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 65%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #4:
+│   }
+│ }
+│ ::highlight(reveal-3) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 85%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #5:
+│   }
+│ }
+│ ::highlight(reveal-hide) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: transparent;
+│ }
+
+[plugin rolldown:vite-resolve] Module "node:util" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/decision.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:async_hooks" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/command-notices.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:crypto" has been externalized for browser compatibility, imported by "[isolated checkout]/src/hydra/digest.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+✓ 7396 modules transformed.
+rendering chunks...
+computing gzip size...
+dist.next.67358/web/index.html                             0.71 kB │ gzip:   0.36 kB
+dist.next.67358/web/assets/index--ahcWcp_.css            185.94 kB │ gzip:  32.79 kB
+dist.next.67358/web/assets/lazy-inspector-OZMVPJNj.js     10.14 kB │ gzip:   3.81 kB
+dist.next.67358/web/assets/index-0eb32RiQ.js           1,612.59 kB │ gzip: 521.96 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 895ms
+
+ RUN  v5.1.0 [isolated checkout]
+      Running tests with seed "1795265884548"
+
+(node:88890) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ |browser| tests/browser/chat.test.ts (10 tests | 1 failed) 111345ms
+   × a refused worker send shows its error on the same bubble and Retry delivers the same id once 23788ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/chat.test.ts > a refused worker send shows its error on the same bubble and Retry delivers the same id once
+Error: timed out waiting for the repeated refusal to reach the provider (last: false)
+ ❯ until tests/setup/pnyx.ts:44:13
+     42|   while (value === undefined || value === false) {
+     43|     if (performance.now() > end) {
+     44|       throw new Error(`timed out waiting for ${what} (last: ${String(v…
+       |             ^
+     45|     }
+     46|
+ ❯ tests/browser/chat.test.ts:1175:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 23 passed (24)
+      Tests  1 failed | 244 passed (245)
+   Start at  09:58:04
+   Duration  278.97s (tests 96%, setup 2%, import 1%, transform 1%)
+
+[ELIFECYCLE] Test failed. See above for more details.
