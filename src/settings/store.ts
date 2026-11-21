@@ -277,7 +277,7 @@ export type SettingsSave = {
   entry: SettingsEntry
 })
 
-export function saveSettings({
+export async function saveSettings({
   patch,
   meta,
   beforeSave,
@@ -286,21 +286,21 @@ export function saveSettings({
   patch: unknown
   meta: Meta
   // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Hydra only when the shared write goes ahead.
-  beforeSave?(): void
+  beforeSave?(): void | Promise<void>
   hydraId?: string
-}): SettingsSave {
+}): Promise<SettingsSave> {
   return withRegistryLock({
-    fn: () => {
+    fn: async () => {
       migrate()
       const current = readFolded()
 
       if (meta.id && current.ids.has(meta.id)) {
-        beforeSave?.()
+        await beforeSave?.()
 
         const entry = readEntries().find(entry => entry.id === meta.id)
 
         if (hydraId && entry && Object.keys(entry.after).length) {
-          settingsNotice({
+          await settingsNotice({
             hydraId,
             meta,
             changeId: `shared:${entry.id}`,
@@ -333,7 +333,7 @@ export function saveSettings({
         document: lockedDocument,
       })
 
-      beforeSave?.()
+      await beforeSave?.()
 
       if (isDeepStrictEqual(
         after,
@@ -362,7 +362,7 @@ export function saveSettings({
       })
 
       if (hydraId) {
-        settingsNotice({
+        await settingsNotice({
           hydraId,
           meta,
           changeId: `shared:${entry.id}`,
