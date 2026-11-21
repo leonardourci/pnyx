@@ -518,6 +518,20 @@ test(
     })
     expect(inbox.messages.filter((message: { text: string }) => message.text.includes('Description updated:'))).toHaveLength(1)
 
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        first.card.id,
+        '--brief',
+        '',
+      ],
+    })
+    await until({
+      what: 'the cleared task description reaching its worker',
+      check: () => worker.received.some(text => text.includes('Description updated:\n\n(Description cleared.)')),
+    })
+
     await hydra.as({ session: worker }).run({
       args: [
         'task',
