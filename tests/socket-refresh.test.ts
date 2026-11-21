@@ -113,7 +113,10 @@ test(
           },
         ],
       })
-      const id = pnyx.home().scopes[hydra.id]!.state.keys[key]!
+      const id = await until({
+        what: 'the task to reach the home feed',
+        check: () => pnyx.home().scopes[hydra.id]?.state.keys[key],
+      })
       cards.add(id)
     }
 

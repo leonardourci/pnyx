@@ -191,7 +191,7 @@ export function createSocketOutbox({
 
     const frame = encode({ message })
 
-    if (snapshot && message.type === 'latest' && frame.bytes + bytes > limit) {
+    if (snapshot && message.type === 'latest') {
       const previous = frames.findIndex(item => 'cardFrames' in item && item.scope === message.scope)
 
       if (previous !== -1) {
@@ -201,13 +201,15 @@ export function createSocketOutbox({
         )
       }
 
-      frames.push({
-        cardFrames: activityFrames({ message }),
-        scope: message.scope,
-      })
-      scheduleDrain()
+      if (frame.bytes + bytes > limit) {
+        frames.push({
+          cardFrames: activityFrames({ message }),
+          scope: message.scope,
+        })
+        scheduleDrain()
 
-      return true
+        return true
+      }
     }
 
     if (!frames.length && socket.bufferedAmount < limit) {

@@ -344,6 +344,39 @@ test(
 )
 
 test(
+  'a smaller activity refresh replaces an undrained snapshot for the same Hydra',
+  () => {
+    vi.useFakeTimers()
+    const socket = slowSocket()
+    const current: ServerMessage = {
+      type: 'latest',
+      scope: 'one',
+      messages: {current: null},
+      actions: {},
+    }
+    expect(socket.send({
+      snapshot: true,
+      message: {
+        ...current,
+        messages: {
+          hidden: {
+            role: 'assistant',
+            text: 'x'.repeat(1_000),
+          },
+        },
+      },
+    })).toBe(true)
+    expect(socket.send({
+      snapshot: true,
+      message: current,
+    })).toBe(true)
+    socket.drain()
+    expect(socket.sent).toEqual([current])
+    socket.close()
+  },
+)
+
+test(
   'overflow disconnects the slow client so it can resume instead of losing a receipt',
   () => {
     vi.useFakeTimers()
