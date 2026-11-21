@@ -351,7 +351,11 @@ export function ComposerField({
   const syncCaret = () => {
     const element = input.current
 
-    if (element && caretNext.current !== null) {
+    if (!element) {
+      return
+    }
+
+    if (caretNext.current !== null) {
       select({
         field: element,
         ...caretNext.current,
@@ -359,12 +363,13 @@ export function ComposerField({
       caretLast.current = caretNext.current.focus
       caretNext.current = null
     }
+
+    if (mirror.current) {
+      mirror.current.scrollTop = element.scrollTop
+    }
   }
 
-  useLayoutEffect(
-    syncCaret,
-    [display],
-  )
+  useLayoutEffect(syncCaret)
 
   const chooseMention = ({ item }: { item: MentionItem }) => {
     const element = input.current
