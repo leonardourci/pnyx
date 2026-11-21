@@ -679,6 +679,25 @@ test(
       })
     }
 
+    const walBefore = rows({text: "select current_setting('wal_level') as level"})
+    expect(walBefore).toEqual([{level: 'replica'}])
+    const setup = await pnyxAxi({
+      args: [
+        'setup',
+        'postgres',
+      ],
+      env: process.env,
+    })
+    expect(
+      setup.status,
+      setup.stderr,
+    ).toBe(0)
+    expect(parsed(setup)).toMatchObject({
+      postgres: 'ready',
+      database: homeDatabase(),
+    })
+    expect(rows({text: "select current_setting('wal_level') as level"})).toEqual([{level: 'replica'}])
+
     const before = await Promise.all(hydras.map(hydra => tasks({ hydra })))
 
     await pnyx.restart({
