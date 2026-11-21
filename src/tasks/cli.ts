@@ -208,7 +208,7 @@ export const context = guard({
 })
 
 export const push = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       hydraId,
@@ -241,7 +241,7 @@ export const push = guard({
       })
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -500,7 +500,7 @@ function historyStart({
   return index === -1 ? history.length : index
 }
 
-function columnCommand({ args }: { args: string[] }): Output {
+async function columnCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -566,7 +566,7 @@ function columnCommand({ args }: { args: string[] }): Output {
       })
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -595,7 +595,7 @@ function columnCommand({ args }: { args: string[] }): Output {
 
   const changesPlacement = action === 'delete' || action === 'reorder' || action === 'rule'
 
-  return commit({
+  return await commit({
     hydraId,
     meta: m,
     intent: {
@@ -782,7 +782,9 @@ function columnCommand({ args }: { args: string[] }): Output {
   })
 }
 
-export const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
+export const columnCommandHandler = guard({
+  handler: async ({ args }) => await columnCommand({ args }),
+})
 
 const NOTES_SHOWN = 3
 
@@ -911,7 +913,7 @@ export const card = guard({
 })
 
 export const move = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       positionals,
@@ -937,7 +939,7 @@ export const move = guard({
     })
     const before = values.before as string | undefined
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {

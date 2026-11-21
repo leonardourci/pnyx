@@ -78,7 +78,7 @@ function decideTaskLanding({
 }
 
 // task landing <task> [--landing pr|branch] [--merge owner|hydra] [--clear] sets this task's rule, or prints the one it follows.
-export function taskLandingCommand({
+export async function taskLandingCommand({
   hydraId,
   ref,
   landing,
@@ -92,7 +92,7 @@ export function taskLandingCommand({
   merge?: string
   clear: boolean
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const task = required({
     value: ref,
     what: 'task id',
@@ -123,7 +123,7 @@ export function taskLandingCommand({
     }
   }
 
-  return commit({
+  return await commit({
     hydraId,
     meta,
     intent: {

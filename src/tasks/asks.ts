@@ -155,7 +155,7 @@ async function answerHydra({
   fromMessage?: string
   meta: Meta
 }): Promise<Output> {
-  const result = commit({
+  const result = await commit({
     hydraId,
     meta,
     intent: {
@@ -418,7 +418,7 @@ async function askOne({
   }
 
   // One lock, so Hydra never hears a question that was not recorded.
-  const written = withWriter({
+  const written = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
@@ -548,7 +548,7 @@ async function questionActionCommand({
   fromMessage?: string
   meta: Meta
 }): Promise<Output> {
-  const written = commit({
+  const written = await commit({
     hydraId,
     meta,
     intent: {
@@ -803,7 +803,7 @@ async function answerGroup({
   }
 }
 
-export function askCommand({
+export async function askCommand({
   action,
   positionals,
   values,
@@ -815,7 +815,7 @@ export function askCommand({
   values: Values
   hydraId: string
   meta: Meta
-}): Output | Promise<Output> {
+}): Promise<Output> {
   const m = sessionActor({ meta: given })
   const ref = required({
     value: positionals[1],
@@ -841,7 +841,7 @@ export function askCommand({
   }
 
   if (action === 'close-question' || action === 'reopen-question' || action === 'reask') {
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -900,7 +900,7 @@ export function askCommand({
   }
 
   return {
-    ...commit({
+    ...await commit({
       hydraId,
       meta: m,
       intent: {

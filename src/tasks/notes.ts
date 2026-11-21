@@ -83,7 +83,7 @@ export function decideNote(
   })
 }
 
-export function noteOnce({
+export async function noteOnce({
   hydraId,
   task,
   source,
@@ -95,8 +95,8 @@ export function noteOnce({
   source: string
   text: string
   meta: Meta
-}): void {
-  withWriter({
+}): Promise<void> {
+  await withWriter({
     hydraId,
     fn: ({ writer }) => applyDecision({
       writer,
