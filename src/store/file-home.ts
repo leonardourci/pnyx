@@ -4,6 +4,7 @@ import { HydraError } from './errors.ts'
 import { appendLog, readLog, type LogEntry, type LogFact, type LogPosition } from './log.ts'
 import { readSnapshot, type FileSnapshot } from './snapshot.ts'
 import { privateDir, syncDirectory } from './storage.ts'
+import { HYDRA_ID } from '#hydra/identity.ts'
 
 const COMPONENT = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const EMPTY: LogPosition = {
@@ -35,8 +36,8 @@ export interface HydraFiles {
   relocated: string[]
 }
 
-function component({ id }: { id: string }): string {
-  if (!COMPONENT.test(id)) {
+function component({ id, rule = COMPONENT }: { id: string; rule?: RegExp }): string {
+  if (!rule.test(id)) {
     throw new HydraError({
       message: `invalid file-store id: ${id}`,
       code: 'INVALID_ID',
@@ -52,7 +53,7 @@ export const hydraFiles = ({
 }: HydraLocation) => join(
   resolve(home),
   'hydras',
-  component({ id: hydra }),
+  component({ id: hydra, rule: HYDRA_ID }),
 )
 
 export const taskFiles = ({
@@ -95,7 +96,7 @@ function publishFolder({
 }): LogPosition {
   const destination = join(
     parent,
-    component({ id }),
+    id,
   )
 
   if (existsSync(destination)) {
@@ -575,7 +576,7 @@ export function readHomeFiles({
     parent,
     { withFileTypes: true },
   ) : []
-  const ids = entries.filter(entry => entry.isDirectory() && !entry.name.startsWith('.')
+  const ids = entries.filter(entry => entry.isDirectory() && HYDRA_ID.test(entry.name)
     && existsSync(join(
       parent,
       entry.name,
