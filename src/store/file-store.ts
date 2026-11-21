@@ -1,8 +1,10 @@
-import { join } from 'node:path'
+import { lstatSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
 import { createHydraFiles, createTaskFiles, hydraFiles, moveTaskFiles, taskFiles } from './file-home.ts'
 import { appendLog, type LogFact, type LogPosition } from './log.ts'
 import { writeSnapshot } from './snapshot.ts'
+import { privateDir } from './storage.ts'
 import { applyFileFacts, emptyFileSegment, fileMemorySnapshot, loadFileMemory, type AcceptedFact, type FileReducers, type FileSegment, type HydraMemory } from './file-memory.ts'
 
 const GROUP_COMMIT_MS = 5
@@ -79,6 +81,22 @@ export function openFileStore<Hydra, Task>({
 }: {
   home: string
 } & FileReducers<Hydra, Task>) {
+  const parent = lstatSync(
+    dirname(resolve(home)),
+    { throwIfNoEntry: false },
+  )
+
+  if (!parent?.isDirectory()) {
+    throw new HydraError({
+      code: 'INVALID_HOME',
+      message: 'the native home parent must already be a directory',
+    })
+  }
+
+  privateDir({
+    dir: home,
+    durable: true,
+  })
   const reducers = {
     reduceHydra,
     reduceTask,
@@ -87,7 +105,6 @@ export function openFileStore<Hydra, Task>({
     home,
     reducers,
   })
-  let closed = false
   let closing: Promise<void> | undefined
   let unavailable: HydraError | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -202,7 +219,9 @@ export function openFileStore<Hydra, Task>({
       receipts: Receipt[]
     }[] = []
 
-    function commit(): void {
+    function commit(): HydraError | undefined {
+      let failure: HydraError | undefined
+
       try {
         for (const write of pending.values()) {
           const {
@@ -247,6 +266,7 @@ export function openFileStore<Hydra, Task>({
           cause,
         })
 
+        failure = error
         recover()
 
         for (const { job } of waiting) {
@@ -257,6 +277,8 @@ export function openFileStore<Hydra, Task>({
       working = new Map(memory)
       pending = new Map()
       waiting = []
+
+      return failure
     }
 
     for (const job of queue.splice(0)) {
@@ -322,11 +344,28 @@ export function openFileStore<Hydra, Task>({
 
         const facts = job.decide({
           state: structuredClone(current?.value),
-          read: ({ hydra }) => view({
-            source: working,
-            hydra,
-          }),
+          read: ({ hydra }) => {
+            if (pending.size) {
+              const failure = commit()
+
+              if (failure) {
+                throw failure
+              }
+            }
+
+            return view({
+              source: working,
+              hydra,
+            })
+          },
         })
+
+        if (facts.some(fact => fact.t === 'moved')) {
+          throw new HydraError({
+            code: 'INVALID_EVENT',
+            message: 'folder moves must use moveTask',
+          })
+        }
 
         if (job.create && !current && facts[0]?.t !== (scope.task === undefined ? 'config' : 'created')) {
           throw new HydraError({
@@ -385,18 +424,20 @@ export function openFileStore<Hydra, Task>({
         if (applied.appended.length) {
           const key = JSON.stringify(scope)
           const previous = pending.get(key)
-          pending.set(
-            key,
-            {
-              scope,
-              create: previous?.create ?? !current,
-              after: previous?.after ?? before.position,
-              facts: [
-                ...previous?.facts ?? [],
-                ...applied.appended,
-              ],
-            },
-          )
+
+          if (previous) {
+            previous.facts.push(...applied.appended)
+          } else {
+            pending.set(
+              key,
+              {
+                scope,
+                create: !current,
+                after: before.position,
+                facts: applied.appended,
+              },
+            )
+          }
         }
 
         waiting.push({
@@ -418,7 +459,7 @@ export function openFileStore<Hydra, Task>({
     job: Write<Hydra, Task> | Control
     stopping?: boolean
   }): void {
-    if (closed || (closing && !stopping)) {
+    if (closing && !stopping) {
       job.reject(new HydraError({
         code: 'STORE_CLOSED',
         message: 'the file store is closing or closed',
@@ -619,7 +660,7 @@ export function openFileStore<Hydra, Task>({
           id: task,
         })
 
-        if (!applied.appended.length && holder === to) {
+        if (!applied.appended.length) {
           return applied.receipts.map(accepted => receiptOf({ accepted }))
         }
 
@@ -686,12 +727,12 @@ export function openFileStore<Hydra, Task>({
     }),
     snapshot: () => control({ run: snapshot }),
     close: (): Promise<void> => {
-      closing ??= control({
-        stopping: true,
-        run: () => {
-          snapshot(); closed = true
-        },
-      })
+      if (!closing) {
+        closing = control({
+          stopping: true,
+          run: snapshot,
+        })
+      }
 
       return closing
     },
