@@ -1231,3 +1231,135 @@ test(
     })
   },
 )
+
+test.each([
+  { viewport: '1440x900' },
+  { viewport: '390x844' },
+])(
+  'folded Hydras and project columns keep one aligned vertical strip at $viewport',
+  async ({ viewport }) => {
+    const hydra = await pnyx.hydra()
+    const projects = await addRevealProjects({ hydra })
+
+    for (const key of [
+      'fold-asks',
+      'fold-running',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          key,
+          '--title',
+          key,
+          '--project',
+          projects[0],
+          '--folder',
+          projects[0],
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'ask',
+        'fold-asks',
+        '--to',
+        'owner',
+        '--question',
+        'Which option?',
+      ],
+    })
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: () => true,
+      hold: true,
+    })
+
+    try {
+      await hydra.owner({
+        args: [
+          'task',
+          'start',
+          'fold-running',
+          '--in-place',
+        ],
+      })
+      await chrome({
+        script: `
+      await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+      await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .running-count');
+      await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
+    `,
+      })
+      await chrome({
+        args: [
+          'emulate',
+          '--viewport',
+          viewport,
+        ],
+      })
+      const folded = await chrome({
+        script: `
+      console.log(await page.eval(async () => {
+        const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+        workspace.querySelector('[aria-label="Fold Hydra"]').click();
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const box = workspace.getBoundingClientRect();
+        const chips = [...workspace.querySelectorAll('.project-chips button')].map(chip => chip.getBoundingClientRect());
+        const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > svg')].map(mark => mark.getBoundingClientRect());
+        const center = (box.left + box.right) / 2;
+        return JSON.stringify({
+          thin: box.width <= 60,
+          bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
+          aligned: [...chips, ...marks].every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
+          contained: [...chips, ...marks].every(mark => mark.left >= box.left && mark.right <= box.right),
+          stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
+        });
+      }));
+    `,
+      })
+      await chrome({
+        script: `
+      await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Unfold Hydra"]');
+      await page.wait('[data-hydra-workspace="${hydra.id}"][data-collapsed="false"] .column-cards');
+    `,
+      })
+      const columns = await chrome({
+        script: `
+      console.log(await page.eval(async () => {
+        const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+        workspace.querySelector('[aria-label="Fold all projects"]').click();
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const columns = [...workspace.querySelectorAll('.project-column')];
+        return JSON.stringify(columns.length === 5 && columns.every(column => {
+          const box = column.getBoundingClientRect();
+          const center = (box.left + box.right) / 2;
+          const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > svg')];
+          return box.width <= 49 && marks.every(mark => {
+            const bounds = mark.getBoundingClientRect();
+            return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
+          });
+        }));
+      }));
+      await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Unfold all projects"]');
+    `,
+      })
+      expect(JSON.parse(folded)).toEqual({
+        thin: true,
+        bodyHidden: true,
+        aligned: true,
+        contained: true,
+        stacked: true,
+      })
+      expect(JSON.parse(columns)).toBe(true)
+    } finally {
+      turn.release()
+    }
+  },
+)
