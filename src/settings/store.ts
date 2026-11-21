@@ -11,7 +11,7 @@ import { hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
-import { withRegistryLock } from '#store/storage.ts'
+import { withRegistryLock, withAsyncRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type PageSettings, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView, withDefaults } from './settings.ts'
@@ -289,7 +289,7 @@ export async function saveSettings({
   beforeSave?(): void | Promise<void>
   hydraId?: string
 }): Promise<SettingsSave> {
-  return withRegistryLock({
+  return withAsyncRegistryLock({
     fn: async () => {
       migrate()
       const current = readFolded()
