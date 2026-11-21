@@ -762,7 +762,7 @@ export const HydraCard = memo(function HydraCard({
           )}
           {selected && (
             <div className="flex min-w-0 items-center justify-between gap-2">
-                {!chatOnly && !editing && (
+              {!chatOnly && !editing && (
                 <Tabs
                   divider={false}
                   prefix={tabsId}
