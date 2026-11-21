@@ -119,8 +119,12 @@ export function replaceFile({
     stage,
     path,
   )
+  syncDirectory({ dir: dirname(path) })
+}
+
+export function syncDirectory({ dir }: { dir: string }): void {
   const fd = openSync(
-    dirname(path),
+    dir,
     'r',
   )
 
