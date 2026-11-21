@@ -377,7 +377,7 @@ test(
   'concurrent settings saves keep the revision guard until their dependent write settles',
   async () => {
     await saveSettings({
-      patch: {theme: 'dark'},
+      patch: { theme: 'dark' },
       meta: {
         at: new Date().toISOString(),
         actor: 'cli',
@@ -387,7 +387,7 @@ test(
     const entered = Promise.withResolvers<void>()
     const gate = Promise.withResolvers<void>()
     const first = saveSettings({
-      patch: {theme: 'light'},
+      patch: { theme: 'light' },
       meta: {
         id: 'concurrent-settings-a',
         at: new Date().toISOString(),
@@ -402,7 +402,7 @@ test(
     })
     await entered.promise
     const second = saveSettings({
-      patch: {theme: 'dark'},
+      patch: { theme: 'dark' },
       meta: {
         id: 'concurrent-settings-b',
         at: new Date().toISOString(),
@@ -418,7 +418,7 @@ test(
     expect(results[0]?.status).toBe('fulfilled')
     expect(results[1]).toMatchObject({
       status: 'rejected',
-      reason: {code: 'REVISION_CONFLICT'},
+      reason: { code: 'REVISION_CONFLICT' },
     })
     expect(readSettings().settings.theme).toBe('light')
   },

@@ -376,14 +376,14 @@ export function createHydraTurns({
       await upgrades.restart({ id })
       queued()
 
-      return Promise.resolve({ state: 'queued' })
+      return { state: 'queued' }
     }
 
     if (ownerActor({ actor }) && upgradeCommand({ text })) {
       await upgrades.request({ id })
       queued()
 
-      return Promise.resolve({ state: 'queued' })
+      return { state: 'queued' }
     }
 
     // The owner's message answers a prompt Hydra waits on; a compaction's release repeats a message already answered.

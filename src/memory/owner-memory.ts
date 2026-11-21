@@ -397,30 +397,30 @@ interface OwnerRead { logs?: ReturnType<typeof readOwnerLogs> }
 export function ownerMemory({
   logs,
   migrate,
-}: OwnerRead & {migrate: false}): Memory
+}: OwnerRead & { migrate: false }): Memory
 export function ownerMemory({
   logs,
   migrate,
-}: OwnerRead & {migrate?: true}): Promise<Memory>
+}: OwnerRead & { migrate?: true }): Promise<Memory>
 
 export function ownerMemory({
   migrate = true,
   logs,
-}: OwnerRead & {migrate?: boolean}): Memory | Promise<Memory> {
+}: OwnerRead & { migrate?: boolean }): Memory | Promise<Memory> {
   if (!migrate) {
-    return readOwnerMemory({logs})
+    return readOwnerMemory({ logs })
   }
 
-  return migratedOwnerMemory({logs})
+  return migratedOwnerMemory({ logs })
 }
 
-async function migratedOwnerMemory({logs}: OwnerRead): Promise<Memory> {
+async function migratedOwnerMemory({ logs }: OwnerRead): Promise<Memory> {
   await tryMigrate()
 
-  return readOwnerMemory({logs})
+  return readOwnerMemory({ logs })
 }
 
-function readOwnerMemory({logs}: OwnerRead): Memory {
+function readOwnerMemory({ logs }: OwnerRead): Memory {
   const memory: Memory = Object.create(null) as Memory
 
   const snapshot = logs ?? readOwnerLogs()

@@ -782,9 +782,7 @@ async function columnCommand({ args }: { args: string[] }): Promise<Output> {
   })
 }
 
-export const columnCommandHandler = guard({
-  handler: async ({ args }) => await columnCommand({ args }),
-})
+export const columnCommandHandler = guard({ handler: columnCommand })
 
 const NOTES_SHOWN = 3
 

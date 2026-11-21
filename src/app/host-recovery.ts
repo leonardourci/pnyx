@@ -55,7 +55,7 @@ export function createHostRecovery({
   upgrades: ReturnType<typeof upgradeQueue>
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
-  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
+  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): Promise<void>
   interrupt({
     writer,
     agent,
@@ -92,7 +92,7 @@ export function createHostRecovery({
 
     // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
     // the stop cut, ends here, and Hydra gets the recap and its queue.
-    note({
+    await note({
       fn: ({ writer }) => {
         for (const pass of writer.state.historyMilestones ?? []) {
           if (pass.state === 'started' && (pass.kind === 'inscribe' || pass.blocking === false)) {
@@ -278,7 +278,7 @@ export function createHostRecovery({
           taskId: cut.task,
           correlationId: cut.resumeAttemptId,
         })
-        note({
+        await note({
           fn: ({ writer }) => {
             const agent = writer.state.cards[cut.task]?.agent
 
@@ -329,7 +329,7 @@ export function createHostRecovery({
     }
 
     // A direct message handed to an agent the restart stopped may or may not have arrived; Pnyx never sends it again by itself.
-    note({
+    await note({
       fn: ({ writer }) => {
         for (const card of Object.values(writer.state.cards)) {
           if (card.agent?.host !== 'pnyx') {

@@ -134,7 +134,7 @@ export async function resumeWaits({
     return 0
   }
 
-  return (await withWriter({
+  const { resumed } = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       let resumed = 0
@@ -191,5 +191,7 @@ export async function resumeWaits({
 
       return { resumed }
     },
-  })).resumed
+  })
+
+  return resumed
 }

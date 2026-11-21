@@ -569,6 +569,4 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
   })
 }
 
-export const hydraCommandHandler = guard({
-  handler: async ({ args }) => await hydraCommand({ args }),
-})
+export const hydraCommandHandler = guard({ handler: hydraCommand })

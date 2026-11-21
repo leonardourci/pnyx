@@ -288,7 +288,7 @@ export function createHost({
     queuedHydra,
     at,
     // Defined below; each is read only once an operation runs.
-    note: async ({ fn }) => await note({ fn }),
+    note: input => note(input),
     armWake: () => armWake(),
     host: () => host,
   })
@@ -301,7 +301,7 @@ export function createHost({
     at,
     write,
     // Defined below; read when a held message is released.
-    send: async ({ ...input }) => await send(input),
+    send: input => send(input),
     host: () => host,
     helperPending: () => helperPending(),
     statusChanged: ({

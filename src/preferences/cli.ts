@@ -77,7 +77,7 @@ export const view = guard({
     }))
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
     const board = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
-    const viewCommit = async () => await commit({
+    const viewCommit = () => commit({
       hydraId,
       meta: m,
       intent: {
@@ -165,7 +165,7 @@ export const layout = guard({
     const m = meta({ values })
     const { settings } = readSettings()
 
-    const reset = async ({ id }: { id: string }) => await commit({
+    const reset = ({ id }: { id: string }) => commit({
       hydraId: id,
       meta: m,
       intent: {
@@ -198,9 +198,10 @@ export const layout = guard({
     const hydras: Output[] = []
 
     for (const id of hydraIds()) {
+      const receipt = await reset({ id })
       hydras.push({
         hydra: id,
-        ...await reset({ id }),
+        ...receipt,
       })
     }
 
