@@ -62,7 +62,7 @@ export function ReminderEditor({
   draft?: ReminderDraft
 }) {
   const id = useId()
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   useTaskEditorFocus({
     hydraId,
     id: card.id,

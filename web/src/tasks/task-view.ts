@@ -28,7 +28,7 @@ export function useTaskEditorFocus({
   id: string
   kind: 'edit' | 'reminder'
   version: number
-  field: RefObject<HTMLInputElement | null>
+  field: RefObject<HTMLTextAreaElement | null>
 }) {
   const focused = useSessionViewResource({
     key: taskViewKey({
@@ -48,12 +48,10 @@ export function useTaskEditorFocus({
 
       input.focus({ preventScroll: true })
 
-      if (input.type === 'text') {
-        input.setSelectionRange(
-          input.value.length,
-          input.value.length,
-        )
-      }
+      input.setSelectionRange(
+        input.value.length,
+        input.value.length,
+      )
 
       focused.set(version)
     },

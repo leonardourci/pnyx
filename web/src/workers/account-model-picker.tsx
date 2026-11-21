@@ -129,7 +129,7 @@ export function SelectionMenu({
     active,
     setActive,
   ] = useState(0)
-  const search = useRef<HTMLInputElement>(null)
+  const search = useRef<HTMLTextAreaElement>(null)
   const hold = useRef<{
     timer?: ReturnType<typeof setTimeout>
     done: boolean
