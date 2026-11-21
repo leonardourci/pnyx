@@ -203,6 +203,12 @@ test(
           by: 'owner',
           id: 'native-move',
         })
+        expect(existsSync(source)).toBe(false)
+        expect(existsSync(taskFiles({
+          home,
+          hydra: 'b',
+          task: 'moving',
+        }))).toBe(true)
       }
 
       expect(readHydraFiles({

@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, type Dirent } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
 import { appendLog, readLog, type LogEntry, type LogFact, type LogPosition } from './log.ts'
@@ -248,6 +248,16 @@ function readFileLog({
       fromStart: after.bytes === 0,
     }
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+      return failedLog({
+        issue: new HydraError({
+          code: 'LOG_UNREADABLE',
+          message: `cannot open canonical log for recovery: ${path}`,
+          cause: error,
+        }),
+      })
+    }
+
     if (error instanceof HydraError && error.code === 'LOG_POSITION' && after.bytes) {
       return readFileLog({ path })
     }
@@ -440,15 +450,17 @@ export function readHydraFiles({
     'tasks',
   )
 
+  let directories: Dirent[] = []
+
   if (existsSync(tasksDir)) {
     requireDirectory({ dir: tasksDir })
     syncDirectory({ dir: tasksDir })
+    directories = readdirSync(
+      tasksDir,
+      { withFileTypes: true },
+    )
   }
 
-  const directories = existsSync(tasksDir) ? readdirSync(
-    tasksDir,
-    { withFileTypes: true },
-  ) : []
   const tasks: [string, FileLog][] = []
   const relocated: string[] = []
 

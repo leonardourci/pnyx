@@ -28,7 +28,7 @@ export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
 
-    if (code === 'ENOENT' || code === 'ELOOP') {
+    if (code === 'ENOENT' || code === 'ELOOP' || code === 'EACCES') {
       return undefined
     }
 
@@ -47,7 +47,7 @@ export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined
       'utf8',
     ))
   } catch (error) {
-    if (error instanceof SyntaxError) {
+    if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'EACCES') {
       return undefined
     }
 
