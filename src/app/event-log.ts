@@ -104,7 +104,7 @@ export function readEvents({ ...selection }: EventSelection): HydraEvent[] {
   return selectedEvents(selection)
 }
 
-export function readChanges({ ...selection }: EventSelection): HydraEvent[] {
+export function readChanges({ measured, ...selection }: EventSelection & { measured?: boolean }): HydraEvent[] {
   const live = heldHydra({ hydraId: selection.hydraId })
   const milestones = live?.state.historyMilestones ?? []
   const receipts = milestones.flatMap(milestone => milestone.receipts ?? [])
@@ -154,7 +154,11 @@ export function readChanges({ ...selection }: EventSelection): HydraEvent[] {
     return cards.includes(event.data.task ?? '') || cards.some(card =>
       event.data.text.includes(card) || event.data.text.includes(encodeURIComponent(card)))
   })
-  const events = new Map(selectedEvents(selection).map(event => [
+  const saved = selectedEvents({
+    ...selection,
+    measured,
+  })
+  const events = new Map(saved.map(event => [
     event.seq,
     event,
   ]))
@@ -232,14 +236,14 @@ function* scan({
   }
 }
 
-export function scanEvents(selection: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+export function scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
   return scan({
     read: selectedEvents,
     selection,
   })
 }
 
-export function scanChanges(selection: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+export function scanChanges({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
   return scan({
     read: readChanges,
     selection,
