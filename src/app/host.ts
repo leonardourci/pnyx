@@ -1627,7 +1627,6 @@ export function createHost({
             text: '',
             actor: 'pnyx',
             steering: oldest.id,
-            attempt: `reconcile:${card.id}:${state.seq}`,
           })
         } catch (error) {
           log({

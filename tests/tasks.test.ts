@@ -492,6 +492,15 @@ test(
     expect(worker.received[0]).toContain('Show the usage the agent reports')
     expect((await hydra.task({ key: first.card.id })).worker).toBe(first.worker)
 
+    await hydra.owner({
+      args: [
+        'task',
+        'hold',
+        first.card.id,
+        '--reason',
+        'Review the description before resuming',
+      ],
+    })
     const changedBrief = [
       'task',
       'brief',
@@ -502,22 +511,7 @@ test(
       'ring-description',
     ]
     await hydra.owner({ args: changedBrief })
-    await until({
-      what: 'the edited task description reaching its worker',
-      check: () => worker.received.some(text => text.includes('Description updated:\n\nShow the usage and its context window')),
-    })
     await hydra.owner({ args: changedBrief })
-    const inbox = await hydra.owner({
-      args: [
-        'task',
-        'inbox',
-        'read',
-        first.card.id,
-        '--all',
-      ],
-    })
-    expect(inbox.messages.filter((message: { text: string }) => message.text.includes('Description updated:'))).toHaveLength(1)
-
     await hydra.owner({
       args: [
         'task',
@@ -527,10 +521,33 @@ test(
         '',
       ],
     })
-    await until({
-      what: 'the cleared task description reaching its worker',
-      check: () => worker.received.some(text => text.includes('Description updated:\n\n(Description cleared.)')),
+    const inbox = await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        first.card.id,
+        '--all',
+      ],
     })
+    expect(inbox.messages.filter((message: { text: string }) => message.text.includes('Description updated:'))).toHaveLength(2)
+    expect(worker.received.some(text => text.includes('Description updated:'))).toBe(false)
+    await hydra.owner({
+      args: [
+        'task',
+        'release',
+        first.card.id,
+      ],
+    })
+    await until({
+      what: 'both held description edits reaching the existing worker',
+      check: () => worker.received.some(text => text.includes('Description updated:\n\nShow the usage and its context window'))
+        && worker.received.some(text => text.includes('Description updated:\n\n(Description cleared.)')),
+    })
+    const instructions = worker.received.join('\n')
+    expect(instructions.match(/Description updated:/g)).toHaveLength(2)
+    expect(instructions.indexOf('Description updated:\n\nShow the usage and its context window'))
+      .toBeLessThan(instructions.indexOf('Description updated:\n\n(Description cleared.)'))
 
     await hydra.as({ session: worker }).run({
       args: [
