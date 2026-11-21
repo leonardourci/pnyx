@@ -21,7 +21,7 @@ Only the daemon opens the store for writing or recovery. Workers read files and 
 
 ## Store interface
 
-`openFileStore` takes a home and two synchronous pure reducers, `reduceHydra` and `reduceTask`. A reducer receives the scope's previous state, its ID and a numbered native fact. It validates that fact and returns plain JSON state. It performs no I/O, clock reads or random choices.
+`openFileStore` takes a home and two synchronous pure reducers, `reduceHydra` and `reduceTask`. The home's parent must already exist; the store creates and durably publishes the home directory if needed. A reducer receives the scope's previous state, its ID and a numbered native fact. It validates that fact and returns plain JSON state. It performs no I/O, clock reads or random choices.
 
 | Operation | Result |
 |---|---|
@@ -38,21 +38,21 @@ Only the daemon opens the store for writing or recovery. Workers read files and 
 
 A decision receives its scope's state and a `read({hydra})` function for the staged home. It sees the preceding accepted decisions, including ones waiting in the same disk batch. A refused decision discards its draft without discarding adjacent valid commands.
 
-The host calls `snapshot()` every five minutes when state has changed and calls `close()` on a clean stop. Runtime observation handling, socket transport, worker-file following, copy creation and Oracle indexing belong to the application integration; this layer does not start those services.
+The application integration must call `snapshot()` every five minutes when state has changed and call `close()` on a clean stop. That host schedule, runtime observation handling, socket transport, worker-file following, copy creation and Oracle indexing are outside this layer.
 
 ## Receipts and failures
 
-One ordered queue collects commands for up to five milliseconds. The store appends each touched file once and calls `fdatasync` before resolving any receipt from the batch. A receipt contains the original native ID, its file's line number and its accepted timestamp.
+One ordered queue collects commands for up to five milliseconds. The store appends each touched file once and calls `fdatasync` before resolving any receipt from the batch. A decision that reads another scope first commits pending writes, so a dependent fact cannot survive without the fact it read. This starts a new batch when needed. A receipt contains the original native ID, its file's line number and its accepted timestamp.
 
 Repeating an accepted ID with the same contents returns its original receipt with `duplicate: true`. A different timestamp is a retry of the same intent. Changing the contents or author role refuses with `IDEMPOTENCY_CONFLICT`. Accepted IDs follow a task when its folder moves and survive snapshots and restart.
 
 An append or sync failure returns `WRITE_FAILED`, with no success receipt. Some complete lines may already be present. The store reloads and syncs those lines before accepting more commands; retrying their native IDs reconciles the uncertain write without duplicating it. If recovery also fails, further commands return `STORE_UNAVAILABLE` until the home can be reopened.
 
-A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery completes a move interrupted before rename. The directory is authoritative after rename. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Hydra folders.
+A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery completes a move interrupted before rename and reconciles directory syncs before recovered receipts can succeed. The directory is authoritative after rename. Retrying an older move returns its original receipt even if a later move changed the holder. General decisions cannot append move facts. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Hydra folders.
 
 ## Snapshots and recovery
 
-Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep each task's folded worker byte cursor. Their checksum covers the cached state and its positions. A malformed, unsupported or changed cache falls back to the logs. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
+Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep each task's folded worker byte cursor. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported or changed cache falls back to the logs. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
 
 Worker facts carry `off`, the byte immediately after the consumed worker line. A new worker fact advances that cursor strictly; a retry uses the same native ID. The cursor is rebuilt from native facts if the snapshot is absent.
 
