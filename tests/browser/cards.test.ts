@@ -1218,7 +1218,7 @@ test(
     console.log(await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
-      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null });
+      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') });
     }));
   `,
     })
@@ -1227,6 +1227,7 @@ test(
       column: 'ideas',
       title: 'Keep this task closed',
       formClosed: true,
+      focusLabel: 'Fold Ideas',
     })
   },
 )

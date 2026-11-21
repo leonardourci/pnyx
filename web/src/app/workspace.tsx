@@ -1339,7 +1339,10 @@ export function HydraView({
                                             })
                                           }
                                         }}
-                                        submitted={() => setCreatingTask(null)}
+                                        submitted={() => {
+                                          focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] [data-column-heading="${CSS.escape(c.id)}"]` })
+                                          setCreatingTask(null)
+                                        }}
                                       />
                                     )}
                                     <SortGroup namespace={`tasks:${navigation.hydraId}`} id={`tasks:${navigation.hydraId}:${c.id}`} items={items.map(item => item.id)}>
