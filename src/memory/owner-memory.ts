@@ -703,7 +703,6 @@ export function moveOwnerPolis({
 
       if (key === 'workers') {
         checkWorkerNotes({
-          command: 'pnyx-axi owner worker-notes set',
           text: after,
           reason: meta.reason,
         })

@@ -9,23 +9,21 @@ const WORKER_NOTES_BUDGET = 1500
 export function checkWorkerNotes({
   text,
   reason,
-  command = 'pnyx hydra worker-notes set',
 }: {
   text: string | null
   reason?: string
-  command?: string
 }): void {
   if (!reason?.trim()) {
     inform({
       reason: 'Worker instructions changed without a reason',
-      clear: `Use ${command} --text "<instructions>" --reason "<why>"`,
+      clear: 'Review the standing worker instructions and record why they changed',
     })
   }
 
   if (text !== null && text.length > WORKER_NOTES_BUDGET) {
     inform({
       reason: `Standing worker instructions exceed ${WORKER_NOTES_BUDGET} characters`,
-      clear: `Use ${command} --text "<shorter instructions>" --reason "<why>"`,
+      clear: 'Shorten the standing worker instructions and record why they changed',
     })
   }
 }

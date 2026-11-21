@@ -308,7 +308,6 @@ export async function writeProjectMemory({
 }) {
   if (key === 'workers') {
     checkWorkerNotes({
-      command: `pnyx-axi project worker-notes set --project ${JSON.stringify(path)}`,
       text: after,
       reason: meta.reason,
     })
