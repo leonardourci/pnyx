@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from './page.ts'
 import { chrome } from './chrome.ts'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
@@ -1275,103 +1275,85 @@ test.each([
     })
     const turn = pnyx.claude.plan({
       hydra: hydra.id,
-      match: () => true,
       hold: true,
     })
 
-    try {
-      await hydra.owner({
-        args: [
-          'task',
-          'start',
-          'fold-running',
-          '--in-place',
-        ],
-      })
-      await chrome({
-        script: `
-      await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
-      await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .running-count');
-      await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
-    `,
-      })
-      await chrome({
-        args: [
-          'emulate',
-          '--viewport',
-          viewport,
-        ],
-      })
-      const folded = await chrome({
-        script: `
-      console.log(await page.eval(async () => {
-        const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
-        workspace.querySelector('[aria-label="Fold Hydra"]').click();
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
-        const box = workspace.getBoundingClientRect();
-        const chips = [...workspace.querySelectorAll('.project-chips button')].map(chip => chip.getBoundingClientRect());
-        const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
+    onTestFinished(() => turn.release())
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'fold-running',
+        '--in-place',
+      ],
+    })
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    await chrome({
+      args: [
+        'emulate',
+        '--viewport',
+        viewport,
+      ],
+    })
+    const geometry = await chrome({
+      script: `
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .running-count');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
+    console.log(await page.eval(async () => {
+      const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+      workspace.querySelector('[aria-label="Fold Hydra"]').click();
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const box = workspace.getBoundingClientRect();
+      const chips = [...workspace.querySelectorAll('.project-chips button')].map(chip => chip.getBoundingClientRect());
+      const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
+      const center = (box.left + box.right) / 2;
+      const strip = {
+        thin: box.width <= 60,
+        bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
+        aligned: [...chips, ...marks].every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
+        contained: [...chips, ...marks].every(mark => mark.left >= box.left && mark.right <= box.right),
+        stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
+      };
+      workspace.querySelector('[aria-label="Unfold Hydra"]').click();
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const columns = [...workspace.querySelectorAll('.project-column')];
+      const expandedWidths = columns.map(column => column.getBoundingClientRect().width);
+      workspace.querySelector('[aria-label="Fold all projects"]').click();
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const folded = columns.length === 5 && columns.every(column => {
+        const box = column.getBoundingClientRect();
         const center = (box.left + box.right) / 2;
-        return JSON.stringify({
-          thin: box.width <= 60,
-          bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
-          aligned: [...chips, ...marks].every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
-          contained: [...chips, ...marks].every(mark => mark.left >= box.left && mark.right <= box.right),
-          stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
+        const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > *')];
+        const cards = column.querySelector('.column-cards');
+        return box.width > 0 && box.width <= 49 && cards.getClientRects().length === 0 && marks.length > 0 && marks.every(mark => {
+          const bounds = mark.getBoundingClientRect();
+          return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
         });
-      }));
+      });
+      workspace.querySelector('[aria-label="Unfold all projects"]').click();
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const unfolded = columns.every((column, index) =>
+        column.getBoundingClientRect().width === expandedWidths[index]
+        && column.querySelector('.column-cards').getClientRects().length > 0
+      );
+      return JSON.stringify({ strip, folded, unfolded });
+    }));
     `,
-      })
-      await chrome({
-        script: `
-      await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Unfold Hydra"]');
-      await page.wait('[data-hydra-workspace="${hydra.id}"][data-collapsed="false"] .column-cards');
-    `,
-      })
-      const columns = await chrome({
-        script: `
-      console.log(await page.eval(async () => {
-        const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
-        const columns = [...workspace.querySelectorAll('.project-column')];
-        const expandedWidths = columns.map(column => column.getBoundingClientRect().width);
-        workspace.querySelector('[aria-label="Fold all projects"]').click();
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
-        const folded = columns.length === 5 && columns.every(column => {
-          const box = column.getBoundingClientRect();
-          const center = (box.left + box.right) / 2;
-          const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > *')];
-          const cards = column.querySelector('.column-cards');
-          return box.width > 0 && box.width <= 49 && cards.getClientRects().length === 0 && marks.length > 0 && marks.every(mark => {
-            const bounds = mark.getBoundingClientRect();
-            return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
-          });
-        });
-        workspace.querySelector('[aria-label="Unfold all projects"]').click();
-        await new Promise(requestAnimationFrame);
-        await new Promise(requestAnimationFrame);
-        const unfolded = columns.every((column, index) =>
-          column.getBoundingClientRect().width === expandedWidths[index]
-          && column.querySelector('.column-cards').getClientRects().length > 0
-        );
-        return JSON.stringify({ folded, unfolded });
-      }));
-    `,
-      })
-      expect(JSON.parse(folded)).toEqual({
+    })
+    expect(JSON.parse(geometry)).toEqual({
+      strip: {
         thin: true,
         bodyHidden: true,
         aligned: true,
         contained: true,
         stacked: true,
-      })
-      expect(JSON.parse(columns)).toEqual({
-        folded: true,
-        unfolded: true,
-      })
-    } finally {
-      turn.release()
-    }
+      },
+      folded: true,
+      unfolded: true,
+    })
   },
 )
