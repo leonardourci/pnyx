@@ -278,7 +278,7 @@ export function migrateOwnerMemory(): void {
   }
 
   withRegistryLock({
-    fn: () => {
+    fn: async () => {
       if (existsSync(migratedPath())) {
         return
       }
@@ -297,7 +297,7 @@ export function migrateOwnerMemory(): void {
             memory,
             key,
           ))) {
-            move({
+            await move({
               hydraId,
               meta,
             })
@@ -325,14 +325,14 @@ export function migrateOwnerMemory(): void {
   })
 }
 
-function move({
+async function move({
   hydraId,
   meta,
 }: {
   hydraId: string
   meta: OwnerMeta
-}): void {
-  withWriter({
+}): Promise<void> {
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       for (const key of Object.keys(OWNER_DOCUMENTS)) {
