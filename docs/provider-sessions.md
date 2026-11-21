@@ -1,6 +1,6 @@
 # Provider sessions
 
-Claude Code and Codex run under `pnyx-axi serve`. Stopping or restarting the server ends their running turns. The provider interface separates execution from readers inside that process.
+Claude Code and Codex run under `pnyx serve`. Stopping or restarting the server ends their running turns. The provider interface separates execution from readers inside that process.
 
 `Provider.open` returns a `HostedSession`. Its first `run` binds application input and permission handling and starts one native owner. `attach` adds an event reader. Returning from a reader removes that subscription; `close` explicitly shuts down the native session. A slow reader has a bounded queue and receives an error if it falls behind. Attachments receive live events; `snapshot` supplies current work, permissions, value-free answer receipts and the latest complete terminal outcome. This is an in-memory snapshot, without a durable replay or acknowledgement protocol.
 

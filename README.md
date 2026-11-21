@@ -8,7 +8,7 @@ Every change is saved in an append-only event log, so work and conversations sta
 
 Pnyx runs the agents you ask it to start; Hydra decides what to do.
 
-The [AXI](https://axi.md/) CLI is `pnyx-axi`. Pnyx is pre-v1.
+The plain CLI is `pnyx`. Pnyx is pre-v1.
 
 ![Pnyx demo](docs/media/demo.gif)
 
@@ -16,7 +16,7 @@ Recorded on the current app in dark mode, with made-up projects, tasks and agent
 
 ## Install
 
-You need Node 22.13 or newer, pnpm at the version pinned in `package.json`, and PostgreSQL 15 or newer with `wal_level=logical` for Pnyx's data (`brew install postgresql@17`, then `pnyx-axi setup postgres` starts and configures it).
+You need Node 22.13 or newer, pnpm at the version pinned in `package.json`, and PostgreSQL 15 or newer with `wal_level=logical` for Pnyx's data (`brew install postgresql@17`, then `pnyx setup postgres` starts and configures it).
 
 Install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both to run agents.
 
@@ -27,17 +27,17 @@ cd pnyx
 pnpm install
 pnpm run build
 pnpm add -g "$PWD"
-pnyx-axi --version
-pnyx-axi setup postgres
+pnyx --version
+pnyx setup postgres
 ```
 
-If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx-axi.js` directly from the clone.
+If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx.js` directly from the clone.
 
-The global install links this clone; keep it in place. To upgrade, run `pnyx-axi upgrade` or send `/upgrade` in Hydra's chat; both pull `main`, install, build, check that the new build can import the data, and restart the server. The first upgrade onto a Pnyx that keeps its data in Postgres runs the installed release's upgrade, which has no such check, so prepare it with the first-move steps in [Upgrade](docs/pnyx-axi.md#upgrade).
+The global install links this clone. Send `/upgrade` in Hydra's chat to pull `main`, install dependencies, build, check the data and restart the server. If your current executable is `pnyx-axi`, follow the [migration steps](docs/pnyx.md#migrate-from-pnyx-axi).
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
-[quota-axi](https://github.com/kunchenguid/quota-axi) ranks dispatch candidates by account quota. Hooks, global skills and the login service are optional setup steps described in the [reference](docs/pnyx-axi.md#install).
+[quota-axi](https://github.com/kunchenguid/quota-axi) ranks dispatch candidates by account quota. Hooks, global skills and the login service are optional setup steps described in the [reference](docs/pnyx.md).
 
 ## Quick start
 
@@ -46,7 +46,7 @@ GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`,
 Start the foreground server:
 
 ```sh
-pnyx-axi serve
+pnyx serve
 ```
 
 Open the URL it prints. One server serves all your Hydras; the default address is `http://127.0.0.1:4747`.
@@ -56,27 +56,21 @@ Keep that terminal running while you use Pnyx.
 For an owner-facing trial with separate data, use portless when it is installed so the owner gets a stable link:
 
 ```sh
-PNYX_HOME=/path/to/trial portless trial.pnyx pnyx-axi serve
+PNYX_HOME=/path/to/trial portless trial.pnyx pnyx serve
 ```
 
-Choose a unique `<name>.pnyx` for each trial and share the URL portless prints. Leave `--port` unset so Pnyx uses the `PORT` portless supplies. Without portless, run `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0` and share the printed URL. Automated tests keep their random ports.
+Choose a unique `<name>.pnyx` for each trial and share the URL portless prints. Leave `--port` unset so Pnyx uses the `PORT` portless supplies. Without portless, run `PNYX_HOME=/path/to/trial pnyx serve --port 0` and share the printed URL. Automated tests keep their random ports.
 
-Use the same `PNYX_HOME` for every command in that trial, including `stop`. A separate home still uses your normal harness logins and global skill folders.
+Use the same `PNYX_HOME` for every command in that trial. A separate home still uses your normal harness logins and global skill folders.
 
 Setup commands change user-wide configuration and report the selected home when it differs from the default. See [data and privacy](docs/data.md) before sharing a data folder or removing it.
 
 ### 2. Attach a project
 
-In another terminal, create a Hydra and attach a project:
-
-```sh
-pnyx-axi hydra create work
-pnyx-axi project add /absolute/path/to/project --hydra work
-```
+Create a Hydra and attach a project in the UI.
 
 Select **work** in the header's Hydra chips, then choose a model for your signed-in harness in Hydra's composer (a Codex model if you use only Codex).
 
-You can also type `/add-project` in Hydra's composer, or right-click the Hydra and choose **Add project**, to ask Hydra to attach a folder or clone a repository.
 
 ### 3. Talk to Hydra
 
@@ -86,21 +80,20 @@ Send a message in Hydra's composer, for example:
 
 The first message starts Hydra's agent session. Hydra reports missing setup in chat, runs setup commands directly and directs the owner to sign in through the harness when a login is needed. Credentials stay out of Hydra chat.
 
-Read the [dispatch guide](docs/pnyx-axi.md#kinds-the-light-check-and-the-worker-contract) to configure your harnesses, models and accounts.
+Read the [dispatch guide](docs/pnyx.md) to configure your harnesses, models and accounts.
 
 ### 4. Start a task
 
 Ask Hydra to start an agreed task, or create and start one from the CLI:
 
 ```sh
-pnyx-axi task create --title "Improve the empty state" --project project \
+pnyx task create --title "Improve the empty state" --project project \
   --brief "Explain the empty state and add a useful next action." --hydra work
-pnyx-axi task start <task-id> --harness claude --hydra work
 ```
 
-Replace `project` with the attached folder's name and `<task-id>` with the ID returned by `task create`. Use `--harness codex` if that is your signed-in harness.
+Replace `project` with the attached folder's name. Use `--harness codex` if that is your signed-in harness.
 
-Open the card to follow the worker's updates, and send follow-up instructions through Hydra's chat. Stop a foreground server with Ctrl+C or `pnyx-axi stop`.
+Open the card to follow the worker's updates, and send follow-up instructions through Hydra's chat. Stop a foreground server with Ctrl+C.
 
 ## Core ideas
 
@@ -126,7 +119,7 @@ Workers report their state and send questions to Hydra. Hooks also let you attac
 
 A project is a folder attached to a Hydra. Workers normally get isolated project copies.
 
-Work lands through a ready pull request by default, with you deciding when to merge; a project can instead keep completed work on a branch. See [projects and landing](docs/pnyx-axi.md#projects) for the rules and cleanup behavior.
+Work lands through a ready pull request by default, with you deciding when to merge; a project can instead keep completed work on a branch. See [projects and landing](docs/pnyx.md) for the rules and cleanup behavior.
 
 ### Memory and Oracle
 
@@ -136,36 +129,24 @@ The **Oracle** searches tasks, their events and notes by keyword, matching word 
 
 ## CLI reference
 
-The main commands are below. `pnyx-axi --help` lists every command, and the [pnyx-axi reference](docs/pnyx-axi.md) covers them in full.
+Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for details. Workers append reports to worker.log. Transitional read commands remain available while the app moves to its file store.
 
 | Command | Description |
 | --- | --- |
-| `pnyx-axi` | Show the Hydra summary. |
-| `pnyx-axi serve` | Run the one server for every Hydra until stopped. |
-| `pnyx-axi stop` | Stop the running server. |
-| `pnyx-axi upgrade [--check] [--stop]` | Pull, install, build and check the data of the latest `main`, then restart the server; `--stop` stops a running upgrade, not the server. |
-| `pnyx-axi hydra create\|list\|show\|set` | Create and configure Hydras. |
-| `pnyx-axi hydra start\|send\|messages\|check` | Start Hydra, queue a message in its chat, read the chat, or wait for changes. |
-| `pnyx-axi project add\|list\|set\|remove` | Attach, list, configure or detach projects. |
-| `pnyx-axi task create\|list\|show\|rename\|history` | Manage tasks and one level of subtasks. |
-| `pnyx-axi task start\|continue <task>` | Start a worker, or host an ended outside session. |
-| `pnyx-axi task attach\|detach <task>` | Attach an interactive session to a task, or detach it. |
-| `pnyx-axi column create\|rename\|describe\|rule\|resize\|reorder\|delete\|list` | Edit the Hydra's columns. |
-| `pnyx-axi move <id> <column>` | Put a card in a column. |
-| `pnyx-axi card <id>` | Show one card with its summary, decisions and context. |
-| `pnyx-axi outcome <id> done\|failed\|cancelled` | Record a task's outcome. |
-| `pnyx-axi oracle "<words>"` | Search titles, links, events and notes with the Oracle. |
-| `pnyx-axi history` | Page through past events, newest first. |
-| `pnyx-axi rule`, `pnyx-axi account list\|set\|remove` | Edit dispatch rules and worker login folders. |
-| `pnyx-axi setup [check\|postgres\|skills\|hooks]` | Install the login services, list missing setup, start Postgres for Pnyx's data, or install global skills and reporting hooks. |
-| `pnyx-axi integrations` | Show which integrations are ready and how to set each up. |
-| `pnyx-axi undo <event-id>` | Append the reverse of a manual edit, move, link or outcome. |
+| `pnyx board` | Show the current Hydra. |
+| `pnyx task create` | Create a task and start its worker. |
+| `pnyx send --text <message>` | Send to Hydra, or add `--task <id>` for a worker. |
+| `pnyx answer <task> <question> --text <answer>` | Answer a saved question. |
+| `pnyx serve` | Run the app server. |
+| `pnyx setup` | Set up the service, hooks or skills. |
+| `pnyx debug health` | Check the running app. |
 
 ### Flags
 
 | Flag | Description |
 | --- | --- |
-| `--hydra <name>` | Hydra to use (default: `default`). |
+| `--hydra <name>` | Hydra to use (default: assigned Hydra or `default`). |
+| `--json` | Print a JSON receipt for a script. |
 | `--port <n>` | Port for `serve`; `0` picks a free one. |
 | `--event-id <id>` | On writes, an idempotency key; a repeat returns the original receipt. |
 | `--if-revision <n>` | On writes, the expected card revision (`0` for a new card). |
@@ -173,7 +154,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 
 ## Documentation
 
-- [pnyx-axi reference](docs/pnyx-axi.md): commands, projects, tasks, workers, memory and the interface.
+- [pnyx reference](docs/pnyx.md): immediate actions and transitional reads.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
 - [Development](docs/development.md): build, tests and verification.

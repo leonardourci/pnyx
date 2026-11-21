@@ -1,6 +1,6 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx-axi`, the page through its WebSocket and its Zero reads. A few small browser checks open the real page in Chrome.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx`, the page through its WebSocket and its Zero reads. A few small browser checks open the real page in Chrome.
 
 ```text
 tests/
@@ -58,7 +58,7 @@ test('a reply reaches the worker once', async () => {
 ```
 
 - `hydra.column({ role })` is a board column's id, `hydra.task({ key })` a task as `task show` prints it, and `hydra.startTask({ key, harness })` creates a task, starts its worker and waits for the worker's first turn.
-- `hydra.owner({ args, input })` runs `pnyx-axi` as the owner and returns its output decoded from TOON; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` run it with the environment Pnyx gave that agent.
+- `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Pnyx gave that agent.
 - `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
 - `rows({ text, values })` reads this file's database, for facts the page reads through Zero or a write must have saved.
