@@ -114,7 +114,7 @@ export function createCatalogs({
     card: string
     key: string
     commands: CommandSuggestion[]
-  }): void
+  }): Promise<void>
 }) {
   const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
   const commandCatalogs = new Map<string, CommandSuggestion[]>()
@@ -166,7 +166,7 @@ export function createCatalogs({
     let timer: ReturnType<typeof setTimeout> | undefined
 
     try {
-      const lookup = running.commands().then(commands => {
+      const lookup = running.commands().then(async commands => {
         const found = commands.filter(item => item.builtin).map(item => ({
           command: `/${item.name}`,
           description: item.description,
@@ -183,7 +183,7 @@ export function createCatalogs({
           const previous = saved?.[cacheKey]
 
           if (JSON.stringify(previous) !== JSON.stringify(found)) {
-            saveCatalog({
+            await saveCatalog({
               card: card.id,
               key: cacheKey,
               commands: found,

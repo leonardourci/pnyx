@@ -141,7 +141,7 @@ export async function hydraCheck({
   let typed: TypedWords[] = []
 
   do {
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
@@ -480,7 +480,7 @@ const hydraDigestHandler = guard({
       positionals: 1,
     })
 
-    const owner = ownerMemory({})
+    const owner = await ownerMemory({})
     const state = loadHydra({ hydraId }).state
     const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const readable = projectsFor({ state })

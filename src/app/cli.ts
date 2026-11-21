@@ -21,7 +21,7 @@ import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
 
-const task = guard({ handler: ({ args }) => taskCommand({ args }) })
+const task = guard({ handler: taskCommand })
 
 const history = guard({
   handler: async ({ args }) => {
@@ -195,7 +195,7 @@ const history = guard({
 })
 
 const undo = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       positionals,
@@ -223,7 +223,7 @@ const undo = guard({
       })
     }
 
-    return commit(
+    return await commit(
       {
         hydraId,
         meta: m,

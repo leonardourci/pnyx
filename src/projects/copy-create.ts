@@ -144,7 +144,7 @@ async function landedSlotBranch({
 
     const key = createHash('sha256').update(`${path}\0${branch}\0${check.reason}`)
       .digest('hex')
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => applyDecision({
         writer,
@@ -183,7 +183,7 @@ async function landedSlotBranch({
     return branch
   }
 
-  withWriter({
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const current = writer.state.cards[previous.id]
@@ -327,7 +327,7 @@ async function worktreeCopy({
 
   // Ignored files such as installed dependencies stay with the slot; the clean check leaves nothing else to reset.
   for (const path of candidates) {
-    if (!take({
+    if (!await take({
       hydraId,
       card,
       path,
@@ -384,7 +384,7 @@ async function worktreeCopy({
     }
   }
 
-  const path = freshSlot({
+  const path = await freshSlot({
     hydraId,
     project,
   })
@@ -593,7 +593,7 @@ export async function taskFolder({
   })
 
   try {
-    return withWriter({
+    return await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })

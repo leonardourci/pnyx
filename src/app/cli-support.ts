@@ -377,7 +377,7 @@ function originalReceipt(
 
 // A repeated --event-id answers with the original receipt before any other check,
 // so a retry of a write that already landed never reports a conflict.
-export function commit(
+export async function commit(
   {
     hydraId,
     meta,
@@ -401,8 +401,8 @@ export function commit(
     }) => Decision
 
   },
-): Output {
-  return withWriter({
+): Promise<Output> {
+  return await withWriter({
     hydraId,
     create,
     fn: ({ writer }) => {

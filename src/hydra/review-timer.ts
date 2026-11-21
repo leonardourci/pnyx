@@ -114,7 +114,7 @@ export function startReviewTimer({
       const state = shared()
 
       try {
-        fireReminders({
+        await fireReminders({
           hydraId,
           at: new Date(now()).toISOString(),
           state,
@@ -158,7 +158,7 @@ export function startReviewTimer({
         return
       }
 
-      const recorded = withWriter({
+      const recorded = await withWriter({
         hydraId,
         fn: ({ writer }) => {
           const current = writer.state

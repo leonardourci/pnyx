@@ -180,7 +180,7 @@ export async function settleCopy({
       }
     }
 
-    return withWriter({
+    return await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })

@@ -128,7 +128,7 @@ export async function discoverPullRequests({
           return
         }
 
-        const kept = withWriter({
+        const kept = await withWriter({
           hydraId,
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
@@ -234,7 +234,7 @@ export async function discoverPullRequests({
       }
 
       for (const request of requests) {
-        withWriter({
+        await withWriter({
           hydraId,
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]

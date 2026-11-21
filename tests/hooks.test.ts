@@ -244,7 +244,7 @@ test(
         herdrPane: 'prompt-pane',
       },
     })
-    withWriter({
+    await withWriter({
       hydraId: 'default',
       fn: ({ writer }) => applyDecision({
         writer,
@@ -281,7 +281,7 @@ test(
       terminal: { tty: '/dev/ttys99998' },
       settings: { fast: 'true' },
     })
-    withWriter({
+    await withWriter({
       hydraId: 'default',
       fn: ({ writer }) => applyDecision({
         writer,
@@ -1315,6 +1315,7 @@ test(
     }
 
     const nativeRead = transcriptReader.readTranscript
+    let reboundWrite: Promise<unknown> | undefined
     let rotatedOnce = false
     let reboundReads = 0
     const spy = vi.spyOn(
@@ -1347,7 +1348,7 @@ test(
       }
 
       if (cursor.source === rebound && tail && reboundReads === 1 && cursor.pos === 0) {
-        withWriter({
+        reboundWrite = withWriter({
           hydraId: hydra.id,
           fn: ({ writer }) => {
             const session = writer.state.sessions!['claude:rebound-recovery']!
@@ -1392,6 +1393,7 @@ test(
         )
       },
     })
+    await reboundWrite
     const sessions = (await hydra.owner({
       args: [
         'task',

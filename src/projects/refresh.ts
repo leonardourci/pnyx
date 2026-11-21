@@ -441,7 +441,7 @@ export async function refreshProject({
   merge: string
   isPending(): boolean
   lockWait?: RefreshLockWait
-  complete({ result }: { result: ProjectRefresh }): void
+  complete({ result }: { result: ProjectRefresh }): void | Promise<void>
 }): Promise<void> {
   const result: ProjectRefresh = {
     path,
@@ -538,7 +538,7 @@ export async function refreshProject({
   } finally {
     try {
       if (performed) {
-        complete({ result })
+        await complete({ result })
       }
     } finally {
       if (ownsLock && lockPath) {

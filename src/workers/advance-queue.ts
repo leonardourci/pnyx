@@ -77,7 +77,7 @@ function workerIdle({
   return !busy && !waiting
 }
 
-function releaseQueue({
+async function releaseQueue({
   hydraId,
   session,
   reason,
@@ -88,7 +88,7 @@ function releaseQueue({
   reason: string
   task: AgentSession['taskId'] | undefined
 }) {
-  withWriter({
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const current = writer.state.sessions?.[session]?.taskId
@@ -362,7 +362,7 @@ async function refreshLinks({
     const at = meta().at
 
     if (state && state !== link.state) {
-      withWriter({
+      await withWriter({
         hydraId,
         fn: ({ writer }) => {
           const current = writer.state.cards[card.id]?.links.find(l => l.url === link.url)
@@ -520,7 +520,7 @@ export async function advanceQueues({
     })
 
     if (reason) {
-      releaseQueue({
+      await releaseQueue({
         hydraId,
         session: id,
         task: session?.taskId,
@@ -742,7 +742,7 @@ export async function advanceQueues({
           throw new Error('The worker folder changed during handoff checkout')
         }
 
-        recorded = Boolean(withWriter({
+        recorded = Boolean(await withWriter({
           hydraId,
           fn: ({ writer }) => {
             drainSpool({ writer })
@@ -904,7 +904,7 @@ export async function advanceQueues({
       })
 
       if (active()) {
-        releaseQueue({
+        await releaseQueue({
           hydraId,
           session: id,
           task: current.id,

@@ -102,7 +102,7 @@ export const harvest = guard({
       note: await pullRequestNote({ url: l.url }),
     }))))
 
-    return withWriter({
+    return await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const spool = drainSpool({ writer })

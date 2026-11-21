@@ -1,3 +1,4 @@
+import { readSettings, saveSettings } from '#settings/store.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
@@ -369,5 +370,67 @@ test(
     })
     expect(view.workspace.projectWidths).toEqual({})
     expect(view.cardHeights[task.card.id]).toBe(640)
+  },
+)
+
+test(
+  'concurrent settings saves keep the revision guard until their dependent write settles',
+  async () => {
+    await saveSettings({
+      patch: { theme: 'dark' },
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'cli',
+      },
+    })
+    const revision = readSettings().revision
+    const entered = Promise.withResolvers<void>()
+    const gate = Promise.withResolvers<void>()
+    const first = saveSettings({
+      patch: { theme: 'light' },
+      meta: {
+        id: 'concurrent-settings-a',
+        at: new Date().toISOString(),
+        actor: 'cli',
+        ifRevision: revision,
+      },
+      beforeSave: () => {
+        entered.resolve()
+
+        return gate.promise
+      },
+    })
+
+    try {
+      const phase = await Promise.race([
+        entered.promise.then(() => 'waiting'),
+        first,
+      ])
+      expect(phase).toBe('waiting')
+      expect(readSettings().settings.theme).toBe('dark')
+      const second = saveSettings({
+        patch: { theme: 'dark' },
+        meta: {
+          id: 'concurrent-settings-b',
+          at: new Date().toISOString(),
+          actor: 'cli',
+          ifRevision: revision,
+        },
+      })
+      gate.resolve()
+      const results = await Promise.allSettled([
+        first,
+        second,
+      ])
+      expect(results[0]?.status).toBe('fulfilled')
+      expect(results[1]).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'REVISION_CONFLICT' },
+      })
+      expect(readSettings().settings.theme).toBe('light')
+    } finally {
+      gate.resolve()
+      await Promise.allSettled([first])
+    }
   },
 )

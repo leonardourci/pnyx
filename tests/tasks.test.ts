@@ -2271,7 +2271,7 @@ test(
         due,
       ],
     })
-    fireReminders({
+    await fireReminders({
       hydraId: hydra.id,
       at: new Date(Date.parse(due) + 1).toISOString(),
     })

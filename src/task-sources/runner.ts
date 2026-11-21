@@ -79,7 +79,7 @@ export function createSourceRunner({
     source: string
   }) => `${card}:${source}`
 
-  const capture = ({
+  const capture = async ({
     job,
     result,
   }: {
@@ -101,7 +101,7 @@ export function createSourceRunner({
     capturePending = true
 
     try {
-      commit({
+      await commit({
         hydraId,
         path,
         capture: captured,
@@ -155,11 +155,11 @@ export function createSourceRunner({
     )
     child.once(
       'message',
-      (result: ChildResult) => {
+      async (result: ChildResult) => {
         received = result
 
         try {
-          capture({
+          await capture({
             job,
             result,
           })
@@ -176,9 +176,9 @@ export function createSourceRunner({
       },
     )
 
-    const settle = () => {
+    const settle = async () => {
       try {
-        capture({
+        await capture({
           job,
           result: received ?? {
             outcome: 'interrupted',
@@ -207,11 +207,11 @@ export function createSourceRunner({
     // disconnects only after delivering it, or when the server stops the listener.
     let pending = 2
 
-    const oneEnded = () => {
+    const oneEnded = async () => {
       pending--
 
       if (pending === 0) {
-        settle()
+        await settle()
       }
     }
 
@@ -225,9 +225,9 @@ export function createSourceRunner({
     )
     child.once(
       'error',
-      error => {
+      async error => {
         failure = error
-        settle()
+        await settle()
       },
     )
     child.send(
@@ -243,13 +243,13 @@ export function createSourceRunner({
     )
   }
 
-  const flushCaptures = () => {
+  const flushCaptures = async () => {
     const pending = new Set<string>()
     let committed = false
 
     for (const buffered of bufferedCaptures({ hydraId })) {
       try {
-        commit({
+        await commit({
           hydraId,
           path: buffered.path,
           capture: buffered.capture,
@@ -355,7 +355,7 @@ export function createSourceRunner({
     return 'start'
   }
 
-  const prepare = ({ pending }: { pending: Set<string> }) => {
+  const prepare = async ({ pending }: { pending: Set<string> }) => {
     const state = shared()
 
     // Stopping a listener writes nothing, so it runs before taking the lock.
@@ -389,7 +389,7 @@ export function createSourceRunner({
       }
     }
 
-    const launches = withWriter({
+    const launches = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const launches: {
@@ -542,7 +542,7 @@ export function createSourceRunner({
     }) !== undefined
   }
 
-  const announce = ({
+  const announce = async ({
     cardId,
     id,
     sequence,
@@ -551,7 +551,7 @@ export function createSourceRunner({
     id: string
     sequence: number
   }) =>
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const card = writer.state.cards[cardId]!
@@ -653,7 +653,7 @@ export function createSourceRunner({
       detail = (error as Error).message
     }
 
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const current = writer.state.cards[card]
@@ -709,8 +709,8 @@ export function createSourceRunner({
   }
 
   const reconcile = async () => {
-    const flushed = flushCaptures()
-    const prepared = prepare({ pending: flushed.pending })
+    const flushed = await flushCaptures()
+    const prepared = await prepare({ pending: flushed.pending })
 
     for (const launchSource of prepared.launches) {
       if (!closed) {
@@ -721,7 +721,7 @@ export function createSourceRunner({
             card,
             source,
           } = launchSource
-          capture({
+          await capture({
             job: {
               card: card.id,
               source: source.id,
@@ -761,7 +761,7 @@ export function createSourceRunner({
           }
 
           try {
-            const notification = announce({
+            const notification = await announce({
               cardId: card.id,
               id: source.id,
               sequence: result.sequence,

@@ -8,7 +8,7 @@ import { decideView } from './decisions.ts'
 import { HydraError } from '#store/errors.ts'
 
 export const view = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const [
       sub,
       ...rest
@@ -92,22 +92,22 @@ export const view = guard({
     })
 
     if (!Object.keys(shared).length) {
-      return viewCommit()
+      return await viewCommit()
     }
 
-    let committed: ReturnType<typeof viewCommit> | undefined
+    let committed: Awaited<ReturnType<typeof viewCommit>> | undefined
     // --if-revision guards the board's own view; shared keys follow the settings store.
     const settings = settingsReceipt({
-      saved: saveSettings({
+      saved: await saveSettings({
         hydraId,
         patch: shared,
         meta: {
           ...m,
           ifRevision: undefined,
         },
-        beforeSave: () => {
+        beforeSave: async () => {
           if (Object.keys(board).length) {
-            committed = viewCommit()
+            committed = await viewCommit()
           }
         },
       }),
@@ -125,7 +125,7 @@ export const view = guard({
 })
 
 export const layout = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       positionals,
@@ -185,7 +185,7 @@ export const layout = guard({
     })
 
     if (!values.all) {
-      return reset({ id: hydraId })
+      return await reset({ id: hydraId })
     }
 
     if (m.ifRevision !== undefined) {
@@ -195,23 +195,27 @@ export const layout = guard({
       })
     }
 
-    // One event id per Hydra keeps a retried --all from resetting twice.
-    return {
-      hydras: hydraIds().map(id => ({
+    const hydras: Output[] = []
+
+    for (const id of hydraIds()) {
+      const receipt = await reset({ id })
+      hydras.push({
         hydra: id,
-        ...reset({ id }),
-      })),
+        ...receipt,
+      })
     }
+
+    return { hydras }
   },
 })
 
-export function hydraResize({
+export async function hydraResize({
   values,
   hydraId,
 }: {
   values: Record<string, string | boolean | undefined>
   hydraId: string
-}): Output {
+}): Promise<Output> {
   const width = integer({
     value: values.width,
     flag: '--width',
@@ -226,7 +230,7 @@ export function hydraResize({
 
   const m = meta({ values })
 
-  return commit({
+  return await commit({
     hydraId,
     meta: m,
     intent: {

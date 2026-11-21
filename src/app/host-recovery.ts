@@ -54,8 +54,8 @@ export function createHostRecovery({
   children: ReturnType<typeof trackChildren>
   upgrades: ReturnType<typeof upgradeQueue>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
-  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
+  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): Promise<void>
   interrupt({
     writer,
     agent,
@@ -67,7 +67,7 @@ export function createHostRecovery({
     note: string
     resumeAttemptId?: string
   }): void
-  changeAgent({ change }: { change: HydraAgentChange }): void
+  changeAgent({ change }: { change: HydraAgentChange }): Promise<void>
   endOperation: ReturnType<typeof createHydraOperations>['endOperation']
   expireOrphans: ReturnType<typeof createPermissionBridge>['expireOrphans']
   send: ReturnType<typeof createHostedDelivery>['send']
@@ -80,11 +80,11 @@ export function createHostRecovery({
   let fenced = true
 
   const recover: Host['recover'] = async () => {
-    restoreOutsideSessions({ hydraId })
+    await restoreOutsideSessions({ hydraId })
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
     fenced = false
     fenced = await children.sweep()
-    upgrades.recover()
+    await upgrades.recover()
 
     if (fenced) {
       await recoverHandoffs({ hydraId })
@@ -92,7 +92,7 @@ export function createHostRecovery({
 
     // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
     // the stop cut, ends here, and Hydra gets the recap and its queue.
-    note({
+    await note({
       fn: ({ writer }) => {
         for (const pass of writer.state.historyMilestones ?? []) {
           if (pass.state === 'started' && (pass.kind === 'inscribe' || pass.blocking === false)) {
@@ -125,7 +125,7 @@ export function createHostRecovery({
     const cutChange = loadHydra({ hydraId }).state.hydraAgentChange
 
     if (cutChange?.state === 'running') {
-      changeAgent({
+      await changeAgent({
         change: {
           ...cutChange,
           state: 'failed',
@@ -152,7 +152,7 @@ export function createHostRecovery({
     }[] = []
 
     const cutCompactions = new Set<string>()
-    write({
+    await write({
       fn: ({ writer }) => {
         for (const card of Object.values(writer.state.cards)) {
           const operation = card.compaction?.operations.findLast(operation => operation.state === 'running')
@@ -261,7 +261,7 @@ export function createHostRecovery({
     // A worker the restart cut continues once; one that cannot stays interrupted for Hydra or the owner.
     for (const cut of cutWorkerTurns) {
       try {
-        send({
+        await send({
           card: cut.task,
           text: WORKER_RESUME,
           actor: 'pnyx',
@@ -278,7 +278,7 @@ export function createHostRecovery({
           taskId: cut.task,
           correlationId: cut.resumeAttemptId,
         })
-        note({
+        await note({
           fn: ({ writer }) => {
             const agent = writer.state.cards[cut.task]?.agent
 
@@ -310,7 +310,7 @@ export function createHostRecovery({
       }
 
       try {
-        send({
+        await send({
           card: card.id,
           text: '',
           actor: 'pnyx',
@@ -329,7 +329,7 @@ export function createHostRecovery({
     }
 
     // A direct message handed to an agent the restart stopped may or may not have arrived; Pnyx never sends it again by itself.
-    note({
+    await note({
       fn: ({ writer }) => {
         for (const card of Object.values(writer.state.cards)) {
           if (card.agent?.host !== 'pnyx') {

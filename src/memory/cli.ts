@@ -192,7 +192,7 @@ export const owner = guard({
     })
 
     if (action === 'list') {
-      migrateOwnerMemory()
+      await migrateOwnerMemory()
 
       return withRegistryLock({
         fn: () => {
@@ -222,7 +222,7 @@ export const owner = guard({
     }
 
     if (action === 'save' || action === 'archive') {
-      const entry = saveOwnerMemory({
+      const entry = await saveOwnerMemory({
         hydraId,
         key: 'learnings',
         after: null,
@@ -249,7 +249,7 @@ export const owner = guard({
     }
 
     if (action === 'move' && documentMove) {
-      return moveOwnerPolis({
+      return await moveOwnerPolis({
         hydraId,
         ifDestinationRevision: integer({
           value: values['if-destination-revision'],
@@ -294,7 +294,7 @@ export const owner = guard({
         value: values.text as string | undefined,
         what: '--text <existing learning line>',
       })
-      const entry = saveOwnerMemory({
+      const entry = await saveOwnerMemory({
         hydraId,
         key: 'learnings',
         after: null,
@@ -326,7 +326,7 @@ export const owner = guard({
       })
     }
 
-    const entry = saveOwnerMemory({
+    const entry = await saveOwnerMemory({
       hydraId,
       key,
       after,
@@ -346,7 +346,7 @@ export const owner = guard({
   },
 })
 
-export function hydraMemory({
+export async function hydraMemory({
   values,
   positionals,
   hydraId,
@@ -354,7 +354,7 @@ export function hydraMemory({
   values: Record<string, string | boolean | undefined>
   positionals: string[]
   hydraId: string
-}): Output {
+}): Promise<Output> {
   const action = positionals[1] ?? 'list'
 
   if (action === 'list') {
@@ -404,7 +404,7 @@ export function hydraMemory({
     })
   }
 
-  const result = commit({
+  const result = await commit({
     hydraId,
     meta: m,
     intent: {
@@ -438,7 +438,7 @@ export function hydraMemory({
   })
 
   if (key === 'workers' && result.event === 'none: unchanged') {
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const saved = scanEvents({

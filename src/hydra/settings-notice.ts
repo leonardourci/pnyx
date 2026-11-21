@@ -7,7 +7,7 @@ import { hydraConfig } from './config.ts'
 
 const NOTICE_LENGTH = 180
 
-export function settingsNotice({
+export async function settingsNotice({
   hydraId,
   meta,
   changeId,
@@ -17,12 +17,12 @@ export function settingsNotice({
   meta: Meta
   changeId: string
   text: string
-}): void {
+}): Promise<void> {
   if (!hydraActor({ actor: meta.actor })) {
     return
   }
 
-  withWriter({
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const decision = hydraEvent({

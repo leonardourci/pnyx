@@ -13,7 +13,7 @@ import type { Meta } from '#app/command-meta.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+import { pnyxHome, privateDir, withRegistryLock, withAsyncRegistryLock, writeDurably } from '#store/storage.ts'
 
 export interface OwnerMeta extends Meta {
   ifPolis?: string
@@ -272,13 +272,13 @@ function mergeLines({ texts }: { texts: string[] }): string {
 // into owner memory and forgets them in each Hydra, whose event log keeps the old text. The marker is
 // written last, so a run cut short, or one a Hydra failed in, repeats and the merge drops lines it already moved.
 // ponytail: a Hydra that keeps failing (a held lock, a torn log) makes every owner read retry and wait on its lock.
-export function migrateOwnerMemory(): void {
+export async function migrateOwnerMemory(): Promise<void> {
   if (existsSync(migratedPath())) {
     return
   }
 
-  withRegistryLock({
-    fn: () => {
+  await withAsyncRegistryLock({
+    fn: async () => {
       if (existsSync(migratedPath())) {
         return
       }
@@ -297,7 +297,7 @@ export function migrateOwnerMemory(): void {
             memory,
             key,
           ))) {
-            move({
+            await move({
               hydraId,
               meta,
             })
@@ -325,14 +325,14 @@ export function migrateOwnerMemory(): void {
   })
 }
 
-function move({
+async function move({
   hydraId,
   meta,
 }: {
   hydraId: string
   meta: OwnerMeta
-}): void {
-  withWriter({
+}): Promise<void> {
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       for (const key of Object.keys(OWNER_DOCUMENTS)) {
@@ -381,9 +381,9 @@ function move({
 }
 
 // The documents stay in their Hydra's digest until the move succeeds, so a failed move only reports.
-function tryMigrate(): void {
+async function tryMigrate(): Promise<void> {
   try {
-    migrateOwnerMemory()
+    await migrateOwnerMemory()
   } catch (error) {
     log({
       level: 'error',
@@ -393,19 +393,35 @@ function tryMigrate(): void {
   }
 }
 
-// Reading first moves any owner documents still held by a Hydra, so read a Hydra's state after this.
+interface OwnerRead { logs?: ReturnType<typeof readOwnerLogs> }
+export function ownerMemory({
+  logs,
+  migrate,
+}: OwnerRead & { migrate: false }): Memory
+export function ownerMemory({
+  logs,
+  migrate,
+}: OwnerRead & { migrate?: true }): Promise<Memory>
+
 export function ownerMemory({
   migrate = true,
   logs,
-}: {
-  migrate?: boolean
-  logs?: ReturnType<typeof readOwnerLogs>
-}): Memory {
-  const memory: Memory = Object.create(null) as Memory
-
-  if (migrate) {
-    tryMigrate()
+}: OwnerRead & { migrate?: boolean }): Memory | Promise<Memory> {
+  if (!migrate) {
+    return readOwnerMemory({ logs })
   }
+
+  return migratedOwnerMemory({ logs })
+}
+
+async function migratedOwnerMemory({ logs }: OwnerRead): Promise<Memory> {
+  await tryMigrate()
+
+  return readOwnerMemory({ logs })
+}
+
+function readOwnerMemory({ logs }: OwnerRead): Memory {
+  const memory: Memory = Object.create(null) as Memory
 
   const snapshot = logs ?? readOwnerLogs()
 
@@ -477,7 +493,7 @@ export function writableOwnerMemory({
   }
 }
 
-export function saveOwnerMemory({
+export async function saveOwnerMemory({
   hydraId,
   key,
   after,
@@ -491,8 +507,8 @@ export function saveOwnerMemory({
   confirmed?: string
   learning?: LearningChange
   hydraId: string
-}): (OwnerEntry & { revision: string | number }) | undefined {
-  tryMigrate()
+}): Promise<(OwnerEntry & { revision: string | number }) | undefined> {
+  await tryMigrate()
 
   return withRegistryLock({
     fn: () => {
@@ -531,7 +547,7 @@ export async function moveOwnerLearning({
   text: string
   meta: OwnerMeta
 }) {
-  tryMigrate()
+  await tryMigrate()
   const facts = await projectFacts({ path })
 
   return withRegistryLock({
@@ -624,7 +640,7 @@ export async function moveOwnerLearning({
   })
 }
 
-export function moveOwnerPolis({
+export async function moveOwnerPolis({
   ifDestinationRevision,
   hydraId,
   destination,
@@ -644,7 +660,7 @@ export function moveOwnerPolis({
     })
   }
 
-  tryMigrate()
+  await tryMigrate()
 
   return withRegistryLock({
     fn: () => {

@@ -11,7 +11,7 @@ import type { Card } from '#tasks/model.ts'
 import { cardRow } from '#tasks/cli.ts'
 
 export async function home({ hydraId = DEFAULT_HYDRA }: { hydraId?: string }): Promise<Output> {
-  hideDone({ hydraId })
+  await hideDone({ hydraId })
   const {
     dir,
     state,

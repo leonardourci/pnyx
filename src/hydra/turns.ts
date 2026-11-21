@@ -96,7 +96,7 @@ export function createHydraTurns({
   children: ReturnType<typeof trackChildren>
   upgrades: ReturnType<typeof upgradeQueue>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
   record({
     writer,
@@ -217,7 +217,7 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    const owner = ownerMemory({})
+    const owner = await ownerMemory({})
     const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const state = loadHydra({ hydraId }).state
     const readable = projectsFor({ state })
@@ -272,7 +272,7 @@ export function createHydraTurns({
   }
 
   const memoryChangeNote = async () => {
-    const owner = ownerMemory({})
+    const owner = await ownerMemory({})
     const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const state = loadHydra({ hydraId }).state
     const readable = projectsFor({ state })
@@ -356,7 +356,7 @@ export function createHydraTurns({
     return { state: 'cancelled' as const }
   }
 
-  const hydra: Host['hydra'] = ({
+  const hydra: Host['hydra'] = async ({
     text,
     original,
     actor,
@@ -373,22 +373,22 @@ export function createHydraTurns({
     }
 
     if (ownerActor({ actor }) && restartCommand({ text })) {
-      upgrades.restart({ id })
+      await upgrades.restart({ id })
       queued()
 
-      return Promise.resolve({ state: 'queued' })
+      return { state: 'queued' }
     }
 
     if (ownerActor({ actor }) && upgradeCommand({ text })) {
-      upgrades.request({ id })
+      await upgrades.request({ id })
       queued()
 
-      return Promise.resolve({ state: 'queued' })
+      return { state: 'queued' }
     }
 
     // The owner's message answers a prompt Hydra waits on; a compaction's release repeats a message already answered.
     if (ownerActor({ actor }) && !release) {
-      denyForMessage({
+      await denyForMessage({
         task: HYDRA_CARD,
         actor,
       })
@@ -503,7 +503,7 @@ export function createHydraTurns({
       } : chosenAgent
 
       if (used && kind && ownerActor({ actor })) {
-        write({
+        await write({
           fn: ({ writer }) => applyDecision({
             writer,
             decision: hydraEvent({
@@ -531,7 +531,7 @@ export function createHydraTurns({
         return { state: 'queued' }
       }
 
-      write({
+      await write({
         fn: ({ writer }) => {
           if (previous?.agent?.host === 'pnyx') {
             record({
@@ -684,7 +684,7 @@ export function createHydraTurns({
             loginFolder: dispatch.folder,
           } : {}),
         }
-        const claimed = write({
+        const claimed = await write({
           fn: ({ writer }) => {
             const meta = {
               at: at(),
@@ -791,7 +791,7 @@ export function createHydraTurns({
         const down = loadHydra({ hydraId }).state.hydraStatus
 
         if (down?.state === 'down') {
-          back({
+          await back({
             down,
             turn: id,
             hydra: config.hydra.id,
@@ -901,7 +901,7 @@ export function createHydraTurns({
           return { state: 'failed' }
         }
 
-        return startFailed({
+        return await startFailed({
           error,
           previous,
           id,

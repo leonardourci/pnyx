@@ -11,7 +11,7 @@ import { commit, guard, meta, parse, required, WRITE, type Output } from '#app/c
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
-import { withRegistryLock } from '#store/storage.ts'
+import { withAsyncRegistryLock } from '#store/storage.ts'
 import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
 
@@ -196,7 +196,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       })
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -271,7 +271,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     current.eventIds,
     m.id,
   )) {
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -359,7 +359,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  const result = withRegistryLock({
+  const result = await withAsyncRegistryLock({
     fn: () => commit({
       hydraId,
       meta: m,

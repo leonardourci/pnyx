@@ -63,9 +63,9 @@ export interface Host {
   }: {
     id: string
     choice: 'inscribe' | 'compact' | 'neither'
-  }): Record<string, unknown>
+  }): Promise<Record<string, unknown>>
   // Cancels an agent change that waits for the owner and sends its held messages again, so they reach the running agent or ask about the agent chosen now.
-  resendHeldMessages(): void
+  resendHeldMessages(): Promise<void>
   stop({
     card,
     cancel }
@@ -81,7 +81,7 @@ export interface Host {
   }: {
     id: string
     now?: boolean
-  }): { operation: import('#upgrade/model.ts').UpgradeOperation }
+  }): Promise<{ operation: import('#upgrade/model.ts').UpgradeOperation }>
   compact({
     card,
   }: {
@@ -140,7 +140,7 @@ export interface Host {
     actor: string
     reason?: string
     check?: boolean
-  }): Record<string, unknown>
+  }): Promise<Record<string, unknown>>
   send({
     card,
     text,
@@ -153,12 +153,12 @@ export interface Host {
     attempt?: string
     direct?: boolean
     inputId?: string
-  }): {
+  }): Promise<{
     deferred?: boolean
     queued?: boolean
     // A direct input waiting for the provider to confirm it.
     pending?: boolean
-  } | void
+  } | void>
   set({
     card,
     setting,
@@ -186,8 +186,8 @@ export interface Host {
     actor: string
     reason?: string
     details?: string
-  }): Record<string, unknown>
-  reconcile({ state }: { state: HydraState }): void
+  }): Promise<Record<string, unknown>>
+  reconcile({ state }: { state: HydraState }): Promise<void>
   // Ends a task's idle live session before the task moves to another Hydra; reports busy while it starts or is mid-turn.
   release({
     task,

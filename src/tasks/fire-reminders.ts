@@ -12,7 +12,7 @@ import { deferredQuestions } from './ask-state.ts'
 import { reminderDeadline, reminderMessage, reminderTaskMention } from './reminders.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
-export function fireReminders({
+export async function fireReminders({
   hydraId,
   at = new Date().toISOString(),
   state = loadHydra({ hydraId }).state,
@@ -20,7 +20,7 @@ export function fireReminders({
   hydraId: string
   at?: string
   state?: HydraState
-}): number {
+}): Promise<number> {
   const time = Date.parse(at)
   const questionsEnabled = readSettings().settings.reviewMinutes > 0
 
@@ -45,7 +45,7 @@ export function fireReminders({
   const id = `reminders:${randomUUID()}`
   const digest = createHash('sha256').update(id)
     .digest('hex')
-  const receipt = withWriter({
+  const receipt = await withWriter({
     hydraId,
     transaction: {
       id,

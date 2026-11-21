@@ -25,7 +25,7 @@ export const INBOX_OPTIONS: Options = {
   all: { type: 'boolean' },
 }
 
-export function inboxCommand({ args }: { args: string[] }): Output {
+export async function inboxCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -63,7 +63,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
       return read({ writer: { state: loadHydra({ hydraId }).state } })
     }
 
-    return withWriter({
+    return await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const card = inboxTask({
@@ -144,7 +144,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
     }
   }
 
-  return withWriter({
+  return await withWriter({
     hydraId,
     fn: ({ writer }) => {
       if (action === 'enqueue') {

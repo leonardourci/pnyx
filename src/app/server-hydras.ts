@@ -6,7 +6,7 @@ import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.t
 import { homeScoped } from '#store/postgres.ts'
 import type { HydraState } from './model.ts'
 import { readEvents } from './event-log.ts'
-import { withRegistryLock } from '#store/storage.ts'
+import { withAsyncRegistryLock } from '#store/storage.ts'
 import { pickName } from '#hydra/hydra-names.ts'
 import { otherHydraNames } from '#hydra/taken-names.ts'
 import { inListOrder } from './hydra-list-order.ts'
@@ -78,7 +78,7 @@ export function listHydras(): HydraSummary[] {
 
 const creationEventId = ({ attempt }: { attempt: string }) => `${CREATION_PREFIX}${attempt}`
 
-export function createHydra({
+export async function createHydra({
   name,
   icon,
   attempt,
@@ -86,9 +86,9 @@ export function createHydra({
   name: string
   icon?: string
   attempt?: string
-}): string {
-  return withRegistryLock({
-    fn: () => {
+}): Promise<string> {
+  return withAsyncRegistryLock({
+    fn: async () => {
       const ids = hydraIds({ includeRemoved: true })
       const eventId = attempt ? creationEventId({ attempt }) : undefined
 
@@ -139,14 +139,14 @@ export function createHydra({
         )
       }
 
-      commands.hydra(args)
+      await commands.hydra(args)
 
       return id
     },
   })
 }
 
-export function editHydra({
+export async function editHydra({
   id,
   name,
   icon,
@@ -156,7 +156,7 @@ export function editHydra({
   name?: string
   icon?: string
   position?: number
-}): void {
+}): Promise<void> {
   const args = [
     'set',
     '--hydra',
@@ -186,12 +186,12 @@ export function editHydra({
     )
   }
 
-  commands.hydra(args)
+  await commands.hydra(args)
 }
 
-export function nameUnnamedHydras(): void {
-  withRegistryLock({
-    fn: () => {
+export async function nameUnnamedHydras(): Promise<void> {
+  await withAsyncRegistryLock({
+    fn: async () => {
       for (const id of hydraIds()) {
         const config = readableConfig({ id })
 
@@ -200,7 +200,7 @@ export function nameUnnamedHydras(): void {
         }
 
         const picked = pickName({ taken: otherHydraNames({ id }) })
-        commands.hydra([
+        await commands.hydra([
           'set',
           '--hydra',
           id,

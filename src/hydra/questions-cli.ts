@@ -2,7 +2,7 @@ import { parse, WRITE, meta } from '#app/cli-support.ts'
 import { askCommand } from '#tasks/asks.ts'
 import { HYDRA_CARD } from './identity.ts'
 
-export function hydraQuestion({ args }: { args: string[] }) {
+export async function hydraQuestion({ args }: { args: string[] }) {
   const {
     values,
     hydraId,
@@ -23,7 +23,7 @@ export function hydraQuestion({ args }: { args: string[] }) {
     positionals: 0,
   })
 
-  return askCommand({
+  return await askCommand({
     action: 'ask',
     positionals: [
       'ask',

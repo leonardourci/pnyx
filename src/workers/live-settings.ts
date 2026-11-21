@@ -24,7 +24,7 @@ export function createLiveSettings({
 }: {
   live: Map<string, Live>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   hosted({
     writer,
     ref,
@@ -57,7 +57,7 @@ export function createLiveSettings({
     value,
     actor,
   }) => {
-    const card = write({
+    const card = await write({
       fn: ({ writer }) => {
         const card = hosted({
           writer,

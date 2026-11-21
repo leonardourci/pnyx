@@ -201,8 +201,8 @@ export function createHost({
   let closing = false
   const queuedHydra = new Set<string>()
 
-  const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
-    const result = withWriter({
+  const write = async <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T> => {
+    const result = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
@@ -235,11 +235,11 @@ export function createHost({
   const upgrades = upgradeQueue({
     root: upgradeRoot,
     state: () => loadHydra({ hydraId }).state,
-    record: ({
+    record: async ({
       operation,
       eventId = randomUUID(),
     }) => {
-      write({
+      await write({
         fn: ({ writer }) => writer.append({
           event: {
             v: 1,
@@ -477,9 +477,9 @@ export function createHost({
   }
 
   // A failed write is logged, not thrown: the agent keeps running and the next change records again.
-  const note = ({ fn }: { fn: ({ writer }: { writer: Writer }) => void }) => {
+  const note = async ({ fn }: { fn: ({ writer }: { writer: Writer }) => void }) => {
     try {
-      write({ fn })
+      await write({ fn })
     } catch (error) {
       log({
         level: 'error',
@@ -891,11 +891,11 @@ export function createHost({
     liveSession: ({ key }) => live.get(key)?.session,
     closing: () => closing,
     environment: () => environment(),
-    saveCatalog: ({
+    saveCatalog: async ({
       card,
       key,
       commands,
-    }) => compactChange({
+    }) => await compactChange({
       card,
       change: {
         kind: 'catalog',
@@ -905,7 +905,7 @@ export function createHost({
     }),
   })
 
-  const changeAgent = ({ change }: { change: HydraAgentChange }) => write({
+  const changeAgent = async ({ change }: { change: HydraAgentChange }) => await write({
     fn: ({ writer }) => applyDecision({
       writer,
       decision: hydraEvent({
@@ -1007,11 +1007,11 @@ export function createHost({
   const turnRunning = ({ entry }: { entry?: Live }) => Boolean(entry?.session
     && (entry.activity === 'working' || entry.session.snapshot().work.runningTurns.length))
 
-  const markHydraInterrupted = () => {
-    const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
-    write({
+  const markHydraInterrupted = async () => {
+    await write({
       fn: ({ writer }) => {
+        const card = writer.state.cards[HYDRA_CARD]
+
         if (card?.agent?.host === 'pnyx') {
           record({
             writer,
@@ -1040,10 +1040,10 @@ export function createHost({
   }
 
   // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Pnyx itself handles are not messages to Hydra.
-  const stopHeldInputs = () => {
+  const stopHeldInputs = async () => {
     stoppedByOwner()
     turns.cancel()
-    note({
+    await note({
       fn: ({ writer }) => stopHydraInputs({
         writer,
         ids: (writer.state.hydraMessages ?? [])
@@ -1052,7 +1052,7 @@ export function createHost({
         at: at(),
       }),
     })
-    markHydraInterrupted()
+    await markHydraInterrupted()
   }
 
   const stopHydra = async () => {
@@ -1062,14 +1062,14 @@ export function createHost({
     const waiting = state.hydraAgentChange
 
     if (changing) {
-      stopHeldInputs()
+      await stopHeldInputs()
       changing.abort(new Error('Compaction cancelled by the owner'))
 
       return { stopped: 'compaction' }
     }
 
     if (activeCompaction({ card })) {
-      stopHeldInputs()
+      await stopHeldInputs()
 
       return host.compact({ card: HYDRA_CARD })
     }
@@ -1081,15 +1081,15 @@ export function createHost({
     }
 
     if (upgrade) {
-      stopHeldInputs()
+      await stopHeldInputs()
 
       return { stopped: 'upgrade' }
     }
 
     // A change waiting for the owner's choice holds their messages, whether or not a turn runs.
     if (waiting) {
-      stopHeldInputs()
-      changeAgent({
+      await stopHeldInputs()
+      await changeAgent({
         change: {
           ...waiting,
           state: 'cancelled',
@@ -1107,7 +1107,7 @@ export function createHost({
     // Messages already in the agent's hands are settled by its own receipts, not here.
     const cleared = entry?.input.clear() ?? []
     turns.cancel()
-    note({
+    await note({
       fn: ({ writer }) => stopHydraInputs({
         writer,
         ids: [
@@ -1120,7 +1120,7 @@ export function createHost({
         at: at(),
       }),
     })
-    markHydraInterrupted()
+    await markHydraInterrupted()
 
     if (!entry?.session) {
       return { stopped: 'hydra' }
@@ -1174,7 +1174,7 @@ export function createHost({
     const cleared = entry?.input.clear() ?? []
     const clearedSteering = cleared.flatMap(item => item.steeringIds ?? [])
 
-    write({
+    await write({
       fn: ({ writer }) => {
         stopWorkerInputs({
           writer,
@@ -1391,11 +1391,11 @@ export function createHost({
 
       return { stopped: 'compaction' }
     },
-    upgrade: ({
+    upgrade: async ({
       id,
       now,
     }) => {
-      const operation = upgrades.request({ id })
+      const operation = await upgrades.request({ id })
 
       if (now) {
         upgrades.sendNow({ id: operation.id })
@@ -1418,7 +1418,7 @@ export function createHost({
           })
         }
 
-        write({
+        await write({
           fn: ({ writer }) => stopHydraInputs({
             writer,
             ids: [cancel],
@@ -1428,13 +1428,13 @@ export function createHost({
 
         // A waiting change left holding nothing is withdrawn.
         if (!heldOwnerMessages({ state: loadHydra({ hydraId }).state }).length) {
-          resendHeldMessages()
+          await resendHeldMessages()
         }
 
         return { cancelled: cancel }
       }
 
-      return ref === HYDRA_CARD ? stopHydra() : stopWorker({ ref })
+      return ref === HYDRA_CARD ? await stopHydra() : await stopWorker({ ref })
     },
     usageViews: usageTracker.usageViews,
     usage: usageTracker.usage,
@@ -1529,12 +1529,12 @@ export function createHost({
       return { released: entries.length }
     },
 
-    reconcile: ({ state }) => {
+    reconcile: async ({ state }) => {
       if (!closing && fenced()) {
         cardInputs.reconcile({ state })
       }
 
-      syncCompactions({ state })
+      await syncCompactions({ state })
 
       reconcilePermissions({ state })
 
@@ -1622,7 +1622,7 @@ export function createHost({
         }
 
         try {
-          send({
+          await send({
             card: card.id,
             text: '',
             actor: 'pnyx',

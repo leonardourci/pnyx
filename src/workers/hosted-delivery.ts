@@ -44,7 +44,7 @@ export function createHostedDelivery({
   fenced(): boolean
   live: Map<string, Live>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
   hosted({
     writer,
@@ -184,7 +184,7 @@ export function createHostedDelivery({
   }
 
   // eventId names the turn's working record, as a resumed turn's does.
-  const send = ({
+  const send = async ({
     card: ref,
     text,
     original,
@@ -213,7 +213,7 @@ export function createHostedDelivery({
     }
 
     if (ownerActor({ actor })) {
-      denyForMessage({
+      await denyForMessage({
         task: findCard({
           state: loadHydra({ hydraId }).state,
           ref,
@@ -224,9 +224,9 @@ export function createHostedDelivery({
 
     const unfenced = !fenced()
     direct ||= compactCommand({ text })
-    const card = deliveringMessage.run(
+    const card = await deliveringMessage.run(
       true,
-      () => write({
+      async () => await write({
         fn: ({ writer }) => {
           const card = hosted({
             writer,
@@ -345,7 +345,7 @@ export function createHostedDelivery({
       }
     }
 
-    if (holdCompact({
+    if (await holdCompact({
       card,
       input: {
         id: steering ?? inputId ?? randomUUID(),
@@ -382,7 +382,7 @@ export function createHostedDelivery({
         return { pending: true }
       }
     } else {
-      ringSteering({
+      await ringSteering({
         card,
         entry,
         message: steering,

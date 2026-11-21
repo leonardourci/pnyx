@@ -29,7 +29,7 @@ export const SOURCE_OPTIONS: Options = {
   'agent-reply-file': { type: 'string' },
 }
 
-export function sourceCommand({ args }: { args: string[] }): Output {
+export async function sourceCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -101,7 +101,7 @@ export function sourceCommand({ args }: { args: string[] }): Output {
     what: 'source id',
   })
 
-  return withWriter({
+  return await withWriter({
     hydraId,
     fn: ({ writer }) => {
       if (action === 'lavish') {

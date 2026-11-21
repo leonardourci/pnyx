@@ -12,7 +12,7 @@ export const LINK_OPTIONS: Options = {
 }
 
 export const link = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       positionals,
@@ -41,7 +41,7 @@ export const link = guard({
       remove: values.remove === true,
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -61,7 +61,7 @@ export const link = guard({
 })
 
 export const outcome = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       positionals,
@@ -88,7 +88,7 @@ export const outcome = guard({
       clear: values.clear === true,
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {

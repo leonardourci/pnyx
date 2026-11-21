@@ -217,7 +217,7 @@ export async function localTaskCommand({
   }
 
   const card = operation.op === 'task.create' ? operation.key! : operation.task
-  const output = commit({
+  const output = await commit({
     hydraId,
     meta,
     intent: {

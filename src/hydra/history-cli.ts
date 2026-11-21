@@ -173,7 +173,7 @@ export function hydraHistory({
   }
 }
 
-export function hydraInscribe({
+export async function hydraInscribe({
   values,
   positionals,
   hydraId,
@@ -181,7 +181,7 @@ export function hydraInscribe({
   values: Record<string, string | boolean | undefined>
   positionals: string[]
   hydraId: string
-}): Output {
+}): Promise<Output> {
   const action = positionals[1]
   const state = loadHydra({ hydraId }).state
   const m = meta({ values })
@@ -205,7 +205,7 @@ export function hydraInscribe({
     ...m,
     id: m.id ?? `operation:${operationId}:${operationState}`,
   }
-  const result = commit({
+  const result = await commit({
     hydraId,
     meta: eventMeta,
     intent: {

@@ -341,7 +341,7 @@ function leaseOrWait({
   }
 }
 
-function leaveQueue({
+async function leaveQueue({
   hydraId,
   card,
   meta,
@@ -349,8 +349,8 @@ function leaveQueue({
   hydraId: string
   card: Card
   meta: Meta
-}): string | undefined {
-  const session = withWriter({
+}): Promise<string | undefined> {
+  const session = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const queued = writer.state.cards[card.id]?.queue?.session
@@ -379,7 +379,7 @@ function leaveQueue({
   return session && `was queued behind worker ${session}; it now gets its own worker`
 }
 
-function noteOpen({
+async function noteOpen({
   hydraId,
   task,
   open,
@@ -389,12 +389,12 @@ function noteOpen({
   task: string
   open: Blocker[]
   meta: Meta
-}): void {
+}): Promise<void> {
   if (!open.length) {
     return
   }
 
-  noteOnce({
+  await noteOnce({
     hydraId,
     task,
     source: 'pnyx:start',
@@ -516,13 +516,13 @@ export async function startTask({
   const release = leased.release
 
   try {
-    const guided = ({
+    const guided = async ({
       started,
       unqueued,
     }: {
       started: Output
       unqueued?: string
-    }): Output => {
+    }): Promise<Output> => {
       const current = loadHydra({ hydraId }).state
       const open = startBlockers({
         state: current,
@@ -532,7 +532,7 @@ export async function startTask({
         }),
       })
 
-      noteOpen({
+      await noteOpen({
         hydraId,
         task: card.id,
         open,
@@ -601,7 +601,7 @@ export async function startTask({
     const ownsFolder = commandName
       ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
     const ownFolder = command && ownsFolder
-    const unqueued = leaveQueue({
+    const unqueued = await leaveQueue({
       hydraId,
       card,
       meta,
@@ -618,7 +618,7 @@ export async function startTask({
       })
 
     if (command) {
-      return guided({
+      return await guided({
         started: await startCommand({
           hydraId,
           role: 'worker',
@@ -655,7 +655,7 @@ export async function startTask({
       },
     }) as Output
 
-    return guided({
+    return await guided({
       started: {
         ...started,
         rule: dispatch?.rule,
