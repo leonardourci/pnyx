@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import { withAsyncRegistryLock, withRegistryLock } from '#store/storage.ts'
 import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -629,3 +631,37 @@ test(
     })
   },
 )
+
+test(
+  'an async registry decision retains ownership through settlement without blocking another caller',
+  async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const first = withAsyncRegistryLock({
+      fn: async () => {
+        entered.resolve()
+        await release.promise
+
+        return withRegistryLock({fn: () => 'first'})
+      },
+    })
+    await entered.promise
+    expect(() => withRegistryLock({fn: () => 'unrelated'})).toThrow(expect.objectContaining({code: 'LOCKED'}))
+    const second = withAsyncRegistryLock({fn: () => 'second'})
+    release.resolve()
+    expect(await Promise.all([
+      first,
+      second,
+    ])).toEqual([
+      'first',
+      'second',
+    ])
+    await expect(withAsyncRegistryLock({
+      fn: async () => {
+        throw new Error('Rejected decision')
+      },
+    })).rejects.toThrow('Rejected decision')
+    expect(await withAsyncRegistryLock({fn: () => 'after refusal'})).toBe('after refusal')
+  },
+)
+
