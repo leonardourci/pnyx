@@ -82,7 +82,7 @@ export function HydraNameEditor({
     icon,
     setIcon,
   ] = useState(saved.icon)
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   // Escape and a save both close the editor; the blur that follows must not save again.
   const done = useRef(false)
   useEffect(

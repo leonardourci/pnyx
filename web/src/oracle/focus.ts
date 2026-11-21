@@ -291,7 +291,7 @@ export function usePreviewFocus({
   open,
 }: {
   preview: RefObject<HTMLDivElement | null>
-  input: RefObject<HTMLInputElement | null>
+  input: RefObject<HTMLTextAreaElement | null>
   focused: RefObject<{
     control: HTMLElement
     before: HTMLElement[]

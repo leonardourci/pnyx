@@ -1,7 +1,8 @@
 import { runtimeStyle } from './runtime-style.ts'
+import { composing } from '#web-shared/ime.ts'
 import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
-import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type KeyboardEvent, type ReactNode } from 'react'
 import { sliderValue } from './slider-value.ts'
 import { MenuOption } from './menu-option.tsx'
 
@@ -20,10 +21,67 @@ export function Button({
   return <button type="button" className={`button ${variant} inline-flex items-center justify-center border [:where(&)]:min-h-7.5 [:where(&)]:gap-1.5 [:where(&)]:rounded-md [:where(&)]:px-2.25 [:where(&)]:py-1.5 [:where(&)]:text-ui [:where(&)]:leading-question ${appearance} ${className}`} {...props} />
 }
 
-const INPUT_CLASSES = 'input placeholder:text-muted placeholder:opacity-85 [&::-webkit-search-cancel-button]:appearance-none [:where(&)]:min-w-0 [:where(&)]:appearance-none [:where(&)]:rounded-md [:where(&)]:border [:where(&)]:border-control [:where(&)]:px-2.25 [:where(&)]:py-1.75 [:where(&)]:text-ui [:where(&)]:leading-normal'
+const INPUT_CLASSES = 'input placeholder:text-muted placeholder:opacity-85 [:where(&)]:min-w-0 [:where(&)]:appearance-none [:where(&)]:rounded-md [:where(&)]:border [:where(&)]:border-control [:where(&)]:px-2.25 [:where(&)]:py-1.75 [:where(&)]:text-ui [:where(&)]:leading-normal'
 
-export function Input({ ...props }: ComponentProps<'input'>) {
+function blurOnEnter({
+  key,
+  currentTarget,
+}: KeyboardEvent<HTMLInputElement>) {
+  if (key === 'Enter') {
+    currentTarget.blur()
+  }
+}
+
+export function NativeInput({ ...props }: ComponentProps<'input'>) {
   return <input {...props} className={`${INPUT_CLASSES} [:where(&)]:bg-surface ${props.className ?? ''}`} />
+}
+
+export function Input({
+  onKeyDown,
+  ...props
+}: ComponentProps<'textarea'>) {
+  return (
+    <Textarea
+      {...props}
+      rows={1}
+      data-single-line
+      aria-multiline={false}
+      onChange={event => {
+        event.currentTarget.value = event.currentTarget.value.replace(
+          /[\r\n]/g,
+          '',
+        )
+        props.onChange?.(event)
+      }}
+      className={`min-h-0 [:where(&)]:bg-surface ${props.className ?? ''}`}
+      onKeyDown={event => {
+        if (event.key === 'Enter' && composing({ event: event.nativeEvent })) {
+          return
+        }
+
+        onKeyDown?.(event)
+
+        if (event.key !== 'Enter') {
+          return
+        }
+
+        const submit = !event.defaultPrevented
+          && !event.shiftKey && !event.metaKey && !event.ctrlKey
+        event.preventDefault()
+
+        if (submit) {
+          const form = event.currentTarget.form
+          const button = form?.querySelector<HTMLButtonElement | HTMLInputElement>('button[type="submit"], input[type="submit"]')
+
+          if (button) {
+            button.click()
+          } else if (form?.querySelectorAll('[data-single-line]').length === 1) {
+            form.requestSubmit()
+          }
+        }
+      }}
+    />
+  )
 }
 
 function selectingInlineText({ element }: { element: HTMLElement }) {
@@ -73,7 +131,7 @@ export function InlineButton({
 }
 
 export function Textarea({ ...props }: ComponentProps<'textarea'>) {
-  return <textarea {...props} className={`${INPUT_CLASSES} textarea [:where(&)]:h-full [:where(&)]:max-h-textarea [:where(&)]:min-h-12 [:where(&)]:w-full [:where(&)]:resize-y [:where(&)]:overflow-y-auto [:where(&)]:bg-background ${props.className ?? ''}`} />
+  return <textarea {...props} className={`${INPUT_CLASSES} textarea field-sizing-content wrap-anywhere [:where(&)]:min-h-12 [:where(&)]:w-full [:where(&)]:resize-none [:where(&)]:overflow-hidden [:where(&)]:bg-background ${props.className ?? ''}`} />
 }
 
 export function useBusy(): [boolean, ({ save }: { save: () => unknown }) => void] {
@@ -436,12 +494,12 @@ export function NumberField({
           })}
         ><Icon name="minus" size={ICON_SIZE.inline} />
         </Button>
-        <Input
+        <NativeInput
           id={id}
           aria-label={label}
           inputMode="numeric"
           value={draft}
-          onChange={e => setDraft(e.target.value)}
+          onChange={({ target }) => setDraft(target.value)}
           onBlur={() => {
             const n = Number(draft); setDraft(String(value))
 
@@ -449,11 +507,7 @@ export function NumberField({
               onChange({ next: n })
             }
           }}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.currentTarget.blur()
-            }
-          }}
+          onKeyDown={blurOnEnter}
         />
         <span>px</span>
         <Button
@@ -564,22 +618,18 @@ function NumberSlider({
         {tick && <span className="slider-tick pointer-events-none absolute top-3.75 h-1.5 w-px -translate-x-1/2 bg-muted after:absolute after:top-1.25 after:left-1/2 after:-translate-x-1/2 after:text-meta after:whitespace-nowrap after:text-muted after:content-label" style={runtimeStyle({ left: tick })} data-l="default" />}
       </span>
       <span className="slider-box flex items-center rounded-md border border-line bg-surface focus-within:border-gold-line">
-        <Input
+        <NativeInput
           id={id}
           className="slider-number h-7 w-16 border-0 bg-transparent px-1.5 py-1 text-right text-ui tabular-nums shadow-none"
           aria-label={`${label} value`}
           inputMode="numeric"
           value={sliding === undefined ? draft : String(sliding)}
-          onChange={event => setDraft(event.target.value)}
+          onChange={({ target }) => setDraft(target.value)}
           onBlur={() => {
             commit({ text: draft })
             setDraft(String(value))
           }}
-          onKeyDown={event => {
-            if (event.key === 'Enter') {
-              event.currentTarget.blur()
-            }
-          }}
+          onKeyDown={blurOnEnter}
         />
         {unit && <label htmlFor={id} className="slider-unit pr-1.75 text-meta text-muted">{unit}</label>}
       </span>

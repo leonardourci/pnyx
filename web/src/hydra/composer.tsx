@@ -6,7 +6,7 @@ import { revealComment } from './comment-reveal.ts'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { sendableRequest } from './project-request.ts'
-import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { Button, NativeInput } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
@@ -393,17 +393,17 @@ export function Composer({
               </>
             )}
           </Popover>
-          <Input
+          <NativeInput
             ref={files}
             type="file"
             multiple
             hidden
             aria-label="Insert files or images"
-            onChange={event => {
-              const chosen = [...(event.target.files ?? [])]
+            onChange={({ target }) => {
+              const chosen = [...(target.files ?? [])]
               const images = chosen.filter(file => file.type.startsWith('image/'))
               const selected = chosen.filter(file => !images.includes(file))
-              event.target.value = ''
+              target.value = ''
 
               if (images.length) {
                 field.current?.attach({ files: images })
