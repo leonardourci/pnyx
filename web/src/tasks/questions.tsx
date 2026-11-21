@@ -217,7 +217,9 @@ function FormInput({
         placeholder={name}
         inputMode={field.type === 'string' ? undefined : 'decimal'}
         value={typeof value === 'string' ? value : ''}
-        onChange={({ target }: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => change({ value: target.value })}
+        onChange={({ target }: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+          change({ value: target.value })
+        }}
       />
     </div>
   )
