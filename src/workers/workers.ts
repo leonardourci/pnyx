@@ -142,7 +142,7 @@ export async function hydraCheck({
   let typed: TypedWords[] = []
 
   do {
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })

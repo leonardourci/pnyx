@@ -393,7 +393,7 @@ export async function followUpReplies({
 
   for (const followUp of followUps) {
     if (followUp.kind === 'confirm') {
-      withWriter({
+      await withWriter({
         hydraId,
         fn: ({ writer }) => {
           drainSpool({ writer })
@@ -424,7 +424,7 @@ export async function followUpReplies({
       })
 
       if (state === 'delivered') {
-        withWriter({
+        await withWriter({
           hydraId,
           fn: ({ writer }) => recordArrived({
             writer,

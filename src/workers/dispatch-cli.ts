@@ -75,7 +75,7 @@ function checkedName({ value }: { value: string }): string {
   return value
 }
 
-function apply({
+async function apply({
   hydraId,
   patch,
   values,
@@ -87,8 +87,8 @@ function apply({
   values: Values
   propose: boolean
   summary: string
-}): Output {
-  return applyDispatch({
+}): Promise<Output> {
+  return await applyDispatch({
     hydraId,
     envelope: {
       version: 1,
@@ -260,7 +260,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'confirm' || action === 'dismiss') {
-    return resolveProposal({
+    return await resolveProposal({
       hydraId,
       action,
       token: required({
@@ -340,7 +340,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   if (action === 'apply') {
     const envelope = parseEnvelope({ value: readEnvelope({ values }) })
 
-    return applyDispatch({
+    return await applyDispatch({
       hydraId,
       envelope,
       meta: meta({ values }),
@@ -404,7 +404,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
       }
     }
 
-    return apply({
+    return await apply({
       hydraId,
       patch,
       values,
@@ -454,7 +454,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  return apply({
+  return await apply({
     hydraId,
     patch,
     values,
@@ -482,7 +482,7 @@ function accountFlags({ values }: { values: Record<string, unknown> }): Account 
   return account
 }
 
-function accountCommand({ args }: { args: string[] }): Output {
+async function accountCommand({ args }: { args: string[] }): Promise<Output> {
   const propose = args[0] === 'propose'
   args = propose ? args.slice(1) : args
   const {
@@ -524,7 +524,7 @@ function accountCommand({ args }: { args: string[] }): Output {
     account: accountFlags({ values }),
   })
 
-  return apply({
+  return await apply({
     hydraId,
     patch,
     values,

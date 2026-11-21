@@ -101,7 +101,7 @@ export async function notifySteering({
   }
 
   try {
-    const canSend = () => withWriter({
+    const canSend = async () => await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
@@ -170,7 +170,7 @@ export async function notifySteering({
           send: async ({
             route,
             text,
-          }) => canSend()
+          }) => await canSend()
             ? typeInto({
               route,
               text,
@@ -183,7 +183,7 @@ export async function notifySteering({
       }
     }
 
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const current = writer.state.cards[cardId]

@@ -45,7 +45,7 @@ export async function sendTaskMessage({
     at: new Date().toISOString(),
     actor: request.actor ?? 'cli',
   }
-  const target = withWriter({
+  const target = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
@@ -86,7 +86,7 @@ export async function sendTaskMessage({
   let hydra: TaskDelivery
 
   try {
-    hydra = withWriter({
+    hydra = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const id = `task-context:${target.id}:${reply}`
@@ -158,11 +158,11 @@ export async function sendTaskMessage({
     }
   }
 
-  const record = ({
+  const record = async ({
     state,
     detail,
     route,
-  }: TaskDelivery & { route: string }) => withWriter({
+  }: TaskDelivery & { route: string }) => await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const known = writer.state.cards[target.id]?.replies?.find(r => r.id === reply)
@@ -220,13 +220,13 @@ export async function sendTaskMessage({
         state: 'failed',
         detail: (error as Error).message,
       }
-      record({
+      await record({
         ...agent,
         route: 'agent',
       })
     }
   } else {
-    record({
+    await record({
       ...hydra,
       route: 'hydra',
     })

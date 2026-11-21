@@ -258,8 +258,8 @@ export function followWorkerLogs({
         continue
       }
 
-      const read = () => {
-        withWriter({
+      const read = async () => {
+        await withWriter({
           hydraId,
           fn: ({ writer }) => foldWorkerLog({
             writer,

@@ -51,7 +51,7 @@ export function createWorkerStarts({
   live: Map<string, Live>
   closing(): boolean
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   changed(): void
   presence({ session }: { session: AgentSession }): Presence
   providerOf({
@@ -222,7 +222,7 @@ export function createWorkerStarts({
     const {
       target,
       duplicate,
-    } = write({
+    } = await write({
       fn: ({ writer }) => {
         const target = findCard({
           state: writer.state,
@@ -554,11 +554,11 @@ export function createWorkerStarts({
         }
       }
 
-      const claimed = transaction ? withWriter({
+      const claimed = transaction ? await withWriter({
         hydraId,
         transaction,
         fn: claim,
-      }) as ReturnType<typeof claim> : write({ fn: claim })
+      }) as ReturnType<typeof claim> : await write({ fn: claim })
 
       if (tools) {
         changed()
@@ -625,13 +625,13 @@ export function createWorkerStarts({
     }
   }
 
-  const continueInPnyx: Host['continue'] = ({
+  const continueInPnyx: Host['continue'] = async ({
     task,
     id,
     actor,
     reason,
     check,
-  }) => write({
+  }) => await write({
     fn: ({ writer }) => {
       const card = findCard({
         state: writer.state,

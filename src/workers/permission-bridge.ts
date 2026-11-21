@@ -30,7 +30,7 @@ export function createPermissionBridge({
   live: Map<string, Live>
   closing(): boolean
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
 }) {
   const pending = new Map<string, {
@@ -110,7 +110,7 @@ export function createPermissionBridge({
     }
   }
 
-  const askPermission = ({
+  const askPermission = async ({
     id: nativeId,
     key,
     entry,
@@ -136,93 +136,104 @@ export function createPermissionBridge({
       })
     }
 
-    return new Promise<PermissionDecision>(resolve => {
-      const cards = Object.values(loadHydra({ hydraId }).state.cards)
-      const previous = cards.flatMap(card => card.permissions ?? [])
-        .find(request => {
-          const same = request.session === key && request.nativeId === nativeId
+    const {
+      promise,
+      resolve,
+    } = Promise.withResolvers<PermissionDecision>()
+    const cards = Object.values(loadHydra({ hydraId }).state.cards)
+    const previous = cards.flatMap(card => card.permissions ?? [])
+      .find(request => {
+        const same = request.session === key && request.nativeId === nativeId
 
-          return same && request.status !== 'expired'
-        })
-      const id = previous?.id ?? randomUUID()
-      const abort = () => expire({ id })
+        return same && request.status !== 'expired'
+      })
+    const id = previous?.id ?? randomUUID()
+    const abort = () => expire({ id })
 
-      const finish = ({ result }: { result: PermissionDecision }) => {
-        pending.delete(id)
-        signal.removeEventListener(
-          'abort',
-          abort,
-        )
-        resolve(result)
-      }
-
-      const request: PermissionRequest = {
-        id,
-        nativeId,
-        session: key,
-        tool,
-        input,
-        status: previous?.status ?? 'pending',
-        answers: previous?.answers,
-        values: previous?.values,
-        ...(description ? { description } : {}),
-        ...(questions?.length ? { questions } : {}),
-        ...(form ? { form } : {}),
-      }
-      signal.addEventListener(
+    const finish = ({ result }: { result: PermissionDecision }) => {
+      pending.delete(id)
+      signal.removeEventListener(
         'abort',
         abort,
-        { once: true },
       )
+      resolve(result)
+    }
 
-      try {
-        write({
-          fn: ({ writer }) => {
-            const session = writer.state.sessions?.[key]
-            const current = session?.id === writer.state.config?.hydra.session
-              ? writer.state.cards[HYDRA_CARD]
-              : session?.taskId ? writer.state.cards[session.taskId] : undefined
+    const request: PermissionRequest = {
+      id,
+      nativeId,
+      session: key,
+      tool,
+      input,
+      status: previous?.status ?? 'pending',
+      answers: previous?.answers,
+      values: previous?.values,
+      ...(description ? { description } : {}),
+      ...(questions?.length ? { questions } : {}),
+      ...(form ? { form } : {}),
+    }
+    signal.addEventListener(
+      'abort',
+      abort,
+      { once: true },
+    )
 
-            if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
-              throw new HydraError({
-                message: 'the agent is no longer attached to this task',
-                code: 'NO_ROUTE',
-              })
-            }
-
-            pending.set(
-              id,
-              {
-                card: current.id,
-                entry,
-                finish,
-              },
-            )
-            writer.append({
-              event: permissionEvent({
-                state: writer.state,
-                card: current,
-                request,
-                meta: {
-                  at: at(),
-                  actor: 'pnyx',
-                },
-              }),
+    try {
+      await write({
+        fn: ({ writer }) => {
+          if (closing() || signal.aborted) {
+            throw new HydraError({
+              message: 'This permission request expired.',
+              code: 'NO_ROUTE',
             })
-          },
-        })
-      } catch (error) {
-        finish({
-          result: {
-            behavior: 'deny',
-            message: `Could not record permission: ${(error as Error).message}`,
-          },
-        })
-      }
-    })
+          }
+
+          const session = writer.state.sessions?.[key]
+          const current = session?.id === writer.state.config?.hydra.session
+            ? writer.state.cards[HYDRA_CARD]
+            : session?.taskId ? writer.state.cards[session.taskId] : undefined
+
+          if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
+            throw new HydraError({
+              message: 'the agent is no longer attached to this task',
+              code: 'NO_ROUTE',
+            })
+          }
+
+          pending.set(
+            id,
+            {
+              card: current.id,
+              entry,
+              finish,
+            },
+          )
+          writer.append({
+            event: permissionEvent({
+              state: writer.state,
+              card: current,
+              request,
+              meta: {
+                at: at(),
+                actor: 'pnyx',
+              },
+            }),
+          })
+        },
+      })
+    } catch (error) {
+      finish({
+        result: {
+          behavior: 'deny',
+          message: `Could not record permission: ${(error as Error).message}`,
+        },
+      })
+    }
+
+    return promise
   }
 
-  const permission: Host['permission'] = ({
+  const permission: Host['permission'] = async ({
     task,
     request: id,
     choice,
@@ -239,7 +250,7 @@ export function createPermissionBridge({
       },
     })
     const waiting = pending.get(id)
-    const result = write({
+    const result = await write({
       fn: ({ writer }) => {
         const card = findCard({
           state: writer.state,
@@ -416,7 +427,7 @@ export function createPermissionBridge({
   }
 
   // The message itself reaches the agent as its own input, so the denial does not repeat it.
-  const denyForMessage = ({
+  const denyForMessage = async ({
     task,
     actor,
   }: {
@@ -427,7 +438,7 @@ export function createPermissionBridge({
 
     for (const request of card?.permissions ?? []) {
       if (request.status === 'pending' && pending.has(request.id)) {
-        permission({
+        await permission({
           task,
           request: request.id,
           choice: 'deny',

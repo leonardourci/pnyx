@@ -35,7 +35,7 @@ export function createSteeringDelivery({
 }: {
   hydraId: string
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
 }) {
   const pendingSteeringIds = ({
@@ -162,7 +162,7 @@ export function createSteeringDelivery({
     },
   })
 
-  const ringSteering = ({
+  const ringSteering = async ({
     card,
     entry,
     message: ref,
@@ -211,7 +211,7 @@ export function createSteeringDelivery({
       steeringIds: ids,
       inline: messages.every(message => !message.attempts.length),
     })
-    write({
+    await write({
       fn: ({ writer }) => {
         const current = writer.state.cards[card.id]
 

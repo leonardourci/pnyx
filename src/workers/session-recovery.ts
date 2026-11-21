@@ -8,7 +8,7 @@ import { decideSessionFacts } from './session-facts.ts'
 
 const ACTIVITY_READ_BYTES = 1024 * 1024
 
-export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
+export async function restoreOutsideSessions({ hydraId }: { hydraId: string }): Promise<void> {
   const state = loadHydra({ hydraId }).state
 
   for (const session of Object.values(state.sessions ?? {})) {
@@ -43,7 +43,7 @@ export function restoreOutsideSessions({ hydraId }: { hydraId: string }): void {
           through = tail.size
         }
 
-        const committed = withWriter({
+        const committed = await withWriter({
           hydraId,
           fn: ({ writer }) => {
             const bound = writer.state.sessions?.[session.id]
