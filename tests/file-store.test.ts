@@ -1157,7 +1157,7 @@ test.each([
     const synced = new Set<string>()
     let outage = true
 
-    vi.mocked(fsyncSync).mockImplementation((fd) => {
+    vi.mocked(fsyncSync).mockImplementation(fd => {
       const metadata = filesystem.fstatSync(fd)
       const parent = existsSync(target) && metadata.isDirectory() ? parents.find(path =>
         existsSync(path) && filesystem.statSync(path).ino === metadata.ino) : undefined
