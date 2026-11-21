@@ -180,31 +180,36 @@ export async function discoverPullRequests({
       let requests: ReturnType<typeof parseLink>[]
 
       try {
-        const output = await githubApi({
+        const [
+          owner,
+          repo,
+        ] = repository.split('/')
+        const response = await githubApi({
           args: [
-            '--method',
-            'GET',
-            `/repos/${repository}/pulls`,
+            'graphql',
             '-f',
-            `head=${repository.split('/')[0]}:${branch}`,
+            `query=query($owner:String!,$repo:String!,$branch:String!){repository(owner:$owner,name:$repo){pullRequests(first:${DISCOVERY_LIMIT},headRefName:$branch,states:[OPEN,CLOSED,MERGED]){nodes{url}}}}`,
             '-f',
-            'state=all',
+            `owner=${owner}`,
             '-f',
-            `per_page=${DISCOVERY_LIMIT}`,
+            `repo=${repo}`,
+            '-f',
+            `branch=${branch}`,
           ],
-        })
+        }) as { data?: { repository?: { pullRequests?: { nodes?: unknown } } } }
+        const output = response?.data?.repository?.pullRequests?.nodes
 
         if (!Array.isArray(output)) {
           throw new Error('Expected a pull request list')
         }
 
         requests = output.map(request => {
-          if (!request || typeof request !== 'object' || !('html_url' in request)
-            || typeof request.html_url !== 'string') {
+          if (!request || typeof request !== 'object' || !('url' in request)
+            || typeof request.url !== 'string') {
             throw new Error('Expected a pull request URL')
           }
 
-          const link = parseLink({ input: { url: request.html_url } })
+          const link = parseLink({ input: { url: request.url } })
 
           if (link.kind !== 'github_pr') {
             throw new Error('Expected a GitHub pull request URL')

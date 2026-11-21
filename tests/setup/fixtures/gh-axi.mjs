@@ -34,7 +34,9 @@ if (args[0] === 'api') {
   const pulls = /^\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)(\/merge)?$/.exec(route ?? '')
   const repository = /owner:\s*"([^"]+)",name:\s*"([^"]+)"/.exec(query)
   const routeRepo = route?.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1]
-  const queryRepo = repository ? `${repository[1]}/${repository[2]}` : undefined
+  const queryOwner = args.find(arg => arg.startsWith('owner='))?.slice(6)
+  const queryName = args.find(arg => arg.startsWith('repo='))?.slice(5)
+  const queryRepo = repository ? `${repository[1]}/${repository[2]}` : queryOwner && queryName ? `${queryOwner}/${queryName}` : undefined
   const repo = routeRepo ?? queryRepo
   const evidenceFile = repo ? join(
     root,
@@ -114,7 +116,7 @@ if (args[0] === 'api') {
     )
     const isInMergeQueue = Boolean(read({ file }).queued)
     payload({ value: { data: { repository: { pullRequest: { isInMergeQueue } } } } })
-  } else if (args.includes('graphql')) {
+  } else if (args.includes('graphql') && !query.includes('pullRequests(')) {
     const branchProtectionRule = evidence.classicRule ?? null
     payload({ value: { data: { repository: { ref: { branchProtectionRule } } } } })
   } else if (route?.includes('/rules/branches/')) {
@@ -128,10 +130,15 @@ if (args[0] === 'api') {
     payload({ value: { check_runs: evidence.checkRuns ?? [] } })
   } else if (route?.includes('/statuses')) {
     payload({ value: [] })
-  } else if (route?.match(/^\/repos\/[^/]+\/[^/]+\/pulls$/)) {
-    const branch = args.find(arg => arg.startsWith('head='))?.split(':')
-      .slice(1)
+  } else if (route?.match(/^\/repos\/[^/]+\/[^/]+\/pulls$/) || (args.includes('graphql') && query.includes('pullRequests('))) {
+    const graphql = args.includes('graphql')
+    const head = args.find(arg => arg.startsWith('head='))?.slice(5)
+    const owner = head?.split(':')[0]
+    const branch = graphql ? args.find(arg => arg.startsWith('branch='))?.slice(7) : head?.split(':').slice(1)
       .join(':')
+    const discoveryPayload = ({ value }) => payload({
+      value: graphql ? { data: { repository: { pullRequests: { nodes: value } } } } : value,
+    })
     const gate = join(
       root,
       'discovery-gate.json',
@@ -182,7 +189,7 @@ if (args[0] === 'api') {
         `${malformed}.read`,
         branch,
       )
-      payload({ value: [null] })
+      discoveryPayload({ value: [null] })
       process.exit(0)
     }
 
@@ -192,16 +199,21 @@ if (args[0] === 'api') {
           folder,
           name,
         ),
-      }).branch === branch)
+      }).branch === branch && (!owner || (read({
+        file: join(
+          folder,
+          name,
+        ),
+      }).sourceOwner ?? repo.split('/')[0]) === owner))
       .map(name => {
         const url = `https://github.com/${repo}/pull/${name.slice(
           0,
           -5,
         )}`
 
-        return { html_url: url }
+        return graphql ? { url } : { html_url: url }
       }) : []
-    payload({ value: requests })
+    discoveryPayload({ value: requests })
   } else {
     console.log('error: unsupported fake GitHub request\ncode: NOT_FOUND')
     process.exit(1)
