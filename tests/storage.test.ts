@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { setImmediate as immediate } from 'node:timers/promises'
 import { withAsyncRegistryLock, withRegistryLock } from '#store/storage.ts'
 import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -653,28 +654,86 @@ test(
       },
     })
     await entered.promise
-    expect(() => withRegistryLock({fn: () => 'unrelated'})).toThrow(expect.objectContaining({code: 'LOCKED'}))
-    const second = withAsyncRegistryLock({
-      fn: () => {
-        expect(firstSettled).toBe(true)
+    const decisions: Promise<string>[] = [first]
 
-        return 'second'
-      },
-    })
-    release.resolve()
-    expect(await Promise.all([
-      first,
-      second,
-    ])).toEqual([
-      'first',
-      'second',
-    ])
+    try {
+      expect(() => withRegistryLock({fn: () => 'unrelated'})).toThrow(expect.objectContaining({code: 'LOCKED'}))
+      const second = withAsyncRegistryLock({
+        timeout: 0,
+        fn: () => {
+          expect(firstSettled).toBe(true)
+
+          return 'second'
+        },
+      })
+      decisions.push(second)
+      release.resolve()
+      expect(await Promise.all(decisions)).toEqual([
+        'first',
+        'second',
+      ])
+    } finally {
+      release.resolve()
+      await Promise.allSettled(decisions)
+    }
+
     await expect(withAsyncRegistryLock({
       fn: async () => {
         throw new Error('Rejected decision')
       },
     })).rejects.toThrow('Rejected decision')
     expect(await withAsyncRegistryLock({fn: () => 'after refusal'})).toBe('after refusal')
+  },
+)
+
+test(
+  'an unawaited nested decision keeps ownership until its admitted work settles',
+  async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const decisions: Promise<unknown>[] = []
+    let outerSettled = false
+    const outer = withAsyncRegistryLock({
+      fn: () => {
+        decisions.push(withAsyncRegistryLock({
+          fn: async () => {
+            entered.resolve()
+            await release.promise
+
+            return await withAsyncRegistryLock({
+              fn: () => withRegistryLock({ fn: () => 'nested' }),
+            })
+          },
+        }))
+
+        return 'outer'
+      },
+    })
+    decisions.push(outer.then(value => {
+      outerSettled = true
+
+      return value
+    }))
+
+    try {
+      await entered.promise
+      await immediate()
+      expect(outerSettled).toBe(false)
+      expect(() => withRegistryLock({ fn: () => 'unrelated' })).toThrow(expect.objectContaining({ code: 'LOCKED' }))
+      decisions.push(withAsyncRegistryLock({
+        timeout: 0,
+        fn: () => 'after nested',
+      }))
+      release.resolve()
+      expect(await Promise.all(decisions)).toEqual([
+        'outer',
+        'nested',
+        'after nested',
+      ])
+    } finally {
+      release.resolve()
+      await Promise.allSettled(decisions)
+    }
   },
 )
 
@@ -695,7 +754,7 @@ test(
         '--conditions=source',
         '--input-type=module',
         '-e',
-        "import {migrateOwnerMemory} from '#memory/owner-memory.ts'; try { await migrateOwnerMemory(); console.log('unexpected success') } catch (error) { console.log('handled ' + error.code) }",
+        "import {migrateOwnerMemory} from '#memory/owner-memory.ts'; import {withAsyncRegistryLock} from '#store/storage.ts'; try { await withAsyncRegistryLock({fn: async () => await migrateOwnerMemory()}); console.log('unexpected success') } catch (error) { console.log('handled ' + error.code) } console.log(await withAsyncRegistryLock({timeout: 0, fn: () => 'released'}))",
       ],
       {
         encoding: 'utf8',
@@ -705,6 +764,6 @@ test(
         },
       },
     )
-    expect(result.trim()).toBe('handled EEXIST')
+    expect(result.trim()).toBe('handled EEXIST\nreleased')
   },
 )

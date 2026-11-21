@@ -361,6 +361,7 @@ export function acquireLock({
 interface RegistryOwner {
   dir: string
   active: boolean
+  pending: Set<Promise<unknown>>
 }
 const registryContext = new AsyncLocalStorage<RegistryOwner>()
 const registryOwners = new Set<string>()
@@ -382,7 +383,16 @@ export async function withAsyncRegistryLock<T>({
   const dir = pnyxHome()
 
   if (ownsRegistry({dir})) {
-    return await fn()
+    const owner = registryContext.getStore()!
+    const decision = Promise.resolve().then(fn)
+    owner.pending.add(decision)
+    const settled = () => owner.pending.delete(decision)
+    decision.then(
+      settled,
+      settled,
+    )
+
+    return await decision
   }
 
   const previous = registryQueue.get(dir)
@@ -422,6 +432,7 @@ export async function withAsyncRegistryLock<T>({
     const owner: RegistryOwner = {
       dir,
       active: true,
+      pending: new Set(),
     }
     registryOwners.add(dir)
 
@@ -431,6 +442,10 @@ export async function withAsyncRegistryLock<T>({
         fn,
       )
     } finally {
+      while (owner.pending.size) {
+        await Promise.allSettled(owner.pending)
+      }
+
       owner.active = false
       registryOwners.delete(dir)
       release()
