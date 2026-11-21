@@ -49,6 +49,10 @@ test(
         '{"logs":"on"}',
       ],
     })
+    await until({
+      what: 'the server applies On logging',
+      check: () => logMode() === 'on',
+    })
     await flushLogs()
     const onStart = lines().length
     await hydra.owner({
@@ -113,6 +117,10 @@ test(
         '--json',
         '{"logs":"detailed"}',
       ],
+    })
+    await until({
+      what: 'the server applies Detailed logging',
+      check: () => logMode() === 'detailed',
     })
     await hydra.owner({
       args: [
