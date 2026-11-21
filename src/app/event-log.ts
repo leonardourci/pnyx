@@ -191,7 +191,7 @@ function* scan({
   read,
   selection,
 }: {
-  read: (selection: EventSelection & { measured?: boolean }) => HydraEvent[]
+  read: typeof selectedEvents
   selection: Omit<EventSelection, 'limit'>
 }): Generator<HydraEvent> {
   const started = performance.now()
