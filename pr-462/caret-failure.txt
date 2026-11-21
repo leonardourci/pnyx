@@ -1,0 +1,44 @@
+
+ RUN  v5.1.0 [isolated checkout]
+      Running tests with seed "1795235727449"
+
+ ❯ |browser| tests/browser/cards.test.ts (11 tests | 1 failed | 10 skipped) 11751ms
+   × saving a task leaves its card closed and its writing fields readable 11183ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > saving a task leaves its card closed and its writing fields readable
+AssertionError: expected { titleHeight: 100, …(8) } to match object { renameFits: true, …(7) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "askGrows": true,
+    "chatBounded": true,
+    "multiLine": true,
+-   "pasteCaret": 0,
++   "pasteCaret": 108,
+    "renameFits": true,
+    "titleAfterShiftEnter": "Keep this task closed while its complete title wraps and stays readable throughout the narrow project column",
+    "titleFits": true,
+    "titleGrows": true,
+  }
+
+ ❯ tests/browser/cards.test.ts:1252:27
+    1250|       }).length === 1,
+    1251|     })
+    1252|     expect(result.fields).toMatchObject({
+       |                           ^
+    1253|       renameFits: true,
+    1254|       titleFits: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  01:35:27
+   Duration  13.86s (tests 92%, import 3%, transform 3%, setup 2%)
+

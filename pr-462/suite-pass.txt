@@ -49,32 +49,32 @@ Issue #5:
 │   color: transparent;
 │ }
 
-[plugin rolldown:vite-resolve] Module "node:util" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/decision.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
 [plugin rolldown:vite-resolve] Module "node:async_hooks" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/command-notices.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:util" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/decision.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
 [plugin rolldown:vite-resolve] Module "node:crypto" has been externalized for browser compatibility, imported by "[isolated checkout]/src/hydra/digest.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
 ✓ 7396 modules transformed.
 rendering chunks...
 computing gzip size...
-dist.next.95376/web/index.html                             0.71 kB │ gzip:   0.36 kB
-dist.next.95376/web/assets/index-CopbuPEa.css            185.92 kB │ gzip:  32.80 kB
-dist.next.95376/web/assets/lazy-inspector-DuIP_w1_.js     10.14 kB │ gzip:   3.81 kB
-dist.next.95376/web/assets/index-Bm1ZCApt.js           1,611.71 kB │ gzip: 521.57 kB
+dist.next.33797/web/index.html                             0.71 kB │ gzip:   0.37 kB
+dist.next.33797/web/assets/index-CopbuPEa.css            185.92 kB │ gzip:  32.80 kB
+dist.next.33797/web/assets/lazy-inspector-_qiYuNPh.js     10.14 kB │ gzip:   3.81 kB
+dist.next.33797/web/assets/index-Db_U1WyM.js           1,612.14 kB │ gzip: 521.78 kB
 
 [plugin builtin:vite-reporter] 
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
-✓ built in 502ms
+✓ built in 1.04s
 
  RUN  v5.1.0 [isolated checkout]
-      Running tests with seed "1795234531186"
+      Running tests with seed "1795235811642"
 
-(node:13466) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(node:84944) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
 (Use `node --trace-warnings ...` to show where the warning was created)
 
  Test Files  24 passed (24)
       Tests  245 passed (245)
-   Start at  01:15:31
-   Duration  133.37s (tests 96%, setup 2%, import 1%, transform 1%)
+   Start at  01:36:51
+   Duration  154.80s (tests 95%, setup 2%, import 2%, transform 1%)
 

@@ -1,10 +1,82 @@
+$ eslint --fix .
+$ pnpm run typecheck && eslint . && pnpm run lint:css
+$ tsc --noEmit && tsc --noEmit -p web
+$ biome lint . --error-on-warnings
+Checked 2 files in 22ms. No fixes applied.
+$ node scripts/build/build.ts
+vite v8.3.4 building client environment for production...
+transforming...
+Found 5 warnings while optimizing generated CSS:
+
+Issue #1:
+│   --column-color: var(--color-green);
+│ }
+│ ::highlight(reveal-0) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 25%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #2:
+│   }
+│ }
+│ ::highlight(reveal-1) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 45%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #3:
+│   }
+│ }
+│ ::highlight(reveal-2) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 65%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #4:
+│   }
+│ }
+│ ::highlight(reveal-3) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: color-mix(in srgb, #242424 85%, transparent);
+│   @supports (color: color-mix(in lab, red, red)) {
+
+Issue #5:
+│   }
+│ }
+│ ::highlight(reveal-hide) {
+┆             ^-- 'highlight' is not recognized as a valid pseudo-element. Did you mean ':highlight' (pseudo-class) or is this a typo?
+┆
+│   color: transparent;
+│ }
+
+[plugin rolldown:vite-resolve] Module "node:util" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/decision.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:async_hooks" has been externalized for browser compatibility, imported by "[isolated checkout]/src/app/command-notices.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+[plugin rolldown:vite-resolve] Module "node:crypto" has been externalized for browser compatibility, imported by "[isolated checkout]/src/hydra/digest.ts". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
+✓ 7396 modules transformed.
+rendering chunks...
+computing gzip size...
+dist.next.88590/web/index.html                             0.71 kB │ gzip:   0.37 kB
+dist.next.88590/web/assets/index-CopbuPEa.css            185.92 kB │ gzip:  32.80 kB
+dist.next.88590/web/assets/lazy-inspector-_qiYuNPh.js     10.14 kB │ gzip:   3.81 kB
+dist.next.88590/web/assets/index-Db_U1WyM.js           1,612.14 kB │ gzip: 521.78 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 913ms
 
  RUN  v5.1.0 [isolated checkout]
-      Running tests with seed "1795234270558"
+      Running tests with seed "1795235612488"
 
 
  Test Files  1 passed (1)
       Tests  1 passed | 10 skipped (11)
-   Start at  01:11:10
-   Duration  12.56s (tests 94%, import 3%, transform 2%, setup 2%)
+   Start at  01:33:32
+   Duration  13.57s (tests 93%, import 3%, transform 3%, setup 2%)
 

@@ -1,4 +1,6 @@
+$ eslint --fix .
 $ pnpm run typecheck && eslint . && pnpm run lint:css
 $ tsc --noEmit && tsc --noEmit -p web
 $ biome lint . --error-on-warnings
-Checked 2 files in 26ms. No fixes applied.
+Checked 2 files in 22ms. No fixes applied.
+$ knip --tsConfig tsconfig.build.json
