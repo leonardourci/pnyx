@@ -216,6 +216,10 @@ test(
       { exact: true },
     ).waitFor()
     expect(await composer.inputValue()).toBe('')
+    await hydraChat.getByText(
+      'Received the unmatched reference.',
+      { exact: true },
+    ).waitFor()
     const copied = await hydraChat.evaluate(chat => {
       const paragraph = [...chat.querySelectorAll('p')].find(p => p.textContent?.startsWith('Check'))!
       const range = document.createRange()
