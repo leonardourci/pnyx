@@ -116,10 +116,11 @@ test.each([
     const reconciliation = recovery.reconcile()
 
     try {
-      await Promise.race([
-        gate.entered.promise,
+      const phase = await Promise.race([
+        gate.entered.promise.then(() => 'waiting'),
         reconciliation,
       ])
+      expect(phase).toBe('waiting')
       await recovery.close()
       gate.release.resolve()
       await reconciliation

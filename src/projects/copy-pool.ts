@@ -207,8 +207,6 @@ function claimIsStale({ file }: { file: string }): boolean {
   }
 }
 
-// Claim creation and dead-owner recovery run inside one synchronous write, which the server, the only writer, never
-// interleaves with another; Git work stays outside it.
 async function claim({
   hydraId,
   path,

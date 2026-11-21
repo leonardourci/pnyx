@@ -328,16 +328,17 @@ export const approval = guard({
 
 export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Promise<void> {
   const { state } = loadHydra({ hydraId })
-  const interrupted = state.dispatchProposals?.filter(proposal =>
-    proposal.kind === 'command' && proposal.status === 'applying') ?? []
 
-  if (!interrupted.length || state.config?.removed || state.config?.removing) {
+  if (state.config?.removed || state.config?.removing || !state.dispatchProposals?.some(proposal => proposal.kind === 'command' && proposal.status === 'applying')) {
     return
   }
 
   await withWriter({
     hydraId,
     fn: ({ writer }) => {
+      const interrupted = writer.state.dispatchProposals?.filter(proposal =>
+        proposal.kind === 'command' && proposal.status === 'applying') ?? []
+
       for (const proposal of interrupted) {
         const decision = hydraEvent({
           state: writer.state,

@@ -47,10 +47,11 @@ test(
     })
 
     try {
-      await Promise.race([
-        queue.entered.promise,
+      const phase = await Promise.race([
+        queue.entered.promise.then(() => 'waiting'),
         decision,
       ])
+      expect(phase).toBe('waiting')
       mkdirSync(occupied)
       const marker = join(
         occupied,
