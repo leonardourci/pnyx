@@ -195,13 +195,16 @@ export const layout = guard({
       })
     }
 
-    // One event id per Hydra keeps a retried --all from resetting twice.
-    return {
-      hydras: await Promise.all(hydraIds().map(async id => ({
+    const hydras: Output[] = []
+
+    for (const id of hydraIds()) {
+      hydras.push({
         hydra: id,
         ...await reset({ id }),
-      }))),
+      })
     }
+
+    return { hydras }
   },
 })
 

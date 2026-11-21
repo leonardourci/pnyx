@@ -384,6 +384,7 @@ test(
       },
     })
     const revision = readSettings().revision
+    const entered = Promise.withResolvers<void>()
     const gate = Promise.withResolvers<void>()
     const first = saveSettings({
       patch: {theme: 'light'},
@@ -393,8 +394,13 @@ test(
         actor: 'cli',
         ifRevision: revision,
       },
-      beforeSave: () => gate.promise,
+      beforeSave: () => {
+        entered.resolve()
+
+        return gate.promise
+      },
     })
+    await entered.promise
     const second = saveSettings({
       patch: {theme: 'dark'},
       meta: {
