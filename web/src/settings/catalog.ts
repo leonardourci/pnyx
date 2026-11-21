@@ -80,7 +80,7 @@ export const SETTINGS_SECTIONS = [
     id: 'logs',
     label: 'Logs',
     icon: 'logs',
-    note: 'Timestamped lines on this machine for debugging Pnyx: what each action did, how long it took and how much memory the server used. pnyx-axi debug performance reads them.',
+    note: 'Timestamped lines on this machine for debugging Pnyx: what each action did, how long it took and how much memory the server used. Read them from the home’s logs folder.',
   },
   {
     id: 'about',
