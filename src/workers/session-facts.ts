@@ -170,6 +170,19 @@ export function decideSessionFacts({
   })
 }
 
+export function sessionTaskFields({ fields }: { fields: PushFields }): PushFields {
+  return Object.fromEntries(Object.entries(fields).filter(([field]) => [
+    'title',
+    'autoTitle',
+    'project',
+    'workspace',
+    'tags',
+    'folder',
+    'parentId',
+    'rank',
+  ].includes(field)))
+}
+
 export function applySessionFacts({
   state,
   event,
@@ -361,7 +374,7 @@ export function applySessionFacts({
         folder,
         parentId,
         rank,
-      } = fields
+      } = sessionTaskFields({ fields })
 
       if (title !== undefined) {
         task.title = title ?? task.autoTitle?.text ?? task.key
