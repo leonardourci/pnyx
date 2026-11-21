@@ -8,7 +8,7 @@ import { dirname } from 'node:path'
 import { mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import { createSocketOutbox, MAX_SOCKET_BYTES } from './socket-outbox.ts'
-import { createSocketHistory, type SocketCursor } from './socket-history.ts'
+import { createSocketHistory, type SocketCursor, type SocketFrame } from './socket-history.ts'
 import { pageChanges, type HomeMessage, type HomePage, type PageChanges } from './socket-state.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { agentsMidTurn, type QueryFn } from './host.ts'
@@ -127,7 +127,17 @@ export async function startServer({
   const skipped: Record<string, string> = {}
   let closed = false
   let summariesQueued = false
-  const homeHistory = createSocketHistory<PageChanges>()
+  const homeDelta = ({ frame }: { frame: SocketFrame<PageChanges> }): HomeMessage => ({
+    type: 'home.delta',
+    cursor: {
+      epoch: frame.epoch,
+      seq: frame.seq,
+    },
+    changes: frame.value,
+  })
+  const homeHistory = createSocketHistory<PageChanges>({
+    measure: ({ frame }) => Buffer.byteLength(JSON.stringify(homeDelta({ frame }))),
+  })
   const homeClients = new Set<({ message }: { message: HomeMessage }) => void>()
 
   const homeSettings = (): HomePage['settings'] => {
@@ -509,34 +519,18 @@ export async function startServer({
           if (readsHome) {
             publishHome()
             const cursor = parseJson({ text: url.searchParams.get('cursor') }) as SocketCursor | undefined
-            const retained = homeHistory.since({ cursor })
             const ready: HomeMessage = {
               type: 'home.ready',
               cursor: homeHistory.cursor(),
             }
-            const replay = retained?.map(({
-              epoch,
-              seq,
-              value,
-            }): HomeMessage => ({
-              type: 'home.delta',
-              cursor: {
-                epoch,
-                seq,
-              },
-              changes: value,
-            }))
-            const replayBytes = replay?.reduce(
-              (
-                bytes,
-                message,
-              ) => bytes + Buffer.byteLength(JSON.stringify(message)),
-              Buffer.byteLength(JSON.stringify(ready)),
-            )
+            const retained = homeHistory.since({
+              cursor,
+              budget: MAX_SOCKET_BYTES - Buffer.byteLength(JSON.stringify(ready)),
+            })
 
-            if (replay && replayBytes !== undefined && replayBytes <= MAX_SOCKET_BYTES) {
-              for (const message of replay) {
-                sendHome({ message })
+            if (retained) {
+              for (const frame of retained) {
+                sendHome({ message: homeDelta({ frame }) })
               }
             } else {
               sendHome({
