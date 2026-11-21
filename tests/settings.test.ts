@@ -404,6 +404,7 @@ test(
       entered.promise,
       first,
     ])
+    expect(readSettings().settings.theme).toBe('dark')
     const second = saveSettings({
       patch: { theme: 'dark' },
       meta: {
