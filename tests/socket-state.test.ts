@@ -3,6 +3,9 @@ import { applyPageChanges, pageChanges } from '#app/socket-state.ts'
 import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 import { openHomePage } from './setup/home-page.ts'
 
+const REPLAY_BRIEF_LENGTH = 23_997
+const REPLAY_EDIT_COUNT = 50
+
 let pnyx: Pnyx
 
 beforeAll(async () => {
@@ -236,6 +239,67 @@ test(
         ],
       })
       page.close()
+    }
+  },
+)
+
+test(
+  'a reconnect with more retained changes than its outgoing budget receives the latest snapshot',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Large replay',
+        '--key',
+        'large-replay',
+      ],
+    })
+    const task = created.card.id
+    const initial = await openHomePage({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+    const previous = initial.read()
+    initial.close()
+    const padding = 'x'.repeat(REPLAY_BRIEF_LENGTH)
+
+    for (let revision = 0; revision < REPLAY_EDIT_COUNT; revision += 1) {
+      const brief = `${String(revision).padStart(
+        2,
+        '0',
+      )} ${padding}`
+      await hydra.owner({
+        args: [
+          'task',
+          'brief',
+          'large-replay',
+          '--brief',
+          brief,
+        ],
+      })
+      await until({
+        what: 'the changed brief to reach the home feed',
+        check: () => pnyx.home().scopes[hydra.id]?.state.cards[task]?.brief === brief,
+      })
+    }
+
+    const resumed = await openHomePage({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      previous,
+    })
+
+    try {
+      expect(resumed.frames[0]?.type).toBe('home.snapshot')
+      expect(resumed.read().home.scopes[hydra.id]?.state.cards[task]?.brief).toBe(`49 ${padding}`)
+      expect(resumed.read().cursor.epoch).toBe(previous.cursor.epoch)
+      expect(resumed.read().cursor.seq).toBeGreaterThan(previous.cursor.seq)
+    } finally {
+      resumed.close()
     }
   },
 )
