@@ -14,6 +14,7 @@ const EXCHANGES = 12
 const WORKER_MESSAGES = 40
 const SETTLING_FRAMES = 10
 const ARRIVAL_FRAMES = 2
+const SHORT_VIEWPORT_HEIGHT = 600
 const tallParagraph = ({ label }: { label: string }) => `${label}\n\n${'A line of the release notes that fills the width. '.repeat(6)}`
 
 interface Frame {
@@ -164,6 +165,12 @@ test(
     const page = await openHydra({
       port: pnyx.port(),
       hydraId: hydra.id,
+      beforeLoad: async ({ page }) => {
+        await page.setViewportSize({
+          ...page.viewportSize()!,
+          height: SHORT_VIEWPORT_HEIGHT,
+        })
+      },
     })
     const hydraChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
@@ -237,6 +244,30 @@ test(
       return clipboard.getData('text/plain')
     })
     expect(copied).toBe(prose)
+    await hydraChat.getByText(
+      'Received the unmatched reference.',
+      { exact: true },
+    ).waitFor()
+    await hydraChat.evaluate(async chat => {
+      const messages = chat.querySelector<HTMLElement>('.messages')!
+      const chip = messages.querySelector<HTMLElement>('[data-task-ref]')!
+      messages.focus({ preventScroll: true })
+      const fromEnd = chip.getBoundingClientRect().height
+      const end = chat.scrollHeight - chat.clientHeight
+
+      if (end <= fromEnd) {
+        throw new Error('The conversation must scroll to exercise focus transfer')
+      }
+
+      await new Promise<void>(resolve => {
+        chat.addEventListener(
+          'scroll',
+          () => resolve(),
+          { once: true },
+        )
+        chat.scrollTop = end - fromEnd
+      })
+    })
     await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()
       .click()
     const taskChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(

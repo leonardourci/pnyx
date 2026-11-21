@@ -80,13 +80,15 @@ export function watchHistoryFocus({
   host(): Element | null | undefined
   changed({ selected }: { selected: boolean }): void
 }): () => void {
-  const update = () => {
+  const update = (event: Event) => {
     const messages = host()
     const selection = document.getSelection()
     const anchorInside = messages?.contains(selection?.anchorNode ?? null)
     const focusInside = messages?.contains(selection?.focusNode ?? null)
     const inside = anchorInside || focusInside
-    const focused = !!messages?.contains(document.activeElement)
+    const focusTarget = event instanceof FocusEvent && event.type === 'focusout'
+      ? event.relatedTarget : document.activeElement
+    const focused = focusTarget instanceof Node && !!messages?.contains(focusTarget)
     const selecting = !!inside && !selection?.isCollapsed
     changed({ selected: focused || selecting })
   }
