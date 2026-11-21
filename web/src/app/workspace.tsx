@@ -659,7 +659,7 @@ export function HydraView({
 
   const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
-  const createColumn = () => {
+  const requestProject = () => {
     if (view.workspace.collapsed || view.workspace.chatCollapsed) {
       save({
         patch: {
@@ -1173,7 +1173,7 @@ export function HydraView({
             label="Add project"
             icon="plus"
             disabled={!connected}
-            onClick={createColumn}
+            onClick={requestProject}
           />
           <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:scrollbar-stable-both group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
             <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>

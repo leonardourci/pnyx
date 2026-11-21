@@ -1315,6 +1315,7 @@ test.each([
       const add = bar.querySelector('[aria-label="Add project"]');
       const controls = [bar.querySelector('[aria-label="Fold Hydra"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.hydra-drag-name'), add].filter(Boolean);
       const naturalPositions = controls.map(control => control.getBoundingClientRect());
+      const naturalProjectsLeft = projects.getBoundingClientRect().left;
       projects.style.maxWidth = '100px';
       await new Promise(requestAnimationFrame);
       const positions = controls.map(control => control.getBoundingClientRect());
@@ -1322,7 +1323,9 @@ test.each([
       await new Promise(requestAnimationFrame);
       const topbar = {
         visible: naturalPositions.every(box => box.left >= 0 && box.right <= innerWidth),
-        leadingActions: controls.length === 4 && positions.every((box, index) => !index || box.left >= positions[index - 1].right),
+        controlOrder: controls.length === 4
+          && naturalPositions.every((box, index) => index === 0 || box.left >= naturalPositions[index - 1].right)
+          && naturalProjectsLeft >= naturalPositions[3].right,
         scrolled: projects.scrollLeft > 0,
         pinned: controls.every((control, index) => control.getBoundingClientRect().left === positions[index].left),
         singleEntry: workspace.querySelectorAll('[aria-label="Add project"]').length === 1
@@ -1377,8 +1380,8 @@ test.each([
       await new Promise(requestAnimationFrame);
       add?.click();
       await new Promise(requestAnimationFrame);
-      const attachRequested = workspace.querySelector('.hydra-chat textarea')?.value.includes(' to this Hydra')
-        && document.activeElement?.tagName === 'TEXTAREA';
+      const composer = workspace.querySelector('.hydra-chat .composer textarea');
+      const attachRequested = composer?.value.includes(' to this Hydra') && document.activeElement === composer;
       return JSON.stringify({ topbar, strip, workspaceUnfolded, folded, columnCountsUpright, unfolded, attachRequested: !!attachRequested });
     }));
     `,
@@ -1386,7 +1389,7 @@ test.each([
     expect(JSON.parse(geometry)).toEqual({
       topbar: {
         visible: true,
-        leadingActions: true,
+        controlOrder: true,
         scrolled: true,
         pinned: true,
         singleEntry: true,
