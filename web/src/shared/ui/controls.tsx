@@ -49,19 +49,44 @@ export function Input({
     <Textarea
       {...props}
       aria-multiline={props.role === 'combobox' ? undefined : false}
-      value={typeof value === 'string' ? value.replace(lineBreaks, '') : value}
-      defaultValue={typeof defaultValue === 'string' ? defaultValue.replace(lineBreaks, '') : defaultValue}
+      value={typeof value === 'string' ? value.replace(
+        lineBreaks,
+        '',
+      ) : value}
+      defaultValue={typeof defaultValue === 'string' ? defaultValue.replace(
+        lineBreaks,
+        '',
+      ) : defaultValue}
       onChange={event => {
         const field = event.currentTarget
         const text = field.value
-        const singleLine = text.replace(lineBreaks, '')
+        const singleLine = text.replace(
+          lineBreaks,
+          '',
+        )
 
         if (singleLine !== text) {
-          const start = text.slice(0, field.selectionStart).replace(lineBreaks, '').length
-          const end = text.slice(0, field.selectionEnd).replace(lineBreaks, '').length
+          const start = text.slice(
+            0,
+            field.selectionStart,
+          ).replace(
+            lineBreaks,
+            '',
+          ).length
+          const end = text.slice(
+            0,
+            field.selectionEnd,
+          ).replace(
+            lineBreaks,
+            '',
+          ).length
           const direction = field.selectionDirection
           field.value = singleLine
-          field.setSelectionRange(start, end, direction)
+          field.setSelectionRange(
+            start,
+            end,
+            direction,
+          )
         }
 
         onChange?.(event)
