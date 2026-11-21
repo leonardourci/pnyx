@@ -185,7 +185,7 @@ export function createAgentSwitch({
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
-  changeAgent({ change }: { change: HydraAgentChange }): void
+  changeAgent({ change }: { change: HydraAgentChange }): Promise<void>
   startOperation({
     id,
     kind,
@@ -226,9 +226,9 @@ export function createAgentSwitch({
   let agentChangeAbort: AbortController | undefined
 
   // Withdraws the change and sends its held messages again, each weighed against the agent the owner chooses now.
-  const withdraw = ({ change }: { change: HydraAgentChange }) => {
+  const withdraw = async ({ change }: { change: HydraAgentChange }) => {
     const held = heldOwnerMessages({ state: loadHydra({ hydraId }).state })
-    changeAgent({
+    await changeAgent({
       change: {
         ...change,
         state: 'cancelled',
@@ -252,7 +252,7 @@ export function createAgentSwitch({
     }
   }
 
-  const runAgentChange: Host['changeAgent'] = ({
+  const runAgentChange: Host['changeAgent'] = async ({
     id,
     choice,
   }) => {
@@ -281,7 +281,7 @@ export function createAgentSwitch({
     const operationId = `agent-change:${id}:${randomUUID()}`
     agentChangeAbort = new AbortController()
     const changeSignal = agentChangeAbort.signal
-    changeAgent({
+    await changeAgent({
       change: {
         ...change,
         choice,
@@ -337,7 +337,7 @@ export function createAgentSwitch({
           })
 
           if (moved) {
-            withdraw({ change })
+            await withdraw({ change })
 
             return
           }
@@ -365,7 +365,7 @@ export function createAgentSwitch({
               }
             }
 
-            changeAgent({
+            await changeAgent({
               change: {
                 ...change,
                 choice,
@@ -543,7 +543,7 @@ export function createAgentSwitch({
           })
           // The next turn must start from the saved summary rather than resume the inscribe session.
           const last = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
-          changeAgent({
+          await changeAgent({
             change: {
               ...change,
               choice,
@@ -585,7 +585,7 @@ export function createAgentSwitch({
             })
           }
 
-          changeAgent({
+          await changeAgent({
             change: {
               ...change,
               choice,
@@ -610,14 +610,14 @@ export function createAgentSwitch({
     return { state: 'queued' }
   }
 
-  const resendHeldMessages = () => {
+  const resendHeldMessages = async () => {
     const change = loadHydra({ hydraId }).state.hydraAgentChange
 
     if (!change || change.state === 'running') {
       return
     }
 
-    withdraw({ change })
+    await withdraw({ change })
   }
 
   return {

@@ -67,7 +67,7 @@ export function createHostRecovery({
     note: string
     resumeAttemptId?: string
   }): void
-  changeAgent({ change }: { change: HydraAgentChange }): void
+  changeAgent({ change }: { change: HydraAgentChange }): Promise<void>
   endOperation: ReturnType<typeof createHydraOperations>['endOperation']
   expireOrphans: ReturnType<typeof createPermissionBridge>['expireOrphans']
   send: ReturnType<typeof createHostedDelivery>['send']
@@ -125,7 +125,7 @@ export function createHostRecovery({
     const cutChange = loadHydra({ hydraId }).state.hydraAgentChange
 
     if (cutChange?.state === 'running') {
-      changeAgent({
+      await changeAgent({
         change: {
           ...cutChange,
           state: 'failed',

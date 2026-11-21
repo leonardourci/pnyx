@@ -1428,7 +1428,7 @@ export function createHost({
 
         // A waiting change left holding nothing is withdrawn.
         if (!heldOwnerMessages({ state: loadHydra({ hydraId }).state }).length) {
-          resendHeldMessages()
+          await resendHeldMessages()
         }
 
         return { cancelled: cancel }
