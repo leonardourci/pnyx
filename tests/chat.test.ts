@@ -1491,12 +1491,22 @@ test(
       expect(checked.conversations ?? []).toEqual([])
     }
 
+    const cursorAt = eventTime({
+      hydraId: hydra.id,
+      seq: Number(first.through),
+      exact: true,
+    })
+
+    if (!cursorAt) {
+      throw new Error('The first check did not leave a readable cursor')
+    }
+
     appendFileSync(
       transcript,
       `${JSON.stringify({
         type: 'user',
         uuid: randomUUID(),
-        timestamp: new Date().toISOString(),
+        timestamp: cursorAt,
         message: {
           role: 'user',
           content: 'Fresh native instructions',
