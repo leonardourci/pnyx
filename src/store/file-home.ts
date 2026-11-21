@@ -46,7 +46,7 @@ function component({ id }: { id: string }): string {
   return id
 }
 
-const hydraFiles = ({
+export const hydraFiles = ({
   home,
   hydra,
 }: HydraLocation) => join(
@@ -389,13 +389,14 @@ export function moveTaskFiles({
 export function readHydraFiles({
   home,
   hydra,
-}: HydraLocation): HydraFiles {
+  useSnapshot = true,
+}: HydraLocation & { useSnapshot?: boolean }): HydraFiles {
   const dir = hydraFiles({
     home,
     hydra,
   })
   requireDirectory({ dir })
-  const snapshot = readSnapshot({ dir })
+  const snapshot = useSnapshot ? readSnapshot({ dir }) : undefined
   const tasksDir = join(
     dir,
     'tasks',
@@ -533,11 +534,13 @@ export function readHydraFiles({
 function readKnownHydra({
   home,
   hydra,
-}: HydraLocation): HydraFiles {
+  useSnapshot,
+}: HydraLocation & { useSnapshot?: boolean }): HydraFiles {
   try {
     return readHydraFiles({
       home,
       hydra,
+      useSnapshot,
     })
   } catch (error) {
     if (!(error instanceof HydraError)) {
@@ -557,7 +560,13 @@ function readKnownHydra({
   }
 }
 
-export function readHomeFiles({ home }: { home: string }): Map<string, HydraFiles> {
+export function readHomeFiles({
+  home,
+  useSnapshot = true,
+}: {
+  home: string
+  useSnapshot?: boolean
+}): Map<string, HydraFiles> {
   const parent = join(
     resolve(home),
     'hydras',
@@ -578,6 +587,7 @@ export function readHomeFiles({ home }: { home: string }): Map<string, HydraFile
     readKnownHydra({
       home,
       hydra,
+      useSnapshot,
     }),
   ]))
   const relocated = new Set([...hydras.values()].flatMap(hydra => hydra.relocated))
@@ -588,6 +598,7 @@ export function readHomeFiles({ home }: { home: string }): Map<string, HydraFile
       readKnownHydra({
         home,
         hydra,
+        useSnapshot,
       }),
     )
   }
