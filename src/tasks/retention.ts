@@ -4,13 +4,13 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { readSettings } from '#settings/store.ts'
 
-export function hideDone({
+export async function hideDone({
   hydraId,
   at = new Date().toISOString(),
 }: {
   hydraId: string
   at?: string
-}): number {
+}): Promise<number> {
   const hours = readSettings().settings.doneAfterHours
   const deadline = doneDeadline({
     state: loadHydra({ hydraId }).state,
@@ -22,7 +22,7 @@ export function hideDone({
     return 0
   }
 
-  return withWriter({
+  return await withWriter({
     hydraId,
     fn: ({ writer }) => {
       let hidden = 0

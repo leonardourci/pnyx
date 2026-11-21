@@ -295,7 +295,7 @@ export async function followPullRequests({
     }
 
     const at = new Date().toISOString()
-    const recorded = withWriter({
+    const recorded = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })

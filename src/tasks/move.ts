@@ -702,7 +702,7 @@ export async function moveTask({
   })
 
   // The release ran the source host; no turn can start before the move commits.
-  return withWriter({
+  return await withWriter({
     hydraId,
     also: [to],
     fn: ({

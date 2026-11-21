@@ -118,7 +118,7 @@ function resumable({
   }).ready
 }
 
-export function resumeWaits({
+export async function resumeWaits({
   hydraId,
   state,
   at = new Date().toISOString(),
@@ -126,7 +126,7 @@ export function resumeWaits({
   hydraId: string
   state: HydraState
   at?: string
-}): number {
+}): Promise<number> {
   if (!Object.values(state.cards).some(card => resumable({
     state,
     card,
@@ -134,7 +134,7 @@ export function resumeWaits({
     return 0
   }
 
-  return withWriter({
+  return (await withWriter({
     hydraId,
     fn: ({ writer }) => {
       let resumed = 0
@@ -191,5 +191,5 @@ export function resumeWaits({
 
       return { resumed }
     },
-  }).resumed
+  })).resumed
 }

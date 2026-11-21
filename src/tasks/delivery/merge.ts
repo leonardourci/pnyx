@@ -179,7 +179,7 @@ export async function mergeCommand({
       requestedAt: meta.at,
       detail: 'merge requested; awaiting GitHub confirmation',
     }
-    const claimed = withWriter({
+    const claimed = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const currentCard = writer.state.cards[card.id]
@@ -242,7 +242,7 @@ export async function mergeCommand({
             ...meta,
             id: meta.id ? `${meta.id}:rejected` : undefined,
           }
-          commit({
+          await commit({
             hydraId,
             meta: rejectedMeta,
             intent: {
@@ -284,7 +284,7 @@ export async function mergeCommand({
 
   const outcome = await readOutcome({ url: link.url })
   const at = new Date().toISOString()
-  const receipt = commit({
+  const receipt = await commit({
     hydraId,
     meta,
     intent: {
