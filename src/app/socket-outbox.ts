@@ -32,14 +32,13 @@ function encode({
   }
 }
 
-function* activityFrames({ message }: { message: Extract<ServerMessage, { type: 'latest' }> }): Generator<Frame> {
-  const ids = new Set([
-    ...Object.keys(message.messages),
-    ...Object.keys(message.actions),
-    ...Object.keys(message.spend ?? {}),
-    ...Object.keys(message.usage ?? {}),
-  ])
-
+function* activityFrames({
+  message,
+  ids,
+}: {
+  message: Extract<ServerMessage, { type: 'latest' }>
+  ids: Set<string>
+}): Generator<Frame> {
   for (const id of ids) {
     const select = <Value>({ values }: { values?: Record<string, Value> }) =>
       values && Object.hasOwn(
@@ -198,11 +197,6 @@ export function createSocketOutbox({
       }
     }
 
-    const frame = encode({
-      message,
-      snapshot,
-    })
-
     if (snapshot && message.type === 'latest') {
       const previous = frames.findIndex(item => 'cardFrames' in item && item.scope === message.scope)
 
@@ -213,15 +207,42 @@ export function createSocketOutbox({
         )
       }
 
-      if (frame.bytes + bytes > limit) {
+      const ids = new Set([
+        ...Object.keys(message.messages),
+        ...Object.keys(message.actions),
+        ...Object.keys(message.spend ?? {}),
+        ...Object.keys(message.usage ?? {}),
+      ])
+
+      if (ids.size > 1) {
         frames.push({
-          cardFrames: activityFrames({ message }),
+          cardFrames: activityFrames({
+            message,
+            ids,
+          }),
           scope: message.scope,
         })
-        scheduleDrain()
+        if (!timer) {
+          drain()
+        }
 
         return true
       }
+    }
+
+    const frame = encode({
+      message,
+      snapshot,
+    })
+
+    if (snapshot && message.type === 'latest' && bytes + frame.bytes > limit) {
+      frames.push({
+        cardFrames: [frame].values(),
+        scope: message.scope,
+      })
+      scheduleDrain()
+
+      return true
     }
 
     if (!frames.length && socket.bufferedAmount < limit) {

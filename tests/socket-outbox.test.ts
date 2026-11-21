@@ -314,6 +314,13 @@ test(
         },
       ],
     ))
+    const lastPreview = messages['99']!
+    const serializeLastPreview = vi.fn(() => lastPreview)
+    Object.defineProperty(
+      messages,
+      '99',
+      { get: serializeLastPreview },
+    )
     expect(socket.send({ message: ready })).toBe(true)
     expect(socket.send({
       snapshot: true,
@@ -326,6 +333,7 @@ test(
     socket.drain()
     expect(socket.sent[0]).toEqual(ready)
     expect(socket.sent.length).toBeLessThan(Object.keys(messages).length)
+    expect(serializeLastPreview).not.toHaveBeenCalled()
 
     for (let i = 0; i < Object.keys(messages).length && vi.getTimerCount(); i += 1) {
       socket.drain()
