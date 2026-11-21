@@ -192,7 +192,7 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
 export function CodeTextPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <pre className="preview-code m-0 rounded-md bg-raised px-2.5 py-2 font-mono whitespace-pre" style={runtimeStyle({ fontSize: view.codeFontSize })}>{'pnyx-axi task start t-41 \\\n  --rule build'}</pre>
+      <pre className="preview-code m-0 rounded-md bg-raised px-2.5 py-2 font-mono whitespace-pre" style={runtimeStyle({ fontSize: view.codeFontSize })}>{'pnyx task create --title Build \\\n  --rule build'}</pre>
     </Preview>
   )
 }

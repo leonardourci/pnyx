@@ -7,8 +7,6 @@ import type { Command } from '#web-app/connection.ts'
 const SEARCH_DELAY = 180
 const REFRESH_DELAY = 2000
 
-// Every search box ranks cards through the Hydra server's search, the same
-// full-text ranking as `pnyx-axi oracle` and recorded history.
 const findCards = async ({
   command,
   query,
