@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from './page.ts'
 import { chrome } from './chrome.ts'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
@@ -1228,6 +1228,150 @@ test(
       title: 'Keep this task closed',
       formClosed: true,
       focusLabel: 'Fold Ideas',
+    })
+  },
+)
+
+test.each([
+  { viewport: '1440x900' },
+  { viewport: '390x844' },
+])(
+  'folded Hydras and project columns keep one aligned vertical strip at $viewport',
+  async ({ viewport }) => {
+    const hydra = await pnyx.hydra()
+    const projects = await addRevealProjects({ hydra })
+
+    for (const key of [
+      'fold-asks',
+      'fold-running',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          key,
+          '--title',
+          key,
+          '--project',
+          projects[0],
+          '--folder',
+          projects[0],
+        ],
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'task',
+        'ask',
+        'fold-asks',
+        '--to',
+        'owner',
+        '--question',
+        'Which option?',
+      ],
+    })
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      hold: true,
+    })
+
+    onTestFinished(async () => {
+      turn.release()
+      await chrome({ args: ['emulate'] })
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'fold-running',
+        '--in-place',
+      ],
+    })
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    await chrome({
+      args: [
+        'emulate',
+        '--viewport',
+        viewport,
+      ],
+    })
+    const geometry = await chrome({
+      script: `
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .running-count');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
+    console.log(await page.eval(async () => {
+      const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+      const uprightCounts = ({ roots }) => ['.waiting-count', '.running-count > span'].every(selector => {
+        const counts = roots.flatMap(root => [...root.querySelectorAll(selector)]);
+        return counts.length > 0 && counts.every(count =>
+          count.getBoundingClientRect().width > 0 && getComputedStyle(count).writingMode === 'horizontal-tb'
+        );
+      });
+      const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
+      workspace.querySelector('[aria-label="Fold Hydra"]').click();
+      await new Promise(requestAnimationFrame);
+      const projects = workspace.querySelector('.project-chips');
+      projects.style.maxHeight = '100px';
+      const box = workspace.getBoundingClientRect();
+      const chips = [...projects.querySelectorAll('button')].map(chip => chip.getBoundingClientRect());
+      const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
+      const center = (box.left + box.right) / 2;
+      const strip = {
+        thin: box.width <= 60,
+        bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
+        scrollable: projects.scrollHeight > projects.clientHeight,
+        upright: uprightCounts({ roots: [projects] }),
+        aligned: [...chips, ...marks].every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
+        contained: [...chips, ...marks].every(mark => mark.left >= box.left && mark.right <= box.right),
+        stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
+      };
+      projects.style.removeProperty('max-height');
+      workspace.querySelector('[aria-label="Unfold Hydra"]').click();
+      await new Promise(requestAnimationFrame);
+      const workspaceUnfolded = workspace.getBoundingClientRect().width === expandedWorkspaceWidth
+        && workspace.querySelector('main').getClientRects().length > 0;
+      const columns = [...workspace.querySelectorAll('.project-column')];
+      const expandedWidths = columns.map(column => column.getBoundingClientRect().width);
+      workspace.querySelector('[aria-label="Fold all projects"]').click();
+      await new Promise(requestAnimationFrame);
+      const columnCountsUpright = uprightCounts({ roots: columns });
+      const folded = columns.length === 5 && columns.every(column => {
+        const box = column.getBoundingClientRect();
+        const center = (box.left + box.right) / 2;
+        const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > *')];
+        const cards = column.querySelector('.column-cards');
+        return box.width > 0 && box.width <= 49 && cards.getClientRects().length === 0 && marks.length > 0 && marks.every(mark => {
+          const bounds = mark.getBoundingClientRect();
+          return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
+        });
+      });
+      workspace.querySelector('[aria-label="Unfold all projects"]').click();
+      await new Promise(requestAnimationFrame);
+      const unfolded = columns.every((column, index) =>
+        column.getBoundingClientRect().width === expandedWidths[index]
+        && column.querySelector('.column-cards').getClientRects().length > 0
+      );
+      return JSON.stringify({ strip, workspaceUnfolded, folded, columnCountsUpright, unfolded });
+    }));
+    `,
+    })
+    expect(JSON.parse(geometry)).toEqual({
+      strip: {
+        thin: true,
+        bodyHidden: true,
+        scrollable: true,
+        upright: true,
+        aligned: true,
+        contained: true,
+        stacked: true,
+      },
+      workspaceUnfolded: true,
+      folded: true,
+      columnCountsUpright: true,
+      unfolded: true,
     })
   },
 )

@@ -19,7 +19,6 @@ export const WORKSPACE_SIZING = {
   inset: unit * 4 + 2,
   phoneInset: unit * 3 + 2,
   foldedColumn: unit * 12,
-  foldedHydra: unit * 14.5,
   createColumn: unit * 57.5,
   foldedChat: unit * 10,
   phone: unit * 190,

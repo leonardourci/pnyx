@@ -630,8 +630,6 @@ export function App() {
     filterPolis(polis)
   }
 
-  const hydraLayout = preview?.kind === 'hydra' ? `${preview.id}:${preview.over}:${preview.before}` : ''
-
   return (
     <MotionConfig
       reducedMotion={duration === 0 ? 'always' : 'user'}
@@ -675,7 +673,6 @@ export function App() {
                         navigate={navigate}
                         edits={shownEdits}
                         preview={preview?.hydra === workspace.navigation.hydraId ? preview : null}
-                        hydraLayout={hydraLayout}
                         hydra={hydra}
                         workspace={workspace}
                       />

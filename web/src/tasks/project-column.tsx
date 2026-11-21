@@ -2,13 +2,12 @@ import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useRememberedScroll } from '#web-app/remembered-scroll.ts'
 import { sessionViewKey } from '#web-app/session-view.ts'
 import { FoldContent } from '#web-shared/ui/fold-content.tsx'
-import { motionDuration } from '#web-shared/motion.ts'
+import { WORKSPACE_SIZING } from '#web-shared/card-sizing.ts'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { useWorkspaceViewport } from '#web-app/workspace-viewport.tsx'
 import { useSmoothScroll } from '#web-shared/ui/smooth-scroll.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
-import { useReducedMotion } from 'motion/react'
 import { useDropZone, useSortItem, useSortState, nestingRefusal } from '#web-shared/ui/sortable.tsx'
 import { ProjectColumnHeader } from './project-column-header.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
@@ -18,7 +17,6 @@ import { PROJECT_CONTENT_INSET, projectWidth } from './project-layout.ts'
 export function ProjectColumn({
   column,
   hydraId,
-  revealing,
   view,
   save,
   expandedWidth,
@@ -27,7 +25,6 @@ export function ProjectColumn({
 }: {
   column: ProjectColumnData
   hydraId: string
-  revealing: boolean
   view: ViewPreferences
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
   expandedWidth: number
@@ -106,8 +103,6 @@ export function ProjectColumn({
     },
     disabled: column.id === 'ideas',
   })
-  const reduced = useReducedMotion()
-  const instantWidth = preview !== null || reduced || revealing
   const dragging = useSortState()
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
     && dragging.active.hydra === hydraId
@@ -141,9 +136,10 @@ export function ProjectColumn({
       data-sort-scope="projects"
       data-sort-disabled={column.id === 'ideas'}
       aria-label={column.title}
-      style={runtimeStyle({ projectCardWidth: `${contentWidth}px` })}
-      animate={{ width: folded ? 48 : width }}
-      transition={instantWidth ? { duration: motionDuration({ speed: 'instant' }) / 1000 } : undefined}
+      style={runtimeStyle({
+        width: folded ? WORKSPACE_SIZING.foldedColumn : width,
+        projectCardWidth: `${contentWidth}px`,
+      })}
     >
       <ProjectColumnHeader
         column={column}
@@ -155,11 +151,9 @@ export function ProjectColumn({
       />
       <FoldContent
         open={!folded}
-        axis="none"
         ref={scrollRef}
-        layout={false}
         data-sort-surface={`tasks:${hydraId}:${column.id}`}
-        className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [&[hidden]]:hidden"
+        className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2"
       >
         <div ref={grid} className="project-card-grid relative w-(--project-card-width)">
           {children()}

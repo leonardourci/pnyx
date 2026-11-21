@@ -570,7 +570,7 @@ Task IDs, unambiguous exact task titles and `pnyx-task:` links render as task ch
 
 ### Project layout and lifecycle compatibility
 
-Hydras share a horizontal workspace with snap scrolling. Each keeps its chat and project columns; the header's Hydra chips focus its composer. Fold the Hydra, its chat or projects independently. The Oracle starts with waiting work across Hydras and searches their tasks and history.
+Hydras share a horizontal workspace with snap scrolling. Each keeps its chat and project columns; the header's Hydra chips focus its composer. Fold the Hydra, its chat or projects independently. Folding is immediate. A folded Hydra is a narrow strip with its name and project controls stacked vertically. The Oracle starts with waiting work across Hydras and searches their tasks and history.
 
 `task arrange <task> [--before <task>]` changes visual order within a project and parent. The page orders state groups as needs you, running, waiting/queued/paused, then done. `task reorder --behind` continues to order worker queues. `task parent <task> <parent|none> [--before <task>]` creates one level of sub-tasks or detaches a child. With `none`, the child is placed before the chosen root in its project, or last when omitted; Undo restores its parent and position together. Shift-dragging a child onto the empty space of its own project on the page uses the same command, placing it where it lands. Parents roll up their children's state and remain open until their children finish.
 

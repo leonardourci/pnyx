@@ -18,7 +18,7 @@ This is the living spec for task `task-ecfe3cac-541d-4dd5-a876-5cc8229f2365`. It
 - One shared hover pill provides actions for open, closed and child cards.
 - Project headings and navigation chips reorder projects, including folded strips. Hydra controls and chips reorder Hydras. All reversible edits appear immediately and reconcile through the existing pending resource, preserving DOM identity. A refused creation draft is restored only in its own repository or project group.
 - Vertical chat gestures stay in their chat; only horizontal gestures move the Hydra axis. Chat retains its own follow/anchor controller.
-- Every task stays mounted in normal document flow while its column scrolls. Card positions do not animate when layout changes or is measured. Folding and the lifted drag preview respect reduced motion.
+- Every task stays mounted in normal document flow while its column scrolls. Card positions do not animate when layout changes or is measured. Folding is immediate; the lifted drag preview respects reduced motion.
 - Restart, dropped and slept connections reconcile without a manual reload. Connection transitions, recovery and slow renders have structured bounded logs.
 
 ## Implementation and remaining work
