@@ -24,7 +24,7 @@ test(
   'a fresh copy claim skips a slot filled before its queued writer runs',
   async () => {
     const hydraId = 'queued-copy'
-    const dir = copiesDir({ hydraId })
+    const dir = copiesDir()
     mkdirSync(
       dir,
       { recursive: true },

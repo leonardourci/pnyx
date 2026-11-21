@@ -157,6 +157,78 @@ const pullRequest = ({
 )
 
 test(
+  'Hydras share the home copy pool and keep another Hydra’s attached checkout reserved',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const project = await createProject({
+      hydra: source,
+      landing: 'branch',
+      name: 'shared-copy-pool',
+    })
+    await target.owner({
+      args: [
+        'project',
+        'add',
+        project,
+        '--landing',
+        'branch',
+      ],
+    })
+
+    const starts = []
+
+    for (const hydra of [
+      source,
+      target,
+    ]) {
+      const created = await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--title',
+          'Use the shared pool',
+          '--project',
+          project,
+        ],
+      })
+      starts.push(await hydra.owner({
+        args: [
+          'task',
+          'start',
+          created.card.id,
+        ],
+      }))
+    }
+
+    const first = starts[0]!.agent.folder as string
+    const second = starts[1]!.agent.folder as string
+    const pool = join(
+      process.env.PNYX_HOME!,
+      'copies',
+    )
+    expect(first.startsWith(`${pool}/`)).toBe(true)
+    expect(second.startsWith(`${pool}/`)).toBe(true)
+    expect(second).not.toBe(first)
+    expect((await source.agent({ cwd: first })).closed).toBe(false)
+    expect(git({
+      cwd: first,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).not.toBe(git({
+      cwd: second,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    }))
+  },
+)
+
+test(
   'a project task runs in its own copy on its own readable branch, leaves the project folder alone, is done only once its work is committed, and hands its worker to the queued task across declined, lost and failed checkouts',
   async () => {
     const hydra = await pnyx.hydra()
@@ -195,8 +267,6 @@ test(
     const copy = started.agent.folder as string
     expect(copy.startsWith(join(
       process.env.PNYX_HOME!,
-      'hydras',
-      hydra.id,
       'copies',
     ))).toBe(true)
     await hydra.agent({ cwd: copy })

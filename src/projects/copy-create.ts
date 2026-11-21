@@ -6,7 +6,7 @@ import { isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
-import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
+import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopy, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import { runProcess } from '#app/run-process.ts'
@@ -103,7 +103,6 @@ async function landedSlotBranch({
   base?: string
   common: string
 }): Promise<string | undefined> {
-  const state = loadHydra({ hydraId }).state
   const branch = (await git({
     cwd: path,
     args: [
@@ -111,8 +110,10 @@ async function landedSlotBranch({
       '--show-current',
     ],
   })).out
-  const previous = Object.values(state.cards).find(owner => owner.copy?.path === path
-    && owner.copy.state === 'removed' && owner.copy.branch === branch)
+  const previous = releasedCopy({
+    path,
+    branch,
+  })
 
   if (!previous?.copy) {
     const slotCommon = await commonDir({ cwd: path })
@@ -232,7 +233,7 @@ async function worktreeCopy({
 }): Promise<TaskCopy> {
   await gitProject({ project })
   mkdirSync(
-    copiesDir({ hydraId }),
+    copiesDir(),
     { recursive: true },
   )
   const {
@@ -274,7 +275,6 @@ async function worktreeCopy({
     branches,
   })
   const pooled = slots({
-    hydraId,
     project,
   })
   const previousPath = previous?.path

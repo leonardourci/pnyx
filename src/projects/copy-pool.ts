@@ -7,9 +7,10 @@ import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import { pnyxHome } from '#store/storage.ts'
 import { isFolder } from '#workers/folders.ts'
 
 // A claim older than the git steps it guards was left by a start that crashed.
@@ -54,20 +55,18 @@ export function recordedBranches({
   return [...branches]
 }
 
-export const copiesDir = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
+export const copiesDir = () => join(
+  pnyxHome(),
   'copies',
 )
 
 // Slots are named <project>-<n>, so one can pass from task to task.
 export function slots({
-  hydraId,
   project,
 }: {
-  hydraId: string
   project: HydraProject
 }): string[] {
-  const dir = copiesDir({ hydraId })
+  const dir = copiesDir()
   const prefix = `${project.name}-`
 
   if (!isFolder({ path: dir })) {
@@ -105,22 +104,44 @@ const holds = ({
   Object.values(state.cards).some(c => c.id !== except && liveCopy({ card: c })?.path === path)
 
 const idle = ({
-  state,
+  hydraId,
   path,
   except,
 }: {
-  state: HydraState
+  hydraId: string
   path: string
   except?: string
-}) =>
-  !runsIn({
+}) => hydraIds().every(id => {
+  const state = loadHydra({ hydraId: id }).state
+
+  return !runsIn({
     state,
     path,
   }) && !holds({
     state,
     path,
-    except,
+    except: id === hydraId ? except : undefined,
   })
+})
+
+export function releasedCopy({
+  path,
+  branch,
+}: {
+  path: string
+  branch: string
+}): Card | undefined {
+  for (const hydraId of hydraIds()) {
+    const owner = Object.values(loadHydra({ hydraId }).state.cards).find(card =>
+      card.copy?.path === path && card.copy.state === 'removed' && card.copy.branch === branch)
+
+    if (owner) {
+      return owner
+    }
+  }
+
+  return undefined
+}
 
 // A clean checkout of this project whose commit some branch keeps, so moving it to another branch loses nothing.
 export async function reusable({
@@ -286,7 +307,7 @@ export async function take({
   }
 
   if (idle({
-    state: loadHydra({ hydraId }).state,
+    hydraId,
     path,
     except: card?.id,
   })) {
@@ -307,7 +328,7 @@ export async function freshSlot({
 }): Promise<string> {
   for (let n = 1; ; n++) {
     const path = join(
-      copiesDir({ hydraId }),
+      copiesDir(),
       `${project.name}-${n}`,
     )
 
@@ -337,7 +358,6 @@ export async function staysInPool({
   const path = realpathSync(copy.path)
   const common = project && await commonDir({ cwd: project.path })
   const pooled = project ? slots({
-    hydraId,
     project,
   }) : []
 
@@ -352,7 +372,7 @@ export async function staysInPool({
 
   for (const slot of pooled) {
     if (slot !== path && idle({
-      state,
+      hydraId,
       path: slot,
     }) && await reusable({
       path: slot,
@@ -373,7 +393,6 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
 
   for (const project of projectsFor({ state }).filter(p => !p.detached)) {
     const pooled = slots({
-      hydraId,
       project,
     })
 
@@ -385,7 +404,6 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
     const common = await commonDir({ cwd: project.path })
 
     for (const path of slots({
-      hydraId,
       project,
     })) {
       if (!await take({
@@ -396,7 +414,6 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
       }
 
       try {
-        const current = loadHydra({ hydraId }).state
         const branch = (await git({
           cwd: path,
           args: [
@@ -406,10 +423,12 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
             'HEAD',
           ],
         })).out
-        const owner = Object.values(current.cards).find(c => c.copy?.path === path
-          && c.copy.state === 'removed' && c.copy.project === project.path && c.copy.branch === branch)
+        const owner = releasedCopy({
+          path,
+          branch,
+        })
 
-        if (!owner?.copy || !await reusable({
+        if (!owner?.copy || owner.copy.project !== project.path || !await reusable({
           path,
           common,
         }) || 'reason' in await checkCopy({

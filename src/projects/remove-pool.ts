@@ -42,7 +42,7 @@ function overlaps({
 
 export function protectedCopiesFolder({
   hydraId,
-  root = copiesDir({ hydraId }),
+  root = copiesDir(),
   preserveSurvivors = true,
 }: {
   hydraId: string
