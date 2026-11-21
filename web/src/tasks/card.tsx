@@ -838,7 +838,7 @@ export const HydraCard = memo(function HydraCard({
                     state={!!factual}
                   />
                 )}
-                {card.brief?.trim() && <CardSection heading="Instructions"><RichText text={card.brief} /></CardSection>}
+                {card.brief?.trim() && <CardSection heading="Description"><RichText text={card.brief} /></CardSection>}
                 <TaskQuestion
                   card={card}
                   connected={connected}

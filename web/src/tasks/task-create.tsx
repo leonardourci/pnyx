@@ -148,7 +148,7 @@ export function TaskCreate({
 
     if (text.trim()) {
       args.push(
-        '--ask',
+        '--brief',
         text,
       )
     }
@@ -251,6 +251,7 @@ export function TaskCreate({
         change={({ value }) => setRepository(value)}
         disabled={!connected || busy}
       />
+      <span className="eyebrow">Description</span>
       <Composer
         limitHeight={false}
         hydraId={hydraId}
@@ -261,7 +262,7 @@ export function TaskCreate({
         thread={null}
         loadComment={async () => {}}
         settings={settings}
-        fieldLabel="Your ask"
+        fieldLabel="Description"
         placeholder="What should happen?"
         sendLabel="Start worker"
         unavailable={disabled || !repository}

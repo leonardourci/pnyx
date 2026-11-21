@@ -71,7 +71,7 @@ export function TaskEditor({
   const imagesLoading = hasPendingImage({ text: brief })
   const tooLong = brief.trim().length > MAX_BRIEF_LENGTH
   const blocked = imagesLoading || tooLong
-  const blockedReason = imagesLoading ? 'Images are still loading' : `A brief holds up to ${MAX_BRIEF_LENGTH} characters`
+  const blockedReason = imagesLoading ? 'Images are still loading' : `A description holds up to ${MAX_BRIEF_LENGTH} characters`
 
   const save = () => {
     const nextTitle = title.replace(
@@ -125,7 +125,7 @@ export function TaskEditor({
   return (
     <form
       className="task-editor flex flex-col gap-1.5 [&>.row]:flex-wrap"
-      aria-label="Edit title and brief"
+      aria-label="Edit title and description"
       onSubmit={event => {
         event.preventDefault(); save()
       }}
@@ -152,11 +152,11 @@ export function TaskEditor({
           }
         }}
       />
-      <span className="eyebrow">Brief</span>
+      <span className="eyebrow">Description</span>
       <ComposerField
         ref={briefField}
-        label="Brief"
-        placeholder="Add a brief…"
+        label="Description"
+        placeholder="Describe the task…"
         value={brief}
         change={({ text }) => setBrief(text)}
       />

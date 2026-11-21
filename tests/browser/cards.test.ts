@@ -1242,11 +1242,11 @@ test(
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
     await page.press('Shift+Enter');
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]', ${JSON.stringify(prose)});
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
       const title = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
-      const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]');
+      const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"]');
       return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
     });
     const reachability = await page.eval(async () => {
@@ -1258,7 +1258,7 @@ test(
       const bounds = surface.getBoundingClientRect();
       const top = Math.max(bounds.top, 0);
       const bottom = Math.min(bounds.bottom, innerHeight);
-      const ask = form.querySelector('[aria-label="Your ask"]');
+      const ask = form.querySelector('[aria-label="Description"]');
       const askBounds = ask.getBoundingClientRect();
       const style = getComputedStyle(ask);
       const lineHeight = parseFloat(style.lineHeight);
@@ -1317,6 +1317,42 @@ test(
       formClosed: true,
       focusLabel: 'Fold Ideas',
     })
+    const saved = await hydra.task({
+      key: rows({
+        text: 'select id from cards where hydra_id = $1 and title = $2',
+        values: [
+          hydra.id,
+          title,
+        ],
+      })[0]!.id as string,
+    })
+    expect(saved.brief).toBe(`${prose}\n`)
+    const initialDescription = await chrome({
+      script: `
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
+    await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
+    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Edit task"]');
+    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Edit task"]');
+    await page.wait('.task-editor [aria-label="Description"]');
+    console.log(await page.eval(() => document.querySelector('.task-editor [aria-label="Description"]').value));
+  `,
+    })
+    expect(initialDescription).toBe(`${prose}\n`)
+    await chrome({
+      script: `
+    await page.fill('.task-editor [aria-label="Description"]', 'Explain the empty state and its next action.');
+    await page.click('.task-editor button[type="submit"]');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected .card-panel');
+  `,
+    })
+    await until({
+      what: 'the saved description edit',
+      check: async () => (await hydra.task({ key: saved.id })).brief === 'Explain the empty state and its next action.',
+    })
+    expect(await chrome({
+      script: `console.log(await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"].card-section')?.textContent));`,
+    })).toContain('Explain the empty state and its next action.')
   },
 )
 

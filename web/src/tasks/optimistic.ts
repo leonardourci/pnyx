@@ -120,6 +120,7 @@ export function optimisticState({
       key,
       title,
       titleSet: true,
+      brief: option({ flag: '--brief' }),
       project: option({ flag: '--project' }),
       workspace: 'unassigned',
       tags: [],
