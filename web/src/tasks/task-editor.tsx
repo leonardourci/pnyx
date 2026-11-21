@@ -58,7 +58,7 @@ export function TaskEditor({
     }),
     initial: draft?.brief ?? card.brief ?? '',
   })
-  const titleField = useRef<HTMLInputElement>(null)
+  const titleField = useRef<HTMLTextAreaElement>(null)
   const briefField = useRef<ComposerFieldHandle>(null)
   useTaskEditorFocus({
     hydraId,

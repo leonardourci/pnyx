@@ -1190,42 +1190,79 @@ test(
 )
 
 test(
-  'saving a task leaves its card closed in its column',
+  'saving a task leaves its card closed and its writing fields readable',
   async () => {
     const hydra = await pnyx.hydra()
-    await chrome({
+    const name = 'WWWWWWWW WWWWWWWW WWWWWWWW WWWWWWWW'
+    const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
+    const prose = Array(32).fill('Every line remains readable in its field.')
+      .join('\n')
+    const result = JSON.parse(await chrome({
       script: `
     await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
+    await page.click('[data-hydra-workspace="${hydra.id}"] .hydra-title');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]', ${JSON.stringify(name)});
+    const renameFits = await page.eval(() => { const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
+    await page.press('Enter');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .hydra-title[aria-label="Edit ${name}"]');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', ${JSON.stringify(prose)});
+    const chatBounded = await page.eval(() => {
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
+      return field.scrollHeight > field.clientHeight && ['auto', 'scroll'].includes(getComputedStyle(field).overflowY) && field.getBoundingClientRect().height <= Math.min(innerHeight / 2, 480);
+    });
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', '');
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', 'Keep this task closed');
+    const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', ${JSON.stringify(title.slice('Keep'.length))});
+    await page.eval(() => {
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
+      field.setRangeText('Ke\\nep', 0, 0, 'end');
+      field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+    });
+    await page.press('Shift+Enter');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]', ${JSON.stringify(prose)});
+    await page.press('Shift+Enter');
+    const fields = await page.eval(() => {
+      const title = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
+      const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]');
+      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
+    });
     await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
+    const card = await page.eval(() => {
+      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
+      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
+    });
+    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
   `,
-    })
+    }))
     await until({
       what: 'the saved task',
       check: () => rows({
         text: 'select id from cards where hydra_id = $1 and title = $2',
         values: [
           hydra.id,
-          'Keep this task closed',
+          title,
         ],
       }).length === 1,
     })
-    const result = await chrome({
-      script: `
-    console.log(await page.eval(() => {
-      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
-      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
-      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') });
-    }));
-  `,
+    expect(result.fields).toMatchObject({
+      renameFits: true,
+      titleFits: true,
+      titleGrows: true,
+      pasteCaret: 'Keep'.length,
+      titleAfterShiftEnter: title,
+      askGrows: true,
+      multiLine: true,
+      chatBounded: true,
     })
-    expect(JSON.parse(result)).toEqual({
+    expect(result.card).toEqual({
       expanded: 'false',
       column: 'ideas',
-      title: 'Keep this task closed',
+      title,
       formClosed: true,
       focusLabel: 'Fold Ideas',
     })

@@ -534,8 +534,8 @@ test(
     const preview = await chrome({
       script: `
       await page.click('.oracle-trigger');
-      await page.wait('dialog[aria-label="Oracle"] input', 5000);
-      await page.fill('dialog[aria-label="Oracle"] input', 'blocked-in-done');
+      await page.wait('dialog[aria-label="Oracle"] [role="combobox"][aria-label="Oracle"]', 5000);
+      await page.fill('dialog[aria-label="Oracle"] [role="combobox"][aria-label="Oracle"]', 'blocked-in-done');
       await page.wait('.oracle-card .agent-activity', 5000);
       console.log(await page.eval(() => document.querySelector('.oracle-card .agent-activity')?.getAttribute('aria-label')));
     `,

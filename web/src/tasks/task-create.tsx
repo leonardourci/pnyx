@@ -88,7 +88,7 @@ export function TaskCreate({
     initial: draft?.attempt ?? crypto.randomUUID(),
   })
   const attempt = useRef(attemptId)
-  const titleField = useRef<HTMLInputElement>(null)
+  const titleField = useRef<HTMLTextAreaElement>(null)
   useTaskEditorFocus({
     hydraId,
     id: `new:${attemptId}`,
@@ -252,6 +252,7 @@ export function TaskCreate({
         disabled={!connected || busy}
       />
       <Composer
+        limitHeight={false}
         hydraId={hydraId}
         storageIdentity={storageIdentity}
         card={`new:${attempt.current}`}

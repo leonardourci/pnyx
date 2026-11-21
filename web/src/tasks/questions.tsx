@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '#workers/answers.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Attention, FormField, Question } from '#workers/model.ts'
-import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { Button, Input, NativeInput } from '#web-shared/ui/controls.tsx'
 import { markdownText } from '#web-hydra/markdown-text.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { Command } from '#web-app/connection.ts'
@@ -39,6 +39,7 @@ function QuestionField({
   locked?: boolean
   change({ next }: { next: Draft }): void
 }) {
+  const AnswerInput = question.secret ? NativeInput : Input
   const toggle = ({ n }: { n: number }) => change({
     next: {
       text: '',
@@ -71,13 +72,13 @@ function QuestionField({
         ))}
       </QuestionOptions>
       {!question.multiSelect && (
-        <Input
+        <AnswerInput
           type={question.secret ? 'password' : undefined}
           aria-label={`Other answer to question ${index + 1}`}
           placeholder="Or type your own answer"
           value={draft.text}
-          onChange={e => {
-            const text = e.target.value
+          onChange={({ target }) => {
+            const text = target.value
             change({
               next: {
                 pick: text ? [] : draft.pick,
@@ -206,15 +207,17 @@ function FormInput({
     )
   }
 
+  const FieldInput = field.type === 'string' ? Input : NativeInput
+
   return (
     <div className={QUESTION_FIELD_CLASS}>
       <CollapsibleText text={label} />
-      <Input
+      <FieldInput
         aria-label={name}
         placeholder={name}
         inputMode={field.type === 'string' ? undefined : 'decimal'}
         value={typeof value === 'string' ? value : ''}
-        onChange={e => change({ value: e.target.value })}
+        onChange={({ target }) => change({ value: target.value })}
       />
     </div>
   )
