@@ -379,7 +379,9 @@ export async function withWriter<T>({
         })
       }
     }
+  }
 
+  for (const stage of stages) {
     if (stage.pending.length) {
       stage.held.changed()
     }

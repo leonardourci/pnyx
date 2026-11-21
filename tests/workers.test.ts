@@ -1,8 +1,12 @@
 import { query } from '#store/postgres.ts'
+import { taskChildren } from '#app/task-runtime.ts'
+import { localToken } from '#app/server-state.ts'
+import { foldWorkerLog } from '#workers/worker-log.ts'
+import { withWriter } from '#app/writer.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
@@ -793,6 +797,322 @@ test(
         'export',
       ],
     })).pending).toBe(0)
+  },
+)
+
+test(
+  'moving a native worker preserves its session, pending permission and later message delivery',
+  async () => {
+    const target = await pnyx.hydra()
+    const source = await pnyx.hydra()
+    const {
+      worker,
+      folder,
+    } = await source.startTask({ key: 'moving-permission' })
+    const task = (await source.owner({
+      args: [
+        'task',
+        'show',
+        'moving-permission',
+        '--full',
+      ],
+    })).task
+    const child = spawn(
+      process.execPath,
+      [
+        '-e',
+        'setInterval(() => {}, 1000)',
+      ],
+      {
+        detached: true,
+        stdio: 'ignore',
+      },
+    )
+    onTestFinished(() => {
+      child.kill('SIGKILL')
+    })
+    const children = taskChildren({
+      hydraId: source.id,
+      task: task.id,
+    })
+    children.spawned({ child })
+    children.associate({
+      pid: child.pid!,
+      task: task.id,
+    })
+    const decision = worker.useTool!({
+      tool: 'Bash',
+      input: { command: 'echo moved-worker' },
+    })
+
+    try {
+      const request = await until({
+        what: 'the native permission before moving',
+        check: async () => (await source.owner({
+          args: [
+            'task',
+            'show',
+            task.id,
+            '--full',
+          ],
+        })).task.permissions?.find((request: { status: string }) => request.status === 'pending'),
+      })
+      await source.owner({
+        args: [
+          'task',
+          'move',
+          task.id,
+          '--to-hydra',
+          target.id,
+        ],
+      })
+      expect(worker.closed).toBe(false)
+      const moved = (await target.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task
+      expect(moved.agent.sessionId).toBe(worker.id)
+      expect(moved.agent.cwd).toBe(folder)
+      expect(moved.permissions).toContainEqual(expect.objectContaining({
+        id: request.id,
+        status: 'pending',
+      }))
+      await source.owner({
+        args: [
+          'hydra',
+          'remove',
+          source.id,
+        ],
+      })
+      await until({
+        what: 'the source Hydra unmounts without closing the moved worker',
+        check: async () => {
+          const health = await fetch(`http://127.0.0.1:${pnyx.port()}/health`).then(response => response.json()) as { hydras: string[] }
+
+          return !health.hydras.includes(source.id)
+        },
+      })
+      expect(worker.closed).toBe(false)
+      expect(child.exitCode).toBeNull()
+      expect(child.signalCode).toBeNull()
+      const command = await fetch(
+        `http://127.0.0.1:${pnyx.port()}/api/run`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${localToken()}`,
+          },
+          body: JSON.stringify({
+            argv: [
+              'task',
+              'show',
+              task.id,
+              '--json',
+            ],
+            cwd: folder,
+            env: {
+              PNYX_ACTOR: worker.env.PNYX_ACTOR,
+              PNYX_HYDRA: source.id,
+              PNYX_STEERING_WORKER: worker.env.PNYX_STEERING_WORKER,
+            },
+          }),
+        },
+      ).then(response => response.json()) as {
+        exitCode: number
+        stdout: string
+      }
+      expect(command.exitCode).toBe(0)
+      expect(JSON.parse(command.stdout).task.id).toBe(task.id)
+      appendFileSync(
+        join(
+          worker.env.PNYX_TASK_DIR!,
+          'worker.log',
+        ),
+        'note: reported after the source was removed\n',
+      )
+      await until({
+        what: 'the destination receives the original worker log',
+        check: async () => (await target.task({ key: task.id })).latest === 'reported after the source was removed',
+      })
+      await target.owner({
+        args: [
+          'task',
+          'permission',
+          task.id,
+          request.id,
+          'allow',
+          '--reason',
+          'Allow the moved worker to continue',
+        ],
+      })
+      expect(await decision).toMatchObject({ behavior: 'allow' })
+      await target.owner({
+        args: [
+          'reply',
+          task.id,
+          '--text',
+          'Continue on the destination Hydra',
+        ],
+      })
+      await until({
+        what: 'the original worker receives the destination message',
+        check: () => worker.received.some(text => text.includes('Continue on the destination Hydra')),
+      })
+      expect(worker.received.filter(text => text.includes('Continue on the destination Hydra'))).toHaveLength(1)
+      await until({
+        what: 'the destination records the moved worker acknowledgement',
+        check: async () => (await target.owner({
+          args: [
+            'task',
+            'show',
+            task.id,
+            '--full',
+          ],
+        }))
+          .task.steering?.some((message: {
+            text: string
+            ack?: unknown
+          }) =>
+            message.text === 'Continue on the destination Hydra' && message.ack !== undefined),
+      })
+      expect(worker.closed).toBe(false)
+      expect((await target.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task.agent.sessionId).toBe(worker.id)
+      await target.owner({
+        args: [
+          'hydra',
+          'remove',
+          target.id,
+        ],
+      })
+      await until({
+        what: 'destination removal stops the moved tools',
+        check: () => child.signalCode !== null || child.exitCode !== null,
+      })
+    } finally {
+      await Promise.allSettled([
+        source.owner({
+          args: [
+            'task',
+            'stop',
+            task.id,
+          ],
+        }),
+        target.owner({
+          args: [
+            'task',
+            'stop',
+            task.id,
+          ],
+        }),
+      ])
+      await Promise.allSettled([decision])
+    }
+  },
+)
+
+test(
+  'moving a compacting worker keeps its held message until the original session finishes compaction',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const key = 'moving-compaction'
+    const { worker } = await source.startTask({ key })
+    const held = pnyx.claude.plan({
+      hydra: source.id,
+      text: '/compact',
+      compacting: true,
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await reply({
+      hydra: source,
+      key,
+      text: '/compact',
+    })
+    const task = await until({
+      what: 'the worker starts compaction before moving',
+      check: async () => {
+        const task = (await source.owner({
+          args: [
+            'task',
+            'show',
+            key,
+            '--full',
+          ],
+        })).task
+
+        return task.compaction?.operations.some((operation: { state: string }) => operation.state === 'running') && task
+      },
+    })
+    const text = 'Deliver this after compaction on the destination'
+    await reply({
+      hydra: source,
+      key,
+      text,
+    })
+    await until({
+      what: 'compaction holds the message before moving',
+      check: async () => (await source.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })).task.compaction?.inputs.length === 1,
+    })
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    await source.owner({
+      args: [
+        'hydra',
+        'remove',
+        source.id,
+      ],
+    })
+    expect(worker.closed).toBe(false)
+    expect(worker.received.some(message => message.includes(text))).toBe(false)
+    held.release()
+    await until({
+      what: 'the original worker receives the held message after moving',
+      check: () => worker.received.some(message => message.includes(text)),
+    })
+    await until({
+      what: 'the destination settles compaction and its input',
+      check: async () => {
+        const moved = (await target.owner({
+          args: [
+            'task',
+            'show',
+            task.id,
+            '--full',
+          ],
+        })).task
+
+        return moved.compaction?.inputs.length === 0 && moved.compaction?.operations.every((operation: { state: string }) => operation.state === 'done')
+      },
+    })
+    expect(worker.received.filter(message => message.includes(text))).toHaveLength(1)
+    expect(worker.closed).toBe(false)
   },
 )
 
@@ -2358,13 +2678,84 @@ test(
 )
 
 test(
+  'worker log catch-up commits bounded batches and recovers after an oversized partial line across restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'bounded-log' })
+    const task = await hydra.task({ key: 'bounded-log' })
+    const path = join(
+      worker.env.PNYX_TASK_DIR!,
+      'worker.log',
+    )
+    const burst = Array.from(
+      { length: 1000 },
+      (
+        _,
+        index,
+      ) => `note: batch entry ${index}\n`,
+    ).join('')
+    writeFileSync(
+      path,
+      burst,
+    )
+    const first = await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const from = writer.state.seq
+        foldWorkerLog({
+          writer,
+          task: task.id,
+        })
+
+        return {
+          off: writer.state.cards[task.id]!.workerLog!.latest.off,
+          events: writer.state.seq - from,
+        }
+      },
+    })
+    expect(first.off).toBeLessThan(Buffer.byteLength(burst))
+    expect(first.events).toBeLessThanOrEqual(256)
+    await until({
+      what: 'all remaining batches fold without another append',
+      check: async () => (await hydra.task({ key: task.id })).latest === 'batch entry 999',
+    })
+    appendFileSync(
+      path,
+      'note: ' + 'x'.repeat(200_000),
+    )
+    await until({
+      what: 'an oversized incomplete line produces a visible warning',
+      check: async () => (await hydra.task({ key: task.id })).latest?.includes('exceeds the worker.log line limit'),
+    })
+    await pnyx.restart()
+    appendFileSync(
+      path,
+      'note: this is still the discarded line\nnote: valid after the oversized line\n',
+    )
+    await until({
+      what: 'the next valid line survives after restart',
+      check: async () => (await hydra.task({ key: task.id })).latest === 'valid after the oversized line',
+    })
+    const history = (await hydra.owner({
+      args: [
+        'task',
+        'history',
+        task.id,
+        '--limit',
+        '100',
+      ],
+    })).events
+    expect(JSON.stringify(history)).not.toContain('this is still the discarded line')
+  },
+)
+
+test(
   'worker log status and complete lines survive restarts',
   async () => {
     const hydra = await pnyx.hydra()
     const taskRoot = join(
       process.env.PNYX_HOME!,
-      'hydras',
-      hydra.id,
+      'runtime',
       'tasks',
     )
     quietNativeWatch({ root: taskRoot })
@@ -2660,8 +3051,7 @@ test(
     const completed = await hydra.task({ key: 'completed-worker' })
     const hiddenLog = join(
       process.env.PNYX_HOME!,
-      'hydras',
-      hydra.id,
+      'runtime',
       'tasks',
       completed.id,
       'worker.log',

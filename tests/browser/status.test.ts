@@ -251,6 +251,99 @@ test(
 )
 
 test(
+  'a running worker moved to another Hydra keeps its live badge and receives the destination composer message once',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const { worker } = await source.startTask({ key: 'moving-live-worker' })
+    const task = await source.task({ key: 'moving-live-worker' })
+    const held = pnyx.claude.plan({
+      hydra: source.id,
+      match: ({ text }) => text.includes('Keep working during the move'),
+      hold: true,
+      folds: true,
+      tool: {
+        id: 'moving-worker-tool',
+        name: 'Bash',
+        input: { command: 'echo moving' },
+      },
+    })
+
+    try {
+      await source.owner({
+        args: [
+          'reply',
+          task.id,
+          '--text',
+          'Keep working during the move',
+        ],
+      })
+      const original = await openChat({
+        hydraId: source.id,
+        taskId: task.id,
+      })
+      await status({
+        selector: original,
+        label: 'Working',
+      })
+      await source.owner({
+        args: [
+          'task',
+          'move',
+          task.id,
+          '--to-hydra',
+          target.id,
+        ],
+      })
+      await source.owner({
+        args: [
+          'hydra',
+          'remove',
+          source.id,
+        ],
+      })
+      const selector = await openChat({
+        hydraId: target.id,
+        taskId: task.id,
+      })
+      await status({
+        selector,
+        label: 'Working',
+      })
+      const text = 'Continue in the destination Hydra'
+      await chrome({
+        script: `
+        await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, ${JSON.stringify(text)});
+        await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
+        await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
+      `,
+      })
+      await until({
+        what: 'the original worker receives the destination composer message',
+        check: () => worker.received.some(message => message.includes(text)),
+      })
+      expect(worker.received.filter(message => message.includes(text))).toHaveLength(1)
+      expect(worker.closed).toBe(false)
+      held.release()
+      await status({
+        selector,
+        label: 'Idle',
+      })
+      expect((await target.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task.agent.sessionId).toBe(worker.id)
+    } finally {
+      held.release()
+    }
+  },
+)
+
+test(
   'worker first send shows Starting… before attachment, reports a refused start and follows later live turns',
   async () => {
     const hydra = await pnyx.hydra()
