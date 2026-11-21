@@ -1315,6 +1315,104 @@ test(
 )
 
 test(
+  'a cached Hydra turn with a legacy finished boundary resumes only unanswered owner messages',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Already answered',
+      reply: 'Answered.',
+    })
+    const session = await hydra.chat({ text: 'Already answered' })
+    const finished = await until({
+      what: 'the answered Hydra turn to finish',
+      check: () => {
+        const state = loadHydra({ hydraId: hydra.id }).state
+        const sessions = Object.values(state.sessions ?? {})
+        const facts = sessions.find(candidate => candidate.agent.sessionId === session.id)
+
+        const finishedTurn = facts?.sessionActivity === 'finished' && facts.turnFinishedSeq !== undefined
+
+        return session.answered === 1 && finishedTurn && facts
+      },
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Still unanswered',
+      hold: true,
+    })
+    await hydra.chat({ text: 'Still unanswered' })
+
+    await pnyx.restart({
+      whileStopped: () => {
+        const legacy = {
+          v: 1,
+          id: 'legacy-finished',
+          seq: finished.turnFinishedSeq!,
+          at: finished.activityObservedAt!,
+          actor: 'pnyx',
+          cardId: HYDRA_CARD,
+          type: 'card.pushed',
+          data: {
+            key: '$hydra',
+            agent: finished.agent,
+            activity: 'finished',
+          },
+        }
+        rows({
+          text: 'insert into events (hydra_id, seq, id, type, at, actor, card_id, data) values ($1,$2,$3,$4,$5,$6,$7,$8)',
+          values: [
+            hydra.id,
+            legacy.seq,
+            legacy.id,
+            legacy.type,
+            legacy.at,
+            legacy.actor,
+            legacy.cardId,
+            JSON.stringify(legacy),
+          ],
+        })
+        rows({
+          text: `update sessions set data = jsonb_set(data::jsonb - 'turn' - 'turnFinishedSeq',
+            '{hydraTurn,finishedThrough}', '0')::json
+          where hydra_id = $1 and id = $2`,
+          values: [
+            hydra.id,
+            finished.id,
+          ],
+        })
+      },
+    })
+    const recovery = await until({
+      what: 'the recovery recap from the legacy boundary',
+      check: () => {
+        const resumed = pnyx.claude.sessions.find(candidate =>
+          candidate.env.PNYX_HYDRA === hydra.id && candidate.resumed)
+
+        return resumed?.received.find(text => text.includes('restart cut your last turn'))
+      },
+    })
+    const messages = []
+
+    for (const match of recovery.matchAll(/Read owner message \d+ in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g)) {
+      const page = await hydra.owner({
+        args: [
+          'hydra',
+          'messages',
+          '--after',
+          match[1]!,
+          '--limit',
+          '1',
+        ],
+      })
+      messages.push(page.messages[0].text)
+    }
+
+    expect(messages).toEqual(['Still unanswered'])
+  },
+)
+
+test(
   'owner messages sent while Hydra works survive a restart that cuts its turn: Hydra resumes once, is pointed at what it did not answer, and the messages stay in order',
   async () => {
     const hydra = await pnyx.hydra()

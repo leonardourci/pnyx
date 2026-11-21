@@ -341,7 +341,8 @@ export function findHydraTurnToResume({
     return undefined
   }
 
-  const lastFinishedTurn = cached ? undefined : scanChanges({
+  const finishedThrough = cached?.finishedThrough || undefined
+  const lastFinishedTurn = finishedThrough ? undefined : scanChanges({
     hydraId,
     cardId: HYDRA_CARD,
     types: [
@@ -367,7 +368,7 @@ export function findHydraTurnToResume({
     ids: [sourceId],
   })[0]
   const lastFinishedTurnSeq = Math.min(
-    cached?.finishedThrough ?? lastFinishedTurn?.seq ?? 0,
+    finishedThrough ?? lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
   const unansweredMessages: number[] = []
