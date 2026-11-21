@@ -527,10 +527,13 @@ export async function startServer({
               },
               changes: value,
             }))
-            const replayBytes = replay?.reduce((
-              bytes,
-              message,
-            ) => bytes + Buffer.byteLength(JSON.stringify(message)), Buffer.byteLength(JSON.stringify(ready)))
+            const replayBytes = replay?.reduce(
+              (
+                bytes,
+                message,
+              ) => bytes + Buffer.byteLength(JSON.stringify(message)),
+              Buffer.byteLength(JSON.stringify(ready)),
+            )
 
             if (replay && replayBytes !== undefined && replayBytes <= MAX_SOCKET_BYTES) {
               for (const message of replay) {
