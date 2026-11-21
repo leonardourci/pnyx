@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, openSync, readSync, statSync } from 'node:fs'
+import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, openSync, readSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { HydraError } from './errors.ts'
 import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
@@ -161,6 +161,11 @@ export function readLog({
       if (boundary[0] !== 10) {
         throw positionError({ path })
       }
+    }
+
+    if (size > after.bytes) {
+      // Complete writes from a crashed daemon may still be waiting in the OS cache.
+      fdatasyncSync(fd)
     }
 
     let pending: Buffer = Buffer.alloc(0)

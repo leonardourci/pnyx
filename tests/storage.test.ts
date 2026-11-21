@@ -1,9 +1,21 @@
-import { appendFileSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, fdatasyncSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { appendLog, readLog, type LogEntry, type LogFact, type LogPosition } from '#store/log.ts'
 import { readSnapshot, writeSnapshot } from '#store/snapshot.ts'
+
+vi.mock(
+  'node:fs',
+  async () => {
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+
+    return {
+      ...filesystem,
+      fdatasyncSync: vi.fn(filesystem.fdatasyncSync),
+    }
+  },
+)
 
 const AT = '2026-11-21T03:00:00.000Z'
 const EMPTY: LogPosition = {
@@ -361,5 +373,44 @@ test(
       protectedPath,
       'utf8',
     )).toBe(words)
+  },
+)
+
+test(
+  'recovery exposes no owner words until a complete log tail is synced',
+  () => {
+    const path = join(
+      folder(),
+      'task.log',
+    )
+    const end = appendLog({
+      path,
+      after: EMPTY,
+      entries: [
+        message({
+          id: 'm_saved',
+          text: 'Owner words',
+        }),
+      ],
+    })
+    const accepted = vi.fn()
+    vi.mocked(fdatasyncSync).mockImplementationOnce(() => {
+      throw new Error('disk sync failed')
+    })
+    expect(() => readLog({
+      path,
+      accept: accepted,
+    })).toThrow('disk sync failed')
+    expect(accepted).not.toHaveBeenCalled()
+    expect(readLog({
+      path,
+      accept: accepted,
+    })).toEqual(end)
+    expect(accepted).toHaveBeenCalledWith({
+      entry: expect.objectContaining({
+        id: 'm_saved',
+        text: 'Owner words',
+      }),
+    })
   },
 )
