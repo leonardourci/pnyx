@@ -15,8 +15,9 @@ import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
 import { cardStatus } from '#tasks/card-status.ts'
 import type { Touched } from './preimage.ts'
 import { summarize } from './hydra-summary.ts'
-import { LIST_LIMIT } from '#store/zero-schema.ts'
 import { updateTasks } from '#tasks/updates.ts'
+
+const LIST_LIMIT = 100
 
 // Bounded serialization keeps a legacy log below V8's single-string ceiling.
 const EVENT_BATCH_SIZE = 500

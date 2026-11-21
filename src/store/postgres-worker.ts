@@ -57,16 +57,14 @@ function adminConfig(): pg.ClientConfig {
   }
 }
 
-// The page's publication as schema.sql creates it, which a migration sets an older database's to.
-const PAGE_PUBLICATION = /create publication pnyx_page for table[^;]*/.exec(SCHEMA)?.[0] ?? ''
 const OBSERVATION_RECEIPTS = /create table observation_receipts \([\s\S]*?\n\);/.exec(SCHEMA)?.[0]
   ?.replace(
     'create table',
     'create table if not exists',
   ) ?? ''
 
-if (!PAGE_PUBLICATION || !OBSERVATION_RECEIPTS) {
-  throw new Error('schema.sql is missing its page publication or observation receipts table')
+if (!OBSERVATION_RECEIPTS) {
+  throw new Error('schema.sql is missing its observation receipts table')
 }
 
 const REMOVE_AUTOMATIC_TASK = `with retired as (
@@ -164,10 +162,7 @@ async function requireSchema({
       await client.query(OBSERVATION_RECEIPTS)
       // The page reads no events, and Hydra's chat reads the actions within the time its page spans.
       await client.query(`create index events_at on events (hydra_id, at);
-        ${PAGE_PUBLICATION.replace(
-          'create publication pnyx_page for table',
-          'alter publication pnyx_page set table',
-        )};
+        drop publication if exists pnyx_page;
         ${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; ${REMOVE_RETIRED_FEATURES}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')
     } catch (error) {
@@ -185,6 +180,7 @@ async function requireSchema({
     8,
     9,
     10,
+    11,
   ].includes(current) && migrate) {
     await client.query('begin')
 
@@ -194,10 +190,7 @@ async function requireSchema({
       await client.query(ADD_HYDRA_REMOVAL)
       await client.query(OBSERVATION_RECEIPTS)
 
-      await client.query(PAGE_PUBLICATION.replace(
-        'create publication pnyx_page for table',
-        'alter publication pnyx_page set table',
-      ))
+      await client.query('drop publication if exists pnyx_page')
 
       await client.query(`${REMOVE_CARD_WIDTHS}; ${REMOVE_AUTOMATIC_TASK}; ${REMOVE_RETIRED_FEATURES}; insert into schema_version (version) values (${SCHEMA_VERSION})`)
       await client.query('commit')

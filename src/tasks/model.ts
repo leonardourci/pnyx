@@ -16,7 +16,7 @@ export const NOTE_KINDS = [
   'context',
 ] as const
 
-export type NoteKind = (typeof NOTE_KINDS)[number]
+type NoteKind = (typeof NOTE_KINDS)[number]
 
 export const SESSION_TITLE = 'Session title: '
 

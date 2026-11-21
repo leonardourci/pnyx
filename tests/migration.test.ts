@@ -687,8 +687,7 @@ test(
         // What schema 5's build left: a page publication without the Hydra's seq.
         await sql({
           database: homeDatabase(),
-          text: `alter publication pnyx_page drop table hydras;
-            alter publication pnyx_page add table hydras (id, config, summary);
+          text: `create publication pnyx_page for table hydras (id, config, summary);
             delete from schema_version;
             insert into schema_version (version) values (5)`,
         })
@@ -715,7 +714,7 @@ test(
     })
 
     expect(rows<{ version: number }>({ text: 'select max(version) as version from schema_version' })[0]!.version).toBe(SCHEMA_VERSION)
-    expect(rows<{ columns: string[] }>({ text: 'select attnames as columns from pg_publication_tables where pubname = \'pnyx_page\' and tablename = \'hydras\'' })[0]!.columns).toContain('seq')
+    expect(rows({ text: 'select pubname from pg_publication where pubname = \'pnyx_page\'' })).toEqual([])
     expect(await Promise.all(hydras.map(hydra => tasks({ hydra })))).toEqual(before)
   },
 )
