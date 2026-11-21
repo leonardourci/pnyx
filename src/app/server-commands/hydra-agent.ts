@@ -11,7 +11,7 @@ import { withWriter } from '#app/writer.ts'
 import type { CommandRequest } from './dispatch.ts'
 
 // `hydra-agent-change <id> inscribe|compact|neither`: settles the message held for a Hydra agent change.
-export function hydraAgentChangeCommand({
+export async function hydraAgentChangeCommand({
   ws,
   id,
   args,
@@ -31,7 +31,7 @@ export function hydraAgentChangeCommand({
     })
   }
 
-  const result = agents.changeAgent({
+  const result = await agents.changeAgent({
     id: args[0]!,
     choice,
   })
@@ -134,7 +134,7 @@ export async function hydraAgentCommand({
       }
     },
   })
-  agents.resendHeldMessages()
+  await agents.resendHeldMessages()
   kick()
 
   // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.

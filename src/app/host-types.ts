@@ -63,9 +63,9 @@ export interface Host {
   }: {
     id: string
     choice: 'inscribe' | 'compact' | 'neither'
-  }): Record<string, unknown>
+  }): Promise<Record<string, unknown>>
   // Cancels an agent change that waits for the owner and sends its held messages again, so they reach the running agent or ask about the agent chosen now.
-  resendHeldMessages(): void
+  resendHeldMessages(): Promise<void>
   stop({
     card,
     cancel }

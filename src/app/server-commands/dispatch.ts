@@ -272,7 +272,7 @@ export function createServerCommands({
             searches: oracleSearches,
           })
         } else if (name === 'hydra-agent-change') {
-          hydraAgentChangeCommand({
+          await hydraAgentChangeCommand({
             ws,
             id,
             args,
