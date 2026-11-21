@@ -144,15 +144,16 @@ test(
       expect(current.cards[retained]).toBe(state.cards[retained])
       expect(resumed.frames.some(frame => frame.type === 'home.snapshot')).toBe(false)
       expect(resumed.read().cursor.seq).toBeGreaterThan(before.cursor.seq)
-      await hydra.owner({
+      const receipt = await resumed.send({
+        name: 'task',
         args: [
-          'task',
           'rename',
           'changed',
           '--title',
           'Live change',
         ],
       })
+      expect(receipt.type).toBe('receipt')
       await until({
         what: 'the same socket to carry the next saved change',
         check: () => resumed.read().home.scopes[hydra.id]?.state.cards[changed]?.title === 'Live change',

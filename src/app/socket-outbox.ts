@@ -10,7 +10,7 @@ interface Frame {
 }
 
 interface InitialActivity {
-  initial: Iterator<Frame>
+  cardFrames: Iterator<Frame>
   scope?: string
 }
 
@@ -24,7 +24,7 @@ function encode({ message }: { message: ServerMessage }): Frame {
   }
 }
 
-function* initialActivity({ message }: { message: Extract<ServerMessage, { type: 'latest' }> }): Generator<Frame> {
+function* initialActivityFrames({ message }: { message: Extract<ServerMessage, { type: 'latest' }> }): Generator<Frame> {
   const ids = new Set([
     ...Object.keys(message.messages),
     ...Object.keys(message.actions),
@@ -104,8 +104,8 @@ export function createSocketOutbox({
       const next = frames[0]!
       let frame: Frame
 
-      if ('initial' in next) {
-        const item = next.initial.next()
+      if ('cardFrames' in next) {
+        const item = next.cardFrames.next()
 
         if (item.done) {
           frames.shift()
@@ -148,7 +148,7 @@ export function createSocketOutbox({
       for (let i = frames.length - 1; i >= 0; i -= 1) {
         const frame = frames[i]!
 
-        if ('initial' in frame || frame.message.type === 'home.delta' || frame.message.type === 'home.snapshot') {
+        if ('cardFrames' in frame || frame.message.type === 'home.delta' || frame.message.type === 'home.snapshot') {
           break
         }
 
@@ -192,7 +192,7 @@ export function createSocketOutbox({
     const frame = encode({ message })
 
     if (initial && message.type === 'latest' && frame.bytes + bytes > limit) {
-      const previous = frames.findIndex(item => 'initial' in item && item.scope === message.scope)
+      const previous = frames.findIndex(item => 'cardFrames' in item && item.scope === message.scope)
 
       if (previous !== -1) {
         frames.splice(
@@ -201,9 +201,8 @@ export function createSocketOutbox({
         )
       }
 
-      // A workspace can exceed the live queue budget; its initial activity drains without retaining encoded frames.
       frames.push({
-        initial: initialActivity({ message }),
+        cardFrames: initialActivityFrames({ message }),
         scope: message.scope,
       })
       scheduleDrain()

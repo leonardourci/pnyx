@@ -178,26 +178,13 @@ export async function startServer({
       before: home,
       after: next,
     })
-    home = next
-
     if (changes) {
-      const {
-        epoch,
-        seq,
-        value,
-      } = homeHistory.append({ value: changes })
+      const frame = homeHistory.append({ value: changes })
+      home = next
+      const message = homeDelta({ frame })
 
       for (const send of homeClients) {
-        send({
-          message: {
-            type: 'home.delta',
-            cursor: {
-              epoch,
-              seq,
-            },
-            changes: value,
-          },
-        })
+        send({ message })
       }
     }
   }
