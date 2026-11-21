@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs'
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { validLogPosition, type LogPosition } from './log.ts'
 import { privateDir, replaceFile } from './storage.ts'
@@ -15,14 +15,19 @@ export interface FileSnapshot {
 }
 
 export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined {
+  const path = join(
+    dir,
+    'snapshot.json',
+  )
   let fd: number
 
   try {
+    if (!lstatSync(path, { throwIfNoEntry: false })?.isFile()) {
+      return undefined
+    }
+
     fd = openSync(
-      join(
-        dir,
-        'snapshot.json',
-      ),
+      path,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {

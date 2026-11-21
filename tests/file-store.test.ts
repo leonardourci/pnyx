@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
@@ -204,7 +204,25 @@ test(
     await closing
     const reopened = store({ home: alias })
     expect(reopened.read({ hydra: 'a' })?.tasks.has('task')).toBe(true)
+    const otherHome = homeFolder()
+    rmSync(alias)
+    symlinkSync(
+      otherHome,
+      alias,
+    )
+    await reopened.createHydra({
+      hydra: 'pinned',
+      facts: [fact({
+        id: 'pinned-config',
+        t: 'config',
+        name: 'Pinned',
+      })],
+    })
     await reopened.close()
+    expect(existsSync(join(
+      otherHome,
+      'hydras',
+    ))).toBe(false)
     rmSync(join(
       dir,
       'hydras/a/snapshot.json',
@@ -218,6 +236,7 @@ test(
     expect(() => store({ home: dir })).toThrow(/injected open failure/)
     const recovered = store({ home: dir })
     expect(recovered.read({ hydra: 'a' })?.tasks.has('task')).toBe(true)
+    expect(recovered.hydras()).toContain('pinned')
     await recovered.close()
   },
 )
@@ -691,7 +710,7 @@ test(
     expect(home.locateTask({ task: 'task' })).toEqual({
       hydra: 'b',
       dir: join(
-        dir,
+        realpathSync(dir),
         'hydras/b/tasks/task',
       ),
     })
@@ -1036,6 +1055,7 @@ test(
       reduceTask: replay,
     })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.worker).toBe(37)
+    expect(home.read({ hydra: 'a' })?.worker).toBe(100)
     expect(replay).not.toHaveBeenCalled()
     expect(hydraReplay).not.toHaveBeenCalled()
     await expect(home.changeHydra({
@@ -1059,6 +1079,7 @@ test(
       'hydras/a/snapshot.json',
     ))
     home = store({ home: dir })
+    expect(home.read({ hydra: 'a' })?.worker).toBe(100)
     await expect(home.changeHydra({
       hydra: 'a',
       decide: () => [olderHydraWorker],
@@ -1143,7 +1164,8 @@ test(
 test(
   'general decisions cannot record a folder move',
   async () => {
-    const home = store({ home: homeFolder() })
+    const dir = homeFolder()
+    const home = store({ home: dir })
     await create({ home })
     await home.createHydra({
       hydra: 'b',
@@ -1185,9 +1207,48 @@ test(
         }),
       ],
     })).rejects.toMatchObject({ code: 'INVALID_EVENT' })
+    let reads = 0
+    await expect(home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        {
+          ...fact({
+            id: 'changing-move',
+            from: 'a',
+            to: 'b',
+          }),
+          get t() {
+            reads += 1
+
+            return reads === 1 ? 'say' : 'moved'
+          },
+        },
+      ],
+    })).rejects.toMatchObject({ code: 'INVALID_EVENT' })
     expect(home.locateTask({ task: 'task' })?.hydra).toBe('a')
     expect(home.locateTask({ task: 'raw-create' })).toBeUndefined()
     await home.close()
+
+    appendFileSync(
+      join(
+        dir,
+        'hydras/a/tasks/task/task.log',
+      ),
+      `${JSON.stringify({
+        n: 2,
+        ...fact({
+          id: 'create-task',
+          t: 'moved',
+          from: 'a',
+          to: 'b',
+        }),
+      })}\n`,
+    )
+    const reopened = store({ home: dir })
+    expect(reopened.locateTask({ task: 'task' })?.hydra).toBe('a')
+    expect(reopened.read({ hydra: 'a' })?.tasks.get('task')?.issue?.code).toBe('LOG_CORRUPT')
+    await reopened.close()
   },
 )
 

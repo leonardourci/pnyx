@@ -1,4 +1,4 @@
-import { lstatSync, realpathSync } from 'node:fs'
+import { lstatSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
 import { createHydraFiles, createTaskFiles, hydraFiles, moveTaskFiles, taskFiles } from './file-home.ts'
@@ -21,6 +21,7 @@ interface Receipt {
 }
 interface View<Hydra, Task> {
   state?: Hydra
+  worker: number
   issue?: HydraError
   tasks: Map<string, {
     state?: Task
@@ -76,14 +77,15 @@ function receiptOf({ accepted }: { accepted: AcceptedFact & { duplicate: boolean
 }
 
 export function openFileStore<Hydra, Task>({
-  home,
+  home: requestedHome,
   reduceHydra,
   reduceTask,
 }: {
   home: string
 } & FileReducers<Hydra, Task>) {
-  const parent = lstatSync(
-    dirname(resolve(home)),
+  const requestedPath = resolve(requestedHome)
+  const parent = statSync(
+    dirname(requestedPath),
     { throwIfNoEntry: false },
   )
 
@@ -94,20 +96,35 @@ export function openFileStore<Hydra, Task>({
     })
   }
 
-  privateDir({
-    dir: home,
-    durable: true,
-  })
-  const identity = realpathSync(home)
+  const existing = lstatSync(
+    requestedPath,
+    { throwIfNoEntry: false },
+  )
 
-  if (openHomes.has(identity)) {
-    throw new HydraError({
-      code: 'STORE_OPEN',
-      message: `native home is already open: ${identity}`,
+  if (!existing) {
+    privateDir({
+      dir: requestedPath,
+      durable: true,
     })
   }
 
-  openHomes.add(identity)
+  const home = realpathSync(requestedPath)
+
+  if (openHomes.has(home)) {
+    throw new HydraError({
+      code: 'STORE_OPEN',
+      message: `native home is already open: ${home}`,
+    })
+  }
+
+  if (!lstatSync(home).isDirectory()) {
+    throw new HydraError({
+      code: 'INVALID_HOME',
+      message: `native home must be a directory: ${home}`,
+    })
+  }
+
+  openHomes.add(home)
   const reducers = {
     reduceHydra,
     reduceTask,
@@ -115,12 +132,13 @@ export function openFileStore<Hydra, Task>({
   let memory: Map<string, HydraMemory<Hydra, Task>>
 
   try {
+    privateDir({ dir: home })
     memory = loadFileMemory({
       home,
       reducers,
     })
   } catch (error) {
-    openHomes.delete(identity)
+    openHomes.delete(home)
     throw error
   }
 
@@ -144,6 +162,7 @@ export function openFileStore<Hydra, Task>({
 
     return {
       state: structuredClone(current.hydra.value),
+      worker: current.hydra.worker,
       issue: current.hydra.issue,
       tasks: new Map([...current.tasks].map(([
         id,
@@ -366,7 +385,7 @@ export function openFileStore<Hydra, Task>({
         }
 
         let dependencyFailure: HydraError | undefined
-        const facts = job.decide({
+        const decision = job.decide({
           state: structuredClone(current?.value),
           read: ({ hydra }) => {
             if (dependencyFailure) {
@@ -391,6 +410,8 @@ export function openFileStore<Hydra, Task>({
         if (dependencyFailure) {
           throw dependencyFailure
         }
+
+        const facts = plainJson({ value: decision })
 
         if (facts.some(fact => fact.t === 'moved')) {
           throw new HydraError({
@@ -772,7 +793,7 @@ export function openFileStore<Hydra, Task>({
           stopping: true,
           run: snapshot,
         }).finally(() => {
-          openHomes.delete(identity)
+          openHomes.delete(home)
         })
       }
 

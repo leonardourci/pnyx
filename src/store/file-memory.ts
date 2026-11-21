@@ -147,7 +147,7 @@ export function applyFileFacts<Value>({
   const appended: LogFact[] = []
   const receipts: (AcceptedFact & { duplicate: boolean })[] = []
 
-  for (const fact of plainJson({ value: facts })) {
+  for (const fact of facts) {
     const prepared = prepareLog({
       path,
       after: next.position,
@@ -403,6 +403,19 @@ export function loadFileMemory<Hydra, Task>({
 
       return true
     },
+    checkMove: ({
+      task,
+      log,
+      path,
+      snapshot,
+    }) => replayFile({
+      log,
+      cached: snapshot ? caches.get(snapshot)?.content.tasks[task] : undefined,
+      worker: snapshot?.tasks[task]?.worker,
+      reduce: reducers.reduceTask,
+      id: task,
+      path,
+    }).issue,
   })
 
   return new Map([...files].map(([

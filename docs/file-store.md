@@ -50,7 +50,7 @@ Repeating an accepted ID with the same contents returns its original receipt wit
 
 An append or sync failure returns `WRITE_FAILED`, with no success receipt. Some complete lines may already be present. The store reloads and syncs those lines before accepting more commands; retrying their native IDs reconciles the uncertain write without duplicating it. If recovery also fails, further commands return `STORE_UNAVAILABLE` until the home can be reopened.
 
-A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery completes a move interrupted before rename and reconciles directory syncs before recovered receipts can succeed. The directory is authoritative after rename. Retrying an older move returns its original receipt even if a later move changed the holder. General decisions cannot append move facts. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Hydra folders.
+A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery validates the task's replay before completing an interrupted rename and reconciles directory syncs before recovered receipts can succeed. The directory is authoritative after rename. Retrying an older move returns its original receipt even if a later move changed the holder. General decisions cannot append move facts. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Hydra folders.
 
 ## Snapshots and recovery
 

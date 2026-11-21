@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { randomUUID } from 'node:crypto'
 import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
@@ -131,16 +132,34 @@ export function replaceFile({
   path: string
   text: string
 }): void {
-  const stage = `${path}.next`
-  writeDurably({
-    path: stage,
-    data: text,
-    flag: 'w',
-  })
-  renameSync(
+  const stage = `${path}.${randomUUID()}.next`
+  const fd = openSync(
     stage,
-    path,
+    'wx',
+    0o600,
   )
+
+  try {
+    try {
+      writeOpenFile({
+        fd,
+        path: stage,
+        data: text,
+      })
+    } finally {
+      closeSync(fd)
+    }
+
+    renameSync(
+      stage,
+      path,
+    )
+  } finally {
+    rmSync(
+      stage,
+      { force: true },
+    )
+  }
   syncDirectory({ dir: dirname(path) })
 }
 

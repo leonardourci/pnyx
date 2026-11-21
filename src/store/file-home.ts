@@ -22,6 +22,22 @@ interface TaskLocation extends HydraLocation {
 }
 
 type SnapshotCheck = ({ snapshot }: { snapshot: FileSnapshot }) => boolean
+type MoveCheck = ({
+  task,
+  log,
+  path,
+  snapshot,
+}: {
+  task: string
+  log: FileLog
+  path: string
+  snapshot?: FileSnapshot
+}) => HydraError | undefined
+
+interface RecoveryChecks {
+  checkSnapshot?: SnapshotCheck
+  checkMove?: MoveCheck
+}
 
 export interface FileLog {
   entries: LogEntry[]
@@ -80,18 +96,40 @@ export const taskFiles = ({
   component({ id: task }),
 )
 
-function requireDirectory({ dir }: { dir: string }): void {
+function requireDirectory({
+  dir,
+  allowMissing = false,
+}: {
+  dir: string
+  allowMissing?: boolean
+}): void {
   const found = lstatSync(
     dir,
     { throwIfNoEntry: false },
   )
 
-  if (!found || !found.isDirectory() || found.isSymbolicLink()) {
+  if (!found && allowMissing) {
+    return
+  }
+
+  if (!found?.isDirectory()) {
     throw new HydraError({
       message: `not a file-store directory: ${dir}`,
       code: 'LOG_CORRUPT',
     })
   }
+}
+
+function privateNativeDirectory({ dir }: { dir: string }): void {
+  requireDirectory({
+    dir,
+    allowMissing: true,
+  })
+
+  privateDir({
+    dir,
+    durable: true,
+  })
 }
 
 function publishFolder({
@@ -120,10 +158,7 @@ function publishFolder({
     })
   }
 
-  privateDir({
-    dir: parent,
-    durable: true,
-  })
+  privateNativeDirectory({ dir: parent })
   const stage = mkdtempSync(join(
     parent,
     `.${id}-`,
@@ -342,10 +377,7 @@ function prepareMove({
     })
   }
 
-  privateDir({
-    dir: dirname(destination),
-    durable: true,
-  })
+  privateNativeDirectory({ dir: dirname(destination) })
 
   if (statSync(source).dev !== statSync(dirname(destination)).dev) {
     throw new HydraError({
@@ -431,7 +463,8 @@ export function readHydraFiles({
   home,
   hydra,
   checkSnapshot,
-}: HydraLocation & { checkSnapshot?: SnapshotCheck }): HydraFiles {
+  checkMove,
+}: HydraLocation & RecoveryChecks): HydraFiles {
   const dir = hydraFiles({
     home,
     hydra,
@@ -452,7 +485,10 @@ export function readHydraFiles({
 
   let directories: Dirent[] = []
 
-  if (existsSync(tasksDir)) {
+  if (lstatSync(
+    tasksDir,
+    { throwIfNoEntry: false },
+  )) {
     requireDirectory({ dir: tasksDir })
     syncDirectory({ dir: tasksDir })
     directories = readdirSync(
@@ -520,6 +556,17 @@ export function readHydraFiles({
 
     if (last?.t === 'moved' && last.from === hydra && typeof last.to === 'string' && last.to !== hydra) {
       try {
+        const issue = checkMove?.({
+          task: entry.name,
+          log: task,
+          path,
+          snapshot,
+        })
+
+        if (issue) {
+          throw issue
+        }
+
         moveFolder(prepareMove({
           home,
           from: hydra,
@@ -586,12 +633,14 @@ function readKnownHydra({
   home,
   hydra,
   checkSnapshot,
-}: HydraLocation & { checkSnapshot?: SnapshotCheck }): HydraFiles {
+  checkMove,
+}: HydraLocation & RecoveryChecks): HydraFiles {
   try {
     return readHydraFiles({
       home,
       hydra,
       checkSnapshot,
+      checkMove,
     })
   } catch (error) {
     if (!(error instanceof HydraError)) {
@@ -614,10 +663,10 @@ function readKnownHydra({
 export function readHomeFiles({
   home,
   checkSnapshot,
+  checkMove,
 }: {
   home: string
-  checkSnapshot?: SnapshotCheck
-}): Map<string, HydraFiles> {
+} & RecoveryChecks): Map<string, HydraFiles> {
   if (existsSync(home)) {
     syncDirectory({ dir: dirname(resolve(home)) })
     syncDirectory({ dir: resolve(home) })
@@ -628,14 +677,19 @@ export function readHomeFiles({
     'hydras',
   )
 
-  if (existsSync(parent)) {
-    syncDirectory({ dir: parent })
+  if (!lstatSync(
+    parent,
+    { throwIfNoEntry: false },
+  )) {
+    return new Map()
   }
 
-  const entries = existsSync(parent) ? readdirSync(
+  requireDirectory({ dir: parent })
+  syncDirectory({ dir: parent })
+  const entries = readdirSync(
     parent,
     { withFileTypes: true },
-  ) : []
+  )
   const ids = entries.filter(entry => entry.isDirectory() && HYDRA_ID.test(entry.name)
     && existsSync(join(
       parent,
@@ -649,6 +703,7 @@ export function readHomeFiles({
       home,
       hydra,
       checkSnapshot,
+      checkMove,
     }),
   ]))
   const relocated = new Set([...hydras.values()].flatMap(hydra => hydra.relocated))
@@ -660,6 +715,7 @@ export function readHomeFiles({
         home,
         hydra,
         checkSnapshot,
+        checkMove,
       }),
     )
   }

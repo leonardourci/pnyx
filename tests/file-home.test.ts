@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
@@ -474,5 +474,34 @@ test(
       old,
       'utf8',
     )).toBe('Old data is not imported or rewritten\n')
+
+    const unexpected = homeFolder()
+    createHydraFiles({
+      home,
+      hydra: 'b',
+      entries: [configured()],
+    })
+    symlinkSync(
+      unexpected,
+      join(
+        home,
+        'hydras/b/tasks',
+      ),
+    )
+    expect(() => moveTaskFiles({
+      home,
+      from: 'a',
+      to: 'b',
+      task: 'healthy',
+      after,
+      at: AT,
+      by: 'owner',
+      id: 'move-through-alias',
+    })).toThrow(/not a file-store directory/)
+    expect(existsSync(join(
+      unexpected,
+      'healthy',
+    ))).toBe(false)
+    expect(readHomeFiles({ home }).get('a')?.tasks.healthy?.position).toEqual(after)
   },
 )

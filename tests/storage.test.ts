@@ -486,14 +486,36 @@ test(
       snapshot,
     })
     expect(readSnapshot({ dir })).toEqual(snapshot)
+    const staged = join(
+      dir,
+      'snapshot.json.next',
+    )
     writeFileSync(
-      join(
-        dir,
-        'snapshot.json.next',
-      ),
+      staged,
       '{unfinished',
     )
     expect(readSnapshot({ dir })).toEqual(snapshot)
+    rmSync(staged)
+    const unrelated = join(
+      dir,
+      'owner-words.txt',
+    )
+    writeFileSync(
+      unrelated,
+      'Owner words',
+    )
+    symlinkSync(
+      unrelated,
+      staged,
+    )
+    writeSnapshot({
+      dir,
+      snapshot,
+    })
+    expect(readFileSync(
+      unrelated,
+      'utf8',
+    )).toBe('Owner words')
     writeFileSync(
       join(
         dir,
