@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join, resolve } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import pg from 'pg'
 import { HydraError } from '#store/errors.ts'
@@ -16,15 +16,11 @@ import { saveSettings, shownSettings } from '#settings/store.ts'
 import type { SetupItem } from './check.ts'
 import { requireSetupHome } from './home.ts'
 
-// zero-cache replicates through logical decoding, which Postgres has since 10; Zero itself needs 15.
 const MIN_VERSION = 150_000
 // server_version_num holds the major version times 10000.
 const MAJOR_FACTOR = 10_000
 const FORMULA = 'postgresql@17'
 const READY_MS = 30_000
-// The most WAL a replication slot keeps for a zero-cache that stopped; past it Postgres invalidates the slot and zero-cache
-// syncs again on its next start.
-const MAX_SLOT_WAL = '4GB'
 const POLL_MS = 500
 // The data check's disposable copy of the database, beside it on the same server.
 const COPY_SUFFIX = '_upgrade_check'
@@ -38,28 +34,24 @@ const STARTING = /the database system is starting up|Connection terminated unexp
 const SIGN_IN_REFUSED = /role ".*" does not exist|password authentication failed|no pg_hba\.conf entry/i
 const SETUP = 'pnyx setup postgres'
 const CHANGE_URL = 'save a corrected URL with `pnyx setup postgres --url <url>`, or clear it with `pnyx setup postgres --url \'\'`, then restart the Pnyx login service (or stop and rerun `pnyx serve`)'
-const MANUAL_START = 'start PostgreSQL 15 or newer with wal_level=logical where PGHOST and PGPORT point, then run `pnyx setup check`'
+const MANUAL_START = 'start PostgreSQL 15 or newer where PGHOST and PGPORT point, then run `pnyx setup check`'
 
 interface Server {
-  wal_level: string
   version: number
 }
 
 function server(): Server | HydraError {
   try {
-    // Both settings always exist, so the one statement returns exactly one row.
     const row = query({
       schema: 'inspect',
       statements: [
         {
-          text: `select current_setting('wal_level') as wal_level,
-            current_setting('server_version_num')::int as version`,
+          text: 'select current_setting(\'server_version_num\')::int as version',
         },
       ],
     })[0]![0]!
 
     return {
-      wal_level: String(row.wal_level),
       version: Number(row.version),
     }
   } catch (error) {
@@ -99,7 +91,7 @@ function unreachableFix({ error }: { error: HydraError }): string {
   }
 
   if (configured) {
-    return `start the Postgres the postgresUrl setting names, with wal_level=logical, or ${CHANGE_URL}`
+    return `start the Postgres the postgresUrl setting names, or ${CHANGE_URL}`
   }
 
   if (refused) {
@@ -130,32 +122,15 @@ function oldVersionFix({ major }: { major: number }): string {
   return `stop Postgres ${major} first, since ${FORMULA} cannot take its port while it runs, then run \`brew install ${FORMULA}\` and \`${SETUP}\``
 }
 
-function walLevelFix(): string {
-  if (configuredUrl() !== undefined) {
-    return 'set wal_level=logical on the Postgres the postgresUrl setting names, then restart it'
-  }
-
-  return onMac() ? SETUP : 'run `alter system set wal_level = logical` on this Postgres, restart it, then run `pnyx setup check`'
-}
-
 function serverIssue({ found }: { found: Server }): SetupItem | undefined {
   if (found.version < MIN_VERSION) {
     const major = Math.floor(found.version / MAJOR_FACTOR)
 
     return {
       name: 'postgres',
-      missing: `Postgres ${major} is older than 15, which Zero needs`,
+      missing: `Postgres ${major} is older than the supported version 15`,
       by: 'owner',
       fix: oldVersionFix({ major }),
-    }
-  }
-
-  if (found.wal_level !== 'logical') {
-    return {
-      name: 'postgres',
-      missing: `wal_level is ${found.wal_level}; zero-cache needs logical`,
-      by: 'owner',
-      fix: walLevelFix(),
     }
   }
 }
@@ -187,7 +162,7 @@ function requireReady({ found }: { found: Server | HydraError }): Server {
   return found
 }
 
-function brewService({ action }: { action: 'start' | 'restart' }): void {
+function brewService({ action }: { action: 'start' }): void {
   const ran = spawnSync(
     'brew',
     [
@@ -214,33 +189,6 @@ function brewService({ action }: { action: 'start' | 'restart' }): void {
   })
 }
 
-// Only Homebrew's own postgresql@17 is changed and restarted; a Postgres.app, Docker or other Homebrew version that
-// answers on the same port is the owner's to configure.
-function requireHomebrewData(): void {
-  const prefix = spawnSync(
-    'brew',
-    ['--prefix'],
-    { encoding: 'utf8' },
-  )
-  const expected = prefix.status === 0 ? join(
-    prefix.stdout.trim(),
-    'var',
-    FORMULA,
-  ) : undefined
-  const actual = String(query({ statements: [{ text: 'select current_setting(\'data_directory\') as dir' }] })[0]![0]!.dir)
-
-  if (expected !== undefined && resolve(actual) === resolve(expected)) {
-    return
-  }
-
-  throw new HydraError({
-    message: `the Postgres answering keeps its data in ${actual}, not in Homebrew's ${FORMULA}, so Pnyx leaves its settings alone`,
-    code: 'POSTGRES_UNAVAILABLE',
-    help: ['Fix: run `alter system set wal_level = logical` on that Postgres, restart it, then run `pnyx setup check`'],
-  })
-}
-
-// Waits for the Postgres Homebrew just started or restarted to accept connections.
 async function started(): Promise<Server | HydraError> {
   const deadline = Date.now() + READY_MS
   let found = server()
@@ -253,10 +201,9 @@ async function started(): Promise<Server | HydraError> {
   return found
 }
 
-const ready = ({ found }: { found: Server }) => ({
+const ready = () => ({
   postgres: 'ready',
   database: targetDatabase(),
-  walLevel: found.wal_level,
   help: ['Run `pnyx setup check` to see what else is missing'],
 })
 
@@ -494,14 +441,14 @@ async function checkData(): Promise<Output> {
 }
 
 // Saves postgresUrl straight into the settings log, without the server, which cannot start while the URL is wrong.
-function saveUrl({
+async function saveUrl({
   url,
   meta,
 }: {
   url: string
   meta: Meta
-}): Output {
-  const saved = saveSettings({
+}): Promise<Output> {
+  const saved = await saveSettings({
     patch: { postgresUrl: url },
     meta,
   })
@@ -513,8 +460,6 @@ function saveUrl({
   }
 }
 
-// Starts the Homebrew Postgres with the logical replication zero-cache needs, and its first query creates this home's
-// database. A Postgres the postgresUrl setting names is only checked: Pnyx does not manage it.
 export async function setupPostgres({
   check,
   allowCustomHome,
@@ -527,7 +472,7 @@ export async function setupPostgres({
   meta: Meta
 }): Promise<Output> {
   if (url !== undefined) {
-    return saveUrl({
+    return await saveUrl({
       url,
       meta,
     })
@@ -538,7 +483,9 @@ export async function setupPostgres({
   }
 
   if (configuredUrl() !== undefined) {
-    return ready({ found: requireReady({ found: server() }) })
+    requireReady({ found: server() })
+
+    return ready()
   }
 
   let found = server()
@@ -555,35 +502,7 @@ export async function setupPostgres({
     found = await started()
   }
 
-  const running = found instanceof HydraError ? undefined : found
-  const needsLogical = running && running.version >= MIN_VERSION && running.wal_level !== 'logical'
+  requireReady({ found })
 
-  if (!needsLogical) {
-    return ready({ found: requireReady({ found }) })
-  }
-
-  requireSetupHome({ allowCustomHome })
-  requireHomebrewData()
-  query({
-    statements: [
-      { text: 'alter system set wal_level = \'logical\'' },
-      // A stopped server's replication slot would otherwise keep every WAL file of the cluster from then on.
-      { text: `alter system set max_slot_wal_keep_size = '${MAX_SLOT_WAL}'` },
-    ],
-  })
-  await closePostgres()
-  brewService({ action: 'restart' })
-  const restarted = await started()
-  // The restart reached another server than the one that took the setting, such as a Postgres not from Homebrew.
-  const stillReplica = !(restarted instanceof HydraError) && restarted.wal_level !== 'logical'
-
-  if (stillReplica) {
-    throw new HydraError({
-      message: `wal_level is still ${restarted.wal_level} after restarting ${FORMULA}`,
-      code: 'POSTGRES_UNAVAILABLE',
-      help: ['Fix: wal_level=logical is set; restart your Postgres to apply it'],
-    })
-  }
-
-  return ready({ found: requireReady({ found: restarted }) })
+  return ready()
 }
