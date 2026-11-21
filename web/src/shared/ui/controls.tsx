@@ -38,6 +38,13 @@ export function NativeInput({ ...props }: ComponentProps<'input'>) {
 
 const lineBreaks = /[\r\n]/g
 
+function singleLine({ text }: { text: string }) {
+  return text.replace(
+    lineBreaks,
+    '',
+  )
+}
+
 export function Input({
   onChange,
   onKeyDown,
@@ -49,46 +56,22 @@ export function Input({
     <Textarea
       {...props}
       aria-multiline={props.role === 'combobox' ? undefined : false}
-      value={typeof value === 'string' ? value.replace(
-        lineBreaks,
-        '',
-      ) : value}
-      defaultValue={typeof defaultValue === 'string' ? defaultValue.replace(
-        lineBreaks,
-        '',
-      ) : defaultValue}
+      value={typeof value === 'string' ? singleLine({ text: value }) : value}
+      defaultValue={typeof defaultValue === 'string' ? singleLine({ text: defaultValue }) : defaultValue}
       onChange={event => {
         const field = event.currentTarget
-        const text = field.value
-        const singleLine = text.replace(
-          lineBreaks,
-          '',
-        )
+        const direction = field.selectionDirection
 
-        if (singleLine !== text) {
-          const start = text.slice(
-            0,
-            field.selectionStart,
-          ).replace(
-            lineBreaks,
+        for (const match of [...field.value.matchAll(lineBreaks)].reverse()) {
+          field.setRangeText(
             '',
-          ).length
-          const end = text.slice(
-            0,
-            field.selectionEnd,
-          ).replace(
-            lineBreaks,
-            '',
-          ).length
-          const direction = field.selectionDirection
-          field.value = singleLine
-          field.setSelectionRange(
-            start,
-            end,
-            direction,
+            match.index,
+            match.index + match[0].length,
+            'preserve',
           )
         }
 
+        field.selectionDirection = direction
         onChange?.(event)
       }}
       className={`min-h-0 [:where(&)]:bg-surface ${props.className ?? ''}`}
