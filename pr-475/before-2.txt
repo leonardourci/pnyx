@@ -1,0 +1,43 @@
+
+ RUN  v5.1.0 <isolated-checkout>
+      Running tests with seed "1795295082062"
+
+ ✓ |browser| tests/browser/chat.test.ts > a refused worker send shows its error on the same bubble and Retry delivers the same id once 1652ms
+ ✓ |browser| tests/browser/chat.test.ts > with Focus mode on, a running tool call is named in neither Hydra's nor a task's working line, and a card's status never names one 817ms
+ ✓ |browser| tests/browser/chat.test.ts > plain task ids, exact titles and card links open live task chips in both chats 995ms
+ ✓ |browser| tests/browser/chat.test.ts > a Hydra sent message stays as one owner row while held and through its answer 860ms
+ ✓ |browser| tests/browser/chat.test.ts > claude sends in either chat interrupt the turn and Stop adds no conversation text 1369ms
+ ✓ |browser| tests/browser/chat.test.ts > a worker sent message stays as one owner row while held and through its answer 953ms
+ ✓ |browser| tests/browser/chat.test.ts > a refused Hydra send shows its error on the same bubble and Retry delivers the same id once 1816ms
+ ✓ |browser| tests/browser/chat.test.ts > codex sends in either chat interrupt the turn and Stop adds no conversation text 1522ms
+ ✓ |browser| tests/browser/chat.test.ts > Hydra's chat and a task's chat open on their latest row, hold still and keep the end in view as rows arrive, in a card as tall as its column 2972ms
+stdout | tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links
+TRACE_DIAG [{"open":false,"summary":"Hydra’s progress · 2 updates","labels":["Checking changes"],"refs":[]},{"open":false,"summary":"Hydra’s progress · 4 updates","labels":["Sending    ⁠ ⁠ ⁠Task labels  ’s worker","Answering the question from    ⁠ ⁠ ⁠Task labels  ","Sending    ⁠ ⁠ ⁠Task labels  ’s worker","Sending    ⁠ ⁠ ⁠Task labels  ’s worker"],"refs":[{"id":"task-7c7ad06e-a8ab-4a98-9d62-a1bfa416c75e","name":"Open task Task labels; Idle"},{"id":"task-7c7ad06e-a8ab-4a98-9d62-a1bfa416c75e","name":"Open task Task labels; Idle"},{"id":"task-7c7ad06e-a8ab-4a98-9d62-a1bfa416c75e","name":"Open task Task labels; Idle"},{"id":"task-7c7ad06e-a8ab-4a98-9d62-a1bfa416c75e","name":"Open task Task labels; Idle"}]}]
+
+ × |browser| tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links 2447ms
+   → expect.poll() function didn't resolve in time.
+ ✓ |browser| tests/browser/chat.test.ts > reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest 5874ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links
+Error: expect.poll() function didn't resolve in time.
+ ❯ tests/browser/chat.test.ts:649:79
+    647|       const labels = traces.locator('.trace-label')
+    648|       try {
+    649|       await expect.poll(() => labels.filter({ hasText: /^Sending/ }).c…
+       |                                                                               ^
+    650|       } catch (error) {
+    651|         console.log('TRACE_DIAG', JSON.stringify(await page.evaluate(h…
+
+Caused by: Error: Matcher did not succeed in time.
+ ❯ tests/browser/chat.test.ts:649:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  18:51:35
+   Duration  23.71s (tests 97%, import 1%, transform 1%, setup 1%)
+

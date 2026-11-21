@@ -1,0 +1,48 @@
+✓ Lockfile passes supply-chain policies (verified 2h ago)
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+Done in 379ms using pnpm v11.9.0
+
+ RUN  v5.1.0 <isolated-checkout>
+      Running tests with seed "1795295082062"
+
+ ✓ |browser| tests/browser/chat.test.ts > a refused worker send shows its error on the same bubble and Retry delivers the same id once 1579ms
+ ✓ |browser| tests/browser/chat.test.ts > with Focus mode on, a running tool call is named in neither Hydra's nor a task's working line, and a card's status never names one 807ms
+ ✓ |browser| tests/browser/chat.test.ts > plain task ids, exact titles and card links open live task chips in both chats 1001ms
+ ✓ |browser| tests/browser/chat.test.ts > a Hydra sent message stays as one owner row while held and through its answer 914ms
+ ✓ |browser| tests/browser/chat.test.ts > claude sends in either chat interrupt the turn and Stop adds no conversation text 1356ms
+ ✓ |browser| tests/browser/chat.test.ts > a worker sent message stays as one owner row while held and through its answer 954ms
+ ✓ |browser| tests/browser/chat.test.ts > a refused Hydra send shows its error on the same bubble and Retry delivers the same id once 1826ms
+ ✓ |browser| tests/browser/chat.test.ts > codex sends in either chat interrupt the turn and Stop adds no conversation text 1483ms
+ ✓ |browser| tests/browser/chat.test.ts > Hydra's chat and a task's chat open on their latest row, hold still and keep the end in view as rows arrive, in a card as tall as its column 2928ms
+stdout | tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links
+TRACE_DIAG [{"open":false,"summary":"Hydra’s progress · 2 updates","labels":["Checking changes"],"refs":[]},{"open":false,"summary":"Hydra’s progress · 4 updates","labels":["Sending    ⁠ ⁠ ⁠Task labels  ’s worker","Answering the question from    ⁠ ⁠ ⁠Task labels  ","Sending    ⁠ ⁠ ⁠Task labels  ’s worker","Sending    ⁠ ⁠ ⁠Task labels  ’s worker"],"refs":[{"id":"task-e8026a92-62b4-4167-a68f-d630e0d1c401","name":"Open task Task labels; Idle"},{"id":"task-e8026a92-62b4-4167-a68f-d630e0d1c401","name":"Open task Task labels; Idle"},{"id":"task-e8026a92-62b4-4167-a68f-d630e0d1c401","name":"Open task Task labels; Idle"},{"id":"task-e8026a92-62b4-4167-a68f-d630e0d1c401","name":"Open task Task labels; Idle"}]}]
+
+ × |browser| tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links 2473ms
+   → expect.poll() function didn't resolve in time.
+ ✓ |browser| tests/browser/chat.test.ts > reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest 5935ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/chat.test.ts > plain send and answer calls and saved legacy calls show their action and live task links
+Error: expect.poll() function didn't resolve in time.
+ ❯ tests/browser/chat.test.ts:649:79
+    647|       const labels = traces.locator('.trace-label')
+    648|       try {
+    649|       await expect.poll(() => labels.filter({ hasText: /^Sending/ }).c…
+       |                                                                               ^
+    650|       } catch (error) {
+    651|         console.log('TRACE_DIAG', JSON.stringify(await page.evaluate(h…
+
+Caused by: Error: Matcher did not succeed in time.
+ ❯ tests/browser/chat.test.ts:649:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  18:48:06
+   Duration  24.04s (tests 96%, transform 2%, import 1%, setup 1%)
+
