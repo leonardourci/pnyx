@@ -12,7 +12,6 @@ export function HydraHead({
   icon = HYDRA_MARK,
   taken,
   editHydra,
-  addProject,
   connected,
   children,
 }: {
@@ -23,7 +22,6 @@ export function HydraHead({
     name,
     icon,
   }: HydraIdentity): void
-  addProject?(): void
   connected: boolean
   children: ReactNode
 }) {
@@ -106,7 +104,6 @@ export function HydraHead({
       {menu && (
         <ContextMenu label={`${hydraTitle({ name })} menu`} at={menu} close={closeMenu}>
           <Button onClick={() => setEditing(true)}>Edit</Button>
-          {addProject && <Button onClick={addProject}>Add project</Button>}
         </ContextMenu>
       )}
     </header>

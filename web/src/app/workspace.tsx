@@ -33,7 +33,7 @@ import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { scrollBehavior } from '#web-shared/ui/smooth-scroll.ts'
-import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
@@ -96,7 +96,7 @@ function HydraDragName({
       data-sort-id={id}
       data-sort-kind="hydra"
       data-sort-scope="hydras"
-      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex max-w-workspace-title min-w-0 flex-none cursor-grab touch-none items-center gap-1.5 font-brand text-workspace font-bold group-data-[collapsed=true]/workspace:writing-vertical [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate`}
+      className={`hydra-drag-name ${sort.isDragging ? 'opacity-0' : ''} flex max-w-workspace-title min-w-0 flex-none cursor-grab touch-none items-center gap-1.5 border-r border-line pr-2.5 font-brand text-workspace font-bold group-data-[collapsed=true]/workspace:border-r-0 group-data-[collapsed=true]/workspace:pr-0 group-data-[collapsed=true]/workspace:writing-vertical [&_.hydra-label]:max-w-workspace-label [&_.hydra-label]:truncate`}
     >{children}
     </div>
   )
@@ -659,8 +659,20 @@ export function HydraView({
 
   const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
-  const createColumn = () => {
-    setPage({ page: 'hydra' }); setProjectRequest(true)
+  const requestProject = () => {
+    if (view.workspace.collapsed || view.workspace.chatCollapsed) {
+      save({
+        patch: {
+          workspace: {
+            collapsed: false,
+            chatCollapsed: false,
+          },
+        },
+      })
+    }
+
+    setPage({ page: 'hydra' })
+    setProjectRequest(true)
   }
 
   const answerTask = ({ card }: { card: Card }) => {
@@ -1100,7 +1112,7 @@ export function HydraView({
                     project: singleRepository ? projectColumn.repositories[0] : undefined,
                   })
                 }}
-                createColumn={createColumn}
+                createColumn={requestProject}
                 hydras={askTargets}
                 send={askHydra}
                 openChat={openChat}
@@ -1126,6 +1138,16 @@ export function HydraView({
           />
         </Panel>
         <header className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:px-0 [&>.button]:flex-none">
+          <IconButton
+            label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
+            onClick={toggleHydra}
+            icon={view.workspace.collapsed ? 'chevron_right' : 'chevron_left'}
+          />
+          <IconButton
+            label={allProjectsFolded ? 'Unfold all projects' : 'Fold all projects'}
+            onClick={toggleAllProjects}
+            icon={allProjectsFolded ? 'unfold_columns' : 'fold_columns'}
+          />
           <HydraDragName id={navigation.hydraId} name={shownHydra?.name ?? 'Hydra'} disabled={!connected}>
             {view.workspace.collapsed && (
               <ProjectCounts
@@ -1147,6 +1169,12 @@ export function HydraView({
             )}
             <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={ICON_SIZE.heading} />
           </HydraDragName>
+          <IconButton
+            label="Add project"
+            icon="plus"
+            disabled={!connected}
+            onClick={requestProject}
+          />
           <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:scrollbar-stable-both group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
             <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
               {columns.map(column => (
@@ -1170,16 +1198,6 @@ export function HydraView({
               ))}
             </SortGroup>
           </nav>
-          <IconButton
-            label={allProjectsFolded ? 'Unfold all projects' : 'Fold all projects'}
-            onClick={toggleAllProjects}
-            icon={allProjectsFolded ? 'unfold_columns' : 'fold_columns'}
-          />
-          <IconButton
-            label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
-            onClick={toggleHydra}
-            icon={view.workspace.collapsed ? 'chevron_right' : 'chevron_left'}
-          />
         </header>
         <FoldContent
           as="main"
@@ -1238,7 +1256,6 @@ export function HydraView({
                         icon,
                       })}
                       storageIdentity={hydra.storageHydra}
-                      addProject={createColumn}
                       projectRequest={projectRequest}
                       projectRequested={() => setProjectRequest(false)}
                       state={state}
@@ -1355,7 +1372,6 @@ export function HydraView({
                               </ProjectColumn>
                             )
                           })}
-                          <div className="add-column w-57.5 flex-none p-2"><Button disabled={!connected} onClick={createColumn}><Icon name="plus" />Project</Button></div>
                         </SortGroup>
                       </div>
                     </div>

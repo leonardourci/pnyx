@@ -15,7 +15,6 @@ import { VIEW_SIZE_LIMITS, traces } from '#preferences/view.ts'
 import { knownCards } from '#tasks/select.ts'
 import type { Command } from '#web-app/connection.ts'
 import { firstTextShown, forgetSend, markSend } from '#web-app/log.ts'
-import { InlineButton } from '#web-shared/ui/controls.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import { InlineQuestions } from '#web-tasks/questions.tsx'
 import { AnsweredQuestions } from '#web-tasks/answered-questions.tsx'
@@ -104,7 +103,6 @@ export function HydraChat({
   queue,
   identity,
   editHydra,
-  addProject,
   projectRequest,
   projectRequested,
   openTask,
@@ -125,7 +123,6 @@ export function HydraChat({
     name,
     icon,
   }: HydraIdentity): void
-  addProject?(): void
   projectRequest?: boolean
   projectRequested?(): void
   action?: CurrentAction
@@ -184,7 +181,6 @@ export function HydraChat({
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
   const config = hydraConfig({ state }), card = state.cards[HYDRA_CARD]
-  const offerProject = !!addProject && !(state.projects ?? []).some(p => !p.detached)
   const { catalog } = useComposerSources()
   const thread = useChatThread({
     card: HYDRA_CARD,
@@ -700,7 +696,6 @@ export function HydraChat({
         icon={identity?.icon}
         taken={identity?.taken ?? []}
         editHydra={editHydra}
-        addProject={addProject}
         connected={connected}
       >
         {down && <span className="hydra-status ml-auto shrink-0 text-red font-normal text-meta font-sans leading-[normal] not-italic tracking-normal" role="status">{down}</span>}
@@ -749,7 +744,6 @@ export function HydraChat({
         {!entries.length && (
           <p className="hydra-empty mt-3 text-muted text-ui">
             What are we working on?
-            {offerProject && <> <InlineButton className="hydra-empty-action text-gold cursor-pointer" onClick={addProject}>Add a project</InlineButton></>}
           </p>
         )}
         {card && <AnsweredQuestions card={card} command={command} notify={notify} />}
