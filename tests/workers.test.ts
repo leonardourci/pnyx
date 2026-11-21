@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { base } from '#app/command-meta.ts'
 import type { HydraState } from '#app/model.ts'
-import { replayOwned } from '#app/reducer.ts'
+import { emptyHydra, replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { applySessionFacts } from '#workers/session-facts.ts'
@@ -174,6 +174,68 @@ test(
     expect(state.sessions?.[current]?.taskId).toBe(task)
     expect(state.sessions?.[session]?.taskId).toBeNull()
     expect(state.undone).toEqual({})
+  },
+)
+
+test(
+  'Hydra delivery remembers the latest finished boundary after a completed turn',
+  () => {
+    const state = emptyHydra()
+    const agent = {
+      provider: 'codex',
+      sessionId: 'hydra',
+      host: 'pnyx',
+    } as const
+
+    for (const activity of [
+      'working',
+      'finished',
+    ]) {
+      replayOwned({
+        state,
+        events: [
+          {
+            ...base({
+              state,
+              cardId: '$sessions',
+              meta: {
+                id: activity,
+                actor: 'pnyx',
+                at: '2026-01-01T00:00:00.000Z',
+              },
+            }),
+            type: 'session.observed',
+            data: {
+              fields: {
+                agent,
+                activity,
+              },
+            },
+          },
+        ],
+      })
+    }
+
+    const finished = state.seq
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: '$hydra',
+            meta: {
+              id: 'next:hosted',
+              actor: 'pnyx',
+              at: '2026-01-01T00:00:01.000Z',
+            },
+          }),
+          type: 'hydra.delivered',
+          data: { session: 'codex:hydra' },
+        },
+      ],
+    })
+    expect(state.sessions?.['codex:hydra']?.hydraTurn?.finishedThrough).toBe(finished)
   },
 )
 
