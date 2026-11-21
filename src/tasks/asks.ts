@@ -895,7 +895,7 @@ export function askCommand({
   if (!explained({ meta: m })) {
     inform({
       reason: 'Question escalated without a reason',
-      clear: 'Use pnyx task escalate <task> <question> --reason "<why>" to record one',
+      clear: 'Record why the question needs an owner decision in the UI.',
     })
   }
 

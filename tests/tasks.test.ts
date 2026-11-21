@@ -3514,6 +3514,11 @@ test(
           clear: expect.stringMatching(/\S/),
         }),
       ]))
+
+      for (const notice of receipt.notices) {
+        expect(notice.clear).not.toMatch(/\bpnyx-axi\b/)
+      }
+
       expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
       const saved = (await hydra.owner({
         args: [

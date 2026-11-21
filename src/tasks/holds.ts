@@ -54,7 +54,7 @@ export function decideHold({
   if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
     inform({
       reason: 'Discussion hold changed by an agent',
-      clear: 'pnyx task release <task> --reason "<why>"',
+      clear: 'Review the discussion hold for this task in the UI.',
       task: card.id,
     })
   }
@@ -65,7 +65,7 @@ export function decideHold({
     inform({
       task: card.id,
       reason: 'No reason supplied; using the caller’s request',
-      clear: `Use pnyx task hold ${card.id} --reason "<why>" to describe the hold`,
+      clear: `Describe the discussion hold for task ${card.id} in the UI.`,
     })
   }
 
@@ -105,7 +105,7 @@ export function decideHold({
     inform({
       task: card.id,
       reason: 'Discussion hold released without an owner go message',
-      clear: `Use pnyx task hold ${card.id} --reason "<why>" to restore it`,
+      clear: `Review whether task ${card.id} should remain held in the UI.`,
     })
   }
 

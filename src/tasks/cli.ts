@@ -25,10 +25,8 @@ import { decideView } from '#preferences/decisions.ts'
 import { columnByRef, validateColumns } from './column-rules.ts'
 import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
-import { answerPrompt } from '#workers/answers.ts'
 import { decideMove } from './columns-decisions.ts'
 import { requestCwd } from '#app/request-context.ts'
-import { workerIdentity } from '#workers/worker-identity.ts'
 
 const INTENT_LIMIT = 4000
 
@@ -898,22 +896,6 @@ export const card = guard({
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
       help.unshift(`Run \`pnyx card ${found.id} --full\` for the brief and every note in full`)
-    }
-
-    // A worker may not run harvest or reply, so it is not pointed at them.
-    const worker = workerIdentity()
-
-    if (!found.notes?.length && !worker) {
-      help.push(`Run \`pnyx harvest --card ${found.id}\` to collect its summaries, decisions and context`)
-    }
-
-    const asking = found.attention.find(request => answerPrompt({
-      card: found,
-      request,
-    }))
-
-    if (asking && !worker) {
-      help.unshift(`Run \`pnyx reply ${found.id} --answer ${asking.key} --json <answer>\` to answer its ${asking.kind} (see \`pnyx reply --help\`)`)
     }
 
     return {
