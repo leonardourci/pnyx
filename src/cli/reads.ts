@@ -1,4 +1,4 @@
-import { parseArgs } from 'node:util'
+import { cliArguments } from './arguments.ts'
 import { commands } from '#app/cli.ts'
 import { workerCommands } from '#workers/workers.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
@@ -79,7 +79,8 @@ export function readCommand({ argv }: { argv: string[] }) {
   const [
     name = '',
     ...args
-  ] = argv
+  ] = cliArguments({ argv }).tokens.flatMap(token => token.kind === 'positional' ? [token.value] : [])
+  const rawArgs = argv.slice(1)
   const paths = Object.hasOwn(
     TRANSITIONAL_READ_PATHS,
     name,
@@ -89,27 +90,14 @@ export function readCommand({ argv }: { argv: string[] }) {
     index,
   ) => args[index] === word))
   const changesTools = name === 'task' && args[0] === 'tools'
-    && args.some(arg => /^--(?:grant|revoke)(?:=|$)/.test(arg))
-  const usage = name === 'hydra' && args[0] === 'usage' && parseArgs({
-    args: args.slice(1),
-    options: {
-      hydra: { type: 'string' },
-      task: { type: 'string' },
-    },
-    allowPositionals: true,
-    strict: false,
-  }).positionals.length === 0
+    && rawArgs.some(arg => /^--(?:grant|revoke)(?:=|$)/.test(arg))
+  const usage = name === 'hydra' && args[0] === 'usage' && args.length === 1
 
   if ((!allowed && !usage) || changesTools) {
     return undefined
   }
 
-  if (name === 'logs' && parseArgs({
-    args,
-    options: { hydra: { type: 'string' } },
-    allowPositionals: true,
-    strict: false,
-  }).positionals.length) {
+  if (name === 'logs' && args.length) {
     return undefined
   }
 

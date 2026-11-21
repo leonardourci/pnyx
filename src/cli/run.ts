@@ -22,7 +22,8 @@ pnyx send --text <message> [--task <id>] [--idempotency-key <key>]
 pnyx answer <task> <question> --text <answer> [--from-message <id>]
 pnyx board
 pnyx serve [--port <n>]
-pnyx setup [check|hooks|skills|postgres] [--preview]
+pnyx setup [check|hooks|skills] [--preview]
+pnyx setup postgres [--check | --url <url>]
 pnyx debug health
 
 Task creation starts its worker. Use --harness, --account, --model, --effort,
@@ -309,6 +310,13 @@ export async function runCli({
     if (remote && (command === 'serve' || command === 'setup')) {
       throw new HydraError({
         message: `${command} must run in the local CLI`,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    if (remote && command === 'send' && parsed.tokens.some(token => token.kind === 'option' && token.name === 'file' && token.value !== '-')) {
+      throw new HydraError({
+        message: 'send file contents through stdin with --file -',
         code: 'VALIDATION_ERROR',
       })
     }
