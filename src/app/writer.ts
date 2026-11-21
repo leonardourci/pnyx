@@ -96,18 +96,18 @@ interface WriterOptions<T> {
   }): T
 }
 
-export function withWriter<T>({ fn }: WriterOptions<T> & { transaction?: undefined }): T
+export function withWriter<T>({ fn }: WriterOptions<T> & { transaction?: undefined }): Promise<T>
 export function withWriter({ fn }: WriterOptions<Output> & {
   transaction: {
     id: string
     digest: string
   }
-}): Output
+}): Promise<Output>
 
 // One command's write: its events and the rows they changed commit in one Postgres transaction, which moves the
 // Hydra's seq only from the value this write started at. The state in memory changes as the events apply; a write
 // that throws or fails to commit reads the Hydra back from its committed rows.
-export function withWriter<T>({
+export async function withWriter<T>({
   hydraId,
   fn,
   create = false,
@@ -115,7 +115,7 @@ export function withWriter<T>({
   also = [],
   transaction,
   migrate = true,
-}: WriterOptions<T>): T | Output {
+}: WriterOptions<T>): Promise<T | Output> {
   if (!create) {
     requireHydra({ hydraId })
   }

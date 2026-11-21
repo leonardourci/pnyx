@@ -113,7 +113,7 @@ export const approval = guard({
     const confirming = action === 'confirm' && asked?.kind === 'command'
       ? JSON.parse(asked.value) as Target : undefined
     const dispatch = confirming ? dispatchFor({ target: confirming }) : undefined
-    const selected = withWriter({
+    const selected = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const proposal = writer.state.dispatchProposals?.find(p => p.token === token)
@@ -270,7 +270,7 @@ export const approval = guard({
       output = JSON.stringify(result)
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
-      withWriter({
+      await withWriter({
         hydraId,
         fn: ({ writer }) => {
           const decision = hydraEvent({
@@ -296,7 +296,7 @@ export const approval = guard({
       throw error
     }
 
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const decision = hydraEvent({
@@ -326,7 +326,7 @@ export const approval = guard({
   },
 })
 
-export function recoverOwnerCommands({ hydraId }: { hydraId: string }): void {
+export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Promise<void> {
   const { state } = loadHydra({ hydraId })
   const interrupted = state.dispatchProposals?.filter(proposal =>
     proposal.kind === 'command' && proposal.status === 'applying') ?? []
@@ -335,7 +335,7 @@ export function recoverOwnerCommands({ hydraId }: { hydraId: string }): void {
     return
   }
 
-  withWriter({
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       for (const proposal of interrupted) {

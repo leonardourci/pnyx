@@ -118,7 +118,7 @@ async function hostRequestUnlocked({
       })
 
     case 'upgrade':
-      return host.upgrade({
+      return await host.upgrade({
         id: field({
           body,
           name: 'id',
@@ -355,7 +355,7 @@ async function hostRequestUnlocked({
         })
       }
 
-      return host.permission({
+      return await host.permission({
         task: field({
           body,
           name: 'task',
@@ -380,7 +380,7 @@ async function hostRequestUnlocked({
       })
     }
     case 'continue':
-      return host.continue({
+      return await host.continue({
         task: field({
           body,
           name: 'task',
@@ -413,7 +413,7 @@ async function hostRequestUnlocked({
         })!
       }
 
-      const result = host.send({
+      const result = await host.send({
         inputId: field({
           body,
           name: 'inputId',
