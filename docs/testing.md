@@ -87,7 +87,8 @@ Rules:
 
 ## What each file covers
 
-- `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the home socket never carries private steering or the database URL.
+- `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files.
+- `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity, and exclusion of private steering and the database URL.
 - `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.

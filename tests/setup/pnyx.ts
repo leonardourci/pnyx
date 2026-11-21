@@ -242,7 +242,10 @@ export async function startPnyx({
       restart,
     })
     port = server.port
-    homePage = await openHomePage({ port })
+    homePage = await openHomePage({
+      port,
+      recordFrames: false,
+    })
   }
 
   const stop = async () => {

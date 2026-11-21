@@ -8,9 +8,11 @@ export async function openHomePage({
   port,
   hydraId,
   previous,
+  recordFrames = true,
 }: {
   port: number
   hydraId?: string
+  recordFrames?: boolean
   previous?: {
     home: HomePage
     cursor: SocketCursor
@@ -29,7 +31,6 @@ export async function openHomePage({
       if (message.type === 'home.snapshot') {
         home = message.home
         cursor = message.cursor
-        frames.push(message)
       } else if (message.type === 'home.delta') {
         const follows = cursor?.epoch === message.cursor.epoch
           && cursor.seq + 1 === message.cursor.seq
@@ -43,13 +44,17 @@ export async function openHomePage({
           changes: message.changes,
         })
         cursor = message.cursor
-        frames.push(message)
       } else if (message.type === 'home.ready') {
         if (!home || cursor?.seq !== message.cursor.seq || cursor.epoch !== message.cursor.epoch) {
           throw new Error('The home socket became ready before its state')
         }
 
         ready = true
+      }
+
+      const homeFrame = message.type === 'home.snapshot' || message.type === 'home.delta' || message.type === 'home.ready'
+
+      if (recordFrames && homeFrame) {
         frames.push(message)
       }
     },
