@@ -5,7 +5,7 @@ import { join, basename } from 'node:path'
 import { parse, meta, WRITE, required } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { withWriter } from '#app/writer.ts'
-import { withRegistryLock } from '#store/storage.ts'
+import { withAsyncRegistryLock } from '#store/storage.ts'
 import { HydraError } from '#store/errors.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import type { HydraProject } from './model.ts'
@@ -55,7 +55,7 @@ export function attachProjectGroup({
   landing?: HydraProject['landing']
   merge?: HydraProject['merge']
 }) {
-  return withRegistryLock({
+  return withAsyncRegistryLock({
     fn: async () => await withWriter({
       hydraId,
       fn: ({ writer }) => {
