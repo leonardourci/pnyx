@@ -56,7 +56,7 @@ export function attachProjectGroup({
   merge?: HydraProject['merge']
 }) {
   return withRegistryLock({
-    fn: () => withWriter({
+    fn: async () => await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const state = writer.state

@@ -157,7 +157,7 @@ export async function keepProject({
     }
   }
 
-  return withWriter({
+  return await withWriter({
     hydraId,
     also: ids,
     fn: ({
