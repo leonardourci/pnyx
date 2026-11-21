@@ -1,9 +1,8 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { decode } from '@toon-format/toon'
 import { git } from '#projects/git.ts'
 import { githubRepository } from './proof.ts'
-import { runProcess } from '#app/run-process.ts'
+import { githubApi } from '#integrations/github/pull-request.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -13,7 +12,6 @@ import { workingTask, IDLE_FOLLOW_MULTIPLIER } from './follow-schedule.ts'
 import type { HydraState } from '#app/model.ts'
 import { log } from '#app/diagnostics.ts'
 
-const DISCOVERY_TIMEOUT_MS = 30_000
 const DISCOVERY_LIMIT = 100
 
 function discoveryFolder({ card }: { card: import('#tasks/model.ts').Card }): string | undefined {
@@ -179,57 +177,34 @@ export async function discoverPullRequests({
         return
       }
 
-      const result = await runProcess({
-        command: process.env.PNYX_GH_AXI || 'gh-axi',
-        args: [
-          'pr',
-          'list',
-          '--repo',
-          repository,
-          '--head',
-          branch,
-          '--state',
-          'all',
-          '--fields',
-          'url',
-          '--limit',
-          String(DISCOVERY_LIMIT),
-        ],
-        timeout: DISCOVERY_TIMEOUT_MS,
-      })
-
-      if (!active()) {
-        return
-      }
-
-      if (result.status !== 0) {
-        log({
-          level: 'warn',
-          operation: 'follow.discover',
-          hydraId,
-          taskId: card.id,
-          error: result.stderr || result.stdout,
-        })
-        continue
-      }
-
       let requests: ReturnType<typeof parseLink>[]
 
       try {
-        const output = decode(result.stdout)
+        const output = await githubApi({
+          args: [
+            '--method',
+            'GET',
+            `/repos/${repository}/pulls`,
+            '-f',
+            `head=${repository.split('/')[0]}:${branch}`,
+            '-f',
+            'state=all',
+            '-f',
+            `per_page=${DISCOVERY_LIMIT}`,
+          ],
+        })
 
-        if (!output || typeof output !== 'object' || !('pull_requests' in output)
-          || !Array.isArray(output.pull_requests)) {
+        if (!Array.isArray(output)) {
           throw new Error('Expected a pull request list')
         }
 
-        requests = output.pull_requests.map(request => {
-          if (!request || typeof request !== 'object' || !('url' in request)
-            || typeof request.url !== 'string') {
+        requests = output.map(request => {
+          if (!request || typeof request !== 'object' || !('html_url' in request)
+            || typeof request.html_url !== 'string') {
             throw new Error('Expected a pull request URL')
           }
 
-          const link = parseLink({ input: { url: request.url } })
+          const link = parseLink({ input: { url: request.html_url } })
 
           if (link.kind !== 'github_pr') {
             throw new Error('Expected a GitHub pull request URL')
@@ -246,6 +221,10 @@ export async function discoverPullRequests({
           error,
         })
         continue
+      }
+
+      if (!active()) {
+        return
       }
 
       for (const request of requests) {
