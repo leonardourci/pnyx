@@ -605,7 +605,8 @@ test(
       const traces = progress.locator('[data-progress-kind="tool"]')
       const labels = traces.locator('.trace-label')
       await expect.poll(() => labels.filter({ hasText: /^Sending/ }).count()).toBe(3)
-      await expect.poll(() => labels.filter({ hasText: /’s worker$/ }).count()).toBe(1)
+      await expect.poll(() => traces.filter({ hasText: 'message.txt' }).locator('.trace-label')
+        .textContent()).toMatch(/’s worker$/)
       await expect.poll(() => labels.filter({ hasText: /^Answering the question from/ }).count()).toBe(1)
       await expect.poll(() => traces.getByRole(
         'button',
