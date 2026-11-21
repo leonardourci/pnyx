@@ -148,6 +148,7 @@ async function backToSchema1({
       '--disable-triggers',
       '--exclude-table=schema_version',
       '--exclude-table=source_observations',
+      '--exclude-table=observation_receipts',
       home,
     ],
     {
