@@ -45,6 +45,21 @@ function singleLine({ text }: { text: string }) {
   )
 }
 
+function normalizeField({ field }: { field: HTMLTextAreaElement }) {
+  const original = field.value
+  const normalized = singleLine({ text: original })
+
+  if (normalized === original) {
+    return
+  }
+
+  const start = singleLine({ text: original.slice(0, field.selectionStart) }).length
+  const end = singleLine({ text: original.slice(0, field.selectionEnd) }).length
+  const direction = field.selectionDirection
+  field.value = normalized
+  field.setSelectionRange(start, end, direction)
+}
+
 function pasteSingleLine({ event }: { event: ClipboardEvent<HTMLTextAreaElement> }) {
   const pasted = event.clipboardData.getData('text/plain')
   const text = singleLine({ text: pasted })
@@ -115,24 +130,7 @@ export function Input({
         }
       }}
       onChange={event => {
-        const field = event.currentTarget
-        const breaks = [...field.value.matchAll(lineBreaks)]
-
-        if (breaks.length) {
-          const direction = field.selectionDirection
-
-          for (const match of breaks.reverse()) {
-            field.setRangeText(
-              '',
-              match.index,
-              match.index + match[0].length,
-              'preserve',
-            )
-          }
-
-          field.selectionDirection = direction
-        }
-
+        normalizeField({ field: event.currentTarget })
         onChange?.(event)
       }}
       className={`min-h-0 [:where(&)]:bg-surface ${props.className ?? ''}`}

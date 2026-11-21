@@ -1245,7 +1245,7 @@ test(
       const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]');
       return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
     });
-    await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
+    await page.eval(() => [...document.querySelectorAll('[data-hydra-workspace="${hydra.id}"] .task-create button')].find(button => button.textContent === 'Save task').click());
     await page.wait('[data-hydra-workspace="${hydra.id}"]:not(:has(.task-create)) .card-open');
     const card = await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');

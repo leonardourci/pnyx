@@ -2,7 +2,7 @@ import { ReceiptStatus } from '#web-shared/ui/receipt-status.tsx'
 import { QuestionFields, QuestionOptions, QuestionHeading, QuestionPanel } from '#web-shared/ui/question-panel.tsx'
 import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
-import { useState } from 'react'
+import { useState, type ChangeEvent } from 'react'
 import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '#workers/answers.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Attention, FormField, Question } from '#workers/model.ts'
@@ -77,7 +77,7 @@ function QuestionField({
           aria-label={`Other answer to question ${index + 1}`}
           placeholder="Or type your own answer"
           value={draft.text}
-          onChange={({ target }) => {
+          onChange={({ target }: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
             const text = target.value
             change({
               next: {
@@ -217,7 +217,7 @@ function FormInput({
         placeholder={name}
         inputMode={field.type === 'string' ? undefined : 'decimal'}
         value={typeof value === 'string' ? value : ''}
-        onChange={({ target }) => change({ value: target.value })}
+        onChange={({ target }: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => change({ value: target.value })}
       />
     </div>
   )
