@@ -8,7 +8,7 @@ export const LINK_KINDS = [
   'url',
 ] as const
 
-export type LinkKind = (typeof LINK_KINDS)[number]
+type LinkKind = (typeof LINK_KINDS)[number]
 
 export const LINK_STATES = [
   'open',
