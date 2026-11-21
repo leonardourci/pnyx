@@ -198,7 +198,8 @@ export function decidePush({
     }
   }
 
-  const editsTask = card && !source && TASK_EDIT_FIELDS.some(field => field in fields)
+  const hasTaskEdits = TASK_EDIT_FIELDS.some(field => field in fields)
+  const editsTask = card && !source && hasTaskEdits
 
   if (sessionSource && agent && !editsTask) {
     return decideSessionFacts({
@@ -247,7 +248,7 @@ export function decidePush({
     ) as PushFields
   }
 
-  const edited = !source && (!card || TASK_EDIT_FIELDS.some(field => field in fields))
+  const edited = !source && (!card || hasTaskEdits)
 
   return decided({
     state,
