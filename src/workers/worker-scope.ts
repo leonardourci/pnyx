@@ -110,7 +110,7 @@ function requireOwnTask({
   if (!ref) {
     inform({
       reason: `${what} has no worker task target`,
-      clear: `Use pnyx ${what} --help for its target syntax`,
+      clear: 'Use pnyx task list to find the task ID.',
     })
 
     return
@@ -178,7 +178,7 @@ function checkWorkerScope({
   }))) {
     inform({
       reason: `${command} is outside the worker’s default commands`,
-      clear: `Use pnyx ${command} --help to inspect the action`,
+      clear: 'Use pnyx --help for supported actions and the task UI for management.',
     })
 
     return
@@ -187,7 +187,7 @@ function checkWorkerScope({
   if (name === 'hydra' && values.action !== undefined) {
     inform({
       reason: 'Worker requested a Hydra action',
-      clear: 'Use pnyx hydra send --task <task> --kind progress --text "<progress>" for a progress report',
+      clear: 'Append a note line to the assigned worker.log for a progress report.',
     })
   }
 

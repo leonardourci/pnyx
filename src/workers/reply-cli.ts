@@ -61,7 +61,6 @@ export const reply = guard({
         throw new HydraError({
           message: '--answer takes --json with the answer, not --text or --file',
           code: 'VALIDATION_ERROR',
-          help: ['Run `pnyx reply --help`'],
         })
       }
 
@@ -84,13 +83,11 @@ export const reply = guard({
       throw new HydraError({
         message: '--json and --seen go with --answer',
         code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx reply --help`'],
       })
     } else if ((values.text === undefined) === (file === undefined)) {
       throw new HydraError({
         message: 'give either --text or --file',
         code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx reply --help`'],
       })
     }
 

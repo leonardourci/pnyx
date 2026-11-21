@@ -31,7 +31,7 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
   if (card.copy?.state === 'active') {
     return {
       reason: `${card.id} has an active copy of its own`,
-      clear: `Run \`pnyx task copy ${card.id} remove --safe\` once its work has landed`,
+      clear: `Review the copy of task ${card.id} in the UI once its work has landed.`,
     }
   }
 
@@ -61,7 +61,7 @@ function visibleTask({
     inform({
       task: card.id,
       reason: 'Queue changed for a hidden task',
-      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
+      clear: `Review the visibility of task ${card.id} in the UI.`,
     })
   }
 
@@ -106,7 +106,7 @@ export function queueGap({
   if (anchor?.id === card.id) {
     return {
       reason: 'a task cannot queue behind itself',
-      clear: `Run \`pnyx task start ${card.id}\` to give it a worker`,
+      clear: `Send a message to task ${card.id} from the UI to start its worker.`,
     }
   }
 
@@ -123,7 +123,7 @@ export function queueGap({
   if (!current) {
     return {
       reason: `${behind} has no live task worker to queue behind`,
-      clear: `Run \`pnyx task sessions\` for live workers, or start this task with \`pnyx task start ${card.id}\``,
+      clear: 'Read `pnyx task sessions` for live workers, or send this task a message from the UI.',
     }
   }
 
@@ -140,7 +140,7 @@ export function queueGap({
   })) {
     return {
       reason: `queued tasks use the worker’s project: ${card.id} is in ${card.project ?? 'Ideas'}, ${current.id} in ${current.project}`,
-      clear: `Run \`pnyx task project ${card.id} --project <project>\` to match the worker’s project`,
+      clear: `Review the project of task ${card.id} in the UI.`,
     }
   }
 
@@ -171,7 +171,7 @@ export function queueRequestGap({
   if (reorder && !card.queue) {
     return {
       reason: `${card.id} is not queued`,
-      clear: `Run \`pnyx task queue ${card.id} --behind <task|session>\` to queue it`,
+      clear: `Review the queue for task ${card.id} in the UI.`,
     }
   }
 

@@ -38,7 +38,7 @@ export function inboxTask({
     inform({
       task: card.id,
       reason: 'Steering accessed on a hidden task',
-      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
+      clear: `Review the visibility of task ${card.id} in the UI.`,
     })
   }
 

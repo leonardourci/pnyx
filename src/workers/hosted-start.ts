@@ -102,7 +102,7 @@ export function createWorkerStarts({
       inform({
         task: card.id,
         reason: 'Outside session continued on a hidden task',
-        clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
+        clear: `Review the visibility of task ${card.id} in the UI.`,
       })
     }
 

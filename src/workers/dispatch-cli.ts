@@ -307,7 +307,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
       revision,
       document,
       issues: dispatchIssues({ document }).map(found => `${found.level} ${found.path}: ${found.problem}`),
-      help: ['Change it with `pnyx rule apply --file <patch.json> --check`, then without --check'],
+      help: ['Edit dispatch rules in Settings'],
     }
   }
 
@@ -365,7 +365,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   if (action === 'init') {
     return {
       ...initConfig({ meta: meta({ values }) }),
-      help: ['Fix login folders and remove accounts you do not use with `pnyx rule apply` before starting workers; Pnyx stores no credentials'],
+      help: ['Fix login folders and remove unused accounts in Settings before starting workers; Pnyx stores no credentials'],
     }
   }
 

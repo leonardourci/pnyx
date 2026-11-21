@@ -140,7 +140,7 @@ function requireCardInputTarget({ card }: { card: Card }) {
     inform({
       task: card.id,
       reason: 'Message sent to a hidden task',
-      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
+      clear: `Review the visibility of task ${card.id} in the UI.`,
     })
   }
 
@@ -148,7 +148,7 @@ function requireCardInputTarget({ card }: { card: Card }) {
     inform({
       task: card.id,
       reason: 'Message sent while the task remains queued',
-      clear: `Use pnyx task unqueue ${card.id} to release its queue`,
+      clear: `Review the queue for task ${card.id} in the UI.`,
     })
   }
 

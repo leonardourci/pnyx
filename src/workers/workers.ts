@@ -434,8 +434,8 @@ export async function hydraCheck({
     help: [
       ...directWordsHelp,
       ...typedHelp,
-      ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a worker's question with \`pnyx task answer <task> <question> --choice <n> | --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`, or hand an owner decision on with \`task escalate\`; questions to the owner wait for the owner`] : []),
-      ...(requests.length ? [`Answer a worker's request with \`pnyx task permission <task> <id> allow|deny --actor hydra --reason "<why>" --hydra ${hydraId}\`; requests on $hydra wait for the owner`] : []),
+      ...(asks.some(ask => ask.to === 'hydra') ? [`Answer a saved worker question with \`pnyx answer <task> <question> --text "<answer>" --actor hydra --reason "<why>" --hydra ${hydraId}\`; questions to the owner wait for the owner`] : []),
+      ...(requests.length ? ['Review native permission requests in the task UI; requests on $hydra wait for the owner'] : []),
       ...paginationHelp,
     ],
   }

@@ -68,7 +68,7 @@ function agentSummary({
   return {
     agent,
     controls,
-    help: ready ? [`Run \`pnyx agent ${card.id} ${ready.setting} ${ready.options.split(' ')[0]}\` to change it`] : ['No setting can be changed on this route'],
+    help: ready ? ['Change the worker setting in the task UI'] : ['No setting can be changed on this route'],
   }
 }
 
@@ -117,7 +117,7 @@ export const agent = guard({
         throw new HydraError({
           message: 'give a setting and a value',
           code: 'VALIDATION_ERROR',
-          help: [`Run \`pnyx agent ${ref}\` to list them`],
+          help: ['Read the worker settings in the task UI'],
         })
       }
 
@@ -148,7 +148,7 @@ export const agent = guard({
       throw new HydraError({
         message: `card ${card.id} offers no ${setting} ${value}`,
         code: 'VALIDATION_ERROR',
-        help: [`Run \`pnyx agent ${card.id}\` to list its settings and values`],
+        help: ['Read the worker settings and values in the task UI'],
       })
     }
 

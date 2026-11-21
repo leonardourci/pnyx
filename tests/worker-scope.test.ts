@@ -128,6 +128,10 @@ test(
           clear: expect.stringMatching(/\S/),
         }),
       ]))
+
+      for (const notice of output.notices) {
+        expect(notice.clear).not.toMatch(/\bpnyx-axi\b/)
+      }
     }
 
     const retryArgs = [
