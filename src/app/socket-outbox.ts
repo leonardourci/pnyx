@@ -142,7 +142,7 @@ export function createSocketOutbox({
       return false
     }
 
-    if (message.type === 'latest') {
+    if (message.type === 'latest' && !snapshot) {
       let previous: Frame | undefined
 
       for (let i = frames.length - 1; i >= 0; i -= 1) {

@@ -366,12 +366,22 @@ test(
         },
       },
     })).toBe(true)
+    const earlierActivity: ServerMessage = {
+      type: 'latest',
+      scope: 'one',
+      messages: {hidden: null},
+      actions: {},
+    }
+    expect(socket.send({ message: earlierActivity })).toBe(true)
     expect(socket.send({
       snapshot: true,
       message: current,
     })).toBe(true)
     socket.drain()
-    expect(socket.sent).toEqual([current])
+    expect(socket.sent).toEqual([
+      earlierActivity,
+      current,
+    ])
     socket.close()
   },
 )
