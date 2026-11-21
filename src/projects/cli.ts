@@ -196,7 +196,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       })
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -271,7 +271,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     current.eventIds,
     m.id,
   )) {
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -360,7 +360,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   const result = withRegistryLock({
-    fn: () => commit({
+    fn: async () => await commit({
       hydraId,
       meta: m,
       intent: {

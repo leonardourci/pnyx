@@ -83,7 +83,7 @@ async function recordRefresh({
         }),
       })
     },
-    complete: ({ result }) => withWriter({
+    complete: async ({ result }) => await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const latest = writer.state.cards[cardId]

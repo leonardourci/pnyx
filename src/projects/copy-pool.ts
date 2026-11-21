@@ -209,14 +209,14 @@ function claimIsStale({ file }: { file: string }): boolean {
 
 // Claim creation and dead-owner recovery run inside one synchronous write, which the server, the only writer, never
 // interleaves with another; Git work stays outside it.
-function claim({
+async function claim({
   hydraId,
   path,
 }: {
   hydraId: string
   path: string
-}): boolean {
-  return withWriter({
+}): Promise<boolean> {
+  return await withWriter({
     hydraId,
     fn: () => {
       let fd: number
@@ -265,7 +265,7 @@ export const unclaim = ({ path }: { path: string }) => rmSync(
 )
 
 // Claiming first means the idle check sees every record a competing start wrote before letting go.
-export function take({
+export async function take({
   hydraId,
   card,
   path,
@@ -273,8 +273,8 @@ export function take({
   hydraId: string
   card?: Card
   path: string
-}): boolean {
-  if (!claim({
+}): Promise<boolean> {
+  if (!await claim({
     hydraId,
     path,
   })) {
@@ -294,20 +294,20 @@ export function take({
   return false
 }
 
-export function freshSlot({
+export async function freshSlot({
   hydraId,
   project,
 }: {
   hydraId: string
   project: HydraProject
-}): string {
+}): Promise<string> {
   for (let n = 1; ; n++) {
     const path = join(
       copiesDir({ hydraId }),
       `${project.name}-${n}`,
     )
 
-    if (!existsSync(path) && claim({
+    if (!existsSync(path) && await claim({
       hydraId,
       path,
     })) {
@@ -383,7 +383,7 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
       hydraId,
       project,
     })) {
-      if (!take({
+      if (!await take({
         hydraId,
         path,
       })) {
