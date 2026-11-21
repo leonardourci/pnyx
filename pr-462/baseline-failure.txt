@@ -1,0 +1,44 @@
+
+ RUN  v5.1.0 [isolated checkout]
+      Running tests with seed "1795232064706"
+
+ ❯ |browser| tests/browser/cards.test.ts (11 tests | 1 failed | 10 skipped) 10034ms
+   × saving a task leaves its card closed in its column 9656ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > saving a task leaves its card closed in its column
+AssertionError: expected { titleHeight: 37, …(6) } to match object { titleFits: true, …(5) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "askGrows": true,
++   "askGrows": false,
+    "chatBounded": true,
+    "multiLine": true,
+    "singleLine": true,
+-   "titleFits": true,
+-   "titleGrows": true,
++   "titleFits": false,
++   "titleGrows": false,
+  }
+
+ ❯ tests/browser/cards.test.ts:1244:32
+    1242|   `,
+    1243|     })
+    1244|     expect(JSON.parse(fields)).toMatchObject({ titleFits: true, titleG…
+       |                                ^
+    1245|     expect(JSON.parse(result)).toEqual({
+    1246|       expanded: 'false',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 skipped (11)
+   Start at  00:34:24
+   Duration  12.15s (tests 91%, transform 3%, import 3%, setup 2%)
+

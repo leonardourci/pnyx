@@ -1,0 +1,4 @@
+$ pnpm run typecheck && eslint . && pnpm run lint:css
+$ tsc --noEmit && tsc --noEmit -p web
+$ biome lint . --error-on-warnings
+Checked 2 files in 26ms. No fixes applied.

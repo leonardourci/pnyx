@@ -1,0 +1,1 @@
+$ knip --tsConfig tsconfig.build.json

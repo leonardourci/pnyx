@@ -1,0 +1,10 @@
+
+ RUN  v5.1.0 [isolated checkout]
+      Running tests with seed "1795234270558"
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 10 skipped (11)
+   Start at  01:11:10
+   Duration  12.56s (tests 94%, import 3%, transform 2%, setup 2%)
+
