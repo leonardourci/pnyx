@@ -20,8 +20,6 @@ export const commands = {
 
 export { MAX_BODY } from './server-protocol.ts'
 
-export const STOP_TIMEOUT_MS = 5000
-
 export { CLI_COMMANDS } from './command-registry.ts'
 
 export const WEB_ROOT = join(
