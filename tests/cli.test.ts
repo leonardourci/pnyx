@@ -160,6 +160,23 @@ describe(
             '--json',
           ],
         })).hydraId).toBe(hydra.id)
+
+        const historyArgs = [
+          'history',
+          '--limit',
+          '1',
+          '--json',
+        ]
+        const latest = parsed(await run({ args: historyArgs }))
+        expect(latest.next).toBe(latest.events[0].seq)
+        const older = parsed(await run({
+          args: [
+            ...historyArgs,
+            '--before',
+            String(latest.next),
+          ],
+        }))
+        expect(older.events[0].seq).toBeLessThan(latest.next)
       },
     )
 
@@ -283,6 +300,11 @@ describe(
           ],
           ['report'],
           ['toString'],
+          [
+            'hydra',
+            'usage',
+            'refresh',
+          ],
           [
             'send',
             '--task=',

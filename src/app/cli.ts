@@ -168,6 +168,8 @@ const history = guard({
     }
 
     if (matches > limit) {
+      const next = page.at(-1)!.seq
+      out.next = next
       const flags = [
         'card',
         'kind',
@@ -183,7 +185,7 @@ const history = guard({
           ...flags,
           ...values.updates ? ['--updates'] : [],
           '--before',
-          String(page.at(-1)!.seq),
+          String(next),
         ].join(' ')}\` for older events`,
       ]
     }
