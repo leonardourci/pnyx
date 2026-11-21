@@ -229,7 +229,7 @@ export function createDiagnosticRecovery({
                 action: 'send',
                 hydra: writer.state.config?.hydra.id ?? 'hydra',
                 task,
-                text: '- Automatic message recovery stopped. Inspect `pnyx-axi debug health` for delivery, ownership and persistence details before acting.',
+                text: '- Automatic message recovery stopped. Inspect `pnyx debug health` for delivery, ownership and persistence details before acting.',
               },
             },
           })

@@ -33,7 +33,7 @@ export function findCard({
     throw new HydraError({
       message: `card not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi` to list cards'],
+      help: ['Run `pnyx` to list cards'],
     })
   }
 
@@ -66,7 +66,7 @@ export function checkRevision({
     throw new HydraError({
       message: `card ${card?.id ?? '(new)'} is at revision ${revision}, not ${ifRevision}`,
       code: 'REVISION_CONFLICT',
-      help: [card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card'],
+      help: [card ? `Run \`pnyx card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card'],
     })
   }
 }

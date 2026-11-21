@@ -614,7 +614,7 @@ test(
       launch: 'started',
       queued: expect.stringContaining('is in Ideas'),
     })
-    expect(behind.help.join('\n')).toContain('pnyx-axi task sessions')
+    expect(behind.help.join('\n')).toContain('pnyx task sessions')
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
@@ -847,7 +847,7 @@ test(
     })
     expect(docs.open).toEqual([
       expect.objectContaining({
-        clear: expect.stringContaining(`pnyx-axi task undepend ${waiting.card.id} --on ${held.card.id}`),
+        clear: expect.stringContaining(`pnyx task undepend ${waiting.card.id} --on ${held.card.id}`),
       }),
     ])
     expect((await hydra.agent({ cwd: docsFolder })).received).toHaveLength(1)

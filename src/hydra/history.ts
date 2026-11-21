@@ -214,7 +214,7 @@ export function inscribeOperation({
   if (action === 'start' && active && active.id !== id) {
     inform({
       reason: `Inscribe pass ${active.id} is still open; started another pass`,
-      clear: `Use pnyx-axi hydra inscribe fail --key ${active.id} --error "<why>" to close it`,
+      clear: `Use pnyx hydra inscribe fail --key ${active.id} --error "<why>" to close it`,
     })
   }
 
@@ -236,7 +236,7 @@ export function inscribeOperation({
   if (action === 'finish' && through !== previous?.through) {
     inform({
       reason: 'Inscribe finished without confirming its history snapshot',
-      clear: `Use pnyx-axi hydra history --since ${previous?.historySince ?? 'origin'} --through ${previous?.through ?? state.seq} to read this pass’s history`,
+      clear: `Use pnyx hydra history --since ${previous?.historySince ?? 'origin'} --through ${previous?.through ?? state.seq} to read this pass’s history`,
     })
   }
 

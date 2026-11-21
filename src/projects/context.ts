@@ -51,7 +51,7 @@ export async function projectDigest({
   }
 
   return [
-    'Projects (load memory on demand with pnyx-axi project show <name|path>):',
+    'Projects (load memory on demand with pnyx project show <name|path>):',
     ...summaries,
   ]
 }
@@ -121,7 +121,7 @@ export async function projectWorkerContext({
         ] : []
       }),
       'Read the project conventions in your current copy before starting; the shared profile may need refreshing.',
-      `Full memory: pnyx-axi project show ${JSON.stringify(project.path)} --hydra ${hydraId}.`,
+      `Full memory: pnyx project show ${JSON.stringify(project.path)} --hydra ${hydraId}.`,
     ].join('\n'),
   }
 }

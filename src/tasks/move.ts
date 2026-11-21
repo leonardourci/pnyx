@@ -56,7 +56,7 @@ const missing = ({
   ref: string
 }) => refuse({
   message: `card not found: ${ref}`,
-  help: `Run \`pnyx-axi task list --hydra ${hydraId}\``,
+  help: `Run \`pnyx task list --hydra ${hydraId}\``,
   code: 'NOT_FOUND',
 })
 
@@ -68,7 +68,7 @@ const rerunCommand = ({
   card: Card
   to: string
   hydraId: string
-}) => `pnyx-axi task move ${card.id} --to-hydra ${to} --hydra ${hydraId}`
+}) => `pnyx task move ${card.id} --to-hydra ${to} --hydra ${hydraId}`
 
 // The target's column with the card's column id, else its title, else where the target's rules place it.
 function targetColumn({
@@ -151,13 +151,13 @@ export function moveRefusal({
   moving?: string[]
 }): HydraError | undefined {
   const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
-  const restoreRelationships = `Use pnyx-axi task move ${card.id} --to-hydra ${hydraId} --hydra ${to} to move it back; task history preserves its previous relationships`
+  const restoreRelationships = `Use pnyx task move ${card.id} --to-hydra ${hydraId} --hydra ${to} to move it back; task history preserves its previous relationships`
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
     return refuse({
       message: `${card.id} is not an explicit task`,
-      help: 'Choose a task from `pnyx-axi task list`',
+      help: 'Choose a task from `pnyx task list`',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -179,7 +179,7 @@ export function moveRefusal({
   if (target.cards[card.id] || target.keys[card.key]) {
     return refuse({
       message: `Hydra ${to} already has a task with id or key ${card.id}`,
-      help: `Run \`pnyx-axi task show ${card.id} --hydra ${to}\``,
+      help: `Run \`pnyx task show ${card.id} --hydra ${to}\``,
     })
   }
 
@@ -308,7 +308,7 @@ function checkTarget({
   if (!hydraIds().includes(to)) {
     throw refuse({
       message: `Hydra not found: ${to}`,
-      help: 'Run `pnyx-axi hydra list` for Hydra ids',
+      help: 'Run `pnyx hydra list` for Hydra ids',
       code: 'NOT_FOUND',
     })
   }
@@ -353,7 +353,7 @@ export async function releaseWorker({
   if (typeof released.busy === 'string') {
     throw refuse({
       message: `${card.id}'s worker is ${released.busy}`,
-      help: `Wait for it to finish (\`pnyx-axi task show ${card.id} --hydra ${hydraId}\`), then run \`${rerun}\``,
+      help: `Wait for it to finish (\`pnyx task show ${card.id} --hydra ${hydraId}\`), then run \`${rerun}\``,
     })
   }
 }
@@ -453,7 +453,7 @@ function receipt({
     event: move,
     copy: card.copy?.state === 'removed' ? 'none' : card.copy?.path ?? 'none',
     worker: card.sessionIds?.[0] ?? 'none',
-    help: [`Run \`pnyx-axi task show ${card.id} --hydra ${to}\``],
+    help: [`Run \`pnyx task show ${card.id} --hydra ${to}\``],
   }
 }
 
@@ -634,7 +634,7 @@ export async function moveTask({
   if (!card && gone) {
     throw refuse({
       message: `${ref} moved to Hydra ${gone.to}`,
-      help: `Run \`pnyx-axi task move ${gone.id} --to-hydra ${to} --hydra ${gone.to}\``,
+      help: `Run \`pnyx task move ${gone.id} --to-hydra ${to} --hydra ${gone.to}\``,
       code: 'NOT_FOUND',
     })
   }
@@ -650,7 +650,7 @@ export async function moveTask({
     inform({
       task: card.id,
       reason: `Task is already on Hydra ${to}`,
-      clear: `Use pnyx-axi task move ${card.id} --to-hydra <other-hydra> to move it elsewhere`,
+      clear: `Use pnyx task move ${card.id} --to-hydra <other-hydra> to move it elsewhere`,
     })
 
     return {

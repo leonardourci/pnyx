@@ -261,7 +261,7 @@ export function decideSession({
     inform({
       task: target.id,
       reason: 'Released the queue to attach the requested worker',
-      clear: `Use pnyx-axi task queue ${target.id} --behind ${target.queue.session} to queue it again`,
+      clear: `Use pnyx task queue ${target.id} --behind ${target.queue.session} to queue it again`,
     })
   }
 
@@ -271,7 +271,7 @@ export function decideSession({
     inform({
       task: target.id,
       reason: `Replaced attached session ${replaces}; its history and files remain`,
-      clear: `Use pnyx-axi task attach ${target.id} --session ${replaces} to attach it again`,
+      clear: `Use pnyx task attach ${target.id} --session ${replaces} to attach it again`,
     })
   }
 

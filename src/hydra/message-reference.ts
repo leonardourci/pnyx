@@ -38,5 +38,5 @@ export function messageLookupCommand({
   const selector = reference ? `--id ${shellArgument({ value: reference })}` : `--at ${shellArgument({ value: at! })}`
   const hydra = hydraId ? ` --hydra ${shellArgument({ value: hydraId })}` : ''
 
-  return `pnyx-axi ${command} ${selector} --before ${COMMENT_CONTEXT_MESSAGES} --after ${COMMENT_CONTEXT_MESSAGES}${hydra}`
+  return `pnyx ${command} ${selector} --before ${COMMENT_CONTEXT_MESSAGES} --after ${COMMENT_CONTEXT_MESSAGES}${hydra}`
 }

@@ -329,7 +329,7 @@ export function query({
     throw new HydraError({
       message: `Postgres did not answer within ${timeoutMs / 1000}s`,
       code: 'DATABASE_TIMEOUT',
-      help: ['Run `pnyx-axi setup check` to see whether Postgres is running'],
+      help: ['Run `pnyx setup check` to see whether Postgres is running'],
     })
   }
 
@@ -338,7 +338,7 @@ export function query({
       message: `Postgres: ${reply.error.message}`,
       cause: reply.error,
       code: failureCode({ code: reply.error.code }),
-      help: ['Run `pnyx-axi setup check` to see whether Postgres is running and configured'],
+      help: ['Run `pnyx setup check` to see whether Postgres is running and configured'],
     })
   }
 

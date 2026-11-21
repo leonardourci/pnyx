@@ -65,7 +65,7 @@ export async function sendTaskMessage({
         inform({
           task: card.id,
           reason: 'Message sent to a hidden task',
-          clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+          clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
         })
       }
 

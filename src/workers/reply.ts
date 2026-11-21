@@ -266,7 +266,7 @@ export async function sendReply({
         if (!open || !prompt) {
           throw invalid({
             message: `card ${card.id} has no open request with key ${answer.request} that can be answered here`,
-            help: [`Run \`pnyx-axi card ${card.id}\` to see its requests, or answer in the session itself`],
+            help: [`Run \`pnyx card ${card.id}\` to see its requests, or answer in the session itself`],
           })
         }
 
@@ -276,7 +276,7 @@ export async function sendReply({
           throw new HydraError({
             message: `the request ${answer.request} changed since it was shown; nothing was typed`,
             code: 'REVISION_CONFLICT',
-            help: [`Run \`pnyx-axi card ${card.id}\` and answer the current request`],
+            help: [`Run \`pnyx card ${card.id}\` and answer the current request`],
           })
         }
 

@@ -683,7 +683,7 @@ test(
         ],
       })
       expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
-      const detailsAfter = wake.match(/Run `pnyx-axi hydra check --after (\d+)/)?.[1]
+      const detailsAfter = wake.match(/Run `pnyx hydra check --after (\d+)/)?.[1]
 
       if (detailsAfter === undefined) {
         throw new Error('The bounded wake did not provide its remaining updates cursor')
@@ -700,7 +700,7 @@ test(
       expect(remainingUpdates.through).toBeGreaterThan(Number(detailsAfter))
       expect(remainingUpdates).not.toHaveProperty('help')
 
-      const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
+      const after = wake.match(/more worker reports; read `pnyx hydra check --after (\d+)/)?.[1]
 
       if (after === undefined) {
         throw new Error('The report wake did not give an overflow cursor')
@@ -1395,7 +1395,7 @@ test(
     })
     const messages = []
 
-    for (const match of recovery.matchAll(/Read owner message \d+ in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g)) {
+    for (const match of recovery.matchAll(/Read owner message \d+ in full with `pnyx hydra messages --after (\d+) --limit 1/g)) {
       const page = await hydra.owner({
         args: [
           'hydra',
@@ -1656,7 +1656,7 @@ test(
     expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
     expect(recoveredReport).toContain('hydra messages --after <seq minus one> --limit 1')
     expect(recoveredReport).toContain('Open decisions')
-    const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g))
+    const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx hydra messages --after (\d+) --limit 1/g))
     const recoveredOwnerMessages = []
 
     for (const [
@@ -3356,7 +3356,7 @@ test.each([
     await hydra.chat({ text: 'Read the capped changes' })
     const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
     expect(capped).toContain('2 more changed cards')
-    expect(capped).toContain('pnyx-axi task list')
+    expect(capped).toContain('pnyx task list')
     expect(capped).toContain('Changed snapshot card 39')
     expect(capped).not.toContain('Changed snapshot card 40')
     await until({

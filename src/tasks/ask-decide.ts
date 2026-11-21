@@ -81,7 +81,7 @@ const findAsk = ({
     throw new HydraError({
       message: `task ${card.id} has no question ${id}`,
       code: 'NOT_FOUND',
-      help: [`Run \`pnyx-axi task show ${card.id}\` to see its questions`],
+      help: [`Run \`pnyx task show ${card.id}\` to see its questions`],
     })
   }
 
@@ -223,7 +223,7 @@ function validateOwnerQuestion({
     inform({
       task: card.id,
       reason: `Owner question omits suggested details: ${missing.join('; ')}`,
-      clear: `Use pnyx-axi task ask ${card.id} --to owner --question "<decision?>" --context "<what changes> [Card](pnyx-task:${card.id})" --choice "<option>" --choice "<option>" --recommend 1 for a structured question`,
+      clear: `Use pnyx task ask ${card.id} --to owner --question "<decision?>" --context "<what changes> [Card](pnyx-task:${card.id})" --choice "<option>" --choice "<option>" --recommend 1 for a structured question`,
     })
   }
 }
@@ -263,14 +263,14 @@ export function decideAsk({
     inform({
       task: card.id,
       reason: 'Hydra-wide question routed to the owner',
-      clear: 'Use pnyx-axi task ask <task> --to hydra for a worker question',
+      clear: 'Use pnyx task ask <task> --to hydra for a worker question',
     })
   }
 
   if (audience === 'owner' && meta.actor !== HYDRA_ACTOR) {
     inform({
       reason: 'Worker question sent directly to the owner',
-      clear: 'pnyx-axi task ask <task> --to hydra --question "<question>"',
+      clear: 'pnyx task ask <task> --to hydra --question "<question>"',
       task: card.id,
     })
   }
@@ -280,7 +280,7 @@ export function decideAsk({
     inform({
       task: card.id,
       reason: 'Hydra question routed to the owner',
-      clear: `Use pnyx-axi task answer ${card.id} <question> --text "<answer>"`,
+      clear: `Use pnyx task answer ${card.id} <question> --text "<answer>"`,
     })
   }
 
@@ -288,7 +288,7 @@ export function decideAsk({
   if (audience === 'hydra' && !reportActor({ actor: meta.actor })) {
     inform({
       reason: 'Question sent to Hydra by another actor',
-      clear: 'pnyx-axi hydra send --text "<message>"',
+      clear: 'pnyx hydra send --text "<message>"',
       task: card.id,
     })
   }
@@ -315,7 +315,7 @@ export function decideAsk({
     inform({
       task: card.id,
       reason: 'No recommendation supplied; using the first choice',
-      clear: `Use pnyx-axi task ask ${card.id} --recommend <number> to choose a recommendation`,
+      clear: `Use pnyx task ask ${card.id} --recommend <number> to choose a recommendation`,
     })
   }
 
@@ -416,7 +416,7 @@ export function decideEscalation({
   if (meta.actor !== HYDRA_ACTOR) {
     inform({
       reason: 'Question escalated by an agent',
-      clear: 'pnyx-axi task answer <task> <question> --text "<answer>"',
+      clear: 'pnyx task answer <task> <question> --text "<answer>"',
       task: card.id,
     })
   }
@@ -431,7 +431,7 @@ export function decideEscalation({
     inform({
       task: card.id,
       reason: 'Updated a question that already waits for the owner',
-      clear: `Use pnyx-axi task answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
+      clear: `Use pnyx task answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
     })
   }
 
@@ -494,9 +494,9 @@ export const askReport = ({
     o,
     i,
   ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
-  ...(ask.details ? [`Details: \`pnyx-axi task show ${task} --full --hydra ${hydraId}\``] : []),
-  `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\``,
-  `If the owner must decide, use \`pnyx-axi task escalate ${task} ${ask.id} --question "<decision?>" --context "<what changes, next action and [Card](pnyx-task:${encodeURIComponent(task)})>" --choice "<recommended choice>" --choice "<alternative>" --recommend 1 --reason "<why>" --hydra ${hydraId}\``,
+  ...(ask.details ? [`Details: \`pnyx task show ${task} --full --hydra ${hydraId}\``] : []),
+  `Answer with \`pnyx answer ${task} ${ask.id} --text "<answer>" --hydra ${hydraId}\` or pass --choice <n>.`,
+  'If the owner must decide, present the question and its choices in Hydra chat.',
 ].join('\n')
 
 const answeredMergeHold = ({ ask }: { ask: Ask }) =>
@@ -540,7 +540,7 @@ export function askAnswer({
   if (actor.startsWith('helper:') && (ask.audience !== 'hydra' || ask.escalated)) {
     inform({
       reason: 'Helper answered an owner question',
-      clear: 'pnyx-axi task reopen-question <task> <question>',
+      clear: 'pnyx task reopen-question <task> <question>',
       task: card.id,
     })
   }
@@ -548,7 +548,7 @@ export function askAnswer({
   if (reportActor({ actor }) || actor === 'pnyx') {
     inform({
       reason: 'Question answered by an agent',
-      clear: 'pnyx-axi task reopen-question <task> <question>',
+      clear: 'pnyx task reopen-question <task> <question>',
       task: card.id,
     })
   }
@@ -580,7 +580,7 @@ export function askAnswer({
       inform({
         task: card.id,
         reason: `Message ${message.id} is a report or clarification; the answer is recorded as ${actor}`,
-        clear: `Use pnyx-axi task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen it`,
+        clear: `Use pnyx task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen it`,
       })
     } else {
       source = {
@@ -593,7 +593,7 @@ export function askAnswer({
         inform({
           task: card.id,
           reason: `Reused owner message ${message.id} from before the question`,
-          clear: `Use pnyx-axi task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen it`,
+          clear: `Use pnyx task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen it`,
         })
       }
     }
@@ -602,7 +602,7 @@ export function askAnswer({
   if (ask.audience === 'owner' && actor === HYDRA_ACTOR && !source) {
     inform({
       reason: 'Question answered without a saved owner message',
-      clear: 'pnyx-axi task reopen-question <task> <question>',
+      clear: 'pnyx task reopen-question <task> <question>',
       task: card.id,
     })
   }
@@ -641,7 +641,7 @@ export function askAnswer({
     inform({
       task: card.id,
       reason: 'Changed a Merge Hold using an earlier owner message',
-      clear: `Use pnyx-axi task reask ${card.id} ${ask.id} --reason "<why>" to ask again`,
+      clear: `Use pnyx task reask ${card.id} ${ask.id} --reason "<why>" to ask again`,
     })
   }
 
@@ -666,7 +666,7 @@ export function askAnswer({
       inform({
         task: card.id,
         reason: 'Answered Go using an owner message from before the hold',
-        clear: `Use pnyx-axi task hold ${card.id} --reason "<why>" to restore the hold`,
+        clear: `Use pnyx task hold ${card.id} --reason "<why>" to restore the hold`,
       })
     }
   }
@@ -730,7 +730,7 @@ export function decideAskClosure({
       inform({
         task: card.id,
         reason: 'Merge question re-asked without a reason',
-        clear: 'Use pnyx-axi task reask <task> <question> --reason "<why>" to record one',
+        clear: 'Use pnyx task reask <task> <question> --reason "<why>" to record one',
       })
     }
 
@@ -779,7 +779,7 @@ export function decideAskClosure({
     inform({
       task: card.id,
       reason: 'Question closed without Hydra’s usual reason and evidence',
-      clear: `Use pnyx-axi task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen an answer, or task ask to ask again`,
+      clear: `Use pnyx task reopen-question ${card.id} ${ask.id} --answer <answer-event> to reopen an answer, or task ask to ask again`,
     })
   }
 
@@ -792,7 +792,7 @@ export function decideAskClosure({
     inform({
       task: card.id,
       reason: 'Owner question closed explicitly without an answer',
-      clear: `Use pnyx-axi task ask ${card.id} --to owner --question "<question>" to ask again`,
+      clear: `Use pnyx task ask ${card.id} --to owner --question "<question>" to ask again`,
     })
   }
 
@@ -801,7 +801,7 @@ export function decideAskClosure({
     inform({
       task: card.id,
       reason: 'Merge question closed while its pull request remains open',
-      clear: `Use pnyx-axi task refresh-links ${card.id} to refresh the pull request`,
+      clear: `Use pnyx task refresh-links ${card.id} to refresh the pull request`,
     })
   }
 

@@ -46,7 +46,7 @@ export function steeringMessages({
   return [
     `New instructions for task ${task}, in order (Pnyx inbox IDs ${JSON.stringify(messages.map(message => message.id))}):`,
     messages.map(message => message.text).join('\n\n---\n\n'),
-    `Pnyx marks them read once you receive this; \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\` shows anything still pending. Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
+    `Pnyx marks them read once you receive this; \`pnyx task inbox read ${task} --hydra ${hydraId}\` shows anything still pending. Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
   ].join('\n\n')
 }
 
@@ -59,5 +59,5 @@ export function steeringNotice({
   hydraId: string
   ids: string[]
 }): string {
-  return `${NOTICE}${JSON.stringify(ids)}. Run \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\`, which records read acknowledgements and stops reminders. Apply the returned messages in order; report progress and blockers separately. An acknowledgement means read, never completed work. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
+  return `${NOTICE}${JSON.stringify(ids)}. Run \`pnyx task inbox read ${task} --hydra ${hydraId}\`, which records read acknowledgements and stops reminders. Apply the returned messages in order; report progress and blockers separately. An acknowledgement means read, never completed work. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
 }
