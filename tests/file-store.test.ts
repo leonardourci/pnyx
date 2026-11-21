@@ -1157,7 +1157,8 @@ test.each([
     const synced = new Set<string>()
     let outage = true
 
-    vi.mocked(fsyncSync).mockImplementation(fd => {
+    // eslint-disable-next-line pnyx/object-params -- Node's fsync replacement receives a file descriptor.
+    const directorySync: typeof filesystem.fsyncSync = fd => {
       const metadata = filesystem.fstatSync(fd)
       const parent = existsSync(target) && metadata.isDirectory() ? parents.find(path =>
         existsSync(path) && filesystem.statSync(path).ino === metadata.ino) : undefined
@@ -1177,7 +1178,9 @@ test.each([
       }
 
       filesystem.fsyncSync(fd)
-    })
+    }
+
+    vi.mocked(fsyncSync).mockImplementation(directorySync)
 
     try {
       await expect(request()).rejects.toMatchObject({ code: 'WRITE_FAILED' })
