@@ -316,7 +316,7 @@ export async function writeProjectMemory({
   const facts = await projectFacts({ path })
 
   return withRegistryLock({
-    fn: () => {
+    fn: async () => {
       const view = projectMemoryViewUnderLock({
         facts,
         hydraId,
@@ -324,12 +324,12 @@ export async function writeProjectMemory({
 
       const previous = view.events.find(event => event.id === meta.id)
 
-      const notify = ({ event }: { event: ProjectMemoryEvent }) => {
+      const notify = async ({ event }: { event: ProjectMemoryEvent }) => {
         if (event.key !== 'workers') {
           return
         }
 
-        withWriter({
+        await withWriter({
           hydraId: event.hydra,
           fn: ({ writer }) => workerNotesNotice({
             writer,
@@ -345,7 +345,7 @@ export async function writeProjectMemory({
       }
 
       if (previous) {
-        notify({ event: previous })
+        await notify({ event: previous })
 
         return {
           project: view.id,
@@ -411,7 +411,7 @@ export async function writeProjectMemory({
         const saved = view.events.findLast(event => event.key === key)
 
         if (saved) {
-          notify({ event: saved })
+          await notify({ event: saved })
         }
 
         return {
@@ -456,7 +456,7 @@ export async function writeProjectMemory({
         { mode: 0o600 },
       )
 
-      notify({ event })
+      await notify({ event })
 
       return {
         project: view.id,
