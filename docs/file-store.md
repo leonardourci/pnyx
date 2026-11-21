@@ -19,6 +19,8 @@ The first Hydra fact is `config`; the first task fact is `created`. Task members
 
 Only the daemon opens the store for writing or recovery. Workers read files and append to their own `worker.log`; they must not use the daemon's log repair functions. The host owns the single daemon instance. The store does not acquire filesystem or database locks.
 
+Within a process, opening the same canonical home twice refuses with `STORE_OPEN`, including through a symlink alias. `close()` releases that ownership after draining its queue, including when the final snapshot fails. The host must enforce the single daemon process when it connects this store to the application.
+
 ## Store interface
 
 `openFileStore` takes a home and two synchronous pure reducers, `reduceHydra` and `reduceTask`. The home's parent must already exist; the store creates and durably publishes the home directory if needed. A reducer receives the scope's previous state, its ID and a numbered native fact. It validates that fact and returns plain JSON state. It performs no I/O, clock reads or random choices.
@@ -52,8 +54,8 @@ A move first syncs a `moved` fact in the task log, then renames the folder and s
 
 ## Snapshots and recovery
 
-Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep each task's folded worker byte cursor. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported or changed cache falls back to the logs, as does a snapshot path that points to a symlink or another nonregular file. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
+Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep the Hydra and task folded worker byte cursors. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported, unreadable or changed cache falls back to the logs, as does a snapshot path that points to a symlink or another nonregular file. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
 
 Worker facts carry `off`, the byte immediately after the consumed worker line. A new worker fact advances that cursor strictly; a retry uses the same native ID. The cursor is rebuilt from native facts if the snapshot is absent.
 
-The daemon truncates an unterminated final line or invalid JSON at the end of a log. Corruption before the tail reports the file and byte position as `LOG_CORRUPT`. The affected task remains visible with an error and refuses changes; other healthy tasks continue. A corrupt Hydra log refuses changes to that Hydra. Legacy folders without `hydra.log` are left untouched.
+The daemon truncates an unterminated final line or invalid JSON at the end of a log. Corruption before the tail in bytes that replay reads reports the file and byte position as `LOG_CORRUPT`. Bytes covered by a valid snapshot are not reread on open, so corruption in them is not reported then. A permission-denied canonical log reports `LOG_UNREADABLE`. The affected task remains visible with an error and refuses changes; other healthy tasks continue. A corrupt Hydra log refuses changes to that Hydra. Legacy folders without `hydra.log` are left untouched.
