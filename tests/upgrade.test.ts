@@ -2,23 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, beforeEach, expect, test } from 'vitest'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { building, git, upgradeFolder } from './setup/upgrade.ts'
-
-interface Upgrade {
-  id: string
-  state: string
-  steps: {
-    step: string
-    state: string
-  }[]
-  failed?: string
-  error?: string
-  rolledBack?: boolean
-  reasons?: string[]
-  from?: string
-  to?: string
-}
 
 let pnyx: Pnyx
 let folder: ReturnType<typeof upgradeFolder>
@@ -46,14 +31,9 @@ beforeEach(() => {
   restarts = 0
 })
 
-// The upgrades the page's chat shows for this Hydra, newest last.
-const upgrades = ({ hydra }: { hydra: Hydra }) => rows<{ value: Upgrade[] }>({
-  text: 'select value from hydra_values where hydra_id = $1 and key = \'upgrades\'',
-  values: [hydra.id],
-})[0]?.value ?? []
+const upgrades = ({ hydra }: { hydra: Hydra }) => pnyx.home().scopes[hydra.id]?.state.upgrades ?? []
 
-// The upgrade notice the page shows when origin main is ahead of the running build.
-const upgradeNotice = () => rows<{ available: boolean }>({ text: 'select available from upgrade_status where id = \'current\'' })[0]
+const upgradeNotice = () => pnyx.home().upgrade
 
 const settled = ({
   hydra,

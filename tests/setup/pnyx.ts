@@ -1,17 +1,19 @@
 // The real server in the test's process, fake agents at the provider boundary, driven through pnyx-axi and the page's socket.
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { decode } from '@toon-format/toon'
-import { WebSocket } from 'ws'
 import { afterAll } from 'vitest'
 import { startServer } from '#app/server-daemon.ts'
-import { localToken } from '#app/server-state.ts'
-import type { RunningServer, ServerMessage } from '#app/server-transport.ts'
+import type { RunningServer } from '#app/server-transport.ts'
 import { query } from '#store/postgres.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
 import { fakeClaude, fakeCodex, type AgentSession } from './agents.ts'
+import { until, WAIT_MS } from './until.ts'
+import { openPage } from './page-socket.ts'
+import { openHomePage } from './home-page.ts'
+
+export { until, openPage }
 
 export type { AgentSession }
 
@@ -23,37 +25,6 @@ export const CLI = join(
   'cli',
   'pnyx-axi.js',
 )
-// Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
-const WAIT_MS = 20_000
-const POLL_MS = 20
-
-export async function until<T>({
-  what,
-  check,
-  timeoutMs = WAIT_MS,
-}: {
-  what: string
-  check: () => T | undefined | false | Promise<T | undefined | false>
-  timeoutMs?: number
-}): Promise<T> {
-  const end = performance.now() + timeoutMs
-  let value = await check()
-
-  while (value === undefined || value === false) {
-    if (performance.now() > end) {
-      throw new Error(`timed out waiting for ${what} (last: ${String(value)})`)
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      POLL_MS,
-    ))
-    value = await check()
-  }
-
-  return value
-}
-
 export interface Run {
   status: number | null
   signal: NodeJS.Signals | null
@@ -250,6 +221,7 @@ export async function startPnyx({
   const codex = fakeCodex({ config: codexConfig })
   let server: RunningServer | undefined
   let hydras = 0
+  let homePage: Awaited<ReturnType<typeof openHomePage>> | undefined
   // Kept across stops, so an open page reconnects to the server that replaces this one.
   let port: number | undefined
 
@@ -270,9 +242,12 @@ export async function startPnyx({
       restart,
     })
     port = server.port
+    homePage = await openHomePage({ port })
   }
 
   const stop = async () => {
+    homePage?.close()
+    homePage = undefined
     await server?.close()
     server = undefined
   }
@@ -289,6 +264,7 @@ export async function startPnyx({
     claude,
     codex,
     port: () => server!.port,
+    home: () => homePage!.read().home,
     // Stops the server and starts it again on the same home and port, as a restart does.
     restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
       await stop()
@@ -594,103 +570,5 @@ function hydraClient({
       hydraId,
       cards,
     }),
-  }
-}
-
-// The owner's page over its WebSocket, sending commands as the page does.
-export async function openPage({
-  port,
-  hydraId,
-  cards,
-  token = localToken(),
-  home = false,
-  cursor,
-  receive,
-}: {
-  port: number
-  hydraId: string
-  cards?: string[]
-  token?: string
-  home?: boolean
-  cursor?: import('#app/socket-history.ts').SocketCursor
-  receive?({ message }: { message: ServerMessage }): void
-}) {
-  const params = new URLSearchParams({ token })
-
-  if (cards) {
-    params.set(
-      'page',
-      JSON.stringify(cards),
-    )
-  }
-
-  if (home) {
-    params.set(
-      'home',
-      '1',
-    )
-  }
-
-  if (cursor) {
-    params.set(
-      'cursor',
-      JSON.stringify(cursor),
-    )
-  }
-
-  const socket = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?${params}`)
-  const answers = new Map<string, ServerMessage>()
-  socket.on(
-    'message',
-    (data: unknown) => {
-      const message = JSON.parse(String(data)) as ServerMessage
-      receive?.({ message })
-
-      if ((message.type === 'receipt' || message.type === 'error') && message.id) {
-        answers.set(
-          message.id,
-          message,
-        )
-      }
-    },
-  )
-  await new Promise((
-    resolve,
-    reject,
-  ) => {
-    socket.once(
-      'open',
-      resolve,
-    )
-    socket.once(
-      'error',
-      reject,
-    )
-  })
-
-  const send = ({
-    name,
-    args,
-  }: {
-    name: string
-    args: string[]
-  }) => {
-    const id = `page-${randomUUID()}`
-    socket.send(JSON.stringify({
-      type: 'command',
-      id,
-      name,
-      args,
-    }))
-
-    return until({
-      what: `the answer to ${name} ${args.join(' ')}`,
-      check: () => answers.get(id),
-    })
-  }
-
-  return {
-    send,
-    close: () => socket.close(),
   }
 }

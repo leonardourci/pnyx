@@ -1,7 +1,8 @@
 import type { HomeMessage, HomePage } from '#app/socket-state.ts'
 import { applyPageChanges } from '#app/socket-state.ts'
 import type { SocketCursor } from '#app/socket-history.ts'
-import { openPage, until } from './pnyx.ts'
+import { openPage } from './page-socket.ts'
+import { until } from './until.ts'
 
 export async function openHomePage({
   port,
@@ -9,7 +10,7 @@ export async function openHomePage({
   previous,
 }: {
   port: number
-  hydraId: string
+  hydraId?: string
   previous?: {
     home: HomePage
     cursor: SocketCursor

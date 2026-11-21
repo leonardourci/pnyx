@@ -88,7 +88,7 @@ test(
         at: '2026-01-01T00:00:01.000Z',
       }),
     )
-    expect(ingestSpool({ hydraId: hydra.id }).ingested).toBe(2)
+    expect((await ingestSpool({ hydraId: hydra.id })).ingested).toBe(2)
     await fetch(`http://127.0.0.1:${pnyx.port()}/health`)
     await flushLogs()
     await flushLogs()

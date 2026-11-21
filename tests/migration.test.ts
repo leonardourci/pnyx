@@ -903,7 +903,7 @@ test(
     expect(stored).not.toHaveProperty('kind')
     expect(stored).not.toHaveProperty('report')
     expect(rows({ text: "select column_name from information_schema.columns where table_name = 'cards' and column_name = 'kind'" })).toEqual([])
-    const page = rows<{ value: object }>({ text: "select value from settings where id = 'shared'" })[0]!.value
+    const page = pnyx.home().settings.settings
     expect(page).not.toHaveProperty('poleis')
     expect(page).not.toHaveProperty('projectPoleis')
     expect(page).not.toHaveProperty('keyboard')

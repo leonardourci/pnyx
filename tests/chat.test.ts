@@ -38,22 +38,7 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
-// What the page's queue box reads for this Hydra: updates waiting for it, and its chat.
-const queueBox = ({ hydraId }: { hydraId: string }) => rows<{
-  value: {
-    waiting: {
-      seq: number
-      kind: string
-    }[]
-    chat: {
-      working: boolean
-      compactInputs: { text: string }[]
-    }
-  }
-}>({
-  text: 'select value from hydra_values where hydra_id = $1 and key = \'queue\'',
-  values: [hydraId],
-})[0]?.value
+const queueBox = ({ hydraId }: { hydraId: string }) => pnyx.home().scopes[hydraId]?.queue
 
 const queue = ({ hydraId }: { hydraId: string }) => queueBox({ hydraId })?.chat
 
@@ -382,7 +367,14 @@ test(
         'Export works; ready for review',
       ],
     })
-    const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
+    const beforeNote = await until({
+      what: 'the page queue to receive the report',
+      check: () => {
+        const waiting = queueBox({ hydraId: hydra.id })?.waiting
+
+        return waiting?.some(update => update.kind === 'report') && waiting.length
+      },
+    })
     await workerLine({
       hydra,
       key: 'export',
@@ -605,7 +597,7 @@ test(
           'The format needs an owner choice',
         ],
       })
-      withWriter({
+      await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
           const decision = hydraEvent({
@@ -1524,7 +1516,7 @@ test(
     expect(later.conversations).toContainEqual(expect.objectContaining({
       messages: [expect.objectContaining({ text: 'Fresh native instructions' })],
     }))
-    const expired = withWriter({
+    const expired = await withWriter({
       hydraId: hydra.id,
       fn: ({ writer }) => {
         const task = writer.state.cards[writer.state.keys['typed-cursor']!]!
@@ -3071,7 +3063,7 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(1)
-      withWriter({
+      await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
           writer.append({
@@ -3156,7 +3148,7 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(3)
-      withWriter({
+      await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
           writer.append({
@@ -3803,7 +3795,7 @@ test(
     })
     await pnyx.restart({
       whileStopped: async () => {
-        withWriter({
+        await withWriter({
           hydraId: hydra.id,
           fn: ({ writer }) => applyDecision({
             writer,
@@ -3883,7 +3875,7 @@ test(
               'event-id': id,
             },
           })
-          withWriter({
+          await withWriter({
             hydraId: hydra.id,
             fn: ({ writer }) => {
               const at = new Date().toISOString()

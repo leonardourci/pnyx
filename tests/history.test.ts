@@ -563,7 +563,7 @@ test(
         },
       })}\n`,
     )
-    withWriter({
+    await withWriter({
       hydraId: hydra.id,
       fn: ({ writer }) => {
         const native = Object.values(writer.state.sessions ?? {}).find(candidate =>
