@@ -313,7 +313,14 @@ export async function startPnyx({
     server = undefined
   }
 
-  await start()
+  try {
+    await start()
+  } catch (error) {
+    await stop()
+
+    throw error
+  }
+
   afterAll(stop)
 
   const sessions = () => [

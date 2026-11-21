@@ -4072,7 +4072,10 @@ test(
           'compact',
         ],
       })
-      expect(answer.type).toBe('error')
+      expect(answer).toMatchObject({
+        type: 'error',
+        code: 'DATABASE_ERROR',
+      })
       expect(agentChange({hydraId: hydra.id})?.state).toBe(change.state)
       expect(pnyx.claude.sessions.length).toBe(sessions)
     } finally {

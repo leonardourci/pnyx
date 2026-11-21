@@ -115,6 +115,17 @@ test(
     await hydra.owner({
       args: [
         'task',
+        'inbox',
+        'enqueue',
+        'changed',
+        'private-2',
+        '--text',
+        'PRIVATE-REPLAY-STEERING',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
         'rename',
         'changed',
         '--title',
@@ -147,6 +158,7 @@ test(
         check: () => resumed.read().home.scopes[hydra.id]?.state.cards[changed]?.title === 'Live change',
       })
       expect(JSON.stringify(resumed.frames)).not.toContain('PRIVATE-STEERING')
+      expect(JSON.stringify(resumed.frames)).not.toContain('PRIVATE-REPLAY-STEERING')
     } finally {
       resumed.close()
     }
