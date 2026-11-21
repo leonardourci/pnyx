@@ -979,32 +979,42 @@ test.each([
     code: 'done',
     format: 'legacy',
     outcome: { status: 'handled' },
-    summary: 'The shop is used: 41 sales; no production errors. https://example.com/reports/shop',
+    report: 'Found 41 sales and no errors in production.',
+    result: 'The shop is used: 41 sales; no production errors.',
+    link: 'https://example.com/reports/shop',
   },
   {
     code: 'blocked',
     format: 'owner',
     outcome: { audience: 'owner' },
-    summary: 'The production error report needs a working login. https://example.com/login',
+    report: 'I cannot sign in to read the production error report.',
+    result: 'The production error report needs a working login.',
+    link: 'https://example.com/login',
   },
   {
     code: 'needs-you',
     format: 'owner',
     outcome: { audience: 'owner' },
-    summary: 'Choose whether to include archived sales. https://example.com/reports/scope',
+    report: 'Should I count archived sales?',
+    result: 'Choose whether to include archived sales.',
+    link: 'https://example.com/reports/scope',
   },
   {
     code: 'done',
     format: 'owner',
     outcome: { audience: 'owner' },
-    summary: `The shop report is ready. https://example.com/reports/shop?filter=${'archived-sales-'.repeat(20)}`,
+    report: 'Finished the shop investigation.',
+    result: 'The shop report is ready.',
+    link: `https://example.com/reports/shop?filter=${'archived-sales-'.repeat(20)}`,
   },
 ])(
   'Hydra relays a worker $code result ($format) from the helper into the owner\'s main chat',
   async ({
     code,
     outcome,
-    summary,
+    report,
+    result,
+    link,
   }) => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -1036,6 +1046,8 @@ test.each([
       ],
     })
     const { id } = await hydra.task({ key: 'shop' })
+    const workerReport = `${code}: ${report} ${link}`
+    const summary = `${result} ${link}`
     const helperTurn = pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Granted tasks:') && text.includes(`${code}:`),
@@ -1061,13 +1073,13 @@ test.each([
     await workerLine({
       hydra,
       key: 'shop',
-      line: `${code}: ${summary}`,
+      line: workerReport,
     })
     await until({
       what: 'the helper to read the worker result',
       check: () => pnyx.claude.sessions.some(session => session.env.PNYX_HYDRA === hydra.id
         && session.env.PNYX_ACTOR?.startsWith('helper:')
-        && session.received.some(text => text.includes(`${code}: ${summary}`))),
+        && session.received.some(text => text.includes(workerReport))),
     })
     pnyx.claude.plan({
       hydra: hydra.id,
