@@ -186,14 +186,15 @@ export async function discoverPullRequests({
         ] = repository.split('/')
         const response = await githubApi({
           args: [
+            'POST',
             'graphql',
-            '-f',
-            `query=query($owner:String!,$repo:String!,$branch:String!){repository(owner:$owner,name:$repo){pullRequests(first:${DISCOVERY_LIMIT},headRefName:$branch,states:[OPEN,CLOSED,MERGED]){nodes{url}}}}`,
-            '-f',
+            '--field',
+            `query=query($owner:String!,$repo:String!,$branch:String!){repository(owner:$owner,name:$repo){pullRequests(first:${DISCOVERY_LIMIT},headRefName:$branch,states:[OPEN,CLOSED,MERGED],orderBy:{field:CREATED_AT,direction:DESC}){nodes{url}}}}`,
+            '--field',
             `owner=${owner}`,
-            '-f',
+            '--field',
             `repo=${repo}`,
-            '-f',
+            '--field',
             `branch=${branch}`,
           ],
         }) as { data?: { repository?: { pullRequests?: { nodes?: unknown } } } }

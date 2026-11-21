@@ -14,6 +14,11 @@ appendFileSync(
   `${JSON.stringify(args)}\n`,
 )
 
+if (args.includes('-f') || args.includes('--method')) {
+  console.log('error: unsupported gh-axi option\ncode: USAGE')
+  process.exit(2)
+}
+
 const notFound = ({ number }) => {
   console.log(`error: "Item #${number} does not exist in this repository"\ncode: NOT_FOUND`)
   process.exit(1)
