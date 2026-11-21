@@ -24,6 +24,7 @@ import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
 import { log } from './diagnostics.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
 import { durableEvent } from './event-policy.ts'
+import { enqueueSteering } from '#workers/inbox.ts'
 
 const RECENT_CHANGES = 50_000
 
@@ -620,6 +621,20 @@ export function eventWriter({
       try {
         if (!effects) {
           return
+        }
+
+        if (event.type === 'task.brief' && event.data.before !== event.data.after && card?.agent) {
+          enqueueSteering({
+            writer,
+            ref: event.cardId,
+            id: `description:${event.id}`,
+            text: `Description updated:\n\n${event.data.after || '(Description cleared.)'}`,
+            source: event.actor,
+            meta: {
+              at: event.at,
+              actor: event.actor,
+            },
+          })
         }
 
         for (const question of reconcileAsks({

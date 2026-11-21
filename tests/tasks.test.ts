@@ -492,6 +492,32 @@ test(
     expect(worker.received[0]).toContain('Show the usage the agent reports')
     expect((await hydra.task({ key: first.card.id })).worker).toBe(first.worker)
 
+    const changedBrief = [
+      'task',
+      'brief',
+      first.card.id,
+      '--brief',
+      'Show the usage and its context window',
+      '--event-id',
+      'ring-description',
+    ]
+    await hydra.owner({ args: changedBrief })
+    await until({
+      what: 'the edited task description reaching its worker',
+      check: () => worker.received.some(text => text.includes('Description updated:\n\nShow the usage and its context window')),
+    })
+    await hydra.owner({ args: changedBrief })
+    const inbox = await hydra.owner({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        first.card.id,
+        '--all',
+      ],
+    })
+    expect(inbox.messages.filter((message: { text: string }) => message.text.includes('Description updated:'))).toHaveLength(1)
+
     await hydra.as({ session: worker }).run({
       args: [
         'task',
