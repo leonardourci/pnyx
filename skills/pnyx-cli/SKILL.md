@@ -1,6 +1,6 @@
 ---
 name: pnyx-cli
-description: Use when reading or updating the Pnyx app with the pnyx-axi CLI.
+description: Use the plain Pnyx CLI for immediate actions and current Hydra and task reads.
 user-invocable: false
 metadata:
   internal: true
@@ -8,20 +8,13 @@ metadata:
 
 # Pnyx
 
-Pnyx shows agent work in Hydras. The Oracle searches recorded history. Use `pnyx-axi` to change task records and append worker updates to your assigned task's `worker.log`. Pass your assigned `--hydra <id>` on every command. Authority comes from the owner and your assignment.
+Use `pnyx --help` for syntax. Pass your assigned `--hydra <id>` on actions.
 
-Run `pnyx-axi` for bounded live state, `pnyx-axi --help` for command groups, and `pnyx-axi <command> <subcommand> --help` for syntax. Follow contextual output hints. Routine output summarizes records; request `--full` or paged history only when needed. [Command reference](references/commands.md) covers workflows and [the detailed guide](../../docs/pnyx-axi.md) covers schemas.
+- `pnyx task create --title "<work>" --brief "<instructions>"` saves a task and starts its worker. Pass an assigned project and explicit worker settings as flags.
+- `pnyx send --text "<message>"` sends to Hydra. Add `--task <id>` to address a worker. Give `--file <path|->` instead of `--text` to read a message from a file.
+- `pnyx answer <task> <question> --text "<answer>"` answers a saved question. Hydra relaying an owner decision identifies its source with `--from-message <id>`.
+- `pnyx board` shows the current Hydra. Add `--json` when a script reads a receipt.
 
-Hydra follows `pnyx-orchestrate`; workers follow `pnyx-report-progress`. Workers append status and progress to their task’s worker.log. Routine progress waits for Hydra's next wake. Send actionable results with `hydra send --task <id> --text "<result with links>"`, omitting `--kind progress`, before pausing. Queued or recorded receipts do not confirm owner delivery. Ask decisions through `task ask`.
+During the storage cutover, use `pnyx task list`, `task show <task> --full`, `task history <task>`, `hydra check`, `hydra digest`, `hydra messages` and `task inbox read <task>` for the records the current app serves. Read-only project, memory, dispatch and Oracle commands remain available. Use `--json` for structured reads; output has no next-step hints. Use the UI for configuration and task edits.
 
-On recovery, read your task and steering inbox before repeating side effects. Preserve idempotency keys and reconcile uncertain delivery using its existing receipt.
-
-On `RECEIPT_EXPIRED`, read current task state before sending another observation. On `CURSOR_EXPIRED`, read `task chat` for the full native conversation, then run `hydra check` without `--after` to continue from current state.
-
-Use `task parent <task> <parent|none>` to nest an existing task or detach it. With `none`, `--before <root>` chooses its position in the same project; omitting it places the task last. Undo restores parent and order together. Nesting has one level; a task with children cannot become a child.
-
-Use `task arrange <task> [--before <task>]` for visual order within a project and parent. `task reorder --behind` remains the worker queue command. Project columns use `view set` workspace layout; lifecycle `column` commands remain compatibility controls.
-
-Use `task create --before <task>` to insert a task before an existing task in its destination column with one event.
-
-Narrow Oracle before its result limit with `oracle <words> --column <id> --project <name|path> --since <date>`; column and project flags can repeat for alternatives.
+Workers report through their assigned `worker.log` using `pnyx-report-progress`. A queued receipt is not proof of delivery. Reconcile the saved record before repeating a side effect.
