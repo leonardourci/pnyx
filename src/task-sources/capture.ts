@@ -98,7 +98,7 @@ export function bufferedCaptures({ hydraId }: { hydraId: string }): {
     })
 }
 
-export function commitCapture({
+export async function commitCapture({
   hydraId,
   path,
   capture,
@@ -106,8 +106,8 @@ export function commitCapture({
   hydraId: string
   path: string
   capture: BufferedCapture
-}): void {
-  withWriter({
+}): Promise<void> {
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const card = writer.state.cards[capture.card]
