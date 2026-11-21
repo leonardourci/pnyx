@@ -1,0 +1,15 @@
+$ eslint --fix .
+$ pnpm run typecheck && eslint . && pnpm run lint:css
+$ tsc --noEmit && tsc --noEmit -p web
+$ biome lint . --error-on-warnings
+Checked 2 files in 41ms. No fixes applied.
+
+ RUN  v5.1.0 [isolated checkout]
+      Running tests with seed "1795288444926"
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 10 skipped (11)
+   Start at  16:14:04
+   Duration  17.31s (tests 91%, transform 3%, import 3%, setup 2%)
+
