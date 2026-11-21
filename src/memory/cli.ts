@@ -192,7 +192,7 @@ export const owner = guard({
     })
 
     if (action === 'list') {
-      migrateOwnerMemory()
+      await migrateOwnerMemory()
 
       return withRegistryLock({
         fn: () => {
@@ -222,7 +222,7 @@ export const owner = guard({
     }
 
     if (action === 'save' || action === 'archive') {
-      const entry = saveOwnerMemory({
+      const entry = await saveOwnerMemory({
         hydraId,
         key: 'learnings',
         after: null,
@@ -249,7 +249,7 @@ export const owner = guard({
     }
 
     if (action === 'move' && documentMove) {
-      return moveOwnerPolis({
+      return await moveOwnerPolis({
         hydraId,
         ifDestinationRevision: integer({
           value: values['if-destination-revision'],
@@ -294,7 +294,7 @@ export const owner = guard({
         value: values.text as string | undefined,
         what: '--text <existing learning line>',
       })
-      const entry = saveOwnerMemory({
+      const entry = await saveOwnerMemory({
         hydraId,
         key: 'learnings',
         after: null,
@@ -326,7 +326,7 @@ export const owner = guard({
       })
     }
 
-    const entry = saveOwnerMemory({
+    const entry = await saveOwnerMemory({
       hydraId,
       key,
       after,

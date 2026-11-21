@@ -217,7 +217,7 @@ export function createHydraTurns({
     checkpointed?: boolean
     onlyTasks?: string[]
   } = {}) => {
-    const owner = ownerMemory({})
+    const owner = await ownerMemory({})
     const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const state = loadHydra({ hydraId }).state
     const readable = projectsFor({ state })
@@ -272,7 +272,7 @@ export function createHydraTurns({
   }
 
   const memoryChangeNote = async () => {
-    const owner = ownerMemory({})
+    const owner = await ownerMemory({})
     const ownerWrite = writableOwnerMemory({ hydraId }).memory
     const state = loadHydra({ hydraId }).state
     const readable = projectsFor({ state })

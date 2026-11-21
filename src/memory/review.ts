@@ -26,7 +26,7 @@ export async function memoryReview({
   const layers = [
     {
       name: 'Owner',
-      lines: ownerMemory({}).learnings?.lines ?? [],
+      lines: (await ownerMemory({})).learnings?.lines ?? [],
     },
     ...projectLayers,
   ]

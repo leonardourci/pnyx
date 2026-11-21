@@ -122,7 +122,7 @@ export async function taskPrompt({
         id: card.id,
         title: card.title,
       })
-      const ownerNotes = ownerMemory({}).workers?.text
+      const ownerNotes = (await ownerMemory({})).workers?.text
       const state = loadHydra({ hydraId }).state
       const project = await projectWorkerContext({
         hydraId,

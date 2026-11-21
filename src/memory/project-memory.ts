@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto'
 import type { Meta } from '#app/command-meta.ts'
 import { HydraError } from '#store/errors.ts'
 import { withWriter } from '#app/writer.ts'
-import { privateDir, withRegistryLock } from '#store/storage.ts'
+import { privateDir, withRegistryLock, withAsyncRegistryLock } from '#store/storage.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { projectIdentity, projectSources } from '#projects/sources.ts'
 
@@ -315,7 +315,7 @@ export async function writeProjectMemory({
 
   const facts = await projectFacts({ path })
 
-  return withRegistryLock({
+  return withAsyncRegistryLock({
     fn: async () => {
       const view = projectMemoryViewUnderLock({
         facts,
