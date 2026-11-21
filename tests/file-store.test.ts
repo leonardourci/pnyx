@@ -254,7 +254,8 @@ test(
 test(
   'a command reads the durable queue prefix and later commands see all its changed scopes',
   async () => {
-    const home = store({ home: homeFolder() })
+    const path = homeFolder()
+    const home = store({ home: path })
     await create({ home })
 
     try {
@@ -271,6 +272,15 @@ test(
       const batch = home.change({
         decide: ({ read }) => {
           expect(read({ hydra: 'a' })?.tasks.get('task')?.state?.words.at(-1)?.id).toBe('prefix')
+          const lines = readFileSync(
+            join(
+              path,
+              'hydras/a/tasks/task/task.log',
+            ),
+            'utf8',
+          ).trim()
+            .split('\n')
+          expect(JSON.parse(lines.at(-1)!).id).toBe('prefix')
 
           return [
             {
