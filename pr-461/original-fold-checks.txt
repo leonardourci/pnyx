@@ -1,0 +1,73 @@
+
+ RUN  v5.1.0 <worktree>
+      Running tests with seed "1795225391561"
+
+ ❯ |browser| tests/browser/cards.test.ts (11 tests | 2 failed | 9 skipped) 14690ms
+   × folded Hydras and project columns keep one aligned vertical strip at 1440x900 4416ms
+   × folded Hydras and project columns keep one aligned vertical strip at 390x844 9883ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > folded Hydras and project columns keep one aligned vertical strip at 1440x900
+AssertionError: expected { Object (thin, bodyHidden, ...) } to deeply equal { thin: true, bodyHidden: true, …(3) }
+
+- Expected
++ Received
+
+  {
+-   "aligned": true,
+-   "bodyHidden": true,
+-   "contained": true,
+-   "stacked": true,
+-   "thin": true,
++   "aligned": false,
++   "bodyHidden": false,
++   "contained": false,
++   "stacked": false,
++   "thin": false,
+  }
+
+ ❯ tests/browser/cards.test.ts:1353:34
+    1351|     `,
+    1352|       })
+    1353|       expect(JSON.parse(folded)).toEqual({
+       |                                  ^
+    1354|         thin: true,
+    1355|         bodyHidden: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > folded Hydras and project columns keep one aligned vertical strip at 390x844
+AssertionError: expected { Object (thin, bodyHidden, ...) } to deeply equal { thin: true, bodyHidden: true, …(3) }
+
+- Expected
++ Received
+
+  {
+-   "aligned": true,
+-   "bodyHidden": true,
++   "aligned": false,
++   "bodyHidden": false,
+    "contained": true,
+-   "stacked": true,
+-   "thin": true,
++   "stacked": false,
++   "thin": false,
+  }
+
+ ❯ tests/browser/cards.test.ts:1353:34
+    1351|     `,
+    1352|       })
+    1353|       expect(JSON.parse(folded)).toEqual({
+       |                                  ^
+    1354|         thin: true,
+    1355|         bodyHidden: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 skipped (11)
+   Start at  22:43:11
+   Duration  16.66s (tests 95%, import 2%, transform 2%, setup 1%)
+
