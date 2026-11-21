@@ -1197,7 +1197,7 @@ test(
     const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
     const prose = Array(32).fill('Every line remains readable in its field.')
       .join('\n')
-    const result = await chrome({
+    const result = JSON.parse(await chrome({
       script: `
     await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
@@ -1215,19 +1215,19 @@ test(
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
-    const titleField = '[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]';
-    await page.fill(titleField, ${JSON.stringify(title.replace(
-      'complete title',
-      'complete\r\n title',
-    ))});
-    const normalizedTitle = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').value);
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', ${JSON.stringify(title)});
+    await page.eval(() => {
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
+      field.setRangeText('\\n', 0, 0, 'end');
+      field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+    });
     await page.press('Shift+Enter');
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
       const title = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
       const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]');
-      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
+      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
     });
     await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
@@ -1236,9 +1236,9 @@ test(
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, normalizedTitle, chatBounded }, card }));
+    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
   `,
-    })
+    }))
     await until({
       what: 'the saved task',
       check: () => rows({
@@ -1249,21 +1249,17 @@ test(
         ],
       }).length === 1,
     })
-    const {
-      fields,
-      card,
-    } = JSON.parse(result)
-    expect(fields).toMatchObject({
+    expect(result.fields).toMatchObject({
       renameFits: true,
       titleFits: true,
       titleGrows: true,
-      normalizedTitle: title,
+      pasteCaret: 0,
       titleAfterShiftEnter: title,
       askGrows: true,
       multiLine: true,
       chatBounded: true,
     })
-    expect(card).toEqual({
+    expect(result.card).toEqual({
       expanded: 'false',
       column: 'ideas',
       title,
