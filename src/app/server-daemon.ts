@@ -178,6 +178,7 @@ export async function startServer({
       before: home,
       after: next,
     })
+
     if (changes) {
       const frame = homeHistory.append({ value: changes })
       home = next
