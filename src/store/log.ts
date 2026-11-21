@@ -1,4 +1,4 @@
-import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, openSync, readSync, statSync } from 'node:fs'
+import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { HydraError } from './errors.ts'
 import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
@@ -132,13 +132,31 @@ export function readLog({
   }
 
   let fd: number
+  const found = lstatSync(
+    path,
+    { throwIfNoEntry: false },
+  )
+
+  if (found && !found.isFile()) {
+    throw corrupt({
+      path,
+      offset: 0,
+    })
+  }
 
   try {
     fd = openSync(
       path,
-      constants.O_RDWR | constants.O_NOFOLLOW,
+      constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EISDIR') {
+      throw corrupt({
+        path,
+        offset: 0,
+      })
+    }
+
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw error
     }
@@ -151,7 +169,16 @@ export function readLog({
   }
 
   try {
-    const size = fstatSync(fd).size
+    const opened = fstatSync(fd)
+
+    if (!opened.isFile()) {
+      throw corrupt({
+        path,
+        offset: 0,
+      })
+    }
+
+    const size = opened.size
 
     if (after.bytes > size) {
       throw positionError({ path })
