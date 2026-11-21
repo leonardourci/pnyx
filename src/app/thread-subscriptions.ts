@@ -17,7 +17,6 @@ import { LATEST_DELAY_MS } from './latest-feed.ts'
 import type { EventType, HydraEvent, HydraState } from './model.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
-import { createThreadDelivery } from './thread-delivery.ts'
 
 const LIVE_TEXT_DELAY_MS = 80
 
@@ -135,10 +134,8 @@ export function createThreadSubscriptions({
   const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
   const liveThreadTimers = new Map<Subscription, ReturnType<typeof setTimeout>>()
   const liveSentAt = new WeakMap<Subscription, number>()
-  const threadDelivery = createThreadDelivery({
-    send,
-    closed,
-  })
+  const retiredClients = new WeakSet<HydraClient>()
+  const retireThreadClient = ({ws}: {ws: HydraClient}) => retiredClients.add(ws)
 
   const deliver = ({
     ws,
@@ -150,19 +147,54 @@ export function createThreadSubscriptions({
     sub: Subscription
     prepared: PreparedThread
     receipt?: string
-  }) => threadDelivery.push({
-    key: sub,
-    ws,
-    thread: prepared.thread,
-    delta: prepared.delta,
-    receipt,
-    current: () => subscriptionMap({ card: sub.card }).get(ws) === sub,
-    accepted: () => {
-      if (prepared.signature !== undefined && sub.versioned === prepared.thread) {
-        sub.sent = prepared.signature
+  }) => {
+    if (closed() || retiredClients.has(ws) || ws.readyState !== ws.OPEN) {
+      return
+    }
+
+    if (subscriptionMap({card: sub.card}).get(ws) !== sub) {
+      if (receipt !== undefined) {
+        send({
+          ws,
+          message: {
+            type: 'error',
+            id: receipt,
+            code: 'THREAD_CANCELLED',
+            error: 'Conversation read cancelled because its subscription changed',
+          },
+        })
       }
-    },
-  })
+
+      return
+    }
+
+    let message: ServerMessage = {
+      type: 'thread',
+      thread: prepared.thread,
+    }
+
+    if (receipt !== undefined) {
+      message = {
+        type: 'receipt',
+        id: receipt,
+        thread: prepared.thread,
+      }
+    } else if (prepared.delta) {
+      message = {
+        type: 'thread.delta',
+        delta: prepared.delta,
+      }
+    }
+
+    const accepted = send({
+      ws,
+      message,
+    })
+
+    if (accepted && prepared.signature !== undefined && sub.versioned === prepared.thread) {
+      sub.sent = prepared.signature
+    }
+  }
 
   const shownRows = ({
     card,
@@ -272,7 +304,7 @@ export function createThreadSubscriptions({
       },
     } : prepared)
 
-    if (push && sent === sub.sent && !threadDelivery.has({ key: sub })) {
+    if (push && sent === sub.sent) {
       return undefined
     }
 
@@ -303,8 +335,8 @@ export function createThreadSubscriptions({
       }
     }
 
-    // Only a push with nothing pending goes as a delta; a read is answered with a full page.
-    const asDelta = push && sub.sent !== undefined && !threadDelivery.has({ key: sub })
+    // Explicit reads return a full page; ordered pushes can use deltas.
+    const asDelta = push && sub.sent !== undefined
     const delta = asDelta ? threadDelta({
       before: sub.versioned,
       after: thread,
@@ -566,7 +598,7 @@ export function createThreadSubscriptions({
     prepared: PreparedThread
     receipt?: string
   }) => {
-    if (sub.client && (receipt !== undefined || threadDelivery.has({ key: sub }))) {
+    if (sub.client && receipt !== undefined) {
       deliver({
         ws: sub.client,
         sub,
@@ -694,7 +726,6 @@ export function createThreadSubscriptions({
       previous.watcher?.close()
       clearTimeout(liveThreadTimers.get(previous))
       liveThreadTimers.delete(previous)
-      threadDelivery.cancel({ key: previous })
     }
 
     const path = threadPath({ card })
@@ -768,7 +799,6 @@ export function createThreadSubscriptions({
       sub.watcher?.close()
       clearTimeout(liveThreadTimers.get(sub))
       liveThreadTimers.delete(sub)
-      threadDelivery.cancel({ key: sub })
       map.delete(ws)
     }
   }
@@ -779,7 +809,7 @@ export function createThreadSubscriptions({
     subscriptionMap,
     threadTimers,
     liveThreadTimers,
-    threadDelivery,
+    retireThreadClient,
     refreshLiveThread,
     refreshThread,
     threadPage,

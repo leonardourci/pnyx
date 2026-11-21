@@ -18,8 +18,6 @@ export const commands = {
   ...dispatchCommands,
 }
 
-export const SOCKET_RETRY_MS = 100
-
 export const MAX_BODY = 1 << 20
 
 export const STOP_TIMEOUT_MS = 5000
@@ -101,7 +99,7 @@ export interface HydraClient {
   readonly bufferedAmount: number
   readonly readyState: number
   readonly OPEN: number
-  send({ message }: { message: ServerMessage }): void
+  send({ message }: { message: ServerMessage }): boolean
   terminate(): void
 }
 

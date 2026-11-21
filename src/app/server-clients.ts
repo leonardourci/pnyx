@@ -139,12 +139,10 @@ export function createServerClients({
       })
     }
 
-    ws.send({ message })
-
-    return true
+    return ws.send({ message })
   }
 
-  const storeQueue = () => {
+  const queue = () => {
     const queued = agents().queue()
     const chat = hydraChatQueue({ state: state() })
 
@@ -171,7 +169,6 @@ export function createServerClients({
   })
 
   const broadcast = ({ event }: { event: HydraEvent }) => {
-    storeQueue()
     const live = liveCardIds()
     const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
     liveCards = live
@@ -290,7 +287,7 @@ export function createServerClients({
   return {
     clients,
     send,
-    storeQueue,
+    queue,
     sendLatest,
     // A tab that names its cards when it subscribes gets its first latest batch already scoped.
     open({

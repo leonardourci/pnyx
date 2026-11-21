@@ -117,7 +117,7 @@ export async function mountOwnedHydra({
     subscriptionMap,
     threadTimers,
     liveThreadTimers,
-    threadDelivery,
+    retireThreadClient,
     refreshLiveThread,
     refreshThread,
     threadPage,
@@ -148,7 +148,7 @@ export async function mountOwnedHydra({
   const {
     clients,
     send,
-    storeQueue,
+    queue,
     sendLatest,
     broadcast,
     spend,
@@ -368,9 +368,7 @@ export async function mountOwnedHydra({
     upgradeRoot,
     restart,
     changed: () => kick(),
-    queued: () => {
-      storeQueue()
-    },
+    queued: kick,
     streamed,
     usageChanged: () => spend.count(),
   })
@@ -610,9 +608,13 @@ export async function mountOwnedHydra({
             resync: true,
           })
         } else if (message?.type === 'command') {
-          runCommand({
-            ws,
-            message,
+          background({
+            name: 'page command',
+            context: {hydraId},
+            run: () => runCommand({
+              ws,
+              message,
+            }),
           })
         } else {
           send({
@@ -634,7 +636,7 @@ export async function mountOwnedHydra({
         catalogReads.delete(ws)
         clearTimeout(threadTimers.get(ws))
         threadTimers.delete(ws)
-        threadDelivery.removeClient({ ws })
+        retireThreadClient({ ws })
 
         for (const map of threadSubscriptions()) {
           const sub = map.get(ws)
@@ -713,7 +715,6 @@ export async function mountOwnedHydra({
     folders.clear()
     transcripts.clear()
     transcriptPolls.clear()
-    threadDelivery.close()
     tabs.close()
     threadSubscriptions().forEach(map => map.clear())
     clearTimeout(feed.latestTimer)
@@ -780,7 +781,6 @@ export async function mountOwnedHydra({
   }
 
   kick()
-  storeQueue()
   touchLatest({ ids: Object.keys(state.cards) })
 
   return {
@@ -794,7 +794,7 @@ export async function mountOwnedHydra({
           hidden: true,
         },
       }),
-      queue: storeQueue(),
+      queue: queue(),
     }),
     request,
     connect,

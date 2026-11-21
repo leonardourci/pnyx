@@ -568,7 +568,7 @@ export async function startServer({
               },
               OPEN: ws.OPEN,
               send({ message }) {
-                send({
+                return send({
                   message: scoped || hydra !== primary ? {
                     ...message,
                     scope: hydra,
