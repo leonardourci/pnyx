@@ -214,7 +214,7 @@ export function inscribeOperation({
   if (action === 'start' && active && active.id !== id) {
     inform({
       reason: `Inscribe pass ${active.id} is still open; started another pass`,
-      clear: `Use pnyx hydra inscribe fail --key ${active.id} --error "<why>" to close it`,
+      clear: `Review the unfinished inscribe pass ${active.id} before saving another summary.`,
     })
   }
 

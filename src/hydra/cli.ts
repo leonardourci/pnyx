@@ -71,7 +71,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
     if (!hydras.length) {
       return {
         hydras: 'none: no Hydras yet',
-        help: ['Run `pnyx hydra create <id>` to add one'],
+        help: ['Add a Hydra from the header in the UI'],
       }
     }
 
@@ -192,7 +192,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         inform({
           task: session.taskId,
           reason: 'Worker detached from its task before becoming Hydra',
-          clear: `Use pnyx task attach ${session.taskId} --session <other-session> to assign another worker`,
+          clear: `Review the worker assigned to task ${session.taskId} in the UI.`,
         })
         applyDecision({
           writer,
@@ -253,7 +253,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
       })) {
         inform({
           reason: 'Hydra permission level increased through its session',
-          clear: 'pnyx hydra set --session <session>',
+          clear: 'Review the Hydra session in the UI.',
         })
       }
 
@@ -348,7 +348,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
 
         inform({
           reason: `Hydra ${id} already exists; updated its requested settings`,
-          clear: `Use pnyx hydra set --hydra ${id} to change its settings`,
+          clear: `Review the settings of Hydra ${id} in the UI.`,
         })
       }
 
