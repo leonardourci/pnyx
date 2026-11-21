@@ -58,6 +58,34 @@ export function Input({
       aria-multiline={props.role === 'combobox' ? undefined : false}
       value={typeof value === 'string' ? singleLine({ text: value }) : value}
       defaultValue={typeof defaultValue === 'string' ? singleLine({ text: defaultValue }) : defaultValue}
+      onPaste={event => {
+        props.onPaste?.(event)
+
+        if (event.defaultPrevented) {
+          return
+        }
+
+        const pasted = event.clipboardData.getData('text/plain')
+        const text = singleLine({ text: pasted })
+
+        if (text === pasted) {
+          return
+        }
+
+        event.preventDefault()
+        const field = event.currentTarget
+        const start = field.selectionStart
+        const end = field.selectionEnd
+        const remaining = field.maxLength - (field.value.length - (end - start))
+        const insert = field.maxLength < 0 ? text : text.slice(0, Math.max(0, remaining))
+
+        if (!insert) {
+          return
+        }
+
+        field.setRangeText(insert, start, end, 'end')
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }))
+      }}
       onChange={event => {
         const field = event.currentTarget
         const breaks = [...field.value.matchAll(lineBreaks)]
