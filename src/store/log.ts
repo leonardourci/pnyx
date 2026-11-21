@@ -233,7 +233,8 @@ export function readLog({
       fdatasyncSync(fd)
     }
 
-    let pending: Buffer = Buffer.alloc(0)
+    let pending: Buffer[] = []
+    let pendingLength = 0
     let offset = after.bytes
     let readAt = after.bytes
     let n = after.n
@@ -259,33 +260,41 @@ export function readLog({
       }
 
       readAt += bytes
-      pending = Buffer.concat([
-        pending,
-        chunk.subarray(
-          0,
-          bytes,
-        ),
-      ])
+      const contents = chunk.subarray(
+        0,
+        bytes,
+      )
       let start = 0
 
-      for (let end = pending.indexOf(10); end !== -1; end = pending.indexOf(
+      for (let end = contents.indexOf(10); end !== -1; end = contents.indexOf(
         10,
         start,
       )) {
-        const lineOffset = offset + start
+        const part = contents.subarray(
+          start,
+          end,
+        )
+        let line = part
+
+        if (pending.length) {
+          pending.push(part)
+          line = Buffer.concat(
+            pending,
+            pendingLength + part.length,
+          )
+        }
+
+        const lineOffset = offset
         let value: unknown
 
         try {
-          value = JSON.parse(UTF8.decode(pending.subarray(
-            start,
-            end,
-          )))
+          value = JSON.parse(UTF8.decode(line))
         } catch (error) {
           if (!(error instanceof SyntaxError) && !(error instanceof TypeError)) {
             throw error
           }
 
-          const last = readAt === size && end + 1 === pending.length
+          const last = readAt === size && end + 1 === contents.length
 
           if (!last) {
             throw corrupt({
@@ -313,14 +322,19 @@ export function readLog({
         })
         accept({ entry })
         n = entry.n
+        offset += pendingLength + part.length + 1
+        pending = []
+        pendingLength = 0
         start = end + 1
       }
 
-      offset += start
-      pending = pending.subarray(start)
+      if (start < contents.length) {
+        pending.push(contents.subarray(start))
+        pendingLength += contents.length - start
+      }
     }
 
-    if (pending.length) {
+    if (pendingLength) {
       truncateTail({
         fd,
         bytes: offset,
