@@ -329,7 +329,7 @@ export function openFileStore<Hydra, Task>({
       return failure
     }
 
-    function stageWrite({ job }: { job: Write<Hydra, Task> }): Receipt[] {
+    function stageWrite({ job }: { job: Pick<Write<Hydra, Task>, 'scope' | 'create' | 'decide'> }): Receipt[] {
       const { scope } = job
       const parent = working.get(scope.hydra)
 
@@ -528,15 +528,12 @@ export function openFileStore<Hydra, Task>({
             for (const change of changes) {
               const accepted = stageWrite({
                 job: {
-                  kind: 'write',
                   scope: {
                     hydra: change.hydra,
                     task: change.task,
                   },
                   create: change.create ?? false,
                   decide: () => change.facts,
-                  resolve: job.resolve,
-                  reject: job.reject,
                 },
               })
 

@@ -183,7 +183,7 @@ test(
         'utf8',
       )).toBe(before)
       expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([])
-      await home.change({
+      const receipts = await home.change({
         decide: ({ read }) => {
           expect(read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([])
 
@@ -210,6 +210,20 @@ test(
           ]
         },
       })
+      expect(receipts).toEqual([
+        {
+          id: 'first',
+          n: 2,
+          at: AT,
+          duplicate: false,
+        },
+        {
+          id: 'second',
+          n: 2,
+          at: AT,
+          duplicate: false,
+        },
+      ])
     } finally {
       await home.close()
     }
