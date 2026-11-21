@@ -71,11 +71,13 @@ function entryOf({
   path,
   offset,
   n,
+  writing = false,
 }: {
   value: unknown
   path: string
   offset: number
   n: number
+  writing?: boolean
 }): LogEntry {
   const entry = value as Partial<LogEntry> | null
 
@@ -85,6 +87,13 @@ function entryOf({
     || typeof entry.by !== 'string' || !AUTHORS.has(entry.by)
     || typeof entry.t !== 'string' || !entry.t
     || typeof entry.id !== 'string' || !entry.id) {
+    if (writing) {
+      throw new HydraError({
+        code: 'INVALID_EVENT',
+        message: 'invalid native fact header',
+      })
+    }
+
     throw corrupt({
       path,
       offset,
@@ -271,7 +280,7 @@ export function readLog({
   }
 }
 
-export function appendLog({
+export function prepareLog({
   path,
   after,
   entries,
@@ -279,15 +288,16 @@ export function appendLog({
   path: string
   after: LogPosition
   entries: readonly LogFact[]
-}): LogPosition {
+}): {
+  data: Buffer
+  entries: LogEntry[]
+  position: LogPosition
+} {
   if (!validLogPosition({ position: after })) {
     throw positionError({ path })
   }
 
-  if (!entries.length) {
-    return { ...after }
-  }
-
+  const numberedEntries: LogEntry[] = []
   const lines = entries.map((
     entry,
     index,
@@ -322,11 +332,43 @@ export function appendLog({
       path,
       offset: after.bytes,
       n: after.n + index + 1,
+      writing: true,
     })
+    numberedEntries.push(numbered)
 
     return `${JSON.stringify(numbered)}\n`
   })
   const buffer = Buffer.from(lines.join(''))
+
+  return {
+    data: buffer,
+    entries: numberedEntries,
+    position: {
+      bytes: after.bytes + buffer.length,
+      n: after.n + entries.length,
+    },
+  }
+}
+
+export function appendLog({
+  path,
+  after,
+  entries,
+}: {
+  path: string
+  after: LogPosition
+  entries: readonly LogFact[]
+}): LogPosition {
+  const prepared = prepareLog({
+    path,
+    after,
+    entries,
+  })
+
+  if (!entries.length) {
+    return prepared.position
+  }
+
   const existing = statSync(
     path,
     { throwIfNoEntry: false },
@@ -357,7 +399,7 @@ export function appendLog({
     writeOpenFile({
       fd,
       path,
-      data: buffer,
+      data: prepared.data,
       dataOnly: true,
     })
 
@@ -365,10 +407,7 @@ export function appendLog({
       syncDirectory({ dir: dirname(path) })
     }
 
-    return {
-      bytes: after.bytes + buffer.length,
-      n: after.n + entries.length,
-    }
+    return prepared.position
   } finally {
     closeSync(fd)
   }
