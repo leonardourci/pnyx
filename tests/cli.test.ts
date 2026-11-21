@@ -390,6 +390,18 @@ describe(
           ],
           ['report'],
           [
+            'serve',
+            '--port',
+            '65536',
+          ],
+          [
+            'serve',
+            '--port',
+            '0',
+            '--port',
+            '0',
+          ],
+          [
             'setup',
             'postgres',
             '--preview',

@@ -1,7 +1,6 @@
 import type { Writable } from 'node:stream'
-import { parseArgs } from 'node:util'
 import { SERVE_OPTIONS } from './server.ts'
-import { flagError } from './cli-support.ts'
+import { parse } from './cli-support.ts'
 import { DEFAULT_PORT } from './server-state.ts'
 import { type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
@@ -10,19 +9,7 @@ import { HydraError } from '#store/errors.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import { stopOldHost } from '#workers/children.ts'
 
-function serveFlags({ args }: { args: string[] }) {
-  try {
-    return parseArgs({
-      args,
-      options: SERVE_OPTIONS,
-      strict: true,
-    }).values
-  } catch (error) {
-    throw flagError({
-      error,
-    })
-  }
-}
+const MAX_PORT = 65535
 
 export async function serve({
   args,
@@ -33,21 +20,24 @@ export async function serve({
   stdout: Writable
   json: boolean
 }): Promise<Record<string, unknown>> {
-  const values = serveFlags({ args })
-  const hydraId = values.hydra ?? 'default'
+  const { values } = parse({
+    args,
+    options: SERVE_OPTIONS,
+    positionals: 0,
+  })
+  const hydraId = (values.hydra as string | undefined) ?? 'default'
+  const portFlag = values.port as string | undefined
+  const rawPort = portFlag ?? process.env.PORT
+  const source = portFlag === undefined ? 'PORT' : '--port'
 
-  // portless hands the app its port in PORT.
-  const source = values.port === undefined && process.env.PORT !== undefined ? 'PORT' : '--port'
-  values.port ??= process.env.PORT
-
-  if (values.port !== undefined && !/^\d+$/.test(values.port)) {
+  if (rawPort !== undefined && (!/^\d+$/.test(rawPort) || Number(rawPort) > MAX_PORT)) {
     throw new HydraError({
-      message: `${source} must be a number`,
+      message: `${source} must be a port from 0 to ${MAX_PORT}`,
       code: 'VALIDATION_ERROR',
     })
   }
 
-  const port = Number(values.port ?? DEFAULT_PORT)
+  const port = Number(rawPort ?? DEFAULT_PORT)
   let server: RunningServer
 
   try {

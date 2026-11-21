@@ -13,6 +13,7 @@ import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { commands } from './cli.ts'
 import { project } from '#projects/cli.ts'
+import { agent } from '#workers/agent-cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import { requestEnv, IDENTITY, agentRequest, runForClient } from '#app/request-context.ts'
 
@@ -142,7 +143,7 @@ export const approval = guard({
         }) !== proposal.before) {
           inform({
             reason: 'Applying a saved action after its target changed',
-            clear: `Use pnyx ${confirming?.name ?? 'task'} --help to inspect its current commands`,
+            clear: 'Review the target in the UI before retrying the action',
           })
         }
 
@@ -219,6 +220,7 @@ export const approval = guard({
     try {
       const handlers = {
         ...commands,
+        agent,
         project,
         ...dispatchCommands,
       }
