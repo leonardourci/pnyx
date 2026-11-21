@@ -1192,3 +1192,50 @@ test(
     })
   },
 )
+
+test(
+  'saving a task leaves its card closed in its column',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await chrome({
+      script: `
+    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
+    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', 'Keep this task closed');
+    await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
+  `,
+    })
+    await until({
+      what: 'the saved task',
+      check: () => rows({
+        text: 'select id from cards where hydra_id = $1 and title = $2',
+        values: [
+          hydra.id,
+          'Keep this task closed',
+        ],
+      }).length === 1,
+    })
+    const result = await chrome({
+      script: `
+    console.log(await page.eval(() => {
+      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
+      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent });
+    }));
+  `,
+    })
+    expect(JSON.parse(result)).toEqual({
+      expanded: 'false',
+      column: 'ideas',
+      title: 'Keep this task closed',
+    })
+    expect(rows({
+      text: 'select title from cards where hydra_id = $1 and title = $2',
+      values: [
+        hydra.id,
+        'Keep this task closed',
+      ],
+    })).toEqual([{ title: 'Keep this task closed' }])
+  },
+)

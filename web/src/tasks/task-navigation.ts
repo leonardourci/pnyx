@@ -1,7 +1,7 @@
 import { motionDuration, REDUCED_MOTION } from '#web-shared/motion.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { showingPage, type PageView } from '#web-app/restore.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
@@ -43,8 +43,6 @@ export function useTaskNavigation({
   currentState.current = state
   const currentCards = useRef(state.cards)
   currentCards.current = state.cards
-  const pendingColumns = useRef<Record<string, string>>({})
-  const pendingFocus = useRef<string | null>(null)
   const pendingOpen = useRef<AbortController | null>(null)
   const highlight = useRef<Animation | null>(null)
   const [
@@ -197,14 +195,13 @@ export function useTaskNavigation({
       ...current,
       selected: null,
       expanded: [],
-    })); pendingFocus.current = null
+    }))
   }
 
   const expandedIds = useMemo(
     () => expandedByColumn({
       ids: expanded.map(id => state.keys[id] ?? id),
       cards: state.cards,
-      pending: pendingColumns.current,
       state,
     }),
     [
@@ -229,7 +226,6 @@ export function useTaskNavigation({
         const next = expandedByColumn({
           ids: ids.map(id => state.keys[id] ?? id),
           cards: state.cards,
-          pending: pendingColumns.current,
           state,
         })
         const unchanged = ids.length === next.length && ids.every((
@@ -260,27 +256,6 @@ export function useTaskNavigation({
   }) =>
     document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
 
-  useLayoutEffect(() => {
-    const pendingId = pendingFocus.current
-    const id = pendingId ? state.keys[pendingId] ?? pendingId : null
-
-    if (page !== 'hydra' || !id) {
-      return
-    }
-
-    const element = cardElement({
-      id,
-      selected: true,
-    })
-    const panel = element?.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
-
-    if (panel) {
-      pendingFocus.current = null
-      requestAnimationFrame(() => {
-        panel.focus({ preventScroll: true })
-      })
-    }
-  })
   const columns = columnsFor({ state })
   const filteredCards = useMemo(
     () => filterCards({ state }),
@@ -370,21 +345,8 @@ export function useTaskNavigation({
     }
   }
 
-  const expand = ({
-    id,
-    column,
-    focus = true,
-  }: {
-    id: string
-    column?: string
-    focus?: boolean
-  }) => {
-    if (column) {
-      pendingColumns.current[id] = column
-    }
-
+  const expand = ({ id }: { id: string }) => {
     keepRevealed({ id })
-    pendingFocus.current = focus ? id : null
     // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
     setView(current => ({
       ...current,
@@ -394,7 +356,6 @@ export function useTaskNavigation({
           id,
         ],
         cards: currentCards.current,
-        pending: pendingColumns.current,
         state,
       }),
       selected: id,
@@ -411,10 +372,7 @@ export function useTaskNavigation({
   }) => openTaskCard({
     find: () => (currentCards.current[id]
       ? cardElement({ id }) : null),
-    expand: () => expand({
-      id,
-      focus: false,
-    }),
+    expand: () => expand({ id }),
     settle: () => afterTaskLayout({ signal }),
     opened: ({ element }) => element.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
       ?.focus({ preventScroll: true }),
@@ -441,7 +399,7 @@ export function useTaskNavigation({
     modal?: boolean
   }): Promise<boolean> => {
     opening()
-    cancelOpen(); pendingFocus.current = null
+    cancelOpen()
 
     if (id === '$board') {
       openHydra()
@@ -515,10 +473,7 @@ export function useTaskNavigation({
         if (modal) {
           keepRevealed({ id })
         } else {
-          expand({
-            id,
-            focus: false,
-          })
+          expand({ id })
         }
       }
 
@@ -555,10 +510,7 @@ export function useTaskNavigation({
         return false
       }
 
-      expand({
-        id,
-        focus: false,
-      })
+      expand({ id })
 
       if (!await afterTaskLayout({ signal })) {
         return false
@@ -631,10 +583,6 @@ export function useTaskNavigation({
       selected: selected === id ? remaining.at(-1) ?? null : current.selected,
     }))
 
-    if (pendingFocus.current === id) {
-      pendingFocus.current = null
-    }
-
     requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(closing?.column ?? 'needs_you')}"]` }))
   }
 
@@ -645,7 +593,6 @@ export function useTaskNavigation({
     columns,
     cancelOpen,
     clearSelection,
-    expand,
     open,
     revealTask,
     close,

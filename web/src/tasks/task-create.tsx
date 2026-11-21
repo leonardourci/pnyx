@@ -47,7 +47,7 @@ export function TaskCreate({
   before?: string
   command: Command
   connected: boolean
-  submitted({ id }: { id: string }): void
+  submitted(): void
   recover({ draft }: { draft: TaskDraft }): void
   draft?: TaskDraft
   cancel(): void
@@ -205,7 +205,7 @@ export function TaskCreate({
       name: 'task',
       args,
     })
-    submitted({ id: `task:${attempt.current}` })
+    submitted()
 
     try {
       await saving

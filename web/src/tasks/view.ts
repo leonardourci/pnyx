@@ -111,13 +111,11 @@ export function cardState({
 export function expandedByColumn({
   ids,
   cards,
-  pending,
   state,
 }: {
   state?: HydraState
   ids: string[]
   cards: Record<string, Card>
-  pending: Record<string, string>
 }): string[] {
   const columnOf = ({ id }: { id: string }) => {
     if (state && cards[id]) {
@@ -127,7 +125,7 @@ export function expandedByColumn({
       })
     }
 
-    return cards[id]?.column ?? pending[id] ?? id
+    return cards[id]?.column ?? id
   }
 
   const open = new Set<string>(), kept: string[] = []

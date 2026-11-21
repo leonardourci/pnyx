@@ -344,7 +344,6 @@ export function HydraView({
     columns: statusColumns,
     cancelOpen,
     clearSelection,
-    expand,
     open,
     revealTask,
     close,
@@ -1339,22 +1338,8 @@ export function HydraView({
                                               draft,
                                             })
                                           }
-
-                                          const key = `task:${draft.attempt}`
-                                          setPageView(view => ({
-                                            ...view,
-                                            selected: view.selected === key
-                                              ? null : view.selected,
-                                            expanded: view.expanded.filter(id => id !== key),
-                                          }))
                                         }}
-                                        submitted={({ id }) => {
-                                          setCreatingTask(null)
-                                          expand({
-                                            id,
-                                            column: c.id,
-                                          })
-                                        }}
+                                        submitted={() => setCreatingTask(null)}
                                       />
                                     )}
                                     <SortGroup namespace={`tasks:${navigation.hydraId}`} id={`tasks:${navigation.hydraId}:${c.id}`} items={items.map(item => item.id)}>
