@@ -91,13 +91,16 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       positionals: ['create'],
       meta: meta({ values }),
     })
+    const card = output.card as { id: string } | undefined
 
     return {
-      task: (output.card as { id: string }).id,
+      task: card?.id,
+      event: output.event,
       launch: output.launch,
       worker: output.worker,
       code: output.code,
       blocker: output.blocker,
+      notices: output.notices,
     }
   }
 
@@ -162,6 +165,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       message: output.message,
       state: output.state,
       delivery: output.delivery,
+      notices: output.notices,
     }
   }
 
@@ -193,6 +197,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       sent: output.sent,
       detail: output.detail,
       recordError: output.recordError,
+      notices: output.notices,
     }
   }
 
@@ -287,14 +292,14 @@ export async function runCli({
     const args = parsed.argv
     requestInvocation().name = invocationOf({ argv: args }).name
 
-    if (!args.length || parsed.help) {
-      stdout.write(json ? `${JSON.stringify({ help: HELP })}\n` : HELP)
+    if (parsed.version) {
+      stdout.write(json ? `${JSON.stringify({ version })}\n` : `${version}\n`)
 
       return
     }
 
-    if (parsed.version) {
-      stdout.write(json ? `${JSON.stringify({ version })}\n` : `${version}\n`)
+    if (!args.length || parsed.help) {
+      stdout.write(json ? `${JSON.stringify({ help: HELP })}\n` : HELP)
 
       return
     }

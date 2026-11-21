@@ -6,8 +6,7 @@ import { project } from '#projects/cli.ts'
 import { oracleCommands } from '#oracle/cli.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
 
-// Removed with the app's file-store cutover; current agent contexts still name these reads.
-const READ_PATHS: Record<string, string[]> = {
+const TRANSITIONAL_READ_PATHS: Record<string, string[]> = {
   task: [
     'list',
     'show',
@@ -28,7 +27,6 @@ const READ_PATHS: Record<string, string[]> = {
     'message',
     'history',
     'check',
-    'usage',
     'digest',
     'memory list',
   ],
@@ -83,17 +81,26 @@ export function readCommand({ argv }: { argv: string[] }) {
     ...args
   ] = argv
   const paths = Object.hasOwn(
-    READ_PATHS,
+    TRANSITIONAL_READ_PATHS,
     name,
-  ) ? READ_PATHS[name] : undefined
+  ) ? TRANSITIONAL_READ_PATHS[name] : undefined
   const allowed = paths?.some(path => path === '' || path.split(' ').every((
     word,
     index,
   ) => args[index] === word))
   const changesTools = name === 'task' && args[0] === 'tools'
     && args.some(arg => /^--(?:grant|revoke)(?:=|$)/.test(arg))
+  const usage = name === 'hydra' && args[0] === 'usage' && parseArgs({
+    args: args.slice(1),
+    options: {
+      hydra: { type: 'string' },
+      task: { type: 'string' },
+    },
+    allowPositionals: true,
+    strict: false,
+  }).positionals.length === 0
 
-  if (!allowed || changesTools) {
+  if ((!allowed && !usage) || changesTools) {
     return undefined
   }
 
