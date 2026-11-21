@@ -16,7 +16,7 @@ export class ApplyError extends HydraError {
   readonly errors: ApplyIssue[]
   constructor({
     errors,
-    help = ['Run `pnyx apply --help`'],
+    help = [],
   }: {
     errors: ApplyIssue[]
     help?: string[]
