@@ -86,13 +86,13 @@ export function createServerCommands({
     message,
   }: Parameters<typeof attemptCommand>[0]) => nonblockingLocks.run(
     true,
-    () => attemptCommand({
+    async () => await attemptCommand({
       ws,
       message,
     }),
   )
 
-  const attemptCommand = ({
+  const attemptCommand = async ({
     ws,
     message,
   }: {
@@ -281,7 +281,7 @@ export function createServerCommands({
             kick,
           })
         } else if (name === 'hydra-agent') {
-          hydraAgentCommand({
+          await hydraAgentCommand({
             ws,
             id,
             args,
@@ -292,7 +292,7 @@ export function createServerCommands({
             kick,
           })
         } else if (name === 'hydras') {
-          hydrasCommand({
+          await hydrasCommand({
             ws,
             id,
             args,

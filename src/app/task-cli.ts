@@ -138,11 +138,11 @@ export const TASK_OPTIONS: Options = {
 
 export async function taskCommand({ args }: { args: string[] }): Promise<Output> {
   if (args[0] === 'source') {
-    return sourceCommand({ args: args.slice(1) })
+    return await sourceCommand({ args: args.slice(1) })
   }
 
   if (args[0] === 'inbox') {
-    return inboxCommand({ args: args.slice(1) })
+    return await inboxCommand({ args: args.slice(1) })
   }
 
   const {
@@ -212,7 +212,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (local) {
     if (creatingWorker) {
       const card = local.card as { id: string }
-      const input = queueCardInput({
+      const input = await queueCardInput({
         hydraId,
         task: card.id,
         text: createText,
@@ -275,7 +275,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'landing') {
-    return taskLandingCommand({
+    return await taskLandingCommand({
       hydraId,
       ref: positionals[1],
       landing: values.landing as string | undefined,
@@ -314,7 +314,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: 'reminder time or clear',
     })
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -431,7 +431,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       })
     }
 
-    return queueCardInput({
+    return await queueCardInput({
       hydraId,
       task: required({
         value: positionals[1],
@@ -588,7 +588,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       }
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -616,7 +616,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'list') {
-    hideDone({ hydraId })
+    await hideDone({ hydraId })
     const state = loadHydra({ hydraId }).state
 
     const fields = taskFields({ value: values.fields as string | undefined })
@@ -928,7 +928,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: '--project <name|path>',
     })
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -982,7 +982,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       })
     }
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -1034,7 +1034,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: 'task id',
     })
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -1078,7 +1078,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: 'task id',
     })
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -1104,7 +1104,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: 'parent task or none',
     })
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -1170,7 +1170,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       what: 'task id',
     })
 
-    return commit({
+    return await commit({
       hydraId,
       meta: m,
       intent: {
@@ -1200,7 +1200,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'ask' || action === 'answer-group' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question' || action === 'reask'
     || action === 'defer-question' || action === 'discuss-question') {
-    return askCommand({
+    return await askCommand({
       action,
       positionals,
       values,
@@ -1221,7 +1221,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     what: 'task id',
   })
 
-  const result = commit({
+  const result = await commit({
     hydraId,
     meta: m,
     intent: {

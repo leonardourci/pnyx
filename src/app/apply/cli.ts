@@ -141,7 +141,7 @@ export const apply = guard({
       }
     }
 
-    const output = withWriter({
+    const output = await withWriter({
       hydraId,
       transaction: {
         id,

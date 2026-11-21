@@ -159,7 +159,10 @@ export async function mountOwnedHydra({
     offset = state.seq
 
     if (recovered) {
-      agents.reconcile({ state })
+      background({
+        name: 'reconcile agents',
+        run: async () => await agents.reconcile({ state }),
+      })
     }
 
     background({
@@ -300,7 +303,10 @@ export async function mountOwnedHydra({
     hydrasChanged()
 
     if (recovered) {
-      agents.reconcile({ state })
+      background({
+        name: 'reconcile agents',
+        run: async () => await agents.reconcile({ state }),
+      })
     }
 
     background({
@@ -334,7 +340,7 @@ export async function mountOwnedHydra({
     agents: () => agents,
     sources: () => sources,
     review: () => review,
-    recover: () => recovery.reconcile(),
+    recover: async () => await recovery.reconcile(),
   })
   const workerLogs = followWorkerLogs({
     hydraId,

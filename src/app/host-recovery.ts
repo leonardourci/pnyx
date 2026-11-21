@@ -54,7 +54,7 @@ export function createHostRecovery({
   children: ReturnType<typeof trackChildren>
   upgrades: ReturnType<typeof upgradeQueue>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
   interrupt({
     writer,
@@ -80,11 +80,11 @@ export function createHostRecovery({
   let fenced = true
 
   const recover: Host['recover'] = async () => {
-    restoreOutsideSessions({ hydraId })
+    await restoreOutsideSessions({ hydraId })
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
     fenced = false
     fenced = await children.sweep()
-    upgrades.recover()
+    await upgrades.recover()
 
     if (fenced) {
       await recoverHandoffs({ hydraId })
@@ -152,7 +152,7 @@ export function createHostRecovery({
     }[] = []
 
     const cutCompactions = new Set<string>()
-    write({
+    await write({
       fn: ({ writer }) => {
         for (const card of Object.values(writer.state.cards)) {
           const operation = card.compaction?.operations.findLast(operation => operation.state === 'running')
@@ -261,7 +261,7 @@ export function createHostRecovery({
     // A worker the restart cut continues once; one that cannot stays interrupted for Hydra or the owner.
     for (const cut of cutWorkerTurns) {
       try {
-        send({
+        await send({
           card: cut.task,
           text: WORKER_RESUME,
           actor: 'pnyx',
@@ -310,7 +310,7 @@ export function createHostRecovery({
       }
 
       try {
-        send({
+        await send({
           card: card.id,
           text: '',
           actor: 'pnyx',

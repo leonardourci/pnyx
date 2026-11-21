@@ -193,7 +193,7 @@ const history = guard({
 })
 
 const undo = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       positionals,
@@ -221,7 +221,7 @@ const undo = guard({
       )
     }
 
-    return commit(
+    return await commit(
       {
         hydraId,
         meta: m,

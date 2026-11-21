@@ -47,7 +47,7 @@ export function hydraAgentChangeCommand({
 }
 
 // `hydra-agent <agent>`: saves the agent Hydra runs on, and hands a new permission mode to its running turn.
-export function hydraAgentCommand({
+export async function hydraAgentCommand({
   ws,
   id,
   args,
@@ -82,7 +82,7 @@ export function hydraAgentCommand({
     previous,
     running,
     stateSeq,
-  } = withWriter({
+  } = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const config = hydraConfig({

@@ -139,13 +139,13 @@ export function createDiagnosticRecovery({
     })
   }
 
-  const record = ({
+  const record = async ({
     task,
     attempt,
   }: {
     task: string
     attempt: RecoveryAttempt
-  }) => withWriter({
+  }) => await withWriter({
     hydraId,
     fn: ({ writer }) => writer.append({
       event: {
@@ -194,7 +194,7 @@ export function createDiagnosticRecovery({
     })
   }
 
-  const notify = ({
+  const notify = async ({
     task,
     message,
   }: {
@@ -208,7 +208,7 @@ export function createDiagnosticRecovery({
     let written = false
 
     try {
-      written = withWriter({
+      written = await withWriter({
         hydraId,
         fn: ({ writer }) => {
           if (id in writer.state.eventIds) {
@@ -265,7 +265,7 @@ export function createDiagnosticRecovery({
 
     if (!candidate?.eligible || !candidate.sessionId) {
       if (recoveryNeedsNotice({ attempt: candidate?.attempts.at(-1) })) {
-        notify({
+        await notify({
           task,
           message,
         })
@@ -302,7 +302,7 @@ export function createDiagnosticRecovery({
     }
 
     try {
-      record({
+      await record({
         task,
         attempt: reservation,
       })
@@ -312,7 +312,7 @@ export function createDiagnosticRecovery({
         message,
         error,
       })
-      notify({
+      await notify({
         task,
         message,
       })
@@ -354,7 +354,7 @@ export function createDiagnosticRecovery({
     }
 
     try {
-      record({
+      await record({
         task,
         attempt: {
           ...reservation,
@@ -368,7 +368,7 @@ export function createDiagnosticRecovery({
         message,
         error,
       })
-      notify({
+      await notify({
         task,
         message,
       })
@@ -382,7 +382,7 @@ export function createDiagnosticRecovery({
         status,
       },
     })) {
-      notify({
+      await notify({
         task,
         message,
       })
@@ -435,7 +435,7 @@ export function createDiagnosticRecovery({
   return {
     originals: () => inputs().originals,
     blocked: () => [...blocked.values()].map(incident => ({ ...incident })),
-    reconcile() {
+    async reconcile() {
       if (closed) {
         return
       }
@@ -460,7 +460,7 @@ export function createDiagnosticRecovery({
         ].includes(unresolved.status)
           && candidate.receiptState === 'delivered') {
           try {
-            record({
+            await record({
               task,
               attempt: {
                 ...unresolved,
@@ -475,7 +475,7 @@ export function createDiagnosticRecovery({
               message,
               error,
             })
-            notify({
+            await notify({
               task,
               message,
             })
@@ -485,7 +485,7 @@ export function createDiagnosticRecovery({
         }
 
         if (recoveryNeedsNotice({ attempt: candidate.attempts.at(-1) })) {
-          notify({
+          await notify({
             task,
             message,
           })

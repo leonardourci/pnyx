@@ -13,7 +13,7 @@ import { requestEnv } from '#app/request-context.ts'
 
 export async function home(): Promise<Output> {
   const hydraId = requestEnv().PNYX_HYDRA || DEFAULT_HYDRA
-  hideDone({ hydraId })
+  await hideDone({ hydraId })
   const {
     dir,
     state,

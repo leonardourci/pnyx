@@ -1101,7 +1101,7 @@ export async function startServer({
 
     for (const id of hydraIds()) {
       try {
-        recoverOwnerCommands({ hydraId: id })
+        await recoverOwnerCommands({ hydraId: id })
       } catch (error) {
         log({
           level: 'warn',
