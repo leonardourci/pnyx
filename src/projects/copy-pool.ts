@@ -14,7 +14,7 @@ import { isFolder } from '#workers/folders.ts'
 
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
-export const POOL_IDLE = 2
+const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
 

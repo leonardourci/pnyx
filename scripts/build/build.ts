@@ -43,7 +43,7 @@ try {
       chmodSync(
         join(
           out,
-          'cli/pnyx-axi.js',
+          'cli/pnyx.js',
         ),
         0o755,
       )

@@ -1,5 +1,5 @@
 // A query word or phrase also matches the other words in its group.
-export const SYNONYMS: readonly (readonly string[])[] = [
+const SYNONYMS: readonly (readonly string[])[] = [
   [
     'pr',
     'pull request',

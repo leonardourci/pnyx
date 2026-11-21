@@ -224,7 +224,7 @@ export function createHost({
       throw new HydraError({
         message: released ? `the agent's copy ${cwd} was released, so its session cannot continue` : `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
         code: 'FOLDER_MISSING',
-        help: [card.agent.host === 'pnyx' ? `Run \`pnyx-axi task detach ${card.id}\`, then \`pnyx-axi task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx-axi task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`],
+        help: [card.agent.host === 'pnyx' ? `Run \`pnyx task detach ${card.id}\`, then \`pnyx task start ${card.id} --folder <absolute path>\` to start fresh from the brief` : `Run \`pnyx task start ${card.id} --via pnyx --replace-session ${sessionId({ agent: card.agent })} --folder <absolute path>\` to start fresh from the brief`],
       })
     }
 

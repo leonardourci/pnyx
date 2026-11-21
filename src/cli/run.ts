@@ -1,208 +1,344 @@
-import { formatApplyError } from '#app/apply/cli.ts'
-import { supervisedCommands } from '#routine-helper/commands.ts'
-import { approval } from '#app/confirmations.ts'
-import { dispatchCommands, DISPATCH_HELP } from '#workers/dispatch-cli.ts'
-import { project, PROJECT_HELP } from '#projects/cli.ts'
-import { AxiError, exitCodeForError, runAxiCli, type AxiCliCommand } from 'axi-sdk-js'
+import { readCommand } from './reads.ts'
+import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
-import { serve, stop } from '#app/server-cli.ts'
-import { ORACLE_HELP, oracleCommands } from '#oracle/cli.ts'
-import { TOP_LEVEL_HELP, commandHelp } from '#app/help.ts'
-import { helpHint } from '#app/cli-support.ts'
-import { recordExitCode, requestEnv, requestInvocation } from '#app/request-context.ts'
-import { commands } from '#app/cli.ts'
+import { parse, meta, required, WRITE, COMMON, type Options } from '#app/cli-support.ts'
+import { HydraError } from '#store/errors.ts'
+import { createCommand } from '#workers/create.ts'
+import { sendReply } from '#workers/reply.ts'
+import { hydraSend } from '#hydra/send-cli.ts'
+import { taskCommand } from '#app/task-cli.ts'
+import { setup } from '#setup/cli.ts'
+import { serve } from '#app/server-cli.ts'
+import { debug } from '#diagnostics/cli.ts'
+import { readInput, recordExitCode, requestInvocation } from '#app/request-context.ts'
 import { home } from './home.ts'
-import { focusedHelp, namesSubcommand, nextCommands } from './help.ts'
 import { version } from './version.ts'
-import { AGENT_HELP, agent } from '#workers/agent-cli.ts'
-import { REPLY_HELP, reply } from '#workers/reply-cli.ts'
-import { workerCommands } from '#workers/workers.ts'
-import { INTEGRATIONS_HELP, integrationsCommand } from '#integrations/cli.ts'
-import { agentNotices } from '#hydra/hydra-session.ts'
-import { workerScoped } from '#workers/worker-scope.ts'
-import { RESTART_HELP, restart } from '#upgrade/restart.ts'
-import { UPGRADE_HELP, upgrade } from '#upgrade/cli.ts'
+import { withCommandNotices } from '#app/command-notices.ts'
 
-const HELP: Record<string, string> = {
-  approval: 'usage: pnyx-axi approval confirm|dismiss <token>\nApplies or dismisses an existing saved approval directly.',
-  oracle: ORACLE_HELP,
-  project: PROJECT_HELP,
-  reply: REPLY_HELP,
-  agent: AGENT_HELP,
-  ...DISPATCH_HELP,
-  integrations: INTEGRATIONS_HELP,
-  upgrade: UPGRADE_HELP,
-  restart: RESTART_HELP,
+const HELP = `usage: pnyx <command> [--hydra <id>] [--json]
+
+pnyx task create --title <title> --brief <instructions> [--project <name|path>]
+pnyx send --text <message> [--task <id>] [--idempotency-key <key>]
+pnyx answer <task> <question> --text <answer> [--from-message <id>]
+pnyx board
+pnyx serve [--port <n>]
+pnyx setup [check|hooks|skills|postgres] [--preview]
+pnyx debug health
+
+Task creation starts its worker. Use --harness, --account, --model, --effort,
+--mode, --fast or --rule to choose its settings.
+Send addresses Hydra unless --task names a worker. --file <path|-> reads message text.
+Transitional reads: task list|show|history|updates|messages|chat|questions|inbox read,
+hydra check|digest|messages|message|history, card, history, context and oracle.
+Add --json when a script or agent reads structured records.
+Workers append needs-you, blocked, done, link or note lines to their worker.log.
+`
+
+const CREATE_OPTIONS: Options = {
+  ...COMMON,
+  actor: WRITE.actor,
+  reason: WRITE.reason,
+  details: WRITE.details,
+  'event-id': WRITE['event-id'],
+  'if-revision': WRITE['if-revision'],
+  title: { type: 'string' },
+  brief: { type: 'string' },
+  project: { type: 'string' },
+  ask: { type: 'string' },
+  intent: { type: 'string' },
+  message: { type: 'string' },
+  key: { type: 'string' },
+  harness: { type: 'string' },
+  account: { type: 'string' },
+  model: { type: 'string' },
+  effort: { type: 'string' },
+  mode: { type: 'string' },
+  fast: { type: 'string' },
+  rule: { type: 'string' },
+  folder: { type: 'string' },
+  'in-place': { type: 'boolean' },
 }
 
-const help = ({ command }: { command: string }) => commandHelp({ command }) ?? HELP[command]
+export const invocationOf = ({ argv }: { argv: string[] }) => ({
+  name: argv.slice(
+    0,
+    argv[0] === 'task' || argv[0] === 'debug' ? 2 : 1,
+  ).join(' '),
+})
 
-// A command line's help, and its name: named after the subcommand only when a usage line spells it out, so an id never splits
-// one command's lines (`card <id>` stays `card`).
-export function invocationOf({ argv }: { argv: string[] }) {
+async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   const [
     command,
-    sub,
-    ...rest
+    ...args
   ] = argv
-  const nextFlag = rest.findIndex(word => word.startsWith('-'))
-  const helpPath = nextFlag < 0 ? rest : rest.slice(
-    0,
-    nextFlag,
-  )
-  const full = command ? help({ command }) : undefined
-  const focused = full && sub ? focusedHelp({
-    help: full,
-    command,
-    sub,
-    rest: helpPath,
-  }) : full
 
-  return {
-    command,
-    focused,
-    name: full && sub && namesSubcommand({
-      help: full,
-      command,
-      sub,
-    }) ? `${command} ${sub}` : command,
-  }
-}
+  if (command === 'task' && args[0] === 'create') {
+    const {
+      values,
+      hydraId,
+    } = parse({
+      args: args.slice(1),
+      options: CREATE_OPTIONS,
+      positionals: 0,
+    })
+    required({
+      value: values.title as string | undefined,
+      what: '--title',
+    })
+    const output = await createCommand({
+      hydraId,
+      values,
+      positionals: ['create'],
+      meta: meta({ values }),
+    })
 
-// Runs one pnyx-axi command line and writes what it prints, in this process or for a client of the server.
-export async function runCli({
-  argv,
-  stdout,
-}: {
-  argv: string[]
-  stdout: Writable
-}): Promise<void> {
-  const {
-    command,
-    focused,
-    name,
-  } = invocationOf({ argv })
-
-  // serve runs outside any client request, so it records no invocation.
-  if (command !== 'serve') {
-    const invocation = requestInvocation()
-    invocation.name = name
-    invocation.help = focused
+    return {
+      task: (output.card as { id: string }).id,
+      launch: output.launch,
+      worker: output.worker,
+      code: output.code,
+      blocker: output.blocker,
+    }
   }
 
-  // A usage error with no next step points at the subcommand's own help.
-  const hinted = ({ run }: { run: AxiCliCommand<undefined> }): AxiCliCommand<undefined> =>
-    // eslint-disable-next-line pnyx/object-params -- runAxiCli owns the command signature.
-    async (
+  if (command === 'send') {
+    const {
+      values,
+      hydraId,
+    } = parse({
       args,
-      context,
-    ) => {
-      try {
-        const output = await run(
-          args,
-          context,
-        )
+      options: {
+        ...COMMON,
+        actor: { type: 'string' },
+        reason: { type: 'string' },
+        task: { type: 'string' },
+        text: { type: 'string' },
+        file: { type: 'string' },
+        'idempotency-key': { type: 'string' },
+      },
+      positionals: 0,
+    })
 
-        if (output && typeof output === 'object' && !Array.isArray(output) && Object.keys(output).length > 0 && !('help' in output)) {
-          return {
-            ...output,
-            help: nextCommands({
-              output,
-              fallback: helpHint(),
-              hydraId: requestEnv().PNYX_HYDRA ?? 'default',
-              args,
+    if ((values.text === undefined) === (values.file === undefined)) {
+      throw new HydraError({
+        message: 'give either --text or --file',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    const file = values.file as string | undefined
+    const text = file === undefined ? values.text as string : readInput({ file })
+    const m = meta({ values })
+    const task = values.task as string | undefined
+
+    if (task !== undefined) {
+      return {
+        reply: await sendReply({
+          hydraId,
+          request: {
+            card: required({
+              value: task,
+              what: '--task',
             }),
-          }
-        }
-
-        return output
-      } catch (error) {
-        // The SDK's default formatting picks the same code; a client of the server needs it recorded.
-        recordExitCode({ code: exitCodeForError(error) })
-
-        if (error instanceof AxiError && error.code === 'VALIDATION_ERROR' && !error.suggestions.length) {
-          throw new AxiError(
-            error.message,
-            error.code,
-            [helpHint()],
-          )
-        }
-
-        throw error
+            text,
+            actor: m.actor,
+            reason: m.reason,
+            id: values['idempotency-key'] as string | undefined,
+          },
+        }),
       }
     }
 
-  const owned = agentNotices({
-    commands: {
-      ...commands,
-      ...supervisedCommands({
-        commands: {
-          approval,
-          project,
-          ...workerCommands,
-          ...dispatchCommands,
-          serve,
-          stop,
-          upgrade,
-          restart,
-          reply,
-          agent,
-          integrations: integrationsCommand,
-          ...oracleCommands,
-          // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
-          update: () => {
-            throw new AxiError(
-              'pnyx-axi is not published yet',
-              'VALIDATION_ERROR',
-              ['Run `pnyx-axi upgrade` to pull, install and build the latest main'],
-            )
-          },
-        },
-      }),
-    },
-  })
+    const output = await hydraSend({
+      hydraId,
+      values: {
+        ...values,
+        text,
+        'event-id': values['idempotency-key'],
+      },
+    })
 
-  const all = workerScoped({ commands: owned })
-
-  // The SDK refuses a leading flag or an unknown command itself, through the process exit code;
-  // the status is recorded for the request too, as concurrent commands share that process.
-  const known = [
-    '--help',
-    '--version',
-    '-v',
-    '-V',
-    ...Object.keys(all),
-  ]
-
-  if (command !== undefined && !known.includes(command)) {
-    recordExitCode({ code: 2 })
+    return {
+      message: output.message,
+      state: output.state,
+      delivery: output.delivery,
+    }
   }
 
-  await runAxiCli({
-    argv,
-    stdout,
-    description: 'Every agent and its work in Pnyx',
-    version,
-    topLevelHelp: TOP_LEVEL_HELP,
-    home,
-    getCommandHelp: () => focused,
-    formatError: [
-      'apply',
-      'rule',
-      'account',
-    // eslint-disable-next-line pnyx/object-params -- the SDK owns the formatError signature.
-    ].includes(command ?? '') ? error => {
-        const formatted = formatApplyError(error)
-        recordExitCode({ code: formatted.exitCode })
+  if (command === 'answer') {
+    parse({
+      args,
+      positionals: 2,
+      options: {
+        ...WRITE,
+        text: { type: 'string' },
+        choice: { type: 'string' },
+        'from-message': { type: 'string' },
+        undelivered: { type: 'boolean' },
+      },
+    })
+    const output = await taskCommand({
+      args: [
+        'answer',
+        ...args,
+      ],
+    })
 
-        return formatted
-      } : undefined,
-    commands: Object.fromEntries(Object.entries(all).map(([
-      name,
-      run,
-    ]) => [
-      name,
-      hinted({ run }),
-    ])),
+    return {
+      event: output.event,
+      card: output.card,
+      reply: output.reply,
+      duplicate: output.duplicate,
+      state: output.state,
+      sent: output.sent,
+      detail: output.detail,
+      recordError: output.recordError,
+    }
+  }
+
+  if (command === 'board') {
+    const { hydraId } = parse({
+      args,
+      options: COMMON,
+      positionals: 0,
+    })
+
+    return home({ hydraId })
+  }
+
+  if (command === 'setup') {
+    return setup(args)
+  }
+
+  if (command === 'debug' && args[0] === 'health') {
+    return debug(args)
+  }
+
+  const read = readCommand({ argv })
+
+  if (read) {
+    return read(args)
+  }
+
+  throw new HydraError({
+    message: `unknown command: ${argv.join(' ')}`,
+    code: 'VALIDATION_ERROR',
   })
+}
+
+function plain({
+  value,
+  prefix = '',
+}: {
+  value: unknown
+  prefix?: string
+}): string {
+  if (value === undefined) {
+    return ''
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return `${prefix}${String(value)}\n`
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => plain({
+      value: item,
+      prefix: `${prefix}- `,
+    })).join('') || `${prefix}none\n`
+  }
+
+  return Object.entries(value).filter(([
+    ,
+    entry,
+  ]) => entry !== undefined)
+    .map(([
+      key,
+      entry,
+    ]) => {
+      if (entry !== null && typeof entry === 'object') {
+        return `${prefix}${key}:\n${plain({
+          value: entry,
+          prefix: `${prefix}  `,
+        })}`
+      }
+
+      return `${prefix}${key}: ${String(entry)}\n`
+    })
+    .join('')
+}
+
+export async function runCli({
+  argv,
+  stdout,
+  stderr = stdout,
+  remote = false,
+}: {
+  argv: string[]
+  stdout: Writable
+  stderr?: Writable
+  remote?: boolean
+}): Promise<void> {
+  let json = argv.includes('--json')
+
+  try {
+    const parsed = cliArguments({ argv })
+    json = parsed.json
+    const args = parsed.argv
+    requestInvocation().name = invocationOf({ argv: args }).name
+
+    if (!args.length || parsed.help) {
+      stdout.write(json ? `${JSON.stringify({ help: HELP })}\n` : HELP)
+
+      return
+    }
+
+    if (parsed.version) {
+      stdout.write(json ? `${JSON.stringify({ version })}\n` : `${version}\n`)
+
+      return
+    }
+
+    const command = args[0]
+
+    if (remote && (command === 'serve' || command === 'setup')) {
+      throw new HydraError({
+        message: `${command} must run in the local CLI`,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    let output = command === 'serve'
+      ? await serve({
+        args: args.slice(1),
+        stdout,
+        json,
+      })
+      : await withCommandNotices({ run: () => execute({ argv: args }) })
+
+    if (output && typeof output === 'object' && !Array.isArray(output)) {
+      output = Object.fromEntries(Object.entries(output).filter(([key]) => key !== 'help'))
+    }
+
+    if (output !== undefined) {
+      stdout.write(json ? `${JSON.stringify(output)}\n` : plain({ value: output }))
+    }
+  } catch (error) {
+    const argumentError = error instanceof Error && 'code' in error && String(error.code).startsWith('ERR_PARSE_ARGS')
+    let code = 'UNKNOWN'
+
+    if (error instanceof HydraError) {
+      code = error.code
+    } else if (argumentError) {
+      code = 'VALIDATION_ERROR'
+    }
+
+    const message = error instanceof Error ? error.message : String(error)
+    const exitCode = code === 'VALIDATION_ERROR' ? 2 : 1
+    recordExitCode({ code: exitCode })
+    stderr.write(json ? `${JSON.stringify({
+      error: message,
+      code,
+    })}\n` : `${code}: ${message}\n`)
+  }
 }

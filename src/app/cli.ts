@@ -1,7 +1,7 @@
+import { HydraError } from '#store/errors.ts'
 import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
-import { AxiError } from 'axi-sdk-js'
 import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize } from './cli-support.ts'
 import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
@@ -58,11 +58,11 @@ const history = guard({
     const type = kind && (kind.includes('.') ? kind : `card.${kind}`)
 
     if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
-      throw new AxiError(
-        `unknown kind: ${kind}`,
-        'VALIDATION_ERROR',
-        ['Use one of task.edited, pushed, moved, linked, outcome, replied, noted'],
-      )
+      throw new HydraError({
+        message: `unknown kind: ${kind}`,
+        code: 'VALIDATION_ERROR',
+        help: ['Use one of task.edited, pushed, moved, linked, outcome, replied, noted'],
+      })
     }
 
     const ref = values.card as string | undefined
@@ -179,7 +179,7 @@ const history = guard({
         String(values[f]),
       ] : []))
       out.help = [
-        `Run \`pnyx-axi history ${[
+        `Run \`pnyx history ${[
           ...flags,
           ...values.updates ? ['--updates'] : [],
           '--before',
@@ -214,11 +214,11 @@ const undo = guard({
     })[0]
 
     if (!target) {
-      throw new AxiError(
-        `event not found: ${id}`,
-        'NOT_FOUND',
-        ['Run `pnyx-axi history` to find event ids'],
-      )
+      throw new HydraError({
+        message: `event not found: ${id}`,
+        code: 'NOT_FOUND',
+        help: ['Run `pnyx history` to find event ids'],
+      })
     }
 
     return commit(

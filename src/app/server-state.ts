@@ -34,7 +34,7 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
 // The running server and the Hydras it serves. stopped: none is running, which a server.json left by a server
 // that died (its pid or port since reused) also counts as; a dead pid is not asked at all.
 // silent: its process is alive but /health did not answer, so what it is doing is unknown.
-export async function probeServer(): Promise<{
+async function probeServer(): Promise<{
   info: ServerInfo
   hydras: string[]
 } | 'stopped' | 'silent'> {
@@ -192,7 +192,7 @@ export async function askHost({
     throw new HydraError({
       message: `the Pnyx server for Hydra ${hydraId} is not running`,
       code: 'NOT_RUNNING',
-      help: ['Run `pnyx-axi serve`; it runs the agents Pnyx starts'],
+      help: ['Run `pnyx serve`; it runs the agents Pnyx starts'],
     })
   }
 

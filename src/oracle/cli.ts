@@ -1,6 +1,5 @@
 import { projectsFor } from '#projects/read.ts'
 import { readSearchFilters } from './filters.ts'
-import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import type { HydraProject } from '#projects/model.ts'
 import { findProject } from '#projects/read.ts'
@@ -8,9 +7,7 @@ import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
-import { SYNONYMS } from './synonyms.ts'
 import { KINDS, type Hit, type Kind, type Match } from './model.ts'
-import { SNIPPETS } from './search.ts'
 import { searchInBackground } from './search-background.ts'
 
 const LIMIT = 20
@@ -76,30 +73,30 @@ const oracleCommand = guard({
     const text = positionals.join(' ')
 
     if (!text) {
-      throw new AxiError(
-        'missing query',
-        'VALIDATION_ERROR',
-        ['Run `pnyx-axi oracle "<words>"`'],
-      )
+      throw new HydraError({
+        message: 'missing query',
+        code: 'VALIDATION_ERROR',
+        help: ['Run `pnyx oracle "<words>"`'],
+      })
     }
 
     const kind = values.kind as string | undefined
 
     if (kind !== undefined && !(KINDS as readonly string[]).includes(kind)) {
-      throw new AxiError(
-        `unknown kind: ${kind}`,
-        'VALIDATION_ERROR',
-        [`Use one of ${KINDS.join(', ')}`],
-      )
+      throw new HydraError({
+        message: `unknown kind: ${kind}`,
+        code: 'VALIDATION_ERROR',
+        help: [`Use one of ${KINDS.join(', ')}`],
+      })
     }
 
     const rawLimit = values.limit as string | undefined
 
     if (rawLimit !== undefined && !/^[1-9]\d*$/.test(rawLimit)) {
-      throw new AxiError(
-        '--limit must be a positive integer',
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: '--limit must be a positive integer',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     requireHydra({ hydraId })
@@ -177,7 +174,7 @@ function present(
     }
   }
 
-  const help = card ? [`Run \`pnyx-axi history --card ${card}\` for its events`] : [hits[0]!.kind === 'hydra' ? 'Open Hydra on the Hydra to read this conversation' : `Run \`pnyx-axi card ${hits[0]!.card}\` to open the top match`]
+  const help = card ? [`Run \`pnyx history --card ${card}\` for its events`] : [hits[0]!.kind === 'hydra' ? 'Open Hydra on the Hydra to read this conversation' : `Run \`pnyx card ${hits[0]!.card}\` to open the top match`]
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {
@@ -194,19 +191,3 @@ function present(
 export const oracleCommands = {
   oracle: oracleCommand,
 }
-
-export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
-Search tasks, events and notes; agent transcripts are not searched. The first query reads the event log
-into a derived SQLite cache; later queries read only what is new.
-Search includes saved briefs, intents, owner asks, reports and helper results, including earlier versions.
-Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
-Every word must match somewhere on one card. With --card or --kind every word must match one entry.
-Words ignore case and accents and match word forms (plurals, -ed, -ing), synonyms and prefixes (*).
-Synonyms: ${SYNONYMS.map(group => group.join(' / ')).join(', ')}.
-When nothing matches, similar words are tried (mode: fuzzy).
-Results rank by the query words in a card's title, project and link titles, then by its best entry
-(notes count double), then by latest activity.
-Each card shows its ${SNIPPETS} best entries; --card shows matching entries up to --limit.
-The default limit is ${LIMIT}, capped at ${MAX}. Secret-shaped strings are redacted.
-\`task history <task> --full\` reads the recorded task history.
-`

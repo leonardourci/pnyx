@@ -8,10 +8,8 @@ type Request = {
   env: NodeJS.ProcessEnv
   cwd: string
   stdin?: string
-  // The command being run (`task create`) and its focused help, for usage errors.
   invocation: {
     name?: string
-    help?: string
   }
   exitCode?: number
 }

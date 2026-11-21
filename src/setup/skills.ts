@@ -426,7 +426,7 @@ export function setupSkills(
     for (const link of links.filter(link => link.status === 'conflict')) {
       inform({
         reason: `Kept the existing skill at ${link.path}`,
-        clear: 'Move that skill aside and run pnyx-axi setup skills to install the Pnyx link',
+        clear: 'Move that skill aside and run pnyx setup skills to install the Pnyx link',
       })
     }
   }
@@ -464,7 +464,7 @@ export function setupSkills(
         'utf8',
       ))
 
-      if (pkg.name !== 'pnyx-axi') {
+      if (pkg.name !== 'pnyx' && pkg.name !== 'pnyx-axi') {
         return []
       }
     } catch {
@@ -519,6 +519,6 @@ export function setupSkills(
       ...legacy,
     ],
     ...(preview ? { preview: 'nothing written; rerun without --preview to apply' } : {}),
-    help: [remove ? 'Run `pnyx-axi setup skills` to install them again' : `New sessions can load ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} in any project or copy`],
+    help: [remove ? 'Run `pnyx setup skills` to install them again' : `New sessions can load ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} in any project or copy`],
   }
 }

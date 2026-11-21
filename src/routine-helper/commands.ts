@@ -6,7 +6,6 @@ import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { reportActor } from '#hydra/hydra.ts'
-import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { loadHydra } from '#app/store.ts'
 import { helperGrant } from './route.ts'
@@ -20,7 +19,7 @@ const TASK_WRITES = HELPER_TASK_WRITES
 function denied(): void {
   inform({
     reason: 'Helper acted outside its default task scope',
-    clear: 'Use pnyx-axi task history <task> to inspect the change',
+    clear: 'Use pnyx task history <task> to inspect the change',
   })
 }
 
@@ -177,7 +176,6 @@ async function releaseAfter({
   }
 }
 
-// eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
 type Command = (args: string[]) => unknown
 
 export function supervisedCommands<T extends Record<string, Command>>({ commands }: {
@@ -188,7 +186,6 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
     run,
   ]) => [
     name,
-    // eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
     (args: string[]) => {
       let release = () => {}
 
@@ -213,19 +210,11 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
         release()
 
         if (error instanceof TypeError && 'code' in error && String(error.code).startsWith('ERR_PARSE_ARGS')) {
-          throw new AxiError(
-            error.message,
-            'VALIDATION_ERROR',
-            ['Run the command with --help'],
-          )
-        }
-
-        if (error instanceof HydraError) {
-          throw new AxiError(
-            error.message,
-            error.code,
-            error.help,
-          )
+          throw new HydraError({
+            message: error.message,
+            code: 'VALIDATION_ERROR',
+            help: ['Run the command with --help'],
+          })
         }
 
         throw error

@@ -1,5 +1,4 @@
 import { pageInterest, parsePage } from '#app/page-cli.ts'
-import { AxiError } from 'axi-sdk-js'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
 import { HydraError } from '#store/errors.ts'
@@ -360,7 +359,7 @@ export function createServerCommands({
       } catch (error) {
         fail({
           error: (error as Error).message,
-          code: error instanceof HydraError || error instanceof AxiError ? error.code : 'UNKNOWN',
+          code: error instanceof HydraError ? error.code : 'UNKNOWN',
         })
       }
 

@@ -5,8 +5,8 @@ import { HISTORY_BUDGET } from './history.ts'
 import { compareMessages, type MessageRecord } from './message-records.ts'
 
 const MAX_CURSOR_LENGTH = 4096
-export const MESSAGE_PAGE_BYTES = 20000
-export const MESSAGE_PAGE_LIMIT = 60
+const MESSAGE_PAGE_BYTES = 20000
+const MESSAGE_PAGE_LIMIT = 60
 const DEFAULT_LIMIT = 20
 const TIMESTAMP_ERROR = 'Use an ISO timestamp with a timezone, as shown in the comment or the "at" field of the message'
 const ISO_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/

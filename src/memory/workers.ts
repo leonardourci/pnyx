@@ -4,12 +4,12 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Writer } from '#app/writer.ts'
 
-export const WORKER_NOTES_BUDGET = 1500
+const WORKER_NOTES_BUDGET = 1500
 
 export function checkWorkerNotes({
   text,
   reason,
-  command = 'pnyx-axi hydra worker-notes set',
+  command = 'pnyx hydra worker-notes set',
 }: {
   text: string | null
   reason?: string

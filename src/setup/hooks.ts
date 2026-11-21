@@ -92,7 +92,7 @@ const CLI_ENTRY = join(
   import.meta.dirname,
   '..',
   'cli',
-  import.meta.url.endsWith('.ts') ? 'pnyx-axi.ts' : 'pnyx-axi.js',
+  import.meta.url.endsWith('.ts') ? 'pnyx.ts' : 'pnyx.js',
 )
 
 function scriptPath(): string {

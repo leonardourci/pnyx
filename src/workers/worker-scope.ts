@@ -110,7 +110,7 @@ function requireOwnTask({
   if (!ref) {
     inform({
       reason: `${what} has no worker task target`,
-      clear: `Use pnyx-axi ${what} --help for its target syntax`,
+      clear: `Use pnyx ${what} --help for its target syntax`,
     })
 
     return
@@ -125,7 +125,7 @@ function requireOwnTask({
     inform({
       task: card.id,
       reason: `Worker ${task} changed another task`,
-      clear: `Use pnyx-axi task history ${card.id} to inspect the change`,
+      clear: `Use pnyx task history ${card.id} to inspect the change`,
     })
   }
 }
@@ -158,7 +158,7 @@ function checkWorkerScope({
   if (declared !== undefined && identity.task !== undefined && declared !== `worker:${identity.task}`) {
     inform({
       reason: `Worker ${identity.task} declared actor ${declared}`,
-      clear: `Use pnyx-axi with --actor worker:${identity.task} to retain the worker identity`,
+      clear: `Use pnyx with --actor worker:${identity.task} to retain the worker identity`,
     })
   }
 
@@ -178,7 +178,7 @@ function checkWorkerScope({
   }))) {
     inform({
       reason: `${command} is outside the worker’s default commands`,
-      clear: `Use pnyx-axi ${command} --help to inspect the action`,
+      clear: `Use pnyx ${command} --help to inspect the action`,
     })
 
     return
@@ -187,14 +187,14 @@ function checkWorkerScope({
   if (name === 'hydra' && values.action !== undefined) {
     inform({
       reason: 'Worker requested a Hydra action',
-      clear: 'Use pnyx-axi hydra send --task <task> --kind progress --text "<progress>" for a progress report',
+      clear: 'Use pnyx hydra send --task <task> --kind progress --text "<progress>" for a progress report',
     })
   }
 
   if (!identity.task) {
     inform({
       reason: 'Worker has no recorded task identity',
-      clear: 'Use pnyx-axi with --actor worker:<task> to record the task identity',
+      clear: 'Use pnyx with --actor worker:<task> to record the task identity',
     })
 
     return
@@ -212,7 +212,6 @@ function checkWorkerScope({
   })
 }
 
-// eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
 type Command = (args: string[]) => unknown
 
 export function workerScoped<T extends Record<string, Command>>({ commands }: { commands: T }): T {
@@ -229,7 +228,6 @@ export function workerScoped<T extends Record<string, Command>>({ commands }: { 
 
     return [
       name,
-      // eslint-disable-next-line pnyx/object-params -- The AXI SDK owns the command signature.
       (args: string[]) => {
         return withCommandNotices({
           run: () => {

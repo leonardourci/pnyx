@@ -1,4 +1,3 @@
-import { AxiError } from 'axi-sdk-js'
 import { guard, parse, WRITE, required, meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraIds } from '#app/home-migration.ts'
@@ -44,10 +43,10 @@ export const view = guard({
     }
 
     if (sub !== 'set') {
-      throw new AxiError(
-        'use view show, schema or set',
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: 'use view show, schema or set',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     let patch: unknown
@@ -58,17 +57,17 @@ export const view = guard({
         what: '--json',
       }))
     } catch {
-      throw new AxiError(
-        '--json must contain a preference object',
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: '--json must contain a preference object',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-      throw new AxiError(
-        '--json must contain a preference object',
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: '--json must contain a preference object',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     const m = meta({ values })
