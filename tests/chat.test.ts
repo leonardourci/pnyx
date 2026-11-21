@@ -977,20 +977,33 @@ test(
 test.each([
   {
     code: 'done',
+    format: 'legacy',
+    outcome: { status: 'handled' },
     summary: 'The shop is used: 41 sales; no production errors. https://example.com/reports/shop',
   },
   {
     code: 'blocked',
+    format: 'legacy',
+    outcome: { status: 'handled' },
     summary: 'The production error report needs a working login. https://example.com/login',
   },
   {
     code: 'needs-you',
+    format: 'legacy',
+    outcome: { status: 'handled' },
     summary: 'Choose whether to include archived sales. https://example.com/reports/scope',
   },
+  {
+    code: 'done',
+    format: 'owner',
+    outcome: { audience: 'owner' },
+    summary: 'The shop report is ready. https://example.com/reports/shop',
+  },
 ])(
-  'Hydra relays a worker $code result from the helper into the owner\'s main chat',
+  'Hydra relays a worker $code result ($format) from the helper into the owner\'s main chat',
   async ({
     code,
+    outcome,
     summary,
   }) => {
     const hydra = await pnyx.hydra()
@@ -1031,7 +1044,7 @@ test.each([
         outcomes: [
           {
             task: id,
-            status: 'handled',
+            ...outcome,
             summary,
           },
         ],
@@ -1058,13 +1071,13 @@ test.each([
     })
     pnyx.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('relay owner outcomes') && text.includes(summary),
+      match: ({ text }) => text.includes(summary),
       reply: summary,
     })
     helperTurn.release()
     await until({
       what: 'Hydra to relay the helper outcome',
-      check: () => main.received.some(text => text.includes('relay owner outcomes') && text.includes(summary))
+      check: () => main.received.some(text => text.includes(summary))
         && queue({ hydraId: hydra.id })?.working === false,
     })
     const page = await hydra.page()
@@ -1083,8 +1096,25 @@ test.each([
           }
         }
       }
-      expect(thread.conversation.entries.filter(entry => entry.role === 'assistant'
-        && entry.text === summary)).toHaveLength(1)
+      const results = thread.conversation.entries.filter(entry => entry.text.includes(summary))
+      expect(results).toEqual([
+        expect.objectContaining({
+          role: 'assistant',
+          text: summary,
+        }),
+      ])
+      const messages = await hydra.owner({
+        args: [
+          'hydra',
+          'messages',
+          '--limit',
+          '100',
+        ],
+      })
+      expect(messages.messages).not.toContainEqual(expect.objectContaining({
+        actor: 'pnyx',
+        text: expect.stringContaining(summary),
+      }))
     } finally {
       page.close()
     }
@@ -1310,6 +1340,19 @@ test(
       ],
       env: process.env,
     })).stdout
+    expect(main.received).toHaveLength(2)
+    const routineMessages = await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+        '--limit',
+        '100',
+      ],
+    })
+    expect(routineMessages.messages).not.toContainEqual(expect.objectContaining({
+      actor: 'pnyx',
+      text: expect.stringContaining('Reran invoice checks.'),
+    }))
     expect(digest).toContain('Invoice checks rerun under existing instructions')
     expect(digest.split('\n').find(line => line.startsWith(`- ${id} ·`)))
       .toContain('helper: Reran invoice checks.')
@@ -1379,6 +1422,7 @@ test(
         what: 'main to read the handled report',
         check: () => main.received.some(text => text.includes('Summarize the invoice status')),
       })
+      expect(main.received).toHaveLength(3)
       const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
       expect(delivered.split('\n').find(line => line.startsWith(`- ${id} ·`)))
         .toContain('helper: Reran invoice checks.')
