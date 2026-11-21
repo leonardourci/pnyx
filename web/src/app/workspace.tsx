@@ -1184,7 +1184,7 @@ export function HydraView({
         <FoldContent
           as="main"
           open={!view.workspace.collapsed}
-          className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0 [&[hidden]]:hidden"
+          className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0"
           aria-busy={!!loading || !loaded}
           data-hydra={navigation.hydraId}
           data-provisional={hydra.creating || undefined}
@@ -1220,7 +1220,7 @@ export function HydraView({
                   onClick={toggleChat}
                   icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                 />
-                <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate [&>.hydra-chat]:h-full [&>.hydra-chat]:max-h-none [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat! [&[hidden]]:hidden">
+                <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate [&>.hydra-chat]:h-full [&>.hydra-chat]:max-h-none [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
                   <ProfileSurface name="chat" hydraId={navigation.hydraId}>
                     <HydraChat
                       hydraId={navigation.hydraId}

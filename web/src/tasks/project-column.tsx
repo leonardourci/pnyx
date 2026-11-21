@@ -153,7 +153,7 @@ export function ProjectColumn({
         open={!folded}
         ref={scrollRef}
         data-sort-surface={`tasks:${hydraId}:${column.id}`}
-        className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2 [&[hidden]]:hidden"
+        className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2"
       >
         <div ref={grid} className="project-card-grid relative w-(--project-card-width)">
           {children()}

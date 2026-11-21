@@ -1311,7 +1311,7 @@ test.each([
         await new Promise(requestAnimationFrame);
         const box = workspace.getBoundingClientRect();
         const chips = [...workspace.querySelectorAll('.project-chips button')].map(chip => chip.getBoundingClientRect());
-        const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > svg')].map(mark => mark.getBoundingClientRect());
+        const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
         const center = (box.left + box.right) / 2;
         return JSON.stringify({
           thin: box.width <= 60,
@@ -1333,21 +1333,30 @@ test.each([
         script: `
       console.log(await page.eval(async () => {
         const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+        const columns = [...workspace.querySelectorAll('.project-column')];
+        const expandedWidths = columns.map(column => column.getBoundingClientRect().width);
         workspace.querySelector('[aria-label="Fold all projects"]').click();
         await new Promise(requestAnimationFrame);
         await new Promise(requestAnimationFrame);
-        const columns = [...workspace.querySelectorAll('.project-column')];
-        return JSON.stringify(columns.length === 5 && columns.every(column => {
+        const folded = columns.length === 5 && columns.every(column => {
           const box = column.getBoundingClientRect();
           const center = (box.left + box.right) / 2;
-          const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > svg')];
-          return box.width <= 49 && marks.every(mark => {
+          const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > *')];
+          const cards = column.querySelector('.column-cards');
+          return box.width > 0 && box.width <= 49 && cards.getClientRects().length === 0 && marks.length > 0 && marks.every(mark => {
             const bounds = mark.getBoundingClientRect();
             return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
           });
-        }));
+        });
+        workspace.querySelector('[aria-label="Unfold all projects"]').click();
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        const unfolded = columns.every((column, index) =>
+          column.getBoundingClientRect().width === expandedWidths[index]
+          && column.querySelector('.column-cards').getClientRects().length > 0
+        );
+        return JSON.stringify({ folded, unfolded });
       }));
-      await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Unfold all projects"]');
     `,
       })
       expect(JSON.parse(folded)).toEqual({
@@ -1357,7 +1366,7 @@ test.each([
         contained: true,
         stacked: true,
       })
-      expect(JSON.parse(columns)).toBe(true)
+      expect(JSON.parse(columns)).toEqual({ folded: true, unfolded: true })
     } finally {
       turn.release()
     }
