@@ -1245,14 +1245,39 @@ test(
       const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]');
       return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
     });
-    await page.eval(() => [...document.querySelectorAll('[data-hydra-workspace="${hydra.id}"] .task-create button')].find(button => button.textContent === 'Save task').click());
+    const reachability = await page.eval(async () => {
+      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      const surface = form.closest('.project-cards');
+      surface.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      surface.scrollTo({ top: surface.scrollHeight, behavior: 'instant' });
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const bounds = surface.getBoundingClientRect();
+      const top = Math.max(bounds.top, 0);
+      const bottom = Math.min(bounds.bottom, innerHeight);
+      const ask = form.querySelector('[aria-label="Your ask"]');
+      const askBounds = ask.getBoundingClientRect();
+      const style = getComputedStyle(ask);
+      const lineHeight = parseFloat(style.lineHeight);
+      const lineBottom = askBounds.bottom - parseFloat(style.paddingBottom) - parseFloat(style.borderBottomWidth);
+      const askHit = document.elementFromPoint(askBounds.left + askBounds.width / 2, lineBottom - lineHeight / 2);
+      const save = [...form.querySelectorAll('button')].find(button => button.textContent === 'Save task');
+      const button = save.getBoundingClientRect();
+      const saveHit = document.elementFromPoint(button.left + button.width / 2, button.top + button.height / 2);
+      return {
+        askEndVisible: lineBottom <= bottom && lineBottom - lineHeight >= top && askHit === ask,
+        saveReachable: getComputedStyle(surface).overflowY === 'auto' && surface.scrollHeight > surface.clientHeight && button.top >= top && button.bottom <= bottom && save.contains(saveHit),
+      };
+    });
+    const save = (await page.snapshot()).match(/uid=(\\S+)\\s+button "Save task"/);
+    if (!save) throw new Error('Save task is missing from the accessibility tree');
+    await page.click('@' + save[1]);
     await page.wait('[data-hydra-workspace="${hydra.id}"]:not(:has(.task-create)) .card-open');
     const card = await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, renameAtEmojiBoundary, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
+    console.log(JSON.stringify({ fields: { ...fields, ...reachability, renameAtEmojiBoundary, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
   `,
     }))
     await until({
@@ -1273,6 +1298,8 @@ test(
       pasteCaret: 'Keep'.length,
       titleAfterShiftEnter: title,
       askGrows: true,
+      askEndVisible: true,
+      saveReachable: true,
       multiLine: true,
       chatBounded: true,
     })
