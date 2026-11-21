@@ -754,7 +754,17 @@ test(
         '--conditions=source',
         '--input-type=module',
         '-e',
-        "import {migrateOwnerMemory} from '#memory/owner-memory.ts'; import {withAsyncRegistryLock} from '#store/storage.ts'; try { await withAsyncRegistryLock({fn: async () => await migrateOwnerMemory()}); console.log('unexpected success') } catch (error) { console.log('handled ' + error.code) } console.log(await withAsyncRegistryLock({timeout: 0, fn: () => 'released'}))",
+        [
+          "import {migrateOwnerMemory} from '#memory/owner-memory.ts'",
+          "import {withAsyncRegistryLock, withRegistryLock} from '#store/storage.ts'",
+          'const entered = Promise.withResolvers(); const release = Promise.withResolvers()',
+          'const decision = withAsyncRegistryLock({fn: async () => { entered.resolve(); await release.promise; await migrateOwnerMemory() }})',
+          'await entered.promise',
+          "try { console.log(withRegistryLock({timeout: 0, fn: () => 'escaped'})) } catch (error) { console.log('contended ' + error.code) }",
+          'release.resolve()',
+          "try { await decision; console.log('unexpected success') } catch (error) { console.log('handled ' + error.code) }",
+          "console.log(await withAsyncRegistryLock({timeout: 0, fn: () => 'released'}))",
+        ].join('\n'),
       ],
       {
         encoding: 'utf8',
@@ -764,6 +774,6 @@ test(
         },
       },
     )
-    expect(result.trim()).toBe('handled EEXIST\nreleased')
+    expect(result.trim()).toBe('contended LOCKED\nhandled EEXIST\nreleased')
   },
 )
