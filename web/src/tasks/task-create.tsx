@@ -252,6 +252,7 @@ export function TaskCreate({
         disabled={!connected || busy}
       />
       <Composer
+        limitHeight={false}
         hydraId={hydraId}
         storageIdentity={storageIdentity}
         card={`new:${attempt.current}`}

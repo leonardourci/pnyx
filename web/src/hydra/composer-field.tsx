@@ -10,7 +10,6 @@ import { completePath } from './path-completion.ts'
 import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } from './project-request.ts'
 import { slashState,type SlashState } from './view.ts'
 import { useFolders } from '#web-projects/folders.ts'
-import { useAutoHeight } from './auto-height.ts'
 import { Textarea } from '#web-shared/ui/controls.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
@@ -61,6 +60,7 @@ export function ComposerField({
   placeholder,
   className = '',
   standalone = true,
+  limitHeight = false,
   onKeyDown,
   onBlur,
   projectRequests = false,
@@ -76,6 +76,7 @@ export function ComposerField({
   className?: string
   // A field on its own is a compact box; the Hydra composer draws its own box, menu and controls around it.
   standalone?: boolean
+  limitHeight?: boolean
   // Runs after the pickers had their turn with the key.
   onKeyDown?({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }): void
   onBlur?(): void
@@ -326,7 +327,7 @@ export function ComposerField({
         })
       }
 
-      fit()
+      syncCaret()
     }
 
     latestChange.current({ text })
@@ -347,25 +348,23 @@ export function ComposerField({
     [value],
   )
 
-  const fit = useAutoHeight({
-    input,
-    mirror,
-    display,
-    afterFit: ({ element }) => {
-      if (caretNext.current !== null) {
-        select({
-          field: element,
-          ...caretNext.current,
-        })
-        caretLast.current = caretNext.current.focus
-        caretNext.current = null
-      }
+  const syncCaret = () => {
+    const element = input.current
 
-      if (mirror.current) {
-        mirror.current.scrollTop = element.scrollTop
-      }
-    },
-  })
+    if (element && caretNext.current !== null) {
+      select({
+        field: element,
+        ...caretNext.current,
+      })
+      caretLast.current = caretNext.current.focus
+      caretNext.current = null
+    }
+  }
+
+  useLayoutEffect(
+    syncCaret,
+    [display],
+  )
 
   const chooseMention = ({ item }: { item: MentionItem }) => {
     const element = input.current
@@ -733,7 +732,8 @@ export function ComposerField({
           />
         )}
         <Textarea
-          className="composer-text group-[.comment-note]/composer-field:select-text h-auto max-h-[min(50vh,var(--spacing-composer-max))] resize-none overflow-y-auto bg-transparent outline-none group-data-[standalone=true]/composer-field:max-h-[min(40vh,12lh)] in-[.task-editor]:max-h-[min(50vh,24lh)] group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
+          className="composer-text group-[.comment-note]/composer-field:select-text bg-transparent outline-none data-[limit-height=true]:max-h-textarea data-[limit-height=true]:overflow-y-auto group-data-chips/composer-input:text-transparent group-data-chips/composer-input:caret-ink"
+          data-limit-height={limitHeight || undefined}
           ref={input}
           rows={1}
           id={id}
