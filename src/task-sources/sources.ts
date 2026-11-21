@@ -98,7 +98,7 @@ export function sourceTask({
     inform({
       task: card.id,
       reason: 'External source action on a hidden task',
-      clear: `Use pnyx task unhide ${card.id} to show it in Hydra`,
+      clear: `Review the visibility of task ${card.id} in the UI.`,
     })
   }
 
@@ -113,7 +113,7 @@ export function sourceTask({
     inform({
       task: card.id,
       reason: 'External source changed by another actor',
-      clear: `Use pnyx task source list ${card.id} to inspect its sources`,
+      clear: `Use pnyx task show ${card.id} --full to inspect its sources`,
     })
   }
 
