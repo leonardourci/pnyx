@@ -13,7 +13,7 @@ const SCROLL_INPUT_FRAMES = 90
 let pnyx: Pnyx
 
 beforeAll(async () => {
-  pnyx = await startPnyx({ zeroCache: true })
+  pnyx = await startPnyx()
 })
 
 async function addRevealProjects({ hydra }: { hydra: Hydra }) {

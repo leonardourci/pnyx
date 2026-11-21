@@ -679,6 +679,25 @@ test(
       })
     }
 
+    const walBefore = rows({text: "select current_setting('wal_level') as level"})
+    expect(walBefore).toEqual([{level: 'replica'}])
+    const setup = await pnyxAxi({
+      args: [
+        'setup',
+        'postgres',
+      ],
+      env: process.env,
+    })
+    expect(
+      setup.status,
+      setup.stderr,
+    ).toBe(0)
+    expect(parsed(setup)).toMatchObject({
+      postgres: 'ready',
+      database: homeDatabase(),
+    })
+    expect(rows({text: "select current_setting('wal_level') as level"})).toEqual([{level: 'replica'}])
+
     const before = await Promise.all(hydras.map(hydra => tasks({ hydra })))
 
     await pnyx.restart({
@@ -687,8 +706,7 @@ test(
         // What schema 5's build left: a page publication without the Hydra's seq.
         await sql({
           database: homeDatabase(),
-          text: `alter publication pnyx_page drop table hydras;
-            alter publication pnyx_page add table hydras (id, config, summary);
+          text: `create publication pnyx_page for table hydras (id, config, summary);
             delete from schema_version;
             insert into schema_version (version) values (5)`,
         })
@@ -715,7 +733,7 @@ test(
     })
 
     expect(rows<{ version: number }>({ text: 'select max(version) as version from schema_version' })[0]!.version).toBe(SCHEMA_VERSION)
-    expect(rows<{ columns: string[] }>({ text: 'select attnames as columns from pg_publication_tables where pubname = \'pnyx_page\' and tablename = \'hydras\'' })[0]!.columns).toContain('seq')
+    expect(rows({ text: 'select pubname from pg_publication where pubname = \'pnyx_page\'' })).toEqual([])
     expect(await Promise.all(hydras.map(hydra => tasks({ hydra })))).toEqual(before)
   },
 )
@@ -903,7 +921,7 @@ test(
     expect(stored).not.toHaveProperty('kind')
     expect(stored).not.toHaveProperty('report')
     expect(rows({ text: "select column_name from information_schema.columns where table_name = 'cards' and column_name = 'kind'" })).toEqual([])
-    const page = rows<{ value: object }>({ text: "select value from settings where id = 'shared'" })[0]!.value
+    const page = pnyx.home().settings.settings
     expect(page).not.toHaveProperty('poleis')
     expect(page).not.toHaveProperty('projectPoleis')
     expect(page).not.toHaveProperty('keyboard')

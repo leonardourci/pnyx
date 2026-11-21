@@ -38,22 +38,7 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
-// What the page's queue box reads for this Hydra: updates waiting for it, and its chat.
-const queueBox = ({ hydraId }: { hydraId: string }) => rows<{
-  value: {
-    waiting: {
-      seq: number
-      kind: string
-    }[]
-    chat: {
-      working: boolean
-      compactInputs: { text: string }[]
-    }
-  }
-}>({
-  text: 'select value from hydra_values where hydra_id = $1 and key = \'queue\'',
-  values: [hydraId],
-})[0]?.value
+const queueBox = ({ hydraId }: { hydraId: string }) => pnyx.home().scopes[hydraId]?.queue
 
 const queue = ({ hydraId }: { hydraId: string }) => queueBox({ hydraId })?.chat
 
@@ -604,7 +589,7 @@ test(
           'The format needs an owner choice',
         ],
       })
-      withWriter({
+      await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
           const decision = hydraEvent({
@@ -1533,7 +1518,7 @@ test(
     expect(later.conversations).toContainEqual(expect.objectContaining({
       messages: [expect.objectContaining({ text: 'Fresh native instructions' })],
     }))
-    const expired = withWriter({
+    const expired = await withWriter({
       hydraId: hydra.id,
       fn: ({ writer }) => {
         const task = writer.state.cards[writer.state.keys['typed-cursor']!]!
@@ -3096,7 +3081,7 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(1)
-      withWriter({
+      await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
           writer.append({
@@ -3181,7 +3166,7 @@ test(
       now += 60_000
       await timer.check()
       expect(wakes).toBe(3)
-      withWriter({
+      await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
           writer.append({
@@ -3828,7 +3813,7 @@ test(
     })
     await pnyx.restart({
       whileStopped: async () => {
-        withWriter({
+        await withWriter({
           hydraId: hydra.id,
           fn: ({ writer }) => applyDecision({
             writer,
@@ -3908,7 +3893,7 @@ test(
               'event-id': id,
             },
           })
-          withWriter({
+          await withWriter({
             hydraId: hydra.id,
             fn: ({ writer }) => {
               const at = new Date().toISOString()
@@ -4055,5 +4040,44 @@ test(
       after,
     ])
     expect(conversation.timings.get('reply')?.start).toBe(at({ second: 1 }))
+  },
+)
+
+test(
+  'a refused initial agent-change write returns an error before compaction can begin',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await hydra.page()
+    await hydra.chat({text: 'First message before changing model'})
+    await chooseAgent({
+      page,
+      agent: {model: 'sonnet'},
+    })
+    await sendToHydra({
+      hydra,
+      text: 'Held for the selected model',
+    })
+    const change = await until({
+      what: 'the pending model choice',
+      check: () => agentChange({hydraId: hydra.id}),
+    })
+    const sessions = pnyx.claude.sessions.length
+    rows({text: "alter table events add constraint reject_running_agent_change check (type <> 'hydra.agent-change' or data->'data'->>'state' is distinct from 'running') not valid"})
+
+    try {
+      const answer = await page.send({
+        name: 'hydra-agent-change',
+        args: [
+          change.id,
+          'compact',
+        ],
+      })
+      expect(answer.type).toBe('error')
+      expect(agentChange({hydraId: hydra.id})?.state).toBe(change.state)
+      expect(pnyx.claude.sessions.length).toBe(sessions)
+    } finally {
+      rows({text: 'alter table events drop constraint reject_running_agent_change'})
+      page.close()
+    }
   },
 )

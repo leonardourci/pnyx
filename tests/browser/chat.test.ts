@@ -7,7 +7,7 @@ import { openHydra } from './page.ts'
 let pnyx: Pnyx
 
 beforeAll(async () => {
-  pnyx = await startPnyx({ zeroCache: true })
+  pnyx = await startPnyx()
 })
 
 const EXCHANGES = 12

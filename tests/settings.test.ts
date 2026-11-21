@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -14,8 +14,7 @@ const settings = async ({ hydra }: { hydra: Hydra }) => (await hydra.owner({
   ],
 })).settings
 
-// The shared settings row the page reads through Zero.
-const pageSettings = () => rows<{ value: Record<string, unknown> }>({ text: 'select value from settings where id = \'shared\'' })[0]?.value
+const pageSettings = () => pnyx.home().settings.settings
 
 const queuedWidth = async ({ hydra }: { hydra: Hydra }) => {
   const { view } = await hydra.owner({
@@ -174,12 +173,12 @@ test(
   'a settings change made against a stale revision is refused and saves nothing, and the current revision saves it',
   async () => {
     const hydra = await pnyx.hydra()
-    const shown = async () => (await hydra.owner({
+    const shown = async () => await hydra.owner({
       args: [
         'settings',
         'show',
       ],
-    }))
+    })
     const before = await shown()
     const stale = before.revision as number
     // Both values are valid themes; the change must differ from what an earlier test saved.
@@ -306,12 +305,7 @@ test(
       })).code).toBe('VALIDATION_ERROR')
     }
 
-    // Drops hiddenHydras from the page's row without moving its revision, as in a row a build older than hiddenHydras wrote.
-    await pnyx.restart({
-      whileStopped: () => {
-        rows({ text: 'update settings set value = (value::jsonb - \'hiddenHydras\')::json where id = \'shared\'' })
-      },
-    })
+    await pnyx.restart()
     expect((await settings({ hydra: first })).hiddenHydras).toEqual([
       first.id,
       second.id,
@@ -359,13 +353,14 @@ test(
         }),
       ],
     })
-    await hydra.owner({
+    const reset = await hydra.owner({
       args: [
         'layout',
         'reset',
         '--all',
       ],
     })
+    expect(reset.hydras).toContainEqual(expect.objectContaining({ hydra: hydra.id }))
     const { view } = await hydra.owner({
       args: [
         'view',
