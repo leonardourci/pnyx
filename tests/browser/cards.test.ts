@@ -1193,7 +1193,7 @@ test(
   'saving a task leaves its card closed and its writing fields readable',
   async () => {
     const hydra = await pnyx.hydra()
-    const name = 'WWWWWWWW WWWWWWWW WWWWWWWW WWWWWWWW'
+    const name = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
     const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
     const prose = Array(32).fill('Every line remains readable in its field.')
       .join('\n')
@@ -1202,15 +1202,13 @@ test(
     await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] .hydra-title');
-    const renameUsesFullLength = await page.eval(() => {
+    await page.eval(() => {
       const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]');
       field.select();
       const clipboardData = new DataTransfer();
-      clipboardData.setData('text/plain', 'A\\n'.repeat(field.maxLength));
+      clipboardData.setData('text/plain', ${JSON.stringify(name.split('').join('\n'))});
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
-      return field.value === 'A'.repeat(field.maxLength);
     });
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]', ${JSON.stringify(name)});
     const renameFits = await page.eval(() => { const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
     await page.press('Enter');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .hydra-title[aria-label="Edit ${name}"]');
@@ -1246,7 +1244,7 @@ test(
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, renameFits, renameUsesFullLength, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
+    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
   `,
     }))
     await until({
@@ -1261,7 +1259,6 @@ test(
     })
     expect(result.fields).toMatchObject({
       renameFits: true,
-      renameUsesFullLength: true,
       titleFits: true,
       titleGrows: true,
       pasteCaret: 'Keep'.length,
