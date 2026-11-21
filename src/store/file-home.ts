@@ -21,6 +21,8 @@ interface TaskLocation extends HydraLocation {
   task: string
 }
 
+type SnapshotCheck = ({ snapshot }: { snapshot: FileSnapshot }) => boolean
+
 export interface FileLog {
   entries: LogEntry[]
   position: LogPosition
@@ -36,7 +38,13 @@ export interface HydraFiles {
   relocated: string[]
 }
 
-function component({ id, rule = COMPONENT }: { id: string; rule?: RegExp }): string {
+function component({
+  id,
+  rule = COMPONENT,
+}: {
+  id: string
+  rule?: RegExp
+}): string {
   if (!rule.test(id)) {
     throw new HydraError({
       message: `invalid file-store id: ${id}`,
@@ -53,7 +61,10 @@ export const hydraFiles = ({
 }: HydraLocation) => join(
   resolve(home),
   'hydras',
-  component({ id: hydra, rule: HYDRA_ID }),
+  component({
+    id: hydra,
+    rule: HYDRA_ID,
+  }),
 )
 
 export const taskFiles = ({
@@ -390,14 +401,21 @@ export function moveTaskFiles({
 export function readHydraFiles({
   home,
   hydra,
-  useSnapshot = true,
-}: HydraLocation & { useSnapshot?: boolean }): HydraFiles {
+  checkSnapshot,
+}: HydraLocation & { checkSnapshot?: SnapshotCheck }): HydraFiles {
   const dir = hydraFiles({
     home,
     hydra,
   })
   requireDirectory({ dir })
-  const snapshot = useSnapshot ? readSnapshot({ dir }) : undefined
+  syncDirectory({ dir: dirname(dir) })
+  syncDirectory({ dir })
+  let snapshot = readSnapshot({ dir })
+
+  if (snapshot && checkSnapshot && !checkSnapshot({ snapshot })) {
+    snapshot = undefined
+  }
+
   const tasksDir = join(
     dir,
     'tasks',
@@ -405,6 +423,7 @@ export function readHydraFiles({
 
   if (existsSync(tasksDir)) {
     requireDirectory({ dir: tasksDir })
+    syncDirectory({ dir: tasksDir })
   }
 
   const directories = existsSync(tasksDir) ? readdirSync(
@@ -535,13 +554,13 @@ export function readHydraFiles({
 function readKnownHydra({
   home,
   hydra,
-  useSnapshot,
-}: HydraLocation & { useSnapshot?: boolean }): HydraFiles {
+  checkSnapshot,
+}: HydraLocation & { checkSnapshot?: SnapshotCheck }): HydraFiles {
   try {
     return readHydraFiles({
       home,
       hydra,
-      useSnapshot,
+      checkSnapshot,
     })
   } catch (error) {
     if (!(error instanceof HydraError)) {
@@ -563,15 +582,25 @@ function readKnownHydra({
 
 export function readHomeFiles({
   home,
-  useSnapshot = true,
+  checkSnapshot,
 }: {
   home: string
-  useSnapshot?: boolean
+  checkSnapshot?: SnapshotCheck
 }): Map<string, HydraFiles> {
+  if (existsSync(home)) {
+    syncDirectory({ dir: dirname(resolve(home)) })
+    syncDirectory({ dir: resolve(home) })
+  }
+
   const parent = join(
     resolve(home),
     'hydras',
   )
+
+  if (existsSync(parent)) {
+    syncDirectory({ dir: parent })
+  }
+
   const entries = existsSync(parent) ? readdirSync(
     parent,
     { withFileTypes: true },
@@ -588,7 +617,7 @@ export function readHomeFiles({
     readKnownHydra({
       home,
       hydra,
-      useSnapshot,
+      checkSnapshot,
     }),
   ]))
   const relocated = new Set([...hydras.values()].flatMap(hydra => hydra.relocated))
@@ -599,7 +628,7 @@ export function readHomeFiles({
       readKnownHydra({
         home,
         hydra,
-        useSnapshot,
+        checkSnapshot,
       }),
     )
   }

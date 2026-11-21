@@ -202,7 +202,7 @@ export function applyFileFacts<Value>({
     const entry = prepared.entries[0]!
     const value = reduce({
       state: structuredClone(next.value),
-      entry,
+      entry: structuredClone(entry),
       id,
     })
     next.value = fileJson({ value })
@@ -365,13 +365,13 @@ function loadHydraMemory<Hydra, Task>({
   hydra,
   files,
   reducers,
+  cache,
 }: {
   hydra: string
   files: HydraFiles
   reducers: FileReducers<Hydra, Task>
+  cache?: CachedMemory<Hydra, Task>
 }): HydraMemory<Hydra, Task> {
-  const cache = files.snapshot ? cachedMemory<Hydra, Task>({ snapshot: files.snapshot }) : undefined
-
   return {
     hydra: replayFile({
       log: files.hydra,
@@ -412,17 +412,24 @@ export function loadFileMemory<Hydra, Task>({
   home: string
   reducers: FileReducers<Hydra, Task>
 }): Map<string, HydraMemory<Hydra, Task>> {
-  let files = readHomeFiles({ home })
+  const caches = new WeakMap<FileSnapshot, CachedMemory<Hydra, Task>>()
+  const files = readHomeFiles({
+    home,
+    checkSnapshot: ({ snapshot }) => {
+      const cache = cachedMemory<Hydra, Task>({ snapshot })
 
-  const invalidSnapshot = [...files.values()].some(({ snapshot }) =>
-    snapshot && !cachedMemory({ snapshot }))
+      if (!cache) {
+        return false
+      }
 
-  if (invalidSnapshot) {
-    files = readHomeFiles({
-      home,
-      useSnapshot: false,
-    })
-  }
+      caches.set(
+        snapshot,
+        cache,
+      )
+
+      return true
+    },
+  })
 
   return new Map([...files].map(([
     hydra,
@@ -433,6 +440,7 @@ export function loadFileMemory<Hydra, Task>({
       hydra,
       files,
       reducers,
+      cache: files.snapshot ? caches.get(files.snapshot) : undefined,
     }),
   ]))
 }
