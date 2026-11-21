@@ -494,14 +494,14 @@ async function checkData(): Promise<Output> {
 }
 
 // Saves postgresUrl straight into the settings log, without the server, which cannot start while the URL is wrong.
-function saveUrl({
+async function saveUrl({
   url,
   meta,
 }: {
   url: string
   meta: Meta
-}): Output {
-  const saved = saveSettings({
+}): Promise<Output> {
+  const saved = await saveSettings({
     patch: { postgresUrl: url },
     meta,
   })
@@ -527,7 +527,7 @@ export async function setupPostgres({
   meta: Meta
 }): Promise<Output> {
   if (url !== undefined) {
-    return saveUrl({
+    return await saveUrl({
       url,
       meta,
     })
