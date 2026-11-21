@@ -372,6 +372,7 @@ interface Intent {
   type: EventType
   accepts?: EventType[]
   card: string
+  undoes?: string
 }
 
 // A retried event id's receipt, from its event and the current state, since rebuilding the state at append time would replay the log. An id already used for another card or event type is a conflict, not a retry.
@@ -399,7 +400,7 @@ function originalReceipt(
   const sameType = original.type === intent.type
     || intent.accepts?.includes(original.type)
 
-  if (!sameType || (!sameCard && !samePushKey)) {
+  if (!sameType || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {
     throw new AxiError(
       `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       'IDEMPOTENCY_CONFLICT',

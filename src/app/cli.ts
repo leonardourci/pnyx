@@ -229,6 +229,7 @@ const undo = guard({
           type: target.type === 'card.pushed' ? 'task.edited' : target.type,
           accepts: target.type === 'card.pushed' ? ['card.pushed'] : undefined,
           card: target.cardId,
+          undoes: target.id,
         },
         decide: ({
           state,

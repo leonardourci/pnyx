@@ -294,6 +294,31 @@ test(
 )
 
 test(
+  'an undo receipt belongs to the edit it reversed',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: ['task', 'create', '--no-start', '--key', 'undo-receipt', '--title', 'Original'],
+    })
+
+    for (const edit of ['first-edit', 'second-edit']) {
+      await hydra.owner({
+        args: ['task', 'rename', 'undo-receipt', '--title', edit, '--event-id', edit],
+      })
+    }
+
+    const args = ['undo', 'second-edit', '--event-id', 'undo-edit']
+    const first = await hydra.owner({ args })
+    const retry = await hydra.owner({ args })
+    expect(retry.event).toEqual(first.event)
+    expect(retry.duplicate).toBe('event id already applied; nothing appended')
+    await expect(hydra.owner({
+      args: ['undo', 'first-edit', '--event-id', 'undo-edit'],
+    })).rejects.toThrow(/event id undo-edit was already used/)
+  },
+)
+
+test(
   'completed native replies remain in history after observations leave the log and after restart',
   async () => {
     const hydra = await pnyx.hydra()
