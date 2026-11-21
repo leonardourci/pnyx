@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { copiesDir, freshSlot, unclaim } from '#projects/copy-pool.ts'
@@ -21,7 +21,7 @@ vi.mock(
 )
 
 test(
-  'a fresh copy claim skips a slot filled before its queued writer runs',
+  'fresh copy reservations skip occupied slots and slots held by a concurrent start',
   async () => {
     const hydraId = 'queued-copy'
     const dir = copiesDir()
@@ -36,6 +36,10 @@ test(
     const next = join(
       dir,
       'project-2',
+    )
+    const third = join(
+      dir,
+      'project-3',
     )
     const decision = freshSlot({
       hydraId,
@@ -63,8 +67,14 @@ test(
       )
       queue.release.resolve()
       expect(await decision).toBe(next)
-      expect(existsSync(`${occupied}.claim`)).toBe(false)
-      expect(existsSync(`${next}.claim`)).toBe(true)
+      expect(await freshSlot({
+        hydraId,
+        project: {
+          name: 'project',
+          path: dir,
+          detached: false,
+        },
+      })).toBe(third)
       expect(readFileSync(
         marker,
         'utf8',
@@ -74,6 +84,7 @@ test(
       await Promise.allSettled([decision])
       unclaim({ path: occupied })
       unclaim({ path: next })
+      unclaim({ path: third })
     }
   },
 )

@@ -1,7 +1,7 @@
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { COPY_TIMEOUT_MS, commonDir, git, onBranch } from './git.ts'
+import { commonDir, git, onBranch } from './git.ts'
 import { checkCopy, removeCopy } from './copy-check.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
@@ -11,10 +11,10 @@ import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
+import { canonical } from '#store/paths.ts'
 import { isFolder } from '#workers/folders.ts'
 
-// A claim older than the git steps it guards was left by a start that crashed.
-const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
+const claims = new Set<string>()
 const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
@@ -56,7 +56,7 @@ export function recordedBranches({
 }
 
 export const copiesDir = () => join(
-  pnyxHome(),
+  canonical({ path: pnyxHome() })!,
   'copies',
 )
 
@@ -196,38 +196,6 @@ export const checkout = ({
       ],
     })
 
-function claimIsStale({ file }: { file: string }): boolean {
-  try {
-    const pid = Number(readFileSync(
-      file,
-      'utf8',
-    ))
-
-    if (!Number.isInteger(pid) || pid <= 0) {
-      return Date.now() - statSync(file).mtimeMs > CLAIM_STALE_MS
-    }
-
-    process.kill(
-      pid,
-      0,
-    )
-
-    return false
-  } catch (error) {
-    if (error instanceof Error && 'code' in error) {
-      if (error.code === 'ESRCH' || error.code === 'ENOENT') {
-        return true
-      }
-
-      if (error.code === 'EPERM') {
-        return false
-      }
-    }
-
-    throw error
-  }
-}
-
 async function claim({
   hydraId,
   path,
@@ -240,54 +208,20 @@ async function claim({
   return await withWriter({
     hydraId,
     fn: () => {
-      if (vacant && existsSync(path)) {
+      if (claims.has(path) || vacant && existsSync(path)) {
         return false
       }
 
-      let fd: number
-
-      try {
-        fd = openSync(
-          `${path}.claim`,
-          'wx',
-        )
-      } catch (error) {
-        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') {
-          throw error
-        }
-
-        if (!claimIsStale({ file: `${path}.claim` })) {
-          return false
-        }
-
-        rmSync(
-          `${path}.claim`,
-          { force: true },
-        )
-        fd = openSync(
-          `${path}.claim`,
-          'wx',
-        )
-      }
-
-      try {
-        writeFileSync(
-          fd,
-          String(process.pid),
-        )
-      } finally {
-        closeSync(fd)
-      }
+      claims.add(path)
 
       return true
     },
   })
 }
 
-export const unclaim = ({ path }: { path: string }) => rmSync(
-  `${path}.claim`,
-  { force: true },
-)
+export function unclaim({ path }: { path: string }): void {
+  claims.delete(path)
+}
 
 // Claiming first means the idle check sees every record a competing start wrote before letting go.
 export async function take({
