@@ -468,7 +468,6 @@ function compact({ text }: { text: string }): string {
   )}…` : clean
 }
 
-// guard catches only synchronous errors; the check can wait.
 const hydraCheckHandler = guard({
   handler: hydraCheck,
 })

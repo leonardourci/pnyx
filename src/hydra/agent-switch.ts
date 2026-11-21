@@ -121,7 +121,7 @@ async function agentChangeTurn({
           tool,
           input,
         })
-        const read = command !== undefined && /^pnyx hydra history(?: --(?:hydra|since|through|budget|after) [a-zA-Z0-9:_.-]+)*$/.test(command)
+        const read = command !== undefined && /^pnyx hydra history(?: --(?:hydra|since|through|budget|after) [a-zA-Z0-9:_.-]+)*(?: --json(?: --after [a-zA-Z0-9:_.-]+)?)?$/.test(command)
 
         return read ? { behavior: 'allow' } : {
           behavior: 'deny',

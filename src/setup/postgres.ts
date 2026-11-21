@@ -509,7 +509,7 @@ function saveUrl({
 
   return {
     postgresUrl: shown === '' ? 'none: this home\'s own database through PGHOST, PGPORT and PGUSER' : shown,
-    help: ['The server uses it from its next start: run `pnyx restart`'],
+    help: ['Restart the Pnyx login service or stop and rerun `pnyx serve` to use this setting'],
   }
 }
 

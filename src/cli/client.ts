@@ -62,25 +62,38 @@ async function commandInput({ argv }: { argv: string[] }): Promise<{
   const files = parsed.tokens.filter(token => token.kind === 'option' && token.name === 'file')
   const file = files[0]
 
-  if (parsed.argv[0] !== 'send' || files.length !== 1 || file?.kind !== 'option' || !file.value || file.value === '-') {
+  if (parsed.argv[0] !== 'send' || files.length !== 1 || file?.kind !== 'option' || !file.value) {
+    return { argv }
+  }
+
+  if (file.value === '-') {
+    const stdin = stdinText({ argv })
+
+    if (Buffer.byteLength(stdin ?? '') > MAX_BODY) {
+      throw new Error('message input exceeds the request size limit')
+    }
+
     return {
       argv,
-      stdin: stdinText({ argv }),
+      stdin,
     }
   }
 
+  const source = createReadStream(file.value)
   const chunks: Buffer[] = []
   let bytes = 0
 
-  for await (const chunk of createReadStream(file.value)) {
+  for await (const chunk of source) {
     bytes += chunk.length
 
     if (bytes > MAX_BODY) {
-      throw new Error('message file exceeds the request size limit')
+      throw new Error('message input exceeds the request size limit')
     }
 
     chunks.push(chunk)
   }
+
+  const stdin = Buffer.concat(chunks).toString('utf8')
 
   const forwarded = [...argv]
 
@@ -92,7 +105,7 @@ async function commandInput({ argv }: { argv: string[] }): Promise<{
 
   return {
     argv: forwarded,
-    stdin: Buffer.concat(chunks).toString('utf8'),
+    stdin,
   }
 }
 

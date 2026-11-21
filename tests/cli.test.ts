@@ -223,6 +223,23 @@ describe(
         expect(oversized.status).toBe(2)
         expect(JSON.parse(oversized.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
 
+        const oversizedStdin = await pnyx({
+          args: [
+            'send',
+            '--task',
+            receipt.task,
+            '--file',
+            '-',
+            '--hydra',
+            hydra.id,
+            '--json',
+          ],
+          input: 'x'.repeat(MAX_BODY + 1),
+          env: env(),
+        })
+        expect(oversizedStdin.status).toBe(2)
+        expect(JSON.parse(oversizedStdin.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+
         const board = await run({ args: ['board'] })
         expect(board.status).toBe(0)
         expect(board.stdout).toContain('Plain CLI task')
