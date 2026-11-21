@@ -400,30 +400,35 @@ test(
         return gate.promise
       },
     })
-    await Promise.race([
-      entered.promise,
-      first,
-    ])
-    expect(readSettings().settings.theme).toBe('dark')
-    const second = saveSettings({
-      patch: { theme: 'dark' },
-      meta: {
-        id: 'concurrent-settings-b',
-        at: new Date().toISOString(),
-        actor: 'cli',
-        ifRevision: revision,
-      },
-    })
-    gate.resolve()
-    const results = await Promise.allSettled([
-      first,
-      second,
-    ])
-    expect(results[0]?.status).toBe('fulfilled')
-    expect(results[1]).toMatchObject({
-      status: 'rejected',
-      reason: { code: 'REVISION_CONFLICT' },
-    })
-    expect(readSettings().settings.theme).toBe('light')
+    try {
+      await Promise.race([
+        entered.promise,
+        first,
+      ])
+      expect(readSettings().settings.theme).toBe('dark')
+      const second = saveSettings({
+        patch: { theme: 'dark' },
+        meta: {
+          id: 'concurrent-settings-b',
+          at: new Date().toISOString(),
+          actor: 'cli',
+          ifRevision: revision,
+        },
+      })
+      gate.resolve()
+      const results = await Promise.allSettled([
+        first,
+        second,
+      ])
+      expect(results[0]?.status).toBe('fulfilled')
+      expect(results[1]).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'REVISION_CONFLICT' },
+      })
+      expect(readSettings().settings.theme).toBe('light')
+    } finally {
+      gate.resolve()
+      await Promise.allSettled([first])
+    }
   },
 )

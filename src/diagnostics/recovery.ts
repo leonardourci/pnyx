@@ -441,6 +441,10 @@ export function createDiagnosticRecovery({
       }
 
       for (const candidate of candidates()) {
+        if (closed) {
+          return
+        }
+
         const task = candidate.taskId
         const message = candidate.messageId
         const key = recoveryKey({
@@ -489,6 +493,10 @@ export function createDiagnosticRecovery({
             task,
             message,
           })
+        }
+
+        if (closed) {
+          return
         }
 
         if (!candidate.eligible) {

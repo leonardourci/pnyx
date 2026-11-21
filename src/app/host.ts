@@ -1008,10 +1008,10 @@ export function createHost({
     && (entry.activity === 'working' || entry.session.snapshot().work.runningTurns.length))
 
   const markHydraInterrupted = async () => {
-    const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
     await write({
       fn: ({ writer }) => {
+        const card = writer.state.cards[HYDRA_CARD]
+
         if (card?.agent?.host === 'pnyx') {
           record({
             writer,
