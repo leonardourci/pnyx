@@ -400,7 +400,10 @@ test(
         return gate.promise
       },
     })
-    await entered.promise
+    await Promise.race([
+      entered.promise,
+      first,
+    ])
     const second = saveSettings({
       patch: { theme: 'dark' },
       meta: {

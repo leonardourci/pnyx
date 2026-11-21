@@ -212,13 +212,19 @@ function claimIsStale({ file }: { file: string }): boolean {
 async function claim({
   hydraId,
   path,
+  vacant = false,
 }: {
   hydraId: string
   path: string
+  vacant?: boolean
 }): Promise<boolean> {
   return await withWriter({
     hydraId,
     fn: () => {
+      if (vacant && existsSync(path)) {
+        return false
+      }
+
       let fd: number
 
       try {
@@ -310,6 +316,7 @@ export async function freshSlot({
     if (!existsSync(path) && await claim({
       hydraId,
       path,
+      vacant: true,
     })) {
       return path
     }

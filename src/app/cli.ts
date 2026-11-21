@@ -21,7 +21,7 @@ import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
 
-const task = guard({ handler: ({ args }) => taskCommand({ args }) })
+const task = guard({ handler: taskCommand })
 
 const history = guard({
   handler: async ({ args }) => {
