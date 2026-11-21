@@ -1233,11 +1233,17 @@ test(
 )
 
 test.each([
-  { viewport: '1440x900' },
-  { viewport: '390x844' },
+  {
+    width: 1440,
+    height: 900,
+  },
+  {
+    width: 390,
+    height: 844,
+  },
 ])(
-  'folded Hydras and project columns keep one aligned vertical strip at $viewport',
-  async ({ viewport }) => {
+  'folded Hydras and project columns keep one aligned vertical strip at $width × $height',
+  async ({ width, height }) => {
     const hydra = await pnyx.hydra()
     const projects = await addRevealProjects({ hydra })
 
@@ -1287,19 +1293,18 @@ test.each([
         '--in-place',
       ],
     })
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
-    await chrome({
-      args: [
-        'emulate',
-        '--viewport',
-        viewport,
-      ],
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      beforeLoad: ({ page }) => page.setViewportSize({
+        width,
+        height,
+      }),
     })
-    const geometry = await chrome({
-      script: `
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .running-count');
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
-    console.log(await page.eval(async () => {
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    await workspace.locator('.project-chips .running-count').first().waitFor()
+    await workspace.locator('.project-chips .waiting-count').first().waitFor()
+    const geometry = await page.evaluate<string>(`(async () => {
       const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
       const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
       workspace.querySelector('[aria-label="Fold Hydra"]').click();
@@ -1340,9 +1345,7 @@ test.each([
         && column.querySelector('.column-cards').getClientRects().length > 0
       );
       return JSON.stringify({ strip, workspaceUnfolded, folded, unfolded });
-    }));
-    `,
-    })
+    })()`)
     expect(JSON.parse(geometry)).toEqual({
       strip: {
         thin: true,
