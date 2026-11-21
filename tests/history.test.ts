@@ -399,11 +399,23 @@ test(
         'stored-pass',
       ],
     })
+    const saved = rows<{
+      id: string
+      type: string
+    }>({
+      text: 'select id, type from events where hydra_id = $1 order by seq',
+      values: [hydra.id],
+    })
+    expect(saved.map(event => event.type)).not.toContain('hydra.operation')
     await pnyx.restart()
     const retried = await hydra.owner({ args })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
     expect(retried.milestone).toBe('stored-pass')
+    expect(rows({
+      text: 'select id, type from events where hydra_id = $1 order by seq',
+      values: [hydra.id],
+    })).toEqual(saved)
   },
 )
 
