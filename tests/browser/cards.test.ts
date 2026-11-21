@@ -1301,8 +1301,8 @@ test.each([
     await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
     console.log(await page.eval(async () => {
       const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+      const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
       workspace.querySelector('[aria-label="Fold Hydra"]').click();
-      await new Promise(requestAnimationFrame);
       await new Promise(requestAnimationFrame);
       const box = workspace.getBoundingClientRect();
       const chips = [...workspace.querySelectorAll('.project-chips button')].map(chip => chip.getBoundingClientRect());
@@ -1317,11 +1317,11 @@ test.each([
       };
       workspace.querySelector('[aria-label="Unfold Hydra"]').click();
       await new Promise(requestAnimationFrame);
-      await new Promise(requestAnimationFrame);
+      const workspaceUnfolded = workspace.getBoundingClientRect().width === expandedWorkspaceWidth
+        && workspace.querySelector('main').getClientRects().length > 0;
       const columns = [...workspace.querySelectorAll('.project-column')];
       const expandedWidths = columns.map(column => column.getBoundingClientRect().width);
       workspace.querySelector('[aria-label="Fold all projects"]').click();
-      await new Promise(requestAnimationFrame);
       await new Promise(requestAnimationFrame);
       const folded = columns.length === 5 && columns.every(column => {
         const box = column.getBoundingClientRect();
@@ -1335,12 +1335,11 @@ test.each([
       });
       workspace.querySelector('[aria-label="Unfold all projects"]').click();
       await new Promise(requestAnimationFrame);
-      await new Promise(requestAnimationFrame);
       const unfolded = columns.every((column, index) =>
         column.getBoundingClientRect().width === expandedWidths[index]
         && column.querySelector('.column-cards').getClientRects().length > 0
       );
-      return JSON.stringify({ strip, folded, unfolded });
+      return JSON.stringify({ strip, workspaceUnfolded, folded, unfolded });
     }));
     `,
     })
@@ -1352,6 +1351,7 @@ test.each([
         contained: true,
         stacked: true,
       },
+      workspaceUnfolded: true,
       folded: true,
       unfolded: true,
     })
