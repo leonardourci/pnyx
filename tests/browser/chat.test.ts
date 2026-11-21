@@ -554,47 +554,79 @@ test(
         session,
         records: [
           {
-            id: 'toolu_send',
-            command: `pnyx send --task ${task.id} --text "Check it"`,
-          },
-          {
-            id: 'toolu_answer',
-            command: `pnyx answer ${task.id} question-1 --text "Use it"`,
-          },
-          {
-            id: 'toolu_legacy',
-            command: `pnyx-axi reply ${task.id} --text "Earlier call"`,
-          },
-          {
-            id: 'toolu_file',
-            command: `pnyx send --task ${task.id} --file message.txt`,
-          },
-        ].flatMap(({
-          id,
-          command,
-        }) => [
-          {
-            type: 'assistant' as const,
+            type: 'assistant',
             content: [
               {
                 type: 'tool_use',
-                id,
+                id: 'toolu_status',
                 name: 'Bash',
-                input: { command },
+                input: { command: 'git status' },
               },
             ],
           },
           {
-            type: 'user' as const,
+            type: 'user',
             content: [
               {
                 type: 'tool_result',
-                tool_use_id: id,
-                content: 'ok',
+                tool_use_id: 'toolu_status',
+                content: 'clean',
               },
             ],
           },
-        ]),
+          {
+            type: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: 'Checked the repository status.',
+              },
+            ],
+          },
+          ...[
+            {
+              id: 'toolu_send',
+              command: `pnyx send --task ${task.id} --text "Check it"`,
+            },
+            {
+              id: 'toolu_answer',
+              command: `pnyx answer ${task.id} question-1 --text "Use it"`,
+            },
+            {
+              id: 'toolu_legacy',
+              command: `pnyx-axi reply ${task.id} --text "Earlier call"`,
+            },
+            {
+              id: 'toolu_file',
+              command: `pnyx send --task ${task.id} --file message.txt`,
+            },
+          ].flatMap(({
+            id,
+            command,
+          }) => [
+            {
+              type: 'assistant' as const,
+              content: [
+                {
+                  type: 'tool_use',
+                  id,
+                  name: 'Bash',
+                  input: { command },
+                },
+              ],
+            },
+            {
+              type: 'user' as const,
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: id,
+                  content: 'ok',
+                },
+              ],
+            },
+          ]),
+        ],
       })
       const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
         'region',

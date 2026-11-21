@@ -221,7 +221,6 @@ export function AccountSettings({
           aria-label="Display name"
           data-account-field="label"
           value={draft.label}
-          maxLength={ACCOUNT_LABEL_MAX}
           aria-invalid={visibleFailure?.field === 'label' || undefined}
           aria-describedby={visibleFailure?.field === 'label' ? errorId : undefined}
           onChange={event => setDraft({

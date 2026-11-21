@@ -80,7 +80,6 @@ function ProjectCommand({
           aria-label={`Start command for ${project.name}`}
           value={shell}
           onChange={e => edit({ patch: { command: e.target.value } })}
-          rows={2}
           spellCheck={false}
           placeholder="Command to start a worker"
         />

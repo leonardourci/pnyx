@@ -188,7 +188,7 @@ export function useAskMode({
     }
   }
 
-  const askInput = ({ event }: { event: KeyboardEvent<HTMLInputElement> }) => {
+  const askInput = ({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
     const key = askKey({
       key: event.key,
       mod: event.metaKey || event.ctrlKey,

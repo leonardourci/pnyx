@@ -959,6 +959,181 @@ test(
   },
 )
 
+test.each([
+  {
+    code: 'done',
+    format: 'legacy',
+    outcome: { status: 'handled' },
+    report: 'Found 41 sales and no errors in production.',
+    result: 'The shop is used: 41 sales; no production errors.',
+    link: 'https://example.com/reports/shop',
+  },
+  {
+    code: 'blocked',
+    format: 'owner',
+    outcome: { audience: 'owner' },
+    report: 'I cannot sign in to read the production error report.',
+    result: 'The production error report needs a working login.',
+    link: 'https://example.com/login',
+  },
+  {
+    code: 'needs-you',
+    format: 'owner',
+    outcome: { audience: 'owner' },
+    report: 'Should I count archived sales?',
+    result: 'Choose whether to include archived sales.',
+    link: 'https://example.com/reports/scope',
+  },
+  {
+    code: 'done',
+    format: 'owner',
+    outcome: { audience: 'owner' },
+    report: 'Finished the shop investigation.',
+    result: 'The shop report is ready.',
+    link: `https://example.com/reports/shop?filter=${'archived-sales-'.repeat(20)}`,
+  },
+])(
+  'Hydra relays a worker $code result ($format) from the helper into the owner\'s main chat',
+  async ({
+    code,
+    outcome,
+    report,
+    result,
+    link,
+  }) => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'auto',
+      ],
+    })
+    const main = await hydra.chat({ text: 'Check whether the shop is used and has production errors' })
+    await until({
+      what: 'Hydra to accept the investigation',
+      check: () => main.answered === 1,
+    })
+    const folder = hydra.folder({ name: 'shop' })
+    const asHydra = hydra.as({ session: main })
+    await asHydra.run({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'shop',
+        '--title',
+        'Check shop usage',
+        '--folder',
+        folder,
+      ],
+    })
+    const { id } = await hydra.task({ key: 'shop' })
+    const workerReport = `${code}: ${report} ${link}`
+    const summary = `${result} ${link}`
+    const helperTurn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Granted tasks:') && text.includes(`${code}:`),
+      hold: true,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: id,
+            ...outcome,
+            summary,
+          },
+        ],
+      }),
+    })
+    await asHydra.run({
+      args: [
+        'task',
+        'start',
+        'shop',
+      ],
+    })
+    await hydra.agent({ cwd: folder })
+    await workerLine({
+      hydra,
+      key: 'shop',
+      line: workerReport,
+    })
+    await until({
+      what: 'the helper to read the worker result',
+      check: () => pnyx.claude.sessions.some(session => session.env.PNYX_HYDRA === hydra.id
+        && session.env.PNYX_ACTOR?.startsWith('helper:')
+        && session.received.some(text => text.includes(workerReport))),
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes(summary),
+      reply: summary,
+    })
+    helperTurn.release()
+    await until({
+      what: 'Hydra to relay the helper outcome',
+      check: () => main.received.some(text => text.includes(summary))
+        && queue({ hydraId: hydra.id })?.working === false,
+    })
+    const digest = await operation({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        hydra.id,
+      ],
+      env: process.env,
+    })
+    const taskDigest = digest.stdout.split('\n').find(line => line.startsWith(`- ${id} ·`))
+    const summaryStart = summary.split(' ').slice(
+      0,
+      4,
+    )
+      .join(' ')
+    expect(taskDigest).toContain(`helper: ${summaryStart}`)
+    const page = await hydra.page()
+
+    try {
+      const { thread } = await page.send({
+        name: 'thread',
+        args: ['$hydra'],
+      }) as {
+        thread: {
+          conversation: {
+            entries: {
+              role: string
+              text: string
+            }[]
+          }
+        }
+      }
+      const results = thread.conversation.entries.filter(entry => entry.text.includes(summary))
+      expect(results).toEqual([
+        expect.objectContaining({
+          role: 'assistant',
+          text: summary,
+        }),
+      ])
+      const messages = await hydra.owner({
+        args: [
+          'hydra',
+          'messages',
+          '--limit',
+          '100',
+        ],
+      })
+      expect(messages.messages).not.toContainEqual(expect.objectContaining({
+        actor: 'pnyx',
+        text: expect.stringContaining(summary),
+      }))
+    } finally {
+      page.close()
+    }
+  },
+)
+
 test(
   'while the routine helper handles a worker\'s update, what the worker\'s transcript records still reaches its card',
   async () => {
@@ -1112,14 +1287,14 @@ test(
 
     const reportHelperTurn = pnyx.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice report handled in background'),
+      match: ({ text }) => text.includes('Granted tasks:') && text.includes('Invoice checks rerun under existing instructions'),
       hold: true,
       reply: JSON.stringify({
         outcomes: [
           {
             task: id,
-            status: 'handled',
-            summary: 'Invoice report is ready.',
+            audience: 'routine',
+            summary: 'Reran invoice checks.',
           },
         ],
       }),
@@ -1133,7 +1308,7 @@ test(
         '--actor',
         `worker:${id}`,
         '--text',
-        `Invoice report handled in background\n${'Supporting invoice detail. '.repeat(100)}End of invoice evidence`,
+        `Invoice checks rerun under existing instructions\n${'Supporting invoice detail. '.repeat(100)}End of invoice evidence`,
       ],
     })
     helperTurn.release()
@@ -1178,11 +1353,24 @@ test(
       ],
       env: process.env,
     })).stdout
-    expect(digest).toContain('Invoice report handled in background')
+    expect(main.received).toHaveLength(2)
+    const routineMessages = await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+        '--limit',
+        '100',
+      ],
+    })
+    expect(routineMessages.messages).not.toContainEqual(expect.objectContaining({
+      actor: 'pnyx',
+      text: expect.stringContaining('Reran invoice checks.'),
+    }))
+    expect(digest).toContain('Invoice checks rerun under existing instructions')
     expect(digest.split('\n').find(line => line.startsWith(`- ${id} ·`)))
-      .toContain('helper: Invoice report is ready.')
+      .toContain('helper: Reran invoice checks.')
     expect(digest).toMatch(/\[unhandled\] \(progress\): New invoice progress during the helper lease/)
-    const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice report handled in background/)?.[1]
+    const reportSeq = digest.match(/seq (\d+) \S+ \[handled\]: Invoice checks rerun under existing instructions/)?.[1]
     expect(reportSeq).toBeDefined()
     const checked = await hydra.owner({
       args: [
@@ -1247,11 +1435,12 @@ test(
         what: 'main to read the handled report',
         check: () => main.received.some(text => text.includes('Summarize the invoice status')),
       })
+      expect(main.received).toHaveLength(3)
       const delivered = main.received.find(text => text.includes('Summarize the invoice status'))!
       expect(delivered.split('\n').find(line => line.startsWith(`- ${id} ·`)))
-        .toContain('helper: Invoice report is ready.')
+        .toContain('helper: Reran invoice checks.')
       expect(delivered).toContain('[handled]')
-      expect(delivered.split('Invoice report handled in background')).toHaveLength(2)
+      expect(delivered.split('Invoice checks rerun under existing instructions')).toHaveLength(2)
     } finally {
       scopeTurn.release()
     }

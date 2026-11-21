@@ -170,7 +170,7 @@ export function Oracle({
     setAsk,
   ] = useState<Asking | null>(null)
   const dialog = useRef<HTMLDialogElement>(null)
-  const input = useRef<HTMLInputElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
   const preview = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLDivElement>(null)
   const origin = useRef<HTMLElement>(document.body)
@@ -678,7 +678,7 @@ export function Oracle({
     input.current?.focus()
   }
 
-  const inputKey = ({ event }: { event: KeyboardEvent<HTMLInputElement> }) => {
+  const inputKey = ({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
     if (ask) {
       askInput({ event })
 

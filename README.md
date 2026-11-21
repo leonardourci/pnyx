@@ -90,6 +90,8 @@ Replace `project` with the attached folder's name and `work` with your Hydra's I
 
 Open the card to follow the worker's updates, and send follow-up instructions through Hydra's chat. Stop a foreground server with Ctrl+C.
 
+Writing fields wrap and grow with their text; chat drafts keep their height limit and scroll inside. Enter keeps each field’s submit or focus action, and Shift+Enter adds a line only in multiline fields.
+
 ## Core ideas
 
 ### Hydra
