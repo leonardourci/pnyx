@@ -25,7 +25,7 @@ export function toolNames({ names }: { names: string[] }): string[] {
   return [...new Set(names)].sort()
 }
 
-export function recordTools({
+export async function recordTools({
   hydraId,
   task,
   grant = [],
@@ -38,7 +38,7 @@ export function recordTools({
   revoke?: string[]
   meta: Meta
 }) {
-  return withWriter({
+  return await withWriter({
     hydraId,
     fn: ({ writer }) => writeTools({
       writer,

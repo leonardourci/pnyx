@@ -49,7 +49,7 @@ export function validateCardInput({
   }
 }
 
-export function queueCardInput({
+export async function queueCardInput({
   hydraId,
   task,
   text,
@@ -70,7 +70,7 @@ export function queueCardInput({
 
   const id = meta.id ?? randomUUID()
 
-  return withWriter({
+  return await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const card = findCard({
@@ -200,7 +200,7 @@ export function createCardInputs({
 }) {
   const sending = new Set<string>()
 
-  const record = ({
+  const record = async ({
     card,
     reply,
     state,
@@ -212,7 +212,7 @@ export function createCardInputs({
     state: 'queued' | 'failed'
     detail?: string
     session?: string
-  }) => withWriter({
+  }) => await withWriter({
     hydraId,
     fn: ({ writer }) => {
       const current = writer.state.cards[card.id]?.replies?.find(saved => saved.id === reply.id)
@@ -308,7 +308,7 @@ export function createCardInputs({
         const anotherActorHoldsTask = started.launch === 'waiting' || started.launch === 'pending'
 
         if (anotherActorHoldsTask) {
-          record({
+          await record({
             card,
             reply,
             state: 'failed',
@@ -332,7 +332,7 @@ export function createCardInputs({
           }
         }
 
-        const ready = record({
+        const ready = await record({
           card,
           reply,
           state: 'queued',
@@ -343,7 +343,7 @@ export function createCardInputs({
           return
         }
 
-        host().send({
+        await host().send({
           card: card.id,
           text: reply.text!,
           actor: 'web',
@@ -352,7 +352,7 @@ export function createCardInputs({
         })
       }
     } catch (error) {
-      record({
+      await record({
         card,
         reply,
         state: 'failed',

@@ -127,7 +127,7 @@ export function createLiveSessions({
   usageTracker: ReturnType<typeof createUsageTracker>
   compaction: ReturnType<typeof createCompactionControl>
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
   record({
     writer,
@@ -349,7 +349,7 @@ export function createLiveSessions({
 
       if (current?.agent && sessionId({ agent: current.agent }) === key
         && current.steeringGeneration === card.steeringGeneration) {
-        ringSteering({
+        await ringSteering({
           card: current,
           entry,
         })
@@ -392,7 +392,7 @@ export function createLiveSessions({
                 entry.steering.delete(id)
 
                 if (message) {
-                  holdCompact({
+                  await holdCompact({
                     card: current,
                     input: {
                       id,
@@ -404,7 +404,7 @@ export function createLiveSessions({
                 }
               }
             } else {
-              holdCompact({
+              await holdCompact({
                 card: current,
                 input: {
                   id: item.id ?? randomUUID(),
@@ -434,7 +434,7 @@ export function createLiveSessions({
             }
 
             if (!activeCompaction({ card: loadHydra({ hydraId }).state.cards[card.id] })) {
-              compactChange({
+              await compactChange({
                 card: card.id,
                 change: {
                   kind: 'status',
@@ -508,7 +508,7 @@ export function createLiveSessions({
           const owner = compactOwner()
 
           if (item.id && owner?.compaction?.inputs.some(input => input.id === item.id && input.route === 'direct')) {
-            compactChange({
+            await compactChange({
               card: owner.id,
               change: {
                 kind: 'taken',
@@ -811,7 +811,7 @@ export function createLiveSessions({
         }
 
         if (typeof activity === 'object' && activity.type === 'answer') {
-          write({
+          await write({
             fn: ({ writer }) => {
               const current = writer.state.cards[card.id]
               const request = current?.permissions?.find(request =>
@@ -867,7 +867,7 @@ export function createLiveSessions({
         }
 
         if (typeof activity !== 'string' && activity.type === 'compaction') {
-          syncCompactions({ state: loadHydra({ hydraId }).state })
+          await syncCompactions({ state: loadHydra({ hydraId }).state })
           const current = compactOwner()
 
           if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
@@ -892,7 +892,7 @@ export function createLiveSessions({
             activity.id,
             operation.id,
           )
-          compactChange({
+          await compactChange({
             card: current.id,
             change: {
               kind: 'status',
@@ -1021,7 +1021,7 @@ export function createLiveSessions({
           const unfinished = activeCompaction({ card: owner })
 
           if (unfinished) {
-            compactChange({
+            await compactChange({
               card: owner!.id,
               change: {
                 kind: 'status',
@@ -1172,7 +1172,7 @@ export function createLiveSessions({
     const unfinishedCompact = activeCompaction({ card: compactCard })
 
     if (unfinishedCompact && !closing()) {
-      compactChange({
+      await compactChange({
         card: compactCard!.id,
         change: {
           kind: 'status',

@@ -122,7 +122,7 @@ export async function sendReply({
     ...(request.reason ? { reason: request.reason } : {}),
   })
 
-  const queued = withWriter({
+  const queued = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
@@ -478,7 +478,7 @@ export async function sendReply({
   }
 
   try {
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })

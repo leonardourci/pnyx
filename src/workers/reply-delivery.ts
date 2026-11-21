@@ -74,7 +74,7 @@ export async function deliver({
   // the session opened meanwhile would take that Enter instead, so then none is pressed.
   await delay(CONFIRM_SETTLE_MS)
 
-  if (withWriter({
+  if (await withWriter({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })

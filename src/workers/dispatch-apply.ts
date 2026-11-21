@@ -263,7 +263,7 @@ function changeDescription({ change }: { change: DispatchChange }): string {
   return name ? `${section}: ${name}` : String(section)
 }
 
-function dispatchNotice({
+async function dispatchNotice({
   hydraId,
   entry,
   meta,
@@ -271,13 +271,13 @@ function dispatchNotice({
   hydraId: string
   entry: ChangeEntry
   meta: Meta
-}): void {
+}): Promise<void> {
   if (!entry.changes?.length) {
     return
   }
 
   const changes = entry.changes.map(change => changeDescription({ change }))
-  settingsNotice({
+  await settingsNotice({
     hydraId,
     meta,
     changeId: `dispatch:${entry.id}`,
@@ -286,7 +286,7 @@ function dispatchNotice({
 }
 
 // One patch, checked whole: every rule, account and order change goes through here.
-export function applyDispatch({
+export async function applyDispatch({
   hydraId,
   envelope,
   meta,
@@ -299,9 +299,9 @@ export function applyDispatch({
   check?: boolean
   proposeIt?: boolean
   summary: string
-}): Output {
+}): Promise<Output> {
   return withRegistryLock({
-    fn: () => {
+    fn: async () => {
       const document = lockedDocument()
       const entries = readChanges()
       const revision = revisionOf({ entries })
@@ -323,7 +323,7 @@ export function applyDispatch({
           })
         }
 
-        dispatchNotice({
+        await dispatchNotice({
           hydraId,
           entry: seen,
           meta,
@@ -445,7 +445,7 @@ export function applyDispatch({
       }
 
       commitChange({ entry })
-      dispatchNotice({
+      await dispatchNotice({
         hydraId,
         entry,
         meta,
@@ -556,7 +556,7 @@ function saveProposal({
   })
 }
 
-export function resolveProposal({
+export async function resolveProposal({
   hydraId,
   action,
   token,
@@ -566,7 +566,7 @@ export function resolveProposal({
   action: 'confirm' | 'dismiss'
   token: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   if (hydraActor({ actor: meta.actor })) {
     inform({
       reason: 'Dispatch proposal answered by an agent',
@@ -575,8 +575,8 @@ export function resolveProposal({
   }
 
   return withRegistryLock({
-    fn: () => {
-      const state = withWriter({
+    fn: async () => {
+      const state = await withWriter({
         hydraId,
         fn: ({ writer }) => writer.state,
       })
@@ -609,7 +609,7 @@ export function resolveProposal({
         }
       }
 
-      withWriter({
+      await withWriter({
         hydraId,
         fn: ({ writer }) => {
           const decision = hydraEvent({

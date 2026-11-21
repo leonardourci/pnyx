@@ -159,7 +159,7 @@ export const agent = guard({
 
     // What the session reported before, with everything it has recorded folded in,
     // so the readback compares like with like.
-    const settled = () => withWriter({
+    const settled = async () => await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
@@ -172,7 +172,7 @@ export const agent = guard({
         return writer.state.cards[card.id]?.settings?.[setting]
       },
     })
-    const before = settled()
+    const before = await settled()
     const input = option.input
     const typed = 'set' in input
       ? {
@@ -208,7 +208,7 @@ export const agent = guard({
       // A harness that records the change at once, as Codex does, confirms it here;
       // otherwise the session's next hook or turn does.
       await delay(READBACK_MS)
-      now = settled()
+      now = await settled()
     }
 
     const confirmed = confirms({

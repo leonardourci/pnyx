@@ -48,7 +48,7 @@ export async function toolsCommand({
     }
   }
 
-  const result = recordTools({
+  const result = await recordTools({
     hydraId,
     task: card.id,
     grant: values.grant as string[] | undefined,

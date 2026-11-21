@@ -95,7 +95,7 @@ export async function followUpSteering({
       }
     }
 
-    const reserved = withWriter({
+    const reserved = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
@@ -198,7 +198,7 @@ export async function followUpSteering({
       }
     }
 
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })

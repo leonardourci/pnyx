@@ -38,7 +38,7 @@ export function createCompactionControl({
   queuedHydra: Set<string>
   closing(): boolean
   at(): string
-  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T
+  write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   send({
     card,
     text,
@@ -71,14 +71,14 @@ export function createCompactionControl({
 }) {
   const compactionDeadlines = new Map<string, NodeJS.Timeout>()
 
-  const compactChange = ({
+  const compactChange = async ({
     card,
     change,
   }: {
     card: string
     change: CompactionChange
   }) => {
-    write({
+    await write({
       fn: ({ writer }) => recordCompaction({
         writer,
         card,
@@ -116,7 +116,7 @@ export function createCompactionControl({
       setTimeout(
         () => background({
           name: 'compaction deadline',
-          run: () => {
+          run: async () => {
             compactionDeadlines.delete(operation.session)
 
             if (closing()) {
@@ -131,7 +131,7 @@ export function createCompactionControl({
               return
             }
 
-            compactChange({
+            await compactChange({
               card: card.id,
               change: {
                 kind: 'status',
@@ -155,7 +155,7 @@ export function createCompactionControl({
     )
   }
 
-  const holdCompact = ({
+  const holdCompact = async ({
     card,
     input,
   }: {
@@ -166,7 +166,7 @@ export function createCompactionControl({
       return false
     }
 
-    compactChange({
+    await compactChange({
       card: card.id,
       change: {
         kind: 'held',
@@ -225,7 +225,7 @@ export function createCompactionControl({
   }) => state.cards[session === state.config?.hydra.session
     ? HYDRA_CARD : state.sessions?.[session]?.taskId ?? fallback]
 
-  const syncCompactions = ({ state }: { state: HydraState }) => {
+  const syncCompactions = async ({ state }: { state: HydraState }) => {
     for (const card of Object.values(state.cards)) {
       for (const operation of card.compaction?.operations ?? []) {
         if (operation.state !== 'running') {
@@ -244,7 +244,7 @@ export function createCompactionControl({
           continue
         }
 
-        compactChange({
+        await compactChange({
           card: card.id,
           change: {
             kind: 'status',
@@ -258,7 +258,7 @@ export function createCompactionControl({
         })
 
         if (destination?.agent && sessionId({ agent: destination.agent }) === operation.session) {
-          compactChange({
+          await compactChange({
             card: destination.id,
             change: {
               kind: 'status',
@@ -335,7 +335,7 @@ export function createCompactionControl({
                 return
               }
             } else {
-              send({
+              await send({
                 card: id,
                 text: input.text,
                 original: input.original,
@@ -362,7 +362,7 @@ export function createCompactionControl({
             }
 
             if (input.route !== 'direct') {
-              compactChange({
+              await compactChange({
                 card: id,
                 change: {
                   kind: 'taken',

@@ -106,7 +106,7 @@ const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
   }),
 }
 
-function recordWait({
+async function recordWait({
   hydraId,
   task,
   wait,
@@ -120,7 +120,7 @@ function recordWait({
   values: Values
   meta: Meta
   operation: string
-}): void {
+}): Promise<void> {
   const decide = ({ state }: { state: HydraState }) => {
     if (wait === 'queue') {
       return decideQueue({
@@ -148,7 +148,7 @@ function recordWait({
     })
   }
 
-  withWriter({
+  await withWriter({
     hydraId,
     fn: ({ writer }) => applyDecision({
       writer,
@@ -206,7 +206,7 @@ async function startCreated({
       throw error
     }
 
-    noteOnce({
+    await noteOnce({
       hydraId,
       task,
       source: 'pnyx:create',
@@ -277,7 +277,7 @@ export async function createCommand({
   const wait = notQueued ? undefined : chosen
 
   if (wait === 'queue' || wait === 'depend') {
-    recordWait({
+    await recordWait({
       hydraId,
       task,
       wait,

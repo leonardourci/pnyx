@@ -69,7 +69,7 @@ export async function startCommand({
   meta: Meta
 }): Promise<Output> {
   const id = meta.id ?? randomUUID()
-  const claimed = withWriter({
+  const claimed = await withWriter({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
@@ -196,7 +196,7 @@ export async function startCommand({
     },
   })
   const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Hydra command'} in ${claimed.cwd}`
-  withWriter({
+  await withWriter({
     hydraId,
     fn: ({ writer }) => {
       applyDecision({
