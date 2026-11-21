@@ -983,14 +983,14 @@ test.each([
   },
   {
     code: 'blocked',
-    format: 'legacy',
-    outcome: { status: 'handled' },
+    format: 'owner',
+    outcome: { audience: 'owner' },
     summary: 'The production error report needs a working login. https://example.com/login',
   },
   {
     code: 'needs-you',
-    format: 'legacy',
-    outcome: { status: 'handled' },
+    format: 'owner',
+    outcome: { audience: 'owner' },
     summary: 'Choose whether to include archived sales. https://example.com/reports/scope',
   },
   {
@@ -1090,7 +1090,8 @@ test.each([
       env: process.env,
     })
     const taskDigest = digest.stdout.split('\n').find(line => line.startsWith(`- ${id} ·`))
-    expect(taskDigest).toContain('helper: ')
+    const summaryStart = summary.split(' ').slice(0, 4).join(' ')
+    expect(taskDigest).toContain(`helper: ${summaryStart}`)
     const page = await hydra.page()
 
     try {
