@@ -420,7 +420,7 @@ GitHub pull request URLs get kind and number filled in. A link never moves the c
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full] [--updates]
+  history: `usage: pnyx-axi history [--card <id>] [--kind task.edited|pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full] [--updates]
 Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}). --updates keeps only the events a task's Updates list shows.
 `,
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]

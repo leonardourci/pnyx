@@ -355,5 +355,5 @@ export function sessionFields({
     }
   }
 
-  return event.type === 'card.pushed' ? event.data : undefined
+  return (event.type === 'card.pushed' || event.type === 'task.edited') ? event.data : undefined
 }

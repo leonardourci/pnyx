@@ -1407,6 +1407,18 @@ test(
       ],
     })
     expect((await hydra.owner({ args })).duplicate).toBe('event id already applied; nothing appended')
+    await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        'p',
+        '--before',
+        'a',
+        '--event-id',
+        'manual:lifecycle',
+      ],
+    })
+    expect(readEvents({ hydraId: hydra.id }).some(event => event.id === 'manual:lifecycle')).toBe(true)
   },
 )
 
@@ -1770,7 +1782,7 @@ test(
     expect(order({ parent })).toEqual(siblings)
     const event = events.at(-1)!
 
-    if (event.type !== 'card.pushed') {
+    if (event.type !== 'task.edited') {
       throw new Error('Expected the parent event')
     }
 

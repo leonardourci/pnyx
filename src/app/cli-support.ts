@@ -688,6 +688,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
+    case 'task.edited':
     case 'card.pushed':
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
         .join(' ') || 'no fields'}`

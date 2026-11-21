@@ -304,7 +304,7 @@ export interface TaskDeclaration {
 // before holds the earlier value of each field the push changed (null when it was
 // absent), so a manual edit can be undone. A push that created the card has none.
 export type PushedEvent = EventBase & {
-  type: 'card.pushed'
+  type: 'card.pushed' | 'task.edited'
   data: PushFields & {
     key: string
     source?: SourceRef

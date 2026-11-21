@@ -437,6 +437,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.steering.stopped',
   'task.steering.recovery',
   'card.pushed',
+  'task.edited',
   'card.observed',
   'card.moved',
   'card.linked',

@@ -272,6 +272,7 @@ export function eventText({ event }: { event: HydraEvent }): string {
     case 'board.columns':
       parts.push(...event.data.columns.map(c => c.title))
       break
+    case 'task.edited':
     case 'card.pushed': {
       const { data } = event
       const changed = ({ field }: { field: string }) => !data.before || field in data.before

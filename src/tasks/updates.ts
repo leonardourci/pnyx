@@ -481,6 +481,7 @@ function updateRow({
     }
     case 'card.linked': return linked({ data })
     case 'card.outcome': return outcome({ data })
+    case 'task.edited':
     case 'card.pushed': return renamed({ data })
     case 'card.noted': return noted({ data })
     default: return undefined

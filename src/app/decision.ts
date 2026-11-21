@@ -95,16 +95,17 @@ export function decided({
     ifRevision: meta.ifRevision,
   })
   const card = state.cards[event.cardId]
-  const repeated = event.type === 'card.pushed' && event.data.source
+
+  const repeated = (event.type === 'card.pushed' || event.type === 'task.edited') && event.data.source
   const cache = reportCache({ state })
   const key = repeated ? observationKey({
     cardId: event.cardId,
     source: event.data.source!,
   }) : undefined
-  const report = event.type === 'card.pushed' ? reportOf({ event }) : undefined
+  const report = (event.type === 'card.pushed' || event.type === 'task.edited') ? reportOf({ event }) : undefined
   const last = key ? cache.get(key) : undefined
 
-  if (event.type === 'card.pushed' && last && last.revision === card?.revision
+  if ((event.type === 'card.pushed' || event.type === 'task.edited') && last && last.revision === card?.revision
     && last.session === sessionSignature({
       state,
       event,
@@ -126,7 +127,7 @@ export function decided({
   })
   const after = strip({ card: reduced.cards[event.cardId] })
 
-  if (event.type !== 'card.pushed' && before && isDeepStrictEqual(
+  if ((event.type !== 'card.pushed' && event.type !== 'task.edited') && before && isDeepStrictEqual(
     before,
     after,
   ) && isDeepStrictEqual(
@@ -136,7 +137,7 @@ export function decided({
     return { skipped: 'unchanged' }
   }
 
-  if (event.type === 'card.pushed' && event.data.source && key) {
+  if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.source && key) {
     const session = sessionSignature({
       state: reduced,
       event,

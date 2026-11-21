@@ -75,6 +75,7 @@ const history = guard({
       cardId: ref,
       types: [
         'card.pushed',
+        'task.edited',
         'task.created',
         'task.moved-in',
         'task.moved-out',

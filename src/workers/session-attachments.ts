@@ -156,7 +156,7 @@ export function observedQuestions({ event }: { event: HydraEvent }): Attention[]
 
   if (event.type === 'session.observed') {
     attention = 'fields' in event.data ? event.data.fields.attention : event.data.attention
-  } else if (event.type === 'card.pushed') {
+  } else if (event.type === 'card.pushed' || event.type === 'task.edited') {
     attention = event.data.attention
   }
 
@@ -428,8 +428,8 @@ export function observeSession({
     sourceRefs: [],
   }
 
-  if (event.type === 'card.pushed' || event.type === 'card.observed') {
-    const pushedAgent = event.type === 'card.pushed' ? event.data.agent : undefined
+  if (event.type === 'card.pushed' || event.type === 'task.edited' || event.type === 'card.observed') {
+    const pushedAgent = (event.type === 'card.pushed' || event.type === 'task.edited') ? event.data.agent : undefined
 
     if (pushedAgent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
       session.launch = {
@@ -457,7 +457,7 @@ export function observeSession({
       session.lastSeen = event.at
     }
 
-    if (event.type === 'card.pushed' && typeof event.data.activity === 'string') {
+    if ((event.type === 'card.pushed' || event.type === 'task.edited') && typeof event.data.activity === 'string') {
       session.activityObservedAt = event.data.source?.observedAt ?? event.at
     }
 
