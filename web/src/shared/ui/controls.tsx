@@ -60,18 +60,23 @@ export function Input({
       defaultValue={typeof defaultValue === 'string' ? singleLine({ text: defaultValue }) : defaultValue}
       onChange={event => {
         const field = event.currentTarget
-        const direction = field.selectionDirection
+        const breaks = [...field.value.matchAll(lineBreaks)]
 
-        for (const match of [...field.value.matchAll(lineBreaks)].reverse()) {
-          field.setRangeText(
-            '',
-            match.index,
-            match.index + match[0].length,
-            'preserve',
-          )
+        if (breaks.length) {
+          const direction = field.selectionDirection
+
+          for (const match of breaks.reverse()) {
+            field.setRangeText(
+              '',
+              match.index,
+              match.index + match[0].length,
+              'preserve',
+            )
+          }
+
+          field.selectionDirection = direction
         }
 
-        field.selectionDirection = direction
         onChange?.(event)
       }}
       className={`min-h-0 [:where(&)]:bg-surface ${props.className ?? ''}`}

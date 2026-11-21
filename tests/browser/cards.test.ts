@@ -1215,10 +1215,10 @@ test(
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', ${JSON.stringify(title)});
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', ${JSON.stringify(title.slice('Keep'.length))});
     await page.eval(() => {
       const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
-      field.setRangeText('\\n', 0, 0, 'end');
+      field.setRangeText('Ke\\nep', 0, 0, 'end');
       field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
     });
     await page.press('Shift+Enter');
@@ -1253,7 +1253,7 @@ test(
       renameFits: true,
       titleFits: true,
       titleGrows: true,
-      pasteCaret: 0,
+      pasteCaret: 'Keep'.length,
       titleAfterShiftEnter: title,
       askGrows: true,
       multiLine: true,
