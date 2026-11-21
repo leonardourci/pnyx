@@ -1307,17 +1307,24 @@ test.each([
       const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
       workspace.querySelector('[aria-label="Fold Hydra"]').click();
       await new Promise(requestAnimationFrame);
+      const projects = workspace.querySelector('.project-chips');
+      projects.style.maxHeight = '100px';
       const box = workspace.getBoundingClientRect();
-      const chips = [...workspace.querySelectorAll('.project-chips button')].map(chip => chip.getBoundingClientRect());
+      const chips = [...projects.querySelectorAll('button')].map(chip => chip.getBoundingClientRect());
       const marks = [...workspace.querySelectorAll('.hydra-drag-name > svg, .hydra-drag-name > .hydra-label, .hydra-workspace-bar .waiting-count, .hydra-workspace-bar .running-count > *')].map(mark => mark.getBoundingClientRect());
       const center = (box.left + box.right) / 2;
       const strip = {
         thin: box.width <= 60,
         bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
+        scrollable: projects.scrollHeight > projects.clientHeight,
+        countsVisible: ['.waiting-count', '.running-count'].every(selector =>
+          [...projects.querySelectorAll(selector)].some(count => count.getBoundingClientRect().width > 0)
+        ),
         aligned: [...chips, ...marks].every(mark => Math.abs((mark.left + mark.right) / 2 - center) <= 1),
         contained: [...chips, ...marks].every(mark => mark.left >= box.left && mark.right <= box.right),
         stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
       };
+      projects.style.removeProperty('max-height');
       workspace.querySelector('[aria-label="Unfold Hydra"]').click();
       await new Promise(requestAnimationFrame);
       const workspaceUnfolded = workspace.getBoundingClientRect().width === expandedWorkspaceWidth
@@ -1350,6 +1357,8 @@ test.each([
       strip: {
         thin: true,
         bodyHidden: true,
+        scrollable: true,
+        countsVisible: true,
         aligned: true,
         contained: true,
         stacked: true,

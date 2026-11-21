@@ -498,5 +498,6 @@ kbd {
 @utility leading-browser { --tw-leading: normal; line-height: normal; }
 
 @utility scrollbar-stable { scrollbar-gutter: stable; }
+@utility scrollbar-stable-both { scrollbar-gutter: stable both-edges; }
 @utility skip-offscreen-row { content-visibility: auto; contain-intrinsic-size: auto var(--spacing-chat-row); }
 .column-cards { container-type: size; }
