@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { HydraError } from './errors.ts'
 import { pnyxHome } from './paths.ts'
 
@@ -12,8 +12,14 @@ const STALE_EMPTY_LOCK_MS = 10_000
 const LOCK_POLL_MS = 25
 
 // A Hydra's folder holds its spool, caches and agent files, which can quote transcripts and are as private.
-export function privateDir({ dir }: { dir: string }): void {
-  mkdirSync(
+export function privateDir({
+  dir,
+  durable = false,
+}: {
+  dir: string
+  durable?: boolean
+}): void {
+  const firstCreated = mkdirSync(
     dir,
     {
       recursive: true,
@@ -28,6 +34,16 @@ export function privateDir({ dir }: { dir: string }): void {
       dir,
       0o700,
     )
+  }
+
+  if (durable && firstCreated) {
+    const parent = dirname(resolve(firstCreated))
+
+    for (let current = resolve(dir); current !== parent; current = dirname(current)) {
+      syncDirectory({ dir: current })
+    }
+
+    syncDirectory({ dir: parent })
   }
 }
 
@@ -71,10 +87,12 @@ export function writeOpenFile({
   fd,
   path,
   data,
+  dataOnly = false,
 }: {
   fd: number
   path: string
   data: string | Buffer
+  dataOnly?: boolean
 }): void {
   fchmodSync(
     fd,
@@ -98,7 +116,11 @@ export function writeOpenFile({
     written += bytes
   }
 
-  fsyncSync(fd)
+  if (dataOnly) {
+    fdatasyncSync(fd)
+  } else {
+    fsyncSync(fd)
+  }
 }
 
 // Writes the whole file beside the old one and renames it into place, so a reader sees one or the other.
@@ -119,8 +141,12 @@ export function replaceFile({
     stage,
     path,
   )
+  syncDirectory({ dir: dirname(path) })
+}
+
+export function syncDirectory({ dir }: { dir: string }): void {
   const fd = openSync(
-    dirname(path),
+    dir,
     'r',
   )
 
