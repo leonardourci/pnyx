@@ -368,9 +368,7 @@ export const logs = guard({
         day: file.day,
         size: fileSize({ bytes: file.bytes }),
       })) : 'none: no log files yet',
-      help: [
-        'Run `pnyx debug performance` for durations and memory from these lines',
-      ],
+      help: ['Run `pnyx debug performance` for durations and memory from these lines'],
     }
   },
 })
