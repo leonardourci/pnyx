@@ -358,14 +358,14 @@ export function drainSpool({ writer }: {
   }
 }
 
-export function ingestSpool({ hydraId }: {
+export async function ingestSpool({ hydraId }: {
   hydraId: string
-}): {
+}): Promise<{
   ingested: number
   rejected: number
   notes?: number
-} {
-  return withWriter({
+}> {
+  return await withWriter({
     hydraId,
     fn: ({ writer }) => drainSpool({ writer }),
   })
