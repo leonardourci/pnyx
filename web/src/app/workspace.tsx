@@ -1112,7 +1112,7 @@ export function HydraView({
                     project: singleRepository ? projectColumn.repositories[0] : undefined,
                   })
                 }}
-              createColumn={requestProject}
+                createColumn={requestProject}
                 hydras={askTargets}
                 send={askHydra}
                 openChat={openChat}
