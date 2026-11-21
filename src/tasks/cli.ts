@@ -248,8 +248,11 @@ export const push = guard({
       hydraId,
       meta: m,
       intent: {
-        type: 'card.pushed',
-        accepts: ['session.observed'],
+        type: 'task.edited',
+        accepts: [
+          'card.pushed',
+          'session.observed',
+        ],
         card: key,
       },
       decide: ({ state }) => decidePush({

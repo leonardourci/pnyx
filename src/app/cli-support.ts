@@ -9,7 +9,7 @@ import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { declaredState } from '#tasks/declarations.ts'
 import { briefChange } from '#tasks/updates.ts'
-import { readEvents } from './event-log.ts'
+import { readChanges } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '#memory/workers.ts'
@@ -372,6 +372,7 @@ interface Intent {
   type: EventType
   accepts?: EventType[]
   card: string
+  undoes?: string
 }
 
 // A retried event id's receipt, from its event and the current state, since rebuilding the state at append time would replay the log. An id already used for another card or event type is a conflict, not a retry.
@@ -397,9 +398,9 @@ function originalReceipt(
   const samePushKey = pushKey === intent.card
 
   const sameType = original.type === intent.type
-    || (pushKey !== undefined && intent.accepts?.includes(original.type))
+    || intent.accepts?.includes(original.type)
 
-  if (!sameType || (!sameCard && !samePushKey)) {
+  if (!sameType || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {
     throw new AxiError(
       `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       'IDEMPOTENCY_CONFLICT',
@@ -456,11 +457,20 @@ export function commit(
       let out: Output
 
       if (seq !== undefined) {
-        // eventIds is rebuilt from this Hydra's log, so its seq always names a saved event.
-        const original = readEvents({
+        // Observations have receipts only while they remain in the daemon's recent changes.
+        const original = readChanges({
           hydraId,
           seqs: [seq],
-        })[0]!
+        })[0]
+
+        if (!original) {
+          throw new HydraError({
+            code: 'RECEIPT_EXPIRED',
+            message: `observation receipt expired: ${meta.id}`,
+            help: ['Read the current task or Hydra before sending another observation'],
+          })
+        }
+
         out = originalReceipt({
           state: writer.state,
           id: meta.id!,
@@ -512,7 +522,10 @@ export function commit(
         }
 
         if ('event' in decision) {
-          writer.append({ event: decision.event })
+          writer.append({
+            event: decision.event,
+            receipt: true,
+          })
           const { event } = decision
 
           if (event.type === 'hydra.memory' && event.data.key === 'workers') {
@@ -688,6 +701,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
+    case 'task.edited':
     case 'card.pushed':
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
         .join(' ') || 'no fields'}`

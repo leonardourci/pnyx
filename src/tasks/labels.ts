@@ -14,7 +14,7 @@ export function labelsForEvent({
       ...card.tags,
     ])
 
-  if (event.type === 'card.pushed') {
+  if ((event.type === 'card.pushed' || event.type === 'task.edited')) {
     labels.push(
       ...(event.data.project ? [event.data.project] : []),
       ...(event.data.tags ?? []),

@@ -1,5 +1,8 @@
 import { appendFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
+import { applyDecision } from '#app/decision.ts'
+import { withWriter } from '#app/writer.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
 import { transcriptPath } from '#workers/claude.ts'
 import { rows, startPnyx, until, type Hydra, type Output, type Pnyx } from './setup/pnyx.ts'
 
@@ -251,6 +254,448 @@ async function readAll({
 
 const wordsOf = ({ pages }: { pages: Page[] }) => pages.flatMap(page => [...page.text.matchAll(/bulk \d+|reply-\d+ /g)]
   .map(match => match[0]))
+
+test(
+  'an explicit push retry returns the original receipt for a live observation',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'push-receipt',
+        '--title',
+        'Push receipt',
+      ],
+    })
+    const args = [
+      'push',
+      '--key',
+      'push-receipt',
+      '--file',
+      '-',
+      '--event-id',
+      'activity-receipt',
+    ]
+    const input = JSON.stringify({ activity: 'working' })
+    const first = await hydra.owner({
+      args,
+      input,
+    })
+    const retry = await hydra.owner({
+      args,
+      input,
+    })
+    expect(retry.duplicate).toBe('event id already applied; nothing appended')
+    expect(retry.event).toEqual(first.event)
+  },
+)
+
+test(
+  'an undo receipt belongs to the edit it reversed',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'undo-receipt',
+        '--title',
+        'Original',
+      ],
+    })
+
+    for (const edit of [
+      'first-edit',
+      'second-edit',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'rename',
+          'undo-receipt',
+          '--title',
+          edit,
+          '--event-id',
+          edit,
+        ],
+      })
+    }
+
+    const args = [
+      'undo',
+      'second-edit',
+      '--event-id',
+      'undo-edit',
+    ]
+    const first = await hydra.owner({ args })
+    const retry = await hydra.owner({ args })
+    expect(retry.event).toEqual(first.event)
+    expect(retry.duplicate).toBe('event id already applied; nothing appended')
+    expect((await hydra.ownerRefused({
+      args: [
+        'undo',
+        'first-edit',
+        '--event-id',
+        'undo-edit',
+      ],
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
+  },
+)
+
+test(
+  'expired observation ids cannot replay stale activity after restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const receipts: {
+      key: string
+      id: string
+    }[] = []
+
+    for (const key of [
+      'explicit',
+      'generated',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          key,
+          '--title',
+          key,
+        ],
+      })
+      const first = await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+          ...(key === 'explicit' ? [
+            '--event-id',
+            'start-1',
+          ] : []),
+        ],
+        input: JSON.stringify({ activity: 'working' }),
+      })
+      receipts.push({
+        key,
+        id: first.event.id,
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({ activity: 'finished' }),
+      })
+    }
+
+    await pnyx.restart()
+
+    for (const {
+      key,
+      id,
+    } of receipts) {
+      const refused = await hydra.ownerRefused({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+          '--event-id',
+          id,
+        ],
+        input: JSON.stringify({ activity: 'working' }),
+      })
+      expect(refused.code).toBe('RECEIPT_EXPIRED')
+      const { task } = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(task.activity).toBe('finished')
+      expect(rows({
+        text: 'select id from events where hydra_id = $1 and id = $2',
+        values: [
+          hydra.id,
+          id,
+        ],
+      })).toEqual([])
+    }
+  },
+)
+
+test(
+  'undoing a title edit observed by another task’s session preserves both assignments',
+  async () => {
+    const hydra = await pnyx.hydra()
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--key',
+          key,
+          '--title',
+          key,
+        ],
+      })
+      await hydra.owner({
+        args: [
+          'push',
+          '--key',
+          key,
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          agent: {
+            provider: 'claude',
+            sessionId: key,
+          },
+          activity: 'working',
+        }),
+      })
+    }
+
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'first',
+        '--event-id',
+        'mixed-edit',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        title: 'Renamed',
+        agent: {
+          provider: 'claude',
+          sessionId: 'second',
+        },
+        activity: 'finished',
+      }),
+    })
+    await hydra.owner({
+      args: [
+        'undo',
+        'mixed-edit',
+        '--event-id',
+        'reverse-mixed-edit',
+      ],
+    })
+    expect((await hydra.task({ key: 'first' })).title).toBe('first')
+    await hydra.owner({
+      args: [
+        'undo',
+        'reverse-mixed-edit',
+      ],
+    })
+    expect((await hydra.task({ key: 'first' })).title).toBe('Renamed')
+
+    for (const key of [
+      'first',
+      'second',
+    ]) {
+      const { task } = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          key,
+          '--full',
+        ],
+      })
+      expect(task.agent.sessionId).toBe(key)
+      expect(task.sessionIds).toEqual([`claude:${key}`])
+      expect(task.activity).toBe(key === 'first' ? 'working' : 'finished')
+    }
+  },
+)
+
+test(
+  'completed native replies remain in history after observations leave the log and after restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Read native history',
+      reply: 'NATIVE-HISTORY-END',
+    })
+    const session = await hydra.chat({ text: 'Read native history' })
+    await until({
+      what: 'the native reply',
+      check: () => session.answered === 1,
+    })
+    const delayedAt = '2099-01-01T00:00:05.000Z'
+    appendFileSync(
+      transcriptPath({
+        cwd: session.cwd,
+        session: session.id,
+        folder: session.env.CLAUDE_CONFIG_DIR,
+      }),
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: delayedAt,
+        message: {
+          role: 'assistant',
+          content: 'NATIVE-TIME-LOOKUP',
+        },
+      })}\n`,
+    )
+    withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const native = Object.values(writer.state.sessions ?? {}).find(candidate =>
+          candidate.agent.sessionId === session.id)
+
+        if (!native) {
+          throw new Error('The native Hydra session is missing')
+        }
+
+        applyDecision({
+          writer,
+          decision: decideSessionFacts({
+            state: writer.state,
+            fields: {
+              agent: native.agent,
+              activity: 'working',
+            },
+            meta: {
+              actor: 'pnyx',
+              at: '2099-01-01T00:00:04.999Z',
+            },
+          }),
+        })
+        applyDecision({
+          writer,
+          decision: decideSessionFacts({
+            state: writer.state,
+            fields: {
+              agent: native.agent,
+              activity: 'finished',
+            },
+            meta: {
+              actor: 'pnyx',
+              at: '2099-01-01T00:00:05.001Z',
+            },
+          }),
+        })
+      },
+    })
+    const live = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'origin',
+      ],
+    })
+    expect(live.text).toContain('NATIVE-HISTORY-END')
+    const at = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--at',
+        delayedAt,
+      ],
+    })
+    expect(at.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
+    await pnyx.restart()
+    const restored = await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'origin',
+      ],
+    })
+    expect(restored.text).toContain('NATIVE-HISTORY-END')
+    const restoredAt = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--at',
+        delayedAt,
+      ],
+    })
+    expect(restoredAt.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
+    const range = await hydra.owner({
+      args: [
+        'hydra',
+        'message',
+        '--from',
+        delayedAt,
+        '--to',
+        delayedAt,
+      ],
+    })
+    expect(range.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
+  },
+)
+
+test(
+  'an inscribe retry survives a restart without another history event',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const args = [
+      'hydra',
+      'inscribe',
+      'start',
+      '--key',
+      'stored-pass',
+      '--event-id',
+      'stored-pass-start',
+    ]
+    const first = await hydra.owner({ args })
+    await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'stored-pass',
+      ],
+    })
+    const saved = rows<{
+      id: string
+      type: string
+    }>({
+      text: 'select id, type from events where hydra_id = $1 order by seq',
+      values: [hydra.id],
+    })
+    expect(saved.map(event => event.type)).not.toContain('hydra.operation')
+    await pnyx.restart()
+    const retried = await hydra.owner({ args })
+    expect(retried.duplicate).toBe('event id already applied; nothing appended')
+    expect(retried.event).toEqual(first.event)
+    expect(retried.milestone).toBe('stored-pass')
+    expect(rows({
+      text: 'select id, type from events where hydra_id = $1 order by seq',
+      values: [hydra.id],
+    })).toEqual(saved)
+  },
+)
 
 test(
   'a long range of Hydra history reads page by page in log order, each reply once, where it used to time out',

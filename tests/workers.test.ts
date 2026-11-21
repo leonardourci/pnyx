@@ -8,9 +8,10 @@ import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { base } from '#app/command-meta.ts'
 import type { HydraState } from '#app/model.ts'
-import { replayOwned } from '#app/reducer.ts'
+import { emptyHydra, replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
+import { applySessionFacts } from '#workers/session-facts.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { claudeProvider } from '#workers/claude.ts'
@@ -173,6 +174,227 @@ test(
     expect(state.sessions?.[current]?.taskId).toBe(task)
     expect(state.sessions?.[session]?.taskId).toBeNull()
     expect(state.undone).toEqual({})
+  },
+)
+
+test(
+  'Hydra delivery remembers the latest finished boundary after a completed turn',
+  () => {
+    const state = emptyHydra()
+    const agent = {
+      provider: 'codex',
+      sessionId: 'hydra',
+      host: 'pnyx',
+    } as const
+
+    for (const activity of [
+      'working',
+      'finished',
+    ]) {
+      replayOwned({
+        state,
+        events: [
+          {
+            ...base({
+              state,
+              cardId: '$sessions',
+              meta: {
+                id: activity,
+                actor: 'pnyx',
+                at: '2026-01-01T00:00:00.000Z',
+              },
+            }),
+            type: 'session.observed',
+            data: {
+              fields: {
+                agent,
+                activity,
+              },
+            },
+          },
+        ],
+      })
+    }
+
+    const finished = state.seq
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: '$hydra',
+            meta: {
+              id: 'next:hosted',
+              actor: 'pnyx',
+              at: '2026-01-01T00:00:01.000Z',
+            },
+          }),
+          type: 'hydra.delivered',
+          data: { session: 'codex:hydra' },
+        },
+      ],
+    })
+    expect(state.sessions?.['codex:hydra']?.hydraTurn?.finishedThrough).toBe(finished)
+  },
+)
+
+test(
+  'a new resume attempt replaces a still-working turn once and repeated working reports retain it',
+  () => {
+    const agent = {
+      provider: 'codex',
+      sessionId: 'cut',
+      host: 'pnyx',
+    } as const
+    const session = 'codex:cut'
+    const state: HydraState = {
+      v: EVENT_VERSION,
+      seq: 5,
+      cards: {},
+      keys: {},
+      eventIds: {},
+      undone: {},
+      sessions: {
+        [session]: {
+          id: session,
+          agent,
+          originCardId: 'task',
+          taskId: null,
+          attention: [],
+          sourceRefs: [],
+          sessionActivity: 'working',
+          turn: {
+            id: 'initial',
+            seq: 5,
+            resumes: 0,
+            finishedThrough: 0,
+          },
+        },
+      },
+    }
+    const working = ({
+      id,
+      seq,
+    }: {
+      id: string
+      seq: number
+    }) => applySessionFacts({
+      state,
+      event: {
+        v: EVENT_VERSION,
+        id,
+        seq,
+        at: '2026-01-01T00:00:00.000Z',
+        actor: 'pnyx',
+        cardId: '$sessions',
+        type: 'session.observed',
+        data: {
+          fields: {
+            agent,
+            activity: 'working',
+          },
+        },
+      },
+    })
+    working({
+      id: 'resume:5',
+      seq: 6,
+    })
+    expect(state.sessions?.[session]?.turn).toMatchObject({
+      id: 'resume:5',
+      seq: 6,
+      resumes: 1,
+    })
+    working({
+      id: 'resume:5',
+      seq: 7,
+    })
+    working({
+      id: 'tool-progress',
+      seq: 8,
+    })
+    expect(state.sessions?.[session]?.turn).toMatchObject({
+      id: 'resume:5',
+      seq: 6,
+      resumes: 1,
+    })
+    working({
+      id: 'resume:6',
+      seq: 9,
+    })
+    expect(state.sessions?.[session]?.turn).toMatchObject({
+      id: 'resume:6',
+      seq: 9,
+      resumes: 2,
+    })
+  },
+)
+
+test(
+  'replaying an undone task edit with an earlier session records its undo',
+  () => {
+    const state: HydraState = {
+      v: EVENT_VERSION,
+      seq: 0,
+      cards: {},
+      keys: {},
+      eventIds: {},
+      undone: {},
+    }
+    const meta = {
+      at: '2026-01-01T00:00:00.000Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: 'task',
+            meta: {
+              ...meta,
+              id: 'create',
+            },
+          }),
+          type: 'task.created',
+          data: {
+            key: 'task',
+            title: 'Changed',
+          },
+        },
+      ],
+    })
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: 'task',
+            meta: {
+              ...meta,
+              id: 'undo-edit',
+            },
+          }),
+          type: 'task.edited',
+          undoes: 'edit',
+          data: {
+            key: 'task',
+            title: 'Original',
+            agent: {
+              provider: 'codex',
+              sessionId: 'earlier',
+            },
+            before: { title: 'Changed' },
+          },
+        },
+      ],
+    })
+
+    expect(state.cards.task?.title).toBe('Original')
+    expect(state.undone.edit).toBe('undo-edit')
   },
 )
 

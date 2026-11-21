@@ -4,7 +4,7 @@ import { localToken } from '#app/server-state.ts'
 import { zeroCookieName } from '#app/server-protocol.ts'
 import { zeroReady } from '../setup/zero.ts'
 import { workerLine } from '../setup/worker-log.ts'
-import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 const EXITED_PROCESS_PID = '2147483647'
@@ -25,8 +25,13 @@ async function openChat({
   })
   const selector = `[data-hydra="${hydraId}"] [data-task="${taskId}"]`
   await chrome({
+    args: [
+      'open',
+      `http://127.0.0.1:${pnyx.port()}/hydra/${hydraId}/`,
+    ],
+  })
+  await chrome({
     script: `
-    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydraId}/`)});
     await page.wait(${JSON.stringify(`${selector} .card-open`)}, 5000);
     await page.click(${JSON.stringify(`${selector} .card-open`)});
     await page.wait(${JSON.stringify(`${selector} [aria-label="Worker status"]`)}, 5000);
@@ -116,6 +121,76 @@ const turns = [
     },
   },
 ]
+
+test(
+  'hook activity updates the card and chat without adding event history',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'event-diet',
+        '--title',
+        'Quiet event history',
+      ],
+    })
+    const observe = async ({ activity }: { activity: string }) => hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'event-diet',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        activity,
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'event-diet',
+        },
+        source: {
+          adapter: 'hooks',
+          instanceId: 'claude',
+          objectId: 'event-diet',
+          observedAt: new Date().toISOString(),
+        },
+      }),
+    })
+    await observe({ activity: 'finished' })
+    const task = await hydra.task({ key: 'event-diet' })
+    const selector = await openChat({
+      hydraId: hydra.id,
+      taskId: task.id,
+    })
+    await status({
+      selector,
+      label: 'Idle',
+    })
+    await observe({ activity: 'working' })
+    await status({
+      selector,
+      label: 'Thinking',
+    })
+    await observe({ activity: 'finished' })
+    await status({
+      selector,
+      label: 'Idle',
+    })
+    await observe({ activity: 'finished' })
+    const noise = rows({
+      text: "select type from events where hydra_id = $1 and type in ('card.pushed', 'session.observed', 'card.observed')",
+      values: [hydra.id],
+    })
+    expect(noise).toEqual([])
+    expect(rows({
+      text: "select type from events where hydra_id = $1 and type = 'task.created'",
+      values: [hydra.id],
+    })).toEqual([{ type: 'task.created' }])
+  },
+)
 
 test(
   'Hydra first send shows Starting… on the first frame, then Thinking, Working and Idle',

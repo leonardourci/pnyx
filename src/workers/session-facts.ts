@@ -1,5 +1,5 @@
 import { decided } from '#app/decision.ts'
-import type { Decision, HydraState, SourceRef } from '#app/model.ts'
+import type { Decision, HydraEvent, HydraState, SourceRef } from '#app/model.ts'
 import type { Card, PushFields } from '#tasks/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
@@ -8,6 +8,7 @@ import { touch } from '#tasks/touch.ts'
 import { checkRevision } from '#tasks/push-rules.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
+import { WAKE_TURN, WAKE_HANDLED } from '#hydra/wake-ids.ts'
 
 export function isSessionSource({ source }: { source?: SourceRef }): boolean {
   return !source || [
@@ -15,6 +16,59 @@ export function isSessionSource({ source }: { source?: SourceRef }): boolean {
     'pnyx',
     'transcript',
   ].includes(source.adapter)
+}
+
+export function recordHydraTurn({
+  session,
+  event,
+}: {
+  session: AgentSession
+  event: HydraEvent
+}): void {
+  if (WAKE_TURN.test(event.id)) {
+    session.wakeStarted = event.id
+  }
+
+  session.hydraTurn = {
+    id: event.id,
+    seq: event.seq,
+    resumes: event.id.startsWith('resume:') ? (session.hydraTurn?.resumes ?? 0) + 1 : 0,
+    finishedThrough: session.turnFinishedSeq ?? 0,
+  }
+}
+
+function recordTurn({
+  session,
+  event,
+  activity,
+}: {
+  session: AgentSession
+  event: HydraEvent
+  activity: string
+}): void {
+  if (session.agent.host !== 'pnyx' || session.agent.agentId) {
+    return
+  }
+
+  const wasWorking = session.sessionActivity === 'working'
+  const newResume = event.id.startsWith('resume:') && session.turn?.id !== event.id
+
+  if (activity === 'working' && (!wasWorking || !session.turn || newResume)) {
+    session.turn = {
+      id: event.id,
+      seq: event.seq,
+      resumes: event.id.startsWith('resume:') ? (session.turn?.resumes ?? 0) + 1 : 0,
+      finishedThrough: session.turnFinishedSeq ?? 0,
+    }
+  }
+
+  if (activity === 'finished' && (wasWorking || session.turnFinishedSeq === undefined)) {
+    session.turnFinishedSeq = event.seq
+  }
+
+  if (activity === 'finished' && WAKE_HANDLED.test(event.id)) {
+    session.wakeHandled = event.id
+  }
 }
 
 function sessionActivity({
@@ -114,6 +168,19 @@ export function decideSessionFacts({
       },
     },
   })
+}
+
+export function sessionTaskFields({ fields }: { fields: PushFields }): PushFields {
+  return Object.fromEntries(Object.entries(fields).filter(([field]) => [
+    'title',
+    'autoTitle',
+    'project',
+    'workspace',
+    'tags',
+    'folder',
+    'parentId',
+    'rank',
+  ].includes(field)))
 }
 
 export function applySessionFacts({
@@ -249,6 +316,28 @@ export function applySessionFacts({
   }
 
   if (typeof fields.activity === 'string' && !staleActivity) {
+    const ended = [
+      'finished',
+      'interrupted',
+      'ended',
+    ].includes(fields.activity)
+    const changed = fields.activity !== session.sessionActivity
+
+    if (ended && changed && state.hydraSessions?.includes(session.id)) {
+      state.nativeTimes = [
+        ...state.nativeTimes ?? [],
+        {
+          seq: event.seq,
+          at: event.at,
+        },
+      ]
+    }
+
+    recordTurn({
+      session,
+      event,
+      activity: fields.activity,
+    })
     sessionActivity({
       target: session,
       activity: fields.activity,
@@ -285,7 +374,7 @@ export function applySessionFacts({
         folder,
         parentId,
         rank,
-      } = fields
+      } = sessionTaskFields({ fields })
 
       if (title !== undefined) {
         task.title = title ?? task.autoTitle?.text ?? task.key
@@ -355,5 +444,5 @@ export function sessionFields({
     }
   }
 
-  return event.type === 'card.pushed' ? event.data : undefined
+  return (event.type === 'card.pushed' || event.type === 'task.edited') ? event.data : undefined
 }

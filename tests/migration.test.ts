@@ -15,6 +15,44 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
+test(
+  'schema 10 gains observation receipts without changing existing tasks or history',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'receipt-migration',
+        '--title',
+        'Preserved task',
+      ],
+    })
+
+    await pnyx.restart({
+      whileStopped: async () => {
+        rows({ text: 'drop table observation_receipts; delete from schema_version; insert into schema_version (version) values (10)' })
+        await closePostgres()
+      },
+    })
+
+    expect((await hydra.task({ key: 'receipt-migration' })).title).toBe('Preserved task')
+    expect(rows({
+      text: 'select id from events where hydra_id = $1 and id = $2',
+      values: [
+        hydra.id,
+        created.event.id,
+      ],
+    })).toEqual([{ id: created.event.id }])
+    expect(rows({
+      text: 'select id from observation_receipts where hydra_id = $1',
+      values: [hydra.id],
+    })).toEqual([])
+  },
+)
+
 // The live Hydras #378's schema held when its migration failed: 229,279 events, 121,543 of them repeat observations.
 const OBSERVATIONS = 121_543
 const TRANSCRIPT_COPIES = 6_000
@@ -110,6 +148,7 @@ async function backToSchema1({
       '--disable-triggers',
       '--exclude-table=schema_version',
       '--exclude-table=source_observations',
+      '--exclude-table=observation_receipts',
       home,
     ],
     {

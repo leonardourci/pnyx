@@ -61,7 +61,7 @@ const history = guard({
       throw new AxiError(
         `unknown kind: ${kind}`,
         'VALIDATION_ERROR',
-        ['Use one of pushed, moved, linked, outcome, replied, noted'],
+        ['Use one of task.edited, pushed, moved, linked, outcome, replied, noted'],
       )
     }
 
@@ -75,6 +75,7 @@ const history = guard({
       cardId: ref,
       types: [
         'card.pushed',
+        'task.edited',
         'task.created',
         'task.moved-in',
         'task.moved-out',
@@ -225,8 +226,10 @@ const undo = guard({
         hydraId,
         meta: m,
         intent: {
-          type: target.type,
+          type: target.type === 'card.pushed' ? 'task.edited' : target.type,
+          accepts: target.type === 'card.pushed' ? ['card.pushed'] : undefined,
           card: target.cardId,
+          undoes: target.id,
         },
         decide: ({
           state,

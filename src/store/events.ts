@@ -3,6 +3,7 @@ import type { SavedLabelColor } from '#tasks/model.ts'
 export const EVENT_VERSION = 1 as const
 
 export interface EventBase {
+  derived?: true
   notices?: import('#app/command-notices.ts').CommandNotice[]
   transaction?: string
   labelColors?: SavedLabelColor[]

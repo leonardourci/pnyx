@@ -447,6 +447,7 @@ function ordinaryReasons({
         before: event.data.before,
         after: event.data.after,
       })
+    case 'task.edited':
     case 'card.pushed':
       return card.tracking === 'declared' && agentActor({ actor: event.actor }) ? pushReasons({
         card,
@@ -478,6 +479,7 @@ function changesReadiness({
     case 'card.outcome':
       return Boolean(event.undoes) || event.data.before?.state !== event.data.after?.state
         || event.data.before?.closed !== event.data.after?.closed
+    case 'task.edited':
     case 'card.pushed': {
       if (!event.data.attention) {
         return false

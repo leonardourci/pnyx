@@ -33,8 +33,6 @@ create table upgrade_status (
   checked_at text not null
 );
 
--- The HydraState fields without a table of their own, one row each. keys and eventIds are rebuilt from cards and
--- events on load.
 create table hydra_values (
   hydra_id text not null references hydras (id) on delete cascade,
   key text not null,
@@ -42,8 +40,6 @@ create table hydra_values (
   primary key (hydra_id, key)
 );
 
--- Every change, in order: a card's Updates tab and the history commands read it, through the server and not through the
--- page's replica.
 create table events (
   hydra_id text not null references hydras (id) on delete cascade,
   seq bigint not null check (seq > 0),
@@ -60,6 +56,15 @@ create table events (
 create index events_card_history on events (hydra_id, card_id, seq);
 create index events_type_history on events (hydra_id, type, seq);
 create index events_at on events (hydra_id, at);
+
+create table observation_receipts (
+  hydra_id text not null references hydras (id) on delete cascade,
+  id text not null,
+  seq bigint not null check (seq > 0),
+  at text not null,
+  primary key (hydra_id, id),
+  unique (hydra_id, seq)
+);
 
 -- Latest source observation times reject delayed reports across restarts without recording repeat events.
 create table source_observations (
@@ -276,4 +281,4 @@ create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (10);
+insert into schema_version (version) values (11);

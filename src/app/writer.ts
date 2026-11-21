@@ -23,6 +23,9 @@ import { decideMove } from '#tasks/columns-decisions.ts'
 import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
 import { log } from './diagnostics.ts'
 import { rememberFirstEvent } from './hydra-summary.ts'
+import { durableEvent } from './event-policy.ts'
+
+const RECENT_CHANGES = 50_000
 
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
@@ -39,9 +42,11 @@ export interface Writer {
   append({
     event,
     effects,
+    receipt,
   }: {
     event: HydraEvent
     effects?: boolean
+    receipt?: boolean
   }): void
 }
 
@@ -168,6 +173,7 @@ export function withWriter<T>({
       }),
     })
     const pending: HydraEvent[] = []
+    const receipts: HydraEvent[] = []
     const committed: (() => void)[] = []
     const observations = new Map<string, SourceObservation>()
     const touched: Touched = {
@@ -182,7 +188,16 @@ export function withWriter<T>({
       transaction: id === hydraId ? transaction?.id : undefined,
       touched,
       committed,
-      onAppend: ({ event }) => pending.push(event),
+      onAppend: ({
+        event,
+        receipt,
+      }) => {
+        pending.push(event)
+
+        if (receipt && !durableEvent({ event })) {
+          receipts.push(event)
+        }
+      },
       onObserve: ({ observation }) => observations.set(
         observationKey(observation),
         observation,
@@ -194,6 +209,7 @@ export function withWriter<T>({
       held,
       writer,
       pending,
+      receipts,
       observations,
       committed,
       touched,
@@ -258,12 +274,31 @@ export function withWriter<T>({
         hydraId: stage.id,
         from: stage.from,
         to: stage.held.state.seq,
-        events: stage.pending,
+        events: stage.pending.filter(event => durableEvent({ event })),
       }),
       ...rows.statements,
     ])
 
     for (const stage of stages) {
+      if (stage.receipts.length) {
+        statements.push({
+          text: `insert into observation_receipts (hydra_id, id, seq, at)
+            select $1, id, seq, at from json_to_recordset($2::json) as receipt(id text, seq bigint, at text)`,
+          values: [
+            stage.id,
+            JSON.stringify(stage.receipts.map(({
+              id,
+              seq,
+              at,
+            }) => ({
+              id,
+              seq,
+              at,
+            }))),
+          ],
+        })
+      }
+
       for (const observation of stage.observations.values()) {
         statements.push(observationStatement({
           hydraId: stage.id,
@@ -308,6 +343,10 @@ export function withWriter<T>({
       })
       stage.held.saved = rows.next
       stage.held.committed = stage.held.state.seq
+      stage.held.pending = stage.held.pending.concat(stage.pending)
+      const observations = stage.pending.filter(event => !durableEvent({ event }))
+      const recent = stage.held.changes.concat(observations)
+      stage.held.changes = recent.slice(-RECENT_CHANGES)
 
       if (stage.from === 0) {
         rememberFirstEvent({
@@ -366,7 +405,13 @@ export function eventWriter({
   transaction?: string
   touched?: Touched
   committed?: (() => void)[]
-  onAppend({ event }: { event: HydraEvent }): void
+  onAppend({
+    event,
+    receipt,
+  }: {
+    event: HydraEvent
+    receipt?: boolean
+  }): void
   onObserve?({ observation }: { observation: SourceObservation }): void
 }): Writer {
   const state = owned ? initial : structuredClone(initial)
@@ -396,6 +441,7 @@ export function eventWriter({
     append({
       event,
       effects = true,
+      receipt = false,
     }) {
       storable({ value: event })
       // What a worker's transcript recorded is an observation, never another Hydra session's change, so a lease never refuses it.
@@ -493,7 +539,7 @@ export function eventWriter({
         agent = state.sessions?.[session]?.agent
       }
 
-      if (event.type === 'card.pushed' && event.data.agent) {
+      if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.agent) {
         agent = event.data.agent
       } else if (event.type === 'session.observed' && 'fields' in event.data) {
         agent = event.data.fields.agent
@@ -543,9 +589,12 @@ export function eventWriter({
         }
       }
 
-      onAppend({ event })
+      onAppend({
+        event,
+        receipt,
+      })
 
-      if (event.type === 'card.pushed' && event.data.source) {
+      if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.source) {
         onObserve?.({
           observation: {
             cardId: event.cardId,
@@ -587,6 +636,7 @@ export function eventWriter({
         }
 
         switch (event.type) {
+          case 'task.edited':
           case 'card.pushed':
           case 'board.configured':
           case 'card.linked':
@@ -597,7 +647,7 @@ export function eventWriter({
           case 'task.moved-in':
           case 'task.moved-out':
           case 'task.project':
-            if (event.type === 'card.pushed'
+            if ((event.type === 'card.pushed' || event.type === 'task.edited')
               && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
               break
             }
@@ -631,7 +681,12 @@ export function eventWriter({
           })
 
           if ('event' in moved) {
-            writer.append({ event: moved.event })
+            writer.append({
+              event: {
+                ...moved.event,
+                derived: true,
+              },
+            })
           }
         }
       } finally {

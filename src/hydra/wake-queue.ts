@@ -1,5 +1,5 @@
 import { background } from '#app/background.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readChanges } from '#app/event-log.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
@@ -10,7 +10,8 @@ import { INTERRUPTED } from '#workers/session-attachments.ts'
 import { pnyxRunsHydra, reportActor } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { eventReasons } from './wake-reasons.ts'
-import { wakeCursor, wakeId, WAKE_ID, wakeText, type QueuedUpdate } from './wakes.ts'
+import { wakeCursor, wakeText, type QueuedUpdate } from './wakes.ts'
+import { wakeId, WAKE_ID } from './wake-ids.ts'
 
 // Hydra's unread changes and when it is woken for them: its check turns, the read cursor, and the updates the routine helper takes instead.
 export function createWakeQueue({
@@ -131,7 +132,7 @@ export function createWakeQueue({
     const unread = updates.filter(update => !state.helper?.handled.includes(update.seq)
       && ((update.seq > after && update.seq <= wakeThrough) || parked.has(update.seq)))
     const seqs = new Set(unread.map(update => update.seq))
-    const routed = new Map(seqs.size ? readEvents({
+    const routed = new Map(seqs.size ? readChanges({
       hydraId,
       seqs: [...seqs],
     })

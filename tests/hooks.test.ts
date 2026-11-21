@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os'
 import { base as eventBase } from '#app/command-meta.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readChanges } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -1191,7 +1191,7 @@ test(
       summary: expect.stringContaining('inspect-package'),
     }))
     const stateAfterQuestion = loadHydra({ hydraId: hydra.id }).state
-    const settingsEvent = readEvents({
+    const settingsEvent = readChanges({
       hydraId: hydra.id,
       seqs: [settingsOnly.event.seq],
     })[0]!
@@ -1199,7 +1199,7 @@ test(
       state: stateAfterQuestion,
       event: settingsEvent,
     })).toEqual([])
-    const questionEvent = readEvents({
+    const questionEvent = readChanges({
       hydraId: hydra.id,
       after: settingsOnly.event.seq,
     })
@@ -1227,14 +1227,8 @@ test(
         '--full',
       ],
     })
-    expect(history.events).toContainEqual(expect.objectContaining({
+    expect(history.events).not.toContainEqual(expect.objectContaining({
       type: 'session.observed',
-      data: expect.objectContaining({
-        fields: expect.objectContaining({
-          agent: expect.objectContaining({ agentId: 'child-agent' }),
-          attention: expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining('inspect-package') })]),
-        }),
-      }),
     }))
     await hook({
       event: 'SubagentStop',

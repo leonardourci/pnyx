@@ -1108,7 +1108,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       hydraId,
       meta: m,
       intent: {
-        type: 'card.pushed',
+        type: 'task.edited',
+        accepts: ['card.pushed'],
         card: ref,
       },
       decide: ({ state }) => {
@@ -1173,7 +1174,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       hydraId,
       meta: m,
       intent: {
-        type: 'card.pushed',
+        type: 'task.edited',
+        accepts: ['card.pushed'],
         card: ref,
       },
       decide: ({ state }) => decidePush({

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { loadHydra } from '#app/store.ts'
+import { eventTime } from '#app/event-log.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
 import { failHydraInput } from '#hydra/received.ts'
@@ -13,6 +14,7 @@ import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
 import { runForClient } from '#app/request-context.ts'
 import { hydraCheck } from '#workers/workers.ts'
+import { decideSessionFacts } from '#workers/session-facts.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -951,10 +953,11 @@ test(
       })
       const granted = await until({
         what: 'helper to take available work',
-        check: () => rows<{ tasks: string[] }>({
-          text: "select data->'data'->'tasks' as tasks from events where hydra_id = $1 and type = 'hydra.helper-started' order by seq desc limit 1",
-          values: [hydra.id],
-        })[0]?.tasks,
+        check: () => {
+          const helper = loadHydra({ hydraId: hydra.id }).state.helper
+
+          return Object.values(helper?.runs ?? {}).at(-1)?.tasks
+        },
       })
       expect(granted).toEqual([availableTask.id])
     } finally {
@@ -1180,10 +1183,7 @@ test(
     reportHelperTurn.release()
     await until({
       what: 'helper to finish the worker report',
-      check: () => rows<{ count: number }>({
-        text: "select count(*)::int as count from events where hydra_id = $1 and type = 'hydra.helper-finished'",
-        values: [hydra.id],
-      })[0]!.count >= 2,
+      check: () => (loadHydra({ hydraId: hydra.id }).state.helper?.usage?.batches ?? 0) >= 2,
     })
     const digest = (await pnyxAxi({
       args: [
@@ -1313,6 +1313,270 @@ test(
       text: 'Ship **on Fri',
       final: true,
     })).toBe('Ship **on Fri')
+  },
+)
+
+test(
+  'a cached Hydra turn with a legacy finished boundary resumes only unanswered owner messages',
+  async () => {
+    const hydra = await pnyx.hydra()
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Already answered',
+      reply: 'Answered.',
+    })
+    const session = await hydra.chat({ text: 'Already answered' })
+    const finished = await until({
+      what: 'the answered Hydra turn to finish',
+      check: () => {
+        const state = loadHydra({ hydraId: hydra.id }).state
+        const sessions = Object.values(state.sessions ?? {})
+        const facts = sessions.find(candidate => candidate.agent.sessionId === session.id)
+
+        const finishedTurn = facts?.sessionActivity === 'finished' && facts.turnFinishedSeq !== undefined
+
+        return session.answered === 1 && finishedTurn && facts
+      },
+    })
+    pnyx.claude.plan({
+      hydra: hydra.id,
+      text: 'Still unanswered',
+      hold: true,
+    })
+    await hydra.chat({ text: 'Still unanswered' })
+
+    await pnyx.restart({
+      whileStopped: () => {
+        const legacy = {
+          v: 1,
+          id: 'legacy-finished',
+          seq: finished.turnFinishedSeq!,
+          at: finished.activityObservedAt!,
+          actor: 'pnyx',
+          cardId: HYDRA_CARD,
+          type: 'card.pushed',
+          data: {
+            key: '$hydra',
+            agent: finished.agent,
+            activity: 'finished',
+          },
+        }
+        rows({
+          text: 'insert into events (hydra_id, seq, id, type, at, actor, card_id, data) values ($1,$2,$3,$4,$5,$6,$7,$8)',
+          values: [
+            hydra.id,
+            legacy.seq,
+            legacy.id,
+            legacy.type,
+            legacy.at,
+            legacy.actor,
+            legacy.cardId,
+            JSON.stringify(legacy),
+          ],
+        })
+        rows({
+          text: `update sessions set data = jsonb_set(data::jsonb - 'turn' - 'turnFinishedSeq',
+            '{hydraTurn,finishedThrough}', '0')::json
+          where hydra_id = $1 and id = $2`,
+          values: [
+            hydra.id,
+            finished.id,
+          ],
+        })
+      },
+    })
+    const recovery = await until({
+      what: 'the recovery recap from the legacy boundary',
+      check: () => {
+        const resumed = pnyx.claude.sessions.find(candidate =>
+          candidate.env.PNYX_HYDRA === hydra.id && candidate.resumed)
+
+        return resumed?.received.find(text => text.includes('restart cut your last turn'))
+      },
+    })
+    const messages = []
+
+    for (const match of recovery.matchAll(/Read owner message \d+ in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g)) {
+      const page = await hydra.owner({
+        args: [
+          'hydra',
+          'messages',
+          '--after',
+          match[1]!,
+          '--limit',
+          '1',
+        ],
+      })
+      messages.push(page.messages[0].text)
+    }
+
+    expect(messages).toEqual(['Still unanswered'])
+  },
+)
+
+test(
+  'Hydra checks do not repeat old typed words when their observation cursor survives only in rows',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const transcript = join(
+      hydra.folder({ name: 'typed-cursor' }),
+      'session.jsonl',
+    )
+    writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        uuid: randomUUID(),
+        timestamp: '2000-01-01T00:00:00.000Z',
+        message: {
+          role: 'user',
+          content: 'Earlier native instructions',
+        },
+      })}\n`,
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'typed-cursor',
+        '--title',
+        'Typed cursor',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'typed-cursor',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude',
+          sessionId: 'typed-cursor',
+          transcriptPath: transcript,
+        },
+        activity: 'working',
+      }),
+    })
+    const first = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        '0',
+      ],
+    })
+    expect(first.conversations).toContainEqual(expect.objectContaining({
+      messages: [expect.objectContaining({ text: 'Earlier native instructions' })],
+    }))
+    await pnyx.restart()
+
+    for (const args of [
+      [],
+      [
+        '--after',
+        String(first.through),
+      ],
+    ]) {
+      const checked = await hydra.owner({
+        args: [
+          'hydra',
+          'check',
+          ...args,
+        ],
+      })
+      expect(checked.conversations ?? []).toEqual([])
+    }
+
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        uuid: randomUUID(),
+        timestamp: new Date().toISOString(),
+        message: {
+          role: 'user',
+          content: 'Fresh native instructions',
+        },
+      })}\n`,
+    )
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'typed-cursor',
+        '--title',
+        'After native words',
+      ],
+    })
+    const later = await hydra.owner({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(first.through),
+      ],
+    })
+    expect(later.conversations).toContainEqual(expect.objectContaining({
+      messages: [expect.objectContaining({ text: 'Fresh native instructions' })],
+    }))
+    const expired = withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const task = writer.state.cards[writer.state.keys['typed-cursor']!]!
+        const decision = decideSessionFacts({
+          state: writer.state,
+          task,
+          fields: {
+            agent: task.agent!,
+            activity: 'finished',
+          },
+          meta: {
+            id: 'internal-observation',
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+        })
+
+        if (!('event' in decision)) {
+          throw new Error('The internal observation did not change activity')
+        }
+
+        writer.append({ event: decision.event })
+
+        return {
+          seq: decision.event.seq,
+          at: decision.event.at,
+        }
+      },
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'rename',
+        'typed-cursor',
+        '--title',
+        'After expired cursor',
+      ],
+    })
+    expect(eventTime({
+      hydraId: hydra.id,
+      seq: expired.seq,
+      exact: true,
+    })).toBe(expired.at)
+    await pnyx.restart()
+    expect((await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'check',
+        '--after',
+        String(expired.seq),
+      ],
+    })).code).toBe('CURSOR_EXPIRED')
   },
 )
 

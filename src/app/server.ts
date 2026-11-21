@@ -23,7 +23,7 @@ import { watchPath, type PathWatch } from './watch.ts'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
-import { readEvents } from './event-log.ts'
+import { readChanges } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
@@ -216,7 +216,7 @@ export async function mountOwnedHydra({
 
   // Only events that change what GitHub reports or how often it is read make a task's links due.
   const pump = () => {
-    const read = readEvents({
+    const read = readChanges({
       hydraId,
       after: offset,
     })
@@ -291,6 +291,10 @@ export async function mountOwnedHydra({
     }
 
     offset = (read.at(-1)?.seq ?? offset)
+
+    if (live) {
+      live.pending = live.pending.filter(event => event.seq > offset)
+    }
 
     hydrasChanged()
 

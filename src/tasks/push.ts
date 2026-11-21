@@ -12,6 +12,17 @@ import { parseAgent, mergeSettings, parseTerminal, parseSource } from '#workers/
 import { wouldCycle, isStaleSource } from './events.ts'
 import { decided } from '#app/decision.ts'
 
+const TASK_EDIT_FIELDS: readonly (keyof PushFields)[] = [
+  'title',
+  'project',
+  'workspace',
+  'tags',
+  'folder',
+  'parentId',
+  'rank',
+  'settings',
+]
+
 export function decidePush({
   state,
   key,
@@ -187,7 +198,10 @@ export function decidePush({
     }
   }
 
-  if (sessionSource && agent) {
+  const hasTaskEdits = TASK_EDIT_FIELDS.some(field => field in fields)
+  const editsTask = card && !source && hasTaskEdits
+
+  if (sessionSource && agent && !editsTask) {
     return decideSessionFacts({
       state,
       key,
@@ -234,6 +248,8 @@ export function decidePush({
     ) as PushFields
   }
 
+  const edited = !source && (!card || hasTaskEdits)
+
   return decided({
     state,
     meta,
@@ -243,7 +259,7 @@ export function decidePush({
         meta,
         cardId,
       }),
-      type: 'card.pushed',
+      type: edited ? 'task.edited' : 'card.pushed',
       data: {
         key,
         ...fields,

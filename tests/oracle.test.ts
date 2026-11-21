@@ -3,10 +3,11 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { loadHydra } from '#app/store.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
+import { transcriptPath } from '#workers/claude.ts'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
-import { parsed, pnyxAxi, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
@@ -146,7 +147,105 @@ test(
       ],
     })
     expect(fromAgent.results).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
+    appendFileSync(
+      transcriptPath({
+        cwd: worker.cwd,
+        session: worker.id,
+        folder: worker.env.CLAUDE_CONFIG_DIR,
+      }),
+      [
+        JSON.stringify({
+          type: 'user',
+          timestamp: new Date().toISOString(),
+          uuid: 'ledger-owner-answer',
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'ledger-choice',
+                content: 'Use cobalt',
+              },
+            ],
+          },
+          toolUseResult: {
+            questions: [{ question: 'Which ledger color?' }],
+            answers: { 'Which ledger color?': 'Use cobalt' },
+          },
+        }),
+        JSON.stringify({
+          type: 'summary',
+          timestamp: new Date().toISOString(),
+          leafUuid: 'ledger-summary',
+          summary: 'Keep amber reconciliation enabled.',
+        }),
+        JSON.stringify({
+          type: 'custom-title',
+          timestamp: new Date().toISOString(),
+          customTitle: 'Native title metadata only',
+        }),
+      ].join('\n') + '\n',
+    )
+    await hydra.owner({
+      args: [
+        'harvest',
+        '--card',
+        'export',
+      ],
+    })
+    const notes = await hydra.owner({
+      args: [
+        'card',
+        'export',
+        '--full',
+      ],
+    })
+    expect(notes.notes.decisions).toEqual([
+      expect.objectContaining({
+        text: 'Which ledger color?\nAnswer: Use cobalt',
+      }),
+    ])
+    expect(notes.notes.summary).toEqual([expect.objectContaining({ text: 'Keep amber reconciliation enabled.' })])
+    expect(rows({
+      text: "select data->'data'->>'kind' as kind from events where hydra_id = $1 and card_id = $2 and type = 'card.noted' and actor = 'harvest' order by seq",
+      values: [
+        hydra.id,
+        notes.card.id,
+      ],
+    })).toEqual([
+      { kind: 'decision' },
+      { kind: 'summary' },
+    ])
+    expect(await search({
+      hydra,
+      args: ['cobalt'],
+    })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
+    expect(await search({
+      hydra,
+      args: ['amber'],
+    })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
     await pnyx.restart()
+    const restored = await hydra.owner({
+      args: [
+        'card',
+        'export',
+        '--full',
+      ],
+    })
+    expect(restored.notes.decisions).toEqual([
+      expect.objectContaining({
+        text: 'Which ledger color?\nAnswer: Use cobalt',
+      }),
+    ])
+    expect(restored.notes.summary).toEqual([expect.objectContaining({ text: 'Keep amber reconciliation enabled.' })])
+    expect(await search({
+      hydra,
+      args: ['cobalt'],
+    })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
+    expect(await search({
+      hydra,
+      args: ['amber'],
+    })).toEqual([expect.objectContaining({ title: 'Invoice export nightly' })])
     expect(await search({
       hydra,
       args: ['cron drift'],

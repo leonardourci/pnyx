@@ -14,6 +14,14 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { viewFor } from '#preferences/view.ts'
 import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
+import { sessionTaskFields } from '#workers/session-facts.ts'
+
+function editBefore({ target }: { target: Extract<HydraEvent, { type: 'card.pushed' | 'task.edited' }> }): PushFields {
+  const fields = target.data.before ?? {}
+
+  return target.type === 'task.edited' && !target.undoes && target.data.agent
+    ? sessionTaskFields({ fields }) : fields
+}
 
 function currentValue({
   card,
@@ -22,9 +30,9 @@ function currentValue({
   card: Card
   target: Exclude<HydraEvent, { type: 'board.view' }>
 }): unknown {
-  if (target.type === 'card.pushed') {
+  if (target.type === 'card.pushed' || target.type === 'task.edited') {
     return Object.fromEntries(
-      Object.keys(target.data.before ?? {}).map(field => [
+      Object.keys(editBefore({ target })).map(field => [
         field,
         pushedValue({
           card,
@@ -60,18 +68,18 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
     }
   }
 
-  if (target.type !== 'card.pushed' && 'after' in target.data) {
+  if ((target.type !== 'card.pushed' && target.type !== 'task.edited') && 'after' in target.data) {
     return target.data.after
   }
 
-  if (target.type !== 'card.pushed') {
+  if (target.type !== 'card.pushed' && target.type !== 'task.edited') {
     return null
   }
 
   const after = target.data as unknown as Record<string, unknown>
 
   return Object.fromEntries(
-    Object.keys(target.data.before ?? {}).map(field => [
+    Object.keys(editBefore({ target })).map(field => [
       field,
       after[field] ?? null,
     ]),
@@ -335,11 +343,11 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} records a note harvested from ${target.data.source} and cannot be undone` })
   }
 
-  if ((target.type === 'card.pushed' && target.data.source) || target.type === 'card.observed') {
+  if (((target.type === 'card.pushed' || target.type === 'task.edited') && target.data.source) || target.type === 'card.observed') {
     throw notUndoable({ message: `${target.id} records a source observation and cannot be undone` })
   }
 
-  if (target.type === 'card.pushed' && !target.data.before) {
+  if ((target.type === 'card.pushed' || target.type === 'task.edited') && !target.data.before) {
     throw notUndoable({ message: `${target.id} created card ${target.cardId} and cannot be undone` })
   }
 
@@ -405,8 +413,8 @@ export function decideUndo({
     undoes: target.id,
   }
 
-  if (target.type === 'card.pushed') {
-    const before = target.data.before!
+  if (target.type === 'card.pushed' || target.type === 'task.edited') {
+    const before = editBefore({ target })
     const data = {
       key: card.key,
       ...before,
@@ -418,7 +426,7 @@ export function decideUndo({
       meta,
       event: {
         ...head,
-        type: 'card.pushed',
+        type: 'task.edited',
         data,
       },
     })
