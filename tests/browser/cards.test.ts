@@ -1193,13 +1193,23 @@ test(
   'saving a task leaves its card closed and its writing fields readable',
   async () => {
     const hydra = await pnyx.hydra()
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    await chrome({
+      args: [
+        'emulate',
+        '--viewport',
+        '390x844',
+      ],
+    })
+    onTestFinished(async () => {
+      await chrome({ args: ['emulate'] })
+    })
     const name = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
     const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
     const prose = Array(32).fill('Every line remains readable in its field.')
       .join('\n')
     const result = JSON.parse(await chrome({
       script: `
-    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] .hydra-title');
     const renameAtEmojiBoundary = await page.eval(() => {
@@ -1326,29 +1336,53 @@ test(
         ],
       })[0]!.id as string,
     })
-    expect(saved.brief).toBe(`${prose}\n`)
     const initialDescription = await chrome({
       script: `
     await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
+    await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected [aria-label="Show task summary"]')?.click());
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected [role="tab"][id$="-tab-activity"]');
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected [aria-label="Focus on chat"]');
     await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected').dispatchEvent(new PointerEvent('pointerover', { bubbles: true })));
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Edit task"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="Edit task"]');
     await page.wait('.task-editor [aria-label="Description"]');
-    console.log(await page.eval(() => document.querySelector('.task-editor [aria-label="Description"]').value));
+    console.log(await page.eval(() => JSON.stringify(document.querySelector('.task-editor [aria-label="Description"]').value)));
   `,
     })
-    expect(initialDescription).toBe(`${prose}\n`)
+    expect(JSON.parse(initialDescription)).toBe(`${prose}\n`)
+    const editedDescription = `${prose}\nExplain the empty state and its next action.`
     await chrome({
       script: `
-    await page.fill('.task-editor [aria-label="Description"]', 'Explain the empty state and its next action.');
-    await page.click('.task-editor button[type="submit"]');
+    await page.fill('.task-editor [aria-label="Description"]', ${JSON.stringify(editedDescription)});
+    const reachable = await page.eval(async () => {
+      const form = document.querySelector('.task-editor');
+      const panel = form.closest('.card-panel');
+      panel.scrollTo({ top: panel.scrollHeight, behavior: 'instant' });
+      await new Promise(requestAnimationFrame);
+      const button = form.querySelector('button[type="submit"]');
+      const bounds = button.getBoundingClientRect();
+      const surface = panel.getBoundingClientRect();
+      const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return bounds.top >= Math.max(0, Math.floor(surface.top)) && bounds.bottom <= Math.min(innerHeight, Math.ceil(surface.bottom)) && button.contains(hit);
+    });
+    if (!reachable) throw new Error('The description Save button is outside the scrolling card panel');
+    const save = (await page.snapshot()).match(/uid=(\\S+)\\s+button "Save"/);
+    if (!save) throw new Error('Save is missing from the accessibility tree');
+    await page.click('@' + save[1]);
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected .card-panel');
   `,
     })
     await until({
       what: 'the saved description edit',
-      check: async () => (await hydra.task({ key: saved.id })).brief === 'Explain the empty state and its next action.',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          saved.id,
+          '--full',
+        ],
+      })).task.brief === editedDescription,
     })
     expect(await chrome({
       script: `console.log(await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"].card-section')?.textContent));`,

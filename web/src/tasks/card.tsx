@@ -215,6 +215,12 @@ export const HydraCard = memo(function HydraCard({
 
   const edit = ({ draft }: { draft?: TaskDraft } = {}) => {
     onEdit()
+    setTab('context')
+
+    if (chatOnly) {
+      toggleChatOnly()
+    }
+
     forgetSessionView({
       key: taskViewKey({
         hydraId,
@@ -750,29 +756,6 @@ export const HydraCard = memo(function HydraCard({
               )}
             </>
           )}
-          {editing && (
-            <TaskEditor
-              hydraId={hydraId}
-              key={editing.version}
-              version={editing.version}
-              card={card}
-              draft={editing.draft}
-              command={command}
-              close={() => {
-                refocusTitle.current = true; setEditing(null)
-              }}
-              failed={({
-                draft,
-                error,
-              }) => {
-                if (editVersion.snapshot() === editing.version) {
-                  edit({ draft })
-                }
-
-                notify({ text: error.message })
-              }}
-            />
-          )}
           {selected && (
             <div className="flex min-w-0 items-center justify-between gap-2">
               {!chatOnly && (
@@ -838,7 +821,30 @@ export const HydraCard = memo(function HydraCard({
                     state={!!factual}
                   />
                 )}
-                {card.brief?.trim() && <CardSection heading="Description"><RichText text={card.brief} /></CardSection>}
+                {editing && (
+                  <TaskEditor
+                    hydraId={hydraId}
+                    key={editing.version}
+                    version={editing.version}
+                    card={card}
+                    draft={editing.draft}
+                    command={command}
+                    close={() => {
+                      refocusTitle.current = true; setEditing(null)
+                    }}
+                    failed={({
+                      draft,
+                      error,
+                    }) => {
+                      if (editVersion.snapshot() === editing.version) {
+                        edit({ draft })
+                      }
+
+                      notify({ text: error.message })
+                    }}
+                  />
+                )}
+                {!editing && card.brief?.trim() && <CardSection heading="Description"><RichText text={card.brief} /></CardSection>}
                 <TaskQuestion
                   card={card}
                   connected={connected}
