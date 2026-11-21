@@ -785,29 +785,28 @@ test(
       hold: 'The owner wants to talk first',
     })
     expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
-    const goQuestion = (held.help[0] as string).split('`')[1]!
-      .replace(
-        '<go question?>',
-        'Rename the API now?',
-      )
-      .replace(
-        '<what Go changes>',
-        'Go starts the rename',
-      )
-    const goArgs = goQuestion.match(/"[^"]*"|\S+/g)!.slice(1)
-      .map(arg => arg.replace(
-        /^"|"$/g,
-        '',
-      ))
-    expect(await hydra.owner({
+    const questionPage = await hydra.page()
+    const goQuestion = await questionPage.send({
+      name: 'task',
       args: [
-        ...goArgs,
+        'ask',
+        held.card.id,
+        '--to',
+        'owner',
+        '--kind',
+        'go',
+        '--question',
+        'Rename the API now?',
+        '--context',
+        `Go starts the rename. [Card](pnyx-task:${encodeURIComponent(held.card.id)})`,
         '--actor',
         'hydra',
         '--reason',
         'The owner wants to talk first',
       ],
-    })).toMatchObject({ ask: expect.any(String) })
+    })
+    questionPage.close()
+    expect(goQuestion).toMatchObject({ ask: expect.any(String) })
 
     const waiting = await hydra.owner({
       args: [
@@ -910,7 +909,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: expect.stringContaining(asked.ask),
-        clear: expect.stringContaining(`pnyx task answer ${card.id} ${asked.ask}`),
+        clear: expect.stringContaining(`pnyx answer ${card.id} ${asked.ask}`),
       }),
     ])
     expect((await hydra.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
