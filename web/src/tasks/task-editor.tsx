@@ -79,6 +79,7 @@ export function TaskEditor({
       /\s+/g,
       ' ',
     ).trim()
+
     if (blocked) {
       return
     }
