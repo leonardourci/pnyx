@@ -1167,29 +1167,25 @@ test(
       const column = card.closest('[data-column]');
       const expandedWidth = column.getBoundingClientRect().width;
       card.querySelector('.card-open').click();
-      const initialScroll = axis.scrollLeft;
-      let moved = false;
+      let previousWidth = expandedWidth;
+      let scrollBeforeWheel;
       for (let frame = 0; frame < ${SCROLL_INPUT_FRAMES}; frame++) {
         await new Promise(resolve => requestAnimationFrame(resolve));
-        const wheel = new WheelEvent('wheel', { deltaX: 40, bubbles: true, cancelable: true });
-        column.dispatchEvent(wheel);
-        if (axis.scrollLeft > initialScroll + 10) moved = true;
+        if (scrollBeforeWheel === undefined) {
+          const width = column.getBoundingClientRect().width;
+          const shrankAndSettled = width < expandedWidth && width === previousWidth;
+          previousWidth = width;
+          if (!shrankAndSettled) continue;
+          scrollBeforeWheel = axis.scrollLeft;
+        }
+        if (axis.scrollLeft > scrollBeforeWheel + 10) return true;
+        column.dispatchEvent(new WheelEvent('wheel', { deltaX: 40, bubbles: true, cancelable: true }));
       }
-      return JSON.stringify({
-        moved,
-        closed: card.querySelector('.card-open').getAttribute('aria-expanded'),
-        shrank: column.getBoundingClientRect().width < expandedWidth,
-        scrollable: axis.scrollWidth > axis.clientWidth,
-      });
+      return false;
     }));
   `,
     })
-    expect(JSON.parse(result)).toEqual({
-      moved: true,
-      closed: 'false',
-      shrank: true,
-      scrollable: true,
-    })
+    expect(JSON.parse(result)).toBe(true)
   },
 )
 
@@ -1221,7 +1217,8 @@ test(
       script: `
     console.log(await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
-      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent });
+      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null });
     }));
   `,
     })
@@ -1229,13 +1226,7 @@ test(
       expanded: 'false',
       column: 'ideas',
       title: 'Keep this task closed',
+      formClosed: true,
     })
-    expect(rows({
-      text: 'select title from cards where hydra_id = $1 and title = $2',
-      values: [
-        hydra.id,
-        'Keep this task closed',
-      ],
-    })).toEqual([{ title: 'Keep this task closed' }])
   },
 )

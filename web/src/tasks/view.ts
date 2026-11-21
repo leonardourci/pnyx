@@ -118,14 +118,16 @@ export function expandedByColumn({
   cards: Record<string, Card>
 }): string[] {
   const columnOf = ({ id }: { id: string }) => {
-    if (state && cards[id]) {
+    const card = cards[id]
+
+    if (state && card) {
       return taskProjectGroup({
         state,
-        card: cards[id]!,
+        card,
       })
     }
 
-    return cards[id]?.column ?? id
+    return card?.column ?? id
   }
 
   const open = new Set<string>(), kept: string[] = []
