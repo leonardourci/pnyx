@@ -245,11 +245,17 @@ export const approval = guard({
         strict: false,
         allowPositionals: true,
       }).positionals.length === 0
-      const commandArgs = allHydras ? target.args : [
-        ...target.args,
-        '--hydra',
-        hydraId,
-      ]
+      const commandArgs = [...target.args]
+
+      if (!allHydras) {
+        const separator = commandArgs.indexOf('--')
+        commandArgs.splice(
+          separator === -1 ? commandArgs.length : separator,
+          0,
+          '--hydra',
+          hydraId,
+        )
+      }
       const result = await runForClient({
         identity: Object.fromEntries(IDENTITY.flatMap(name => ownerEnv[name] === undefined ? [] : [
           [

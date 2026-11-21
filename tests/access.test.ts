@@ -1046,6 +1046,7 @@ test(
               name: 'agent',
               args: [
                 'approved-mode',
+                '--',
                 'mode',
                 'bypassPermissions',
               ],

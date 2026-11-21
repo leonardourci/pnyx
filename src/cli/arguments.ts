@@ -52,6 +52,7 @@ const VALUE_FLAGS = [
   'to',
   'at',
   'id',
+  'seq',
   'operation',
   'until',
   'batch',

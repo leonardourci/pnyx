@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { localToken } from '#app/server-state.ts'
 import { MAX_BODY } from '#app/server-protocol.ts'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { CLI, parsed, pnyx, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let app: Pnyx
@@ -221,8 +221,7 @@ describe(
             'send',
             '--task',
             receipt.task,
-            '--file',
-            '-',
+            '--file=-',
             '--hydra',
             hydra.id,
             '--json',
@@ -352,12 +351,15 @@ describe(
     )
 
     it(
-      'prints a JSON startup receipt when serving an isolated home',
+      'starts from the entry path used by existing login services and prints a JSON receipt',
       async ({ onTestFinished }) => {
         const child = spawn(
           process.execPath,
           [
-            CLI,
+            join(
+              dirname(CLI),
+              'pnyx-axi.js',
+            ),
             'serve',
             '--port',
             '0',

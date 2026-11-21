@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, copyFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { stagedBuild } from './staged.ts'
 
@@ -46,6 +46,14 @@ try {
           'cli/pnyx.js',
         ),
         0o755,
+      )
+      writeFileSync(
+        join(
+          out,
+          'cli/pnyx-axi.js',
+        ),
+        "#!/usr/bin/env node\nimport './pnyx.js'\n",
+        { mode: 0o755 },
       )
       // tsc copies no SQL; the server applies this migration to a new database.
       copyFileSync(

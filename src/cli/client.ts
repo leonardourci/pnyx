@@ -48,10 +48,7 @@ const stdinText = ({ argv }: { argv: string[] }) => argv.some((
   arg,
   i,
 ) => arg === '--file=-' || (arg === '-' && argv[i - 1] === '--file'))
-  ? readFileSync(
-    0,
-    'utf8',
-  )
+  ? readMessageInput({ source: process.stdin })
   : undefined
 
 async function commandInput({ argv }: { argv: string[] }): Promise<{
@@ -67,19 +64,30 @@ async function commandInput({ argv }: { argv: string[] }): Promise<{
   }
 
   if (file.value === '-') {
-    const stdin = stdinText({ argv })
-
-    if (Buffer.byteLength(stdin ?? '') > MAX_BODY) {
-      throw new Error('message input exceeds the request size limit')
-    }
-
     return {
       argv,
-      stdin,
+      stdin: await stdinText({ argv: ['--file', '-'] }),
     }
   }
 
-  const source = createReadStream(file.value)
+  const stdin = await readMessageInput({ source: createReadStream(file.value) })
+  const forwarded = [...argv]
+
+  if (file.inlineValue) {
+    forwarded[file.index] = '--file=-'
+  } else {
+    forwarded[file.index + 1] = '-'
+  }
+
+  return {
+    argv: forwarded,
+    stdin,
+  }
+}
+
+async function readMessageInput({ source }: {
+  source: AsyncIterable<Buffer>
+}): Promise<string> {
   const chunks: Buffer[] = []
   let bytes = 0
 
@@ -93,20 +101,7 @@ async function commandInput({ argv }: { argv: string[] }): Promise<{
     chunks.push(chunk)
   }
 
-  const stdin = Buffer.concat(chunks).toString('utf8')
-
-  const forwarded = [...argv]
-
-  if (file.inlineValue) {
-    forwarded[file.index] = '--file=-'
-  } else {
-    forwarded[file.index + 1] = '-'
-  }
-
-  return {
-    argv: forwarded,
-    stdin,
-  }
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 // Runs one command line in the server and answers with what it printed and its exit code.
