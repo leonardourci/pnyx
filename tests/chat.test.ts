@@ -1090,7 +1090,11 @@ test.each([
       env: process.env,
     })
     const taskDigest = digest.stdout.split('\n').find(line => line.startsWith(`- ${id} ·`))
-    const summaryStart = summary.split(' ').slice(0, 4).join(' ')
+    const summaryStart = summary.split(' ').slice(
+      0,
+      4,
+    )
+      .join(' ')
     expect(taskDigest).toContain(`helper: ${summaryStart}`)
     const page = await hydra.page()
 
