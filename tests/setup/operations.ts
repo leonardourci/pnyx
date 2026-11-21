@@ -149,7 +149,10 @@ export async function serverOperation({
             code,
             error: error instanceof Error ? error.message : String(error),
             help: error instanceof HydraError ? error.help : [],
-            ...(error instanceof ApplyError ? { applied: false, errors: error.errors } : {}),
+            ...(error instanceof ApplyError ? {
+              applied: false,
+              errors: error.errors,
+            } : {}),
           })}\n`,
         }
       }

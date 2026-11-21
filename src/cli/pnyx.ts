@@ -12,7 +12,12 @@ try {
     throw error
   }
 
-  argumentsToRun = { argv: [], json: false, help: false, version: false }
+  argumentsToRun = {
+    argv: [],
+    json: false,
+    help: false,
+    version: false,
+  }
 }
 
 const command = argumentsToRun.argv[0]

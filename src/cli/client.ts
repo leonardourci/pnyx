@@ -174,6 +174,7 @@ async function printSessionStartContext({ argv }: { argv: string[] }) {
       argv,
       timeout: CONTEXT_MS,
     })
+
     if (answer.exitCode === 0) {
       process.stdout.write(answer.stdout)
     }
