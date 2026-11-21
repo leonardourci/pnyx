@@ -173,7 +173,10 @@ test(
       })
       pressure.paused = false
       expect(pressure.disconnects).toBe(0)
-      expect(await answer).toMatchObject({ type: 'receipt', unavailable: [] })
+      expect(await answer).toMatchObject({
+        type: 'receipt',
+        unavailable: [],
+      })
       await until({
         what: 'every provider preview on the same socket',
         check: () => {
