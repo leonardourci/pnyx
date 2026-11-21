@@ -104,8 +104,7 @@ export function TaskEditor({
           args: [
             'brief',
             card.id,
-            '--brief',
-            nextBrief,
+            `--brief=${nextBrief}`,
             '--event-id',
             crypto.randomUUID(),
           ],

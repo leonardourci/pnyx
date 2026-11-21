@@ -157,10 +157,7 @@ export function TaskCreate({
     ]
 
     if (text.trim()) {
-      args.push(
-        '--brief',
-        text,
-      )
+      args.push(`--brief=${text}`)
     }
 
     if (repository) {

@@ -1207,8 +1207,10 @@ test(
     })
     const name = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
     const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
-    const prose = Array(32).fill('Every line remains readable in its field.')
-      .join('\n')
+    const prose = [
+      '--no-start',
+      ...Array(32).fill('Every line remains readable in its field.'),
+    ].join('\n')
     const result = JSON.parse(await chrome({
       script: `
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
@@ -1362,6 +1364,8 @@ test(
     const editedDescription = `${prose}\nExplain the empty state and its next action.\n`
     await chrome({
       script: `
+    await page.fill('.task-editor [aria-label="Description"]', ${JSON.stringify('A'.repeat(MAX_BRIEF_LENGTH + 1))});
+    await page.wait('.task-editor button[type="submit"]:disabled');
     await page.fill('.task-editor [aria-label="Description"]', ${JSON.stringify(editedDescription)});
     const reachable = await page.eval(async () => {
       const form = document.querySelector('.task-editor');
