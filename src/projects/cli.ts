@@ -150,7 +150,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     if (projects.length === 0) {
-      listed.help = [`Run \`pnyx project add <path> --hydra ${hydraId}\` to attach one`]
+      listed.help = ['Attach a project to this Hydra in the UI']
     }
 
     return listed
@@ -393,7 +393,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             .join(', ')
           inform({
             reason: `Project ${path} is also attached to Hydra ${owners}`,
-            clear: `Use pnyx project keep "${path}" --hydra <keeper> to consolidate it`,
+            clear: 'Choose which Hydra should keep this project and detach it from the others in the UI',
           })
         }
 

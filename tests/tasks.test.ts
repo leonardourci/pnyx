@@ -301,7 +301,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: 'held for discussion: Rename the API',
-        clear: expect.stringContaining(`pnyx task release ${card.id} --from-message`),
+        clear: expect.stringContaining(`task ${card.id} in the UI`),
       }),
     ])
     const worker = await hydra.agent({ cwd: folder })

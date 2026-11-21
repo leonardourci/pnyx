@@ -292,10 +292,10 @@ export function planDocument({
     0,
     RECEIPT_HINT_LIMIT,
   )
-    .map(task => `Run \`pnyx task history ${task} --hydra ${hydraId}\` for changed events; add --full for event data`)
+    .map(task => `Run \`pnyx-axi task history ${task} --hydra ${hydraId}\` for changed events; add --full for event data`)
 
   if (!help.length) {
-    help.push(`Run \`pnyx task list --hydra ${hydraId}\` for current tasks`)
+    help.push(`Run \`pnyx-axi task list --hydra ${hydraId}\` for current tasks`)
   }
 
   return {

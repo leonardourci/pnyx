@@ -91,7 +91,7 @@ export const approval = guard({
     if (actor.actor === 'hydra' || agentRequest()) {
       inform({
         reason: 'Approval question answered by an agent',
-        clear: 'Use pnyx approval dismiss <token> to dismiss a pending approval',
+        clear: 'Dismiss the pending approval in the UI',
       })
     }
 
@@ -131,7 +131,7 @@ export const approval = guard({
         if (action === 'confirm' && proposal.status === 'failed') {
           inform({
             reason: 'Retrying a failed approved action after checking its target',
-            clear: 'Use pnyx approval dismiss <token> to dismiss it instead',
+            clear: 'Dismiss the failed approval in the UI instead',
           })
         }
 

@@ -71,7 +71,7 @@ function toEvent({
 
   if (e.v !== EVENT_VERSION) {
     throw new HydraError({
-      message: `event at byte ${offset} has schema v${e.v}; this pnyx reads v${EVENT_VERSION}`,
+      message: `event at byte ${offset} has schema v${e.v}; this pnyx-axi reads v${EVENT_VERSION}`,
       code: 'UNSUPPORTED_VERSION',
     })
   }

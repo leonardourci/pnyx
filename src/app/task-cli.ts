@@ -675,7 +675,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     if (workerIdentity({ actor: m.actor })) {
       inform({
         reason: 'Task moved by a worker',
-        clear: 'pnyx task move <task> --to-hydra <hydra>',
+        clear: 'Move the task to its intended Hydra in the UI',
       })
     }
 
