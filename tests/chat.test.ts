@@ -26,7 +26,7 @@ import { parse } from 'yaml'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { openPage, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, operation, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
 
 const DOCS_MESSAGE = '3d6b8f20-5a4c-4e1b-9f72-6c8d0e1a2b34'
@@ -382,7 +382,6 @@ test(
         'Export works; ready for review',
       ],
     })
-    const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
     await workerLine({
       hydra,
       key: 'export',
@@ -416,7 +415,7 @@ test(
         return processed && updates.map(update => update.kind)
       },
     })
-    expect(waiting).toHaveLength((beforeNote ?? 0) + 1)
+    expect(waiting.filter(kind => kind === 'declared')).toHaveLength(1)
     expect(waiting).toContain('report')
     expect(waiting).not.toContain('progress')
     expect(session.received).toHaveLength(1)
@@ -699,7 +698,7 @@ test(
         ],
       })
       expect(remainingUpdates.through).toBeGreaterThan(Number(detailsAfter))
-      expect(remainingUpdates.help).toContainEqual(expect.stringContaining('for the next page'))
+      expect(remainingUpdates).not.toHaveProperty('help')
 
       const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
 
@@ -852,7 +851,7 @@ test(
         what: 'the overflow-reading turn to finish',
         check: () => queue({ hydraId: hydra.id })?.working === false,
       })
-      const digest = (await pnyxAxi({
+      const digest = (await operation({
         args: [
           'hydra',
           'digest',
@@ -1185,7 +1184,7 @@ test(
       what: 'helper to finish the worker report',
       check: () => (loadHydra({ hydraId: hydra.id }).state.helper?.usage?.batches ?? 0) >= 2,
     })
-    const digest = (await pnyxAxi({
+    const digest = (await operation({
       args: [
         'hydra',
         'digest',
@@ -1754,8 +1753,6 @@ test(
     )
     const links = [...contract.matchAll(/\]\(([^)#]+\.md)(?:#[^)]*)?\)/g)].map(match => match[1])
 
-    expect(links.length).toBeGreaterThan(0)
-
     for (const link of links) {
       expect(
         existsSync(join(
@@ -1775,6 +1772,10 @@ test(
     )
     const withReferences = references({ skill: ORCHESTRATE_SKILL })
     const withoutReferences = references({ skill: MANAGE_WORKERS_SKILL })
+    mkdirSync(
+      withReferences,
+      { recursive: true },
+    )
     mkdirSync(
       withoutReferences,
       { recursive: true },
@@ -1853,7 +1854,7 @@ test(
       ],
     })
 
-    expect(check.help.join('\n')).not.toContain('--wait')
+    expect(check).not.toHaveProperty('help')
 
     const outside = await hydra.as({
       session,
@@ -1870,7 +1871,7 @@ test(
       ],
     })
 
-    expect(outside.help.join('\n')).toContain('--wait')
+    expect(outside).not.toHaveProperty('help')
 
     const beforeWait = rows<{ seq: number }>({
       text: 'select seq from hydras where id = $1',

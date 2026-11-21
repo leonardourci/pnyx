@@ -14,7 +14,7 @@ import { createServer, type Socket } from 'node:net'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
-import { parsed, pnyxAxi, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 const HOOK = join(
@@ -29,7 +29,7 @@ const CLI = join(
   '..',
   'dist',
   'cli',
-  'pnyx-axi.js',
+  'pnyx.js',
 )
 // A hook that has not ended by itself after this long is stuck; the test then stops it and fails. It is no speed target.
 const HOOK_STUCK_MS = 30_000
@@ -109,7 +109,7 @@ const sessionFacts = async ({
   session: string
   hydra?: string
 }) => {
-  const shown = await pnyxAxi({
+  const shown = await operation({
     args: [
       'task',
       'sessions',
@@ -146,7 +146,7 @@ test(
       'utf8',
     ))
       .join('').length
-    const beforeTasks = parsed(await pnyxAxi({
+    const beforeTasks = parsed(await operation({
       args: [
         'task',
         'list',
@@ -317,7 +317,7 @@ test(
       model: 'recorded-hook-model',
       fast: 'false',
     })
-    const allCards = parsed(await pnyxAxi({
+    const allCards = parsed(await operation({
       args: [
         'page',
         '--hidden',
@@ -358,7 +358,7 @@ test(
       check: async () => (await sessionFacts({ session: 'outside-1' }))?.attention.some((item: { text?: string }) => item.text?.includes('Which file should I read?')),
     })
     expect((await sessionFacts({ session: 'outside-1' })).title).toBe('Fix the flaky login test')
-    const tasks = await pnyxAxi({
+    const tasks = await operation({
       args: [
         'task',
         'list',
@@ -777,7 +777,7 @@ test(
         'checkout',
       ],
     ]) {
-      expect((await pnyxAxi({
+      expect((await operation({
         args: [
           ...args,
           '--hydra',
@@ -1452,7 +1452,7 @@ test(
       ),
       'Keep my local skill',
     )
-    const installed = await pnyxAxi({
+    const installed = await operation({
       args: [
         'setup',
         'skills',
@@ -1465,7 +1465,7 @@ test(
     ).toBe(0)
     expect(parsed(installed).notices).toContainEqual(expect.objectContaining({
       reason: expect.stringContaining(customSkill),
-      clear: expect.stringContaining('pnyx-axi setup skills'),
+      clear: expect.stringContaining('pnyx setup skills'),
     }))
     expect(readFileSync(
       join(

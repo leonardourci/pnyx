@@ -8,7 +8,14 @@ import { spawn, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
-import { CLI, parsed, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+
+const PAGE_COMMAND = join(
+  import.meta.dirname,
+  'setup',
+  'fixtures',
+  'page-command.mjs',
+)
 import { git } from './setup/upgrade.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
@@ -371,27 +378,25 @@ const { writeFileSync } = require('node:fs')
 const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
 if (branch === 'hercules/next-chart-2') {
   execFileSync(process.execPath, ${JSON.stringify([
-    CLI,
+    PAGE_COMMAND,
+    hydra.id,
     'task',
     'brief',
     'next',
     '--brief',
     'Updated chart brief',
-    '--hydra',
-    hydra.id,
   ])})
   writeFileSync(${JSON.stringify(hookMarker)}, 'declined')
 }
 if (branch === 'hercules/add-cart') {
   execFileSync(process.execPath, ${JSON.stringify([
-    CLI,
+    PAGE_COMMAND,
+    hydra.id,
     'task',
     'depend',
     'next',
     '--on',
     'gate',
-    '--hydra',
-    hydra.id,
   ])})
 }
 `
@@ -2049,7 +2054,7 @@ test(
         path,
       ],
     })
-    const setupRun = await pnyxAxi({
+    const setupRun = await operation({
       env: process.env,
       args: [
         'setup',
@@ -2953,14 +2958,13 @@ const { writeFileSync } = require('node:fs')
 const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim()
 if (branch === 'iris/target') {
   execFileSync(process.execPath, ${JSON.stringify([
-    CLI,
+    PAGE_COMMAND,
+    hydra.id,
     'task',
     'depend',
     'target',
     '--on',
     'gate',
-    '--hydra',
-    hydra.id,
   ])})
   writeFileSync(${JSON.stringify(marker)}, branch)
   process.kill(Number(process.env.PNYX_HANDOFF_CRASH_PID), 'SIGKILL')
@@ -3365,14 +3369,13 @@ test(
 const { execFileSync } = require('node:child_process')
 require('node:fs').writeFileSync(${JSON.stringify(orphanMarker)}, process.cwd())
 execFileSync(process.execPath, ${JSON.stringify([
-  CLI,
+  PAGE_COMMAND,
+  hydra.id,
   'task',
   'project',
   'drift',
   '--project',
   'other',
-  '--hydra',
-  hydra.id,
 ])})
 `,
       { mode: 0o700 },
@@ -4447,7 +4450,14 @@ test(
     await pnyx.restart({
       whileStopped: async () => {
         let active = true
-        const lookups: string[][] = []
+        const callLog = join(
+          github,
+          'calls.jsonl',
+        )
+        const callsBefore = readFileSync(
+          callLog,
+          'utf8',
+        )
         const nativeRun = processes.runProcess
         const spy = vi.spyOn(
           processes,
@@ -4457,10 +4467,6 @@ test(
           args,
           ...options
         }) => {
-          if (command === process.env.PNYX_GH_AXI) {
-            lookups.push(args)
-          }
-
           const result = await nativeRun({
             command,
             args,
@@ -4483,7 +4489,10 @@ test(
             active: () => active,
           })
           expect(active).toBe(false)
-          expect(lookups).toEqual([])
+          expect(readFileSync(
+            callLog,
+            'utf8',
+          )).toBe(callsBefore)
         } finally {
           spy.mockRestore()
         }

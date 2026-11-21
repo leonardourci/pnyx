@@ -2,7 +2,7 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
 import * as processes from '#app/run-process.ts'
-import { pnyxAxi, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { operation, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 beforeAll(async () => {
@@ -859,7 +859,7 @@ test(
     const worker = await caller.startTask({ key: 'memory-reader' })
 
     const read = async ({ args }: { args: string[] }) => {
-      const output = await pnyxAxi({
+      const output = await operation({
         args: [
           ...args,
           '--hydra',
@@ -1010,7 +1010,7 @@ test(
         ...options,
       })
     })
-    const pending = pnyxAxi({
+    const pending = operation({
       args: [
         'hydra',
         'digest',

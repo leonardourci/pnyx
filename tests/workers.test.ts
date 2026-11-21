@@ -20,7 +20,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { parsed, pnyxAxi, rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
 
@@ -556,7 +556,7 @@ test(
     expect(codex.config).not.toHaveProperty('plugins')
     expect(codex.config).not.toHaveProperty('skills.config')
     expect(codex.env.CHROME_DEVTOOLS_AXI_SESSION).toBeUndefined()
-    expect(codex.instructions).toContain('ask Hydra with pnyx-axi task ask')
+    expect(codex.instructions).toContain('append needs-you: <request> to worker.log')
 
     const { worker: claude } = await hydra.startTask({ key: 'native-claude' })
     expect(claude.config).toMatchObject({
@@ -626,7 +626,7 @@ test(
     })
     expect(browser.env.CHROME_DEVTOOLS_AXI_HEADED).toBe('0')
     expect(browser.instructions).toContain('Use chrome-devtools-axi')
-    expect(browser.instructions).not.toContain('ask Hydra with pnyx-axi task ask')
+    expect(browser.instructions).not.toContain('append needs-you: <request> to worker.log')
     expect(browser.config).not.toHaveProperty('mcp_servers')
     expect(browser.config).not.toHaveProperty('plugins')
   },
@@ -3115,7 +3115,7 @@ test(
       expect((await hydra.ownerRefused({ args })).code).toBe('VALIDATION_ERROR')
     }
 
-    const help = await pnyxAxi({
+    const help = await operation({
       args: ['--help'],
       env: process.env,
     })
@@ -3188,7 +3188,7 @@ test(
       { TMUX_PANE: '%1' },
       { HERDR_PANE_ID: 'pane-1' },
     ]) {
-      const attached = await pnyxAxi({
+      const attached = await operation({
         args: [
           'task',
           'attach',
@@ -3216,7 +3216,7 @@ test(
       })
     }
 
-    const listed = parsed(await pnyxAxi({
+    const listed = parsed(await operation({
       args: [
         'task',
         'sessions',
@@ -3367,7 +3367,7 @@ test(
   async () => {
     await pnyx.restart({
       whileStopped: async () => {
-        const retiredSetup = await pnyxAxi({
+        const retiredSetup = await operation({
           args: [
             'setup',
             'hydra',
