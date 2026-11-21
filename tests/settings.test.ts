@@ -400,6 +400,7 @@ test(
         return gate.promise
       },
     })
+
     try {
       await Promise.race([
         entered.promise,
