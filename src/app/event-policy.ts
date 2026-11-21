@@ -3,6 +3,7 @@ import type { HydraEvent } from './model.ts'
 export function durableEvent({ event }: { event: HydraEvent }): boolean {
   switch (event.type) {
     case 'card.pushed':
+    case 'card.observed':
     case 'session.observed':
     case 'hydra.received':
     case 'hydra.delivered':
