@@ -1,15 +1,12 @@
 import { beforeAll, expect, test } from 'vitest'
 import { chrome } from './chrome.ts'
-import { localToken } from '#app/server-state.ts'
-import { zeroCookieName } from '#app/server-protocol.ts'
-import { zeroReady } from '../setup/zero.ts'
 import { workerLine } from '../setup/worker-log.ts'
 import { rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 const EXITED_PROCESS_PID = '2147483647'
 beforeAll(async () => {
-  pnyx = await startPnyx({ zeroCache: true })
+  pnyx = await startPnyx()
 })
 
 async function openChat({
@@ -19,10 +16,6 @@ async function openChat({
   hydraId: string
   taskId: string
 }) {
-  await zeroReady({
-    url: `http://127.0.0.1:${pnyx.port()}/zero/`,
-    cookie: `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`,
-  })
   const selector = `[data-hydra="${hydraId}"] [data-task="${taskId}"]`
   await chrome({
     args: [
@@ -198,10 +191,6 @@ test(
     const hydra = await pnyx.hydra()
     const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
     const badge = `${hydraChat} [aria-label="Hydra status"]`
-    await zeroReady({
-      url: `http://127.0.0.1:${pnyx.port()}/zero/`,
-      cookie: `${zeroCookieName({ port: pnyx.port() })}=${localToken()}`,
-    })
     await chrome({
       script: `
       await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});

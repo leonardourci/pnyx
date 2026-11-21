@@ -91,7 +91,7 @@ export function createServerCommands({
     }),
   )
 
-  const attemptCommand = ({
+  const attemptCommand = async ({
     ws,
     message,
   }: {
@@ -271,7 +271,7 @@ export function createServerCommands({
             searches: oracleSearches,
           })
         } else if (name === 'hydra-agent-change') {
-          hydraAgentChangeCommand({
+          await hydraAgentChangeCommand({
             ws,
             id,
             args,
@@ -280,7 +280,7 @@ export function createServerCommands({
             kick,
           })
         } else if (name === 'hydra-agent') {
-          hydraAgentCommand({
+          await hydraAgentCommand({
             ws,
             id,
             args,
@@ -291,7 +291,7 @@ export function createServerCommands({
             kick,
           })
         } else if (name === 'hydras') {
-          hydrasCommand({
+          await hydrasCommand({
             ws,
             id,
             args,

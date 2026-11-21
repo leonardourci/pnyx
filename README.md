@@ -16,7 +16,7 @@ Recorded on the current app in dark mode, with made-up projects, tasks and agent
 
 ## Install
 
-You need Node 22.13 or newer, pnpm at the version pinned in `package.json`, and PostgreSQL 15 or newer with `wal_level=logical` for Pnyx's data (`brew install postgresql@17`, then `pnyx setup postgres` starts and configures it).
+You need Node 22.13 or newer, pnpm at the version pinned in `package.json`, and PostgreSQL 15 or newer for Pnyx's data (`brew install postgresql@17`, then `pnyx setup postgres` starts and configures it).
 
 Install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both to run agents.
 

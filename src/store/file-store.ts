@@ -49,6 +49,16 @@ interface Write<Hydra, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'reso
     read: Read<Hydra, Task>
   }): readonly LogFact[]
 }
+interface ScopeChange {
+  hydra: string
+  task?: string
+  create?: boolean
+  facts: readonly LogFact[]
+}
+interface Batch<Hydra, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'resolve' | 'reject'> {
+  kind: 'batch'
+  decide({ read }: { read: Read<Hydra, Task> }): readonly ScopeChange[]
+}
 interface Control extends Pick<PromiseWithResolvers<void>, 'reject'> {
   kind: 'control'
   run(): void
@@ -145,7 +155,7 @@ export function openFileStore<Hydra, Task>({
   let closing: Promise<void> | undefined
   let unavailable: HydraError | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
-  const queue: (Write<Hydra, Task> | Control)[] = []
+  const queue: (Write<Hydra, Task> | Batch<Hydra, Task> | Control)[] = []
 
   function view({
     source,
@@ -253,7 +263,7 @@ export function openFileStore<Hydra, Task>({
     let working = new Map(memory)
     let pending = new Map<string, Pending>()
     let waiting: {
-      job: Write<Hydra, Task>
+      job: Write<Hydra, Task> | Batch<Hydra, Task>
       receipts: Receipt[]
     }[] = []
 
@@ -319,6 +329,158 @@ export function openFileStore<Hydra, Task>({
       return failure
     }
 
+    function stageWrite({ job }: { job: Pick<Write<Hydra, Task>, 'scope' | 'create' | 'decide'> }): Receipt[] {
+      const { scope } = job
+      const parent = working.get(scope.hydra)
+
+      if (!parent && (scope.task !== undefined || !job.create)) {
+        throw new HydraError({
+          code: 'NOT_FOUND',
+          message: `Hydra not found: ${scope.hydra}`,
+        })
+      }
+
+      if (parent?.hydra.issue) {
+        throw parent.hydra.issue
+      }
+
+      const current = scope.task === undefined ? parent?.hydra : parent?.tasks.get(scope.task)
+
+      if (current?.issue) {
+        throw current.issue
+      }
+
+      if (!current && !job.create) {
+        throw new HydraError({
+          code: 'NOT_FOUND',
+          message: `task not found: ${scope.task}`,
+        })
+      }
+
+      if (!current && scope.task !== undefined && findTask({
+        source: working,
+        task: scope.task,
+      })) {
+        throw new HydraError({
+          code: 'CONFLICT',
+          message: `task already exists: ${scope.task}`,
+        })
+      }
+
+      let dependencyFailure: HydraError | undefined
+      const decision = job.decide({
+        state: structuredClone(current?.value),
+        read: ({ hydra }) => {
+          if (dependencyFailure) {
+            throw dependencyFailure
+          }
+
+          if (pending.size) {
+            dependencyFailure = commit()
+
+            if (dependencyFailure) {
+              throw dependencyFailure
+            }
+          }
+
+          return view({
+            source: working,
+            hydra,
+          })
+        },
+      })
+
+      if (dependencyFailure) {
+        throw dependencyFailure
+      }
+
+      const facts = plainJson({ value: decision })
+
+      if (facts.some(fact => fact.t === 'moved')) {
+        throw new HydraError({
+          code: 'INVALID_EVENT',
+          message: 'folder moves must use moveTask',
+        })
+      }
+
+      if (job.create && !current && facts[0]?.t !== (scope.task === undefined ? 'config' : 'created')) {
+        throw new HydraError({
+          code: 'INVALID_EVENT',
+          message: 'a new scope must start with its creation fact',
+        })
+      }
+
+      const before = current ?? emptyFileSegment()
+      const applied = scope.task === undefined
+        ? applyFileFacts({
+          segment: before as FileSegment<Hydra>,
+          facts,
+          reduce: reduceHydra,
+          path: pathOf({ scope }),
+          id: scope.hydra,
+        })
+        : applyFileFacts({
+          segment: before as FileSegment<Task>,
+          facts,
+          reduce: reduceTask,
+          path: pathOf({ scope }),
+          id: scope.task,
+        })
+
+      if (job.create && current && applied.appended.length) {
+        throw new HydraError({
+          code: 'CONFLICT',
+          message: 'the file-store scope already exists',
+        })
+      }
+
+      if (scope.task === undefined) {
+        working.set(
+          scope.hydra,
+          {
+            hydra: applied.segment as FileSegment<Hydra>,
+            tasks: parent?.tasks ?? new Map(),
+          },
+        )
+      } else {
+        const tasks = new Map(parent!.tasks)
+        tasks.set(
+          scope.task,
+          applied.segment as FileSegment<Task>,
+        )
+        working.set(
+          scope.hydra,
+          {
+            hydra: parent!.hydra,
+            tasks,
+          },
+        )
+      }
+
+      if (applied.appended.length) {
+        const key = JSON.stringify(scope)
+        const previous = pending.get(key)
+
+        if (previous) {
+          for (const fact of applied.appended) {
+            previous.facts.push(fact)
+          }
+        } else {
+          pending.set(
+            key,
+            {
+              scope,
+              create: !current,
+              after: before.position,
+              facts: applied.appended,
+            },
+          )
+        }
+      }
+
+      return applied.receipts.map(accepted => receiptOf({ accepted }))
+    }
+
     for (const job of queue.splice(0)) {
       if (unavailable) {
         job.reject(unavailable)
@@ -347,158 +509,55 @@ export function openFileStore<Hydra, Task>({
       }
 
       try {
-        const { scope } = job
-        const parent = working.get(scope.hydra)
+        if (job.kind === 'batch') {
+          const failure = commit()
 
-        if (!parent && (scope.task !== undefined || !job.create)) {
-          throw new HydraError({
-            code: 'NOT_FOUND',
-            message: `Hydra not found: ${scope.hydra}`,
-          })
-        }
+          if (failure) {
+            throw failure
+          }
 
-        if (parent?.hydra.issue) {
-          throw parent.hydra.issue
-        }
+          if (unavailable) {
+            throw unavailable
+          }
 
-        const current = scope.task === undefined ? parent?.hydra : parent?.tasks.get(scope.task)
+          const changes = job.decide({ read })
+          const before = new Map(working)
+          const receipts: Receipt[] = []
 
-        if (current?.issue) {
-          throw current.issue
-        }
+          try {
+            for (const change of changes) {
+              const accepted = stageWrite({
+                job: {
+                  scope: {
+                    hydra: change.hydra,
+                    task: change.task,
+                  },
+                  create: change.create ?? false,
+                  decide: () => change.facts,
+                },
+              })
 
-        if (!current && !job.create) {
-          throw new HydraError({
-            code: 'NOT_FOUND',
-            message: `task not found: ${scope.task}`,
-          })
-        }
-
-        if (!current && scope.task !== undefined && findTask({
-          source: working,
-          task: scope.task,
-        })) {
-          throw new HydraError({
-            code: 'CONFLICT',
-            message: `task already exists: ${scope.task}`,
-          })
-        }
-
-        let dependencyFailure: HydraError | undefined
-        const decision = job.decide({
-          state: structuredClone(current?.value),
-          read: ({ hydra }) => {
-            if (dependencyFailure) {
-              throw dependencyFailure
-            }
-
-            if (pending.size) {
-              dependencyFailure = commit()
-
-              if (dependencyFailure) {
-                throw dependencyFailure
+              for (const receipt of accepted) {
+                receipts.push(receipt)
               }
             }
-
-            return view({
-              source: working,
-              hydra,
-            })
-          },
-        })
-
-        if (dependencyFailure) {
-          throw dependencyFailure
-        }
-
-        const facts = plainJson({ value: decision })
-
-        if (facts.some(fact => fact.t === 'moved')) {
-          throw new HydraError({
-            code: 'INVALID_EVENT',
-            message: 'folder moves must use moveTask',
-          })
-        }
-
-        if (job.create && !current && facts[0]?.t !== (scope.task === undefined ? 'config' : 'created')) {
-          throw new HydraError({
-            code: 'INVALID_EVENT',
-            message: 'a new scope must start with its creation fact',
-          })
-        }
-
-        const before = current ?? emptyFileSegment()
-        const applied = scope.task === undefined
-          ? applyFileFacts({
-            segment: before as FileSegment<Hydra>,
-            facts,
-            reduce: reduceHydra,
-            path: pathOf({ scope }),
-            id: scope.hydra,
-          })
-          : applyFileFacts({
-            segment: before as FileSegment<Task>,
-            facts,
-            reduce: reduceTask,
-            path: pathOf({ scope }),
-            id: scope.task,
-          })
-
-        if (job.create && current && applied.appended.length) {
-          throw new HydraError({
-            code: 'CONFLICT',
-            message: 'the file-store scope already exists',
-          })
-        }
-
-        if (scope.task === undefined) {
-          working.set(
-            scope.hydra,
-            {
-              hydra: applied.segment as FileSegment<Hydra>,
-              tasks: parent?.tasks ?? new Map(),
-            },
-          )
-        } else {
-          const tasks = new Map(parent!.tasks)
-          tasks.set(
-            scope.task,
-            applied.segment as FileSegment<Task>,
-          )
-          working.set(
-            scope.hydra,
-            {
-              hydra: parent!.hydra,
-              tasks,
-            },
-          )
-        }
-
-        if (applied.appended.length) {
-          const key = JSON.stringify(scope)
-          const previous = pending.get(key)
-
-          if (previous) {
-            for (const fact of applied.appended) {
-              previous.facts.push(fact)
-            }
-          } else {
-            pending.set(
-              key,
-              {
-                scope,
-                create: !current,
-                after: before.position,
-                facts: applied.appended,
-              },
-            )
+          } catch (error) {
+            working = before
+            pending = new Map()
+            throw error
           }
-        }
 
-        waiting.push({
-          job,
-          receipts: applied.receipts.map(accepted => receiptOf({ accepted })),
-        })
+          waiting.push({
+            job,
+            receipts,
+          })
+        } else {
+          const receipts = stageWrite({ job })
+          waiting.push({
+            job,
+            receipts,
+          })
+        }
       } catch (error) {
         job.reject(error)
       }
@@ -511,7 +570,7 @@ export function openFileStore<Hydra, Task>({
     job,
     stopping = false,
   }: {
-    job: Write<Hydra, Task> | Control
+    job: Write<Hydra, Task> | Batch<Hydra, Task> | Control
     stopping?: boolean
   }): void {
     if (closing && !stopping) {
@@ -665,6 +724,18 @@ export function openFileStore<Hydra, Task>({
           read,
         }),
       }),
+    change: ({ decide }: { decide: Batch<Hydra, Task>['decide'] }): Promise<Receipt[]> =>
+      new Promise((
+        resolve,
+        reject,
+      ) => schedule({
+        job: {
+          kind: 'batch',
+          decide,
+          resolve,
+          reject,
+        },
+      })),
     moveTask: ({
       from,
       to,

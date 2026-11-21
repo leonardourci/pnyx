@@ -42,6 +42,7 @@ import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
 import { HydraError } from '#store/errors.ts'
 import { dropCopyLeases } from '#routine-helper/leases.ts'
 import { pageInterest, parsePage } from './page-cli.ts'
+import { pageState } from './page-state.ts'
 
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
@@ -116,7 +117,7 @@ export async function mountOwnedHydra({
     subscriptionMap,
     threadTimers,
     liveThreadTimers,
-    threadDelivery,
+    retireThreadClient,
     refreshLiveThread,
     refreshThread,
     threadPage,
@@ -147,7 +148,7 @@ export async function mountOwnedHydra({
   const {
     clients,
     send,
-    storeQueue,
+    queue,
     sendLatest,
     broadcast,
     spend,
@@ -158,7 +159,10 @@ export async function mountOwnedHydra({
     offset = state.seq
 
     if (recovered) {
-      agents.reconcile({ state })
+      background({
+        name: 'reconcile agents',
+        run: async () => await agents.reconcile({ state }),
+      })
     }
 
     background({
@@ -299,7 +303,10 @@ export async function mountOwnedHydra({
     hydrasChanged()
 
     if (recovered) {
-      agents.reconcile({ state })
+      background({
+        name: 'reconcile agents',
+        run: async () => await agents.reconcile({ state }),
+      })
     }
 
     background({
@@ -333,7 +340,7 @@ export async function mountOwnedHydra({
     agents: () => agents,
     sources: () => sources,
     review: () => review,
-    recover: () => recovery.reconcile(),
+    recover: async () => await recovery.reconcile(),
   })
   const workerLogs = followWorkerLogs({
     hydraId,
@@ -361,9 +368,7 @@ export async function mountOwnedHydra({
     upgradeRoot,
     restart,
     changed: () => kick(),
-    queued: () => {
-      storeQueue()
-    },
+    queued: kick,
     streamed,
     usageChanged: () => spend.count(),
   })
@@ -603,9 +608,13 @@ export async function mountOwnedHydra({
             resync: true,
           })
         } else if (message?.type === 'command') {
-          runCommand({
-            ws,
-            message,
+          background({
+            name: 'page command',
+            context: {hydraId},
+            run: () => runCommand({
+              ws,
+              message,
+            }),
           })
         } else {
           send({
@@ -627,7 +636,7 @@ export async function mountOwnedHydra({
         catalogReads.delete(ws)
         clearTimeout(threadTimers.get(ws))
         threadTimers.delete(ws)
-        threadDelivery.removeClient({ ws })
+        retireThreadClient({ ws })
 
         for (const map of threadSubscriptions()) {
           const sub = map.get(ws)
@@ -706,7 +715,6 @@ export async function mountOwnedHydra({
     folders.clear()
     transcripts.clear()
     transcriptPolls.clear()
-    threadDelivery.close()
     tabs.close()
     threadSubscriptions().forEach(map => map.clear())
     clearTimeout(feed.latestTimer)
@@ -773,12 +781,21 @@ export async function mountOwnedHydra({
   }
 
   kick()
-  storeQueue()
   touchLatest({ ids: Object.keys(state.cards) })
 
   return {
     url,
     socket: ingest && socketPath({ hydraId }),
+    view: () => ({
+      state: pageState({
+        state,
+        interest: {
+          cards: [],
+          hidden: true,
+        },
+      }),
+      queue: queue(),
+    }),
     request,
     connect,
     settings() {

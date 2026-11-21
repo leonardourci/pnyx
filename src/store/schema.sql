@@ -1,5 +1,3 @@
--- Pnyx's own data. The server is the only writer; zero-cache replicates the tables of the pnyx_page publication to
--- the page.
 -- Each `data` column holds the record as the server keeps it in memory. It is json, not jsonb, so key
 -- order survives a reload. The typed columns beside it are copies the page filters and sorts on.
 
@@ -144,9 +142,6 @@ create table card_bodies (
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
--- The card fields the page never sees, queued steering and external source claims, for a card that has any. Outside
--- the page's publication, so zero-cache never replicates this table; the events that recorded them replicate, and no
--- page query reads those events.
 create table card_private (
   hydra_id text not null,
   card_id text not null,
@@ -267,18 +262,10 @@ create table sessions (
   primary key (hydra_id, id)
 );
 
--- What zero-cache replicates for the page, and no more: the tables its queries read, hydras without the columns only
--- the server reads, and hydra_values with only the keys the page reads (src/store/zero-schema.ts PAGE_VALUES). Events,
--- card_updates, sessions, transactions, source_observations and card_private stay with the server.
-create publication pnyx_page for table hydras (id, seq, config, summary, removed), settings, upgrade_status,
-  hydra_values where (key in ('configured', 'configRevision', 'view', 'viewRevision', 'labelColors', 'projects',
-  'projectsRevision', 'hydraStatus', 'hydraOperation', 'hydraAgent', 'hydraAgentChange', 'helper', 'dispatchProposals',
-  'upgrades', 'queue')), columns, cards, card_bodies, card_references, replies, questions, declarations, links, notes, messages;
-
 -- The schema version this file creates. A change to the tables bumps it, with a migration for databases on the older
 -- one; a build refuses a database on a version it does not know instead of failing its writes.
 create table schema_version (
   version integer primary key
 );
 
-insert into schema_version (version) values (11);
+insert into schema_version (version) values (12);

@@ -7,7 +7,7 @@ import { openHydra } from './page.ts'
 let pnyx: Pnyx
 
 beforeAll(async () => {
-  pnyx = await startPnyx({ zeroCache: true })
+  pnyx = await startPnyx()
 })
 
 const EXCHANGES = 12
@@ -628,18 +628,23 @@ test(
           ]),
         ],
       })
-      const conversation = page.getByRole(
+      const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
         'region',
         { name: 'Hydra conversation' },
       )
       const progress = conversation.locator('.turn-actions > .disclosure').filter({
-        has: page.locator('[data-progress-kind="tool"] .trace-label')
-          .filter({ hasText: /^Answering the question from/ }),
+        has: page.locator('.trace-label').getByRole(
+          'button',
+          {
+            name: /^Open task Task labels;/,
+            includeHidden: true,
+          },
+        ),
       })
-      await progress.locator(':scope > summary').click()
       const traces = progress.locator('[data-progress-kind="tool"]')
       const labels = traces.locator('.trace-label')
       await expect.poll(() => labels.filter({ hasText: /^Sending/ }).count()).toBe(3)
+      await progress.locator(':scope > summary').click()
       await expect.poll(() => traces.filter({ hasText: 'message.txt' }).locator('.trace-label')
         .textContent()).toMatch(/’s worker$/)
       await expect.poll(() => labels.filter({ hasText: /^Answering the question from/ }).count()).toBe(1)

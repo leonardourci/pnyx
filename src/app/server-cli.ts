@@ -46,7 +46,6 @@ export async function serve({
       hydraId,
       port,
       upgradeRoot: PNYX_ROOT,
-      zeroCache: true,
     })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {

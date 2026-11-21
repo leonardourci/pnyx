@@ -14,11 +14,8 @@ import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
 import { scanEvents } from './event-log.ts'
 import type { createHost } from './host.ts'
 import type { HydraEvent, HydraState } from './model.ts'
-import { MAX_BUFFERED, SOCKET_RETRY_MS, type HydraClient, type ServerMessage } from './server-transport.ts'
-import { background } from './background.ts'
-import { log } from './diagnostics.ts'
+import type { HydraClient, ServerMessage } from './server-transport.ts'
 import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
-import { query } from '#store/postgres.ts'
 
 // A tab that opened no cards and did not ask for hidden ones.
 const NO_INTEREST: PageInterest = {
@@ -44,8 +41,6 @@ const shownTraces = ({
   return `${tools}:${thinking}`
 }
 
-// The tabs connected to one mounted Hydra and the live facts pushed to them: each card's latest message and action,
-// spend and usage. Hydra data reaches the page through Zero.
 export function createServerClients({
   hydraId,
   state,
@@ -92,131 +87,7 @@ export function createServerClients({
   }
 
   type Latest = Extract<ServerMessage, { type: 'latest' }>
-  interface Pending {
-    latest?: Latest
-    timer?: ReturnType<typeof setTimeout>
-    // When the tab's socket filled up, so socket.drained can say how long it stayed held.
-    since: number
-  }
-  const recovery = new Map<HydraClient, Pending>()
   const closedClients = new WeakSet<HydraClient>()
-  // Tabs over their budget that missed a message they cannot get later, warned about once until they drain.
-  const dropping = new WeakSet<HydraClient>()
-
-  const mergeLatest = ({
-    before,
-    latest,
-  }: {
-    before?: Latest
-    latest: Latest
-  }): Latest => {
-    const previous = before ?? {
-      type: 'latest',
-      messages: {},
-      actions: {},
-    }
-
-    return {
-      ...previous,
-      ...latest,
-      messages: {
-        ...previous.messages,
-        ...latest.messages,
-      },
-      actions: {
-        ...previous.actions,
-        ...latest.actions,
-      },
-    }
-  }
-
-  // drained: everything held went out; closed: the tab or the server went away first.
-  const clearRecovery = ({
-    ws,
-    status,
-  }: {
-    ws: HydraClient
-    status: 'drained' | 'closed'
-  }) => {
-    const pending = recovery.get(ws)
-
-    if (!pending) {
-      return
-    }
-
-    clearTimeout(pending.timer)
-    recovery.delete(ws)
-    log({
-      operation: 'socket.drained',
-      hydraId,
-      status,
-      backlog: ws.bufferedAmount,
-      ms: performance.now() - pending.since,
-    })
-  }
-
-  const retry = ({ ws }: { ws: HydraClient }) => {
-    const pending = recovery.get(ws)
-
-    if (pending && !pending.timer) {
-      pending.timer = setTimeout(
-        () => background({
-          name: 'socket recovery',
-          run: () => flush({ ws }),
-        }),
-        SOCKET_RETRY_MS,
-      )
-      pending.timer.unref()
-    }
-  }
-
-  const defer = ({
-    ws,
-    message,
-  }: {
-    ws: HydraClient
-    message: ServerMessage
-  }) => {
-    const held = recovery.get(ws)
-    const pending: Pending = held ?? { since: performance.now() }
-
-    if (message.type === 'latest') {
-      pending.latest = mergeLatest({
-        before: pending.latest,
-        latest: message,
-      })
-    } else {
-      if (!dropping.has(ws)) {
-        dropping.add(ws)
-        log({
-          level: 'warn',
-          operation: 'socket.dropped',
-          hydraId,
-          name: message.type,
-          backlog: ws.bufferedAmount,
-        })
-      }
-
-      return
-    }
-
-    // A tab starts being held when the first message it will get later waits.
-    if (!held) {
-      log({
-        level: 'warn',
-        operation: 'socket.held',
-        hydraId,
-        name: message.type,
-        backlog: ws.bufferedAmount,
-      })
-    }
-
-    recovery.set(
-      ws,
-      pending,
-    )
-    retry({ ws })
-  }
 
   const visibleLatest = ({
     ws,
@@ -251,30 +122,14 @@ export function createServerClients({
   const send = ({
     ws,
     message,
+    snapshot,
   }: {
     ws: HydraClient
     message: ServerMessage
+    snapshot?: boolean
   }): boolean => {
     if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
       return false
-    }
-
-    if (ws.bufferedAmount > MAX_BUFFERED) {
-      defer({
-        ws,
-        message,
-      })
-
-      return false
-    }
-
-    const pending = recovery.get(ws)
-
-    if (message.type === 'latest' && pending?.latest) {
-      message = mergeLatest({
-        before: pending.latest,
-        latest: message,
-      })
     }
 
     if (message.type === 'latest') {
@@ -284,146 +139,40 @@ export function createServerClients({
       })
     }
 
-    ws.send({ message })
-    dropping.delete(ws)
-
-    if (pending) {
-      if (message.type === 'latest') {
-        delete pending.latest
-      }
-
-      if (!pending.latest) {
-        clearRecovery({
-          ws,
-          status: 'drained',
-        })
-      }
-    }
-
-    return true
+    return ws.send({
+      message,
+      snapshot,
+    })
   }
 
-  // The queue last written, so an unchanged one is not written again.
-  let storedQueue = ''
-
-  // The queue box: the updates waiting for Hydra and the batch it is reading, which the page reads through Zero.
-  const storeQueue = () => {
+  const queue = () => {
     const queued = agents().queue()
     const chat = hydraChatQueue({ state: state() })
-    // The batch Hydra reads shows only while its turn runs.
-    const queue = {
+
+    return {
       waiting: queued.waiting,
       reading: chat.working ? queued.reading : [],
       chat,
     }
-    const json = JSON.stringify(queue)
-
-    if (json === storedQueue) {
-      return queue
-    }
-
-    // A Hydra whose first write has not committed has no row yet, and a failed write is logged; either is tried again
-    // on the next change, and neither stops the events behind it from reaching the tabs.
-    try {
-      const [written] = query({
-        statements: [
-          {
-            text: `insert into hydra_values (hydra_id, key, value) select id, 'queue', $2 from hydras where id = $1
-              on conflict (hydra_id, key) do update set value = excluded.value returning hydra_id`,
-            values: [
-              hydraId,
-              json,
-            ],
-          },
-        ],
-      })
-
-      if (written?.length) {
-        storedQueue = json
-      }
-    } catch (error) {
-      log({
-        level: 'error',
-        operation: 'queue.write',
-        hydraId,
-        error,
-      })
-    }
-
-    return queue
   }
 
   // Every card's latest message, action, spend and usage the tab may see, as one batch.
-  const sendLatest = ({ ws }: { ws: HydraClient }) => {
-    const pending = recovery.get(ws)
-    const accepted = send({
-      ws,
-      message: mergeLatest({
-        before: {
-          type: 'latest',
-          ...spendNow,
-          usage: agents().usageViews({
-            spend: spendNow.spend,
-            readings: readingsNow,
-          }),
-          messages: feed().latest,
-          actions: feed().actions,
-        },
-        latest: pending?.latest ?? {
-          type: 'latest',
-          messages: {},
-          actions: {},
-        },
+  const sendLatest = ({ ws }: { ws: HydraClient }) => send({
+    ws,
+    snapshot: true,
+    message: {
+      type: 'latest',
+      ...spendNow,
+      usage: agents().usageViews({
+        spend: spendNow.spend,
+        readings: readingsNow,
       }),
-    })
-
-    if (accepted) {
-      clearRecovery({
-        ws,
-        status: 'drained',
-      })
-    }
-
-    return accepted
-  }
-
-  const flush = ({ ws }: { ws: HydraClient }) => {
-    const pending = recovery.get(ws)
-
-    if (!pending) {
-      return
-    }
-
-    clearTimeout(pending.timer)
-    pending.timer = undefined
-
-    if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
-      clearRecovery({
-        ws,
-        status: 'closed',
-      })
-
-      return
-    }
-
-    if (ws.bufferedAmount > MAX_BUFFERED) {
-      retry({ ws })
-
-      return
-    }
-
-    if (pending.latest) {
-      send({
-        ws,
-        message: pending.latest,
-      })
-    }
-
-    retry({ ws })
-  }
+      messages: feed().latest,
+      actions: feed().actions,
+    },
+  })
 
   const broadcast = ({ event }: { event: HydraEvent }) => {
-    storeQueue()
     const live = liveCardIds()
     const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
     liveCards = live
@@ -434,7 +183,6 @@ export function createServerClients({
       : undefined
 
     for (const ws of clients) {
-      // A card back on the board gets its cached latest; Zero brings the card itself.
       if (returned.length) {
         send({
           ws,
@@ -542,7 +290,7 @@ export function createServerClients({
   return {
     clients,
     send,
-    storeQueue,
+    queue,
     sendLatest,
     // A tab that names its cards when it subscribes gets its first latest batch already scoped.
     open({
@@ -585,18 +333,9 @@ export function createServerClients({
     spend,
     closeClient({ ws }: { ws: HydraClient }) {
       closedClients.add(ws)
-      clearRecovery({
-        ws,
-        status: 'closed',
-      })
     },
     close() {
-      for (const ws of recovery.keys()) {
-        clearRecovery({
-          ws,
-          status: 'closed',
-        })
-      }
+      clients.forEach(ws => closedClients.add(ws))
     },
     get spendNow() {
       return spendNow

@@ -1,6 +1,6 @@
 # Native file store
 
-The file store is the persistence layer for the storage replacement. It keeps canonical state in memory and appends native facts to one Hydra log and one log per task. The current application still uses its Postgres store and Zero reads; connecting this interface and removing those services is the next migration step. There is no importer or automatic deletion of an existing home.
+The file store is the persistence layer for the storage replacement. It keeps canonical state in memory and appends native facts to one Hydra log and one log per task. The current application still uses its Postgres store and the resumed home socket; connecting this interface and removing Postgres is the next migration step. There is no importer or automatic deletion of an existing home.
 
 ## Files and identity
 
@@ -31,6 +31,7 @@ Within a process, opening the same canonical home twice refuses with `STORE_OPEN
 | `createTask({hydra, task, facts})` | Publishes a task folder under an existing Hydra. |
 | `changeHydra({hydra, decide})` | Decides and appends Hydra facts in queue order. |
 | `changeTask({hydra, task, decide})` | Decides and appends task facts in queue order. |
+| `change({decide})` | Reads the durable queue prefix and validates every changed scope before appending a command’s facts. |
 | `moveTask({from, to, task, id, at, by})` | Records the move and renames the task folder. |
 | `hydras()` | Lists the native Hydras loaded in memory. |
 | `read({hydra})` | Returns a copy of its state, task states, worker cursors and scope errors. |
@@ -44,11 +45,13 @@ The application integration must call `snapshot()` every five minutes when state
 
 ## Receipts and failures
 
-One ordered queue collects commands for up to five milliseconds. The store appends each touched file once and calls `fdatasync` before resolving any receipt from the batch. A decision that reads another scope first commits pending writes, so a dependent fact cannot survive without the fact it read. This starts a new batch when needed. A receipt contains the original native ID, its file's line number and its accepted timestamp.
+One ordered queue collects commands for up to five milliseconds. The store appends each touched file once and calls `fdatasync` before resolving any receipt from the batch. A decision that reads another scope first commits pending writes, so a dependent fact cannot survive without the fact it read. A command that changes several scopes reads the durable prefix and validates all its scopes before any of its facts are appended. This starts a new batch when needed. A receipt contains the original native ID, its file's line number and its accepted timestamp.
 
 Repeating an accepted ID with the same contents returns its original receipt with `duplicate: true`. A different timestamp is a retry of the same intent. Changing the contents or author role refuses with `IDEMPOTENCY_CONFLICT`. Accepted IDs follow a task when its folder moves and survive snapshots and restart.
 
 An append or sync failure returns `WRITE_FAILED`, with no success receipt. Some complete lines may already be present. The store reloads and syncs those lines before accepting more commands; retrying their native IDs reconciles the uncertain write without duplicating it. If recovery also fails, further commands return `STORE_UNAVAILABLE` until the home can be reopened.
+
+A failed `change()` may have persisted some scopes before another scope failed. Rerunning `decide` reads the recovered state and can choose different facts. Retry the original scope changes and facts with their native IDs, or independently verify completion in every scope before treating that command as complete.
 
 A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery validates the task's replay before completing an interrupted rename and reconciles directory syncs before recovered receipts can succeed. The directory is authoritative after rename. Retrying an older move returns its original receipt even if a later move changed the holder. General decisions cannot append move facts. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Hydra folders.
 

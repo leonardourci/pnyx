@@ -23,7 +23,6 @@ const ROOTS = [
   },
 ]
 
-// The newest installed PostgreSQL that zero-cache supports.
 export function binaries(): string {
   const found = ROOTS.flatMap(root => existsSync(root.dir)
     ? readdirSync(root.dir).flatMap(name => {
@@ -74,7 +73,6 @@ async function freePort(): Promise<number> {
   return address.port
 }
 
-// A throwaway cluster for one run, with the logical replication zero-cache needs and no durability.
 export async function startPostgres({ dir }: { dir: string }) {
   const bin = binaries()
   const data = join(
@@ -144,7 +142,7 @@ export async function startPostgres({ dir }: { dir: string }) {
       logFile,
       '--wait',
       '-o',
-      `-p ${port} -k ${dir} -c listen_addresses=127.0.0.1 -c wal_level=logical -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=400 -c max_replication_slots=40 -c max_wal_senders=40`,
+      `-p ${port} -k ${dir} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=400`,
       'start',
     ],
   })

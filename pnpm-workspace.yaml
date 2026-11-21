@@ -1,5 +1,1 @@
-allowBuilds:
-  '@rocicorp/zero-sqlite3': true
-  protobufjs: false
-patchedDependencies:
-  '@rocicorp/zero@1.11.5': patches/@rocicorp__zero@1.11.5.patch
+allowBuilds: {}

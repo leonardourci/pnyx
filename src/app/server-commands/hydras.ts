@@ -2,8 +2,7 @@ import { HydraError } from '#store/errors.ts'
 import { createHydra, editHydra, listHydras } from '#app/server-hydras.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `hydras [open|create|edit|move ...]`: the Hydra list, as it is now; the page follows it through Zero.
-export function hydrasCommand({
+export async function hydrasCommand({
   ws,
   id,
   args,
@@ -23,7 +22,6 @@ export function hydrasCommand({
     second,
     third,
   ] = args
-  // The page lists Hydras from Zero; only a listing and a creation, whose new Hydra Zero may not list yet, carry it.
   const reply = ({
     open,
     creation,
@@ -57,7 +55,7 @@ export function hydrasCommand({
       })
     }
 
-    const created = createHydra({
+    const created = await createHydra({
       name: first?.trim().slice(
         0,
         100,
@@ -99,7 +97,7 @@ export function hydrasCommand({
       }),
     )
   } else if (action === 'edit' && first && (second?.trim() || third) && listHydras().some(b => b.id === first)) {
-    editHydra({
+    await editHydra({
       id: first,
       name: second?.trim().slice(
         0,
@@ -109,7 +107,7 @@ export function hydrasCommand({
     })
     reply()
   } else if (action === 'move' && first && second && listHydras().some(b => b.id === first)) {
-    editHydra({
+    await editHydra({
       id: first,
       position: Number(second),
     })

@@ -407,7 +407,6 @@ export function createConnectionRequests({
       return
     }
 
-    // A created Hydra shows from its receipt until Zero lists it; the Hydra list otherwise comes only from Zero.
     if (request.creation && message.type === 'receipt' && Array.isArray(message.hydras)) {
       updateHydras({ rows: message.hydras as HydraSummary[] })
     }

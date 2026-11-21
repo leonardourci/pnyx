@@ -71,7 +71,6 @@ interface LogFields {
   // Storage samples.
   logBytes?: number
   databaseBytes?: number
-  zeroRss?: number
   // The process line: CPU and event-loop use over the interval, loop delay, heap and garbage collection.
   activeResources?: number
   cpuPercent?: number
@@ -131,7 +130,6 @@ const FIELDS: { [Key in Exclude<keyof LogFields, 'operation' | 'operationId' | '
   messages: true,
   elements: true,
   activeResources: true,
-  zeroRss: true,
   logBytes: true,
   databaseBytes: true,
   cpuPercent: true,

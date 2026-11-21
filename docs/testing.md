@@ -1,6 +1,6 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx`, the page through its WebSocket and its Zero reads. A few small browser checks open the real page in Chrome.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome.
 
 ```text
 tests/
@@ -28,7 +28,7 @@ The tests run the built CLI and serve the built page, so run `pnpm run build` af
 
 Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Postgres log there before they are deleted; CI does this and uploads the folder when a run fails.
 
-A run starts one throwaway PostgreSQL cluster on a random port, with logical replication for zero-cache, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts, so zero-cache, which sizes its buffers from the heap limit, stays small. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
+A run starts one throwaway PostgreSQL cluster on a random port, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
 ## Writing a test
 
@@ -61,9 +61,8 @@ test('a reply reaches the worker once', async () => {
 - `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Pnyx gave that agent.
 - `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
-- `rows({ text, values })` reads this file's database, for facts the page reads through Zero or a write must have saved.
+- `rows({ text, values })` reads this file's database to check persisted facts; page assertions read `pnyx.home()` or `openHomePage` through the real home socket.
 - `pnyx.restart({ whileStopped })` stops the server and starts it again on the same home and port.
-- `startPnyx({ zeroCache: true })` also runs zero-cache for the page's Zero reads (`setup/zero.ts`).
 
 Rules:
 
@@ -88,7 +87,8 @@ Rules:
 
 ## What each file covers
 
-- `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files, and that the page's Zero publication and rows never carry private steering.
+- `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files.
+- `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity, and exclusion of private steering and the database URL.
 - `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.
