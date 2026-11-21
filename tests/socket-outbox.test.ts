@@ -85,7 +85,7 @@ test(
       },
       windows: [],
     }
-    const initial: ServerMessage = {
+    const snapshot: ServerMessage = {
       type: 'latest',
       scope: 'one',
       subscription: 'current',
@@ -110,7 +110,7 @@ test(
       },
       usage: {first: usage},
     }
-    socket.send({message: initial})
+    socket.send({message: snapshot})
     socket.send({
       message: {
         type: 'latest',
@@ -290,7 +290,7 @@ test(
 )
 
 test(
-  'large initial activity is paced after home ready without disconnecting',
+  'large snapshot activity is paced after home ready without disconnecting',
   () => {
     vi.useFakeTimers()
     const socket = slowSocket({ bufferWrites: true })
@@ -316,7 +316,7 @@ test(
     ))
     expect(socket.send({ message: ready })).toBe(true)
     expect(socket.send({
-      initial: true,
+      snapshot: true,
       message: {
         type: 'latest',
         messages,

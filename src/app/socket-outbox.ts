@@ -9,7 +9,7 @@ interface Frame {
   text: string
 }
 
-interface InitialActivity {
+interface ActivitySnapshot {
   cardFrames: Iterator<Frame>
   scope?: string
 }
@@ -24,7 +24,7 @@ function encode({ message }: { message: ServerMessage }): Frame {
   }
 }
 
-function* initialActivityFrames({ message }: { message: Extract<ServerMessage, { type: 'latest' }> }): Generator<Frame> {
+function* activityFrames({ message }: { message: Extract<ServerMessage, { type: 'latest' }> }): Generator<Frame> {
   const ids = new Set([
     ...Object.keys(message.messages),
     ...Object.keys(message.actions),
@@ -68,7 +68,7 @@ export function createSocketOutbox({
   }
   limit?: number
 }) {
-  const frames: (Frame | InitialActivity)[] = []
+  const frames: (Frame | ActivitySnapshot)[] = []
   let bytes = 0
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -133,10 +133,10 @@ export function createSocketOutbox({
 
   const send = ({
     message,
-    initial = false,
+    snapshot = false,
   }: {
     message: ServerMessage
-    initial?: boolean
+    snapshot?: boolean
   }): boolean => {
     if (closed || !socket.open()) {
       return false
@@ -191,7 +191,7 @@ export function createSocketOutbox({
 
     const frame = encode({ message })
 
-    if (initial && message.type === 'latest' && frame.bytes + bytes > limit) {
+    if (snapshot && message.type === 'latest' && frame.bytes + bytes > limit) {
       const previous = frames.findIndex(item => 'cardFrames' in item && item.scope === message.scope)
 
       if (previous !== -1) {
@@ -202,7 +202,7 @@ export function createSocketOutbox({
       }
 
       frames.push({
-        cardFrames: initialActivityFrames({ message }),
+        cardFrames: activityFrames({ message }),
         scope: message.scope,
       })
       scheduleDrain()

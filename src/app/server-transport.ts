@@ -100,10 +100,10 @@ export interface HydraClient {
   readonly OPEN: number
   send({
     message,
-    initial,
+    snapshot,
   }: {
     message: ServerMessage
-    initial?: boolean
+    snapshot?: boolean
   }): boolean
   terminate(): void
 }

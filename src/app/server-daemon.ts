@@ -500,13 +500,13 @@ export async function startServer({
           })
           const send = ({
             message,
-            initial,
+            snapshot,
           }: {
             message: ServerMessage
-            initial?: boolean
+            snapshot?: boolean
           }) => outbox.send({
             message,
-            initial,
+            snapshot,
           })
 
           const sendHome = ({ message }: { message: HomeMessage }) => {
@@ -564,10 +564,10 @@ export async function startServer({
               OPEN: ws.OPEN,
               send({
                 message,
-                initial,
+                snapshot,
               }) {
                 return send({
-                  initial,
+                  snapshot,
                   message: scoped || hydra !== primary ? {
                     ...message,
                     scope: hydra,

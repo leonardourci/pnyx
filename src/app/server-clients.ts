@@ -122,11 +122,11 @@ export function createServerClients({
   const send = ({
     ws,
     message,
-    initial,
+    snapshot,
   }: {
     ws: HydraClient
     message: ServerMessage
-    initial?: boolean
+    snapshot?: boolean
   }): boolean => {
     if (closedClients.has(ws) || ws.readyState !== ws.OPEN) {
       return false
@@ -141,7 +141,7 @@ export function createServerClients({
 
     return ws.send({
       message,
-      initial,
+      snapshot,
     })
   }
 
@@ -157,15 +157,9 @@ export function createServerClients({
   }
 
   // Every card's latest message, action, spend and usage the tab may see, as one batch.
-  const sendLatest = ({
+  const sendLatest = ({ ws }: { ws: HydraClient }) => send({
     ws,
-    initial,
-  }: {
-    ws: HydraClient
-    initial?: boolean
-  }) => send({
-    ws,
-    initial,
+    snapshot: true,
     message: {
       type: 'latest',
       ...spendNow,
