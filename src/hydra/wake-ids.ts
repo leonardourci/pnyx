@@ -23,7 +23,10 @@ export const wakeId = ({
 
   let id = attempt === 1 ? `wake:${through}` : `wake:${through}.${attempt}`
 
-  while (Object.hasOwn(state.eventIds, `${id}:hosted`)) {
+  while (Object.hasOwn(
+    state.eventIds,
+    `${id}:hosted`,
+  )) {
     attempt += 1
     id = `wake:${through}.${attempt}`
   }

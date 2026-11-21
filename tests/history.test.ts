@@ -280,8 +280,14 @@ test(
       'activity-receipt',
     ]
     const input = JSON.stringify({ activity: 'working' })
-    const first = await hydra.owner({ args, input })
-    const retry = await hydra.owner({ args, input })
+    const first = await hydra.owner({
+      args,
+      input,
+    })
+    const retry = await hydra.owner({
+      args,
+      input,
+    })
     expect(retry.duplicate).toBe('event id already applied; nothing appended')
     expect(retry.event).toEqual(first.event)
   },
