@@ -91,7 +91,6 @@ test(
     expect((await ingestSpool({ hydraId: hydra.id })).ingested).toBe(2)
     await fetch(`http://127.0.0.1:${pnyx.port()}/health`)
     await flushLogs()
-    await flushLogs()
     const onLines = lines().slice(onStart)
     expect(onLines.some(line => line.operation === 'http.request' && line.status === '200')).toBe(false)
     expect(onLines.some(line => line.operation === 'events.read' && line.ms < 100)).toBe(false)

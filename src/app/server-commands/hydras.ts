@@ -2,7 +2,6 @@ import { HydraError } from '#store/errors.ts'
 import { createHydra, editHydra, listHydras } from '#app/server-hydras.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// A creation receipt carries its saved identity while the home socket publishes the updated list.
 export async function hydrasCommand({
   ws,
   id,
@@ -23,7 +22,6 @@ export async function hydrasCommand({
     second,
     third,
   ] = args
-  // Creation can finish before the home update reaches this page.
   const reply = ({
     open,
     creation,

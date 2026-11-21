@@ -637,17 +637,30 @@ test(
   async () => {
     const entered = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
+    let firstSettled = false
     const first = withAsyncRegistryLock({
       fn: async () => {
         entered.resolve()
         await release.promise
 
-        return withRegistryLock({fn: () => 'first'})
+        return withRegistryLock({
+          fn: () => {
+            firstSettled = true
+
+            return 'first'
+          },
+        })
       },
     })
     await entered.promise
     expect(() => withRegistryLock({fn: () => 'unrelated'})).toThrow(expect.objectContaining({code: 'LOCKED'}))
-    const second = withAsyncRegistryLock({fn: () => 'second'})
+    const second = withAsyncRegistryLock({
+      fn: () => {
+        expect(firstSettled).toBe(true)
+
+        return 'second'
+      },
+    })
     release.resolve()
     expect(await Promise.all([
       first,

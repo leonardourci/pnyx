@@ -458,10 +458,10 @@ export function withRegistryLock<T>({
   }
 
   privateDir({ dir })
+  const heldInThisProcess = registryOwners.has(dir)
   const release = acquireLock({
     dir,
-    // A synchronous caller cannot wait for another continuation in this process.
-    timeout: registryOwners.has(dir) ? 0 : timeout,
+    timeout: heldInThisProcess ? 0 : timeout,
   })
 
   try {

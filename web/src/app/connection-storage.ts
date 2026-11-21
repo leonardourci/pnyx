@@ -27,7 +27,6 @@ export function save({
   } catch { /* The open tab retains its pending work when storage is full or blocked. */ }
 }
 
-// Legacy tab snapshots are unused after the home socket connects.
 export function dropSnapshots() {
   try {
     for (const key of Object.keys(sessionStorage)) {

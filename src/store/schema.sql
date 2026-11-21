@@ -1,4 +1,3 @@
--- Pnyx's own data. The server is the only writer.
 -- Each `data` column holds the record as the server keeps it in memory. It is json, not jsonb, so key
 -- order survives a reload. The typed columns beside it are copies the page filters and sorts on.
 
@@ -143,7 +142,6 @@ create table card_bodies (
   foreign key (hydra_id, card_id) references cards (hydra_id, id) on delete cascade
 );
 
--- Queued steering and external source claims stay outside the page view.
 create table card_private (
   hydra_id text not null,
   card_id text not null,

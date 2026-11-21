@@ -23,7 +23,6 @@ const ROOTS = [
   },
 ]
 
-// Use the newest installed supported PostgreSQL.
 export function binaries(): string {
   const found = ROOTS.flatMap(root => existsSync(root.dir)
     ? readdirSync(root.dir).flatMap(name => {
@@ -74,7 +73,6 @@ async function freePort(): Promise<number> {
   return address.port
 }
 
-// Each run owns a throwaway cluster with durability disabled.
 export async function startPostgres({ dir }: { dir: string }) {
   const bin = binaries()
   const data = join(

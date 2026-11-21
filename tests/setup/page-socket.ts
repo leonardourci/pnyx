@@ -4,7 +4,6 @@ import { localToken } from '#app/server-state.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { until } from './until.ts'
 
-// The owner's page over its WebSocket, sending commands as the page does.
 export async function openPage({
   port,
   hydraId,

@@ -279,14 +279,21 @@ export function createAgentSwitch({
     }
 
     const operationId = `agent-change:${id}:${randomUUID()}`
-    agentChangeAbort = new AbortController()
-    const changeSignal = agentChangeAbort.signal
+    const abort = new AbortController()
+    agentChangeAbort = abort
+    const changeSignal = abort.signal
     await changeAgent({
       change: {
         ...change,
         choice,
         state: 'running',
       },
+    }).catch((error: unknown) => {
+      if (agentChangeAbort === abort) {
+        agentChangeAbort = undefined
+      }
+
+      throw error
     })
 
     background({

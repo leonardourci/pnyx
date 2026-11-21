@@ -1,6 +1,6 @@
 import type { ServerMessage } from './server-transport.ts'
 
-const MAX_SOCKET_BYTES = 1 << 20
+export const MAX_SOCKET_BYTES = 1 << 20
 const DRAIN_RETRY_MS = 100
 
 interface Frame {

@@ -190,7 +190,6 @@ function brewService({ action }: { action: 'start' }): void {
   })
 }
 
-// Waits for the Postgres Homebrew just started to accept connections.
 async function started(): Promise<Server | HydraError> {
   const deadline = Date.now() + READY_MS
   let found = server()
@@ -462,7 +461,6 @@ async function saveUrl({
   }
 }
 
-// A configured remote Postgres is checked without managing its service.
 export async function setupPostgres({
   check,
   allowCustomHome,

@@ -1,4 +1,3 @@
-// Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
 export const WAIT_MS = 20_000
 const POLL_MS = 20
 

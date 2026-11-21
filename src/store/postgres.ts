@@ -191,7 +191,6 @@ export async function closePostgres(): Promise<void> {
 
 const configuredUrls = new Map<string, string>()
 
-// The held Hydras keep their connection, so a postgresUrl change applies on restart.
 export function configuredUrl(): string | undefined {
   const database = homeDatabase()
 

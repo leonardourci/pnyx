@@ -335,7 +335,6 @@ export function createThreadSubscriptions({
       }
     }
 
-    // Explicit reads return a full page; ordered pushes can use deltas.
     const asDelta = push && sub.sent !== undefined
     const delta = asDelta ? threadDelta({
       before: sub.versioned,

@@ -43,7 +43,6 @@ export const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
-// One socket carries home state, live activity, conversations and command receipts.
 // Each command gets a receipt or an error carrying its id.
 type ServerPayload =
   | {

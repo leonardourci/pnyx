@@ -7,7 +7,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { dirname } from 'node:path'
 import { mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
-import { createSocketOutbox } from './socket-outbox.ts'
+import { createSocketOutbox, MAX_SOCKET_BYTES } from './socket-outbox.ts'
 import { createSocketHistory, type SocketCursor } from './socket-history.ts'
 import { pageChanges, type HomeMessage, type HomePage, type PageChanges } from './socket-state.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
@@ -511,23 +511,30 @@ export async function startServer({
             publishHome()
             const cursor = parseJson({ text: url.searchParams.get('cursor') }) as SocketCursor | undefined
             const retained = homeHistory.since({ cursor })
-
-            if (retained) {
-              for (const {
+            const ready: HomeMessage = {
+              type: 'home.ready',
+              cursor: homeHistory.cursor(),
+            }
+            const replay = retained?.map(({
+              epoch,
+              seq,
+              value,
+            }): HomeMessage => ({
+              type: 'home.delta',
+              cursor: {
                 epoch,
                 seq,
-                value,
-              } of retained) {
-                sendHome({
-                  message: {
-                    type: 'home.delta',
-                    cursor: {
-                      epoch,
-                      seq,
-                    },
-                    changes: value,
-                  },
-                })
+              },
+              changes: value,
+            }))
+            const replayBytes = replay?.reduce((
+              bytes,
+              message,
+            ) => bytes + Buffer.byteLength(JSON.stringify(message)), Buffer.byteLength(JSON.stringify(ready)))
+
+            if (replay && replayBytes !== undefined && replayBytes <= MAX_SOCKET_BYTES) {
+              for (const message of replay) {
+                sendHome({ message })
               }
             } else {
               sendHome({
@@ -539,12 +546,7 @@ export async function startServer({
               })
             }
 
-            sendHome({
-              message: {
-                type: 'home.ready',
-                cursor: homeHistory.cursor(),
-              },
-            })
+            sendHome({ message: ready })
             homeClients.add(sendHome)
           }
 

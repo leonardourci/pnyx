@@ -942,7 +942,6 @@ export function createHydraConnection() {
       })
       const wasReady = scope.ready
 
-      // The loading deadline runs until the home snapshot has shown this Hydra too.
       if (scope.hasSnapshot) {
         clearTimeout(scope.subscriptionTimer)
         scope.loadError = ''

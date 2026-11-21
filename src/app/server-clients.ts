@@ -41,8 +41,6 @@ const shownTraces = ({
   return `${tools}:${thinking}`
 }
 
-// The tabs connected to one mounted Hydra and the live facts pushed to them: each card's latest message and action,
-// spend and usage. Hydra data reaches the page over the home socket.
 export function createServerClients({
   hydraId,
   state,
@@ -179,7 +177,6 @@ export function createServerClients({
       : undefined
 
     for (const ws of clients) {
-      // A returning card gets its cached activity beside the home state patch.
       if (returned.length) {
         send({
           ws,
