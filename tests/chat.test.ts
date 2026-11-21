@@ -997,7 +997,7 @@ test.each([
     code: 'done',
     format: 'owner',
     outcome: { audience: 'owner' },
-    summary: 'The shop report is ready. https://example.com/reports/shop',
+    summary: `The shop report is ready. https://example.com/reports/shop?filter=${'archived-sales-'.repeat(20)}`,
   },
 ])(
   'Hydra relays a worker $code result ($format) from the helper into the owner\'s main chat',

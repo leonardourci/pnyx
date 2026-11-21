@@ -161,7 +161,6 @@ export function applyHelper({
 
 export const handbackId = ({ id }: { id: string }) => `helper-handback:${id}`
 
-// Owner outcomes stay pending until main finishes its turn, including legacy handled results.
 export function ownerOutcomes({ state }: { state: HydraState }): HelperOutcome[] {
   return (state.helper?.outcomes ?? [])
     .filter(outcome => needsMain({ outcome }) && outcome.seq > (state.helper?.delivered ?? 0))
