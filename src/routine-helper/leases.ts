@@ -32,7 +32,7 @@ export function copySettlingRefusal({
   return new HydraError({
     message: `Task ${task} is settling its copy; try again when cleanup finishes`,
     code,
-    help: [`\`pnyx task copy ${task}\` shows the copy's state`],
+    help: [`Read \`pnyx task show ${task} --full\` for the copy's state`],
   })
 }
 
