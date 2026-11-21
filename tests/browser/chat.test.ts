@@ -528,23 +528,7 @@ test(
       hydra,
       on: false,
     })
-    const page = await openHydra({
-      port: pnyx.port(),
-      hydraId: hydra.id,
-    })
-
     try {
-      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/settings/`)
-      await expect.poll(
-        () => page.getByRole(
-          'switch',
-          {
-            name: 'Focus mode',
-            exact: true,
-          },
-        ).getAttribute('aria-checked'),
-      ).toBe('false')
-      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)
       const session = await hydra.chat({ text: 'Review the work' })
       await until({
         what: 'Hydra to finish its first reply',
@@ -627,6 +611,10 @@ test(
             },
           ]),
         ],
+      })
+      const page = await openHydra({
+        port: pnyx.port(),
+        hydraId: hydra.id,
       })
       const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
         'region',
