@@ -177,6 +177,73 @@ test(
 )
 
 test(
+  'replaying an undone task edit with an earlier session records its undo',
+  () => {
+    const state: HydraState = {
+      v: EVENT_VERSION,
+      seq: 0,
+      cards: {},
+      keys: {},
+      eventIds: {},
+      undone: {},
+    }
+    const meta = {
+      at: '2026-01-01T00:00:00.000Z',
+      actor: 'owner',
+    }
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: 'task',
+            meta: {
+              ...meta,
+              id: 'create',
+            },
+          }),
+          type: 'task.created',
+          data: {
+            key: 'task',
+            title: 'Changed',
+          },
+        },
+      ],
+    })
+    replayOwned({
+      state,
+      events: [
+        {
+          ...base({
+            state,
+            cardId: 'task',
+            meta: {
+              ...meta,
+              id: 'undo-edit',
+            },
+          }),
+          type: 'task.edited',
+          undoes: 'edit',
+          data: {
+            key: 'task',
+            title: 'Original',
+            agent: {
+              provider: 'codex',
+              sessionId: 'earlier',
+            },
+            before: { title: 'Changed' },
+          },
+        },
+      ],
+    })
+
+    expect(state.cards.task?.title).toBe('Original')
+    expect(state.undone.edit).toBe('undo-edit')
+  },
+)
+
+test(
   'a reused provider session keeps its current worker and a retry starts the requested task',
   async () => {
     const hydra = await pnyx.hydra()
