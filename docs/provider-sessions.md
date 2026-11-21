@@ -32,20 +32,20 @@ Each provider's adapter reads usage from its own transcript format and emits neu
 
 Current context is the latest request's reading, not the sum of earlier requests; after a compaction it is the compacted size until the next request reports. Recorded task tokens retain their worker and attributed Hydra breakdown. Only reported counts are shown. Claude transcripts provide used tokens but no window or session cost; those details can come from live readings, where Claude's window comes from Claude Code's context reading when its session opens or resumes and after each turn. Synthetic assistant records do not change usage, and a transcript compaction boundary sets current context to the compacted size it records, or clears it when it records none. Transcript fragments and task totals never substitute for current context.
 
-The server owns transcript readings and task totals and passes them to the host for reads and views. `hydra usage` returns that shape once. `hydra usage refresh` refreshes plan windows separately; `--force` bypasses the quota cache.
+The server owns transcript readings and task totals and passes them to the host for reads and views. `pnyx hydra usage` returns that shape once. Use the refresh control in the usage panel to refresh plan windows.
 
 ## Task tool grants
 
 Hosted workers and Hydra sessions use the selected account’s native Claude Code or Codex setup, including built-in features, skills, MCP servers, plugins and apps. Pnyx supplies its session instructions, account login and chosen model controls without disabling the owner’s configured tools. Routine helpers keep their lean tool and skill settings. The only task capability is `browser`, which adds an isolated headless Chrome session. Pnyx does not edit login or project configuration.
 
-Hydra chooses task additions with repeated `task start <task> --tool <capability>` flags. For UI work, select `browser`: Pnyx gives the worker a named, isolated, headless `chrome-devtools-axi` session and instructions to stop it afterward. It clears inherited browser URLs, profiles and connection settings for this capability. No second browser server starts automatically.
+Manage task tools in the UI. The `browser` capability gives the worker a named, isolated, headless `chrome-devtools-axi` session and instructions to stop it afterward. It clears inherited browser URLs, profiles and connection settings. No second browser server starts automatically.
 
 Start-only additions configure the provider without changing the saved selection first. The attachment and grant commit together through the existing event transaction. A failure or crash before that commit leaves earlier grants intact; a retry uses the current recorded selection.
 
 Failed tool reopening uses the host's existing delays and stops after as many attempts as there are delays. A new grant revision resets that bound; waiting for a hold or copy cleanup does not spend an attempt.
 
-`task tools <task> --available` lists `browser`; omit `--available` to read its selection. MCP servers, plugins and apps use the harness’s own configuration and need no task grant. Older MCP/plugin selections remain in event history but no longer restrict launches.
+MCP servers, plugins and apps use the harness’s own configuration and need no task grant. Older MCP and plugin selections remain in event history.
 
-A worker asks Hydra with `task ask <task> --question "I need <capability> to <action>"`. Hydra grants or revokes it with `task tools <task> --grant <capability>` or `--revoke <capability>`; flags may repeat. Hydra makes this decision itself, with no new owner approval step. A grant enables a tool; it does not authorize writes by that tool. Pnyx refuses grants from requests identified as workers, including a worker overriding the command actor. Any agent running as the same user can set `PNYX_ACTOR`; these are cooperative roles.
+A worker requests a capability by appending `needs-you: I need <capability> to <action>` to its assigned `worker.log`. A grant enables a tool. Writes by the tool still require the applicable authorization.
 
 Pnyx records each selection in the event log, waits for native turns, tools, background work, queues, pending controls and accepted inputs to settle, then reopens the same saved conversation with the selection. It confirms application after the replacement accepts input. Pending grants recover after restart. Discussion holds block tool changes; a previously pending grant waits for release. Pending application also waits for copy settlement and resumes afterward if its session folder remains available. Grants belong to the task; another task starts empty. Outside launch routes retain their own configuration and refuse dispatch tool flags.

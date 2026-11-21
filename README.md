@@ -75,9 +75,7 @@ Send a message in Hydra's composer, for example:
 
 > Look at this project and help me plan a small improvement.
 
-The first message starts Hydra's agent session. Hydra reports missing setup in chat, runs setup commands directly and directs the owner to sign in through the harness when a login is needed. Credentials stay out of Hydra chat.
-
-Use Settings to configure dispatch rules and accounts.
+The first message starts Hydra's agent session. Hydra reports missing setup in chat. Sign in through the harness when a login is needed. Use Settings to configure dispatch rules and accounts.
 
 ### 4. Start a task
 

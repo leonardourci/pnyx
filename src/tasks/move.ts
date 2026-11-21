@@ -141,7 +141,7 @@ export function moveRefusal({
   moving?: string[]
 }): HydraError | undefined {
   const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
-  const restoreRelationships = `Review task ${card.id} in the destination Hydra; task history preserves its previous relationships`
+  const restoreRelationships = `Review task ${card.id} in Hydra ${to}; read its previous relationships with \`pnyx task history ${card.id} --hydra ${hydraId}\``
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
