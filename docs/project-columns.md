@@ -61,9 +61,9 @@ Remaining: integrate the parallel Tailwind commits, then run one deslop pass and
 | Repo attached to several Hydras | Keep legacy duplicates flagged; owner chooses keeper; refuse new duplicates | Implemented in Setup, Settings and CLI; prior integration cases passed |
 | Per-project copies/start/landing/memory | Keep them on each repository | Preserved |
 | Hidden Hydra preferences | Honor old hidden choices as folded strips until the owner explicitly unfolds them; new layout uses folding | Implemented |
-| Selected Hydra alone supplies data | All visible scopes share one WebSocket and Zero client; retain each open card's thread | Implemented |
+| Selected Hydra alone supplies data | All visible scopes share one resumed WebSocket; retain each open card's thread | Implemented |
 | Query/client failure requires Retry | Automatically rebuild failed reads with backoff and reconcile retained edits/open cards | Implemented |
-| Hydra sequence absent from Zero | Replicate it with schema 6 publication upgrade, so confirmations settle | Proved by an app fold, sequence 28→29 and cleared pending state |
+| Hydra sequence reaches the page | Carry it in ordered home changes, so confirmations settle | Socket integration checks retain pending edits through reconnect |
 | Saved per-card widths | Schema 7 removes them from view rows; replay and undo normalize old events without rewriting history | Implemented; project widths and card heights stay |
 | Free-text project labels | Ideas with a plain tag until assignment | Implemented per ask-204158 |
 
@@ -77,9 +77,9 @@ A free-text project with no attached repository stays stored, appears as a plain
 
 ## Running-app evidence
 
-The isolated owner trial uses real Postgres, Zero and the built app with fake provider boundaries, three synthetic Hydras and 30 made-up tasks. It contains grouped repositories, Ideas, all requested lifecycle states, sub-tasks, provider icons and an expired Done card. Keep it running at the stable portless URL until Hydra says the owner is finished.
+The earlier isolated owner trial used real Postgres, Zero and the built app with fake provider boundaries, three synthetic Hydras and 30 made-up tasks. It contains grouped repositories, Ideas, all requested lifecycle states, sub-tasks, provider icons and an expired Done card. Keep it running at the stable portless URL until Hydra says the owner is finished.
 
-A real wheel gesture snaps to the next Hydra after layout settles. Forced socket drops reconcile a title edited while disconnected. A real portless stop/start changes the instance PID and port, then reconnects without reload, retains the selected card DOM and receives a fresh Zero update. The latest running-app proof reports no page errors.
+A real wheel gesture snaps to the next Hydra after layout settles. Forced socket drops reconcile a title edited while disconnected. A real portless stop/start changes the instance PID and port, then reconnects without reload, retains the selected card DOM and received a fresh Zero update at that revision. The latest running-app proof reports no page errors.
 
 Connection transitions and stale/reconciled sequences use structured logs. Slow render commits over 32ms aggregate count and worst duration at most once every five seconds. Logs retain identifiers and timing, not prompts or credentials.
 
@@ -135,7 +135,7 @@ Project columns, fold-all, sub-task groups, Hydra workspaces and chat animate th
 
 The composer comparison pins `fc73e170` and measures the real app at 1440px and 390px in both themes. The baseline is 106px for the Hydra composer, 48px for its text field and 48px for the question note. Before correction, the converted version measured 86.39px, 34.39px and 36px. Removing the composer's competing minimum retains the shared Textarea's 48px minimum; the composer bar stops overriding the account picker's native 36px height with 30px. Attachment and Send buttons retain their baseline 30px height. The composer also owns its Chromium scrollbar override through the shared `composer-text` recipe used by the field and draft mirror; the stale feature selector is removed.
 
-The owner trial was refreshed at `67f4d8b7`, after rebasing on the Tailwind and icon-sweep checkpoints. Its page and Zero endpoint both return HTTP 200. The owner reviews this UI before final deslop, CI and CodeRabbit (r214731, ask-214814). Final before/after media remains for the final combined head. A duplicate composer minimum was removed after its mutation survived: the shared Textarea already owns that value. Open: incorporate further owner feedback, then run the single final gate. Intermediate pushes do not run deslop or request CI approval.
+The owner trial was refreshed at `67f4d8b7`, after rebasing on the Tailwind and icon-sweep checkpoints. Its page and then-current Zero endpoint both returned HTTP 200. The owner reviews this UI before final deslop, CI and CodeRabbit (r214731, ask-214814). Final before/after media remains for the final combined head. A duplicate composer minimum was removed after its mutation survived: the shared Textarea already owns that value. Open: incorporate further owner feedback, then run the single final gate. Intermediate pushes do not run deslop or request CI approval.
 
 ### Header dragging and dense trial
 
@@ -167,7 +167,7 @@ Whole-Hydra layout animation runs for explicit folding and Hydra dragging. Backg
 
 The independent anchoring investigation separated two failures. Scroll compensation runs before Motion measures the horizontal axis; the axis uses viewport coordinates, so widening an earlier Hydra does not animate the selected Hydra’s cards. The chat surface paints above sliding project columns.
 
-A fresh Zero read can replace row objects while their decoded card values stay equal. The row cache also retains equal cards from the preceding snapshot, so one changed card does not redraw every visible card. Final combined proof and the stress rerun remain open.
+The connection store preserves unchanged cards across home changes, so one changed card does not redraw every visible card. Final combined proof and the stress rerun remain open.
 
 ### Stress rerun refinements
 
