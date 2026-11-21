@@ -37,7 +37,6 @@ export interface Scope {
   restoredSaves: boolean
   error: string
   loadError: string
-  readFailed?: boolean
   subscriptionTimer?: ReturnType<typeof setTimeout>
   subscriptionAttempt: number
   readonly thread: ThreadPage | null

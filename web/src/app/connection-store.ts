@@ -70,8 +70,6 @@ export function createHydraConnection() {
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let upgrade: UpgradeStatus | undefined
-  // Why the Hydra list, shared settings or upgrade check could not be read.
-  let installationError = ''
   let home: HomePage | undefined
   let homeCursor: SocketCursor | undefined
   let homeReady = false
@@ -387,13 +385,8 @@ export function createHydraConnection() {
     } else if (scope.loadError) {
       recovery = { message: scope.loadError }
 
-      if (scope.failed || scope.readFailed) {
+      if (scope.failed) {
         recovery.action = 'retry'
-      }
-    } else if (installationError) {
-      recovery = {
-        message: installationError,
-        action: 'retry',
       }
     }
 
@@ -633,7 +626,7 @@ export function createHydraConnection() {
   }
 
   const reconcileReads = () => {
-    if (staleSince === undefined || !homeReady || !physicalHydra || !!installationError) {
+    if (staleSince === undefined || !homeReady || !physicalHydra) {
       return
     }
 
@@ -707,8 +700,6 @@ export function createHydraConnection() {
     })
     scope.hasSnapshot = true
 
-    scope.readFailed = false
-
     if (scope.ready) {
       clearTimeout(scope.subscriptionTimer)
       scope.loadError = ''
@@ -766,7 +757,6 @@ export function createHydraConnection() {
       } else if (message.type === 'home.ready' && homeCursor
         && homeCursor.epoch === message.cursor.epoch && homeCursor.seq === message.cursor.seq) {
         homeReady = true
-        installationError = ''
         reconcileReads()
         publish()
 
@@ -1327,7 +1317,6 @@ export function createHydraConnection() {
 
       scope.failed = false
       scope.loadError = ''
-      scope.readFailed = false
       scope.subscribed = false
 
       subscribe({ scope })
@@ -1340,7 +1329,6 @@ export function createHydraConnection() {
     start() {
       active = true
       dropSnapshots()
-      installationError = ''
       const stopLog = startPageLog({
         send: ({ lines }) => {
           if (socket?.readyState !== WebSocket.OPEN) {
