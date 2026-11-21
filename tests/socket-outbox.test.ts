@@ -387,6 +387,42 @@ test(
 )
 
 test(
+  'a queued activity refresh reaches the page before later sparse activity',
+  () => {
+    vi.useFakeTimers()
+    const socket = slowSocket()
+    const refresh: ServerMessage = {
+      type: 'latest',
+      messages: { first: null },
+      actions: {},
+    }
+    const receipt: ServerMessage = {
+      type: 'receipt',
+      id: 'page-interest',
+    }
+    const update: ServerMessage = {
+      type: 'latest',
+      messages: { second: null },
+      actions: {},
+    }
+
+    socket.send({
+      message: refresh,
+      snapshot: true,
+    })
+    socket.send({ message: receipt })
+    socket.send({ message: update })
+    socket.drain()
+    expect(socket.sent).toEqual([
+      refresh,
+      receipt,
+      update,
+    ])
+    socket.close()
+  },
+)
+
+test(
   'overflow disconnects the slow client so it can resume instead of losing a receipt',
   () => {
     vi.useFakeTimers()

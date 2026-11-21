@@ -7,6 +7,7 @@ interface Frame {
   message: ServerMessage
   bytes: number
   text: string
+  snapshot: boolean
 }
 
 interface ActivitySnapshot {
@@ -14,13 +15,20 @@ interface ActivitySnapshot {
   scope?: string
 }
 
-function encode({ message }: { message: ServerMessage }): Frame {
+function encode({
+  message,
+  snapshot = false,
+}: {
+  message: ServerMessage
+  snapshot?: boolean
+}): Frame {
   const text = JSON.stringify(message)
 
   return {
     message,
     text,
     bytes: Buffer.byteLength(text),
+    snapshot,
   }
 }
 
@@ -148,7 +156,8 @@ export function createSocketOutbox({
       for (let i = frames.length - 1; i >= 0; i -= 1) {
         const frame = frames[i]!
 
-        if ('cardFrames' in frame || frame.message.type === 'home.delta' || frame.message.type === 'home.snapshot') {
+        if ('cardFrames' in frame || frame.snapshot
+          || frame.message.type === 'home.delta' || frame.message.type === 'home.snapshot') {
           break
         }
 
@@ -189,7 +198,10 @@ export function createSocketOutbox({
       }
     }
 
-    const frame = encode({ message })
+    const frame = encode({
+      message,
+      snapshot,
+    })
 
     if (snapshot && message.type === 'latest') {
       const previous = frames.findIndex(item => 'cardFrames' in item && item.scope === message.scope)

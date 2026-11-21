@@ -85,7 +85,7 @@ export function createServerCommands({
     message,
   }: Parameters<typeof attemptCommand>[0]) => nonblockingLocks.run(
     true,
-    async () => await attemptCommand({
+    () => attemptCommand({
       ws,
       message,
     }),
