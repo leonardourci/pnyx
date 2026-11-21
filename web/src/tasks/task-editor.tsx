@@ -5,7 +5,7 @@ import type { Card } from '#tasks/model.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { ComposerField, type ComposerFieldHandle } from '#web-hydra/composer-field.tsx'
 import { hasPendingImage } from '#web-hydra/draft.ts'
-import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
+import { DESCRIPTION_LIMIT_MESSAGE, descriptionExceedsLimit, taskDescription } from './description.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export interface TaskDraft {
@@ -69,16 +69,16 @@ export function TaskEditor({
   })
 
   const imagesLoading = hasPendingImage({ text: brief })
-  const tooLong = brief.trim().length > MAX_BRIEF_LENGTH
+  const nextBrief = taskDescription({ text: brief })
+  const tooLong = descriptionExceedsLimit({ text: brief })
   const blocked = imagesLoading || tooLong
-  const blockedReason = imagesLoading ? 'Images are still loading' : `A brief holds up to ${MAX_BRIEF_LENGTH} characters`
+  const blockedReason = imagesLoading ? 'Images are still loading' : DESCRIPTION_LIMIT_MESSAGE
 
   const save = () => {
     const nextTitle = title.replace(
       /\s+/g,
       ' ',
     ).trim()
-    const nextBrief = brief.trim()
 
     if (blocked) {
       return
@@ -98,14 +98,13 @@ export function TaskEditor({
           ],
         }),
       ] : []),
-      ...(nextBrief !== (card.brief ?? '').trim() ? [
+      ...(nextBrief !== (card.brief ?? '') ? [
         command({
           name: 'task',
           args: [
             'brief',
             card.id,
-            '--brief',
-            nextBrief,
+            `--brief=${nextBrief}`,
             '--event-id',
             crypto.randomUUID(),
           ],
@@ -125,7 +124,7 @@ export function TaskEditor({
   return (
     <form
       className="task-editor flex flex-col gap-1.5 [&>.row]:flex-wrap"
-      aria-label="Edit title and brief"
+      aria-label="Edit title and description"
       onSubmit={event => {
         event.preventDefault(); save()
       }}
@@ -152,11 +151,11 @@ export function TaskEditor({
           }
         }}
       />
-      <span className="eyebrow">Brief</span>
+      <span className="eyebrow">Description</span>
       <ComposerField
         ref={briefField}
-        label="Brief"
-        placeholder="Add a brief…"
+        label="Description"
+        placeholder="Describe the task…"
         value={brief}
         change={({ text }) => setBrief(text)}
       />

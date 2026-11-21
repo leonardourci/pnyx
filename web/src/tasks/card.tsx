@@ -215,6 +215,8 @@ export const HydraCard = memo(function HydraCard({
 
   const edit = ({ draft }: { draft?: TaskDraft } = {}) => {
     onEdit()
+    setTab('context')
+
     forgetSessionView({
       key: taskViewKey({
         hydraId,
@@ -255,9 +257,10 @@ export const HydraCard = memo(function HydraCard({
   const inlineHeight = selected && !modal ? 'h-column' : ''
   const element = modal ? modalElement : inlineElement
   const {
-    chatOnly,
+    chatOnly: prefersChatOnly,
     toggleChatOnly,
   } = useTaskChatOnly()
+  const chatOnly = prefersChatOnly && !editing
   const wasModal = useRef(modal)
   useLayoutEffect(
     () => {
@@ -450,7 +453,8 @@ export const HydraCard = memo(function HydraCard({
       prefix: tabsId,
       id,
     }),
-    'aria-labelledby': tabId({
+    'aria-label': editing && id === 'context' ? 'Context' : undefined,
+    'aria-labelledby': editing ? undefined : tabId({
       prefix: tabsId,
       id,
     }),
@@ -750,32 +754,9 @@ export const HydraCard = memo(function HydraCard({
               )}
             </>
           )}
-          {editing && (
-            <TaskEditor
-              hydraId={hydraId}
-              key={editing.version}
-              version={editing.version}
-              card={card}
-              draft={editing.draft}
-              command={command}
-              close={() => {
-                refocusTitle.current = true; setEditing(null)
-              }}
-              failed={({
-                draft,
-                error,
-              }) => {
-                if (editVersion.snapshot() === editing.version) {
-                  edit({ draft })
-                }
-
-                notify({ text: error.message })
-              }}
-            />
-          )}
           {selected && (
             <div className="flex min-w-0 items-center justify-between gap-2">
-              {!chatOnly && (
+              {!chatOnly && !editing && (
                 <Tabs
                   divider={false}
                   prefix={tabsId}
@@ -808,6 +789,7 @@ export const HydraCard = memo(function HydraCard({
                   icon={chatOnly ? 'summary_show' : 'summary_hide'}
                   label={chatOnly ? 'Show task summary' : 'Focus on chat'}
                   aria-pressed={chatOnly}
+                  disabled={!!editing}
                   onClick={toggleChatOnly}
                 />
               </div>
@@ -838,7 +820,31 @@ export const HydraCard = memo(function HydraCard({
                     state={!!factual}
                   />
                 )}
-                {card.brief?.trim() && <CardSection heading="Instructions"><RichText text={card.brief} /></CardSection>}
+                {editing && (
+                  <TaskEditor
+                    hydraId={hydraId}
+                    key={editing.version}
+                    version={editing.version}
+                    card={card}
+                    draft={editing.draft}
+                    command={command}
+                    close={() => {
+                      refocusTitle.current = true
+                      setEditing(null)
+                    }}
+                    failed={({
+                      draft,
+                      error,
+                    }) => {
+                      if (editVersion.snapshot() === editing.version) {
+                        edit({ draft })
+                      }
+
+                      notify({ text: error.message })
+                    }}
+                  />
+                )}
+                {!editing && card.brief?.trim() && <CardSection heading="Description"><RichText text={card.brief} /></CardSection>}
                 <TaskQuestion
                   card={card}
                   connected={connected}

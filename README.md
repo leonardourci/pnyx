@@ -102,7 +102,7 @@ The **Waiting on you** strip keeps open questions and permissions within reach.
 
 ### Tasks and columns
 
-A task holds your ask, its brief, updates, conversation and links. Its badge, chat and CLI share one status: hosted turns and hooks supply running or idle, the worker's log supplies needs you, blocked or done, and the task supplies its queue, hold and pull request facts.
+A task’s Description holds its instructions. Write it when creating the task or change it with Edit task. The worker receives it when starting. Saved edits go into the attached worker’s inbox, and Pnyx delivers them automatically to eligible hosted sessions. A task also holds updates, conversation and links. Its badge, chat and CLI share one status: hosted turns and hooks supply running or idle, the worker's log supplies needs you, blocked or done, and the task supplies its queue, hold and pull request facts.
 
 You can create tasks and columns inline and move cards yourself. A finished agent turn leaves the task open until its completion requirements are met.
 

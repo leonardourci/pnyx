@@ -74,6 +74,7 @@ export function steeringAssignment({ card }: { card: Card }): string {
   return JSON.stringify([
     card.steeringGeneration ?? card.createdSeq,
     steeringHeld({ card }),
+    card.brief,
   ])
 }
 

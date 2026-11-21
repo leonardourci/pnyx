@@ -9,6 +9,7 @@ import { hasPendingImage } from '#web-hydra/draft.ts'
 import { useCardAgent, RepositoryPicker, type RepositoryOption } from '#web-workers/card-agent.tsx'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from '#web-app/connection.ts'
+import { DESCRIPTION_LIMIT_MESSAGE, descriptionExceedsLimit, taskDescription } from './description.ts'
 
 export interface TaskDraft {
   title: string
@@ -119,12 +120,14 @@ export function TaskCreate({
     commentsKey: `${storageIdentity}:new:${attempt.current}:comments`,
     saveText: ({ text }) => prompt.set(text),
   })
-  const imagesLoading = useSyncExternalStore(
+  const description = useSyncExternalStore(
     drafts.subscribe,
-    () => hasPendingImage({ text: drafts.read().text }),
+    () => drafts.read().text,
   )
+  const imagesLoading = hasPendingImage({ text: description })
+  const descriptionTooLong = descriptionExceedsLimit({ text: description })
   const needsRepository = repositories.length > 1 && !repository
-  const disabled = !connected || busy || !title.trim() || imagesLoading
+  const disabled = !connected || busy || !title.trim() || imagesLoading || descriptionTooLong
 
   const save = async ({
     start = false,
@@ -133,7 +136,10 @@ export function TaskCreate({
     start?: boolean
     text?: string
   } = {}) => {
-    if (disabled || hasPendingImage({ text }) || needsRepository && start) {
+    const invalidDescription = hasPendingImage({ text }) || descriptionExceedsLimit({ text })
+    const missingRepository = start && needsRepository
+
+    if (disabled || invalidDescription || missingRepository) {
       return
     }
 
@@ -146,11 +152,10 @@ export function TaskCreate({
       column,
     ]
 
-    if (text.trim()) {
-      args.push(
-        '--ask',
-        text,
-      )
+    const savedDescription = taskDescription({ text })
+
+    if (savedDescription) {
+      args.push(`--brief=${savedDescription}`)
     }
 
     if (repository) {
@@ -251,6 +256,7 @@ export function TaskCreate({
         change={({ value }) => setRepository(value)}
         disabled={!connected || busy}
       />
+      <span className="eyebrow">Description</span>
       <Composer
         limitHeight={false}
         hydraId={hydraId}
@@ -261,7 +267,7 @@ export function TaskCreate({
         thread={null}
         loadComment={async () => {}}
         settings={settings}
-        fieldLabel="Your ask"
+        fieldLabel="Description"
         placeholder="What should happen?"
         sendLabel="Start worker"
         unavailable={disabled || !repository}
@@ -287,6 +293,7 @@ export function TaskCreate({
         }}
         notify={notify}
       />
+      {descriptionTooLong && <p className="muted small">{DESCRIPTION_LIMIT_MESSAGE}</p>}
       <div className="flex min-w-0 items-center gap-2">
         <Button
           disabled={disabled}
