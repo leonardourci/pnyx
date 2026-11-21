@@ -12,7 +12,7 @@ import { loadHydra } from '#app/store.ts'
 const USE = 'use settings show, schema or set'
 
 export const settings = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const [
       sub,
       ...rest
@@ -77,7 +77,7 @@ export const settings = guard({
     const change = meta({ values })
 
     const receipt = settingsReceipt({
-      saved: saveSettings({
+      saved: await saveSettings({
         hydraId,
         patch,
         meta: change,
