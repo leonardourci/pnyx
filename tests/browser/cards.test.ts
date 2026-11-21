@@ -1323,7 +1323,8 @@ test.each([
         leadingActions: controls.length === 4 && positions.every((box, index) => !index || box.left >= positions[index - 1].right),
         scrolled: projects.scrollLeft > 0,
         pinned: controls.every((control, index) => control.getBoundingClientRect().left === positions[index].left),
-        singleEntry: !!add && ![...workspace.querySelectorAll('button')].some(button => button.textContent.trim() === 'Project'),
+        singleEntry: workspace.querySelectorAll('[aria-label="Add project"]').length === 1
+          && ![...workspace.querySelectorAll('button')].some(button => button.textContent.trim() === 'Project'),
       };
       projects.style.removeProperty('max-width');
       projects.scrollLeft = 0;
