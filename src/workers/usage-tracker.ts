@@ -23,15 +23,14 @@ export function createUsageTracker({
   hydraId,
   streamed,
   usageChanged,
+  usages = new Map<string, Omit<HostedUsage, 'type'>>(),
 }: {
   hydraId: string
   streamed({ session }: { session: string }): void
   // Rebuilds and pushes the usage of every session in the Hydra, once for all of them.
   usageChanged(): void
+  usages?: Map<string, Omit<HostedUsage, 'type'>>
 }) {
-  // The latest size and spend each session reported, kept after its process idles out.
-  const usages = new Map<string, Omit<HostedUsage, 'type'>>()
-
   const usageAccount = ({
     agent,
     effective = effectiveDispatch(),

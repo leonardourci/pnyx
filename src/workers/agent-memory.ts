@@ -23,6 +23,22 @@ interface AgentIds {
 // The agent processes the server runs, with the ids their memory is listed under; a session's id is set once it opens.
 const agents = new Map<number, AgentIds>()
 
+export function moveAgentMemory({
+  task,
+  from,
+  to,
+}: {
+  task: string
+  from: string
+  to: string
+}): void {
+  for (const ids of agents.values()) {
+    if (ids.taskId === task && ids.hydraId === from) {
+      ids.hydraId = to
+    }
+  }
+}
+
 export function watchAgent({
   child,
   ids,

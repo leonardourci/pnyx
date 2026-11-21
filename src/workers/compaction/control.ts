@@ -19,6 +19,14 @@ const COMPACTION_RETRY_MS = 1000
 // A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
 export const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
 
+export interface CompactionHandoff {
+  deadlines: {
+    operation: Compaction
+    remaining: number
+  }[]
+  settling?: number
+}
+
 // Inputs held while an agent compacts, the deadline that fails a silent compaction, and releasing them in order.
 export function createCompactionControl({
   hydraId,
@@ -70,6 +78,7 @@ export function createCompactionControl({
   released({ card }: { card: string }): void
 }) {
   const compactionDeadlines = new Map<string, NodeJS.Timeout>()
+  const deadlineEnds = new Map<string, number>()
 
   const compactChange = async ({
     card,
@@ -106,11 +115,16 @@ export function createCompactionControl({
   }) => {
     clearTimeout(compactionDeadlines.get(operation.session))
     compactionDeadlines.delete(operation.session)
+    deadlineEnds.delete(operation.session)
 
     if (operation.state !== 'running') {
       return
     }
 
+    deadlineEnds.set(
+      operation.session,
+      Date.now() + delay,
+    )
     compactionDeadlines.set(
       operation.session,
       setTimeout(
@@ -118,6 +132,7 @@ export function createCompactionControl({
           name: 'compaction deadline',
           run: async () => {
             compactionDeadlines.delete(operation.session)
+            deadlineEnds.delete(operation.session)
 
             if (closing()) {
               return
@@ -183,6 +198,7 @@ export function createCompactionControl({
   const releasingCompact = new Set<string>()
   // After a result the agent may compact again at once, so held input waits until it moves on, or for one deadline.
   const settlingCompactions = new Map<string, NodeJS.Timeout>()
+  const settlingEnds = new Map<string, number>()
 
   const compactionBusy = ({ card }: { card?: Card }) => Boolean(activeCompaction({ card }))
     || Boolean(card && settlingCompactions.has(card.id))
@@ -190,15 +206,22 @@ export function createCompactionControl({
   const settleCompaction = ({
     card,
     settling,
+    delay = compactionDelay,
   }: {
     card: string
     settling: boolean
+    delay?: number
   }) => {
     const moved = settlingCompactions.has(card) && !settling
     clearTimeout(settlingCompactions.get(card))
     settlingCompactions.delete(card)
+    settlingEnds.delete(card)
 
     if (settling) {
+      settlingEnds.set(
+        card,
+        Date.now() + delay,
+      )
       settlingCompactions.set(
         card,
         setTimeout(
@@ -206,7 +229,7 @@ export function createCompactionControl({
             card,
             settling: false,
           }),
-          compactionDelay,
+          delay,
         ).unref(),
       )
     } else if (moved) {
@@ -382,6 +405,11 @@ export function createCompactionControl({
         }))
           .finally(() => {
             releasingCompact.delete(id)
+
+            if (closing()) {
+              return
+            }
+
             const current = loadHydra({ hydraId }).state.cards[id]
 
             if (advanced && current?.compaction?.inputs.length
@@ -401,7 +429,68 @@ export function createCompactionControl({
     sessionOwner,
     settleCompaction,
     settling: settlingCompactions,
+    releasing: releasingCompact,
     syncCompactions,
+    suspendTask({ card }: { card: Card }): CompactionHandoff {
+      const deadlines: CompactionHandoff['deadlines'] = []
+
+      for (const operation of card.compaction?.operations ?? []) {
+        const end = deadlineEnds.get(operation.session)
+
+        if (end !== undefined) {
+          deadlines.push({
+            operation,
+            remaining: Math.max(
+              0,
+              end - Date.now(),
+            ),
+          })
+          clearTimeout(compactionDeadlines.get(operation.session))
+          compactionDeadlines.delete(operation.session)
+          deadlineEnds.delete(operation.session)
+        }
+      }
+
+      const end = settlingEnds.get(card.id)
+      clearTimeout(settlingCompactions.get(card.id))
+      settlingCompactions.delete(card.id)
+      settlingEnds.delete(card.id)
+
+      return {
+        deadlines,
+        settling: end === undefined ? undefined : Math.max(
+          0,
+          end - Date.now(),
+        ),
+      }
+    },
+    adoptTask({
+      card,
+      handoff,
+    }: {
+      card: Card
+      handoff: CompactionHandoff
+    }): void {
+      for (const {
+        operation,
+        remaining,
+      } of handoff.deadlines) {
+        resetCompactionDeadline({
+          operation,
+          delay: remaining,
+        })
+      }
+
+      if (handoff.settling !== undefined) {
+        settleCompaction({
+          card: card.id,
+          settling: true,
+          delay: handoff.settling,
+        })
+      }
+
+      releaseCompact({ card: card.id })
+    },
     close() {
       for (const timer of [
         ...compactionDeadlines.values(),

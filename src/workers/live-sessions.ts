@@ -1,4 +1,5 @@
 import { requireHandoffAvailable } from './handoff-checkout.ts'
+import { taskChildren, taskController, trackTaskSession, untrackTaskSession, type TaskSessionOwner } from '#app/task-runtime.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -33,13 +34,12 @@ import type { AgentRef, SessionObservation } from './model.ts'
 import { nativeIdle } from './native-session.ts'
 import type { createPermissionBridge } from './permission-bridge.ts'
 import { permissionEvent } from './permission-rules.ts'
-import type { HostedSession, Provider } from './provider.ts'
+import type { HostedSession, HostedUsage, Provider } from './provider.ts'
 import { harnessOf, providerLabel } from './providers.ts'
 import { sessionId } from './session-attachments.ts'
 import { steeringWorkerIdentity } from './steering.ts'
 import type { createSteeringDelivery } from './steering-delivery.ts'
 import { liveReplies } from './streaming.ts'
-import type { createUsageTracker } from './usage-tracker.ts'
 
 function firstOwnerMessage({
   state,
@@ -74,36 +74,7 @@ function firstOwnerMessage({
   return untaken ? message.id : undefined
 }
 
-// One provider process per hosted session: opening it, feeding it input, following what it does, and retiring it.
-export function createLiveSessions({
-  hydraId,
-  live,
-  closing,
-  controller,
-  children,
-  streamed,
-  beginTools,
-  deferTools,
-  usageTracker,
-  compaction,
-  at,
-  write,
-  note,
-  record,
-  interrupt,
-  folderOf,
-  providerOf,
-  environment,
-  expireEntry,
-  askPermission,
-  pendingSteeringIds,
-  inboxNotice,
-  markRead,
-  ringSteering,
-  settleDirect,
-  directReply,
-  turns,
-}: {
+export interface LiveSessionScope {
   hydraId: string
   live: Map<string, Live>
   closing(): boolean
@@ -124,7 +95,15 @@ export function createLiveSessions({
     session: string
     text?: boolean
   }): void
-  usageTracker: ReturnType<typeof createUsageTracker>
+  usageTracker: {
+    mergeUsage({
+      key,
+      activity,
+    }: {
+      key: string
+      activity: HostedUsage
+    }): void
+  }
   compaction: ReturnType<typeof createCompactionControl>
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
@@ -178,16 +157,23 @@ export function createLiveSessions({
   settleDirect: ReturnType<typeof createHostedDelivery>['settleDirect']
   directReply: ReturnType<typeof createHostedDelivery>['directReply']
   turns(): ReturnType<typeof createHydraTurns>
-}) {
-  const {
-    compactChange,
-    holdCompact,
-    releaseCompact,
-    sessionOwner,
-    settleCompaction,
-    syncCompactions,
-  } = compaction
+}
 
+// One provider process per hosted session: opening it, feeding it input, following what it does, and retiring it.
+export function createLiveSessions({
+  getOwner,
+  hydraId,
+  live,
+  closing,
+  streamed,
+  beginTools,
+  deferTools,
+  at,
+  note,
+  record,
+  folderOf,
+  expireEntry,
+}: LiveSessionScope & { getOwner(): TaskSessionOwner }) {
   const retire = ({
     key,
     entry,
@@ -199,11 +185,31 @@ export function createLiveSessions({
     permanent?: boolean
     failed?: boolean
   }) => {
+    if (entry.owner && entry.owner.hydraId !== hydraId) {
+      entry.owner.retire({
+        key,
+        entry,
+        permanent,
+        failed,
+      })
+
+      return
+    }
+
     clearTimeout(entry.idle)
     expireEntry({ entry })
 
     if (live.get(key) === entry) {
       live.delete(key)
+    }
+
+    untrackTaskSession({ entry })
+
+    if (permanent && entry.task !== HYDRA_CARD) {
+      taskController({
+        hydraId,
+        task: entry.task,
+      }).abort()
     }
 
     entry.input.end()
@@ -295,17 +301,44 @@ export function createLiveSessions({
     card: Card & { agent: AgentRef }
     entry: Live
   }) => {
+    // A live session keeps its callbacks while its task changes Hydra.
+    const currentOwner = () => entry.owner!
+    const closing: LiveSessionScope['closing'] = () => currentOwner().closing()
+    const streamed: LiveSessionScope['streamed'] = ({ ...input }) => currentOwner().streamed(input)
+    const write: LiveSessionScope['write'] = ({ ...input }) => currentOwner().write(input)
+    const note: LiveSessionScope['note'] = ({ ...input }) => currentOwner().note(input)
+    const record: LiveSessionScope['record'] = ({ ...input }) => currentOwner().record(input)
+    const interrupt: LiveSessionScope['interrupt'] = ({ ...input }) => currentOwner().interrupt(input)
+    const folderOf: LiveSessionScope['folderOf'] = ({ ...input }) => currentOwner().folderOf(input)
+    const providerOf: LiveSessionScope['providerOf'] = ({ ...input }) => currentOwner().providerOf(input)
+    const environment: LiveSessionScope['environment'] = ({ ...input }) => currentOwner().environment(input)
+    const askPermission: LiveSessionScope['askPermission'] = ({ ...input }) => currentOwner().askPermission(input)
+    const pendingSteeringIds: LiveSessionScope['pendingSteeringIds'] = ({ ...input }) => currentOwner().pendingSteeringIds(input)
+    const inboxNotice: LiveSessionScope['inboxNotice'] = ({ ...input }) => currentOwner().inboxNotice(input)
+    const markRead: LiveSessionScope['markRead'] = ({ ...input }) => currentOwner().markRead(input)
+    const ringSteering: LiveSessionScope['ringSteering'] = ({ ...input }) => currentOwner().ringSteering(input)
+    const settleDirect: LiveSessionScope['settleDirect'] = ({ ...input }) => currentOwner().settleDirect(input)
+    const directReply: LiveSessionScope['directReply'] = ({ ...input }) => currentOwner().directReply(input)
+    const turns: LiveSessionScope['turns'] = () => currentOwner().turns()
+    const compactChange: LiveSessionScope['compaction']['compactChange'] = ({ ...input }) => currentOwner().compaction.compactChange(input)
+    const holdCompact: LiveSessionScope['compaction']['holdCompact'] = ({ ...input }) => currentOwner().compaction.holdCompact(input)
+    const releaseCompact: LiveSessionScope['compaction']['releaseCompact'] = ({ ...input }) => currentOwner().compaction.releaseCompact(input)
+    const sessionOwner: LiveSessionScope['compaction']['sessionOwner'] = ({ ...input }) => currentOwner().compaction.sessionOwner(input)
+    const settleCompaction: LiveSessionScope['compaction']['settleCompaction'] = ({ ...input }) => currentOwner().compaction.settleCompaction(input)
+    const syncCompactions: LiveSessionScope['compaction']['syncCompactions'] = ({ ...input }) => currentOwner().compaction.syncCompactions(input)
+    const retire: TaskSessionOwner['retire'] = ({ ...input }) => currentOwner().retire(input)
+
     let failure: string | undefined
     const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
       task: card.id,
       steeringWorker: steeringWorkerIdentity({
-        state: loadHydra({ hydraId }).state,
+        state: loadHydra({ hydraId: currentOwner().hydraId }).state,
         card,
       }),
     })
 
     const compactOwner = () => {
-      const state = loadHydra({ hydraId }).state
+      const state = loadHydra({ hydraId: currentOwner().hydraId }).state
 
       return sessionOwner({
         state,
@@ -334,18 +367,25 @@ export function createLiveSessions({
             },
             env,
           }) : env,
-          signal: controller.signal,
-          spawned: children.spawned,
+          signal: card.id === HYDRA_CARD ? currentOwner().controller.signal : taskController({
+            hydraId: currentOwner().hydraId,
+            task: card.id,
+          }).signal,
+          spawned: card.id === HYDRA_CARD ? currentOwner().children.spawned
+            : taskChildren({
+              hydraId: currentOwner().hydraId,
+              task: card.id,
+            }).spawned,
         })
       }
 
-      if (closing() || live.get(key) !== entry) {
+      if (closing() || currentOwner().live.get(key) !== entry) {
         entry.session.close()
 
         return
       }
 
-      const current = loadHydra({ hydraId }).state.cards[card.id]
+      const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
 
       if (current?.agent && sessionId({ agent: current.agent }) === key
         && current.steeringGeneration === card.steeringGeneration) {
@@ -410,7 +450,7 @@ export function createLiveSessions({
                   id: item.id ?? randomUUID(),
                   text: item.text,
                   original: item.original,
-                  actor: item.id ? loadHydra({ hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
+                  actor: item.id ? loadHydra({ hydraId: currentOwner().hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
                   route: card.id === HYDRA_CARD ? 'hydra' : 'direct',
                   accepted: card.id === HYDRA_CARD,
                   agent: item.agent,
@@ -422,18 +462,20 @@ export function createLiveSessions({
           }
 
           if (compactCommand({ text: item.text })) {
-            while (!closing() && live.get(key) === entry && turnRunning) {
+            while (!closing() && currentOwner().live.get(key) === entry && turnRunning) {
               await new Promise(resolve => setTimeout(
                 resolve,
                 HYDRA_TURN_POLL_MS,
               ))
             }
 
-            if (closing() || live.get(key) !== entry) {
+            if (closing() || currentOwner().live.get(key) !== entry) {
               return
             }
 
-            if (!activeCompaction({ card: loadHydra({ hydraId }).state.cards[card.id] })) {
+            const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+
+            if (!activeCompaction({ card: current })) {
               await compactChange({
                 card: card.id,
                 change: {
@@ -453,7 +495,7 @@ export function createLiveSessions({
           let inlineSteering: string[] | undefined
 
           if (item.steeringIds) {
-            const current = loadHydra({ hydraId }).state.cards[card.id]
+            const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
 
             const ids = pendingSteeringIds({
               card: current,
@@ -473,7 +515,7 @@ export function createLiveSessions({
             if (item.inline && item.id) {
               item.text = steeringMessages({
                 task: current.id,
-                hydraId,
+                hydraId: currentOwner().hydraId,
                 messages: (current.steering ?? []).filter(message => ids.includes(message.id)),
               })
               entry.delivered.set(
@@ -535,7 +577,7 @@ export function createLiveSessions({
               'hydras',
             ),
             ownerMessageId: firstOwnerMessage({
-              state: loadHydra({ hydraId }).state,
+              state: loadHydra({ hydraId: currentOwner().hydraId }).state,
               card: card.id,
               input: item.id,
               steering: inlineSteering,
@@ -551,7 +593,7 @@ export function createLiveSessions({
           return
         }
 
-        const state = loadHydra({ hydraId }).state
+        const state = loadHydra({ hydraId: currentOwner().hydraId }).state
         const current = state.cards[entry.task]
 
         if (entry.task !== HYDRA_CARD && current && closedTask({
@@ -565,7 +607,10 @@ export function createLiveSessions({
           })
           background({
             name: 'closed agent cleanup',
-            run: () => children.stop({ task: entry.task }),
+            run: () => taskChildren({
+              hydraId: currentOwner().hydraId,
+              task: entry.task,
+            }).stop({ task: entry.task }),
           })
 
           return
@@ -644,7 +689,7 @@ export function createLiveSessions({
           turnStarted = performance.now()
           log({
             operation: 'turn.start',
-            hydraId,
+            hydraId: currentOwner().hydraId,
             taskId: card.id,
             sessionId: key,
             provider: card.agent.provider,
@@ -701,7 +746,7 @@ export function createLiveSessions({
         if (receipt && (refused || receipt.phase === 'taken')) {
           log({
             operation: refused ? 'message.refused' : 'message.taken',
-            hydraId,
+            hydraId: currentOwner().hydraId,
             taskId: card.id,
             sessionId: key,
             correlationId: receipt.inputId,
@@ -763,7 +808,7 @@ export function createLiveSessions({
         if (typeof received === 'object' && received.type === 'turn-ended') {
           log({
             operation: 'turn.end',
-            hydraId,
+            hydraId: currentOwner().hydraId,
             taskId: card.id,
             sessionId: key,
             provider: card.agent.provider,
@@ -862,12 +907,12 @@ export function createLiveSessions({
           }
         }
 
-        if (entry.replaced || !closing() && live.get(key) !== entry) {
+        if (entry.replaced || !closing() && currentOwner().live.get(key) !== entry) {
           return
         }
 
         if (typeof activity !== 'string' && activity.type === 'compaction') {
-          await syncCompactions({ state: loadHydra({ hydraId }).state })
+          await syncCompactions({ state: loadHydra({ hydraId: currentOwner().hydraId }).state })
           const current = compactOwner()
 
           if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
@@ -924,7 +969,7 @@ export function createLiveSessions({
         ].includes(activity.type)) {
           const owner = compactOwner()
 
-          if (owner && compaction.settling.has(owner.id)) {
+          if (owner && currentOwner().compaction.settling.has(owner.id)) {
             settleCompaction({
               card: owner.id,
               settling: false,
@@ -933,7 +978,7 @@ export function createLiveSessions({
         }
 
         if (typeof activity !== 'string' && activity.type === 'usage') {
-          usageTracker.mergeUsage({
+          currentOwner().usageTracker.mergeUsage({
             key,
             activity,
           })
@@ -1081,7 +1126,7 @@ export function createLiveSessions({
 
         if (activity === 'finished') {
           entry.stopping = false
-          const current = loadHydra({ hydraId }).state.cards[card.id]
+          const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
           const pending = entry.input.pending({
             includes: ({ steeringIds }) => {
               if (!steeringIds) {
@@ -1187,11 +1232,11 @@ export function createLiveSessions({
       releaseCompact({ card: card.id })
     }
 
-    if (entry.replaced || !closing() && live.get(key) !== entry) {
+    if (entry.replaced || !closing() && currentOwner().live.get(key) !== entry) {
       return
     }
 
-    const pendingTools = loadHydra({ hydraId }).state.cards[card.id]
+    const pendingTools = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
     const unapplied = pendingTools?.toolsRevision !== pendingTools?.toolsApplied
     retire({
       key,
@@ -1241,6 +1286,20 @@ export function createLiveSessions({
     })
 
     const key = sessionId({ agent: card.agent })
+
+    for (const [
+      previousKey,
+      previous,
+    ] of live) {
+      if (previous.task === card.id && previousKey !== key) {
+        previous.replaced = true
+        retire({
+          key: previousKey,
+          entry: previous,
+        })
+      }
+    }
+
     const running = live.get(key)
 
     const reassigned = running && (running.task !== card.id
@@ -1263,7 +1322,12 @@ export function createLiveSessions({
     }
 
     folderOf({ card })
+    const assignment = {
+      ...card,
+      agent: { ...card.agent },
+    }
     const entry: Live = {
+      assignment,
       input: inbox(),
       replies: liveReplies(),
       activity: 'finished',
@@ -1280,16 +1344,18 @@ export function createLiveSessions({
       tools: new Map(),
       toolNames: new Map(),
     }
+    trackTaskSession({
+      key,
+      entry,
+      owner: getOwner(),
+    })
     live.set(
       key,
       entry,
     )
     entry.consumed = consume({
       key,
-      card: {
-        ...card,
-        agent: { ...card.agent },
-      },
+      card: assignment,
       entry,
     })
 

@@ -55,7 +55,8 @@ import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
 import { createHostRecovery } from './host-recovery.ts'
-import { createLiveSessions } from '#workers/live-sessions.ts'
+import { createLiveSessions, type LiveSessionScope } from '#workers/live-sessions.ts'
+import { abortHydraTasks, registerTaskHost, taskChildren, taskUsages, trackedTaskTools, stopHydraTaskTools, type TaskSessionOwner, type ToolApplication } from './task-runtime.ts'
 import { createCardInputs, waitingCardInput } from '#workers/card-input.ts'
 import { createLiveSettings } from '#workers/live-settings.ts'
 import { createHydraTurns } from '#hydra/turns.ts'
@@ -143,12 +144,34 @@ export function createHost({
   const controller = new AbortController()
   const live = new Map<string, Live>()
   const toolRetries = new Map<string, NodeJS.Timeout>()
-  const toolApplications = new Map<string, {
-    revision: string
-    attempted: boolean
-    attempts: number
-    retryAt: number
-  }>()
+  const toolApplications = new Map<string, ToolApplication>()
+
+  const retryTools = ({
+    task,
+    application,
+  }: {
+    task: string
+    application: ToolApplication
+  }) => {
+    clearTimeout(toolRetries.get(task))
+    toolRetries.set(
+      task,
+      setTimeout(
+        () => background({
+          name: 'tool grant retry',
+          run: () => {
+            application.retryAt = 0
+
+            return host.toolsChanged({ task })
+          },
+        }),
+        Math.max(
+          0,
+          application.retryAt - Date.now(),
+        ),
+      ).unref(),
+    )
+  }
 
   const toolApplication = ({
     task,
@@ -196,6 +219,7 @@ export function createHost({
     hydraId,
     streamed,
     usageChanged,
+    usages: taskUsages(),
   })
 
   let closing = false
@@ -555,7 +579,11 @@ export function createHost({
           spawned({ child })
 
           if (child.pid !== undefined && taskId) {
-            children.associate({
+            const trackedChildren = taskId === HYDRA_CARD ? children : taskChildren({
+              hydraId,
+              task: taskId,
+            })
+            trackedChildren.associate({
               pid: child.pid,
               task: taskId,
             })
@@ -638,14 +666,7 @@ export function createHost({
     note,
   })
 
-  const {
-    retire,
-    open,
-    resumeTools,
-    action,
-    thread,
-    close: closeSessions,
-  } = createLiveSessions({
+  const sessionScope: LiveSessionScope = {
     hydraId,
     live,
     closing: () => closing,
@@ -689,23 +710,10 @@ export function createHost({
         // beginTools counts an attempt only below the bound, so every attempt has its delay.
         const delay = retryDelays[application.attempts - 1]!
         application.retryAt = Date.now() + delay
-        // A quiet Hydra may see no event before then, so the retry has its own timer.
-        clearTimeout(toolRetries.get(task))
-        toolRetries.set(
+        retryTools({
           task,
-          setTimeout(
-            () => background({
-              name: 'tool grant retry',
-              run: () => {
-                // Node may fire a timer a millisecond before Date.now reaches its mark, so the wait counts as done.
-                application.retryAt = 0
-
-                return host.toolsChanged({ task })
-              },
-            }),
-            delay,
-          ).unref(),
-        )
+          application,
+        })
       }
     },
     usageTracker,
@@ -728,6 +736,17 @@ export function createHost({
     settleDirect: ({ ...input }) => settleDirect(input),
     directReply: ({ ...input }) => directReply(input),
     turns: () => turns,
+  }
+  const {
+    retire,
+    open,
+    resumeTools,
+    action,
+    thread,
+    close: closeSessions,
+  } = createLiveSessions({
+    ...sessionScope,
+    getOwner: () => taskOwner,
   })
 
   const { set } = createLiveSettings({
@@ -962,8 +981,6 @@ export function createHost({
     presence,
     providerOf,
     environment,
-    controller,
-    children,
     open,
     folderOf,
   })
@@ -1524,6 +1541,13 @@ export function createHost({
 
       if (permanent) {
         await children.stop({ task })
+
+        if (task !== HYDRA_CARD) {
+          await taskChildren({
+            hydraId,
+            task,
+          }).stop({ task })
+        }
       }
 
       return { released: entries.length }
@@ -1554,7 +1578,10 @@ export function createHost({
         }
       }
 
-      const owned = children.tasks()
+      const owned = new Set([
+        ...children.tasks(),
+        ...trackedTaskTools({ hydraId }),
+      ])
 
       for (const card of Object.values(state.cards)) {
         if (card.id === HYDRA_CARD || !closedTask({
@@ -1597,7 +1624,13 @@ export function createHost({
         if (owned.has(card.id)) {
           background({
             name: 'closed agent cleanup',
-            run: () => children.stop({ task: card.id }),
+            run: async () => {
+              await children.stop({ task: card.id })
+              await taskChildren({
+                hydraId,
+                task: card.id,
+              }).stop({ task: card.id })
+            },
           })
         }
       }
@@ -1643,7 +1676,10 @@ export function createHost({
 
     recover,
 
-    stopTools: children.stopAll,
+    stopTools: async () => {
+      await children.stopAll()
+      await stopHydraTaskTools({ hydraId })
+    },
 
     close: () => {
       closing = true
@@ -1658,13 +1694,69 @@ export function createHost({
       }
 
       stalls.close()
+      abortHydraTasks({ hydraId })
       controller.abort()
 
       compaction.close()
 
       closeSessions()
+      withdrawTaskHost()
     },
   }
+
+  const taskOwner: TaskSessionOwner = {
+    ...sessionScope,
+    host,
+    changed,
+    retire,
+    requireMovable({ task }) {
+      const entry = [...live.values()].find(entry => entry.task === task)
+      const opening = starting({ task }) || entry && (!entry.session || entry.toolResume)
+      const busy = opening || compaction.releasing.has(task)
+
+      if (busy) {
+        throw new HydraError({
+          code: 'CONFLICT',
+          message: `Task ${task} is starting or delivering held input; retry its move after that settles`,
+        })
+      }
+    },
+    suspendTask({ card }) {
+      clearTimeout(toolRetries.get(card.id))
+      toolRetries.delete(card.id)
+      const tools = toolApplications.get(card.id)
+      toolApplications.delete(card.id)
+
+      return {
+        tools,
+        compaction: compaction.suspendTask({ card }),
+      }
+    },
+    adoptTask({
+      card,
+      handoff,
+    }) {
+      if (handoff.tools) {
+        toolApplications.set(
+          card.id,
+          handoff.tools,
+        )
+
+        if (handoff.tools.retryAt) {
+          retryTools({
+            task: card.id,
+            application: handoff.tools,
+          })
+        }
+      }
+
+      compaction.adoptTask({
+        card,
+        handoff: handoff.compaction,
+      })
+    },
+  }
+  const withdrawTaskHost = registerTaskHost({ owner: taskOwner })
 
   return host
 }

@@ -1,4 +1,5 @@
 import { nativeIdle } from './native-session.ts'
+import { taskChildren, taskController } from '#app/task-runtime.ts'
 import { inform } from '#app/command-notices.ts'
 import { decideReply } from './reply-rules.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
@@ -6,7 +7,6 @@ import { realpathSync } from 'node:fs'
 import { BROWSER_TOOL, toolNames, writeTools } from './tools.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { transcriptPath } from './claude.ts'
-import type { trackChildren } from './children.ts'
 import { accountEnvironment } from './dispatch.ts'
 import { isFolder } from './folders.ts'
 import { WORKER_COMMANDS } from './host.ts'
@@ -42,8 +42,6 @@ export function createWorkerStarts({
   presence,
   providerOf,
   environment,
-  controller,
-  children,
   open,
   folderOf,
 }: {
@@ -68,8 +66,6 @@ export function createWorkerStarts({
     task?: string
     steeringWorker?: string
   }): NodeJS.ProcessEnv
-  controller: AbortController
-  children: ReturnType<typeof trackChildren>
   open({
     card,
     session,
@@ -311,8 +307,14 @@ export function createWorkerStarts({
           task: target.id,
           steeringWorker: `${id}:attach`,
         }),
-        signal: controller.signal,
-        spawned: children.spawned,
+        signal: taskController({
+          hydraId,
+          task: target.id,
+        }).signal,
+        spawned: taskChildren({
+          hydraId,
+          task: target.id,
+        }).spawned,
       })
       session = prepared
 
