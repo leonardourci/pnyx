@@ -59,7 +59,7 @@ export async function hydraSend({
 
   // Read before the Hydra writer, so the shared registry lock is never taken inside it.
   const effective = effectiveDispatch()
-  const result = commit({
+  const result = await commit({
     hydraId,
     meta: m,
     intent: {
@@ -163,7 +163,7 @@ export async function hydraSend({
   }
 
   if (result.duplicate) {
-    const claimed = withWriter({
+    const claimed = await withWriter({
       hydraId,
       fn: ({ writer }) => {
         const current = writer.state.hydraMessages?.find(input => input.id === message.id)
@@ -217,7 +217,7 @@ export async function hydraSend({
       help: ['The Pnyx server runs Hydra; replies and startup errors appear in its chat'],
     }
   } catch (error) {
-    withWriter({
+    await withWriter({
       hydraId,
       fn: ({ writer }) => failHydraInput({
         writer,

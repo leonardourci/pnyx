@@ -26,7 +26,7 @@ export function agentNotices<T extends Record<string, Command>>({
     name: string
     run: Command
   }) => guard({
-    handler: ({ args }) => {
+    handler: async ({ args }) => {
       let commandOptions: Options = {}
 
       if (name === 'task') {
@@ -95,14 +95,14 @@ export function agentNotices<T extends Record<string, Command>>({
         return result
       }
 
-      const notice = ({ output }: { output: unknown }) => {
+      const notice = async ({ output }: { output: unknown }) => {
         const receipt = asRecord({ value: output })
         const event = asRecord({ value: receipt?.event })
 
         if (typeof event?.id === 'string') {
           const fields = args.filter(arg => arg.startsWith('--') && !(arg.slice(2).split('=')[0]! in WRITE))
             .map(arg => arg.slice(2).split('=')[0])
-          settingsNotice({
+          await settingsNotice({
             hydraId,
             meta: {
               actor: 'hydra',
@@ -117,12 +117,12 @@ export function agentNotices<T extends Record<string, Command>>({
       }
 
       if (result instanceof Promise) {
-        const finish = async () => notice({ output: await result })
+        const finish = async () => await notice({ output: await result })
 
         return finish()
       }
 
-      return notice({ output: result })
+      return await notice({ output: result })
     },
   })
 
