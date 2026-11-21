@@ -55,6 +55,8 @@ done: Implemented and verified the requested behavior
 
 A `note` updates the latest card line; running and idle come from the worker session. `needs-you` asks for a decision, `blocked` records an obstacle, `link` attaches a result, and `done` reports completion. Follow the task brief's landing rules before reporting done. Do not edit server-owned records.
 
+The routine helper handles worker updates within the accepted instructions. Worker `done`, `needs-you` and `blocked` reports, finished findings, work ready for review, failures and owner questions go to Hydra, which tells you in your main chat in one plain line per outcome with full supplied links. Only chores the accepted instructions already cover, such as rerunning checks or answering an in-scope worker question, and unchanged waits stay quiet. Owner outcomes remain pending until Hydra finishes its turn.
+
 ## Isolated checks
 
 Use a temporary `PNYX_HOME` for trials. When portless is installed, use `PNYX_HOME=<temporary-dir> portless <unique-name>.pnyx pnyx serve` and the URL it prints. Otherwise use `--port 0`. Setup changes hooks, skills or the login service beyond the selected home; use `--preview` to inspect those targets.

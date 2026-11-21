@@ -32,7 +32,7 @@ export type HelperOutcome = {
 })
 
 export const needsMain = ({ outcome }: { outcome: HelperOutcome }) =>
-  outcome.status === 'needs_main' || outcome.audience === 'owner'
+  outcome.status === 'handled' || outcome.status === 'needs_main' || outcome.audience === 'owner'
 
 export interface HelperUsage {
   used?: number
@@ -161,7 +161,6 @@ export function applyHelper({
 
 export const handbackId = ({ id }: { id: string }) => `helper-handback:${id}`
 
-// Escalations main has not handled, including owner outcomes from older logs.
 export function ownerOutcomes({ state }: { state: HydraState }): HelperOutcome[] {
   return (state.helper?.outcomes ?? [])
     .filter(outcome => needsMain({ outcome }) && outcome.seq > (state.helper?.delivered ?? 0))
