@@ -4,10 +4,9 @@ import { spoolDir } from '#store/storage.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import { query } from '#store/postgres.ts'
 import { scanEvents } from '#app/event-log.ts'
-import { logZeroOutput } from '#app/zero-cache.ts'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { watchZeroCache } from '#workers/agent-memory.ts'
+import { watchAgent } from '#workers/agent-memory.ts'
 import { AsyncResource } from 'node:async_hooks'
 import { readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { beforeAll, expect, test, vi } from 'vitest'
@@ -93,18 +92,10 @@ test(
         at: '2026-01-01T00:00:01.000Z',
       }),
     )
-    expect(ingestSpool({ hydraId: hydra.id }).ingested).toBe(2)
+    expect((await ingestSpool({ hydraId: hydra.id })).ingested).toBe(2)
     await fetch(`http://127.0.0.1:${pnyx.port()}/health`)
     await flushLogs()
-    logZeroOutput({ line: 'worker=cache private-on-zero-value' })
-    await flushLogs()
     const onLines = lines().slice(onStart)
-    expect(JSON.stringify(onLines)).not.toContain('private-on-zero-value')
-    expect(onLines).toContainEqual(expect.objectContaining({
-      operation: 'zero.output',
-      level: 'warn',
-      name: expect.stringMatching(/^[a-f0-9]{64}$/),
-    }))
     expect(onLines.some(line => line.operation === 'http.request' && line.status === '200')).toBe(false)
     expect(onLines.some(line => line.operation === 'events.read' && line.ms < 100)).toBe(false)
     expect(onLines.some(line => line.operation === 'hook.push')).toBe(false)
@@ -141,7 +132,10 @@ test(
         'setInterval(() => {}, 1000)',
       ],
     )
-    watchZeroCache({ child: cache })
+    watchAgent({
+      child: cache,
+      ids: { hydraId: hydra.id },
+    })
     const sample = startProcessLines({ every: 20 })
 
     try {
@@ -151,7 +145,7 @@ test(
           await flushLogs()
 
           return lines().slice(sampleStart)
-            .some(line => line.operation === 'agent.memory' && line.zeroRss > 0)
+            .some(line => line.operation === 'agent.memory' && line.agents.some((agent: { rss: number }) => agent.rss > 0))
         },
       })
     } finally {
@@ -189,7 +183,6 @@ test(
         },
       ],
     })
-    logZeroOutput({ line: 'worker=cache private-zero-value' })
     log({
       operation: 'privacy.probe',
       level: 'error',
@@ -252,12 +245,6 @@ test(
         }),
       }),
     ]))
-    expect(recorded).toContainEqual(expect.objectContaining({
-      operation: 'zero.output',
-      level: 'warn',
-      provider: 'cache',
-      name: expect.stringMatching(/^[a-f0-9]{64}$/),
-    }))
     const scan = await withLogRequest({
       requestId: 'scan-probe',
       run: async () => {
@@ -285,7 +272,7 @@ test(
       operation: 'http.request',
       requestId: command.requestId,
     }))
-    expect(JSON.stringify(recorded)).not.toMatch(/private-owner-message|private-worker-message|private-request-value|private-message-frame|private-zero-value|private-page-secret/)
+    expect(JSON.stringify(recorded)).not.toMatch(/private-owner-message|private-worker-message|private-request-value|private-message-frame|private-page-secret/)
   },
 )
 
@@ -530,7 +517,7 @@ test(
 )
 
 test(
-  'performance includes agent, cache and storage samples without operation rows',
+  'performance includes agent and storage samples without operation rows',
   async () => {
     log({
       operation: 'process',
@@ -545,7 +532,6 @@ test(
           rss: 2097152,
         },
       ],
-      zeroRss: 3145728,
     })
     log({
       operation: 'storage',
@@ -564,7 +550,6 @@ test(
     ].includes(row.operation))).toBe(false)
     expect(report.memory).toContainEqual(expect.objectContaining({
       agentsMB: 2,
-      zeroMB: 3,
       databaseMB: 4,
       logsMB: 5,
       activeResources: 5,
@@ -624,16 +609,16 @@ test(
       syncBuiltinESMExports();
       // Import after installing the external process gate, before promisify captures execFile.
       const { startProcessLines } = await import('#diagnostics/process-line.ts');
-      const { watchZeroCache } = await import('#workers/agent-memory.ts');
+      const { watchAgent } = await import('#workers/agent-memory.ts');
       openLogs();
-      watchZeroCache({ child: process });
+      watchAgent({ child: process, ids: { hydraId: 'synthetic' } });
       const sampler = startProcessLines({ every: 1 });
       const LISTING_WAIT_MS = 10000;
       const timeout = setTimeout(() => { throw new Error('process listing did not start'); }, LISTING_WAIT_MS);
       await listingStarted;
       clearTimeout(timeout);
       sampler.stop();
-      log({ operation: 'agent.memory', agents: [{ hydraId: 'synthetic', rss: 2097152 }], zeroRss: 3145728 });
+      log({ operation: 'agent.memory', agents: [{ hydraId: 'synthetic', rss: 2097152 }] });
       await flushLogs();
       complete();
       await setImmediate();
@@ -662,7 +647,6 @@ test(
             rss: 2097152,
           },
         ],
-        zeroRss: 3145728,
       }),
     ])
   },
