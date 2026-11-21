@@ -597,7 +597,10 @@ export async function mountOwnedHydra({
         installation: hydraIdentity({ hydraId: '' }),
       },
     })
-    sendLatest({ ws })
+    sendLatest({
+      ws,
+      initial: true,
+    })
 
     return {
       receive({ message }) {

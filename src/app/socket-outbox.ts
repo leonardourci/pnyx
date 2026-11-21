@@ -9,6 +9,47 @@ interface Frame {
   text: string
 }
 
+interface InitialActivity {
+  initial: Iterator<Frame>
+  scope?: string
+}
+
+function encode({ message }: { message: ServerMessage }): Frame {
+  const text = JSON.stringify(message)
+
+  return {
+    message,
+    text,
+    bytes: Buffer.byteLength(text),
+  }
+}
+
+function* initialActivity({ message }: { message: Extract<ServerMessage, { type: 'latest' }> }): Generator<Frame> {
+  const ids = new Set([
+    ...Object.keys(message.messages),
+    ...Object.keys(message.actions),
+    ...Object.keys(message.spend ?? {}),
+    ...Object.keys(message.usage ?? {}),
+  ])
+
+  for (const id of ids) {
+    const select = <Value>({ values }: { values?: Record<string, Value> }) =>
+      values && Object.hasOwn(
+        values,
+        id,
+      ) ? { [id]: values[id]! } : {}
+    yield encode({
+      message: {
+        ...message,
+        messages: select({ values: message.messages }),
+        actions: select({ values: message.actions }),
+        spend: select({ values: message.spend }),
+        usage: select({ values: message.usage }),
+      },
+    })
+  }
+}
+
 export function createSocketOutbox({
   socket,
   limit = MAX_SOCKET_BYTES,
@@ -27,7 +68,7 @@ export function createSocketOutbox({
   }
   limit?: number
 }) {
-  const frames: Frame[] = []
+  const frames: (Frame | InitialActivity)[] = []
   let bytes = 0
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -40,6 +81,16 @@ export function createSocketOutbox({
     bytes = 0
   }
 
+  const scheduleDrain = () => {
+    if (!timer) {
+      timer = setTimeout(
+        drain,
+        DRAIN_RETRY_MS,
+      )
+      timer.unref()
+    }
+  }
+
   const drain = () => {
     timer = undefined
 
@@ -50,8 +101,25 @@ export function createSocketOutbox({
     }
 
     while (frames.length && socket.bufferedAmount < limit) {
-      const frame = frames.shift()!
-      bytes -= frame.bytes
+      const next = frames[0]!
+      let frame: Frame
+
+      if ('initial' in next) {
+        const item = next.initial.next()
+
+        if (item.done) {
+          frames.shift()
+
+          continue
+        }
+
+        frame = item.value
+      } else {
+        frame = next
+        frames.shift()
+        bytes -= frame.bytes
+      }
+
       socket.send({
         text: frame.text,
         message: frame.message,
@@ -59,23 +127,38 @@ export function createSocketOutbox({
     }
 
     if (frames.length) {
-      timer = setTimeout(
-        drain,
-        DRAIN_RETRY_MS,
-      )
-      timer.unref()
+      scheduleDrain()
     }
   }
 
-  const send = ({ message }: { message: ServerMessage }): boolean => {
+  const send = ({
+    message,
+    initial = false,
+  }: {
+    message: ServerMessage
+    initial?: boolean
+  }): boolean => {
     if (closed || !socket.open()) {
       return false
     }
 
     if (message.type === 'latest') {
-      const previous = frames.findLast(frame => frame.message.type === 'latest'
-        && frame.message.scope === message.scope
-        && frame.message.subscription === message.subscription)
+      let previous: Frame | undefined
+
+      for (let i = frames.length - 1; i >= 0; i -= 1) {
+        const frame = frames[i]!
+
+        if ('initial' in frame || frame.message.type === 'home.delta' || frame.message.type === 'home.snapshot') {
+          break
+        }
+
+        if (frame.message.type === 'latest' && frame.message.scope === message.scope
+          && frame.message.subscription === message.subscription) {
+          previous = frame
+
+          break
+        }
+      }
 
       if (previous?.message.type === 'latest') {
         message = {
@@ -106,39 +189,47 @@ export function createSocketOutbox({
       }
     }
 
-    const text = JSON.stringify(message)
-    const size = Buffer.byteLength(text)
+    const frame = encode({ message })
+
+    if (initial && message.type === 'latest' && frame.bytes + bytes > limit) {
+      const previous = frames.findIndex(item => 'initial' in item && item.scope === message.scope)
+
+      if (previous !== -1) {
+        frames.splice(
+          previous,
+          1,
+        )
+      }
+
+      // A workspace can exceed the live queue budget; its initial activity drains without retaining encoded frames.
+      frames.push({
+        initial: initialActivity({ message }),
+        scope: message.scope,
+      })
+      scheduleDrain()
+
+      return true
+    }
 
     if (!frames.length && socket.bufferedAmount < limit) {
       socket.send({
-        text,
+        text: frame.text,
         message,
       })
 
       return true
     }
 
-    if (bytes + size > limit) {
+    if (bytes + frame.bytes > limit) {
       close()
       socket.disconnect()
 
       return false
     }
 
-    frames.push({
-      message,
-      text,
-      bytes: size,
-    })
-    bytes += size
-
-    if (!timer) {
-      timer = setTimeout(
-        drain,
-        DRAIN_RETRY_MS,
-      )
-      timer.unref()
-    }
+    frames.push(frame)
+    bytes += frame.bytes
+    scheduleDrain()
 
     return true
   }

@@ -4,7 +4,7 @@ import type { ServerMessage } from '#app/server-transport.ts'
 
 afterEach(() => vi.useRealTimers())
 
-function slowSocket() {
+function slowSocket({ bufferWrites = false }: { bufferWrites?: boolean } = {}) {
   let bufferedAmount = 10_000
   const sent: ServerMessage[] = []
   const disconnect = vi.fn()
@@ -15,6 +15,10 @@ function slowSocket() {
     open: () => !disconnect.mock.calls.length,
     send({ text }: { text: string }) {
       sent.push(JSON.parse(text))
+
+      if (bufferWrites) {
+        bufferedAmount += Buffer.byteLength(text)
+      }
     },
     disconnect,
   }
@@ -236,6 +240,110 @@ test(
 )
 
 test(
+  'activity stays on its side of a home state change',
+  () => {
+    vi.useFakeTimers()
+    const socket = slowSocket()
+    const before: ServerMessage = {
+      type: 'latest',
+      messages: {
+        before: {
+          role: 'assistant',
+          text: 'Old session',
+        },
+      },
+      actions: {},
+    }
+    const change: ServerMessage = {
+      type: 'home.delta',
+      cursor: {
+        epoch: 'daemon',
+        seq: 1,
+      },
+      changes: {
+        set: {},
+        nested: {},
+        remove: [],
+      },
+    }
+    const after: ServerMessage = {
+      type: 'latest',
+      messages: {
+        after: {
+          role: 'assistant',
+          text: 'Other card',
+        },
+      },
+      actions: {},
+    }
+    socket.send({ message: before })
+    socket.send({ message: change })
+    socket.send({ message: after })
+    socket.drain()
+    expect(socket.sent).toEqual([
+      before,
+      change,
+      after,
+    ])
+    socket.close()
+  },
+)
+
+test(
+  'large initial activity is paced after home ready without disconnecting',
+  () => {
+    vi.useFakeTimers()
+    const socket = slowSocket({ bufferWrites: true })
+    const ready: ServerMessage = {
+      type: 'home.ready',
+      cursor: {
+        epoch: 'daemon',
+        seq: 1,
+      },
+    }
+    const messages = Object.fromEntries(Array.from(
+      { length: 100 },
+      (
+        _,
+        id,
+      ) => [
+        String(id),
+        {
+          role: 'assistant' as const,
+          text: 'x'.repeat(280),
+        },
+      ],
+    ))
+    expect(socket.send({ message: ready })).toBe(true)
+    expect(socket.send({
+      initial: true,
+      message: {
+        type: 'latest',
+        messages,
+        actions: {},
+      },
+    })).toBe(true)
+    socket.drain()
+    expect(socket.sent[0]).toEqual(ready)
+    expect(socket.sent.length).toBeLessThan(Object.keys(messages).length)
+
+    for (let i = 0; i < Object.keys(messages).length && vi.getTimerCount(); i += 1) {
+      socket.drain()
+    }
+
+    const received = Object.assign(
+      {},
+      ...socket.sent.flatMap(frame => frame.type === 'latest' ? [frame.messages] : []),
+    )
+    expect(received).toEqual(messages)
+    expect(socket.sent.every(frame => Buffer.byteLength(JSON.stringify(frame)) <= 1_000)).toBe(true)
+    expect(socket.disconnect).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    socket.close()
+  },
+)
+
+test(
   'overflow disconnects the slow client so it can resume instead of losing a receipt',
   () => {
     vi.useFakeTimers()
@@ -243,11 +351,20 @@ test(
     expect(socket.send({
       message: {
         type: 'receipt',
+        id: 'first',
+        text: 'x'.repeat(600),
+      },
+    })).toBe(true)
+    expect(vi.getTimerCount()).toBe(1)
+    expect(socket.send({
+      message: {
+        type: 'receipt',
         id: 'saved',
-        text: 'x'.repeat(1_000),
+        text: 'x'.repeat(600),
       },
     })).toBe(false)
     expect(socket.disconnect).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
     socket.drain()
     expect(socket.sent).toEqual([])
     expect(socket.send({

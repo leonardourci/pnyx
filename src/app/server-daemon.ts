@@ -510,7 +510,16 @@ export async function startServer({
               disconnect: () => ws.terminate(),
             },
           })
-          const send = ({ message }: { message: ServerMessage }) => outbox.send({ message })
+          const send = ({
+            message,
+            initial,
+          }: {
+            message: ServerMessage
+            initial?: boolean
+          }) => outbox.send({
+            message,
+            initial,
+          })
 
           const sendHome = ({ message }: { message: HomeMessage }) => {
             send({ message })
@@ -565,8 +574,12 @@ export async function startServer({
                 return ws.readyState
               },
               OPEN: ws.OPEN,
-              send({ message }) {
+              send({
+                message,
+                initial,
+              }) {
                 return send({
+                  initial,
                   message: scoped || hydra !== primary ? {
                     ...message,
                     scope: hydra,

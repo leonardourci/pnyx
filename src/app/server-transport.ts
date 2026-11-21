@@ -98,7 +98,13 @@ export interface HydraClient {
   readonly bufferedAmount: number
   readonly readyState: number
   readonly OPEN: number
-  send({ message }: { message: ServerMessage }): boolean
+  send({
+    message,
+    initial,
+  }: {
+    message: ServerMessage
+    initial?: boolean
+  }): boolean
   terminate(): void
 }
 
