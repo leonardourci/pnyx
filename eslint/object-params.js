@@ -38,8 +38,6 @@ const externalCallbacks = new Set([
   'before',
   'afterEach',
   'beforeEach',
-  // Zero's query builder
-  'related',
   ...playwrightCallbacks,
 ])
 const callbackCalls = new Set([
