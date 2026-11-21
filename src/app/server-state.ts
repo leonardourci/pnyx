@@ -79,7 +79,7 @@ async function probeServer(): Promise<{
   }
 
   try {
-    const health = (await res.json()) as {
+    const health = await res.json() as {
       hydras?: unknown
       pid?: unknown
     }

@@ -18,7 +18,6 @@ import { DEFAULT_SETTINGS, patchSettings, pickView, withDefaults } from './setti
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
-import { query } from '#store/postgres.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -384,7 +383,7 @@ export function saveSettings({
 export const configuredPostgres = () => readFolded().settings.postgresUrl
 
 // postgresUrl may hold a password, so pages never get it.
-function pageSettings({ settings }: { settings: Settings }): PageSettings {
+export function pageSettings({ settings }: { settings: Settings }): PageSettings {
   const shown: Partial<Settings> = { ...settings }
   delete shown.postgresUrl
 
@@ -426,30 +425,6 @@ export const shownSettings = ({ settings }: { settings: Settings }): Settings =>
   ...settings,
   postgresUrl: maskedUrl({ url: settings.postgresUrl }),
 })
-
-// The page reads the shared settings through Zero, so their newest revision is copied into Postgres; the settings log
-// stays their record, since it also names the database. A copy at the row's own revision replaces it too, so a start
-// rewrites a row an older build wrote, which lacks the keys added since and keeps that build's defaults.
-export function mirrorSettings({
-  settings,
-  revision,
-}: {
-  settings: Settings
-  revision: number
-}): void {
-  query({
-    statements: [
-      {
-        text: `insert into settings (id, revision, value) values ('shared', $1, $2) on conflict (id)
-          do update set revision = excluded.revision, value = excluded.value where settings.revision <= excluded.revision`,
-        values: [
-          revision,
-          JSON.stringify(pageSettings({ settings })),
-        ],
-      },
-    ],
-  })
-}
 
 // A command that also writes a Hydra checks its shared part first and saves it only once that write succeeds.
 export function checkSettings({ patch }: { patch: unknown }): void {

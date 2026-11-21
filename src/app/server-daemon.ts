@@ -7,13 +7,16 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { dirname } from 'node:path'
 import { mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
+import { createSocketOutbox, MAX_SOCKET_BYTES } from './socket-outbox.ts'
+import { createSocketHistory, type SocketCursor } from './socket-history.ts'
+import { pageChanges, type HomeMessage, type HomePage, type PageChanges } from './socket-state.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { agentsMidTurn, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { allowedRequest, requestUrl, HYDRA_PATH, ZERO_QUERY_PATH, type RunningServer, type MountedHydra, type HydraSubscription, type ServerMessage, type HydraClient } from './server-transport.ts'
-import { MAX_MESSAGE_BYTES, zeroCookieName } from './server-protocol.ts'
+import { allowedRequest, requestUrl, HYDRA_PATH, type RunningServer, type MountedHydra, type HydraSubscription, type ServerMessage, type HydraClient } from './server-transport.ts'
+import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
@@ -26,13 +29,12 @@ import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
 import { watchPath } from './watch.ts'
-import { mirrorSettings, readSettings, settingsLogPath } from '#settings/store.ts'
+import { pageSettings, readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
-import { isZeroPath, startZeroCache, type ZeroCache } from './zero-cache.ts'
 import { holdHydra, hydraExists, loadHydra } from './store.ts'
 import { migrateSchema, query } from '#store/postgres.ts'
 
@@ -68,30 +70,13 @@ const parseJson = ({ text }: { text: string | null }): unknown => {
   }
 }
 
-// The last upgrade check, the row the page's upgrade notice reads.
-const saveUpgradeStatus = ({ status }: { status: UpgradeStatus }) => query({
-  statements: [
-    {
-      text: `insert into upgrade_status (id, available, checked_at) values ('current', $1, $2)
-        on conflict (id) do update set available = excluded.available, checked_at = excluded.checked_at`,
-      values: [
-        status.available,
-        status.checkedAt,
-      ],
-    },
-  ],
-})
-
 export async function startServer({
   hydraId = 'default',
   port = 0,
-  zeroCache = false,
   ...options
 }: {
   hydraId?: string
   port?: number
-  // Whether to run zero-cache for the page's reads; only serve does, so other test servers start no child.
-  zeroCache?: boolean
   catalogLocations?: CatalogLocations
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
@@ -141,8 +126,71 @@ export async function startServer({
   const pendingLogs = new Map<string, () => void>()
   const skipped: Record<string, string> = {}
   let closed = false
-  let summariesQueued = false, summariesKey = ''
-  let zero: ZeroCache | undefined
+  let summariesQueued = false
+  const homeHistory = createSocketHistory<PageChanges>()
+  const homeClients = new Set<({ message }: { message: HomeMessage }) => void>()
+
+  const homeSettings = (): HomePage['settings'] => {
+    const {
+      settings,
+      revision,
+    } = readSettings()
+
+    return {
+      settings: pageSettings({ settings }),
+      revision,
+    }
+  }
+
+  let home: HomePage = {
+    hydras: [],
+    settings: homeSettings(),
+    upgrade: null,
+    scopes: {},
+  }
+
+  let upgradeStatus: UpgradeStatus | null = null
+
+  const publishHome = () => {
+    const next: HomePage = JSON.parse(JSON.stringify({
+      hydras: listHydras(),
+      settings: homeSettings(),
+      upgrade: upgradeStatus,
+      scopes: Object.fromEntries([...served].map(([
+        id,
+        mount,
+      ]) => [
+        id,
+        mount.view(),
+      ])),
+    }))
+    const changes = pageChanges({
+      before: home,
+      after: next,
+    })
+    home = next
+
+    if (changes) {
+      const {
+        epoch,
+        seq,
+        value,
+      } = homeHistory.append({ value: changes })
+
+      for (const send of homeClients) {
+        send({
+          message: {
+            type: 'home.delta',
+            cursor: {
+              epoch,
+              seq,
+            },
+            changes: value,
+          },
+        })
+      }
+    }
+  }
 
   const hydrasChanged = () => {
     if (closed || summariesQueued) {
@@ -159,21 +207,7 @@ export async function startServer({
           return
         }
 
-        const hydras = listHydras(), key = JSON.stringify(hydras)
-
-        if (key !== summariesKey) {
-          query({
-            statements: hydras.map(summary => ({
-              text: 'update hydras set summary = $2::json where id = $1 and summary::text is distinct from $2::text',
-              values: [
-                summary.id,
-                JSON.stringify(summary),
-              ],
-            })),
-          })
-          // Only once written, so a failed write is tried again on the next change.
-          summariesKey = key
-        }
+        publishHome()
       },
     }))
   }
@@ -211,29 +245,6 @@ export async function startServer({
       search,
     } = requestUrl({ url: req.url })
 
-    if (isZeroPath({ path })) {
-      return zero ? zero.request({
-        req,
-        res,
-      }) : reply({
-        res,
-        status: 404,
-        body: {
-          error: 'this server runs no zero-cache',
-          code: 'NOT_FOUND',
-        },
-      })
-    }
-
-    // Outside /zero, so a page cannot reach it through the proxy; zero-cache calls it with its per-run API key.
-    if (req.method === 'POST' && path === ZERO_QUERY_PATH && zero) {
-      return zero.query({
-        req,
-        res,
-        search,
-      })
-    }
-
     const [
       , id,
       rest,
@@ -251,7 +262,6 @@ export async function startServer({
             home: `/hydra/${id}/`,
             page: {
               token: localToken(),
-              cookie: zeroCookieName({ port: bound }),
               identity: hydraIdentity({ hydraId: id }),
               base: `/hydra/${id}/`,
             },
@@ -355,7 +365,7 @@ export async function startServer({
     const started = performance.now()
     const requestId = randomUUID()
     // Paths can contain user input; retain only a known route family.
-    const route = /^\/(api|zero-query|zero|health)(?:[/?]|$)/.exec(req.url ?? '')?.[1] ?? 'static'
+    const route = /^\/(api|health)(?:[/?]|$)/.exec(req.url ?? '')?.[1] ?? 'static'
     res.once(
       'close',
       () => log({
@@ -425,20 +435,6 @@ export async function startServer({
       )
       const url = requestUrl({ url: req.url })
 
-      if (isZeroPath({ path: url.pathname })) {
-        if (!zero || !allowed({ req })) {
-          socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
-
-          return
-        }
-
-        return zero.upgrade({
-          req,
-          socket,
-          head,
-        })
-      }
-
       // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
       const requested = url.searchParams.get('scope')
       const initialScope = requested && served.has(requested) ? requested : hydraId
@@ -478,30 +474,82 @@ export async function startServer({
           const subscriptions = new Map<string, HydraSubscription>()
           const attaching = new Map<string, symbol>()
           const scoped = url.searchParams.get('scoped') === '1'
+          const readsHome = url.searchParams.get('home') === '1'
           const primary = id!
 
-          const send = ({ message }: { message: ServerMessage }) => {
-            if (ws.readyState !== ws.OPEN) {
-              return
+          const outbox = createSocketOutbox({
+            socket: {
+              get bufferedAmount() {
+                return ws.bufferedAmount
+              },
+              open: () => ws.readyState === ws.OPEN,
+              send({
+                text,
+                message,
+              }) {
+                ws.send(text)
+                log({
+                  operation: 'socket.send',
+                  detailed: true,
+                  hydraId: message.scope ?? primary,
+                  name: message.type,
+                  bytes: Buffer.byteLength(text),
+                  backlog: ws.bufferedAmount,
+                })
+              },
+              disconnect: () => ws.terminate(),
+            },
+          })
+          const send = ({ message }: { message: ServerMessage }) => outbox.send({ message })
+
+          const sendHome = ({ message }: { message: HomeMessage }) => {
+            send({ message })
+          }
+
+          if (readsHome) {
+            publishHome()
+            const cursor = parseJson({ text: url.searchParams.get('cursor') }) as SocketCursor | undefined
+            const retained = homeHistory.since({ cursor })
+            const ready: HomeMessage = {
+              type: 'home.ready',
+              cursor: homeHistory.cursor(),
+            }
+            const replay = retained?.map(({
+              epoch,
+              seq,
+              value,
+            }): HomeMessage => ({
+              type: 'home.delta',
+              cursor: {
+                epoch,
+                seq,
+              },
+              changes: value,
+            }))
+            const replayBytes = replay?.reduce(
+              (
+                bytes,
+                message,
+              ) => bytes + Buffer.byteLength(JSON.stringify(message)),
+              Buffer.byteLength(JSON.stringify(ready)),
+            )
+
+            if (replay && replayBytes !== undefined && replayBytes <= MAX_SOCKET_BYTES) {
+              for (const message of replay) {
+                sendHome({ message })
+              }
+            } else {
+              sendHome({
+                message: {
+                  type: 'home.snapshot',
+                  cursor: homeHistory.cursor(),
+                  home,
+                },
+              })
             }
 
-            const started = performance.now()
-            // Encoded here, as ws would, so the line has the bytes sent; it still goes as a text frame.
-            const data = Buffer.from(JSON.stringify(message))
-            ws.send(
-              data,
-              { binary: false },
-            )
-            log({
-              operation: 'socket.send',
-              // Every message is a live update; a thread page also gets its own thread.page line.
-              detailed: true,
-              hydraId: message.scope ?? primary,
-              name: message.type,
-              bytes: data.length,
-              backlog: ws.bufferedAmount,
-              ms: performance.now() - started,
-            })
+            sendHome({ message: ready })
+            homeClients.add(sendHome)
           }
 
           const attach = ({
@@ -524,7 +572,7 @@ export async function startServer({
               },
               OPEN: ws.OPEN,
               send({ message }) {
-                send({
+                return send({
                   message: scoped || hydra !== primary ? {
                     ...message,
                     scope: hydra,
@@ -598,6 +646,8 @@ export async function startServer({
           ws.on(
             'close',
             () => {
+              homeClients.delete(sendHome)
+              outbox.close()
               attaching.clear()
               subscriptions.forEach(subscription => subscription.close())
               subscriptions.clear()
@@ -911,10 +961,7 @@ export async function startServer({
   })
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
-  // The revision the server runs with, and the one Postgres holds for the pages from the first mount on. A change
-  // applies at once; a mirror that failed is tried again on the next change or retry.
   let appliedRevision = readSettings().revision
-  let mirroredRevision: number | undefined
 
   const syncSettings = () => {
     const {
@@ -932,13 +979,7 @@ export async function startServer({
       served.forEach(m => m.settings())
     }
 
-    if (mirroredRevision !== undefined && revision !== mirroredRevision) {
-      mirrorSettings({
-        settings,
-        revision,
-      })
-      mirroredRevision = revision
-    }
+    publishHome()
   }
 
   const settingsWatcher = watchPath({
@@ -953,7 +994,7 @@ export async function startServer({
         run: mountAll,
       })
       background({
-        name: 'settings mirror',
+        name: 'settings refresh',
         run: syncSettings,
       })
     },
@@ -969,12 +1010,11 @@ export async function startServer({
         return
       }
 
-      saveUpgradeStatus({
-        status: {
-          available,
-          checkedAt: new Date().toISOString(),
-        },
-      })
+      upgradeStatus = {
+        available,
+        checkedAt: new Date().toISOString(),
+      }
+      publishHome()
     },
   })
   let upgradeTimer: NodeJS.Timeout | undefined
@@ -1023,8 +1063,6 @@ export async function startServer({
       }
 
       wss.close()
-      // zero-cache first: it ends the page sockets it tunnels, which the HTTP server cannot close itself.
-      await zero?.close()
       http.closeAllConnections()
       await new Promise(r => http.close(r))
       rmSync(
@@ -1079,7 +1117,7 @@ export async function startServer({
 
     for (const id of hydraIds()) {
       try {
-        recoverOwnerCommands({ hydraId: id })
+        await recoverOwnerCommands({ hydraId: id })
       } catch (error) {
         log({
           level: 'warn',
@@ -1137,25 +1175,11 @@ export async function startServer({
     }
 
     importing = false
-    const startSettings = readSettings()
-    mirrorSettings(startSettings)
-    mirroredRevision = startSettings.revision
-    // A check made before this start may describe the build it replaced, so the notice waits for this build's own.
-    query({ statements: [{ text: 'delete from upgrade_status' }] })
     checkUpgrade()
     upgradeTimer = setInterval(
       checkUpgrade,
       UPGRADE_CHECK_MS,
     ).unref()
-
-    // All legacy imports finish before Zero starts building its first replica.
-    if (zeroCache) {
-      zero = startZeroCache({
-        queryUrl: `http://127.0.0.1:${bound}${ZERO_QUERY_PATH}`,
-        token: localToken(),
-        cookie: zeroCookieName({ port: bound }),
-      })
-    }
 
     replaceFile({
       path: infoPath(),
@@ -1192,7 +1216,6 @@ export async function startServer({
     socket: named.socket,
     skipped: { ...skipped },
     open,
-    zeroCachePid: () => zero?.pid(),
     close,
   }
 }

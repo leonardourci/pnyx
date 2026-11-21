@@ -59,7 +59,7 @@ export function createServerTick({
   agents(): Pick<ReturnType<typeof createHost>, 'unconfirmed'>
   sources(): ReturnType<typeof createSourceRunner>
   review(): ReturnType<typeof startReviewTimer>
-  recover(): void
+  recover(): void | Promise<void>
 }) {
   const discoveredAt = new Map<string, number>()
   const followingTasks = () => needsPullRequestFollow({ state: state() })
@@ -91,7 +91,7 @@ export function createServerTick({
     }
 
     scheduled = true
-    setImmediate(() => {
+    setImmediate(async () => {
       scheduled = false
 
       if (closed()) {
@@ -103,7 +103,7 @@ export function createServerTick({
       try {
         if (spoolDirty && Date.now() >= spoolRetryAt) {
           try {
-            ingestSpool({ hydraId })
+            await ingestSpool({ hydraId })
             spoolDirty = false
           } catch (error) {
             spoolRetryAt = Date.now() + SPOOL_RETRY_MS
@@ -112,7 +112,7 @@ export function createServerTick({
         }
 
         pump()
-        resumeWaits({
+        await resumeWaits({
           hydraId,
           state: state(),
         })
@@ -268,7 +268,7 @@ export function createServerTick({
             eventSeq: state().seq,
           },
         })
-        fireReminders({
+        await fireReminders({
           hydraId,
           at: new Date(reminderScheduler.now()).toISOString(),
           state: state(),
@@ -280,7 +280,7 @@ export function createServerTick({
         })
 
         if (deadline !== undefined && deadline <= Date.now()) {
-          hideDone({ hydraId })
+          await hideDone({ hydraId })
           pump()
         }
 
