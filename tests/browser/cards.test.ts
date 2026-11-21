@@ -1366,7 +1366,10 @@ test.each([
         contained: true,
         stacked: true,
       })
-      expect(JSON.parse(columns)).toEqual({ folded: true, unfolded: true })
+      expect(JSON.parse(columns)).toEqual({
+        folded: true,
+        unfolded: true,
+      })
     } finally {
       turn.release()
     }
