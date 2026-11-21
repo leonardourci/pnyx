@@ -73,7 +73,7 @@ test(
     const initial = history.cursor()
     expect(() => history.append({
       value: {
-        get title() {
+        get title(): string {
           throw new Error('Cannot read the change')
         },
       },
