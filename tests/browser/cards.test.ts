@@ -1,3 +1,4 @@
+import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from './page.ts'
 import { chrome } from './chrome.ts'
@@ -1576,4 +1577,3 @@ test.each([
     })
   },
 )
-import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
