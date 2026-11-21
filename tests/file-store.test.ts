@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, fdatasyncSync, fsyncSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { openFileStore } from '#store/file-store.ts'
@@ -100,7 +101,7 @@ const fact = ({
   ...fields,
 })
 const homeFolder = () => mkdtempSync(join(
-  process.env.TMPDIR!,
+  tmpdir(),
   'native-store-',
 ))
 const store = ({ home }: { home: string }) => openFileStore({
@@ -1156,8 +1157,7 @@ test.each([
     const synced = new Set<string>()
     let outage = true
 
-    // eslint-disable-next-line pnyx/object-params -- Node's fsync replacement receives a file descriptor.
-    const directorySync: typeof filesystem.fsyncSync = fd => {
+    vi.mocked(fsyncSync).mockImplementation((fd) => {
       const metadata = filesystem.fstatSync(fd)
       const parent = existsSync(target) && metadata.isDirectory() ? parents.find(path =>
         existsSync(path) && filesystem.statSync(path).ino === metadata.ino) : undefined
@@ -1177,9 +1177,7 @@ test.each([
       }
 
       filesystem.fsyncSync(fd)
-    }
-
-    vi.mocked(fsyncSync).mockImplementation(directorySync)
+    })
 
     try {
       await expect(request()).rejects.toMatchObject({ code: 'WRITE_FAILED' })
@@ -1243,11 +1241,14 @@ test(
           }),
         ],
       }),
+      home.snapshot(),
     ])
     expect(writes.map(write => write.status)).toEqual([
       'rejected',
       'rejected',
+      'rejected',
     ])
+    expect(writes[2]).toMatchObject({ reason: { code: 'WRITE_FAILED' } })
     expect(await home.changeTask({
       hydra: 'a',
       task: 'task',

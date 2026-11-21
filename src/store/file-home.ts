@@ -110,7 +110,10 @@ function publishFolder({
     id,
   )
 
-  if (existsSync(destination)) {
+  if (lstatSync(
+    destination,
+    { throwIfNoEntry: false },
+  )) {
     throw new HydraError({
       message: `file-store folder already exists: ${destination}`,
       code: 'CONFLICT',
@@ -292,12 +295,25 @@ function prepareMove({
     task,
   })
   requireDirectory({ dir: source })
-  requireDirectory({
-    dir: hydraFiles({
-      home,
-      hydra: to,
-    }),
+  const targetHydra = hydraFiles({
+    home,
+    hydra: to,
   })
+  requireDirectory({ dir: targetHydra })
+  const targetLog = lstatSync(
+    join(
+      targetHydra,
+      'hydra.log',
+    ),
+    { throwIfNoEntry: false },
+  )
+
+  if (!targetLog?.isFile()) {
+    throw new HydraError({
+      message: `destination Hydra has no regular native log: ${targetHydra}`,
+      code: 'INVALID_MOVE',
+    })
+  }
 
   if (source === destination) {
     return {
@@ -306,7 +322,10 @@ function prepareMove({
     }
   }
 
-  if (existsSync(destination)) {
+  if (lstatSync(
+    destination,
+    { throwIfNoEntry: false },
+  )) {
     throw new HydraError({
       message: `task folder already exists: ${destination}`,
       code: 'CONFLICT',

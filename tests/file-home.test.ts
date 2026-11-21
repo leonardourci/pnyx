@@ -435,12 +435,26 @@ test(
       hydra: 'a',
       entries: [configured()],
     })
-    createTaskFiles({
+    const after = createTaskFiles({
       home,
       hydra: 'a',
       task: 'healthy',
       entries: [created({ id: 'native-created' })],
     })
+    expect(() => moveTaskFiles({
+      home,
+      from: 'a',
+      to: 'legacy',
+      task: 'healthy',
+      after,
+      at: AT,
+      by: 'owner',
+      id: 'move-to-legacy',
+    })).toThrow(/no regular native log/)
+    expect(existsSync(join(
+      legacy,
+      'tasks',
+    ))).toBe(false)
     mkdirSync(taskFiles({
       home,
       hydra: 'a',

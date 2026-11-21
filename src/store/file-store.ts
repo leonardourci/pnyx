@@ -288,11 +288,15 @@ export function openFileStore<Hydra, Task>({
       }
 
       if (job.kind === 'control') {
-        commit()
+        const failure = commit()
 
         try {
           if (unavailable) {
             throw unavailable
+          }
+
+          if (failure) {
+            throw failure
           }
 
           job.run()
