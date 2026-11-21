@@ -1,7 +1,7 @@
 import type { HydraSummary } from './server-hydras.ts'
 import type { PageState } from './page-state.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
-import type { Settings } from '#settings/model.ts'
+import type { PageSettings } from '#settings/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { SocketCursor } from './socket-history.ts'
 
@@ -13,7 +13,7 @@ export interface HydraPage {
 export interface HomePage {
   hydras: HydraSummary[]
   settings: {
-    settings: Settings
+    settings: PageSettings
     revision: number
   }
   upgrade: UpgradeStatus | null
@@ -65,9 +65,13 @@ export function pageChanges({
     key,
     value,
   ] of Object.entries(current)) {
-    const old = previous[key]
+    const owned = Object.hasOwn(
+      previous,
+      key,
+    )
+    const old = owned ? previous[key] : undefined
 
-    if (Object.is(
+    if (owned && Object.is(
       old,
       value,
     )) {
@@ -121,7 +125,10 @@ export function applyPageChanges<Value extends object>({
   ] of Object.entries(changes.nested)) {
     const old = next[key]
 
-    if (!object({ value: old })) {
+    if (!Object.hasOwn(
+      next,
+      key,
+    ) || !object({ value: old })) {
       throw new Error(`socket patch has no object at ${key}`)
     }
 

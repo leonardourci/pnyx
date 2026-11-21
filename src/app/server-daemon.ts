@@ -29,7 +29,7 @@ import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
 import { watchPath } from './watch.ts'
-import { readSettings, settingsLogPath } from '#settings/store.ts'
+import { pageSettings, readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
@@ -129,9 +129,22 @@ export async function startServer({
   let summariesQueued = false
   const homeHistory = createSocketHistory<PageChanges>()
   const homeClients = new Set<({ message }: { message: HomeMessage }) => void>()
+
+  const homeSettings = (): HomePage['settings'] => {
+    const {
+      settings,
+      revision,
+    } = readSettings()
+
+    return {
+      settings: pageSettings({ settings }),
+      revision,
+    }
+  }
+
   let home: HomePage = {
     hydras: [],
-    settings: readSettings(),
+    settings: homeSettings(),
     upgrade: null,
     scopes: {},
   }
@@ -141,7 +154,7 @@ export async function startServer({
   const publishHome = () => {
     const next: HomePage = JSON.parse(JSON.stringify({
       hydras: listHydras(),
-      settings: readSettings(),
+      settings: homeSettings(),
       upgrade: upgradeStatus,
       scopes: Object.fromEntries([...served].map(([
         id,

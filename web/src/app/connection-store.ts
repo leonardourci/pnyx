@@ -1,3 +1,4 @@
+import { withDefaults } from '#settings/settings.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
@@ -781,7 +782,12 @@ export function createHydraConnection() {
       if (home) {
         updateHydras({ rows: home.hydras })
         setLogMode({ mode: home.settings.settings.logs })
-        sharedSettings().receive({ state: home.settings })
+        sharedSettings().receive({
+          state: {
+            settings: withDefaults({ stored: home.settings.settings }),
+            revision: home.settings.revision,
+          },
+        })
         upgrade = home.upgrade ?? undefined
 
         for (const [

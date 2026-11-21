@@ -171,3 +171,76 @@ test(
     }
   },
 )
+
+test(
+  'socket object changes preserve literal prototype-named keys',
+  () => {
+    const before = { values: {} }
+    const after = JSON.parse('{"values":{"__proto__":{"title":"Owner value"},"constructor":{"title":"Another value"}}}')
+    const changes = pageChanges({
+      before,
+      after,
+    })!
+    const next = applyPageChanges({
+      before,
+      changes,
+    })
+    expect(next).toEqual(after)
+    expect(Object.hasOwn(
+      next.values,
+      '__proto__',
+    )).toBe(true)
+    expect(Object.getPrototypeOf(next.values)).toBe(Object.prototype)
+    expect(Object.getPrototypeOf(before.values)).toBe(Object.prototype)
+  },
+)
+
+test(
+  'the home socket never exposes the database URL in snapshots or changes',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const page = await openHomePage({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      const before = page.read().home.settings.revision
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({postgresUrl: 'postgres://owner:PRIVATE-DATABASE-PASSWORD@localhost/private-database'}),
+        ],
+      })
+      await until({
+        what: 'the settings revision on the home socket',
+        check: () => page.read().home.settings.revision > before,
+      })
+      expect(page.read().home.settings.settings).not.toHaveProperty('postgresUrl')
+      expect(JSON.stringify(page.frames)).not.toContain('PRIVATE-DATABASE-PASSWORD')
+      const snapshot = await openHomePage({
+        port: pnyx.port(),
+        hydraId: hydra.id,
+      })
+
+      try {
+        expect(snapshot.read().home.settings.settings).not.toHaveProperty('postgresUrl')
+        expect(JSON.stringify(snapshot.frames)).not.toContain('PRIVATE-DATABASE-PASSWORD')
+      } finally {
+        snapshot.close()
+      }
+    } finally {
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          '{"postgresUrl":""}',
+        ],
+      })
+      page.close()
+    }
+  },
+)
