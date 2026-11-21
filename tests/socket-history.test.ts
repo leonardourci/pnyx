@@ -71,7 +71,15 @@ test(
     const history = createSocketHistory<{ title: string }>({ epoch: 'daemon' })
     const value = { title: 'Saved owner words' }
     const initial = history.cursor()
+    expect(() => history.append({
+      value: {
+        get title() {
+          throw new Error('Cannot read the change')
+        },
+      },
+    })).toThrow('Cannot read the change')
     const published = history.append({ value })
+    expect(published.seq).toBe(initial.seq + 1)
     value.title = 'Changed after publication'
     published.value.title = 'Changed by sender'
     const replay = history.since({ cursor: initial })!

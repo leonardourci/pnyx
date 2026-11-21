@@ -19,7 +19,7 @@ import { reconnectDelay,retainedReadings,withChanges } from './connection-protoc
 import { createConnectionRequests } from './connection-requests.ts'
 import { dropSnapshots, save } from './connection-storage.ts'
 import { createHydraCreation } from './hydra-creation.ts'
-import { applyPageChanges, type HomePage } from '#app/socket-state.ts'
+import { applyPageChanges, pageChanges, type HomePage } from '#app/socket-state.ts'
 import type { SocketCursor } from '#app/socket-history.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
 import { pendingHydra } from './pending-state.ts'
@@ -745,7 +745,19 @@ export function createHydraConnection() {
       const previous = home
 
       if (message.type === 'home.snapshot') {
-        home = message.home
+        if (previous) {
+          const changes = pageChanges({
+            before: previous,
+            after: message.home,
+          })
+          home = changes ? applyPageChanges({
+            before: previous,
+            changes,
+          }) : previous
+        } else {
+          home = message.home
+        }
+
         homeCursor = message.cursor
       } else if (message.type === 'home.delta' && home && homeCursor
         && homeCursor.epoch === message.cursor.epoch && homeCursor.seq + 1 === message.cursor.seq) {

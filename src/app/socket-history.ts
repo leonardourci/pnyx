@@ -33,10 +33,11 @@ export function createSocketHistory<Value>({
       seq,
     }),
     append({ value }: { value: Value }): SocketFrame<Value> {
+      const saved = structuredClone(value)
       const frame = {
         epoch,
         seq: ++seq,
-        value: structuredClone(value),
+        value: saved,
       }
       const index = (first + size) % limit
       frames[index] = frame
