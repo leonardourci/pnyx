@@ -1304,6 +1304,7 @@ test.each([
     await page.wait('[data-hydra-workspace="${hydra.id}"] .project-chips .waiting-count');
     console.log(await page.eval(async () => {
       const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
+      const uprightCounts = ({ root }) => [...root.querySelectorAll('.waiting-count, .running-count > span')].every(count => getComputedStyle(count).writingMode === 'horizontal-tb');
       const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
       workspace.querySelector('[aria-label="Fold Hydra"]').click();
       await new Promise(requestAnimationFrame);
@@ -1317,6 +1318,7 @@ test.each([
         thin: box.width <= 60,
         bodyHidden: workspace.querySelector('main').getClientRects().length === 0,
         scrollable: projects.scrollHeight > projects.clientHeight,
+        upright: uprightCounts({ root: workspace.querySelector('.hydra-workspace-bar') }),
         countsVisible: ['.waiting-count', '.running-count'].every(selector =>
           [...projects.querySelectorAll(selector)].some(count => count.getBoundingClientRect().width > 0)
         ),
@@ -1338,7 +1340,7 @@ test.each([
         const center = (box.left + box.right) / 2;
         const marks = [...column.querySelectorAll('.project-column-heading button > svg, .project-column-heading button > strong, .waiting-count, .running-count > *')];
         const cards = column.querySelector('.column-cards');
-        return box.width > 0 && box.width <= 49 && cards.getClientRects().length === 0 && marks.length > 0 && marks.every(mark => {
+        return box.width > 0 && box.width <= 49 && cards.getClientRects().length === 0 && marks.length > 0 && uprightCounts({ root: column }) && marks.every(mark => {
           const bounds = mark.getBoundingClientRect();
           return bounds.left >= box.left && bounds.right <= box.right && Math.abs((bounds.left + bounds.right) / 2 - center) <= 1;
         });
@@ -1358,6 +1360,7 @@ test.each([
         thin: true,
         bodyHidden: true,
         scrollable: true,
+        upright: true,
         countsVisible: true,
         aligned: true,
         contained: true,
