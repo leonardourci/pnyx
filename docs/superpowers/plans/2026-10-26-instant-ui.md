@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, React, existing WebSocket protocol, Node test runner.
 
-**Spec:** Stored Pnyx report `report-84a5e5c4-ui-waits-v1` on task `task-84a5e5c4-7827-4586-b1ff-5b3987c51cc9` (read through `pnyx task report`).
+**Spec:** Stored Pnyx report `report-84a5e5c4-ui-waits-v1` on task `task-84a5e5c4-7827-4586-b1ff-5b3987c51cc9`.
 
 ## Global constraints
 

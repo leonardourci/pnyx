@@ -82,7 +82,7 @@ export function createLiveSettings({
         })) {
           inform({
             reason: 'Agent permission level increased',
-            clear: 'pnyx agent <task> mode <mode>',
+            clear: 'Change the permission mode in the agent composer.',
           })
         }
 

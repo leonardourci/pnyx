@@ -847,7 +847,7 @@ test(
     })
     expect(docs.open).toEqual([
       expect.objectContaining({
-        clear: expect.stringContaining(`pnyx task undepend ${waiting.card.id} --on ${held.card.id}`),
+        clear: expect.stringContaining(held.card.id),
       }),
     ])
     expect((await hydra.agent({ cwd: docsFolder })).received).toHaveLength(1)

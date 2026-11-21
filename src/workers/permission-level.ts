@@ -76,7 +76,7 @@ export function noticePermissionIncrease({
   if (hydraRaises) {
     inform({
       reason: 'Worker permission level increased',
-      clear: 'pnyx agent <task> mode <mode>',
+      clear: 'Change the permission mode in the worker composer.',
     })
   }
 }

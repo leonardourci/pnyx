@@ -263,14 +263,14 @@ export function decideAsk({
     inform({
       task: card.id,
       reason: 'Hydra-wide question routed to the owner',
-      clear: 'Use pnyx task ask <task> --to hydra for a worker question',
+      clear: 'Workers can ask Hydra by appending a needs-you line to their worker.log.',
     })
   }
 
   if (audience === 'owner' && meta.actor !== HYDRA_ACTOR) {
     inform({
       reason: 'Worker question sent directly to the owner',
-      clear: 'pnyx task ask <task> --to hydra --question "<question>"',
+      clear: 'Ask Hydra by appending a needs-you line to your worker.log.',
       task: card.id,
     })
   }
@@ -280,7 +280,7 @@ export function decideAsk({
     inform({
       task: card.id,
       reason: 'Hydra question routed to the owner',
-      clear: `Use pnyx task answer ${card.id} <question> --text "<answer>"`,
+      clear: `Use pnyx answer ${card.id} <question> --text "<answer>"`,
     })
   }
 
@@ -288,7 +288,7 @@ export function decideAsk({
   if (audience === 'hydra' && !reportActor({ actor: meta.actor })) {
     inform({
       reason: 'Question sent to Hydra by another actor',
-      clear: 'pnyx hydra send --text "<message>"',
+      clear: 'pnyx send --text "<message>"',
       task: card.id,
     })
   }
@@ -416,7 +416,7 @@ export function decideEscalation({
   if (meta.actor !== HYDRA_ACTOR) {
     inform({
       reason: 'Question escalated by an agent',
-      clear: 'pnyx task answer <task> <question> --text "<answer>"',
+      clear: 'pnyx answer <task> <question> --text "<answer>"',
       task: card.id,
     })
   }
@@ -431,7 +431,7 @@ export function decideEscalation({
     inform({
       task: card.id,
       reason: 'Updated a question that already waits for the owner',
-      clear: `Use pnyx task answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
+      clear: `Use pnyx answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
     })
   }
 

@@ -521,7 +521,7 @@ async function chooseCandidate({
     throw new HydraError({
       message: 'heads dispatch needs a registered main account',
       code: 'NO_ACCOUNTS',
-      help: ['Run `pnyx rule init`, then set the accounts and account order with `pnyx rule apply`'],
+      help: ['Add a main account and set the account order in Settings.'],
     })
   }
 

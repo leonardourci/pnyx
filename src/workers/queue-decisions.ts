@@ -17,7 +17,7 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
   if (card.sessionIds?.length) {
     return {
       reason: `${card.id} already has worker ${card.sessionIds.join(', ')}`,
-      clear: `Reply to that worker with \`pnyx reply ${card.id} --text "<message>"\`, or run \`pnyx task detach ${card.id}\` first`,
+      clear: `Reply with \`pnyx send --task ${card.id} --text "<message>"\` or detach the worker in the UI`,
     }
   }
 

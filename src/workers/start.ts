@@ -118,7 +118,7 @@ function queuedRefusal({
   return new HydraError({
     message: `task ${task} is queued behind worker ${session}`,
     code: 'CONFLICT',
-    help: [`Run \`pnyx task unqueue ${task}\` first to give it its own worker`],
+    help: [`Remove ${task} from the queue in the UI before giving it its own worker.`],
   })
 }
 
@@ -174,7 +174,7 @@ export function freeTask({
     throw new HydraError({
       message: `task ${card.id} already has an attached agent: ${card.sessionIds.join(', ')}`,
       code: 'SESSION_CONFLICT',
-      help: [`Run \`pnyx task detach ${card.id}\` to free it, or reply to that worker with \`pnyx reply ${card.id} --text "<message>"\``],
+      help: [`Detach the worker in the UI or reply with \`pnyx send --task ${card.id} --text "<message>"\``],
     })
   }
 
@@ -256,8 +256,8 @@ async function steerAttached({
     } : {}),
   }
   const help = [
-    `Reply to it with \`pnyx reply ${card.id} --text "<message>"\``,
-    `Run \`pnyx task detach ${card.id}\` first to start a new worker instead`,
+    `Reply with \`pnyx send --task ${card.id} --text "<message>"\``,
+    'Detach the worker in the UI before starting a new one',
   ]
 
   if (!prompt) {

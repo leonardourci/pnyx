@@ -370,7 +370,6 @@ export const logs = guard({
       })) : 'none: no log files yet',
       help: [
         'Run `pnyx debug performance` for durations and memory from these lines',
-        'Run `pnyx logs clean` to delete every log file now',
       ],
     }
   },

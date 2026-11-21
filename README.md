@@ -67,10 +67,7 @@ Setup commands change user-wide configuration and report the selected home when 
 
 ### 2. Attach a project
 
-Create a Hydra and attach a project in the UI.
-
-Select **work** in the header's Hydra chips, then choose a model for your signed-in harness in Hydra's composer (a Codex model if you use only Codex).
-
+Create a Hydra and attach a project in the UI. Select your Hydra in the header, then choose a model for your signed-in harness in Hydra's composer.
 
 ### 3. Talk to Hydra
 
@@ -80,7 +77,7 @@ Send a message in Hydra's composer, for example:
 
 The first message starts Hydra's agent session. Hydra reports missing setup in chat, runs setup commands directly and directs the owner to sign in through the harness when a login is needed. Credentials stay out of Hydra chat.
 
-Read the [dispatch guide](docs/pnyx.md) to configure your harnesses, models and accounts.
+Use Settings to configure dispatch rules and accounts.
 
 ### 4. Start a task
 
@@ -91,7 +88,7 @@ pnyx task create --title "Improve the empty state" --project project \
   --brief "Explain the empty state and add a useful next action." --hydra work
 ```
 
-Replace `project` with the attached folder's name. Use `--harness codex` if that is your signed-in harness.
+Replace `project` with the attached folder's name and `work` with your Hydra's ID. Use `--harness codex` if that is your signed-in harness.
 
 Open the card to follow the worker's updates, and send follow-up instructions through Hydra's chat. Stop a foreground server with Ctrl+C.
 
@@ -119,11 +116,11 @@ Workers report their state and send questions to Hydra. Hooks also let you attac
 
 A project is a folder attached to a Hydra. Workers normally get isolated project copies.
 
-Work lands through a ready pull request by default, with you deciding when to merge; a project can instead keep completed work on a branch. See [projects and landing](docs/pnyx.md) for the rules and cleanup behavior.
+Work lands through a ready pull request by default, with you deciding when to merge. A project can keep completed work on a branch.
 
 ### Memory and Oracle
 
-Owner memory is shared across Hydras, project memory follows a project, and Hydra memory keeps that Hydra's local context. **inscribe** curates and saves those layers before a reset.
+Owner memory is shared across Hydras, project memory follows a project, and Hydra memory keeps that Hydra's local context. **inscribe** summarizes durable context before a reset and identifies memory changes that still need to be saved.
 
 The **Oracle** searches tasks, their events and notes by keyword, matching word forms, synonyms and near spellings. It reads new history into a derived SQLite cache when you search.
 

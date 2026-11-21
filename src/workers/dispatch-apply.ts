@@ -418,7 +418,7 @@ export function applyDispatch({
       })) {
         inform({
           reason: 'Dispatch candidate permission level increased',
-          clear: 'pnyx rule apply --file <patch>',
+          clear: 'Change the dispatch candidate’s permission mode in Settings.',
         })
       }
 

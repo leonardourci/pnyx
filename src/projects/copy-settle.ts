@@ -228,8 +228,7 @@ export async function settleCopy({
 
         if (after.state === 'flagged') {
           const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
-            + 'Once its current work has landed, remove the copy from the task in the UI. '
-            + 'Work that never landed must be landed before retrying.'
+            + 'Once its current work has landed, remove the copy from the task in the UI.'
           applyDecision({
             writer,
             decision: hydraEvent({

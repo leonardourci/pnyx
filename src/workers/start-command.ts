@@ -98,7 +98,7 @@ export async function startCommand({
         throw new HydraError({
           message: `Hydra ${hydraId} has no start command`,
           code: 'NO_COMMAND',
-          help: [`Run \`pnyx hydra set --hydra ${hydraId} --command '<shell command>'\``],
+          help: ['Configure the Hydra start command in Settings.'],
         })
       }
 
@@ -119,7 +119,7 @@ export async function startCommand({
         throw new HydraError({
           message: `Hydra ${hydraId} has no start command`,
           code: 'NO_COMMAND',
-          help: [`Run \`pnyx hydra set --hydra ${hydraId} --command '<shell command>'\``],
+          help: ['Configure the Hydra start command in Settings.'],
         })
       }
 

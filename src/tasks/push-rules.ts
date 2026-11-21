@@ -33,7 +33,7 @@ export function findCard({
     throw new HydraError({
       message: `card not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx` to list cards'],
+      help: ['Run `pnyx task list` to list tasks'],
     })
   }
 

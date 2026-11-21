@@ -35,7 +35,7 @@ export function validateCardInput({
   if (!ownerActor({ actor })) {
     inform({
       reason: 'Message sent from a card by an agent',
-      clear: 'pnyx reply <task> --text "<message>"',
+      clear: 'pnyx send --task <task> --text "<message>"',
     })
   }
 

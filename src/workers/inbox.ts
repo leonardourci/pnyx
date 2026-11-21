@@ -314,7 +314,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering marked blocked without an explanatory note',
-      clear: `Use pnyx task inbox enqueue ${card.id} <message-id> --text "<what blocks it>" to record the blocker`,
+      clear: 'Record the blocker in the assigned worker.log.',
     })
     ack = {
       ...ack,

@@ -48,14 +48,14 @@ function removalTarget({
   if (!state.config?.removing && !hasSurvivor) {
     inform({
       reason: 'Removing the last Hydra; create a Hydra to resume work',
-      clear: 'Use pnyx hydra create <name> to create one',
+      clear: 'Create a Hydra from the header in the UI',
     })
   }
 
   if (id === caller) {
     inform({
       reason: 'Removing the caller’s Hydra; its agent will stop',
-      clear: 'Use pnyx hydra create <name> to create another Hydra',
+      clear: 'Create another Hydra from the header in the UI',
     })
   }
 

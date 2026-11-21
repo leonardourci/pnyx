@@ -485,7 +485,7 @@ export function checkProjectMemoryBudget({
   if (after !== null && used > PROJECT_MEMORY_BUDGET && used > current) {
     inform({
       reason: `Project memory uses ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
-      clear: `Use pnyx project memory forget, or ${INSCRIBE_SKILL}, to curate it`,
+      clear: `Use ${INSCRIBE_SKILL} to identify project memory to keep or remove.`,
     })
   }
 
