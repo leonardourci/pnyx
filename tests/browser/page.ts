@@ -1,8 +1,5 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core'
 import { afterAll, afterEach } from 'vitest'
-import { localToken } from '#app/server-state.ts'
-import { zeroCookieName } from '#app/server-protocol.ts'
-import { zeroReady } from '../setup/zero.ts'
 
 const NO_KEYCHAIN_PROMPT = [
   '--use-mock-keychain',
@@ -41,11 +38,6 @@ export async function openHydra({
   reducedMotion?: boolean
   beforeLoad?({ page }: { page: Page }): Promise<void>
 }): Promise<Page> {
-  await zeroReady({
-    url: `http://127.0.0.1:${port}/zero/`,
-    cookie: `${zeroCookieName({ port })}=${localToken()}`,
-  })
-
   if (!browser) {
     browser = await chromium.launch({
       channel: 'chrome',

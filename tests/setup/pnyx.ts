@@ -225,7 +225,6 @@ else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fres
 
 export interface PnyxOptions {
   codexConfig?: Record<string, unknown>
-  zeroCache?: boolean
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }
@@ -234,7 +233,6 @@ export type Pnyx = Awaited<ReturnType<typeof startPnyx>>
 
 // Starts the server once for a test file; it stops when the file ends.
 export async function startPnyx({
-  zeroCache = false,
   codexConfig,
   upgradeRoot,
   restart,
@@ -265,7 +263,6 @@ export async function startPnyx({
       retryDelays: [600_000],
       followDelay: 100,
       recoveryPause: 100,
-      zeroCache,
       upgradeRoot: upgradeRoot ?? join(
         root,
         'no-upgrade-folder',
@@ -606,16 +603,42 @@ export async function openPage({
   hydraId,
   cards,
   token = localToken(),
+  home = false,
+  cursor,
   receive,
 }: {
   port: number
   hydraId: string
   cards?: string[]
   token?: string
+  home?: boolean
+  cursor?: import('#app/socket-history.ts').SocketCursor
   receive?({ message }: { message: ServerMessage }): void
 }) {
-  const opened = cards ? `&page=${encodeURIComponent(JSON.stringify(cards))}` : ''
-  const socket = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${token}${opened}`)
+  const params = new URLSearchParams({ token })
+
+  if (cards) {
+    params.set(
+      'page',
+      JSON.stringify(cards),
+    )
+  }
+
+  if (home) {
+    params.set(
+      'home',
+      '1',
+    )
+  }
+
+  if (cursor) {
+    params.set(
+      'cursor',
+      JSON.stringify(cursor),
+    )
+  }
+
+  const socket = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?${params}`)
   const answers = new Map<string, ServerMessage>()
   socket.on(
     'message',

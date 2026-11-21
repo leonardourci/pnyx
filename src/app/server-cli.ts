@@ -50,7 +50,6 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
       hydraId,
       port,
       upgradeRoot: PNYX_ROOT,
-      zeroCache: true,
     })
   } catch (error) {
     if (error instanceof HydraError) {

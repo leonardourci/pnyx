@@ -9,6 +9,7 @@ import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { ClientMessage } from './server-http.ts'
+import type { HomeMessage, HydraPage } from './socket-state.ts'
 
 export const commands = {
   ...cliCommands,
@@ -18,9 +19,6 @@ export const commands = {
 }
 
 export const SOCKET_RETRY_MS = 100
-
-// A tab with more than this unsent holds its latest batch until it drains and misses the messages it cannot get later.
-export const MAX_BUFFERED = 1 << 20
 
 export const MAX_BODY = 1 << 20
 
@@ -47,7 +45,7 @@ export const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 }
 
-// Server to browser: live agent activity and conversation pages, beside the Hydra data the page reads through Zero.
+// One socket carries home state, live activity, conversations and command receipts.
 // Each command gets a receipt or an error carrying its id.
 type ServerPayload =
   | {
@@ -89,7 +87,7 @@ type ServerPayload =
     saved?: boolean
   }
 
-export type ServerMessage = (ServerPayload | {
+export type ServerMessage = (ServerPayload | HomeMessage | {
   type: 'scope-error'
   scope: string
   error: string
@@ -120,14 +118,13 @@ export interface RunningServer {
   // Hydras that could not be loaded, with the reason; the others keep working.
   skipped: Record<string, string>
   open({ id }: { id: string }): Promise<string>
-  // The zero-cache child's pid while it runs; undefined when the server was started without it.
-  zeroCachePid(): number | undefined
   close(): Promise<void>
 }
 
 export interface MountedHydra {
   url: string
   socket: string | null
+  view(): HydraPage
   request({
     req,
     res,
@@ -153,9 +150,6 @@ export type HydraRequest = {
 }
 
 export const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
-
-export { ZERO_OWNER, ZERO_PATH } from './server-protocol.ts'
-export const ZERO_QUERY_PATH = '/zero-query'
 
 // A target such as // reads as a URL with an empty host, which throws; take it as a path instead.
 export const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
