@@ -1338,6 +1338,13 @@ export function HydraView({
                                               draft,
                                             })
                                           }
+
+                                          const key = `task:${draft.attempt}`
+                                          setPageView(view => ({
+                                            ...view,
+                                            selected: view.selected === key ? null : view.selected,
+                                            expanded: view.expanded.filter(id => id !== key),
+                                          }))
                                         }}
                                         submitted={() => {
                                           focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] [data-column-heading="${CSS.escape(c.id)}"]` })
