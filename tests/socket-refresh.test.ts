@@ -1,7 +1,6 @@
 import { beforeAll, expect, test, vi } from 'vitest'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { openPage, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
-import { appendRecords } from './setup/transcripts.ts'
 
 const QUEUE_BYTES = 1_024
 const PREVIEW_CARDS = 4
@@ -98,21 +97,12 @@ test(
 
     for (let i = 0; i < PREVIEW_CARDS; i += 1) {
       const key = `paced-${i}`
-      const { worker } = await hydra.startTask({ key })
-      await appendRecords({
-        session: worker,
-        records: [
-          {
-            type: 'assistant',
-            content: [
-              {
-                type: 'text',
-                text: PREVIEW,
-              },
-            ],
-          },
-        ],
+      pnyx.claude.plan({
+        hydra: hydra.id,
+        match: ({ text }) => text.includes(`Brief for ${key}`),
+        reply: PREVIEW,
       })
+      await hydra.startTask({ key })
       const id = await until({
         what: 'the task to reach the home feed',
         check: () => pnyx.home().scopes[hydra.id]?.state.keys[key],
