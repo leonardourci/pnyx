@@ -60,16 +60,6 @@ const missing = ({
   code: 'NOT_FOUND',
 })
 
-const rerunCommand = ({
-  card,
-  to,
-  hydraId,
-}: {
-  card: Card
-  to: string
-  hydraId: string
-}) => `pnyx task move ${card.id} --to-hydra ${to} --hydra ${hydraId}`
-
 // The target's column with the card's column id, else its title, else where the target's rules place it.
 function targetColumn({
   source,
@@ -151,7 +141,7 @@ export function moveRefusal({
   moving?: string[]
 }): HydraError | undefined {
   const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
-  const restoreRelationships = `Use pnyx task move ${card.id} --to-hydra ${hydraId} --hydra ${to} to move it back; task history preserves its previous relationships`
+  const restoreRelationships = `Review task ${card.id} in the destination Hydra; task history preserves its previous relationships`
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
@@ -319,12 +309,10 @@ export async function releaseWorker({
   hydraId,
   card,
   actor,
-  rerun,
 }: {
   hydraId: string
   card: Card
   actor: string
-  rerun: string
 }): Promise<void> {
   if (card.agent?.host !== 'pnyx') {
     return
@@ -353,7 +341,7 @@ export async function releaseWorker({
   if (typeof released.busy === 'string') {
     throw refuse({
       message: `${card.id}'s worker is ${released.busy}`,
-      help: `Wait for it to finish (\`pnyx task show ${card.id} --hydra ${hydraId}\`), then run \`${rerun}\``,
+      help: `Wait for it to finish (\`pnyx task show ${card.id} --hydra ${hydraId}\`), then retry the action in the UI`,
     })
   }
 }
@@ -634,7 +622,7 @@ export async function moveTask({
   if (!card && gone) {
     throw refuse({
       message: `${ref} moved to Hydra ${gone.to}`,
-      help: `Run \`pnyx task move ${gone.id} --to-hydra ${to} --hydra ${gone.to}\``,
+      help: `Review task ${gone.id} on Hydra ${gone.to} in the UI`,
       code: 'NOT_FOUND',
     })
   }
@@ -650,7 +638,7 @@ export async function moveTask({
     inform({
       task: card.id,
       reason: `Task is already on Hydra ${to}`,
-      clear: `Use pnyx task move ${card.id} --to-hydra <other-hydra> to move it elsewhere`,
+      clear: `Review the Hydra of task ${card.id} in the UI.`,
     })
 
     return {
@@ -694,11 +682,6 @@ export async function moveTask({
     hydraId,
     card,
     actor: meta.actor,
-    rerun: rerunCommand({
-      card,
-      to,
-      hydraId,
-    }),
   })
 
   // The release ran the source host; no turn can start before the move commits.

@@ -81,7 +81,7 @@ function migrationPlan({
       inform({
         task: card.id,
         reason: `Moving a task with open pull request ${openPR.url}`,
-        clear: `Use pnyx task refresh-links ${card.id} --hydra ${to} to refresh it`,
+        clear: `Review the pull request links on task ${card.id} in the destination Hydra.`,
       })
     }
 
@@ -113,7 +113,7 @@ export async function keepProject({
   if (!ownerActor({ actor: meta.actor })) {
     inform({
       reason: 'Repository keeper selected by an agent',
-      clear: 'pnyx project keep <path> --hydra <keeper>',
+      clear: 'Review the repository keeper in the UI.',
     })
   }
 
@@ -152,7 +152,6 @@ export async function keepProject({
         hydraId: id,
         card,
         actor: meta.actor,
-        rerun: `pnyx project keep ${JSON.stringify(project.path)} --hydra ${hydraId}`,
       })
     }
   }
