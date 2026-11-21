@@ -1243,7 +1243,10 @@ test.each([
   },
 ])(
   'folded Hydras and project columns keep one aligned vertical strip at $width × $height',
-  async ({ width, height }) => {
+  async ({
+    width,
+    height,
+  }) => {
     const hydra = await pnyx.hydra()
     const projects = await addRevealProjects({ hydra })
 
@@ -1302,8 +1305,10 @@ test.each([
       }),
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
-    await workspace.locator('.project-chips .running-count').first().waitFor()
-    await workspace.locator('.project-chips .waiting-count').first().waitFor()
+    await workspace.locator('.project-chips .running-count').first()
+      .waitFor()
+    await workspace.locator('.project-chips .waiting-count').first()
+      .waitFor()
     const geometry = await page.evaluate<string>(`(async () => {
       const workspace = document.querySelector('[data-hydra-workspace="${hydra.id}"]');
       const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
