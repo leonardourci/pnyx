@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from './page.ts'
+import { chrome } from './chrome.ts'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
@@ -7,6 +8,7 @@ const PROJECTS = 8
 const HISTORY_EDITS = 65
 const REVEAL_PROJECTS = 4
 const REVEAL_FRAMES = 120
+const SCROLL_INPUT_FRAMES = 90
 
 let pnyx: Pnyx
 
@@ -1132,5 +1134,61 @@ test(
       { exact: false },
     )
       .waitFor({ state: 'detached' })
+  },
+)
+
+test(
+  'closing a task keeps workspace wheel scrolling available',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await addRevealProjects({ hydra })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Scroll after closing',
+      ],
+    })
+    await chrome({
+      script: `
+    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
+  `,
+    })
+    const result = await chrome({
+      script: `
+    console.log(await page.eval(async () => {
+      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected');
+      const axis = card.closest('.workspace-axis');
+      const column = card.closest('[data-column]');
+      const expandedWidth = column.getBoundingClientRect().width;
+      card.querySelector('.card-open').click();
+      const initialScroll = axis.scrollLeft;
+      let moved = false;
+      for (let frame = 0; frame < ${SCROLL_INPUT_FRAMES}; frame++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const wheel = new WheelEvent('wheel', { deltaX: 40, bubbles: true, cancelable: true });
+        column.dispatchEvent(wheel);
+        if (axis.scrollLeft > initialScroll + 10) moved = true;
+      }
+      return JSON.stringify({
+        moved,
+        closed: card.querySelector('.card-open').getAttribute('aria-expanded'),
+        shrank: column.getBoundingClientRect().width < expandedWidth,
+        scrollable: axis.scrollWidth > axis.clientWidth,
+      });
+    }));
+  `,
+    })
+    expect(JSON.parse(result)).toEqual({
+      moved: true,
+      closed: 'false',
+      shrank: true,
+      scrollable: true,
+    })
   },
 )
