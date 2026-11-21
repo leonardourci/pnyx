@@ -1,0 +1,84 @@
+
+ RUN  v5.1.0 <worktree>
+      Running tests with seed "1795230244430"
+
+ ❯ |browser| tests/browser/cards.test.ts (11 tests | 2 failed | 9 skipped) 11901ms
+   × folded Hydras and project columns keep one aligned vertical strip at 1440x900 3142ms
+   × folded Hydras and project columns keep one aligned vertical strip at 390x844 8325ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > folded Hydras and project columns keep one aligned vertical strip at 1440x900
+AssertionError: expected { strip: { thin: true, …(7) }, …(3) } to deeply equal { strip: { thin: true, …(7) }, …(3) }
+
+- Expected
++ Received
+
+  {
+-   "folded": true,
++   "folded": false,
+    "strip": {
+      "aligned": true,
+      "bodyHidden": true,
+      "contained": true,
+      "countsVisible": true,
+      "scrollable": true,
+      "stacked": true,
+      "thin": true,
+-     "upright": true,
++     "upright": false,
+    },
+    "unfolded": true,
+    "workspaceUnfolded": true,
+  }
+
+ ❯ tests/browser/cards.test.ts:1358:34
+    1356|     `,
+    1357|     })
+    1358|     expect(JSON.parse(geometry)).toEqual({
+       |                                  ^
+    1359|       strip: {
+    1360|         thin: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |browser| tests/browser/cards.test.ts > folded Hydras and project columns keep one aligned vertical strip at 390x844
+AssertionError: expected { strip: { thin: true, …(7) }, …(3) } to deeply equal { strip: { thin: true, …(7) }, …(3) }
+
+- Expected
++ Received
+
+  {
+-   "folded": true,
++   "folded": false,
+    "strip": {
+      "aligned": true,
+      "bodyHidden": true,
+      "contained": true,
+      "countsVisible": true,
+      "scrollable": true,
+      "stacked": true,
+      "thin": true,
+-     "upright": true,
++     "upright": false,
+    },
+    "unfolded": true,
+    "workspaceUnfolded": true,
+  }
+
+ ❯ tests/browser/cards.test.ts:1358:34
+    1356|     `,
+    1357|     })
+    1358|     expect(JSON.parse(geometry)).toEqual({
+       |                                  ^
+    1359|       strip: {
+    1360|         thin: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 skipped (11)
+   Start at  00:04:04
+   Duration  13.98s (tests 93%, import 3%, transform 3%, setup 2%)
+

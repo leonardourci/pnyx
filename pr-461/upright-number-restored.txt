@@ -1,0 +1,10 @@
+
+ RUN  v5.1.0 <worktree>
+      Running tests with seed "1795230265999"
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 9 skipped (11)
+   Start at  00:04:26
+   Duration  13.71s (tests 93%, import 3%, transform 2%, setup 2%)
+
