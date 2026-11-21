@@ -18,7 +18,7 @@ export function applyCardEvent({
 }): boolean {
   let card = state.cards[event.cardId]
 
-  if (event.type === 'task.edited' && card && event.data.agent) {
+  if (event.type === 'task.edited' && !event.undoes && card && event.data.agent) {
     applySessionFacts({
       state,
       event: {

@@ -259,13 +259,19 @@ test(
         throw new Error('The conversation must scroll to exercise focus transfer')
       }
 
+      const readingPosition = end - fromEnd
+
+      if (chat.scrollTop === readingPosition) {
+        return
+      }
+
       await new Promise<void>(resolve => {
         chat.addEventListener(
           'scroll',
           () => resolve(),
           { once: true },
         )
-        chat.scrollTop = end - fromEnd
+        chat.scrollTop = readingPosition
       })
     })
     await hydraChat.locator(`[data-task-ref="${task.id}"]`).first()

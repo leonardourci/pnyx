@@ -116,11 +116,9 @@ export function readChanges({
     ...live?.changes ?? [],
     ...receipts,
   ]
-  let cards = selection.cardIds
-
-  if (!cards && selection.cardId !== undefined) {
-    cards = [selection.cardId]
-  }
+  const cards = selection.cardIds ?? (selection.cardId === undefined ? undefined : [selection.cardId])
+  const ids = selection.ids && new Set(selection.ids)
+  const seqs = selection.seqs && new Set(selection.seqs)
 
   const matches = recent.filter(event => {
     const withinRange = event.seq > (selection.after ?? 0)
@@ -134,11 +132,11 @@ export function readChanges({
       return false
     }
 
-    if (selection.ids && !selection.ids.includes(event.id)) {
+    if (ids && !ids.has(event.id)) {
       return false
     }
 
-    if (selection.seqs && !selection.seqs.includes(event.seq)) {
+    if (seqs && !seqs.has(event.seq)) {
       return false
     }
 

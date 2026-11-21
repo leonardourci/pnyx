@@ -312,7 +312,8 @@ export function withWriter<T>({
       stage.held.saved = rows.next
       stage.held.committed = stage.held.state.seq
       stage.held.pending = stage.held.pending.concat(stage.pending)
-      const recent = stage.held.changes.concat(stage.pending)
+      const observations = stage.pending.filter(event => !durableEvent({ event }))
+      const recent = stage.held.changes.concat(observations)
       stage.held.changes = recent.slice(-RECENT_CHANGES)
 
       if (stage.from === 0) {

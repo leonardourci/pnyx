@@ -1,6 +1,6 @@
 import type { HydraState } from '#app/model.ts'
 
-// A wake offered again after its turn failed gets a fresh id, as each id starts one turn: wake:<through>.<try>.
+// Each wake ID starts one turn. Retrying a failed wake adds or increments its attempt suffix.
 export const wakeId = ({
   through,
   state,
