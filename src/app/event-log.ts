@@ -104,7 +104,10 @@ export function readEvents({ ...selection }: EventSelection): HydraEvent[] {
   return selectedEvents(selection)
 }
 
-export function readChanges({ measured, ...selection }: EventSelection & { measured?: boolean }): HydraEvent[] {
+export function readChanges({
+  measured,
+  ...selection
+}: EventSelection & { measured?: boolean }): HydraEvent[] {
   const live = heldHydra({ hydraId: selection.hydraId })
   const milestones = live?.state.historyMilestones ?? []
   const receipts = milestones.flatMap(milestone => milestone.receipts ?? [])
