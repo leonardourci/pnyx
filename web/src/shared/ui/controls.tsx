@@ -2,7 +2,7 @@ import { runtimeStyle } from './runtime-style.ts'
 import { composing } from '#web-shared/ime.ts'
 import { DisclosureChevron } from './disclosure-chevron.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
-import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type KeyboardEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { sliderValue } from './slider-value.ts'
 import { MenuOption } from './menu-option.tsx'
 
@@ -45,6 +45,52 @@ function singleLine({ text }: { text: string }) {
   )
 }
 
+function pasteSingleLine({ event }: { event: ClipboardEvent<HTMLTextAreaElement> }) {
+  const pasted = event.clipboardData.getData('text/plain')
+  const text = singleLine({ text: pasted })
+
+  if (text === pasted) {
+    return
+  }
+
+  event.preventDefault()
+  const field = event.currentTarget
+
+  if (field.readOnly || field.disabled) {
+    return
+  }
+
+  const start = field.selectionStart
+  const end = field.selectionEnd
+  const remaining = field.maxLength - (field.value.length - (end - start))
+  const withinLimit = field.maxLength < 0 ? text : text.slice(
+    0,
+    Math.max(
+      0,
+      remaining,
+    ),
+  )
+  const insert = withinLimit.length < text.length ? withinLimit.replace(/[\uD800-\uDBFF]$/u, '') : withinLimit
+
+  if (!insert) {
+    return
+  }
+
+  field.setRangeText(
+    insert,
+    start,
+    end,
+    'end',
+  )
+  field.dispatchEvent(new InputEvent(
+    'input',
+    {
+      bubbles: true,
+      inputType: 'insertFromPaste',
+    },
+  ))
+}
+
 export function Input({
   onChange,
   onKeyDown,
@@ -61,47 +107,9 @@ export function Input({
       onPaste={event => {
         props.onPaste?.(event)
 
-        if (event.defaultPrevented) {
-          return
+        if (!event.defaultPrevented) {
+          pasteSingleLine({ event })
         }
-
-        const pasted = event.clipboardData.getData('text/plain')
-        const text = singleLine({ text: pasted })
-
-        if (text === pasted) {
-          return
-        }
-
-        event.preventDefault()
-        const field = event.currentTarget
-        const start = field.selectionStart
-        const end = field.selectionEnd
-        const remaining = field.maxLength - (field.value.length - (end - start))
-        const insert = field.maxLength < 0 ? text : text.slice(
-          0,
-          Math.max(
-            0,
-            remaining,
-          ),
-        )
-
-        if (!insert) {
-          return
-        }
-
-        field.setRangeText(
-          insert,
-          start,
-          end,
-          'end',
-        )
-        field.dispatchEvent(new InputEvent(
-          'input',
-          {
-            bubbles: true,
-            inputType: 'insertFromPaste',
-          },
-        ))
       }}
       onChange={event => {
         const field = event.currentTarget

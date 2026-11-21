@@ -1202,6 +1202,14 @@ test(
     await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] .hydra-title');
+    const renameAtEmojiBoundary = await page.eval(() => {
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]');
+      field.select();
+      const clipboardData = new DataTransfer();
+      clipboardData.setData('text/plain', ${JSON.stringify(`${name.slice(1)}\n🐉`)});
+      field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
+      return field.value;
+    });
     await page.eval(() => {
       const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]');
       field.select();
@@ -1238,13 +1246,13 @@ test(
       return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, pasteCaret: title.selectionStart, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
     });
     await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
-    await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
+    await page.wait('[data-hydra-workspace="${hydra.id}"]:not(:has(.task-create)) .card-open');
     const card = await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
+    console.log(JSON.stringify({ fields: { ...fields, renameAtEmojiBoundary, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
   `,
     }))
     await until({
@@ -1258,6 +1266,7 @@ test(
       }).length === 1,
     })
     expect(result.fields).toMatchObject({
+      renameAtEmojiBoundary: name.slice(1),
       renameFits: true,
       titleFits: true,
       titleGrows: true,
