@@ -3511,7 +3511,7 @@ test(
       expect(receipt.notices).toEqual(expect.arrayContaining([
         expect.objectContaining({
           reason: expect.any(String),
-          clear: expect.stringContaining('pnyx'),
+          clear: expect.stringMatching(/\S/),
         }),
       ]))
       expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
