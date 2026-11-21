@@ -222,6 +222,7 @@ export function createSocketOutbox({
           }),
           scope: message.scope,
         })
+
         if (!timer) {
           drain()
         }
