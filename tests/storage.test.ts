@@ -665,3 +665,33 @@ test(
   },
 )
 
+test(
+  'an owner migration failure reaches its caller without an unhandled rejection',
+  () => {
+    const home = folder()
+    writeFileSync(
+      join(
+        home,
+        'owner',
+      ),
+      'a file occupies the memory folder',
+    )
+    const result = execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        "import {migrateOwnerMemory} from '#memory/owner-memory.ts'; try { await migrateOwnerMemory(); console.log('unexpected success') } catch (error) { console.log('handled ' + error.code) }",
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+        },
+      },
+    )
+    expect(result.trim()).toBe('handled EEXIST')
+  },
+)

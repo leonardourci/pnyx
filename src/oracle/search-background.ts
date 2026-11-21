@@ -47,7 +47,7 @@ export async function searchInBackground({
       })
     }
 
-    migrateOwnerMemory()
+    await migrateOwnerMemory()
 
     return runSearch({
       hydraId,
