@@ -1491,12 +1491,22 @@ test(
       expect(checked.conversations ?? []).toEqual([])
     }
 
+    const cursorAt = eventTime({
+      hydraId: hydra.id,
+      seq: Number(first.through),
+      exact: true,
+    })
+
+    if (!cursorAt) {
+      throw new Error('The first check did not leave a readable cursor')
+    }
+
     appendFileSync(
       transcript,
       `${JSON.stringify({
         type: 'user',
         uuid: randomUUID(),
-        timestamp: new Date().toISOString(),
+        timestamp: cursorAt,
         message: {
           role: 'user',
           content: 'Fresh native instructions',
@@ -2705,6 +2715,20 @@ test(
         what: 'the compaction to run',
         check: () => compaction()?.kind === 'compaction',
       })
+      const summarySession = await until({
+        what: 'the held summary session',
+        check: () => pnyx.claude.sessions.find(session => !session.closed && session.env.PNYX_HYDRA === hydra.id && session.received.at(-1)?.includes('Compact the recorded conversation')),
+      })
+      const command = /`(pnyx(?:-axi)? hydra history[^`]+)`/.exec(summarySession.received.at(-1)!)?.[1]
+      expect(command).toBeDefined()
+      expect(await summarySession.useTool!({
+        tool: 'Bash',
+        input: { command },
+      })).toMatchObject({ behavior: 'allow' })
+      expect(await summarySession.useTool!({
+        tool: 'Bash',
+        input: { command: 'pnyx task create --title untrusted' },
+      })).toMatchObject({ behavior: 'deny' })
       await whileCompacting?.({ message: sent.message })
       summary.release()
       await until({

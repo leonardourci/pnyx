@@ -37,7 +37,7 @@ const STARTING = /the database system is starting up|Connection terminated unexp
 // Postgres refused the role or its password, which no start or restart changes.
 const SIGN_IN_REFUSED = /role ".*" does not exist|password authentication failed|no pg_hba\.conf entry/i
 const SETUP = 'pnyx setup postgres'
-const CHANGE_URL = 'save a corrected URL with `pnyx setup postgres --url <url>`, or clear it with `pnyx setup postgres --url \'\'`, then run `pnyx restart`'
+const CHANGE_URL = 'save a corrected URL with `pnyx setup postgres --url <url>`, or clear it with `pnyx setup postgres --url \'\'`, then restart the Pnyx login service (or stop and rerun `pnyx serve`)'
 const MANUAL_START = 'start PostgreSQL 15 or newer with wal_level=logical where PGHOST and PGPORT point, then run `pnyx setup check`'
 
 interface Server {
@@ -509,7 +509,7 @@ function saveUrl({
 
   return {
     postgresUrl: shown === '' ? 'none: this home\'s own database through PGHOST, PGPORT and PGUSER' : shown,
-    help: ['The server uses it from its next start: run `pnyx restart`'],
+    help: ['Restart the Pnyx login service or stop and rerun `pnyx serve` to use this setting'],
   }
 }
 

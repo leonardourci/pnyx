@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { localToken } from '#app/server-state.ts'
+import { MAX_BODY } from '#app/server-protocol.ts'
+import { dirname, join } from 'node:path'
 import { CLI, parsed, pnyx, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let app: Pnyx
@@ -27,9 +29,13 @@ describe(
     it(
       'prints plain help and an optional JSON version without requiring a server',
       async () => {
+        const unused = {
+          ...env(),
+          PNYX_HOME: hydra.folder({ name: 'no-server' }),
+        }
         const help = await pnyx({
           args: ['--help'],
-          env: env(),
+          env: unused,
         })
         expect(help.status).toBe(0)
         expect(help.stdout).toContain('usage: pnyx')
@@ -40,7 +46,7 @@ describe(
             '--version',
             '--json',
           ],
-          env: env(),
+          env: unused,
         })
         expect(parsed(version).version).toMatch(/^\d+\.\d+\.\d+/)
       },
@@ -52,6 +58,8 @@ describe(
         const folder = hydra.folder({ name: 'plain-cli-worker' })
         const args = [
           'task',
+          '--hydra',
+          hydra.id,
           'create',
           '--title',
           'Plain CLI task',
@@ -67,7 +75,10 @@ describe(
           'plain-create',
           '--json',
         ]
-        const first = await run({ args })
+        const first = await pnyx({
+          args,
+          env: env(),
+        })
         expect(first.status).toBe(0)
         const receipt = parsed(first)
         expect(receipt).toMatchObject({
@@ -85,9 +96,12 @@ describe(
           ],
           input: JSON.stringify({ settings: { help: 'Keep this user setting' } }),
         })
-        const stored = await run({
+        const stored = await pnyx({
+          env: env(),
           args: [
             'task',
+            '--hydra',
+            hydra.id,
             'show',
             receipt.task,
             '--full',
@@ -104,7 +118,10 @@ describe(
           ],
         })).stdout).toContain('Keep this user setting')
         const worker = await hydra.agent({ cwd: folder })
-        expect(parsed(await run({ args })).task).toBe(receipt.task)
+        expect(parsed(await pnyx({
+          args,
+          env: env(),
+        })).task).toBe(receipt.task)
         expect(app.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
         const message = join(
@@ -136,7 +153,7 @@ describe(
             'utf8',
           ))),
         })
-        await run({
+        const repeated = await run({
           args: [
             'send',
             '--task',
@@ -148,7 +165,108 @@ describe(
             '--json',
           ],
         })
+        expect(repeated.status).toBe(0)
+        expect(parsed(sent).reply.reply).toEqual(expect.any(String))
+        expect(parsed(repeated).reply.reply).toBe(parsed(sent).reply.reply)
         expect(worker.received.filter(text => text.includes('Check the file input too'))).toHaveLength(1)
+
+        const scoped = await pnyx({
+          args: [
+            'send',
+            '--task',
+            receipt.task,
+            '--text',
+            'Scoped worker message',
+            '--hydra',
+            hydra.id,
+            '--json',
+          ],
+          env: {
+            ...env(),
+            PNYX_WORKER_HOME: process.env.PNYX_HOME,
+            PNYX_TASK: receipt.task,
+            PNYX_ACTOR: `worker:${receipt.task}`,
+          },
+        })
+        expect(scoped.status).toBe(0)
+        expect(parsed(scoped).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.stringContaining('outside the worker') })]))
+
+        const direct = await fetch(
+          `http://127.0.0.1:${app.port()}/api/run`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${localToken()}`,
+            },
+            body: JSON.stringify({
+              argv: [
+                'send',
+                '--task',
+                receipt.task,
+                '--file',
+                message,
+                '--hydra',
+                hydra.id,
+                '--json',
+              ],
+              cwd: process.cwd(),
+              env: {},
+            }),
+          },
+        )
+        expect(await direct.json()).toMatchObject({ exitCode: 2 })
+        const fromStdin = await pnyx({
+          args: [
+            'send',
+            '--task',
+            receipt.task,
+            '--file=-',
+            '--hydra',
+            hydra.id,
+            '--json',
+          ],
+          input: 'Input from stdin',
+          env: env(),
+        })
+        expect(fromStdin.status).toBe(0)
+        await until({
+          what: 'stdin content to reach the worker',
+          check: () => worker.received.some(text => text.includes('Input from stdin')),
+        })
+        writeFileSync(
+          message,
+          'x'.repeat(MAX_BODY + 1),
+        )
+        const oversized = await run({
+          args: [
+            'send',
+            '--task',
+            receipt.task,
+            '--file',
+            message,
+            '--json',
+          ],
+        })
+        expect(oversized.status).toBe(2)
+        expect(JSON.parse(oversized.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+
+        const oversizedStdin = await pnyx({
+          args: [
+            'send',
+            '--task',
+            receipt.task,
+            '--file',
+            '-',
+            '--hydra',
+            hydra.id,
+            '--json',
+          ],
+          input: 'x'.repeat(MAX_BODY + 1),
+          env: env(),
+        })
+        expect(oversizedStdin.status).toBe(2)
+        expect(JSON.parse(oversizedStdin.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
 
         const board = await run({ args: ['board'] })
         expect(board.status).toBe(0)
@@ -233,12 +351,15 @@ describe(
     )
 
     it(
-      'prints a JSON startup receipt when serving an isolated home',
+      'starts from the entry path used by existing login services and prints a JSON receipt',
       async ({ onTestFinished }) => {
         const child = spawn(
           process.execPath,
           [
-            CLI,
+            join(
+              dirname(CLI),
+              'pnyx-axi.js',
+            ),
             'serve',
             '--port',
             '0',
@@ -299,6 +420,24 @@ describe(
             'Changed',
           ],
           ['report'],
+          [
+            'serve',
+            '--port',
+            '65536',
+          ],
+          [
+            'serve',
+            '--port',
+            '0',
+            '--port',
+            '0',
+          ],
+          [
+            'setup',
+            'postgres',
+            '--preview',
+            '--check',
+          ],
           ['toString'],
           [
             'hydra',

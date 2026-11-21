@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
+import { MAX_BODY } from '#app/server-protocol.ts'
 import { request as httpRequest } from 'node:http'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pnyxHome } from '#store/paths.ts'
@@ -47,11 +48,66 @@ const stdinText = ({ argv }: { argv: string[] }) => argv.some((
   arg,
   i,
 ) => arg === '--file=-' || (arg === '-' && argv[i - 1] === '--file'))
-  ? readFileSync(
-    0,
-    'utf8',
-  )
+  ? readMessageInput({ source: process.stdin })
   : undefined
+
+async function commandInput({ argv }: { argv: string[] }): Promise<{
+  argv: string[]
+  stdin?: string
+}> {
+  const parsed = cliArguments({ argv })
+  const files = parsed.tokens.filter(token => token.kind === 'option' && token.name === 'file')
+  const file = files[0]
+
+  if (parsed.argv[0] !== 'send' || files.length !== 1 || file?.kind !== 'option' || !file.value) {
+    return { argv }
+  }
+
+  if (file.value === '-') {
+    return {
+      argv,
+      stdin: await stdinText({
+        argv: [
+          '--file',
+          '-',
+        ],
+      }),
+    }
+  }
+
+  const stdin = await readMessageInput({ source: createReadStream(file.value) })
+  const forwarded = [...argv]
+
+  if (file.inlineValue) {
+    forwarded[file.index] = '--file=-'
+  } else {
+    forwarded[file.index + 1] = '-'
+  }
+
+  return {
+    argv: forwarded,
+    stdin,
+  }
+}
+
+async function readMessageInput({ source }: {
+  source: AsyncIterable<Buffer>
+}): Promise<string> {
+  const chunks: Buffer[] = []
+  let bytes = 0
+
+  for await (const chunk of source) {
+    bytes += chunk.length
+
+    if (bytes > MAX_BODY) {
+      throw new Error('message input exceeds the request size limit')
+    }
+
+    chunks.push(chunk)
+  }
+
+  return Buffer.concat(chunks).toString('utf8')
+}
 
 // Runs one command line in the server and answers with what it printed and its exit code.
 async function send({
@@ -158,7 +214,7 @@ const failure = ({
     error: message,
     code,
   })}\n` : `${code}: ${message}\n`)
-  process.exitCode = 1
+  process.exitCode = code === 'VALIDATION_ERROR' ? 2 : 1
 }
 
 async function printSessionStartContext({ argv }: { argv: string[] }) {
@@ -189,7 +245,22 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
     return printSessionStartContext({ argv })
   }
 
-  const stdin = stdinText({ argv })
+  let input: Awaited<ReturnType<typeof commandInput>>
+
+  try {
+    input = await commandInput({ argv })
+  } catch (error) {
+    failure({
+      argv,
+      message: (error as Error).message,
+      code: 'VALIDATION_ERROR',
+    })
+
+    return
+  }
+
+  argv = input.argv
+  const stdin = input.stdin
   const end = Date.now() + STARTING_MS
   let started = false
   let last = 'it is not running'

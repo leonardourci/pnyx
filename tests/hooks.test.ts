@@ -11,7 +11,7 @@ import { flushLogs } from '#app/diagnostics.ts'
 import { logFiles } from '#diagnostics/log-files.ts'
 import { spawn } from 'node:child_process'
 import { createServer, type Socket } from 'node:net'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { parsed, operation, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
@@ -1452,6 +1452,70 @@ test(
       ),
       'Keep my local skill',
     )
+    const legacy = join(
+      home,
+      '.agents',
+      'skills',
+      'pnyx-worker',
+    )
+    const foreign = join(
+      home,
+      '.agents',
+      'skills',
+      'pnyx-inscribe',
+    )
+
+    for (const [
+      name,
+      skill,
+      target,
+    ] of [
+        [
+          'pnyx',
+          'pnyx-worker',
+          legacy,
+        ],
+        [
+          'foreign',
+          'pnyx-inscribe',
+          foreign,
+        ],
+      ]) {
+      const source = join(
+        home,
+        `${name}-package`,
+        'skills',
+        skill,
+      )
+      mkdirSync(
+        source,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          home,
+          `${name}-package`,
+          'package.json',
+        ),
+        JSON.stringify({ name }),
+      )
+      symlinkSync(
+        source,
+        target,
+      )
+    }
+
+    const preview = await operation({
+      args: [
+        'setup',
+        'skills',
+        '--preview',
+      ],
+      env,
+    })
+    expect(preview.status).toBe(0)
+    expect(lstatSync(legacy).isSymbolicLink()).toBe(true)
+    expect(lstatSync(foreign).isSymbolicLink()).toBe(true)
     const installed = await operation({
       args: [
         'setup',
@@ -1463,6 +1527,11 @@ test(
       installed.status,
       installed.stdout,
     ).toBe(0)
+    expect(lstatSync(
+      legacy,
+      { throwIfNoEntry: false },
+    )).toBeUndefined()
+    expect(lstatSync(foreign).isSymbolicLink()).toBe(true)
     expect(parsed(installed).notices).toContainEqual(expect.objectContaining({
       reason: expect.stringContaining(customSkill),
       clear: expect.stringContaining('pnyx setup skills'),

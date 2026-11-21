@@ -39,7 +39,7 @@ export function holdBlocker({
 }): Blocker {
   return {
     reason: `held for discussion: ${reason}`,
-    clear: `Ask the owner with \`${goQuestionCommand({ task })}\`, or once they give the go, run \`pnyx task release ${task} --from-message <owner-message-id> --reason "<why>"\``,
+    clear: `Ask the owner through task ${task} in the UI; release its hold there once they give the go`,
   }
 }
 
@@ -92,7 +92,7 @@ export function questionBlockers({ card }: { card: Card }): Blocker[] {
   ])
   const permissions = [...permissionIds].map(id => ({
     reason: `waiting for permission request ${id}`,
-    clear: `Run \`pnyx task permission ${card.id} ${id} allow|deny --reason "<why>"\``,
+    clear: `Answer permission request ${id} in task ${card.id} through the UI`,
   }))
   const asks = openAsks({ card }).map(ask => askBlocker({
     card,

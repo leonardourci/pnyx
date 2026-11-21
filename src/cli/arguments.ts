@@ -52,6 +52,7 @@ const VALUE_FLAGS = [
   'to',
   'at',
   'id',
+  'seq',
   'operation',
   'until',
   'batch',
@@ -91,6 +92,7 @@ export function cliArguments({ argv }: { argv: string[] }) {
   const indexes = new Set(switches.map(token => token.index))
 
   return {
+    tokens,
     argv: argv.filter((
       _,
       index,

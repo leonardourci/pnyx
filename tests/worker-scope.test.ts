@@ -125,7 +125,7 @@ test(
       ).toEqual(expect.arrayContaining([
         expect.objectContaining({
           reason: expect.any(String),
-          clear: expect.stringContaining('pnyx'),
+          clear: expect.stringMatching(/\S/),
         }),
       ]))
     }

@@ -49,7 +49,7 @@ export const WRITE: Options = {
   confirm: { type: 'string' },
 }
 
-export function flagError({ error }: {
+function flagError({ error }: {
   error: unknown
 }): HydraError {
   return new HydraError({

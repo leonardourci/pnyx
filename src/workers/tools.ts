@@ -77,7 +77,7 @@ export function writeTools({
   }))) {
     inform({
       reason: 'Tools changed on a finished or hidden task',
-      clear: 'pnyx task unhide <task> or pnyx outcome <task> --clear',
+      clear: 'Unhide the task or clear its outcome in the UI',
       task: card.id,
     })
   }
@@ -85,7 +85,7 @@ export function writeTools({
   if (steeringHeld({ card })) {
     inform({
       reason: 'Tools changed while the discussion hold remains',
-      clear: 'pnyx task release <task> --reason "<why>"',
+      clear: 'Release the task hold in the UI',
       task: card.id,
     })
   }
@@ -94,7 +94,7 @@ export function writeTools({
     inform({
       task: card.id,
       reason: 'Tools changed by a worker',
-      clear: `Use pnyx task tools ${card.id} --revoke browser`,
+      clear: `Revoke browser access from task ${card.id} in the UI`,
     })
   }
 

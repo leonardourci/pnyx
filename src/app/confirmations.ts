@@ -13,6 +13,7 @@ import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { commands } from './cli.ts'
 import { project } from '#projects/cli.ts'
+import { agent } from '#workers/agent-cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
 import { requestEnv, IDENTITY, agentRequest, runForClient } from '#app/request-context.ts'
 
@@ -91,7 +92,7 @@ export const approval = guard({
     if (actor.actor === 'hydra' || agentRequest()) {
       inform({
         reason: 'Approval question answered by an agent',
-        clear: 'Use pnyx approval dismiss <token> to dismiss a pending approval',
+        clear: 'Dismiss the pending approval in the UI',
       })
     }
 
@@ -131,7 +132,7 @@ export const approval = guard({
         if (action === 'confirm' && proposal.status === 'failed') {
           inform({
             reason: 'Retrying a failed approved action after checking its target',
-            clear: 'Use pnyx approval dismiss <token> to dismiss it instead',
+            clear: 'Dismiss the failed approval in the UI instead',
           })
         }
 
@@ -142,7 +143,7 @@ export const approval = guard({
         }) !== proposal.before) {
           inform({
             reason: 'Applying a saved action after its target changed',
-            clear: `Use pnyx ${confirming?.name ?? 'task'} --help to inspect its current commands`,
+            clear: 'Review the target in the UI before retrying the action',
           })
         }
 
@@ -219,6 +220,7 @@ export const approval = guard({
     try {
       const handlers = {
         ...commands,
+        agent,
         project,
         ...dispatchCommands,
       }
@@ -243,11 +245,18 @@ export const approval = guard({
         strict: false,
         allowPositionals: true,
       }).positionals.length === 0
-      const commandArgs = allHydras ? target.args : [
-        ...target.args,
-        '--hydra',
-        hydraId,
-      ]
+      const commandArgs = [...target.args]
+
+      if (!allHydras) {
+        const separator = commandArgs.indexOf('--')
+        commandArgs.splice(
+          separator === -1 ? commandArgs.length : separator,
+          0,
+          '--hydra',
+          hydraId,
+        )
+      }
+
       const result = await runForClient({
         identity: Object.fromEntries(IDENTITY.flatMap(name => ownerEnv[name] === undefined ? [] : [
           [

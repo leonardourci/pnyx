@@ -55,6 +55,13 @@ export const setup = guard({
       return setupCheckOutput({ hydraId })
     }
 
+    if (values.preview && positionals[0] === 'postgres') {
+      throw new HydraError({
+        message: '--preview does not apply to setup postgres',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     if (positionals[0] === 'postgres') {
       return setupPostgres({
         check: !!values.check,

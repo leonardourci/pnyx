@@ -122,7 +122,7 @@ export function decideUndo({
       throw notUndoable({ message: `the task is already back on Hydra ${back}` })
     }
 
-    throw notUndoable({ message: `a move between Hydras is undone by moving the task back: run \`pnyx task move ${target.cardId} --to-hydra ${back} --hydra ${holder} --reason "<why>"\`` })
+    throw notUndoable({ message: `Move task ${target.cardId} from Hydra ${holder} back to Hydra ${back} in the UI` })
   }
 
   if (target.type === 'board.columns') {
@@ -377,7 +377,7 @@ export function decideUndo({
     throw new HydraError({
       message: `${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`,
       code: 'CONFLICT',
-      help: [`Run \`pnyx undo ${latest}\` to ${redone ? 'undo it again' : 'redo it'}`],
+      help: ['Review the event history and correct the task in the UI'],
     })
   }
 

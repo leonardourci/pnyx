@@ -1,7 +1,7 @@
 import { readCommand } from './reads.ts'
 import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
-import { parse, meta, required, WRITE, COMMON, type Options } from '#app/cli-support.ts'
+import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/cli-support.ts'
 import { HydraError } from '#store/errors.ts'
 import { createCommand } from '#workers/create.ts'
 import { sendReply } from '#workers/reply.ts'
@@ -14,6 +14,9 @@ import { readInput, recordExitCode, requestInvocation } from '#app/request-conte
 import { home } from './home.ts'
 import { version } from './version.ts'
 import { withCommandNotices } from '#app/command-notices.ts'
+import { workerScoped } from '#workers/worker-scope.ts'
+import { supervisedCommands } from '#routine-helper/commands.ts'
+import { agentNotices } from '#hydra/hydra-session.ts'
 
 const HELP = `usage: pnyx <command> [--hydra <id>] [--json]
 
@@ -22,7 +25,8 @@ pnyx send --text <message> [--task <id>] [--idempotency-key <key>]
 pnyx answer <task> <question> --text <answer> [--from-message <id>]
 pnyx board
 pnyx serve [--port <n>]
-pnyx setup [check|hooks|skills|postgres] [--preview]
+pnyx setup [check|hooks|skills] [--preview]
+pnyx setup postgres [--check | --url <url>]
 pnyx debug health
 
 Task creation starts its worker. Use --harness, --account, --model, --effort,
@@ -66,18 +70,45 @@ export const invocationOf = ({ argv }: { argv: string[] }) => ({
   ).join(' '),
 })
 
+function runAction<T>({
+  name,
+  args,
+  run,
+}: {
+  name: string
+  args: string[]
+  run(): T
+}): T {
+  const actions = workerScoped({
+    commands: agentNotices({
+      commands: supervisedCommands({
+        commands: {
+          [name]: guard({ handler: run }),
+        },
+      }),
+    }),
+  })
+
+  return actions[name]!(args)
+}
+
 async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   const [
     command,
     ...args
   ] = argv
 
-  if (command === 'task' && args[0] === 'create') {
+  const subcommand = cliArguments({ argv }).tokens.find(token => token.kind === 'positional' && token.index > 0)
+
+  if (command === 'task' && subcommand?.kind === 'positional' && subcommand.value === 'create') {
     const {
       values,
       hydraId,
     } = parse({
-      args: args.slice(1),
+      args: args.filter((
+        _,
+        index,
+      ) => index + 1 !== subcommand.index),
       options: CREATE_OPTIONS,
       positionals: 0,
     })
@@ -85,11 +116,15 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       value: values.title as string | undefined,
       what: '--title',
     })
-    const output = await createCommand({
-      hydraId,
-      values,
-      positionals: ['create'],
-      meta: meta({ values }),
+    const output = await runAction({
+      name: 'task',
+      args,
+      run: () => createCommand({
+        hydraId,
+        values,
+        positionals: ['create'],
+        meta: meta({ values }),
+      }),
     })
     const card = output.card as { id: string } | undefined
 
@@ -136,29 +171,45 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
 
     if (task !== undefined) {
       return {
-        reply: await sendReply({
-          hydraId,
-          request: {
-            card: required({
-              value: task,
-              what: '--task',
-            }),
-            text,
-            actor: m.actor,
-            reason: m.reason,
-            id: values['idempotency-key'] as string | undefined,
-          },
+        reply: await runAction({
+          name: 'reply',
+          args: [
+            `--hydra=${hydraId}`,
+            ...(values.actor ? [`--actor=${values.actor}`] : []),
+            '--',
+            task,
+          ],
+          run: () => sendReply({
+            hydraId,
+            request: {
+              card: required({
+                value: task,
+                what: '--task',
+              }),
+              text,
+              actor: m.actor,
+              reason: m.reason,
+              id: values['idempotency-key'] as string | undefined,
+            },
+          }),
         }),
       }
     }
 
-    const output = await hydraSend({
-      hydraId,
-      values: {
-        ...values,
-        text,
-        'event-id': values['idempotency-key'],
-      },
+    const output = await runAction({
+      name: 'hydra',
+      args: [
+        'send',
+        ...args,
+      ],
+      run: () => hydraSend({
+        hydraId,
+        values: {
+          ...values,
+          text,
+          'event-id': values['idempotency-key'],
+        },
+      }),
     })
 
     return {
@@ -181,11 +232,18 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
         undelivered: { type: 'boolean' },
       },
     })
-    const output = await taskCommand({
+    const output = await runAction({
+      name: 'task',
       args: [
         'answer',
         ...args,
       ],
+      run: () => taskCommand({
+        args: [
+          'answer',
+          ...args,
+        ],
+      }),
     })
 
     return {
@@ -212,11 +270,19 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
   }
 
   if (command === 'setup') {
-    return setup(args)
+    return runAction({
+      name: 'setup',
+      args,
+      run: () => setup(args),
+    })
   }
 
-  if (command === 'debug' && args[0] === 'health') {
-    return debug(args)
+  if (command === 'debug' && subcommand?.kind === 'positional' && subcommand.value === 'health') {
+    return runAction({
+      name: 'debug',
+      args,
+      run: () => debug(args),
+    })
   }
 
   const read = readCommand({ argv })
@@ -290,7 +356,7 @@ export async function runCli({
     const parsed = cliArguments({ argv })
     json = parsed.json
     const args = parsed.argv
-    requestInvocation().name = invocationOf({ argv: args }).name
+    requestInvocation().name = invocationOf({ argv: parsed.tokens.flatMap(token => token.kind === 'positional' ? [token.value] : []) }).name
 
     if (parsed.version) {
       stdout.write(json ? `${JSON.stringify({ version })}\n` : `${version}\n`)
@@ -313,11 +379,22 @@ export async function runCli({
       })
     }
 
+    if (remote && command === 'send' && parsed.tokens.some(token => token.kind === 'option' && token.name === 'file' && token.value !== '-')) {
+      throw new HydraError({
+        message: 'send file contents through stdin with --file -',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     let output = command === 'serve'
-      ? await serve({
+      ? await runAction({
+        name: 'serve',
         args: args.slice(1),
-        stdout,
-        json,
+        run: () => serve({
+          args: args.slice(1),
+          stdout,
+          json,
+        }),
       })
       : await withCommandNotices({ run: () => execute({ argv: args }) })
 

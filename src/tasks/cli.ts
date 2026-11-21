@@ -547,7 +547,7 @@ function columnCommand({ args }: { args: string[] }): Output {
   if (action === 'rule' && !m.reason?.trim()) {
     inform({
       reason: 'Column rule changed without a reason',
-      clear: 'Use pnyx column rule <column> --reason "<why>" to record one',
+      clear: 'Record the reason in the column rule editor',
     })
   }
 

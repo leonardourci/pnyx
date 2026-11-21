@@ -7,6 +7,7 @@ import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { serviceFile, startService } from '#setup/service.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -173,7 +174,7 @@ function launch({ args }: { args: string[] }) {
   }
 }
 
-export function requestRestart() {
+export function requestRestart({ root = PNYX_ROOT }: { root?: string } = {}) {
   const log = openSync(
     join(
       pnyxHome(),
@@ -191,10 +192,10 @@ export function requestRestart() {
         '--input-type=module',
         '--eval',
         'const { restartPnyx } = await import(process.argv[1]); await restartPnyx()',
-        join(
-          PNYX_ROOT,
+        pathToFileURL(join(
+          root,
           'dist/upgrade/restart.js',
-        ),
+        )).href,
       ],
       {
         detached: true,

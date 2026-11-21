@@ -1,6 +1,8 @@
 import { CLONE_TIMEOUT_MS } from '#projects/limits.ts'
 import { repeatable, waitsOnAgent } from './command-registry.ts'
 
+export const MAX_BODY = 1 << 20
+
 export const MAX_MESSAGE_BYTES = 64 * 1024
 // A Hydra's page HTML sets the token cookie for this path only, so only the page reaches zero-cache.
 export const ZERO_PATH = '/zero'
