@@ -77,14 +77,31 @@ export function Input({
         const start = field.selectionStart
         const end = field.selectionEnd
         const remaining = field.maxLength - (field.value.length - (end - start))
-        const insert = field.maxLength < 0 ? text : text.slice(0, Math.max(0, remaining))
+        const insert = field.maxLength < 0 ? text : text.slice(
+          0,
+          Math.max(
+            0,
+            remaining,
+          ),
+        )
 
         if (!insert) {
           return
         }
 
-        field.setRangeText(insert, start, end, 'end')
-        field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }))
+        field.setRangeText(
+          insert,
+          start,
+          end,
+          'end',
+        )
+        field.dispatchEvent(new InputEvent(
+          'input',
+          {
+            bubbles: true,
+            inputType: 'insertFromPaste',
+          },
+        ))
       }}
       onChange={event => {
         const field = event.currentTarget
