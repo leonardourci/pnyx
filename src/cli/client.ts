@@ -66,7 +66,12 @@ async function commandInput({ argv }: { argv: string[] }): Promise<{
   if (file.value === '-') {
     return {
       argv,
-      stdin: await stdinText({ argv: ['--file', '-'] }),
+      stdin: await stdinText({
+        argv: [
+          '--file',
+          '-',
+        ],
+      }),
     }
   }
 
