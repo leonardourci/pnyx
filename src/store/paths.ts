@@ -9,6 +9,13 @@ export function pnyxHome(): string {
   )
 }
 
+export const taskRuntimeDir = ({ task }: { task: string }) => join(
+  pnyxHome(),
+  'runtime',
+  'tasks',
+  task,
+)
+
 export function canonical({ path }: { path: unknown }): string | undefined {
   if (typeof path !== 'string' || !path.startsWith('/')) {
     return undefined

@@ -14,8 +14,7 @@ export async function workerLine({
   const task = await hydra.task({ key })
   const dir = join(
     process.env.PNYX_HOME!,
-    'hydras',
-    hydra.id,
+    'runtime',
     'tasks',
     task.id,
   )

@@ -1,16 +1,21 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadHydra } from '#app/store.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { taskRuntimeDir } from '#store/paths.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
-import { watchPath, type PathWatch } from '#app/watch.ts'
+import { watchPath } from '#app/watch.ts'
 import type { HydraState } from '#app/model.ts'
 import type { WorkerCode } from '#tasks/model.ts'
 import { parseLink, decideLink } from '#tasks/delivery/links.ts'
 import { applyDecision } from '#app/decision.ts'
 import { HydraError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
+import { background } from '#app/background.ts'
+
+const BATCH_BYTES = 64 * 1024
+const LINE_BYTES = 16 * 1024
+const BATCH_LINES = 128
 
 const CODES = new Set<WorkerCode>([
   'needs-you',
@@ -27,11 +32,7 @@ export function workerTaskDir({
   hydraId: string
   task: string
 }): string {
-  const dir = loadHydra({ hydraId }).state.cards[task]?.workerLogDir ?? join(
-    hydraDir({ hydraId }),
-    'tasks',
-    task,
-  )
+  const dir = loadHydra({ hydraId }).state.cards[task]?.workerLogDir ?? taskRuntimeDir({ task })
   privateDir({ dir })
 
   return dir
@@ -43,19 +44,15 @@ export function foldWorkerLog({
 }: {
   writer: Writer
   task: string
-}): void {
+}): boolean {
   const card = writer.state.cards[task]
 
   if (!card) {
-    return
+    return false
   }
 
   const path = join(
-    card.workerLogDir ?? join(
-      writer.dir,
-      'tasks',
-      task,
-    ),
+    card.workerLogDir ?? taskRuntimeDir({ task }),
     'worker.log',
   )
   let fd: number
@@ -67,7 +64,7 @@ export function foldWorkerLog({
     )
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return
+      return false
     }
 
     throw error
@@ -84,7 +81,7 @@ export function foldWorkerLog({
         error: 'worker.log must be a regular file',
       })
 
-      return
+      return false
     }
 
     const identity = `${stat.dev}:${stat.ino}`
@@ -110,10 +107,13 @@ export function foldWorkerLog({
         },
       })
 
-      return
+      return false
     }
 
-    const bytes = Buffer.alloc(stat.size - off)
+    const bytes = Buffer.alloc(Math.min(
+      BATCH_BYTES,
+      stat.size - off,
+    ))
     const count = readSync(
       fd,
       bytes,
@@ -122,16 +122,52 @@ export function foldWorkerLog({
       off,
     )
     let start = 0
+    let lines = 0
+    let discarding = previous?.identity === identity && previous.discarding === true
 
     const complete = bytes.subarray(
       0,
       count,
     )
 
-    for (let end = complete.indexOf(10); end >= 0; end = complete.indexOf(
-      10,
-      start,
-    )) {
+    while (start < count && lines < BATCH_LINES) {
+      const newline = complete.indexOf(
+        10,
+        start,
+      )
+      const end = newline < 0 ? count : newline
+      const oversized = end - start > LINE_BYTES
+
+      if (discarding || oversized) {
+        const next = newline < 0 ? count : newline + 1
+        discarding = newline < 0
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: `worker:${task}:${identity}:${off + next}`,
+            at: new Date().toISOString(),
+            cardId: task,
+            actor: `worker:${task}`,
+            type: 'task.worker-line',
+            data: {
+              identity,
+              off: off + next,
+              ...(discarding ? { discarding: true as const } : {}),
+              code: 'invalid',
+              text: 'Line exceeds the worker.log line limit; discarding through its next newline',
+            },
+          },
+        })
+        start = next
+        lines++
+        continue
+      }
+
+      if (newline < 0) {
+        break
+      }
+
       const raw = bytes.subarray(
         start,
         end,
@@ -222,7 +258,10 @@ export function foldWorkerLog({
       }
 
       start = end + 1
+      lines++
     }
+
+    return stat.size > off + count || lines === BATCH_LINES && start < count
   } finally {
     closeSync(fd)
   }
@@ -235,7 +274,7 @@ export function followWorkerLogs({
   hydraId: string
   changed(): void
 }) {
-  const watches = new Map<string, PathWatch>()
+  const watches = new Map<string, ReturnType<typeof watchPath>>()
   let closed = false
 
   const reconcile = ({ state }: { state: HydraState }) => {
@@ -258,15 +297,56 @@ export function followWorkerLogs({
         continue
       }
 
+      let reading = false
+      let again = false
+      let scheduled = false
+
+      const schedule = () => {
+        if (scheduled || closed || !watches.has(card.id)) {
+          return
+        }
+
+        scheduled = true
+        setImmediate(() => {
+          scheduled = false
+          background({
+            name: 'continue worker log',
+            run: read,
+            retry: () => watches.get(card.id)?.reconcile(),
+          })
+        }).unref()
+      }
+
       const read = async () => {
-        await withWriter({
-          hydraId,
-          fn: ({ writer }) => foldWorkerLog({
-            writer,
-            task: card.id,
-          }),
-        })
-        changed()
+        if (closed || !watches.has(card.id)) {
+          return
+        }
+
+        if (reading) {
+          again = true
+
+          return
+        }
+
+        reading = true
+        again = false
+
+        try {
+          const more = await withWriter({
+            hydraId,
+            fn: ({ writer }) => foldWorkerLog({
+              writer,
+              task: card.id,
+            }),
+          })
+          changed()
+
+          if (more || again) {
+            schedule()
+          }
+        } finally {
+          reading = false
+        }
       }
 
       try {
