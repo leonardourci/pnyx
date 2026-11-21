@@ -1147,7 +1147,7 @@ export function HydraView({
             )}
             <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={ICON_SIZE.heading} />
           </HydraDragName>
-          <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto group-data-[collapsed=true]/workspace:scrollbar-stable-both" aria-label="Projects">
+          <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:scrollbar-stable-both group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
             <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
               {columns.map(column => (
                 <SortableChip
