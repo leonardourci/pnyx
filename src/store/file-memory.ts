@@ -1,9 +1,8 @@
 import { hash } from 'node:crypto'
-import { isDeepStrictEqual } from 'node:util'
 import { join } from 'node:path'
 import { HydraError } from './errors.ts'
 import { readHomeFiles, type FileLog, type HydraFiles } from './file-home.ts'
-import { prepareLog, type LogEntry, type LogFact, type LogPosition } from './log.ts'
+import { plainJson, prepareLog, type LogEntry, type LogFact, type LogPosition } from './log.ts'
 import type { FileSnapshot } from './snapshot.ts'
 
 export interface AcceptedFact {
@@ -49,37 +48,10 @@ interface CachedSegment<Value> {
 interface CachedMemory<Hydra, Task> {
   v: 1
   content: {
-    hydra: CachedSegment<Hydra>
+    hydra: CachedSegment<Hydra> & { worker: number }
     tasks: Record<string, CachedSegment<Task>>
   }
   digest: string
-}
-
-function fileJson<Value>({ value }: { value: Value }): Value {
-  try {
-    const encoded = JSON.stringify(value)
-
-    if (encoded === undefined) {
-      throw new Error('undefined is not a JSON value')
-    }
-
-    const decoded = JSON.parse(encoded) as Value
-
-    if (!isDeepStrictEqual(
-      value,
-      decoded,
-    )) {
-      throw new Error('the value changes when encoded as JSON')
-    }
-
-    return decoded
-  } catch (cause) {
-    throw new HydraError({
-      code: 'INVALID_EVENT',
-      message: 'file-store values must be plain JSON',
-      cause,
-    })
-  }
 }
 
 function orderedJson({ value }: { value: unknown }): unknown {
@@ -175,7 +147,7 @@ export function applyFileFacts<Value>({
   const appended: LogFact[] = []
   const receipts: (AcceptedFact & { duplicate: boolean })[] = []
 
-  for (const fact of fileJson({ value: facts })) {
+  for (const fact of plainJson({ value: facts })) {
     const prepared = prepareLog({
       path,
       after: next.position,
@@ -205,7 +177,7 @@ export function applyFileFacts<Value>({
       entry: structuredClone(entry),
       id,
     })
-    next.value = fileJson({ value })
+    next.value = plainJson({ value })
     next.position = prepared.position
 
     next.worker = workerOffset({
@@ -273,6 +245,7 @@ function cachedMemory<Hydra, Task>({
   const cache = snapshot.state as Partial<CachedMemory<Hydra, Task>> | null
 
   if (!cache || cache.v !== 1 || !cache.content || !cachedSegment({ value: cache.content.hydra })
+    || !Number.isSafeInteger(cache.content.hydra.worker) || cache.content.hydra.worker < 0
     || !cache.content.tasks || typeof cache.content.tasks !== 'object' || Array.isArray(cache.content.tasks)
     || !Object.values(cache.content.tasks).every(value => cachedSegment({ value }))
     || cache.digest !== cacheDigest({
@@ -320,7 +293,7 @@ function replayFile<Value>({
         throw new Error(`duplicate native id ${entry.id}`)
       }
 
-      value = fileJson({
+      value = plainJson({
         value: reduce({
           state: value,
           entry: structuredClone(entry),
@@ -376,6 +349,7 @@ function loadHydraMemory<Hydra, Task>({
     hydra: replayFile({
       log: files.hydra,
       cached: cache?.content.hydra,
+      worker: cache?.content.hydra.worker,
       reduce: reducers.reduceHydra,
       id: hydra,
       path: join(
@@ -460,7 +434,10 @@ export function fileMemorySnapshot<Hydra, Task>({
     , segment,
   ]) => !segment.issue)
   const content = {
-    hydra: cached({ segment: memory.hydra }),
+    hydra: {
+      ...cached({ segment: memory.hydra }),
+      worker: memory.hydra.worker,
+    },
     tasks: Object.fromEntries(tasks.map(([
       id,
       segment,
