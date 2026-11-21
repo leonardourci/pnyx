@@ -22,7 +22,7 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 
 ## Migrate from pnyx-axi
 
-Stop the previous foreground server with Ctrl+C. If you installed its login service, run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README, keeping the same `PNYX_HOME`. Run `pnyx setup postgres --check` before starting the new server. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup` to reinstall the login service if you use it.
+Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README, keeping the same `PNYX_HOME`. Run `pnyx setup postgres --check` before starting the new server. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
 
 ## Reads during the storage cutover
 

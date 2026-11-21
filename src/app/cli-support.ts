@@ -307,7 +307,7 @@ function receipt({
         'blocked',
         'done',
       ].includes(phase) ? 'Hydra wake eligible; owner delivery not confirmed' : 'No Hydra wake from this lifecycle declaration',
-      help: [`Run \`pnyx send --text "Task ${card.id}: <actionable result with links>"\` to queue a result for Hydra; lifecycle status does not deliver a result to the owner`],
+      help: ['Append the result and its links to the assigned worker.log. A worker report does not confirm owner delivery.'],
     }
   }
 

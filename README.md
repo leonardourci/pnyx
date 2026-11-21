@@ -143,8 +143,8 @@ Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for det
 | `--hydra <name>` | Hydra to use (default: assigned Hydra or `default`). |
 | `--json` | Print a JSON receipt for a script. |
 | `--port <n>` | Port for `serve`; `0` picks a free one. |
-| `--event-id <id>` | On writes, an idempotency key; a repeat returns the original receipt. |
-| `--if-revision <n>` | On writes, the expected card revision (`0` for a new card). |
+| `--idempotency-key <key>` | Retry `send` with the same key and message if its receipt is lost. |
+| `--event-id <id>` | Reuse the same ID when retrying `task create`. |
 | `--help`, `--version` | Show command help or the installed version. |
 
 ## Documentation
