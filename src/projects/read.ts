@@ -87,7 +87,7 @@ export function taskProject({
       throw new HydraError({
         message: `project not attached: ${ref}`,
         code: 'NOT_FOUND',
-        help: ['Run `pnyx-axi project list` for attached projects, or `pnyx-axi project add <path>` to attach one'],
+        help: ['Run `pnyx project list` for attached projects. Attach a project in the UI.'],
       })
     }
 

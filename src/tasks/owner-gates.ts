@@ -27,7 +27,7 @@ const QUESTION_CHOICES: Record<NonNullable<Ask['kind']>, string> = {
 }
 
 export function goQuestionCommand({ task }: { task: string }): string {
-  return `pnyx-axi task ask ${task} --to owner --kind go --question "<go question?>" --context "<what Go changes>. [Card](pnyx-task:${encodeURIComponent(task)})"`
+  return `Ask the owner a Go/Hold question in task ${task} through the UI`
 }
 
 export function holdBlocker({
@@ -39,7 +39,7 @@ export function holdBlocker({
 }): Blocker {
   return {
     reason: `held for discussion: ${reason}`,
-    clear: `Ask the owner with \`${goQuestionCommand({ task })}\`, or once they give the go, run \`pnyx-axi task release ${task} --from-message <owner-message-id> --reason "<why>"\``,
+    clear: `Ask the owner through task ${task} in the UI; release its hold there once they give the go`,
   }
 }
 
@@ -55,7 +55,7 @@ function promptBlocker({
 
   return {
     reason: `waiting for an answer to the worker's ${prompt.kind} ${id}${detail}`,
-    clear: `Run \`pnyx-axi reply ${card.id} --answer ${prompt.key} --json '<answer>' --seen ${id}\``,
+    clear: `Answer this ${prompt.kind} in task ${card.id} through the UI`,
   }
 }
 
@@ -69,8 +69,8 @@ function askBlocker({
   const owner = ask.audience === 'owner'
   const choice = ask.kind ? ` --choice ${QUESTION_CHOICES[ask.kind]}` : ''
   const answer = owner
-    ? `Run \`pnyx-axi task answer ${card.id} ${ask.id}${choice} --from-message <owner-message-id> --reason "<why>"\` once the owner answers`
-    : `Run \`pnyx-axi task answer ${card.id} ${ask.id} --text "<answer>" --reason "<why>"\``
+    ? `Run \`pnyx answer ${card.id} ${ask.id}${choice} --from-message <owner-message-id> --reason "<why>"\` once the owner answers`
+    : `Run \`pnyx answer ${card.id} ${ask.id} --text "<answer>" --reason "<why>"\``
 
   return {
     reason: `waiting for ${owner ? 'the owner' : 'Hydra'} to answer question ${ask.id}: ${ask.question}`,
@@ -92,7 +92,7 @@ export function questionBlockers({ card }: { card: Card }): Blocker[] {
   ])
   const permissions = [...permissionIds].map(id => ({
     reason: `waiting for permission request ${id}`,
-    clear: `Run \`pnyx-axi task permission ${card.id} ${id} allow|deny --reason "<why>"\``,
+    clear: `Answer permission request ${id} in task ${card.id} through the UI`,
   }))
   const asks = openAsks({ card }).map(ask => askBlocker({
     card,

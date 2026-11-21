@@ -36,9 +36,9 @@ const NOT_RUNNING = /ECONNREFUSED|ENOENT|connection refused/i
 const STARTING = /the database system is starting up|Connection terminated unexpectedly/i
 // Postgres refused the role or its password, which no start or restart changes.
 const SIGN_IN_REFUSED = /role ".*" does not exist|password authentication failed|no pg_hba\.conf entry/i
-const SETUP = 'pnyx-axi setup postgres'
-const CHANGE_URL = 'save a corrected URL with `pnyx-axi setup postgres --url <url>`, or clear it with `pnyx-axi setup postgres --url \'\'`, then run `pnyx-axi restart`'
-const MANUAL_START = 'start PostgreSQL 15 or newer with wal_level=logical where PGHOST and PGPORT point, then run `pnyx-axi setup check`'
+const SETUP = 'pnyx setup postgres'
+const CHANGE_URL = 'save a corrected URL with `pnyx setup postgres --url <url>`, or clear it with `pnyx setup postgres --url \'\'`, then restart the Pnyx login service (or stop and rerun `pnyx serve`)'
+const MANUAL_START = 'start PostgreSQL 15 or newer with wal_level=logical where PGHOST and PGPORT point, then run `pnyx setup check`'
 
 interface Server {
   wal_level: string
@@ -103,7 +103,7 @@ function unreachableFix({ error }: { error: HydraError }): string {
   }
 
   if (refused) {
-    return 'create the role PGUSER names (your login name when unset) on this Postgres, set PGUSER and PGPASSWORD to one that signs in, or save a postgresUrl with `pnyx-axi setup postgres --url <url>`'
+    return 'create the role PGUSER names (your login name when unset) on this Postgres, set PGUSER and PGPASSWORD to one that signs in, or save a postgresUrl with `pnyx setup postgres --url <url>`'
   }
 
   return onMac() ? SETUP : MANUAL_START
@@ -135,7 +135,7 @@ function walLevelFix(): string {
     return 'set wal_level=logical on the Postgres the postgresUrl setting names, then restart it'
   }
 
-  return onMac() ? SETUP : 'run `alter system set wal_level = logical` on this Postgres, restart it, then run `pnyx-axi setup check`'
+  return onMac() ? SETUP : 'run `alter system set wal_level = logical` on this Postgres, restart it, then run `pnyx setup check`'
 }
 
 function serverIssue({ found }: { found: Server }): SetupItem | undefined {
@@ -236,7 +236,7 @@ function requireHomebrewData(): void {
   throw new HydraError({
     message: `the Postgres answering keeps its data in ${actual}, not in Homebrew's ${FORMULA}, so Pnyx leaves its settings alone`,
     code: 'POSTGRES_UNAVAILABLE',
-    help: ['Fix: run `alter system set wal_level = logical` on that Postgres, restart it, then run `pnyx-axi setup check`'],
+    help: ['Fix: run `alter system set wal_level = logical` on that Postgres, restart it, then run `pnyx setup check`'],
   })
 }
 
@@ -257,7 +257,7 @@ const ready = ({ found }: { found: Server }) => ({
   postgres: 'ready',
   database: targetDatabase(),
   walLevel: found.wal_level,
-  help: ['Run `pnyx-axi setup check` to see what else is missing'],
+  help: ['Run `pnyx setup check` to see what else is missing'],
 })
 
 // A load refuses a log an older Pnyx appended to since its import.
@@ -367,7 +367,7 @@ function copyTool({
   throw new HydraError({
     message: `${command} could not copy the database for the data check: ${ran.error ? ran.error.message : ran.stderr}`,
     code: 'POSTGRES_UNAVAILABLE',
-    help: [`Fix: put the pg_dump and pg_restore of this Postgres's version or newer on PATH (Homebrew's ${FORMULA} is found without it), then run \`pnyx-axi setup postgres --check\``],
+    help: [`Fix: put the pg_dump and pg_restore of this Postgres's version or newer on PATH (Homebrew's ${FORMULA} is found without it), then run \`pnyx setup postgres --check\``],
   })
 }
 
@@ -509,7 +509,7 @@ function saveUrl({
 
   return {
     postgresUrl: shown === '' ? 'none: this home\'s own database through PGHOST, PGPORT and PGUSER' : shown,
-    help: ['The server uses it from its next start: run `pnyx-axi restart`'],
+    help: ['Restart the Pnyx login service or stop and rerun `pnyx serve` to use this setting'],
   }
 }
 

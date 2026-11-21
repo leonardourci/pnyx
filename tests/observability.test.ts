@@ -20,7 +20,7 @@ import { runProcess } from '#app/run-process.ts'
 import { join } from 'node:path'
 import { performanceReport } from '#diagnostics/performance.ts'
 import { startProcessLines } from '#diagnostics/process-line.ts'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { pnyx as pnyxCommand, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 beforeAll(async () => {
@@ -48,6 +48,10 @@ test(
         '--json',
         '{"logs":"on"}',
       ],
+    })
+    await until({
+      what: 'the server applies On logging',
+      check: () => logMode() === 'on',
     })
     await flushLogs()
     const onStart = lines().length
@@ -113,6 +117,10 @@ test(
         '--json',
         '{"logs":"detailed"}',
       ],
+    })
+    await until({
+      what: 'the server applies Detailed logging',
+      check: () => logMode() === 'detailed',
     })
     await hydra.owner({
       args: [
@@ -388,7 +396,28 @@ test(
         '{"logs":"detailed"}',
       ],
     })
-    const { worker } = await hydra.startTask({ key: 'request-scope' })
+    const created = await pnyxCommand({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Request scope',
+        '--brief',
+        'Check request isolation',
+        '--key',
+        'request-scope',
+        '--folder',
+        hydra.folder({ name: 'request-scope' }),
+        '--harness',
+        'claude',
+        '--hydra',
+        hydra.id,
+        '--json',
+      ],
+      env: process.env,
+    })
+    expect(created.status).toBe(0)
+    const worker = await hydra.agent({ cwd: hydra.folder({ name: 'request-scope' }) })
     await hydra.owner({
       args: [
         'reply',
@@ -403,7 +432,7 @@ test(
     })
     await flushLogs()
     const recorded = lines()
-    const start = recorded.find(line => line.operation === 'command.cli' && line.name === 'task start' && line.hydraId === hydra.id)
+    const start = recorded.find(line => line.operation === 'command.cli' && line.name === 'task create' && line.hydraId === hydra.id)
     const turns = recorded.filter(line => line.operation === 'turn.start' && line.hydraId === hydra.id)
     expect(start.requestId).toEqual(expect.any(String))
     expect(turns.length).toBeGreaterThanOrEqual(2)

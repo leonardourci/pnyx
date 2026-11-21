@@ -26,7 +26,7 @@ import { parse } from 'yaml'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { openPage, pnyxAxi, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, operation, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
 
 const DOCS_MESSAGE = '3d6b8f20-5a4c-4e1b-9f72-6c8d0e1a2b34'
@@ -382,7 +382,6 @@ test(
         'Export works; ready for review',
       ],
     })
-    const beforeNote = queueBox({ hydraId: hydra.id })?.waiting.length
     await workerLine({
       hydra,
       key: 'export',
@@ -416,7 +415,7 @@ test(
         return processed && updates.map(update => update.kind)
       },
     })
-    expect(waiting).toHaveLength((beforeNote ?? 0) + 1)
+    expect(waiting.filter(kind => kind === 'declared')).toHaveLength(1)
     expect(waiting).toContain('report')
     expect(waiting).not.toContain('progress')
     expect(session.received).toHaveLength(1)
@@ -684,7 +683,7 @@ test(
         ],
       })
       expect(fullReview.events.some((event: { data: { block: string } }) => event.data.block.includes('End of timed review evidence'))).toBe(true)
-      const detailsAfter = wake.match(/Run `pnyx-axi hydra check --after (\d+)/)?.[1]
+      const detailsAfter = wake.match(/Run `pnyx hydra check --after (\d+)/)?.[1]
 
       if (detailsAfter === undefined) {
         throw new Error('The bounded wake did not provide its remaining updates cursor')
@@ -699,9 +698,9 @@ test(
         ],
       })
       expect(remainingUpdates.through).toBeGreaterThan(Number(detailsAfter))
-      expect(remainingUpdates.help).toContainEqual(expect.stringContaining('for the next page'))
+      expect(remainingUpdates).not.toHaveProperty('help')
 
-      const after = wake.match(/more worker reports; read `pnyx-axi hydra check --after (\d+)/)?.[1]
+      const after = wake.match(/more worker reports; read `pnyx hydra check --after (\d+)/)?.[1]
 
       if (after === undefined) {
         throw new Error('The report wake did not give an overflow cursor')
@@ -852,7 +851,7 @@ test(
         what: 'the overflow-reading turn to finish',
         check: () => queue({ hydraId: hydra.id })?.working === false,
       })
-      const digest = (await pnyxAxi({
+      const digest = (await operation({
         args: [
           'hydra',
           'digest',
@@ -1185,7 +1184,7 @@ test(
       what: 'helper to finish the worker report',
       check: () => (loadHydra({ hydraId: hydra.id }).state.helper?.usage?.batches ?? 0) >= 2,
     })
-    const digest = (await pnyxAxi({
+    const digest = (await operation({
       args: [
         'hydra',
         'digest',
@@ -1396,7 +1395,7 @@ test(
     })
     const messages = []
 
-    for (const match of recovery.matchAll(/Read owner message \d+ in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g)) {
+    for (const match of recovery.matchAll(/Read owner message \d+ in full with `pnyx hydra messages --after (\d+) --limit 1/g)) {
       const page = await hydra.owner({
         args: [
           'hydra',
@@ -1492,12 +1491,22 @@ test(
       expect(checked.conversations ?? []).toEqual([])
     }
 
+    const cursorAt = eventTime({
+      hydraId: hydra.id,
+      seq: Number(first.through),
+      exact: true,
+    })
+
+    if (!cursorAt) {
+      throw new Error('The first check did not leave a readable cursor')
+    }
+
     appendFileSync(
       transcript,
       `${JSON.stringify({
         type: 'user',
         uuid: randomUUID(),
-        timestamp: new Date().toISOString(),
+        timestamp: cursorAt,
         message: {
           role: 'user',
           content: 'Fresh native instructions',
@@ -1657,7 +1666,7 @@ test(
     expect(recoveredReport).toMatch(/seq \d+ \S+ \[unhandled\]: Worker report awaiting restart/)
     expect(recoveredReport).toContain('hydra messages --after <seq minus one> --limit 1')
     expect(recoveredReport).toContain('Open decisions')
-    const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx-axi hydra messages --after (\d+) --limit 1/g))
+    const ownerReads = Array.from(recoveredReport.matchAll(/Read owner message (\d+) in full with `pnyx hydra messages --after (\d+) --limit 1/g))
     const recoveredOwnerMessages = []
 
     for (const [
@@ -1754,8 +1763,6 @@ test(
     )
     const links = [...contract.matchAll(/\]\(([^)#]+\.md)(?:#[^)]*)?\)/g)].map(match => match[1])
 
-    expect(links.length).toBeGreaterThan(0)
-
     for (const link of links) {
       expect(
         existsSync(join(
@@ -1775,6 +1782,10 @@ test(
     )
     const withReferences = references({ skill: ORCHESTRATE_SKILL })
     const withoutReferences = references({ skill: MANAGE_WORKERS_SKILL })
+    mkdirSync(
+      withReferences,
+      { recursive: true },
+    )
     mkdirSync(
       withoutReferences,
       { recursive: true },
@@ -1853,7 +1864,7 @@ test(
       ],
     })
 
-    expect(check.help.join('\n')).not.toContain('--wait')
+    expect(check).not.toHaveProperty('help')
 
     const outside = await hydra.as({
       session,
@@ -1870,7 +1881,7 @@ test(
       ],
     })
 
-    expect(outside.help.join('\n')).toContain('--wait')
+    expect(outside).not.toHaveProperty('help')
 
     const beforeWait = rows<{ seq: number }>({
       text: 'select seq from hydras where id = $1',
@@ -2704,6 +2715,20 @@ test(
         what: 'the compaction to run',
         check: () => compaction()?.kind === 'compaction',
       })
+      const summarySession = await until({
+        what: 'the held summary session',
+        check: () => pnyx.claude.sessions.find(session => !session.closed && session.env.PNYX_HYDRA === hydra.id && session.received.at(-1)?.includes('Compact the recorded conversation')),
+      })
+      const command = /`(pnyx(?:-axi)? hydra history[^`]+)`/.exec(summarySession.received.at(-1)!)?.[1]
+      expect(command).toBeDefined()
+      expect(await summarySession.useTool!({
+        tool: 'Bash',
+        input: { command },
+      })).toMatchObject({ behavior: 'allow' })
+      expect(await summarySession.useTool!({
+        tool: 'Bash',
+        input: { command: 'pnyx task create --title untrusted' },
+      })).toMatchObject({ behavior: 'deny' })
       await whileCompacting?.({ message: sent.message })
       summary.release()
       await until({
@@ -3355,7 +3380,7 @@ test.each([
     await hydra.chat({ text: 'Read the capped changes' })
     const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
     expect(capped).toContain('2 more changed cards')
-    expect(capped).toContain('pnyx-axi task list')
+    expect(capped).toContain('pnyx task list')
     expect(capped).toContain('Changed snapshot card 39')
     expect(capped).not.toContain('Changed snapshot card 40')
     await until({

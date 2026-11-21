@@ -119,7 +119,7 @@ function checkOwnerRevision({
     throw new HydraError({
       message: 'Owner memory changed; read its writable documents again before saving',
       code: 'REVISION_CONFLICT',
-      help: ['Run `pnyx-axi owner memory list`, merge your change into the current text and save again'],
+      help: ['Run `pnyx owner memory list`, merge your change into the current text and save again'],
     })
   }
 }
@@ -703,7 +703,6 @@ export function moveOwnerPolis({
 
       if (key === 'workers') {
         checkWorkerNotes({
-          command: 'pnyx-axi owner worker-notes set',
           text: after,
           reason: meta.reason,
         })

@@ -188,7 +188,7 @@ export function createConnectionRequests({
     ) => {
       if (!document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content) {
         reject(new CommandFailure({
-          message: 'Open this Hydra through pnyx-axi serve to send. Draft kept.',
+          message: 'Open this Hydra through pnyx serve to send. Draft kept.',
           code: 'UNAUTHORIZED',
         }))
 

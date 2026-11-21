@@ -118,7 +118,7 @@ function queuedRefusal({
   return new HydraError({
     message: `task ${task} is queued behind worker ${session}`,
     code: 'CONFLICT',
-    help: [`Run \`pnyx-axi task unqueue ${task}\` first to give it its own worker`],
+    help: [`Remove ${task} from the queue in the UI before giving it its own worker.`],
   })
 }
 
@@ -133,7 +133,7 @@ function requireLiveTask({
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi task list`'],
+      help: ['Run `pnyx task list`'],
     })
   }
 
@@ -141,7 +141,7 @@ function requireLiveTask({
     inform({
       task: card.id,
       reason: 'Worker action requested on a hidden task',
-      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+      clear: `Review the visibility of task ${card.id} in the UI.`,
     })
   }
 }
@@ -174,7 +174,7 @@ export function freeTask({
     throw new HydraError({
       message: `task ${card.id} already has an attached agent: ${card.sessionIds.join(', ')}`,
       code: 'SESSION_CONFLICT',
-      help: [`Run \`pnyx-axi task detach ${card.id}\` to free it, or reply to that worker with \`pnyx-axi reply ${card.id} --text "<message>"\``],
+      help: [`Detach the worker in the UI or reply with \`pnyx send --task ${card.id} --text "<message>"\``],
     })
   }
 
@@ -256,8 +256,8 @@ async function steerAttached({
     } : {}),
   }
   const help = [
-    `Reply to it with \`pnyx-axi reply ${card.id} --text "<message>"\``,
-    `Run \`pnyx-axi task detach ${card.id}\` first to start a new worker instead`,
+    `Reply with \`pnyx send --task ${card.id} --text "<message>"\``,
+    'Detach the worker in the UI before starting a new one',
   ]
 
   if (!prompt) {

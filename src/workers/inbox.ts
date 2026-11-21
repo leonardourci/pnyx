@@ -38,7 +38,7 @@ export function inboxTask({
     inform({
       task: card.id,
       reason: 'Steering accessed on a hidden task',
-      clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+      clear: `Review the visibility of task ${card.id} in the UI.`,
     })
   }
 
@@ -60,7 +60,7 @@ export function requireSteeringWorker({
     inform({
       task: card.id,
       reason: 'Steering acknowledged by another actor',
-      clear: `Use pnyx-axi task inbox read ${card.id} to inspect its steering`,
+      clear: `Use pnyx task inbox read ${card.id} to inspect its steering`,
     })
 
     return
@@ -271,7 +271,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering acknowledged by another actor',
-      clear: `Use pnyx-axi task inbox read ${card.id} to inspect its steering`,
+      clear: `Use pnyx task inbox read ${card.id} to inspect its steering`,
     })
   }
 
@@ -306,7 +306,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering handled before an older pending instruction',
-      clear: `Use pnyx-axi task inbox read ${card.id} to inspect the remaining instructions`,
+      clear: `Use pnyx task inbox read ${card.id} to inspect the remaining instructions`,
     })
   }
 
@@ -314,7 +314,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering marked blocked without an explanatory note',
-      clear: `Use pnyx-axi task inbox enqueue ${card.id} <message-id> --text "<what blocks it>" to record the blocker`,
+      clear: 'Record the blocker in the assigned worker.log.',
     })
     ack = {
       ...ack,

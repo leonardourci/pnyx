@@ -115,14 +115,14 @@ export function decideUndo({
     })
 
     if (!holder) {
-      throw notUndoable({ message: `a move between Hydras is undone by moving the task back; find where ${target.cardId} is now with \`pnyx-axi oracle ${target.cardId}\`` })
+      throw notUndoable({ message: `a move between Hydras is undone by moving the task back; find where ${target.cardId} is now with \`pnyx oracle ${target.cardId}\`` })
     }
 
     if (holder === back) {
       throw notUndoable({ message: `the task is already back on Hydra ${back}` })
     }
 
-    throw notUndoable({ message: `a move between Hydras is undone by moving the task back: run \`pnyx-axi task move ${target.cardId} --to-hydra ${back} --hydra ${holder} --reason "<why>"\`` })
+    throw notUndoable({ message: `Move task ${target.cardId} from Hydra ${holder} back to Hydra ${back} in the UI` })
   }
 
   if (target.type === 'board.columns') {
@@ -377,7 +377,7 @@ export function decideUndo({
     throw new HydraError({
       message: `${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`,
       code: 'CONFLICT',
-      help: [`Run \`pnyx-axi undo ${latest}\` to ${redone ? 'undo it again' : 'redo it'}`],
+      help: ['Review the event history and correct the task in the UI'],
     })
   }
 
@@ -400,7 +400,7 @@ export function decideUndo({
     throw new HydraError({
       message: `${target.id} no longer matches card ${card.id}: it changed since`,
       code: 'CONFLICT',
-      help: [`Run \`pnyx-axi history --card ${card.id}\` to see the later change`],
+      help: [`Run \`pnyx history --card ${card.id}\` to see the later change`],
     })
   }
 

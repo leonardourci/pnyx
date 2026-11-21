@@ -18,6 +18,6 @@ export function requireSetupHome({ allowCustomHome }: { allowCustomHome: boolean
 
   inform({
     reason: `Setup changes user-wide configuration for custom home ${home}`,
-    clear: 'Use pnyx-axi setup --help to inspect or remove the installation',
+    clear: 'Use pnyx setup --preview to inspect the installation or pnyx setup --remove to remove it',
   })
 }

@@ -1,5 +1,4 @@
-import { inform } from '#app/command-notices.ts'
-import { AxiError } from 'axi-sdk-js'
+import { HydraError } from '#store/errors.ts'
 import { INHERITED } from '#workers/host.ts'
 import { AUTH_ENV } from '#workers/dispatch.ts'
 import { IDENTITY } from '#app/request-context.ts'
@@ -8,14 +7,12 @@ import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { serviceFile, startService } from '#setup/service.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
-import { requestEnv } from '#app/request-context.ts'
-import { workerIdentity } from '#workers/worker-identity.ts'
 
-// Sent to a running `pnyx-axi serve` to close it and start it again on the code now on disk.
 export const RESTART_SIGNAL = 'SIGUSR2'
 
 // A server Pnyx starts never takes the caller's Pnyx or terminal identity, nor a worker's or Hydra's login,
@@ -36,8 +33,6 @@ function serverEnvironment(): NodeJS.ProcessEnv {
 const STOP_MS = 5000
 const START_MS = 120000
 const POLL_MS = 100
-// How often an upgrade from a terminal asks whether an agent is still mid-turn.
-const IDLE_POLL_MS = 1000
 
 type Running = {
   info: ServerInfo
@@ -61,10 +56,10 @@ function running(): Running | undefined {
   }
 
   if (!Number.isSafeInteger(info.pid) || info.pid <= 0 || info.pid === process.pid) {
-    throw new AxiError(
-      'The application process identity is not verifiable',
-      'SERVER_UNAVAILABLE',
-    )
+    throw new HydraError({
+      message: 'The application process identity is not verifiable',
+      code: 'SERVER_UNAVAILABLE',
+    })
   }
 
   const start = processStart({ pid: info.pid })
@@ -87,17 +82,17 @@ function running(): Running | undefined {
       'utf8',
     ))
   } catch {
-    throw new AxiError(
-      'The application process identity is not verifiable',
-      'SERVER_UNAVAILABLE',
-    )
+    throw new HydraError({
+      message: 'The application process identity is not verifiable',
+      code: 'SERVER_UNAVAILABLE',
+    })
   }
 
   if (claim.pid !== info.pid || claim.processStart !== start) {
-    throw new AxiError(
-      'The application process identity is not verifiable',
-      'SERVER_UNAVAILABLE',
-    )
+    throw new HydraError({
+      message: 'The application process identity is not verifiable',
+      code: 'SERVER_UNAVAILABLE',
+    })
   }
 
   return {
@@ -152,7 +147,7 @@ function launch({ args }: { args: string[] }) {
       [
         join(
           PNYX_ROOT,
-          'dist/cli/pnyx-axi.js',
+          'dist/cli/pnyx.js',
         ),
         ...args,
       ],
@@ -179,7 +174,7 @@ function launch({ args }: { args: string[] }) {
   }
 }
 
-export function requestRestart() {
+export function requestRestart({ root = PNYX_ROOT }: { root?: string } = {}) {
   const log = openSync(
     join(
       pnyxHome(),
@@ -194,11 +189,13 @@ export function requestRestart() {
     child = spawn(
       process.execPath,
       [
-        join(
-          PNYX_ROOT,
-          'dist/cli/pnyx-axi.js',
-        ),
-        'restart',
+        '--input-type=module',
+        '--eval',
+        'const { restartPnyx } = await import(process.argv[1]); await restartPnyx()',
+        pathToFileURL(join(
+          root,
+          'dist/upgrade/restart.js',
+        )).href,
       ],
       {
         detached: true,
@@ -252,35 +249,6 @@ export function requestRestart() {
   })
 }
 
-// A running server's agents get to finish their turns before an upgrade restarts it: this waits until none is
-// mid-turn, or until the deadline. With no server running there is nothing to wait for.
-export async function untilAgentsIdle({ deadline }: { deadline: number }) {
-  while (Date.now() < deadline) {
-    const found = running()
-
-    if (!found) {
-      return
-    }
-
-    try {
-      const response = await fetch(
-        `http://127.0.0.1:${found.info.port}/health`,
-        { signal: AbortSignal.timeout(POLL_MS * 10) },
-      )
-      const health = await response.json() as { midTurn?: boolean }
-
-      if (!health.midTurn) {
-        return
-      }
-    } catch {
-      // A server that does not answer has no agent to wait for; restart deals with it.
-      return
-    }
-
-    await delay(IDLE_POLL_MS)
-  }
-}
-
 export async function restartPnyx() {
   const found = running()
   const unique = found ? [found] : []
@@ -317,10 +285,10 @@ export async function restartPnyx() {
       check: stopped,
       timeout: STOP_MS,
     })) {
-      throw new AxiError(
-        'The application did not stop',
-        'SERVER_UNAVAILABLE',
-      )
+      throw new HydraError({
+        message: 'The application did not stop',
+        code: 'SERVER_UNAVAILABLE',
+      })
     }
   }
 
@@ -381,43 +349,14 @@ export async function restartPnyx() {
   })
 
   if (!started) {
-    throw new AxiError(
-      'The application did not become ready after restart',
-      'SERVER_UNAVAILABLE',
-      ['Read service.log in PNYX_HOME'],
-    )
+    throw new HydraError({
+      message: 'The application did not become ready after restart',
+      code: 'SERVER_UNAVAILABLE',
+      help: ['Read service.log in PNYX_HOME'],
+    })
   }
 
   return {
     server: unique.length ? 'restarting: ready' : 'starting: ready',
   }
-}
-
-export const RESTART_HELP = `usage: pnyx-axi restart
-Restart the application on its current code, or start it if stopped. Its agents stop with it; on start, a turn the restart cut resumes once from its saved session.
-A stuck application is stopped only when its process identity is verified; restart confirms the replacement is ready.
-Startup keeps waiting while verified legacy-import progress advances; stalled progress still times out.
-No upgrade, model call or agent instruction is involved. /restart in Hydra's composer does the same.
-`
-
-// eslint-disable-next-line pnyx/object-params -- runAxiCli owns the command signature.
-export async function restart(args: string[]): Promise<Record<string, unknown>> {
-  if (args.length) {
-    throw new AxiError(
-      'restart takes no arguments',
-      'VALIDATION_ERROR',
-      ['Run `pnyx-axi restart`'],
-    )
-  }
-
-  const actor = requestEnv().PNYX_ACTOR ?? 'cli'
-
-  if ((actor !== 'cli' && actor !== 'owner') || workerIdentity()) {
-    inform({
-      reason: 'Restart requested by an agent; hosted turns resume after restart',
-      clear: 'Use pnyx-axi status to inspect the restarted server',
-    })
-  }
-
-  return restartPnyx()
 }

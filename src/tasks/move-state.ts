@@ -107,7 +107,7 @@ function moveOut({
     related.notices = affected.map(item => ({
       task: related.id,
       reason: `Local relationship to ${item.id} cleared when it moved to Hydra ${event.data.to}`,
-      clear: `Use pnyx-axi task move ${item.id} --to-hydra ${event.boardId ?? '<source-hydra>'} --hydra ${event.data.to}, then task parent, task depend, or task queue to restore the relationship`,
+      clear: `Review task ${item.id} in the destination Hydra and its previous relationships in task history.`,
     }))
     touch({
       card: related,

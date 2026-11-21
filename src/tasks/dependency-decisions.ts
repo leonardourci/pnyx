@@ -66,7 +66,7 @@ export function decideDependencies({
     inform({
       task: card.id,
       reason: 'Prerequisites changed by an agent',
-      clear: `Use pnyx-axi task undepend ${card.id} --on <prerequisite>`,
+      clear: `Review the prerequisites of task ${card.id} in the UI.`,
     })
   }
 

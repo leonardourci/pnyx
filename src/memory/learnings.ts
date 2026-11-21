@@ -402,7 +402,7 @@ export function informReinforcement({
   if (reinforced && !evidence?.trim()) {
     inform({
       reason: 'Learning reinforced without session evidence',
-      clear: 'Use pnyx-axi owner memory confirm or project memory confirm with --reason "<session evidence>" to record why it remains useful',
+      clear: 'Review the learning and its session evidence before keeping it.',
     })
   }
 }

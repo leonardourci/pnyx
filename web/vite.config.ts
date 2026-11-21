@@ -5,7 +5,6 @@ import { defaultClientConditions, defineConfig, type Plugin } from 'vite'
 import { ZERO_PATH, zeroCookieName } from '#app/server-protocol.ts'
 import { hydraIdentity, localToken } from '#app/server-state.ts'
 
-// `pnpm dev` runs `pnyx-axi serve --hydra dev` on this port; the dev server forwards the Hydra's WebSocket to it.
 const PORT = Number(process.env.PNYX_DEV_PORT ?? 4319)
 const SERVER = `http://127.0.0.1:${PORT}`
 

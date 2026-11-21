@@ -1,9 +1,9 @@
-// The real server in the test's process, fake agents at the provider boundary, driven through pnyx-axi and the page's socket.
+import { readCommand } from '#cli/reads.ts'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { decode } from '@toon-format/toon'
+import { serverOperation } from './operations.ts'
 import { WebSocket } from 'ws'
 import { afterAll } from 'vitest'
 import { startServer } from '#app/server-daemon.ts'
@@ -21,7 +21,7 @@ export const CLI = join(
   '..',
   'dist',
   'cli',
-  'pnyx-axi.js',
+  'pnyx.js',
 )
 // Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
 const WAIT_MS = 20_000
@@ -61,8 +61,7 @@ export interface Run {
   stderr: string
 }
 
-// One `pnyx-axi` process. Async, so the server in this process keeps answering it.
-export function pnyxAxi({
+export function pnyx({
   args,
   env,
   input,
@@ -116,11 +115,70 @@ export function pnyxAxi({
   })
 }
 
-// The CLI's TOON output as data; each test reads the fields of the command it ran.
+export const operation = async ({
+  args,
+  env,
+  input,
+}: {
+  args: string[]
+  env: NodeJS.ProcessEnv
+  input?: string
+}): Promise<Run> => {
+  const options = {
+    args,
+    env,
+    input,
+  }
+
+  if ([
+    'setup',
+    'serve',
+  ].includes(options.args[0] ?? '')) {
+    const result = await pnyx({
+      ...options,
+      args: [
+        ...options.args,
+        '--json',
+      ],
+    })
+
+    return {
+      ...result,
+      stdout: result.stdout || result.stderr,
+    }
+  }
+
+  if (args[0] === 'hydra' && args[1] === 'digest') {
+    return pnyx(options)
+  }
+
+  if (readCommand({ argv: args })) {
+    const result = await pnyx({
+      ...options,
+      args: [
+        ...args,
+        '--json',
+      ],
+    })
+
+    return {
+      ...result,
+      stdout: result.stdout || result.stderr,
+    }
+  }
+
+  if (options.args.includes('--help')) {
+    return pnyx(options)
+  }
+
+  return serverOperation(options)
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- every command prints its own shape.
 export type Output = Record<string, any>
 
-export const parsed = ({ stdout }: { stdout: string }): Output => decode(stdout.trimEnd()) as Output
+export const parsed = ({ stdout }: { stdout: string }): Output =>
+  JSON.parse(stdout.trimEnd()) as Output
 
 // Rows of this file's own database, for the facts a command saved.
 export function rows<Row = Record<string, unknown>>({
@@ -355,7 +413,7 @@ function hydraClient({
     args: string[]
     env: NodeJS.ProcessEnv
     input?: string
-  }) => pnyxAxi({
+  }) => operation({
     args: [
       ...args,
       '--hydra',
@@ -383,13 +441,12 @@ function hydraClient({
     if (run.status !== 0) {
       const outcome = run.status === null ? `signal ${run.signal}` : `status ${run.status}`
 
-      throw new Error(`pnyx-axi ${args.join(' ')} exited with ${outcome}:\n${run.stdout}${run.stderr}`)
+      throw new Error(`pnyx ${args.join(' ')} exited with ${outcome}:\n${run.stdout}${run.stderr}`)
     }
 
     return parsed(run)
   }
 
-  // A refusal's code and error, as pnyx-axi prints them.
   const refused = async ({
     args,
     env,
@@ -406,7 +463,7 @@ function hydraClient({
     })
 
     if (run.status === 0) {
-      throw new Error(`pnyx-axi ${args.join(' ')} succeeded:\n${run.stdout}`)
+      throw new Error(`pnyx ${args.join(' ')} succeeded:\n${run.stdout}`)
     }
 
     const output = parsed(run)
@@ -537,7 +594,6 @@ function hydraClient({
       input,
       env: ownerEnv(),
     }),
-    // pnyx-axi as an agent runs it, with the environment Pnyx started that agent with unless a test changes it.
     as: ({
       session,
       env = session.env,
@@ -575,21 +631,27 @@ function hydraClient({
         session,
         session.received.length,
       ]))
-      await succeeds({
+      const sent = await pnyx({
         args: [
-          'hydra',
           'send',
           '--text',
           text,
+          '--hydra',
+          hydraId,
+          '--json',
         ],
         env: ownerEnv(),
       })
+
+      if (sent.status !== 0) {
+        throw new Error(`Hydra send failed: ${sent.stderr}`)
+      }
 
       return until({
         what: `Hydra to hear "${text}"`,
         check: () => sessions().findLast(session => session.env.PNYX_HYDRA === hydraId
           && session.env.PNYX_ACTOR === 'hydra'
-          && session.received.slice(before.get(session) ?? 0).some(heard => heard.includes(text))),
+          && session.received.slice(before.get(session) ?? 0).some(heard => heard.endsWith(text) || heard.includes(`${text}\n<pnyx-wake>`))),
       })
     },
     page: ({ cards }: { cards?: string[] } = {}) => openPage({

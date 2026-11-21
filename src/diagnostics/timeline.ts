@@ -8,7 +8,7 @@ import { logFiles } from './log-files.ts'
 
 export const DEBUG_LIMIT = 50
 export const DEBUG_MAX = 200
-export const LOG_BYTES = 16 * 1024 * 1024
+const LOG_BYTES = 16 * 1024 * 1024
 // Skip action lines before parsing the bounded tail.
 const LEVEL_MARKS = [
   '"level":"warn"',

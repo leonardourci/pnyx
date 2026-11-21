@@ -1,6 +1,6 @@
 ---
 name: pnyx-set-up
-description: Use when you are Hydra and your digest shows "Setup needed", or the owner asks what Pnyx still needs to be set up.
+description: Use when Pnyx reports missing setup or the owner asks how to configure it.
 user-invocable: true
 metadata:
   internal: true
@@ -8,22 +8,8 @@ metadata:
 
 # Pnyx setup
 
-Pnyx checks its setup each time a Hydra session opens, in its own code, and lists only what is missing under "Setup needed" in your digest. A complete setup prints nothing. `pnyx-axi setup check --hydra <hydra>` prints the same list again (exit 1 while anything is missing).
+`pnyx setup check --hydra <id>` lists missing setup and exits nonzero while anything is missing. Use the UI for Hydra, project and dispatch configuration. Ask the owner to sign in when a harness or account needs login.
 
-Each row names who fixes it. Do the `you` rows yourself, without asking. For `owner` rows that name a `pnyx-axi` command, run that command with `--hydra <hydra>` as usual, except `setup`, which serves every Hydra and refuses `--hydra`. Agent setup commands run directly and report their result. For `project-owner`, use the keeper the owner named, otherwise the current Hydra; run `project keep` with that ID and report the keeper and moved tasks from its receipt. For `owner` rows without a command, ask the owner in one short line. Greet a first setup with one line ("A few things to set up") before the cards; that line is the turn's reply, so never add `NO_REPLY` after it. When the owner dismisses one, note it in owner memory (`preferences`) and do not raise it again.
+`pnyx setup --preview` inspects the login service. `pnyx setup hooks --preview` and `pnyx setup skills --preview` inspect hook and skill installation. Setup writes user-wide configuration, even under a custom `PNYX_HOME`; keep the selected home and follow the owner's authority before applying it.
 
-After a fix, run `setup check` again and report only what is still missing.
-
-Setup of hooks, skills and the login service changes user-wide configuration. A custom `PNYX_HOME` produces a notice that setup changes user-wide configuration for that home. Keep the selected home and use `--preview` to inspect the targets. A custom home's service also needs an unused `--port` that no installed Pnyx service reserves.
-
-## Rows
-
-- `postgres`: Pnyx's Postgres is not ready, and `setup check` lists only this row until it is. When Postgres cannot be reached, no Hydra loads. When it runs without `wal_level=logical`, or is older than 15, Hydras load but zero-cache cannot serve the page. Ask the owner to run the row's fix in a terminal. On macOS, `pnyx-axi setup postgres` starts Homebrew's `postgresql@17` service with `wal_level=logical` and creates the home's database; it fails with `brew install postgresql@17` as its next step when Postgres is not installed, and for a Postgres older than 15 the fix says to stop it and install `postgresql@17`. Elsewhere `setup postgres` only checks, and the fix names what to start or set. A refused role or password needs a working `PGUSER` or `postgresUrl`, not a start. When the `postgresUrl` setting names the Postgres, Pnyx does not manage it: the fix asks the owner to start that Postgres with `wal_level=logical`, or to correct or clear the URL with `pnyx-axi setup postgres --url '<url>'` (`--url ''` clears it) and restart Pnyx, since the server cannot start while that URL is wrong.
-- `config`: no local dispatch rules or account registry. Run `pnyx-axi rule init --hydra <hydra> --reason "first-run setup"` yourself; it saves the templates only when nothing is saved yet and keeps a file that exists. It registers starter accounts using `CLAUDE_CONFIG_DIR` and `CODEX_HOME` from the command's environment when set, or the template's folders otherwise; any whose login folder is missing show up as `account:<name>` rows next time.
-- `account:<name>`: a registered account's login folder does not exist. Ask the owner whether they use that account. If they do, they sign in with that folder; if not, run the `pnyx-axi account remove` command the row names and inspect the removal receipt.
-- `login:claude`, `login:codex`: the rules name a harness with no login. Ask the owner to sign in to it; Pnyx only stores login folders. When accounts are registered, the row also names an `account set` command: run it with the folder the owner signed in to, and inspect the saved account. If they do not use that harness, apply rules without it (`rule set`).
-- `hooks`: the reporting hooks are not installed for this Pnyx home. Run `pnyx-axi setup hooks --hydra <hydra>`; report its result. Codex then asks the owner to trust the new hooks once with `/hooks`.
-- `skills`: the global skill links are missing. Run `pnyx-axi setup skills --hydra <hydra>` and report its result. If another skill occupies the path, setup preserves it and installs the other links. To install the conflicting link, ask the owner to move the existing skill aside, then rerun setup.
-- `quota-axi`: not on PATH, so dispatch cannot rank accounts by quota. Ask the owner to install [quota-axi](https://github.com/kunchenguid/quota-axi); quota stays unknown without it, and a start with several unknown candidates can require an explicit harness or rule.
-- `service`: no login service, so Hydras stop when this server stops. Run `pnyx-axi setup` without `--hydra`; the service takes over once a manually started server stops. This row only applies on macOS and Linux; a foreground server works without the service.
-- `profile:<project>`: an attached project has no profile. Write it yourself as the contract's projects reference describes.
+A foreground `pnyx serve` runs the app without installing a service. Use Ctrl+C to stop it. For trials, select a temporary home and a unique portless name, or use `--port 0`.

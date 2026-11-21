@@ -1,7 +1,7 @@
 import { HydraError } from '#store/errors.ts'
 import { randomUUID } from 'node:crypto'
 import type { EventType } from '#app/model.ts'
-import { commit, required, withHelp, type Output } from '#app/cli-support.ts'
+import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { parseOperation, ApplyError, type Operation } from '#app/apply/schema.ts'
 import { planTaskChange, type TaskOperation } from './plans.ts'
@@ -235,16 +235,5 @@ export async function localTaskCommand({
     }),
   })
 
-  if (operation.op !== 'task.create') {
-    return output
-  }
-
-  return withHelp({
-    output,
-    help: ({ output }) => {
-      const id = (output.card as { id?: string } | undefined)?.id ?? '<id>'
-
-      return [`Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`]
-    },
-  })
+  return output
 }

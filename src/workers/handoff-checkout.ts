@@ -301,7 +301,7 @@ export function requireHandoffAvailable({
     throw new HydraError({
       code: 'CONFLICT',
       message: `Task ${task} has an unresolved handoff; inspect its checkout and restart Pnyx before delivering more work`,
-      help: [`Check \`pnyx-axi task copy ${task}\` for changed work, then run \`pnyx-axi restart\` to settle the handoff`],
+      help: [`Inspect the copy of ${task} for changed work, then use /restart in Hydra chat to settle the handoff`],
     })
   }
 }

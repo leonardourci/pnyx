@@ -88,7 +88,7 @@ export function reminderTime({
   if (time <= Date.parse(now)) {
     inform({
       reason: 'Reminder time has passed; the reminder is due now',
-      clear: 'Use pnyx-axi task remind <task> <time|clear> to reschedule it',
+      clear: 'Review the task reminder in the UI.',
     })
 
     return now

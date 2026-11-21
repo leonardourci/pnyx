@@ -56,7 +56,7 @@ export function findSession({
     throw new HydraError({
       message: `session not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi task sessions`'],
+      help: ['Run `pnyx task sessions`'],
     })
   }
 
@@ -87,7 +87,7 @@ export function selfSession({
     throw new HydraError({
       message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no tmux or Herdr pane in the environment',
       code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi task sessions` and pass --session <id>'],
+      help: ['Run `pnyx task sessions` and pass --session <id>'],
     })
   }
 

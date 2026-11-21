@@ -177,7 +177,6 @@ export function fakeClaude() {
       }
     }
 
-    // Without its own environment an agent's pnyx-axi would reach the owner's real Pnyx.
     if (!options.env?.PNYX_HOME) {
       throw new Error('a fake agent started without its own PNYX_HOME')
     }

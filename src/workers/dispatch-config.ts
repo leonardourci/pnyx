@@ -336,7 +336,7 @@ function checked({ document }: { document: unknown }): DispatchDocument {
     throw new HydraError({
       message: `heads dispatch is invalid: ${errors.map(issue => `${issue.path} ${issue.problem}`).join('; ')}`,
       code: 'VALIDATION_ERROR',
-      help: ['Run `pnyx-axi rule schema`, then fix it with `pnyx-axi rule apply`'],
+      help: ['Run `pnyx rule schema` for accepted values. Edit the dispatch rules in Settings.'],
     })
   }
 

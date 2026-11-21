@@ -14,6 +14,11 @@ appendFileSync(
   `${JSON.stringify(args)}\n`,
 )
 
+if (args.includes('-f') || args.includes('--method')) {
+  console.log('error: unsupported gh-axi option\ncode: USAGE')
+  process.exit(2)
+}
+
 const notFound = ({ number }) => {
   console.log(`error: "Item #${number} does not exist in this repository"\ncode: NOT_FOUND`)
   process.exit(1)
@@ -34,7 +39,9 @@ if (args[0] === 'api') {
   const pulls = /^\/repos\/([^/]+\/[^/]+)\/pulls\/(\d+)(\/merge)?$/.exec(route ?? '')
   const repository = /owner:\s*"([^"]+)",name:\s*"([^"]+)"/.exec(query)
   const routeRepo = route?.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1]
-  const queryRepo = repository ? `${repository[1]}/${repository[2]}` : undefined
+  const queryOwner = args.find(arg => arg.startsWith('owner='))?.slice(6)
+  const queryName = args.find(arg => arg.startsWith('repo='))?.slice(5)
+  const queryRepo = repository ? `${repository[1]}/${repository[2]}` : queryOwner && queryName ? `${queryOwner}/${queryName}` : undefined
   const repo = routeRepo ?? queryRepo
   const evidenceFile = repo ? join(
     root,
@@ -114,7 +121,7 @@ if (args[0] === 'api') {
     )
     const isInMergeQueue = Boolean(read({ file }).queued)
     payload({ value: { data: { repository: { pullRequest: { isInMergeQueue } } } } })
-  } else if (args.includes('graphql')) {
+  } else if (args.includes('graphql') && !query.includes('pullRequests(')) {
     const branchProtectionRule = evidence.classicRule ?? null
     payload({ value: { data: { repository: { ref: { branchProtectionRule } } } } })
   } else if (route?.includes('/rules/branches/')) {
@@ -128,83 +135,94 @@ if (args[0] === 'api') {
     payload({ value: { check_runs: evidence.checkRuns ?? [] } })
   } else if (route?.includes('/statuses')) {
     payload({ value: [] })
+  } else if (route?.match(/^\/repos\/[^/]+\/[^/]+\/pulls$/) || (args.includes('graphql') && query.includes('pullRequests('))) {
+    const graphql = args.includes('graphql')
+    const head = args.find(arg => arg.startsWith('head='))?.slice(5)
+    const owner = head?.split(':')[0]
+    const branch = graphql ? args.find(arg => arg.startsWith('branch='))?.slice(7) : head?.split(':').slice(1)
+      .join(':')
+    const discoveryPayload = ({ value }) => payload({
+      value: graphql ? { data: { repository: { pullRequests: { nodes: value } } } } : value,
+    })
+    const gate = join(
+      root,
+      'discovery-gate.json',
+    )
+
+    if (existsSync(gate) && read({ file: gate }).branch === branch) {
+      await new Promise((
+        resolve,
+        reject,
+      ) => {
+        const timer = setTimeout(
+          () => {
+            watcher.close()
+            unlinkSync(`${gate}.ready`)
+            reject(new Error('discovery gate was not released'))
+          },
+          DISCOVERY_GATE_BOUND_MS,
+        )
+        const watcher = watch(
+          gate,
+          () => {
+            if (!existsSync(gate)) {
+              watcher.close()
+              clearTimeout(timer)
+              unlinkSync(`${gate}.ready`)
+              resolve()
+            }
+          },
+        )
+        writeFileSync(
+          `${gate}.ready`,
+          branch,
+        )
+      })
+    }
+
+    const folder = join(
+      root,
+      repo,
+    )
+    const malformed = join(
+      root,
+      'malformed-discovery',
+    )
+
+    if (existsSync(malformed) && read({ file: malformed }).branch === branch) {
+      writeFileSync(
+        `${malformed}.read`,
+        branch,
+      )
+      discoveryPayload({ value: [null] })
+      process.exit(0)
+    }
+
+    const requests = existsSync(folder) ? readdirSync(folder).filter(name => /^\d+\.json$/.test(name))
+      .filter(name => read({
+        file: join(
+          folder,
+          name,
+        ),
+      }).branch === branch && (!owner || (read({
+        file: join(
+          folder,
+          name,
+        ),
+      }).sourceOwner ?? repo.split('/')[0]) === owner))
+      .map(name => {
+        const url = `https://github.com/${repo}/pull/${name.slice(
+          0,
+          -5,
+        )}`
+
+        return graphql ? { url } : { html_url: url }
+      }) : []
+    discoveryPayload({ value: requests })
   } else {
     console.log('error: unsupported fake GitHub request\ncode: NOT_FOUND')
     process.exit(1)
   }
-} else if (args[0] === 'pr' && args[1] === 'list') {
-  const repo = args[args.indexOf('--repo') + 1]
-  const branch = args[args.indexOf('--head') + 1]
-  const gate = join(
-    root,
-    'discovery-gate.json',
-  )
-
-  if (existsSync(gate) && read({ file: gate }).branch === branch) {
-    await new Promise((
-      resolve,
-      reject,
-    ) => {
-      const timer = setTimeout(
-        () => {
-          watcher.close()
-          unlinkSync(`${gate}.ready`)
-          reject(new Error('discovery gate was not released'))
-        },
-        DISCOVERY_GATE_BOUND_MS,
-      )
-      const watcher = watch(
-        gate,
-        () => {
-          if (!existsSync(gate)) {
-            watcher.close()
-            clearTimeout(timer)
-            unlinkSync(`${gate}.ready`)
-            resolve()
-          }
-        },
-      )
-      writeFileSync(
-        `${gate}.ready`,
-        branch,
-      )
-    })
-  }
-
-  const folder = join(
-    root,
-    repo,
-  )
-  const malformed = join(
-    root,
-    'malformed-discovery',
-  )
-
-  if (existsSync(malformed) && read({ file: malformed }).branch === branch) {
-    writeFileSync(
-      `${malformed}.read`,
-      branch,
-    )
-    console.log('pull_requests[1]{url}:\n  null')
-    process.exit(0)
-  }
-
-  const requests = existsSync(folder) ? readdirSync(folder).filter(name => /^\d+\.json$/.test(name))
-    .filter(name => read({
-      file: join(
-        folder,
-        name,
-      ),
-    }).branch === branch)
-    .map(name => {
-      const url = `https://github.com/${repo}/pull/${name.slice(
-        0,
-        -5,
-      )}`
-
-      return `  ${JSON.stringify(url)}`
-    }) : []
-  console.log(requests.length ? `pull_requests[${requests.length}]{url}:\n${requests.join('\n')}` : 'pull_requests: []')
 } else {
   const repo = args[args.indexOf('--repo') + 1]
   const number = args[2]

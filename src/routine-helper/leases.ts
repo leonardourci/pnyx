@@ -32,7 +32,7 @@ export function copySettlingRefusal({
   return new HydraError({
     message: `Task ${task} is settling its copy; try again when cleanup finishes`,
     code,
-    help: [`\`pnyx-axi task copy ${task}\` shows the copy's state`],
+    help: [`Read \`pnyx task show ${task} --full\` for the copy's state`],
   })
 }
 
@@ -223,7 +223,7 @@ export function guardTaskLease({
     inform({
       task,
       reason: `Task is leased to ${lease?.actor ?? 'another Hydra session'}`,
-      clear: `Use pnyx-axi task history ${task} to inspect overlapping work`,
+      clear: `Use pnyx task history ${task} to inspect overlapping work`,
     })
   }
 }
@@ -275,7 +275,7 @@ export function taskLease({
       inform({
         task,
         reason: `Task is also being handled by ${lease.actor}`,
-        clear: `Use pnyx-axi task history ${task} to inspect overlapping work`,
+        clear: `Use pnyx task history ${task} to inspect overlapping work`,
       })
 
       owner = lease.actor
@@ -289,7 +289,7 @@ export function taskLease({
       inform({
         task,
         reason: 'Helper has no current task grant',
-        clear: `Use pnyx-axi task history ${task} to inspect the change`,
+        clear: `Use pnyx task history ${task} to inspect the change`,
       })
     }
 

@@ -32,7 +32,7 @@ export function decideOutcome(
     inform({
       task: card.id,
       reason: `Outcome from ${observed} replaced; a later observation can update it`,
-      clear: `Use pnyx-axi outcome ${card.id} --clear to clear the override`,
+      clear: `Review the outcome override on task ${card.id} in the UI.`,
     })
   }
 

@@ -9,10 +9,8 @@ import { projectRows } from '#projects/read.ts'
 import { spoolFiles } from '#store/storage.ts'
 import type { Card } from '#tasks/model.ts'
 import { cardRow } from '#tasks/cli.ts'
-import { requestEnv } from '#app/request-context.ts'
 
-export async function home(): Promise<Output> {
-  const hydraId = requestEnv().PNYX_HYDRA || DEFAULT_HYDRA
+export async function home({ hydraId = DEFAULT_HYDRA }: { hydraId?: string }): Promise<Output> {
   hideDone({ hydraId })
   const {
     dir,
@@ -35,7 +33,6 @@ export async function home(): Promise<Output> {
     columns,
   }
 
-  const serveHint = server ? [] : [`Run \`pnyx-axi serve --hydra ${hydraId}\` to start the Hydra server`]
   const spooled = spoolFiles({ dir }).length
 
   if (spooled > 0) {
@@ -44,11 +41,6 @@ export async function home(): Promise<Output> {
 
   if (cards.length === 0) {
     out.cards = 'none: no cards yet'
-    out.help = [
-      `Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add work`,
-      'Run `pnyx-axi --help` for command groups; add --help to any command for syntax',
-      ...serveHint,
-    ]
 
     return out
   }
@@ -69,12 +61,6 @@ export async function home(): Promise<Output> {
     state,
     card,
   }))
-  out.help = [
-    `Run \`pnyx-axi task show ${sorted[0]!.id} --hydra ${hydraId}\` for task details`,
-    'Run `pnyx-axi --help` for command groups; add --help to any command for syntax',
-    `Run \`pnyx-axi history --hydra ${hydraId}\` for recent events`,
-    ...serveHint,
-  ]
 
   if (sorted.length > HOME_LIMIT) {
     out.more = `${sorted.length - HOME_LIMIT} more cards not shown`

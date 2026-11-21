@@ -52,7 +52,7 @@ export function checkBudget({
   if (after !== null && size > budget && size > used) {
     inform({
       reason: `${layer} memory uses ${size} of ${budget} characters`,
-      clear: `Use pnyx-axi ${layer.toLowerCase()} memory list and ${layer.toLowerCase()} memory forget, or the ${INSCRIBE_SKILL} skill, to curate it`,
+      clear: `Use the ${INSCRIBE_SKILL} skill to identify memory to keep or remove.`,
     })
   }
 }

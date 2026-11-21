@@ -56,7 +56,7 @@ export async function setupCheck({
       name: 'config',
       missing: TEMPLATE_NUDGE,
       by: 'hydra',
-      fix: `pnyx-axi rule init --hydra ${hydraId}`,
+      fix: 'configure dispatch rules in the UI',
     })
   }
 
@@ -80,7 +80,7 @@ export async function setupCheck({
           name: `account:${name}`,
           missing: `login folder ${account.folder} does not exist`,
           by: 'owner',
-          fix: `${SIGN_IN[account.provider]} with that folder, or remove it: pnyx-axi account remove ${name} --hydra ${hydraId}`,
+          fix: `${SIGN_IN[account.provider]} with that folder, or remove ${name} in the UI`,
         })
       }
     }
@@ -95,7 +95,7 @@ export async function setupCheck({
           missing: `no ${harness} login for the rules that name it`,
           by: 'owner',
           // Default logins count only while no account is registered; otherwise the login must be registered too.
-          fix: fallback ? SIGN_IN[harness] : `${SIGN_IN[harness]}, then pnyx-axi account set ${harness}:personal --provider ${harness} --folder <login folder> --hydra ${hydraId}`,
+          fix: fallback ? SIGN_IN[harness] : `${SIGN_IN[harness]}, then configure its account folder in the UI`,
         })
       }
     }
@@ -104,7 +104,7 @@ export async function setupCheck({
       name: 'config',
       missing: (error as Error).message,
       by: 'owner',
-      fix: `pnyx-axi rule show --hydra ${hydraId}, then fix it with pnyx-axi rule apply`,
+      fix: 'inspect and correct dispatch in the UI',
     })
   }
 
@@ -125,7 +125,7 @@ export async function setupCheck({
         name: 'hooks',
         missing: script === 'current' ? `reporting hooks not installed in ${missing.join(', ')}` : `hook script ${script}`,
         by: 'owner',
-        fix: `pnyx-axi setup hooks --hydra ${hydraId}`,
+        fix: `pnyx setup hooks --hydra ${hydraId}`,
       })
     }
   } catch (error) {
@@ -133,7 +133,7 @@ export async function setupCheck({
       name: 'hooks',
       missing: (error as Error).message,
       by: 'owner',
-      fix: 'fix that config by hand, then run `pnyx-axi setup hooks`',
+      fix: 'fix that config by hand, then run `pnyx setup hooks`',
     })
   }
 
@@ -144,7 +144,7 @@ export async function setupCheck({
       name: 'skills',
       missing: skills,
       by: 'owner',
-      fix: skills.startsWith('conflict') ? 'move that skill aside, then run `pnyx-axi setup skills`' : `pnyx-axi setup skills --hydra ${hydraId}`,
+      fix: skills.startsWith('conflict') ? 'move that skill aside, then run `pnyx setup skills`' : `pnyx setup skills --hydra ${hydraId}`,
     })
   }
 
@@ -163,7 +163,7 @@ export async function setupCheck({
       name: 'service',
       missing: 'no login service, so Hydras stop when this server stops',
       by: 'owner',
-      fix: 'pnyx-axi setup',
+      fix: 'pnyx setup',
     })
   }
 
@@ -194,7 +194,7 @@ export async function setupCheck({
         name: `project-owner:${project.path}`,
         missing: `repository ${project.path} is attached to Hydras ${hydras}`,
         by: 'owner',
-        fix: `Choose its keeper with pnyx-axi project keep ${JSON.stringify(project.path)} --hydra <keeper>`,
+        fix: `Choose a keeper for ${project.path} in the UI`,
       })
     }
 
@@ -203,7 +203,7 @@ export async function setupCheck({
         name: `profile:${project.name}`,
         missing: `project ${project.name} has no profile`,
         by: 'hydra',
-        fix: `write its profile as the Hydra contract's projects reference describes (pnyx-axi project memory list --project ${project.name} --hydra ${hydraId})`,
+        fix: `save a profile for ${project.name} through the UI`,
       })
     }
   }
@@ -229,7 +229,7 @@ function hydraIssue({ hydraId }: { hydraId: string }): SetupItem | HydraState {
       name: 'import',
       missing: error.message,
       by: 'owner',
-      fix: 'run `pnyx-axi restart`, then `pnyx-axi setup check`',
+      fix: 'restart the server, then run `pnyx setup check`',
     }
   }
 }

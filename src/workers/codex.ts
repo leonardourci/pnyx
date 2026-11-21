@@ -865,7 +865,6 @@ const initialize = ({ rpc }: { rpc: ReturnType<typeof connection> }) => rpc
 const serviceTier = ({ fast }: { fast?: string }) =>
   fast !== undefined ? { serviceTier: fast === 'true' ? 'fast' : 'default' } : {}
 
-// An agent that asks writes only in its folder and Pnyx's home; network stays on so pnyx-axi reaches the server.
 const sandboxPolicy = ({
   mode,
   env,

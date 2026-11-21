@@ -51,7 +51,7 @@ export function ownerAsk({
     inform({
       task,
       reason: 'Ask recorded without a saved owner message',
-      clear: 'pnyx-axi task owner-ask <task> --text "<owner words>" --message <owner-message-id>',
+      clear: 'Review the saved owner request and its source message in the task UI.',
     })
   }
 

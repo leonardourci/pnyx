@@ -3,7 +3,6 @@ import { existsSync } from 'node:fs'
 import { readInput } from '#app/request-context.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { AxiError } from 'axi-sdk-js'
 import type { Column } from './columns-model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { projectsFor } from '#projects/read.ts'
@@ -26,10 +25,8 @@ import { decideView } from '#preferences/decisions.ts'
 import { columnByRef, validateColumns } from './column-rules.ts'
 import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
-import { answerPrompt } from '#workers/answers.ts'
 import { decideMove } from './columns-decisions.ts'
 import { requestCwd } from '#app/request-context.ts'
-import { workerIdentity } from '#workers/worker-identity.ts'
 
 const INTENT_LIMIT = 4000
 
@@ -152,7 +149,7 @@ function cardDetail({
   return detail
 }
 
-export const CONTEXT_TASKS = 5
+const CONTEXT_TASKS = 5
 
 // The session-start hook's summary: the Hydra's open work for the attached project holding the
 // session's folder, kept short because it loads into every session there. Elsewhere it prints nothing.
@@ -203,8 +200,8 @@ export const context = guard({
         column: card.column,
       })) : 'none: no open tasks for this project',
       help: [
-        `Run \`pnyx-axi task list --hydra ${hydraId}\` for every task`,
-        `Run \`pnyx-axi card <id> --hydra ${hydraId}\` for one task`,
+        `Run \`pnyx task list --hydra ${hydraId}\` for every task`,
+        `Run \`pnyx card <id> --hydra ${hydraId}\` for one task`,
       ],
     }
   },
@@ -238,10 +235,10 @@ export const push = guard({
     try {
       input = JSON.parse(readInput({ file: file }))
     } catch (error) {
-      throw new AxiError(
-        `cannot read card JSON from ${file}: ${(error as Error).message}`,
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: `cannot read card JSON from ${file}: ${(error as Error).message}`,
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     return commit({
@@ -283,11 +280,11 @@ export function taskFields({ value }: { value?: string }): TaskField[] {
   const unknown = fields.filter(field => !TASK_FIELDS.includes(field as TaskField))
 
   if (unknown.length) {
-    throw new AxiError(
-      `unknown field: ${unknown.join(', ')}`,
-      'VALIDATION_ERROR',
-      [`Use --fields with any of ${TASK_FIELDS.join(', ')}`],
-    )
+    throw new HydraError({
+      message: `unknown field: ${unknown.join(', ')}`,
+      code: 'VALIDATION_ERROR',
+      help: [`Use --fields with any of ${TASK_FIELDS.join(', ')}`],
+    })
   }
 
   return fields as TaskField[]
@@ -387,7 +384,7 @@ export function taskHistory({
     sessions: sessions.size ? [...sessions].map(id => ({
       session: id,
       transcript: state.sessions?.[id]?.agent.transcriptPath ?? 'unavailable',
-      command: `pnyx-axi task chat ${task.id} --session ${id} --hydra ${hydraId}`,
+      command: `pnyx task chat ${task.id} --session ${id} --hydra ${hydraId}`,
     })) : 'none: no agent has worked on this task',
     events: page.length ? page.map(entry => historyRow({
       entry,
@@ -400,11 +397,11 @@ export function taskHistory({
     // A cursor on this Hydra stays a plain seq; one on an earlier Hydra names it.
     const next = last.hydra === hydraId ? last.event.seq : `${last.hydra}:${last.event.seq}`
     out.next = next
-    help.push(`Run \`pnyx-axi task history ${ref} --before ${next} --hydra ${hydraId}\` for older events`)
+    help.push(`Run \`pnyx task history ${ref} --before ${next} --hydra ${hydraId}\` for older events`)
   }
 
   if (!full && page.length) {
-    help.push(`Run \`pnyx-axi task history ${ref} --full --hydra ${hydraId}\` for each event's data`)
+    help.push(`Run \`pnyx task history ${ref} --full --hydra ${hydraId}\` for each event's data`)
   }
 
   if (help.length) {
@@ -548,7 +545,7 @@ function columnCommand({ args }: { args: string[] }): Output {
   if (action === 'rule' && !m.reason?.trim()) {
     inform({
       reason: 'Column rule changed without a reason',
-      clear: 'Use pnyx-axi column rule <column> --reason "<why>" to record one',
+      clear: 'Record the reason in the column rule editor',
     })
   }
 
@@ -787,9 +784,9 @@ function columnCommand({ args }: { args: string[] }): Output {
 
 export const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
-export const NOTES_SHOWN = 3
+const NOTES_SHOWN = 3
 
-export const NOTE_CUT = 280
+const NOTE_CUT = 280
 
 const NOTE_SECTIONS = {
   summary: 'summary',
@@ -895,26 +892,10 @@ export const card = guard({
       card: found,
       full: Boolean(values.full),
     })
-    const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
+    const help = [`Run \`pnyx history --card ${found.id}\` for its events`]
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
-      help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for the brief and every note in full`)
-    }
-
-    // A worker may not run harvest or reply, so it is not pointed at them.
-    const worker = workerIdentity()
-
-    if (!found.notes?.length && !worker) {
-      help.push(`Run \`pnyx-axi harvest --card ${found.id}\` to collect its summaries, decisions and context`)
-    }
-
-    const asking = found.attention.find(request => answerPrompt({
-      card: found,
-      request,
-    }))
-
-    if (asking && !worker) {
-      help.unshift(`Run \`pnyx-axi reply ${found.id} --answer ${asking.key} --json <answer>\` to answer its ${asking.kind} (see \`pnyx-axi reply --help\`)`)
+      help.unshift(`Run \`pnyx card ${found.id} --full\` for the brief and every note in full`)
     }
 
     return {

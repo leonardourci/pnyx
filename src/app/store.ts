@@ -162,8 +162,8 @@ function requireUnchangedLog({
     message: `events.jsonl of Hydra ${hydraId} changed after it moved to Postgres (${importedBytes} bytes then, ${bytes} now), so an older Pnyx wrote events Postgres does not have`,
     code: 'LOG_CHANGED',
     help: [
-      `To keep the log's version, delete the Hydra's rows (\`psql ${homeDatabase()} -c "delete from hydras where id = '${hydraId}'"\`) and run \`pnyx-axi restart\`, which imports the log again`,
-      `To keep Postgres's version, move ${path} aside and run \`pnyx-axi restart\``,
+      `To keep the log's version, delete the Hydra's rows (\`psql ${homeDatabase()} -c "delete from hydras where id = '${hydraId}'"\`) and restart the Pnyx login service (or stop and rerun \`pnyx serve\`), which imports the log again`,
+      `To keep Postgres's version, move ${path} aside and restart the Pnyx login service (or stop and rerun \`pnyx serve\`)`,
     ],
   })
 }
@@ -190,7 +190,7 @@ function readHydra({
       throw new HydraError({
         message: `Hydra ${hydraId} is still in its events.jsonl; the server imports it when it starts`,
         code: 'NOT_IMPORTED',
-        help: ['Run `pnyx-axi restart`, or try again once the server has started'],
+        help: ['Restart the Pnyx login service (or stop and rerun `pnyx serve`), then try again'],
       })
     }
 
@@ -390,7 +390,7 @@ export function requireHydra({ hydraId }: { hydraId: string }): void {
     throw new HydraError({
       message: `unknown Hydra: ${hydraId}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'],
+      help: ['Run `pnyx hydra list` for the Hydras, or add one from the header in the UI'],
     })
   }
 }

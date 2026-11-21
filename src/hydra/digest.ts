@@ -18,7 +18,7 @@ import { helperLeases } from '#routine-helper/state.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { countTokens, ESTIMATED_TOKEN_BYTES } from '#workers/token-count.ts'
 
-export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init` saves them in the Pnyx home to edit'
+export const TEMPLATE_NUDGE = 'Heads dispatch uses the shipped template until you save rules in Settings'
 
 const TASK_LIMIT = 40
 const DIGEST_HASH_CHARS = 12
@@ -198,7 +198,7 @@ function ownerDigest({
 
   const notice = [
     '\nOwner memory omitted beyond the context budget.',
-    'Read `pnyx-axi owner memory list` before a decision needs an omitted preference or learning.',
+    'Read `pnyx owner memory list` before a decision needs an omitted preference or learning.',
   ].join(' ')
   const encoder = new TextEncoder()
   const budgetBytes = OWNER_CONTEXT_TOKENS * ESTIMATED_TOKEN_BYTES
@@ -672,7 +672,7 @@ export function hydraDigest({
   const checkAfter = before?.through ?? state.seq
   const lines = [
     `<pnyx-digest hydra="${hydraId}" through="${state.seq}"${checkpoint}>`,
-    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx-axi hydra check --after ${checkAfter} --hydra ${hydraId}\` lists what changed since.`,
+    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx hydra check --after ${checkAfter} --hydra ${hydraId}\` lists what changed since.`,
   ]
 
   if (before) {
@@ -686,7 +686,7 @@ export function hydraDigest({
   )
 
   if (omitted) {
-    lines.push(`${omitted} more changed cards. Full list: \`pnyx-axi task list --hydra ${hydraId}\`; details: \`pnyx-axi task show <task> --full --hydra ${hydraId}\`.`)
+    lines.push(`${omitted} more changed cards. Full list: \`pnyx task list --hydra ${hydraId}\`; details: \`pnyx task show <task> --full --hydra ${hydraId}\`.`)
   }
 
   lines.push(

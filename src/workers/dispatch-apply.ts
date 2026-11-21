@@ -30,7 +30,7 @@ export interface DispatchEnvelope {
   patch: Fields
 }
 
-export const DISPATCH_HELP_LINE = ['Run `pnyx-axi rule schema` for every field and allowed value']
+export const DISPATCH_HELP_LINE = ['Run `pnyx rule schema` for every field and allowed value']
 
 const ENVELOPE_FIELDS = [
   'version',
@@ -407,7 +407,7 @@ export function applyDispatch({
       if (proposeIt) {
         inform({
           reason: 'Dispatch settings applied directly; confirmation is no longer needed',
-          clear: 'Use pnyx-axi rule show to inspect dispatch settings',
+          clear: 'Use pnyx rule show to inspect dispatch settings',
         })
       }
 
@@ -418,7 +418,7 @@ export function applyDispatch({
       })) {
         inform({
           reason: 'Dispatch candidate permission level increased',
-          clear: 'pnyx-axi rule apply --file <patch>',
+          clear: 'Change the dispatch candidate’s permission mode in Settings.',
         })
       }
 
@@ -570,7 +570,7 @@ export function resolveProposal({
   if (hydraActor({ actor: meta.actor })) {
     inform({
       reason: 'Dispatch proposal answered by an agent',
-      clear: 'pnyx-axi rule show',
+      clear: 'pnyx rule show',
     })
   }
 

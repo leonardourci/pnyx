@@ -284,7 +284,6 @@ export async function startServer({
       })
     }
 
-    // A pnyx-axi command line from a client; the CLI sends every command but the few that must work while the server is down.
     if (req.method === 'POST' && path === '/api/run') {
       if (!bearer({ req })) {
         return reply({
@@ -910,7 +909,6 @@ export async function startServer({
     changed: mountAll,
     interval: CREATION_POLL_MS,
   })
-  // The settings log is written by any pnyx-axi process; every open page gets the change.
   const settingsDir = dirname(settingsLogPath())
   privateDir({ dir: settingsDir })
   // The revision the server runs with, and the one Postgres holds for the pages from the first mount on. A change

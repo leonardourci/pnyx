@@ -102,7 +102,7 @@ export function createWorkerStarts({
       inform({
         task: card.id,
         reason: 'Outside session continued on a hidden task',
-        clear: `Use pnyx-axi task unhide ${card.id} to show it in Hydra`,
+        clear: `Review the visibility of task ${card.id} in the UI.`,
       })
     }
 
@@ -130,7 +130,7 @@ export function createWorkerStarts({
     if (current.state === 'present') {
       inform({
         reason: 'Outside session is still present; continuing its saved conversation in Pnyx',
-        clear: 'Use pnyx-axi task sessions to inspect both the outside session and its Pnyx worker',
+        clear: 'Use pnyx task sessions to inspect both the outside session and its Pnyx worker',
       })
     }
   }
@@ -258,7 +258,7 @@ export function createWorkerStarts({
       throw new HydraError({
         message: `task ${target.id} is already starting`,
         code: 'TASK_STARTING',
-        help: [`Check \`pnyx-axi task show ${target.id}\` once its session opens`],
+        help: [`Check \`pnyx task show ${target.id}\` once its session opens`],
       })
     }
 
@@ -573,7 +573,7 @@ export function createWorkerStarts({
             launch: 'pending',
             session: claimed.existing,
             information: 'The provider returned an existing session. Pnyx kept its current worker unchanged.',
-            help: ['Retry the same start request to open a fresh worker, or use `pnyx-axi task sessions` to see the existing session'],
+            help: ['Retry the same start request to open a fresh worker, or use `pnyx task sessions` to see the existing session'],
           }
         }
 
@@ -615,7 +615,7 @@ export function createWorkerStarts({
           folder: started.agent.cwd,
           host: 'pnyx',
         },
-        help: [`Run \`pnyx-axi reply ${started.id} --text <text>\` to continue; the Pnyx server runs the agent`],
+        help: [`Run \`pnyx send --task ${started.id} --text <text>\` to continue; the Pnyx server runs the agent`],
       }
     } catch (error) {
       session?.close()
@@ -734,7 +734,7 @@ export function createWorkerStarts({
           folder: agent.cwd,
           host: 'pnyx',
         },
-        help: [`Send a message with \`pnyx-axi reply ${card.id} --text <text>\` to resume the session in Pnyx`],
+        help: [`Send a message with \`pnyx send --task ${card.id} --text <text>\` to resume the session in Pnyx`],
       }
     },
   })

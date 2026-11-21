@@ -187,7 +187,7 @@ function readinessBlockers({
 }): Blocker[] {
   const blockers: Blocker[] = unmet.map(item => ({
     reason: `waiting for ${item.title} (${item.id}): ${item.reason}`,
-    clear: `Finish ${item.id} first, or run \`pnyx-axi task undepend ${card.id} --on ${item.id}\` if it no longer blocks this task`,
+    clear: `Finish prerequisite ${item.id} first`,
   }))
 
   if (card.wait) {
@@ -199,7 +199,7 @@ function readinessBlockers({
     if (!wait.ready) {
       blockers.push({
         reason: `waiting for ${wait.title} (${card.wait.task}): ${card.wait.condition}`,
-        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; inspect the dependency with \`pnyx-axi task show ${card.wait.task}\``,
+        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; inspect the dependency with \`pnyx task show ${card.wait.task}\``,
       })
     }
   }
@@ -216,7 +216,7 @@ function readinessBlockers({
 
     blockers.push({
       reason: `its worker declared a paused hold${detail}`,
-      clear: `Once the owner gives the go, \`pnyx-axi task start ${card.id}\` proceeds while preserving this saved worker hold`,
+      clear: `Once the owner gives the go, start the worker from task ${card.id} in the UI.`,
     })
   }
 

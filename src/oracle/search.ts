@@ -8,7 +8,7 @@ import { queryTerms, fold, tokens, matches, type Term } from './query.ts'
 import { openIndex } from './index.ts'
 import { redact } from './text.ts'
 
-export const SNIPPETS = 3
+const SNIPPETS = 3
 const NOTE_WEIGHT = 2
 // A term in the card's title, project or link titles outweighs that term in any one entry, so the
 // card a query names ranks above cards that only mention it, however long their history.
@@ -206,7 +206,7 @@ export function search({
     throw new HydraError({
       message: 'query has no words to search for',
       code: 'VALIDATION_ERROR',
-      help: ['Run `pnyx-axi oracle "<words>"`'],
+      help: ['Run `pnyx oracle "<words>"`'],
     })
   }
 

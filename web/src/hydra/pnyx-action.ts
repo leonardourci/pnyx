@@ -92,10 +92,9 @@ export function shellWords({ command }: { command: string }): string[] {
   ] : words
 }
 
-// The words after pnyx-axi, past any environment assignments and runners before it.
 export function pnyxWords({ command }: { command: string }): string[] | undefined {
   const words = shellWords({ command })
-  const at = words.findIndex(word => /(^|\/)pnyx-axi(\.ts|\.js)?$/.test(word))
+  const at = words.findIndex(word => /(^|\/)pnyx(?:-axi)?(\.ts|\.js)?$/.test(word))
 
   return at >= 0 && words.slice(
     0,
@@ -154,11 +153,9 @@ const STATES: Record<string, string> = {
 
 export function pnyxSentence({
   words,
-  output = '',
   lookup,
 }: {
   words: string[]
-  output?: string
   lookup: PnyxLookup
 }): Segment[] {
   const {
@@ -180,8 +177,6 @@ export function pnyxSentence({
   }
 
   const because = flags.reason ? `: ${flags.reason}` : ''
-  const created = /^\s*id: (task-[\w-]+)/m.exec(output)?.[1]
-  const confirming = /^confirmation: needed$/m.test(output)
 
   switch (area) {
     case 'move': {
@@ -195,12 +190,26 @@ export function pnyxSentence({
       } : positionals[2] ?? 'a column'
 
       return [
-        confirming ? 'Asked to confirm moving ' : 'Moved ',
+        'Moved ',
         task({ ref: positionals[1] ?? '' }),
         ' to ',
         column,
-        confirming ? '' : because,
+        because,
       ].filter(Boolean)
+    }
+    case 'send': {
+      const message = firstLine({ text: flags.text ?? '' })
+      const excerpt = message ? `: ${message}` : ''
+
+      if (!flags.task) {
+        return [`Sent to Hydra${excerpt}`]
+      }
+
+      return [
+        'Sent ',
+        task({ ref: flags.task }),
+        `’s worker${excerpt}`,
+      ]
     }
     case 'reply':
       return flags.answer !== undefined ? [
@@ -211,6 +220,13 @@ export function pnyxSentence({
         task({ ref: action }),
         `’s worker: ${firstLine({ text: flags.text ?? '' })}`,
       ]
+    case 'answer':
+      return [
+        'Answered the question from ',
+        task({ ref: action }),
+      ]
+    case 'board':
+      return ['Read the Hydra']
     case 'link':
       return [
         'Linked ',
@@ -224,10 +240,7 @@ export function pnyxSentence({
         case 'create':
           return [
             'Created ',
-            created ? {
-              task: lookup.task({ ref: created })?.id ?? created,
-              label: lookup.task({ ref: created })?.title ?? flags.title ?? created,
-            } : `“${flags.title ?? 'a task'}”`,
+            `“${flags.title ?? 'a task'}”`,
             because,
           ]
         case 'rename': return [

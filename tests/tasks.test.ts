@@ -8,7 +8,7 @@ import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { pnyxAxi, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { operation, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -301,7 +301,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: 'held for discussion: Rename the API',
-        clear: expect.stringContaining(`pnyx-axi task release ${card.id} --from-message`),
+        clear: expect.stringContaining(`task ${card.id} in the UI`),
       }),
     ])
     const worker = await hydra.agent({ cwd: folder })
@@ -538,7 +538,7 @@ test(
     expect((await hydra.task({ key: saved.card.id })).worker).toBe('none: not started, no reason given')
 
     const session = await hydra.chat({ text: 'Also add a legend to the usage ring' })
-    expect((await pnyxAxi({
+    expect((await operation({
       args: [
         'apply',
         '--file',
@@ -614,7 +614,7 @@ test(
       launch: 'started',
       queued: expect.stringContaining('is in Ideas'),
     })
-    expect(behind.help.join('\n')).toContain('pnyx-axi task sessions')
+    expect(behind.help.join('\n')).toContain('pnyx task sessions')
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
@@ -785,29 +785,28 @@ test(
       hold: 'The owner wants to talk first',
     })
     expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
-    const goQuestion = (held.help[0] as string).split('`')[1]!
-      .replace(
-        '<go question?>',
-        'Rename the API now?',
-      )
-      .replace(
-        '<what Go changes>',
-        'Go starts the rename',
-      )
-    const goArgs = goQuestion.match(/"[^"]*"|\S+/g)!.slice(1)
-      .map(arg => arg.replace(
-        /^"|"$/g,
-        '',
-      ))
-    expect(await hydra.owner({
+    const questionPage = await hydra.page()
+    const goQuestion = await questionPage.send({
+      name: 'task',
       args: [
-        ...goArgs,
+        'ask',
+        held.card.id,
+        '--to',
+        'owner',
+        '--kind',
+        'go',
+        '--question',
+        'Rename the API now?',
+        '--context',
+        `Go starts the rename. [Card](pnyx-task:${encodeURIComponent(held.card.id)})`,
         '--actor',
         'hydra',
         '--reason',
         'The owner wants to talk first',
       ],
-    })).toMatchObject({ ask: expect.any(String) })
+    })
+    questionPage.close()
+    expect(goQuestion).toMatchObject({ ask: expect.any(String) })
 
     const waiting = await hydra.owner({
       args: [
@@ -848,7 +847,7 @@ test(
     })
     expect(docs.open).toEqual([
       expect.objectContaining({
-        clear: expect.stringContaining(`pnyx-axi task undepend ${waiting.card.id} --on ${held.card.id}`),
+        clear: expect.stringContaining(held.card.id),
       }),
     ])
     expect((await hydra.agent({ cwd: docsFolder })).received).toHaveLength(1)
@@ -910,7 +909,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: expect.stringContaining(asked.ask),
-        clear: expect.stringContaining(`pnyx-axi task answer ${card.id} ${asked.ask}`),
+        clear: expect.stringContaining(`pnyx answer ${card.id} ${asked.ask}`),
       }),
     ])
     expect((await hydra.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
@@ -3512,9 +3511,14 @@ test(
       expect(receipt.notices).toEqual(expect.arrayContaining([
         expect.objectContaining({
           reason: expect.any(String),
-          clear: expect.stringContaining('pnyx-axi'),
+          clear: expect.stringMatching(/\S/),
         }),
       ]))
+
+      for (const notice of receipt.notices) {
+        expect(notice.clear).not.toMatch(/\bpnyx-axi\b/)
+      }
+
       expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
       const saved = (await hydra.owner({
         args: [
@@ -3554,7 +3558,7 @@ test(
       landing: 'branch',
       merge: 'owner',
     })
-    const batch = await pnyxAxi({
+    const batch = await operation({
       args: [
         'apply',
         '--file',

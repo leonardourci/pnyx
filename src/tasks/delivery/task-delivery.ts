@@ -31,7 +31,7 @@ function decideTaskLanding({
   if (reportActor({ actor: meta.actor })) {
     inform({
       reason: 'Landing rule changed by a worker',
-      clear: 'pnyx-axi task landing <task> --clear',
+      clear: 'Review the landing settings in the task UI.',
       task: card.id,
     })
   }
@@ -48,7 +48,7 @@ function decideTaskLanding({
       inform({
         task: card.id,
         reason: 'Task has no project; using pr landing and owner merge defaults',
-        clear: `Use pnyx-axi task rename ${card.id} --project <project> to attach it`,
+        clear: `Review the project attached to task ${card.id} in the UI.`,
       })
     }
 

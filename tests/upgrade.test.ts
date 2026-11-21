@@ -1,3 +1,4 @@
+import { requestRestart } from '#upgrade/restart.ts'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -285,7 +286,7 @@ test(
       folder.install,
       'dist',
       'cli',
-      'pnyx-axi.js',
+      'pnyx.js',
     ))).toBe(true)
     await until({
       what: 'Hydra to get the message sent during the upgrade',
@@ -470,5 +471,48 @@ test(
       check: () => restarts === 1,
     })
     expect(worker.answered).toBe(1)
+  },
+)
+
+test(
+  'a detached restart imports an installation path containing a fragment character',
+  async () => {
+    const install = join(
+      root,
+      'C# install',
+    )
+    mkdirSync(
+      join(
+        install,
+        'dist',
+        'upgrade',
+      ),
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        install,
+        'package.json',
+      ),
+      JSON.stringify({ type: 'module' }),
+    )
+    const marker = join(
+      install,
+      'restarted',
+    )
+    writeFileSync(
+      join(
+        install,
+        'dist',
+        'upgrade',
+        'restart.js',
+      ),
+      `import { writeFileSync } from 'node:fs'; export function restartPnyx() { writeFileSync(${JSON.stringify(marker)}, 'restarted') }`,
+    )
+    await requestRestart({ root: install })
+    expect(readFileSync(
+      marker,
+      'utf8',
+    )).toBe('restarted')
   },
 )

@@ -58,9 +58,6 @@ export function replyCommand({
     })
   }
 
-  // A setting change is sent like a reply: `pnyx-axi agent` picks the harness's command and reads
-  // it back. Its setting and value come last, after --, so neither can read as a flag.
-  // An answer's values are passed as --name=value, so none can read as a flag.
   const [
     command,
     rest,

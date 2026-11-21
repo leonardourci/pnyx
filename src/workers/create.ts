@@ -97,12 +97,12 @@ const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
   depend: ({ card }) => ({
     launch: 'waiting',
     on: card.prerequisites ?? [],
-    help: [`Start it with \`pnyx-axi task start ${card.id}\` once its prerequisites are done`],
+    help: [`Start the worker from task ${card.id} in the UI once its prerequisites are done`],
   }),
   unstarted: ({ card }) => ({
     launch: 'not started',
     reason: card.unstarted ?? 'no reason given',
-    help: [`Run \`pnyx-axi task start ${card.id}\` to start a worker`],
+    help: [`Start the worker from task ${card.id} in the UI`],
   }),
 }
 
@@ -223,7 +223,7 @@ async function startCreated({
       blocker: error.message,
       help: [
         ...error.help,
-        `Run \`pnyx-axi task start ${task}\` once it clears`,
+        `Start the worker from task ${task} in the UI once the blocker clears`,
       ],
     }
   }

@@ -1,29 +1,13 @@
 ---
 name: pnyx-arrange-columns
-description: Use when you are Hydra and are about to assign a task to a project, nest or arrange tasks, resize project columns, or inspect legacy lifecycle placement rules.
+description: Use when arranging projects and tasks in the Pnyx UI.
 user-invocable: false
 metadata:
   internal: true
 ---
 
-# Arrange work
+# Arrange the Hydra
 
-The page groups tasks by project. Ideas is first and contains tasks without an attached repository, including tasks with legacy free-text project tags. Labels do not create project columns. A project may group several repositories; each repository retains its own copies, start command, landing rules and memory.
+Use the UI to attach and arrange projects, nest or order tasks, and resize their columns. Read `pnyx task list --hydra <id> --json` for current placement. The CLI keeps transitional layout and column reads; use the UI for changes.
 
-- Read `project list --hydra <hydra>` before choosing a repository. Use `project add <path>` for a repository, or for a folder with repositories directly beneath it. Use `project group <name> <repo-path>...` to group attached repositories.
-- Use `task rename <task> --project <repo-path>` to assign a repository. An empty project clears the assignment. A child appears beneath its parent and retains its own repository and worker.
-- `task parent <task> <parent|none>` nests or detaches. There is one level; a task with children cannot become a child. Detaching returns it to its project: `none --before <root>` places it before that root, and `none` places it last. Undo restores its parent and position together.
-- `task arrange <task> [--before <task>]` sets visual order within a project and parent. State groups stay needs you, running, waiting/queued/paused, then done. `task reorder --behind` still changes a worker queue, not visual order.
-- `view set --json '{"workspace":{"projectOrder":["ideas","<project-id>"],"projectWidths":{"<project-id>":560},"foldedProjects":{"<project-id>":true}}}'` saves project layout. Project ids are repository paths or the group's id. Widths have a 280px minimum and no maximum. `collapsed` and `chatCollapsed` fold the Hydra and its chat. Pass `--hydra <hydra>` on every command.
-
-Duplicate repository attachments proceed with a notice naming their Hydras. Setup and Settings suggest a keeper. Use `project keep <repo-path> --hydra <keeper>`. It moves every task and records each move, reporting the relationships it adjusts and the commands that restore them. Choose the keeper from the owner’s instructions and the work recorded in each Hydra.
-
-## Lifecycle compatibility
-
-Lifecycle columns remain internal compatibility state. Their rules still drive completion, queues and manual overrides. They do not create visible project columns. Ordinary activity and worker.log lines update state automatically; do not create or move lifecycle columns to organize the page.
-
-Use the legacy `column list`, `column rule`, `column create|rename|describe|reorder|delete` and `move` commands only for an explicit lifecycle-rule request or a correction. Read their help and inspect the result; an agent change proceeds directly and reports its placement changes. Existing `column resize` and `layout` values remain available for old clients; use `view set` for project widths.
-
-Rely on checked completion and recorded PR merges. A finished turn or passing local checks does not declare completion. Done cards hide after 1 hour by default, subject to the shared setting and task overrides. Parents stay open while any child is unfinished.
-
-Needs you holds open decisions that require the owner, including questions and permission requests. Due reminders, ready results and worker notes without a decision are updates. A custom Needs you rule still requires an owner decision.
+Running and idle come from sessions; workers append their status and links to worker.log. Completion follows the task's landing rules. Do not edit the snapshot or canonical logs to change placement.

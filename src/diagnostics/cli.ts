@@ -308,7 +308,7 @@ export const debug = guard({
       ...page,
       entries: entries.length ? entries : 'none: no matching timeline records',
       serviceTailTruncated: service.truncated,
-      help: ['Run `pnyx-axi debug timeline --help` for filters; pass the cursor with the same filters for older matches'],
+      help: ['Run `pnyx debug timeline --help` for filters; pass the cursor with the same filters for older matches'],
     }
   },
 })
@@ -337,7 +337,7 @@ export const logs = guard({
       if (workerIdentity()) {
         inform({
           reason: 'Worker cleared diagnostic logs shared by every Hydra',
-          clear: 'pnyx-axi logs',
+          clear: 'pnyx logs',
         })
       }
 
@@ -368,10 +368,7 @@ export const logs = guard({
         day: file.day,
         size: fileSize({ bytes: file.bytes }),
       })) : 'none: no log files yet',
-      help: [
-        'Run `pnyx-axi debug performance` for durations and memory from these lines',
-        'Run `pnyx-axi logs clean` to delete every log file now',
-      ],
+      help: ['Run `pnyx debug performance` for durations and memory from these lines'],
     }
   },
 })

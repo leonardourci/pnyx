@@ -570,7 +570,7 @@ export function eventReasons({
       {
         kind: 'instruction unread',
         card: event.cardId,
-        detail: `instruction ${message.id} remains unread: ${event.data.recovery.detail}. Read it with pnyx-axi task inbox read ${event.cardId}; review the worker route or hold before resuming`,
+        detail: `instruction ${message.id} remains unread: ${event.data.recovery.detail}. Read it with pnyx task inbox read ${event.cardId}; review the worker route or hold before resuming`,
       },
     ]
   }

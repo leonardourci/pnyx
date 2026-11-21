@@ -1,6 +1,6 @@
 import { workerLine } from './setup/worker-log.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { rows, pnyxAxi, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { rows, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 let hydra: Hydra
@@ -125,9 +125,13 @@ test(
       ).toEqual(expect.arrayContaining([
         expect.objectContaining({
           reason: expect.any(String),
-          clear: expect.stringContaining('pnyx-axi'),
+          clear: expect.stringMatching(/\S/),
         }),
       ]))
+
+      for (const notice of output.notices) {
+        expect(notice.clear).not.toMatch(/\bpnyx-axi\b/)
+      }
     }
 
     const retryArgs = [
@@ -624,7 +628,7 @@ test(
         'list',
       ],
     ]) {
-      const run = await pnyxAxi({
+      const run = await operation({
         args: [
           ...args,
           '--hydra',

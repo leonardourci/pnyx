@@ -519,6 +519,115 @@ test(
 )
 
 test(
+  'plain send and answer calls and saved legacy calls show their action and live task links',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.startTask({ key: 'labels' })
+    const task = await hydra.task({ key: 'labels' })
+    await setFocusMode({
+      hydra,
+      on: false,
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
+
+    try {
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/settings/`)
+      await expect.poll(
+        () => page.getByRole(
+          'switch',
+          {
+            name: 'Focus mode',
+            exact: true,
+          },
+        ).getAttribute('aria-checked'),
+      ).toBe('false')
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)
+      const session = await hydra.chat({ text: 'Review the work' })
+      await until({
+        what: 'Hydra to finish its first reply',
+        check: () => session.answered === session.received.length,
+      })
+      await appendRecords({
+        session,
+        records: [
+          {
+            id: 'toolu_send',
+            command: `pnyx send --task ${task.id} --text "Check it"`,
+          },
+          {
+            id: 'toolu_answer',
+            command: `pnyx answer ${task.id} question-1 --text "Use it"`,
+          },
+          {
+            id: 'toolu_legacy',
+            command: `pnyx-axi reply ${task.id} --text "Earlier call"`,
+          },
+          {
+            id: 'toolu_file',
+            command: `pnyx send --task ${task.id} --file message.txt`,
+          },
+        ].flatMap(({
+          id,
+          command,
+        }) => [
+          {
+            type: 'assistant' as const,
+            content: [
+              {
+                type: 'tool_use',
+                id,
+                name: 'Bash',
+                input: { command },
+              },
+            ],
+          },
+          {
+            type: 'user' as const,
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: id,
+                content: 'ok',
+              },
+            ],
+          },
+        ]),
+      })
+      const conversation = page.getByRole(
+        'region',
+        { name: 'Hydra conversation' },
+      )
+      const progress = conversation.locator('.turn-actions > .disclosure')
+      await progress.locator(':scope > summary').click()
+      const traces = progress.locator('[data-progress-kind="tool"]')
+      const labels = traces.locator('.trace-label')
+      await expect.poll(() => labels.filter({ hasText: /^Sending/ }).count()).toBe(3)
+      await expect.poll(() => traces.filter({ hasText: 'message.txt' }).locator('.trace-label')
+        .textContent()).toMatch(/’s worker$/)
+      await expect.poll(() => labels.filter({ hasText: /^Answering the question from/ }).count()).toBe(1)
+      await expect.poll(() => traces.getByRole(
+        'button',
+        { name: /^Open task Task labels;/ },
+      ).count()).toBe(4)
+      await labels.filter({ hasText: /^Answering the question from/ }).getByRole(
+        'button',
+        { name: /^Open task Task labels;/ },
+      )
+        .click()
+      await expect.poll(() => page.locator(`[data-task="${task.id}"] .card-open`).getAttribute('aria-expanded')).toBe('true')
+    } finally {
+      await setFocusMode({
+        hydra,
+        on: true,
+      })
+    }
+  },
+)
+
+test(
   'with Focus mode on, a running tool call is named in neither Hydra\'s nor a task\'s working line, and a card\'s status never names one',
   async () => {
     const hydra = await pnyx.hydra()

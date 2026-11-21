@@ -77,7 +77,7 @@ function mergeNotices({ status }: { status: PullRequestStatus }): void {
   for (const reason of reasons) {
     inform({
       reason,
-      clear: 'Use pnyx-axi task refresh-links <task> to refresh the pull request facts',
+      clear: 'Review the pull request facts on the task in the UI.',
     })
   }
 }
@@ -120,7 +120,7 @@ export async function mergeCommand({
     inform({
       task: card.id,
       reason: 'Merge requested by a worker',
-      clear: `Use pnyx-axi task landing ${card.id} --merge <owner|hydra> to change the merge default`,
+      clear: `Review the merge setting on task ${card.id} in the UI.`,
     })
   }
 
@@ -137,7 +137,7 @@ export async function mergeCommand({
     inform({
       task: card.id,
       reason: 'Merge requested while the landing rule defaults to the owner',
-      clear: `Use pnyx-axi task landing ${card.id} --merge hydra to change the default`,
+      clear: `Review the merge setting on task ${card.id} in the UI.`,
     })
   }
 
@@ -169,7 +169,7 @@ export async function mergeCommand({
       inform({
         task: card.id,
         reason: evidence.problems.join('; '),
-        clear: `Use pnyx-axi task refresh-links ${card.id} to refresh merge evidence`,
+        clear: `Review the merge evidence on task ${card.id} in the UI.`,
       })
     }
 
@@ -197,7 +197,7 @@ export async function mergeCommand({
           inform({
             task: card.id,
             reason: 'Merge approval changed before the merge attempt',
-            clear: `Use pnyx-axi task landing ${card.id} --merge owner to change the default`,
+            clear: `Review the merge setting on task ${card.id} in the UI.`,
           })
         }
 

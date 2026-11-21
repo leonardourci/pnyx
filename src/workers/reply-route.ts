@@ -110,7 +110,7 @@ export function replyRoute({ card }: { card: Card }): { route: ReplyRoute } | { 
   const t = card.terminal
 
   if (!t) {
-    return { reason: 'No terminal is recorded for this session yet. Re-run `pnyx-axi setup hooks` to enable typing into sessions; a session then records its terminal when it starts or takes a prompt.' }
+    return { reason: 'No terminal is recorded for this session yet. Re-run `pnyx setup hooks` to enable typing into sessions; a session then records its terminal when it starts or takes a prompt.' }
   }
 
   const found = host({ facts: t })

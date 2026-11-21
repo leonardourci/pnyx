@@ -1,9 +1,7 @@
 import { ownerActor } from './actors.ts'
 import { inform } from './command-notices.ts'
 import { createHash } from 'node:crypto'
-import { execFile } from 'node:child_process'
-import { parseArgs, promisify } from 'node:util'
-import { join } from 'node:path'
+import { parseArgs } from 'node:util'
 import { WRITE, guard, meta, parse, required } from './cli-support.ts'
 import { effectiveDispatch, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -13,16 +11,11 @@ import { HydraError } from '#store/errors.ts'
 import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
-import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { requestEnv, IDENTITY, agentRequest } from '#app/request-context.ts'
-
-const exec = promisify(execFile)
-const ENTRY = join(
-  import.meta.dirname,
-  '..',
-  'cli',
-  'pnyx-axi.' + (import.meta.filename.endsWith('.ts') ? 'ts' : 'js'),
-)
+import { commands } from './cli.ts'
+import { project } from '#projects/cli.ts'
+import { agent } from '#workers/agent-cli.ts'
+import { dispatchCommands } from '#workers/dispatch-cli.ts'
+import { requestEnv, IDENTITY, agentRequest, runForClient } from '#app/request-context.ts'
 
 interface Target {
   name: string
@@ -99,7 +92,7 @@ export const approval = guard({
     if (actor.actor === 'hydra' || agentRequest()) {
       inform({
         reason: 'Approval question answered by an agent',
-        clear: 'Use pnyx-axi approval dismiss <token> to dismiss a pending approval',
+        clear: 'Dismiss the pending approval in the UI',
       })
     }
 
@@ -139,7 +132,7 @@ export const approval = guard({
         if (action === 'confirm' && proposal.status === 'failed') {
           inform({
             reason: 'Retrying a failed approved action after checking its target',
-            clear: 'Use pnyx-axi approval dismiss <token> to dismiss it instead',
+            clear: 'Dismiss the failed approval in the UI instead',
           })
         }
 
@@ -150,7 +143,7 @@ export const approval = guard({
         }) !== proposal.before) {
           inform({
             reason: 'Applying a saved action after its target changed',
-            clear: `Use pnyx-axi ${confirming?.name ?? 'task'} --help to inspect its current commands`,
+            clear: 'Review the target in the UI before retrying the action',
           })
         }
 
@@ -225,41 +218,58 @@ export const approval = guard({
     }
 
     try {
-      const { stdout } = await exec(
-        process.execPath,
-        [
-          ...SOURCE_CONDITIONS,
-          ENTRY,
-          target.name,
-          ...target.args,
-          // Setup without a target runs every Hydra and refuses --hydra.
-          ...(target.name === 'setup' && parseArgs({
-            args: target.args,
-            options: {
-              ...WRITE,
-              port: { type: 'string' },
-            },
-            strict: false,
-            allowPositionals: true,
-          }).positionals.length === 0 ? [] : [
-              '--hydra',
-              hydraId,
-            ]),
-        ],
-        {
-          cwd: target.cwd,
-          env: ownerEnv,
-          maxBuffer: 4 * 1024 * 1024,
-        },
-      )
+      const handlers = {
+        ...commands,
+        agent,
+        project,
+        ...dispatchCommands,
+      }
+      const handler = Object.hasOwn(
+        handlers,
+        target.name,
+      ) ? handlers[target.name as keyof typeof handlers] : undefined
 
-      output = stdout.trim()
+      if (typeof handler !== 'function') {
+        throw new HydraError({
+          message: `Unknown saved command ${target.name}`,
+          code: 'NOT_FOUND',
+        })
+      }
+
+      const allHydras = target.name === 'setup' && parseArgs({
+        args: target.args,
+        options: {
+          ...WRITE,
+          port: { type: 'string' },
+        },
+        strict: false,
+        allowPositionals: true,
+      }).positionals.length === 0
+      const commandArgs = [...target.args]
+
+      if (!allHydras) {
+        const separator = commandArgs.indexOf('--')
+        commandArgs.splice(
+          separator === -1 ? commandArgs.length : separator,
+          0,
+          '--hydra',
+          hydraId,
+        )
+      }
+
+      const result = await runForClient({
+        identity: Object.fromEntries(IDENTITY.flatMap(name => ownerEnv[name] === undefined ? [] : [
+          [
+            name,
+            ownerEnv[name],
+          ],
+        ])),
+        cwd: target.cwd,
+        run: () => handler(commandArgs),
+      })
+      output = JSON.stringify(result)
     } catch (error) {
-      const stdout = error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string' ? error.stdout : ''
-      const commandOutput = stdout.trim()
-      const detail = commandOutput.length > 0
-        ? commandOutput
-        : error instanceof Error ? error.message : String(error)
+      const detail = error instanceof Error ? error.message : String(error)
       withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -282,19 +292,6 @@ export const approval = guard({
           }
         },
       })
-
-      const code = /^code: ([A-Z_]+)$/m.exec(stdout)?.[1]
-
-      if (removesHydra || code) {
-        if (error instanceof HydraError) {
-          throw error
-        }
-
-        throw new HydraError({
-          message: detail,
-          code: code ?? 'UNKNOWN',
-        })
-      }
 
       throw error
     }

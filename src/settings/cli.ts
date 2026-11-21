@@ -1,5 +1,4 @@
 import { HydraError } from '#store/errors.ts'
-import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
 import { readSettings, saveSettings, settingsReceipt, shownSettings } from './store.ts'
 import { DEFAULT_SETTINGS, MAX_LOG_DAYS, MAX_LOG_MB } from './settings.ts'
@@ -54,10 +53,10 @@ export const settings = guard({
     }
 
     if (sub !== 'set') {
-      throw new AxiError(
-        USE,
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: USE,
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     let patch: unknown
@@ -68,10 +67,10 @@ export const settings = guard({
         what: '--json',
       }))
     } catch {
-      throw new AxiError(
-        '--json must contain a settings object',
-        'VALIDATION_ERROR',
-      )
+      throw new HydraError({
+        message: '--json must contain a settings object',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     const change = meta({ values })

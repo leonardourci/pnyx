@@ -1,4 +1,4 @@
-import { AxiError } from 'axi-sdk-js'
+import { HydraError } from '#store/errors.ts'
 import { guard, WRITE, parse, integer, meta, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
 import { setupPostgres } from './postgres.ts'
@@ -36,23 +36,30 @@ export const setup = guard({
     ].filter(flag => values[flag] !== undefined)
 
     if (postgresOnly.length && positionals[0] !== 'postgres') {
-      throw new AxiError(
-        `--${postgresOnly[0]} applies only to setup postgres`,
-        'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup check` to list what is missing'],
-      )
+      throw new HydraError({
+        message: `--${postgresOnly[0]} applies only to setup postgres`,
+        code: 'VALIDATION_ERROR',
+        help: ['Run `pnyx setup check` to list what is missing'],
+      })
     }
 
     if (postgresOnly.length > 1) {
-      throw new AxiError(
-        '--check and --url run separately',
-        'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup postgres --url <url>`, then `pnyx-axi setup postgres --check`'],
-      )
+      throw new HydraError({
+        message: '--check and --url run separately',
+        code: 'VALIDATION_ERROR',
+        help: ['Run `pnyx setup postgres --url <url>`, then `pnyx setup postgres --check`'],
+      })
     }
 
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
+    }
+
+    if (values.preview && positionals[0] === 'postgres') {
+      throw new HydraError({
+        message: '--preview does not apply to setup postgres',
+        code: 'VALIDATION_ERROR',
+      })
     }
 
     if (positionals[0] === 'postgres') {
@@ -80,10 +87,10 @@ export const setup = guard({
 
     if (positionals[0] === undefined) {
       if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
-        throw new AxiError(
-          'setup runs every Hydra; it takes no --hydra',
-          'VALIDATION_ERROR',
-        )
+        throw new HydraError({
+          message: 'setup runs every Hydra; it takes no --hydra',
+          code: 'VALIDATION_ERROR',
+        })
       }
 
       return setupService({
@@ -97,31 +104,31 @@ export const setup = guard({
     }
 
     if (positionals[0] !== 'hooks') {
-      throw new AxiError(
-        `unknown setup target: ${positionals[0] ?? '(none)'}`,
-        'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup postgres`, `pnyx-axi setup skills` or `pnyx-axi setup hooks`'],
-      )
+      throw new HydraError({
+        message: `unknown setup target: ${positionals[0] ?? '(none)'}`,
+        code: 'VALIDATION_ERROR',
+        help: ['Run `pnyx setup`, `pnyx setup check`, `pnyx setup postgres`, `pnyx setup skills` or `pnyx setup hooks`'],
+      })
     }
 
     const harness = values.harness as string | undefined
 
     if (harness !== undefined && !(HARNESSES as readonly string[]).includes(harness)) {
-      throw new AxiError(
-        `unknown harness: ${harness}`,
-        'VALIDATION_ERROR',
-        [`Use one of ${HARNESSES.join(', ')}`],
-      )
+      throw new HydraError({
+        message: `unknown harness: ${harness}`,
+        code: 'VALIDATION_ERROR',
+        help: [`Use one of ${HARNESSES.join(', ')}`],
+      })
     }
 
     const targets = harness ? [harness as Harness] : detectedHarnesses()
 
     if (targets.length === 0) {
-      throw new AxiError(
-        'no Claude Code or Codex config folder found',
-        'NOT_FOUND',
-        ['Run `pnyx-axi setup hooks --harness claude|codex`'],
-      )
+      throw new HydraError({
+        message: 'no Claude Code or Codex config folder found',
+        code: 'NOT_FOUND',
+        help: ['Run `pnyx setup hooks --harness claude|codex`'],
+      })
     }
 
     const remove = Boolean(values.remove)
@@ -145,7 +152,7 @@ export const setup = guard({
       help.push('Codex asks you to review and trust new hooks: run `/hooks` in Codex')
     }
 
-    help.push(remove ? 'Run `pnyx-axi setup hooks` to install them again' : 'New sessions appear on the Hydra; run `pnyx-axi` to see it')
+    help.push(remove ? 'Run `pnyx setup hooks` to install them again' : 'New sessions appear on the Hydra; run `pnyx` to see it')
     out.help = help
 
     return out

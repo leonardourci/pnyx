@@ -6,7 +6,7 @@ export function requireStopAuthority({ meta }: { meta: Meta }): void {
   if (workerIdentity({ actor: meta.actor })) {
     inform({
       reason: 'Agent requested a stop or immediate delivery',
-      clear: 'pnyx-axi reply <task> --text "<message>"',
+      clear: 'pnyx send --task <task> --text "<message>"',
     })
   }
 }

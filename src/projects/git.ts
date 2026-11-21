@@ -305,7 +305,7 @@ export async function gitProject({ project }: { project: HydraProject }): Promis
     throw new HydraError({
       message: `project ${project.name} is not a git repository`,
       code: 'VALIDATION_ERROR',
-      help: ['Set its copy command with `pnyx-axi project set <name> --copy <shell command>`, or start with --in-place'],
+      help: ['Set a copy command for the project in Settings.'],
     })
   }
 }

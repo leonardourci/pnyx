@@ -22,7 +22,7 @@ export const SOCKET_RETRY_MS = 100
 // A tab with more than this unsent holds its latest batch until it drains and misses the messages it cannot get later.
 export const MAX_BUFFERED = 1 << 20
 
-export const MAX_BODY = 1 << 20
+export { MAX_BODY } from './server-protocol.ts'
 
 export const STOP_TIMEOUT_MS = 5000
 
