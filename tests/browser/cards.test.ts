@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from 'vitest'
 import { openHydra } from './page.ts'
+import { chrome } from './chrome.ts'
 import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
@@ -7,6 +8,7 @@ const PROJECTS = 8
 const HISTORY_EDITS = 65
 const REVEAL_PROJECTS = 4
 const REVEAL_FRAMES = 120
+const SCROLL_INPUT_FRAMES = 90
 
 let pnyx: Pnyx
 
@@ -1132,5 +1134,100 @@ test(
       { exact: false },
     )
       .waitFor({ state: 'detached' })
+  },
+)
+
+test(
+  'closing a task keeps workspace wheel scrolling available',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await addRevealProjects({ hydra })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Scroll after closing',
+      ],
+    })
+    await chrome({
+      script: `
+    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
+  `,
+    })
+    const result = await chrome({
+      script: `
+    console.log(await page.eval(async () => {
+      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card.selected');
+      const axis = card.closest('.workspace-axis');
+      const column = card.closest('[data-column]');
+      const expandedWidth = column.getBoundingClientRect().width;
+      card.querySelector('.card-open').click();
+      let previousWidth = expandedWidth;
+      let scrollBeforeWheel;
+      for (let frame = 0; frame < ${SCROLL_INPUT_FRAMES}; frame++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        if (scrollBeforeWheel === undefined) {
+          const width = column.getBoundingClientRect().width;
+          const shrankAndSettled = width < expandedWidth && width === previousWidth;
+          previousWidth = width;
+          if (!shrankAndSettled) continue;
+          scrollBeforeWheel = axis.scrollLeft;
+        }
+        if (axis.scrollLeft > scrollBeforeWheel + 10) return true;
+        column.dispatchEvent(new WheelEvent('wheel', { deltaX: 40, bubbles: true, cancelable: true }));
+      }
+      return false;
+    }));
+  `,
+    })
+    expect(JSON.parse(result)).toBe(true)
+  },
+)
+
+test(
+  'saving a task leaves its card closed in its column',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await chrome({
+      script: `
+    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
+    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', 'Keep this task closed');
+    await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
+    await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
+  `,
+    })
+    await until({
+      what: 'the saved task',
+      check: () => rows({
+        text: 'select id from cards where hydra_id = $1 and title = $2',
+        values: [
+          hydra.id,
+          'Keep this task closed',
+        ],
+      }).length === 1,
+    })
+    const result = await chrome({
+      script: `
+    console.log(await page.eval(() => {
+      const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
+      const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
+      return JSON.stringify({ expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') });
+    }));
+  `,
+    })
+    expect(JSON.parse(result)).toEqual({
+      expanded: 'false',
+      column: 'ideas',
+      title: 'Keep this task closed',
+      formClosed: true,
+      focusLabel: 'Fold Ideas',
+    })
   },
 )

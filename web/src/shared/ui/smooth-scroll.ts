@@ -2,7 +2,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 import Lenis, { type VirtualScrollData } from 'lenis'
 import Snap from 'lenis/snap'
 
-export const SCROLL_IDLE_MS = 500
+const SCROLL_IDLE_MS = 500
 const SCROLL_LERP = 0.12
 
 const scrolls = new Set<Lenis>()
