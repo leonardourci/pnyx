@@ -116,7 +116,8 @@ export function readChanges({
     ...live?.changes ?? [],
     ...receipts,
   ]
-  const cards = selection.cardIds ?? (selection.cardId === undefined ? undefined : [selection.cardId])
+  const cards = selection.cardIds
+    ?? (selection.cardId === undefined ? undefined : [selection.cardId])
   const ids = selection.ids && new Set(selection.ids)
   const seqs = selection.seqs && new Set(selection.seqs)
 
