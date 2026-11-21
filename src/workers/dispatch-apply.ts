@@ -11,7 +11,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { settingsNotice } from '#hydra/settings-notice.ts'
 import { HydraError } from '#store/errors.ts'
-import { withRegistryLock } from '#store/storage.ts'
+import { withAsyncRegistryLock } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
@@ -300,7 +300,7 @@ export async function applyDispatch({
   proposeIt?: boolean
   summary: string
 }): Promise<Output> {
-  return withRegistryLock({
+  return withAsyncRegistryLock({
     fn: async () => {
       const document = lockedDocument()
       const entries = readChanges()
@@ -574,7 +574,7 @@ export async function resolveProposal({
     })
   }
 
-  return withRegistryLock({
+  return withAsyncRegistryLock({
     fn: async () => {
       const state = await withWriter({
         hydraId,
