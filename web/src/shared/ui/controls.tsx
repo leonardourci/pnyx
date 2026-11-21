@@ -36,20 +36,35 @@ export function NativeInput({ ...props }: ComponentProps<'input'>) {
   return <input {...props} className={`${INPUT_CLASSES} [:where(&)]:bg-surface ${props.className ?? ''}`} />
 }
 
+const lineBreaks = /[\r\n]/g
+
 export function Input({
+  onChange,
   onKeyDown,
+  value,
+  defaultValue,
   ...props
 }: ComponentProps<'textarea'>) {
   return (
     <Textarea
       {...props}
-      aria-multiline={false}
+      aria-multiline={props.role === 'combobox' ? undefined : false}
+      value={typeof value === 'string' ? value.replace(lineBreaks, '') : value}
+      defaultValue={typeof defaultValue === 'string' ? defaultValue.replace(lineBreaks, '') : defaultValue}
       onChange={event => {
-        event.currentTarget.value = event.currentTarget.value.replace(
-          /[\r\n]/g,
-          '',
-        )
-        props.onChange?.(event)
+        const field = event.currentTarget
+        const text = field.value
+        const singleLine = text.replace(lineBreaks, '')
+
+        if (singleLine !== text) {
+          const start = text.slice(0, field.selectionStart).replace(lineBreaks, '').length
+          const end = text.slice(0, field.selectionEnd).replace(lineBreaks, '').length
+          const direction = field.selectionDirection
+          field.value = singleLine
+          field.setSelectionRange(start, end, direction)
+        }
+
+        onChange?.(event)
       }}
       className={`min-h-0 [:where(&)]:bg-surface ${props.className ?? ''}`}
       onKeyDown={event => {
@@ -63,19 +78,23 @@ export function Input({
           return
         }
 
-        const submit = !event.defaultPrevented
-          && !event.shiftKey && !event.metaKey && !event.ctrlKey
+        const modified = event.shiftKey || event.metaKey || event.ctrlKey || event.altKey
+        const submit = !event.defaultPrevented && !modified
         event.preventDefault()
 
-        if (submit) {
-          const form = event.currentTarget.form
-          const button = form?.querySelector<HTMLButtonElement | HTMLInputElement>('button[type="submit"], input[type="submit"]')
+        const form = event.currentTarget.form
 
-          if (button) {
-            button.click()
-          } else if (form?.querySelectorAll('textarea[aria-multiline="false"]').length === 1) {
-            form.requestSubmit()
-          }
+        if (!submit || !form) {
+          return
+        }
+
+        const button = Array.from(form.elements).find(control =>
+          (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) && control.type === 'submit')
+
+        if (button instanceof HTMLElement) {
+          button.click()
+        } else if (form.querySelectorAll('textarea[aria-multiline="false"]').length === 1) {
+          form.requestSubmit()
         }
       }}
     />

@@ -1215,14 +1215,16 @@ test(
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]', ${JSON.stringify(`${title}\n`)});
+    const titleField = '[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]';
+    await page.fill(titleField, ${JSON.stringify(title.replace('complete title', 'complete\r\n title'))});
+    const normalizedTitle = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').value);
     await page.press('Shift+Enter');
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const fields = await page.eval(() => {
       const title = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]');
       const ask = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Your ask"]');
-      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, singleLine: !title.value.includes('\\n'), askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
+      return { titleHeight: title.getBoundingClientRect().height, titleFits: title.scrollWidth <= title.clientWidth + 1 && title.scrollHeight <= title.clientHeight + 1, titleAfterShiftEnter: title.value, askGrows: ask.scrollHeight <= ask.clientHeight + 1 && ask.getBoundingClientRect().height > innerHeight / 2, multiLine: ask.value.endsWith('\\n') };
     });
     await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
@@ -1231,7 +1233,7 @@ test(
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, chatBounded }, card }));
+    console.log(JSON.stringify({ fields: { ...fields, renameFits, titleGrows: fields.titleHeight > titleHeight, normalizedTitle, chatBounded }, card }));
   `,
     })
     await until({
@@ -1244,16 +1246,18 @@ test(
         ],
       }).length === 1,
     })
-    expect(JSON.parse(result).fields).toMatchObject({
+    const { fields, card } = JSON.parse(result)
+    expect(fields).toMatchObject({
       renameFits: true,
       titleFits: true,
       titleGrows: true,
-      singleLine: true,
+      normalizedTitle: title,
+      titleAfterShiftEnter: title,
       askGrows: true,
       multiLine: true,
       chatBounded: true,
     })
-    expect(JSON.parse(result).card).toEqual({
+    expect(card).toEqual({
       expanded: 'false',
       column: 'ideas',
       title,
