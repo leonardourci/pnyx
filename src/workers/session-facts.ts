@@ -51,8 +51,9 @@ function recordTurn({
   }
 
   const wasWorking = session.sessionActivity === 'working'
+  const newResume = event.id.startsWith('resume:') && session.turn?.id !== event.id
 
-  if (activity === 'working' && (!wasWorking || !session.turn)) {
+  if (activity === 'working' && (!wasWorking || !session.turn || newResume)) {
     session.turn = {
       id: event.id,
       seq: event.seq,

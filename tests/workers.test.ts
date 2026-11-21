@@ -11,6 +11,7 @@ import type { HydraState } from '#app/model.ts'
 import { replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
+import { applySessionFacts } from '#workers/session-facts.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { claudeProvider } from '#workers/claude.ts'
@@ -173,6 +174,98 @@ test(
     expect(state.sessions?.[current]?.taskId).toBe(task)
     expect(state.sessions?.[session]?.taskId).toBeNull()
     expect(state.undone).toEqual({})
+  },
+)
+
+test(
+  'a new resume attempt replaces a still-working turn once and repeated working reports retain it',
+  () => {
+    const agent = {
+      provider: 'codex',
+      sessionId: 'cut',
+      host: 'pnyx',
+    } as const
+    const session = 'codex:cut'
+    const state: HydraState = {
+      v: EVENT_VERSION,
+      seq: 5,
+      cards: {},
+      keys: {},
+      eventIds: {},
+      undone: {},
+      sessions: {
+        [session]: {
+          id: session,
+          agent,
+          originCardId: 'task',
+          taskId: null,
+          attention: [],
+          sourceRefs: [],
+          sessionActivity: 'working',
+          turn: {
+            id: 'initial',
+            seq: 5,
+            resumes: 0,
+            finishedThrough: 0,
+          },
+        },
+      },
+    }
+    const working = ({
+      id,
+      seq,
+    }: {
+      id: string
+      seq: number
+    }) => applySessionFacts({
+      state,
+      event: {
+        v: EVENT_VERSION,
+        id,
+        seq,
+        at: '2026-01-01T00:00:00.000Z',
+        actor: 'pnyx',
+        cardId: '$sessions',
+        type: 'session.observed',
+        data: {
+          fields: {
+            agent,
+            activity: 'working',
+          },
+        },
+      },
+    })
+    working({
+      id: 'resume:5',
+      seq: 6,
+    })
+    expect(state.sessions?.[session]?.turn).toMatchObject({
+      id: 'resume:5',
+      seq: 6,
+      resumes: 1,
+    })
+    working({
+      id: 'resume:5',
+      seq: 7,
+    })
+    working({
+      id: 'tool-progress',
+      seq: 8,
+    })
+    expect(state.sessions?.[session]?.turn).toMatchObject({
+      id: 'resume:5',
+      seq: 6,
+      resumes: 1,
+    })
+    working({
+      id: 'resume:6',
+      seq: 9,
+    })
+    expect(state.sessions?.[session]?.turn).toMatchObject({
+      id: 'resume:6',
+      seq: 9,
+      resumes: 2,
+    })
   },
 )
 
