@@ -160,6 +160,7 @@ export function replaceFile({
       { force: true },
     )
   }
+
   syncDirectory({ dir: dirname(path) })
 }
 

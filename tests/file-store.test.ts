@@ -212,11 +212,13 @@ test(
     )
     await reopened.createHydra({
       hydra: 'pinned',
-      facts: [fact({
-        id: 'pinned-config',
-        t: 'config',
-        name: 'Pinned',
-      })],
+      facts: [
+        fact({
+          id: 'pinned-config',
+          t: 'config',
+          name: 'Pinned',
+        }),
+      ],
     })
     await reopened.close()
     expect(existsSync(join(

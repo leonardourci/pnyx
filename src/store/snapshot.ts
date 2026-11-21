@@ -22,7 +22,10 @@ export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined
   let fd: number
 
   try {
-    if (!lstatSync(path, { throwIfNoEntry: false })?.isFile()) {
+    if (!lstatSync(
+      path,
+      { throwIfNoEntry: false },
+    )?.isFile()) {
       return undefined
     }
 
