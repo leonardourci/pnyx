@@ -1314,12 +1314,14 @@ test.each([
       const bar = workspace.querySelector('.hydra-workspace-bar');
       const add = bar.querySelector('[aria-label="Add project"]');
       const controls = [bar.querySelector('[aria-label="Fold Hydra"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.hydra-drag-name'), add].filter(Boolean);
+      const naturalPositions = controls.map(control => control.getBoundingClientRect());
       projects.style.maxWidth = '100px';
       await new Promise(requestAnimationFrame);
       const positions = controls.map(control => control.getBoundingClientRect());
       projects.scrollLeft = projects.scrollWidth;
       await new Promise(requestAnimationFrame);
       const topbar = {
+        visible: naturalPositions.every(box => box.left >= 0 && box.right <= innerWidth),
         leadingActions: controls.length === 4 && positions.every((box, index) => !index || box.left >= positions[index - 1].right),
         scrolled: projects.scrollLeft > 0,
         pinned: controls.every((control, index) => control.getBoundingClientRect().left === positions[index].left),
@@ -1383,6 +1385,7 @@ test.each([
     })
     expect(JSON.parse(geometry)).toEqual({
       topbar: {
+        visible: true,
         leadingActions: true,
         scrolled: true,
         pinned: true,
