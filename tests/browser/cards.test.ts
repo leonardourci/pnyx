@@ -1351,7 +1351,7 @@ test(
   `,
     })
     expect(JSON.parse(initialDescription)).toBe(`${prose}\n`)
-    const editedDescription = `${prose}\nExplain the empty state and its next action.`
+    const editedDescription = `${prose}\nExplain the empty state and its next action.\n`
     await chrome({
       script: `
     await page.fill('.task-editor [aria-label="Description"]', ${JSON.stringify(editedDescription)});

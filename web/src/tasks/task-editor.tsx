@@ -69,7 +69,7 @@ export function TaskEditor({
   })
 
   const imagesLoading = hasPendingImage({ text: brief })
-  const tooLong = brief.trim().length > MAX_BRIEF_LENGTH
+  const tooLong = brief.length > MAX_BRIEF_LENGTH
   const blocked = imagesLoading || tooLong
   const blockedReason = imagesLoading ? 'Images are still loading' : `A description holds up to ${MAX_BRIEF_LENGTH} characters`
 
@@ -78,7 +78,7 @@ export function TaskEditor({
       /\s+/g,
       ' ',
     ).trim()
-    const nextBrief = brief.trim()
+    const nextBrief = brief.trim() ? brief : ''
 
     if (blocked) {
       return
@@ -98,7 +98,7 @@ export function TaskEditor({
           ],
         }),
       ] : []),
-      ...(nextBrief !== (card.brief ?? '').trim() ? [
+      ...(nextBrief !== (card.brief ?? '') ? [
         command({
           name: 'task',
           args: [

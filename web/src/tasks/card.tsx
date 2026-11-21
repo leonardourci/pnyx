@@ -217,7 +217,7 @@ export const HydraCard = memo(function HydraCard({
     onEdit()
     setTab('context')
 
-    if (chatOnly) {
+    if (chatOnlyPreference.current) {
       toggleChatOnly()
     }
 
@@ -261,9 +261,12 @@ export const HydraCard = memo(function HydraCard({
   const inlineHeight = selected && !modal ? 'h-column' : ''
   const element = modal ? modalElement : inlineElement
   const {
-    chatOnly,
+    chatOnly: prefersChatOnly,
     toggleChatOnly,
   } = useTaskChatOnly()
+  const chatOnlyPreference = useRef(prefersChatOnly)
+  chatOnlyPreference.current = prefersChatOnly
+  const chatOnly = prefersChatOnly && !editing
   const wasModal = useRef(modal)
   useLayoutEffect(
     () => {
@@ -456,7 +459,8 @@ export const HydraCard = memo(function HydraCard({
       prefix: tabsId,
       id,
     }),
-    'aria-labelledby': tabId({
+    'aria-label': editing && id === 'context' ? 'Context' : undefined,
+    'aria-labelledby': editing ? undefined : tabId({
       prefix: tabsId,
       id,
     }),
@@ -758,7 +762,7 @@ export const HydraCard = memo(function HydraCard({
           )}
           {selected && (
             <div className="flex min-w-0 items-center justify-between gap-2">
-              {!chatOnly && (
+                {!chatOnly && !editing && (
                 <Tabs
                   divider={false}
                   prefix={tabsId}
@@ -791,6 +795,7 @@ export const HydraCard = memo(function HydraCard({
                   icon={chatOnly ? 'summary_show' : 'summary_hide'}
                   label={chatOnly ? 'Show task summary' : 'Focus on chat'}
                   aria-pressed={chatOnly}
+                  disabled={!!editing}
                   onClick={toggleChatOnly}
                 />
               </div>
@@ -830,7 +835,8 @@ export const HydraCard = memo(function HydraCard({
                     draft={editing.draft}
                     command={command}
                     close={() => {
-                      refocusTitle.current = true; setEditing(null)
+                      refocusTitle.current = true
+                      setEditing(null)
                     }}
                     failed={({
                       draft,
