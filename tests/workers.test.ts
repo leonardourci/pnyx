@@ -1341,7 +1341,7 @@ test(
     })).thread.entries.find((entry: { text: string }) => entry.text.includes('Use TSV'))?.receipt
     expect(await until({
       what: 'the refused answer to show failed',
-      check: async () => (await receipt()) === 'failed' && 'failed',
+      check: async () => await receipt() === 'failed' && 'failed',
     })).toBe('failed')
     expect(worker.answered).toBe(1)
 
