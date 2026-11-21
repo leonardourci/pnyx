@@ -984,8 +984,11 @@ test(
           try {
             text = read({ hydra: 'a' })?.tasks.get('second')?.state?.words[0]?.text
           } catch (error) {
-            expect(error).toMatchObject({ code: 'WRITE_FAILED' })
-            text = 'Fallback'
+            if (!(error instanceof Error)) {
+              throw error
+            }
+
+            text = error.message
           }
 
           return [
@@ -1002,6 +1005,9 @@ test(
       'rejected',
       'rejected',
     ])
+    expect(writes[2]).toMatchObject({
+      reason: { code: 'WRITE_FAILED' },
+    })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.words).toEqual([
       {
         id: 'first',
