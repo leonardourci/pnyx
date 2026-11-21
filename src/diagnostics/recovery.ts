@@ -499,7 +499,7 @@ export function createDiagnosticRecovery({
           return
         }
 
-        if (!candidate.eligible || blocked.has(key) || running.has(key) || timers.has(key)) {
+        if (!candidate.eligible) {
           continue
         }
 
