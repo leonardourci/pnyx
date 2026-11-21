@@ -4,7 +4,6 @@ export function durableEvent({ event }: { event: HydraEvent }): boolean {
   switch (event.type) {
     case 'card.pushed':
     case 'session.observed':
-    case 'task.declared':
     case 'hydra.received':
     case 'hydra.delivered':
     case 'hydra.agent-used':

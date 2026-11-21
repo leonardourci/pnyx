@@ -289,8 +289,6 @@ function observedTimes({ hydraId }: { hydraId: string }): EventClock[] {
   const milestones = live.state.historyMilestones ?? []
   const receipts = milestones.flatMap(milestone => milestone.receipts ?? [])
   const times: EventClock[] = [
-    ...live.pending,
-    ...live.changes,
     ...receipts,
     ...live.state.nativeTimes?.map(clock => ({
       ...clock,

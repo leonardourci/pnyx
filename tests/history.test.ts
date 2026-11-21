@@ -256,6 +256,38 @@ const wordsOf = ({ pages }: { pages: Page[] }) => pages.flatMap(page => [...page
   .map(match => match[0]))
 
 test(
+  'an explicit push retry returns the original receipt for a live observation',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'push-receipt',
+        '--title',
+        'Push receipt',
+      ],
+    })
+    const args = [
+      'push',
+      '--key',
+      'push-receipt',
+      '--file',
+      '-',
+      '--event-id',
+      'activity-receipt',
+    ]
+    const input = JSON.stringify({ activity: 'working' })
+    const first = await hydra.owner({ args, input })
+    const retry = await hydra.owner({ args, input })
+    expect(retry.duplicate).toBe('event id already applied; nothing appended')
+    expect(retry.event).toEqual(first.event)
+  },
+)
+
+test(
   'completed native replies remain in history after observations leave the log and after restart',
   async () => {
     const hydra = await pnyx.hydra()

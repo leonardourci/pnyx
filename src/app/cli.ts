@@ -226,7 +226,8 @@ const undo = guard({
         hydraId,
         meta: m,
         intent: {
-          type: target.type,
+          type: target.type === 'card.pushed' ? 'task.edited' : target.type,
+          accepts: target.type === 'card.pushed' ? ['card.pushed'] : undefined,
           card: target.cardId,
         },
         decide: ({

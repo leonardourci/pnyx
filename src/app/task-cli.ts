@@ -1109,6 +1109,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       meta: m,
       intent: {
         type: 'task.edited',
+        accepts: ['card.pushed'],
         card: ref,
       },
       decide: ({ state }) => {
@@ -1174,6 +1175,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       meta: m,
       intent: {
         type: 'task.edited',
+        accepts: ['card.pushed'],
         card: ref,
       },
       decide: ({ state }) => decidePush({

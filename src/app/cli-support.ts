@@ -397,7 +397,7 @@ function originalReceipt(
   const samePushKey = pushKey === intent.card
 
   const sameType = original.type === intent.type
-    || (pushKey !== undefined && intent.accepts?.includes(original.type))
+    || intent.accepts?.includes(original.type)
 
   if (!sameType || (!sameCard && !samePushKey)) {
     throw new AxiError(
