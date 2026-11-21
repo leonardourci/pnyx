@@ -29,7 +29,6 @@ const HYDRA_NAMES = [
 // The Hydra mark: the icon of a Hydra that has none of its own.
 export const HYDRA_MARK = 'hydra'
 
-// The longest name the web lets you type; the server keeps its own wider cap.
 export const HYDRA_NAME_MAX = 40
 
 export const HYDRA_ICONS = HYDRA_NAMES.map(name => name.toLowerCase())

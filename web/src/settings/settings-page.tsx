@@ -556,7 +556,7 @@ export function SettingsPage({
   accountSetup?: AgentConfig['harness']
   hidden?: boolean
 }) {
-  const search = useRef<HTMLInputElement>(null)
+  const search = useRef<HTMLTextAreaElement>(null)
   const [
     query,
     setQuery,

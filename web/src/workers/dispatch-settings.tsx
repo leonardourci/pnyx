@@ -274,7 +274,7 @@ function RuleGroup({
           ) : (
             <>
               <Input
-                className={`${CELL_CLASSES} dispatch-rule-input field-sizing-content w-auto max-w-full min-w-dispatch-name font-mono font-semibold`}
+                className={`${CELL_CLASSES} dispatch-rule-input w-auto max-w-full min-w-dispatch-name font-mono font-semibold`}
                 aria-label="Rule name"
                 aria-invalid={broken({}) || undefined}
                 data-changed={!saved || undefined}
@@ -288,8 +288,7 @@ function RuleGroup({
                 })}
               />
               <Textarea
-                className={`${CELL_CLASSES} dispatch-when field-sizing-content min-h-0 resize-none text-meta text-muted`}
-                rows={1}
+                className={`${CELL_CLASSES} dispatch-when min-h-0 text-meta text-muted`}
                 aria-label={`When Hydra picks ${name}`}
                 aria-invalid={broken({ field: ['when'] }) || undefined}
                 data-changed={saved?.when !== rule!.when || undefined}

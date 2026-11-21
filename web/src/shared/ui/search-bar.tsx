@@ -1,3 +1,4 @@
+import { Input } from './controls.tsx'
 import { Keycap } from './keycap.tsx'
 import { useState, type KeyboardEvent, type ComponentProps, type Ref } from 'react'
 import { composing } from '#web-shared/ime.ts'
@@ -88,9 +89,9 @@ export function SearchBar({
   // The key that focuses this search, shown while it is empty.
   hint?: string
   placeholder?: string
-  inputRef?: Ref<HTMLInputElement>
+  inputRef?: Ref<HTMLTextAreaElement>
   combobox?: SearchCombobox
-  onKeyDown?({ event }: { event: KeyboardEvent<HTMLInputElement> }): void
+  onKeyDown?({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }): void
 }) {
   const [
     marked,
@@ -109,9 +110,9 @@ export function SearchBar({
           remove={() => removeBadge?.({ id: badge.id })}
         />
       ))}
-      <input
+      <Input
         ref={inputRef}
-        className="search-bar-input min-w-25 flex-search border-0 bg-transparent px-0.5 py-0.75 text-ui text-ink outline-0 placeholder:text-muted"
+        className="search-bar-input w-auto min-w-25 flex-search border-0 bg-transparent px-0.5 py-0.75 text-ui text-ink outline-0 placeholder:text-muted"
         aria-label={label}
         role={combobox ? 'combobox' : undefined}
         aria-expanded={combobox?.expanded}
