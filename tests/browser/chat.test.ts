@@ -528,8 +528,23 @@ test(
       hydra,
       on: false,
     })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+    })
 
     try {
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/settings/`)
+      await expect.poll(
+        () => page.getByRole(
+          'switch',
+          {
+            name: 'Focus mode',
+            exact: true,
+          },
+        ).getAttribute('aria-checked'),
+      ).toBe('false')
+      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)
       const session = await hydra.chat({ text: 'Review the work' })
       await until({
         what: 'Hydra to finish its first reply',
@@ -613,10 +628,6 @@ test(
           ]),
         ],
       })
-      const page = await openHydra({
-        port: pnyx.port(),
-        hydraId: hydra.id,
-      })
       const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
         'region',
         { name: 'Hydra conversation' },
@@ -632,8 +643,8 @@ test(
       })
       const traces = progress.locator('[data-progress-kind="tool"]')
       const labels = traces.locator('.trace-label')
-      await progress.locator(':scope > summary').click()
       await expect.poll(() => labels.filter({ hasText: /^Sending/ }).count()).toBe(3)
+      await progress.locator(':scope > summary').click()
       await expect.poll(() => traces.filter({ hasText: 'message.txt' }).locator('.trace-label')
         .textContent()).toMatch(/’s worker$/)
       await expect.poll(() => labels.filter({ hasText: /^Answering the question from/ }).count()).toBe(1)
