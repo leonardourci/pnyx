@@ -1080,6 +1080,16 @@ test.each([
       check: () => main.received.some(text => text.includes(summary))
         && queue({ hydraId: hydra.id })?.working === false,
     })
+    const digest = await operation({
+      args: [
+        'hydra',
+        'digest',
+        '--hydra',
+        hydra.id,
+      ],
+      env: process.env,
+    })
+    expect(digest.stdout).toContain('helper:')
     const page = await hydra.page()
 
     try {
