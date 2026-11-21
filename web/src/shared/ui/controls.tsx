@@ -53,11 +53,25 @@ function normalizeField({ field }: { field: HTMLTextAreaElement }) {
     return
   }
 
-  const start = singleLine({ text: original.slice(0, field.selectionStart) }).length
-  const end = singleLine({ text: original.slice(0, field.selectionEnd) }).length
+  const start = singleLine({
+    text: original.slice(
+      0,
+      field.selectionStart,
+    ),
+  }).length
+  const end = singleLine({
+    text: original.slice(
+      0,
+      field.selectionEnd,
+    ),
+  }).length
   const direction = field.selectionDirection
   field.value = normalized
-  field.setSelectionRange(start, end, direction)
+  field.setSelectionRange(
+    start,
+    end,
+    direction,
+  )
 }
 
 function pasteSingleLine({ event }: { event: ClipboardEvent<HTMLTextAreaElement> }) {
