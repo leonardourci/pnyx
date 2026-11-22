@@ -1,9 +1,9 @@
-import { existsSync, lstatSync, realpathSync, rmdirSync } from 'node:fs'
+import { existsSync, realpathSync, rmdirSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
-import { copiesDir, releasedCopyOwner, reservedCopies } from './copy-pool.ts'
+import { copiesDir, releasedCopyOwner, requireUnlinkedCopyFolder, reservedCopies } from './copy-pool.ts'
 import { commonDir, git } from './git.ts'
 
 function within({
@@ -49,15 +49,7 @@ export function protectedCopiesFolder({
   root?: string
   preserveSurvivors?: boolean
 }) {
-  if (lstatSync(
-    root,
-    { throwIfNoEntry: false },
-  )?.isSymbolicLink()) {
-    throw new HydraError({
-      message: `Copies folder is a symbolic link: ${root}`,
-      code: 'CONFLICT',
-    })
-  }
+  requireUnlinkedCopyFolder({ path: root })
 
   const folder = canonicalPath({ path: root })
 

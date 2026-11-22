@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { lstatSync, readdirSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { commonDir, git, onBranch } from './git.ts'
@@ -12,6 +12,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
+import { HydraError } from '#store/errors.ts'
 import { isFolder } from '#workers/folders.ts'
 
 const claims = new Map<string, {
@@ -67,6 +68,18 @@ export function copiesDir(): string {
   )
 }
 
+export function requireUnlinkedCopyFolder({ path }: { path: string }): void {
+  if (lstatSync(
+    path,
+    { throwIfNoEntry: false },
+  )?.isSymbolicLink()) {
+    throw new HydraError({
+      message: `Copies folder is a symbolic link: ${path}`,
+      code: 'CONFLICT',
+    })
+  }
+}
+
 // Slots are named <project>-<n>, so one can pass from task to task.
 export function slots({
   project,
@@ -76,18 +89,21 @@ export function slots({
   const dir = copiesDir()
   const prefix = `${project.name}-`
 
+  requireUnlinkedCopyFolder({ path: dir })
+
   if (!isFolder({ path: dir })) {
     return []
   }
 
-  return readdirSync(dir)
-    .filter(name => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)))
-    .map(name => join(
+  return readdirSync(
+    dir,
+    { withFileTypes: true },
+  )
+    .filter(entry => entry.isDirectory() && entry.name.startsWith(prefix) && /^\d+$/.test(entry.name.slice(prefix.length)))
+    .map(entry => join(
       dir,
-      name,
+      entry.name,
     ))
-    .filter(path => isFolder({ path }))
-    .map(path => realpathSync(path))
 }
 
 const runsIn = ({
@@ -225,7 +241,12 @@ async function claim({
   return await withWriter({
     hydraId,
     fn: ({ writer }) => {
-      if (claims.has(path) || vacant && existsSync(path)) {
+      const occupied = vacant && lstatSync(
+        path,
+        { throwIfNoEntry: false },
+      )
+
+      if (claims.has(path) || occupied) {
         return false
       }
 
@@ -303,7 +324,7 @@ export async function freshSlot({
       `${project.name}-${n}`,
     )
 
-    if (!existsSync(path) && await claim({
+    if (await claim({
       hydraId,
       task,
       path,

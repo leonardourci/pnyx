@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, type Pnyx } from './setup/pnyx.ts'
@@ -10,7 +10,7 @@ beforeAll(async () => {
 })
 
 test(
-  'a shared copies symlink refuses worker allocation without changing its target',
+  'copy allocation refuses a linked pool and skips a dangling slot inside a real pool',
   async () => {
     const hydra = await pnyx.hydra()
     const project = hydra.folder({ name: 'copy-root-project' })
@@ -96,5 +96,31 @@ test(
     } finally {
       unlinkSync(pool)
     }
+
+    mkdirSync(pool)
+    const slot = join(
+      pool,
+      'copy-root-project-1',
+    )
+    symlinkSync(
+      join(
+        outside,
+        'missing',
+      ),
+      slot,
+      'dir',
+    )
+    const started = await hydra.owner({
+      args: [
+        'task',
+        'start',
+        'linked-copy',
+      ],
+    })
+    expect(started.agent.folder).toBe(join(
+      pool,
+      'copy-root-project-2',
+    ))
+    expect(lstatSync(slot).isSymbolicLink()).toBe(true)
   },
 )
