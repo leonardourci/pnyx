@@ -68,7 +68,7 @@ CodeRabbit is the on-request challenger before merge, replacing a separate agent
 - No AI model calls or model tokens anywhere in the Hydra's logic. Oracle searches tasks, events and notes with a derived SQLite index, never agent transcripts. Queries catch up only unread events; no index work runs in the background. The server's only token is a local per-install auth token for writes. The browser reads Hydra state, shared settings, agent activity, conversation pages and command receipts through one authenticated WebSocket. Reconnect resumes retained home changes by epoch and sequence, with a fresh snapshot when the cursor is unavailable.
 - Hooks are fast and always exit 0, and they never wait on a network call, browser or model. They print nothing, except the session-start hook, which prints a short summary of the Hydra's open work for the session's project.
 - GitHub pull request state comes from `gh-axi`.
-- The CLI handles immediate actions with plain text output and optional `--json`. Transitional read commands remain until the app uses its file store; workers append their assigned `worker.log`.
+- The CLI handles immediate actions with plain text output and optional `--json`. Hydra and workers read `hydra.log`, `tasks/<task>/task.log`, `worker.log` and the optional snapshot directly; workers append their assigned `worker.log`.
 
 ## Runtime data
 
