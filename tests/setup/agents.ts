@@ -246,10 +246,8 @@ export function fakeClaude() {
         message: {
           role,
           content: text,
-          ...(role === 'assistant' ? {
-            id: `msg_${randomUUID()}`,
-            stop_reason: 'end_turn',
-          } : {}),
+          id: role === 'assistant' ? `msg_${randomUUID()}` : undefined,
+          stop_reason: role === 'assistant' ? 'end_turn' : undefined,
         },
       })}\n`,
     )
