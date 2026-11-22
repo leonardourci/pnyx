@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { log } from './diagnostics.ts'
 import { nativeHome } from './native-home.ts'
-import { nativeEvent } from './native-state.ts'
+import { nativeEvent, type NativeFact } from './native-state.ts'
 import { durableEvent } from './event-policy.ts'
 import type { HydraEvent } from './model.ts'
 import { heldHydra } from './store.ts'
@@ -91,7 +91,10 @@ function savedEvents({
     })
   }
 
-  const moved = home.read({ hydra: hydraId }).state.movedOut ?? {}
+  const { state } = home.read({ hydra: hydraId })
+  const moved = state.movedOut ?? {}
+  const eventIds = state.eventIds
+  const references = home.references({ hydra: hydraId })
 
   for (const task of Object.keys(moved)) {
     if (view.tasks.has(task)) {
@@ -149,15 +152,25 @@ function savedEvents({
     }
 
     return cached.entries.flatMap(entry => {
+      const departure = scope.foreign && entry.t === 'moved' && entry.from === hydraId
+      const decision = (entry as NativeFact).event
+
+      if (!decision || (scope.foreign && !departure && decision.boardId !== hydraId)) {
+        return []
+      }
+
       home.position({
         hydra: hydraId,
         id: entry.id,
         scope: scope.scope,
-        seq: home.read({ hydra: hydraId }).state.eventIds[entry.id],
+        seq: Object.hasOwn(
+          eventIds,
+          entry.id,
+        ) ? eventIds[entry.id] : undefined,
       })
       const event = nativeEvent({
         entry,
-        ids: home.references({ hydra: hydraId }),
+        ids: references,
         scope: scope.scope,
       })
 
@@ -165,7 +178,7 @@ function savedEvents({
         return []
       }
 
-      if (scope.foreign && entry.t === 'moved' && entry.from === hydraId) {
+      if (departure) {
         return [
           {
             ...event,
@@ -176,7 +189,7 @@ function savedEvents({
         ]
       }
 
-      return scope.foreign && event.boardId !== hydraId ? [] : [event]
+      return [event]
     })
   })
 }
@@ -530,14 +543,20 @@ export function seqsAround({
   }
 }
 
-export const eventSeq = ({
+export function eventSeq({
   hydraId,
   id,
 }: {
   hydraId: string
   id: string
-}): number | undefined =>
-  nativeHome().read({ hydra: hydraId }).state.eventIds[id]
+}): number | undefined {
+  const { state } = nativeHome().read({ hydra: hydraId })
+
+  return Object.hasOwn(
+    state.eventIds,
+    id,
+  ) ? state.eventIds[id] : undefined
+}
 
 export const replySeq = ({
   hydraId,
