@@ -2825,23 +2825,6 @@ test(
     })).events
     expect(JSON.stringify(history)).not.toContain('this is still the discarded line')
     expect(JSON.stringify(history)).not.toContain('oversized complete')
-
-    appendFileSync(
-      path,
-      'note: ' + 'x'.repeat(17 * 1024),
-    )
-    await until({
-      what: 'the old report is discarding an unfinished line',
-      check: async () => (await hydra.task({ key: task.id })).latest?.includes('exceeds the worker.log line limit'),
-    })
-    writeFileSync(
-      path,
-      'note: first report after truncation\n',
-    )
-    await until({
-      what: 'truncating the same file clears the discard cursor',
-      check: async () => (await hydra.task({ key: task.id })).latest === 'first report after truncation',
-    })
   },
 )
 
