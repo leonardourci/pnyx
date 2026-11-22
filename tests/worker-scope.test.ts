@@ -620,10 +620,6 @@ test(
       ],
       [
         'hydra',
-        'digest',
-      ],
-      [
-        'hydra',
         'memory',
         'list',
       ],

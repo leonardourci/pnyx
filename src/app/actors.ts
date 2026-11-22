@@ -1,7 +1,7 @@
 export const HYDRA_ACTOR = 'hydra'
 
 // The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
-export const OWNER_ACTORS = [
+const OWNER_ACTORS = [
   'web',
   'cli',
 ]

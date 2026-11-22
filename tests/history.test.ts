@@ -214,47 +214,6 @@ async function longHydra(): Promise<Fixture> {
   return fixture
 }
 
-interface Page {
-  text: string
-  more: boolean
-  after: string
-  through: number
-  snapshot: number
-}
-
-async function readAll({
-  hydra,
-  args,
-}: {
-  hydra: Hydra
-  args: string[]
-}) {
-  const pages: Page[] = []
-  let after: string | undefined
-
-  do {
-    const page = await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        ...args,
-        ...after ? [
-          '--after',
-          after,
-        ] : [],
-      ],
-    }) as Page
-
-    pages.push(page)
-    after = page.more ? page.after : undefined
-  } while (after)
-
-  return pages
-}
-
-const wordsOf = ({ pages }: { pages: Page[] }) => pages.flatMap(page => [...page.text.matchAll(/bulk \d+|reply-\d+ /g)]
-  .map(match => match[0]))
-
 test(
   'an explicit push retry returns the original receipt for a live observation',
   async () => {
@@ -606,12 +565,12 @@ test(
     const live = await hydra.owner({
       args: [
         'hydra',
-        'history',
-        '--since',
-        'origin',
+        'message',
+        '--from',
+        delayedAt,
       ],
     })
-    expect(live.text).toContain('NATIVE-HISTORY-END')
+    expect(live.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
     const at = await hydra.owner({
       args: [
         'hydra',
@@ -625,12 +584,12 @@ test(
     const restored = await hydra.owner({
       args: [
         'hydra',
-        'history',
-        '--since',
-        'origin',
+        'message',
+        '--from',
+        delayedAt,
       ],
     })
-    expect(restored.text).toContain('NATIVE-HISTORY-END')
+    expect(restored.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
     const restoredAt = await hydra.owner({
       args: [
         'hydra',
@@ -695,161 +654,6 @@ test(
       values: [hydra.id],
     })).toEqual(saved)
   },
-)
-
-test(
-  'a long range of Hydra history reads page by page in log order, each reply once, where it used to time out',
-  async () => {
-    const {
-      hydra,
-      order,
-      last,
-    } = await longHydra()
-
-    const pages = await readAll({
-      hydra,
-      args: [
-        '--since',
-        'origin',
-      ],
-    })
-
-    expect(pages.length).toBeGreaterThan(20)
-    expect(wordsOf({ pages })).toEqual(order)
-    expect(pages.every(page => page.snapshot === last + EVENTS)).toBe(true)
-    expect(pages.at(-1)!.more).toBe(false)
-
-    const count = await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'origin',
-        '--count',
-      ],
-    })
-    const joined = pages.map(page => page.text).join('\n\n')
-    expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(joined) / 4))
-    await hydra.owner({
-      args: [
-        'hydra',
-        'inscribe',
-        'start',
-        '--key',
-        'first-pass',
-        '--event-id',
-        'first-pass-start',
-      ],
-    })
-    const overlapping = await hydra.owner({
-      args: [
-        'hydra',
-        'inscribe',
-        'start',
-        '--key',
-        'second-pass',
-      ],
-    })
-    expect(overlapping.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
-    const retried = await hydra.owner({
-      args: [
-        'hydra',
-        'inscribe',
-        'start',
-        '--key',
-        'first-pass',
-        '--event-id',
-        'first-pass-start',
-      ],
-    })
-    expect(retried.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
-    expect((await hydra.ownerRefused({
-      args: [
-        'hydra',
-        'inscribe',
-        'finish',
-        '--key',
-        'second-pass',
-        '--through',
-        String(Number.MAX_SAFE_INTEGER),
-      ],
-    })).code).toBe('VALIDATION_ERROR')
-
-    const incomplete = await hydra.owner({
-      args: [
-        'hydra',
-        'inscribe',
-        'finish',
-        '--key',
-        'second-pass',
-      ],
-    })
-    expect(incomplete.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('history snapshot') }))
-    expect((await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'last-inscribe',
-        '--count',
-      ],
-    })).totalTokens).toBe(0)
-    const completed = await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        incomplete.milestone,
-        '--count',
-      ],
-    })
-    expect(completed.boundary).toBe(incomplete.through)
-    expect(completed.totalTokens).toBe(0)
-  },
-  120_000,
-)
-
-test(
-  'a history cursor resumes at its own position, and a snapshot taken partway ends where it was taken',
-  async () => {
-    const {
-      hydra,
-      last,
-      order,
-    } = await longHydra()
-    const middle = last + EVENTS / 2
-    const pages = await readAll({
-      hydra,
-      args: [
-        '--since',
-        'origin',
-        '--through',
-        String(middle),
-      ],
-    })
-    const expected = order.filter(word => {
-      const [
-        , kind,
-        number,
-      ] = /^(bulk |reply-)(\d+)/.exec(word)!
-
-      return kind === 'bulk ' ? Number(number) <= EVENTS / 2 : replyAfter({ k: Number(number) }) + 1 <= EVENTS / 2
-    })
-    expect(wordsOf({ pages })).toEqual(expected)
-
-    const refused = await hydra.ownerRefused({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'origin',
-        '--after',
-        'h1:0:10:0',
-      ],
-    })
-    expect(refused.code).toBe('VALIDATION_ERROR')
-  },
-  120_000,
 )
 
 // Six hundred replies numbered 1000 to 1599, each once and in order.
@@ -1153,15 +957,6 @@ test(
       ) => index === 0 || value - found[index - 1] === 1)).toBe(true)
     }
 
-    const history = await readAll({
-      hydra,
-      args: [
-        '--since',
-        'origin',
-      ],
-    })
-    const told = history.flatMap(page => [...page.text.matchAll(/reply-(\d+) end/g)].map(match => Number(match[1])))
-    expect(told).toHaveLength(2500)
     const count = await hydra.owner({
       args: [
         'hydra',
@@ -1171,13 +966,7 @@ test(
         '--count',
       ],
     })
-    expect(count.totalTokens).toBe(Math.ceil(Buffer.byteLength(history.map(page => page.text).join('\n\n')) / 4))
-    expect(told[0]).toBe(0)
-    expect(told.at(-1)).toBe(2499)
-    expect(told.every((
-      value,
-      index,
-    ) => index === 0 || value - told[index - 1] === 1)).toBe(true)
+    expect(count.totalTokens).toBeGreaterThan(0)
   },
   120_000,
 )

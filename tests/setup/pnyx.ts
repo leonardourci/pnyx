@@ -1,4 +1,3 @@
-import { readCommand } from '#cli/reads.ts'
 import { spawn } from 'node:child_process'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -109,25 +108,6 @@ export const operation = async ({
       ...options,
       args: [
         ...options.args,
-        '--json',
-      ],
-    })
-
-    return {
-      ...result,
-      stdout: result.stdout || result.stderr,
-    }
-  }
-
-  if (args[0] === 'hydra' && args[1] === 'digest') {
-    return pnyx(options)
-  }
-
-  if (readCommand({ argv: args })) {
-    const result = await pnyx({
-      ...options,
-      args: [
-        ...args,
         '--json',
       ],
     })

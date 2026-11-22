@@ -279,22 +279,59 @@ describe(
           ],
         })).hydraId).toBe(hydra.id)
 
-        const historyArgs = [
-          'history',
-          '--limit',
-          '1',
-          '--json',
-        ]
-        const latest = parsed(await run({ args: historyArgs }))
-        expect(latest.next).toBe(latest.events[0].seq)
-        const older = parsed(await run({
-          args: [
-            ...historyArgs,
-            '--before',
-            String(latest.next),
+        for (const args of [
+          ['history'],
+          ['context'],
+          [
+            'oracle',
+            'export',
           ],
-        }))
-        expect(older.events[0].seq).toBeLessThan(latest.next)
+          [
+            'hydra',
+            'check',
+          ],
+          [
+            'hydra',
+            'digest',
+          ],
+          [
+            'hydra',
+            'history',
+          ],
+          [
+            'task',
+            'show',
+            receipt.task,
+          ],
+          [
+            'task',
+            'history',
+            receipt.task,
+          ],
+          [
+            'task',
+            'inbox',
+            'read',
+            receipt.task,
+          ],
+          [
+            'settings',
+            'show',
+          ],
+        ]) {
+          const removed = await run({
+            args: [
+              ...args,
+              '--json',
+            ],
+          })
+
+          expect(
+            removed.status,
+            args.join(' '),
+          ).toBe(2)
+          expect(JSON.parse(removed.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        }
       },
     )
 

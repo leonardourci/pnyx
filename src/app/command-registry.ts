@@ -200,9 +200,7 @@ const COMMAND_REGISTRY = {
     page: true,
     scope: { reads: [''] },
   },
-  context: {
-    scope: { reads: [''] },
-  },
+
   logs: {
     scope: { reads: [''] },
   },

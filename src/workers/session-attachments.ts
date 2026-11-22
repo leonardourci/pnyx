@@ -56,7 +56,7 @@ export function findSession({
     throw new HydraError({
       message: `session not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx task sessions`'],
+      help: ['Read task.log session records'],
     })
   }
 
@@ -87,7 +87,7 @@ export function selfSession({
     throw new HydraError({
       message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no tmux or Herdr pane in the environment',
       code: 'NOT_FOUND',
-      help: ['Run `pnyx task sessions` and pass --session <id>'],
+      help: ['Read task.log session records and select the session in the UI'],
     })
   }
 
@@ -149,18 +149,6 @@ export function projectedAttention({
     ...item,
     key: agent.agentId ? `hook:child:${sessionId({ agent })}:${item.key}` : item.key,
   }))
-}
-
-export function observedQuestions({ event }: { event: HydraEvent }): Attention[] {
-  let attention: Attention[] | undefined
-
-  if (event.type === 'session.observed') {
-    attention = 'fields' in event.data ? event.data.fields.attention : event.data.attention
-  } else if (event.type === 'card.pushed' || event.type === 'task.edited') {
-    attention = event.data.attention
-  }
-
-  return attention?.filter(item => item.blocking && !item.answered) ?? []
 }
 
 export function sessionAttention({

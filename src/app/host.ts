@@ -1490,10 +1490,6 @@ export function createHost({
 
     unread,
 
-    reportTurn: turns.reportTurn,
-
-    reportsRead: turns.reportsRead,
-
     queue,
 
     action,

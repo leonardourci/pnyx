@@ -1,4 +1,3 @@
-import { readCommand } from './reads.ts'
 import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
 import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/cli-support.ts'
@@ -32,8 +31,7 @@ pnyx debug health
 Task creation starts its worker. Use --harness, --account, --model, --effort,
 --mode, --fast or --rule to choose its settings.
 Send addresses Hydra unless --task names a worker. --file <path|-> reads message text.
-Transitional reads: task list|show|history|updates|messages|chat|questions|inbox read,
-hydra check|digest|messages|message|history, card, history, context and oracle.
+Read hydra.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
 Add --json when a script or agent reads structured records.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.
 `
@@ -283,12 +281,6 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       args,
       run: () => debug(args),
     })
-  }
-
-  const read = readCommand({ argv })
-
-  if (read) {
-    return read(args)
   }
 
   throw new HydraError({
