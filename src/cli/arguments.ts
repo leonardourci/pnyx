@@ -29,6 +29,8 @@ const VALUE_FLAGS = [
   'idempotency-key',
   'from-message',
   'choice',
+  'session',
+  'generation',
   'port',
   'url',
 ]

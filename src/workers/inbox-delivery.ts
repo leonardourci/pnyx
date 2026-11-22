@@ -136,6 +136,7 @@ export async function notifySteering({
         task: card.id,
         hydraId,
         ids: [message.id],
+        claim,
       })
 
       if (route.kind === 'pnyx') {

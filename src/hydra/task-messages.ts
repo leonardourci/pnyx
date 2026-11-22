@@ -1,4 +1,4 @@
-import { steeringText } from '#workers/inbox-notice.ts'
+import { steeringText } from '#workers/steering-text.ts'
 import type { HydraEvent } from '#app/model.ts'
 import type { AgentRef } from '#workers/model.ts'
 import { redact } from '#oracle/text.ts'

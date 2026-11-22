@@ -1,3 +1,7 @@
+import { STEERING_NOTICE } from './steering-text.ts'
+import { HydraError } from '#store/errors.ts'
+import { nativeHome } from '#app/native-home.ts'
+import type { SteeringClaim } from './model.ts'
 import { recordContext } from '#hydra/file-context.ts'
 import type { ReplyState } from './model.ts'
 
@@ -23,13 +27,6 @@ export function notificationReceipt({ result }: NotificationResult): ReplyState 
     default: return 'delivery_unknown'
   }
 }
-
-const NOTICE = 'Pnyx steering inbox has pending instruction IDs '
-const MESSAGES = /^New instructions for task \S+, in order \(Pnyx inbox IDs /
-
-// Text Pnyx sent a worker to steer it; the instructions it carries are already recorded as replies.
-export const steeringText = ({ text }: { text: string }) =>
-  text.startsWith(NOTICE) || MESSAGES.test(text)
 
 // The owner's instructions themselves, first time they reach the worker; the inbox keeps them as the record.
 export function steeringMessages({
@@ -58,15 +55,44 @@ export function steeringNotice({
   task,
   hydraId,
   ids,
+  claim,
 }: {
   task: string
   hydraId: string
   ids: string[]
+  claim: SteeringClaim
 }): string {
-  return `${NOTICE}${JSON.stringify(ids)}. ${recordContext({
+  const assignment = [...nativeHome().references({ hydra: hydraId })].findLast(([
+    , position,
+  ]) => position === claim.generation)?.[0]
+
+  if (assignment === undefined) {
+    throw new HydraError({
+      code: 'STALE_CLAIM',
+      message: 'The inbox assignment has no durable record reference',
+    })
+  }
+
+  const quote = ({ value }: { value: string }) => `'${value.replace(
+    /'/g,
+    "'\\''",
+  )}'`
+  const acknowledgement = ids.map(id => [
+    'pnyx task ack',
+    quote({ value: task }),
+    quote({ value: id }),
+    '--session',
+    quote({ value: claim.session }),
+    '--generation',
+    quote({ value: JSON.stringify({ native: assignment }) }),
+    '--hydra',
+    quote({ value: hydraId }),
+  ].join(' ')).join('\n')
+
+  return `${STEERING_NOTICE}${JSON.stringify(ids)}. ${recordContext({
     hydraId,
     task,
-  })} Apply the pending messages in order; report progress and blockers separately. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
+  })} Read the full instructions before acknowledging these exact IDs with the supplied assignment reference:\n${acknowledgement}\nAn acknowledgement means read, never completed work. Apply the pending messages in order; report progress and blockers separately. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
 }
 
 export function readSteeringMessages({

@@ -26,7 +26,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { parsed, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { pnyx as runPnyx, parsed, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
 
@@ -958,9 +958,7 @@ test(
             },
             body: JSON.stringify({
               argv: [
-                'task',
-                'show',
-                task.id,
+                'board',
                 '--json',
               ],
               cwd: folder,
@@ -978,7 +976,9 @@ test(
           stdout: string
         }
         expect(command.exitCode).toBe(0)
-        expect(JSON.parse(command.stdout).task.id).toBe(task.id)
+        expect(JSON.parse(command.stdout).hydraId).toBe(target.id)
+        expect(JSON.parse(command.stdout).cards)
+          .toContainEqual(expect.objectContaining({ id: task.id }))
       }
 
       appendFileSync(
@@ -1682,15 +1682,82 @@ test(
         )
       },
     })
-    const inbox = await hydra.as({ session: worker }).run({
-      args: [
-        'task',
-        'inbox',
-        'read',
-        'unread-notice',
-      ],
+    const log = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+    const records = () => readFileSync(
+      log,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    const queued = records().find(record => record.event?.type === 'task.steering.queued'
+      && record.event.data.message.text === 'Keep this instruction unread')
+    expect(queued).toBeDefined()
+    const message = queued.event.data.message
+    const notice = pnyx.claude.sessions.filter(session => session.cwd === folder)
+      .flatMap(session => session.received)
+      .find(text => text.startsWith('Pnyx steering inbox has pending instruction IDs '))
+    expect(notice).toContain(message.id)
+    expect(notice).toContain('pnyx task ack')
+    expect(notice).not.toContain('Keep this instruction unread')
+    expect(records().filter(record => record.event?.type === 'task.steering.handled')).toEqual([])
+    const args = [
+      'task',
+      'ack',
+      task.id,
+      message.id,
+      '--session',
+      message.queuedFor.session,
+      '--generation',
+      JSON.stringify(message.queuedFor.generation),
+      '--hydra',
+      hydra.id,
+      '--json',
+    ]
+
+    for (const identity of [
+      '',
+      'another-launch',
+    ]) {
+      expect((await runPnyx({
+        args,
+        env: {
+          ...worker.env,
+          PNYX_STEERING_WORKER: identity,
+        },
+      })).status).not.toBe(0)
+    }
+
+    const acknowledged = await runPnyx({
+      args,
+      env: worker.env,
     })
-    expect(JSON.stringify(inbox.messages)).toContain('Keep this instruction unread')
+    expect(
+      acknowledged.status,
+      acknowledged.stderr,
+    ).toBe(0)
+    expect((await runPnyx({
+      args,
+      env: worker.env,
+    })).status).toBe(0)
+    const saved = records().filter(record => record.event?.type === 'task.steering.handled')
+    expect(saved).toHaveLength(1)
+    await pnyx.restart()
+    const retried = await runPnyx({
+      args,
+      env: worker.env,
+    })
+    expect(
+      retried.status,
+      retried.stderr,
+    ).toBe(0)
+    expect(records().filter(record => record.event?.type === 'task.steering.handled')).toEqual(saved)
     expect(times({
       sessions: pnyx.claude.sessions.filter(session => session.cwd === folder),
       text: 'Keep this instruction unread',

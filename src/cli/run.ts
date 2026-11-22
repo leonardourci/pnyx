@@ -1,3 +1,4 @@
+import { acknowledgeInstruction } from '#workers/inbox-cli.ts'
 import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
 import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/cli-support.ts'
@@ -20,6 +21,7 @@ import { agentNotices } from '#hydra/hydra-session.ts'
 const HELP = `usage: pnyx <command> [--hydra <id>] [--json]
 
 pnyx task create --title <title> --brief <instructions> [--project <name|path>]
+pnyx task ack <task> <instruction> --session <session> --generation <reference>
 pnyx send --text <message> [--task <id>] [--idempotency-key <key>]
 pnyx answer <task> <question> --text <answer> [--from-message <id>]
 pnyx board
@@ -31,7 +33,7 @@ Task creation starts its worker. Use --harness, --account, --model, --effort,
 --mode, --fast or --rule to choose its settings.
 Send addresses Hydra unless --task names a worker. --file <path|-> reads message text.
 Read hydra.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
-Add --json when a script or agent reads structured records.
+Add --json when a script reads an action receipt or the Hydra.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.
 `
 
@@ -134,6 +136,23 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
       blocker: output.blocker,
       notices: output.notices,
     }
+  }
+
+  if (command === 'task' && subcommand?.kind === 'positional' && subcommand.value === 'ack') {
+    const forwarded = args.filter((
+      _,
+      index,
+    ) => index + 1 !== subcommand.index)
+
+    return runAction({
+      name: 'task',
+      args: [
+        'inbox',
+        'ack',
+        ...forwarded,
+      ],
+      run: () => acknowledgeInstruction({ args: forwarded }),
+    })
   }
 
   if (command === 'send') {
