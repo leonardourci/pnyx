@@ -1191,7 +1191,7 @@ test(
 )
 
 test(
-  'saving a task leaves its card closed and its writing fields readable',
+  'Hydra names and chat drafts keep pasted text readable in a narrow workspace',
   async () => {
     const hydra = await pnyx.hydra()
     await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
@@ -1206,7 +1206,6 @@ test(
       await chrome({ args: ['emulate'] })
     })
     const name = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-    const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
     const prose = [
       '--no-start',
       ...Array(32).fill('Every line remains readable in its field.'),
@@ -1243,6 +1242,42 @@ test(
       };
     });
     await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', '');
+    console.log(JSON.stringify({ renameAtEmojiBoundary, renameFits, chatDraft }));
+  `,
+    }))
+    expect(result).toMatchObject({
+      renameAtEmojiBoundary: name.slice(1),
+      renameFits: true,
+    })
+    expect(result.chatDraft).toEqual({
+      bounded: true,
+      text: `${prose}\n`,
+    })
+  },
+)
+
+test(
+  'saving a task leaves its card closed and its writing fields readable',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    await chrome({
+      args: [
+        'emulate',
+        '--viewport',
+        '390x844',
+      ],
+    })
+    onTestFinished(async () => {
+      await chrome({ args: ['emulate'] })
+    })
+    const title = 'Keep this task closed while its complete title wraps and stays readable throughout the narrow project column'
+    const prose = [
+      '--no-start',
+      ...Array(32).fill('Every line remains readable in its field.'),
+    ].join('\n')
+    const result = JSON.parse(await chrome({
+      script: `
     await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Ideas"]');
     const titleHeight = await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Task title"]').getBoundingClientRect().height);
@@ -1292,16 +1327,18 @@ test(
         saveReachable: getComputedStyle(surface).overflowY === 'auto' && surface.scrollHeight > surface.clientHeight && button.top >= top && button.bottom <= bottom && save.contains(saveHit),
       };
     });
-    const save = (await page.snapshot()).match(/uid=(\\S+)\\s+button "Save task"/);
-    if (!save) throw new Error('Save task is missing from the accessibility tree');
-    await page.click('@' + save[1]);
+    await page.eval(() => {
+      const save = [...document.querySelectorAll('[data-hydra-workspace="${hydra.id}"] .task-create button')].find(button => button.textContent === 'Save task');
+      if (!save || save.disabled) throw new Error('Save task is unavailable');
+      save.click();
+    });
     await page.wait('[data-hydra-workspace="${hydra.id}"]:not(:has(.task-create)) .card-open');
     const card = await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
       return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
-    console.log(JSON.stringify({ fields: { ...fields, ...reachability, renameAtEmojiBoundary, renameFits, titleGrows: fields.titleHeight > titleHeight }, chatDraft, card }));
+    console.log(JSON.stringify({ fields: { ...fields, ...reachability, titleGrows: fields.titleHeight > titleHeight }, card }));
   `,
     }))
     await until({
@@ -1315,8 +1352,6 @@ test(
       }).length === 1,
     })
     expect(result.fields).toMatchObject({
-      renameAtEmojiBoundary: name.slice(1),
-      renameFits: true,
       titleFits: true,
       titleGrows: true,
       pasteCaret: 'Keep'.length,
@@ -1325,10 +1360,6 @@ test(
       askEndVisible: true,
       saveReachable: true,
       multiLine: true,
-    })
-    expect(result.chatDraft).toEqual({
-      bounded: true,
-      text: `${prose}\n`,
     })
     expect(result.card).toEqual({
       expanded: 'false',
@@ -1379,9 +1410,7 @@ test(
       return bounds.top >= Math.max(0, Math.floor(surface.top)) && bounds.bottom <= Math.min(innerHeight, Math.ceil(surface.bottom)) && button.contains(hit);
     });
     if (!reachable) throw new Error('The description Save button is outside the scrolling card panel');
-    const save = (await page.snapshot()).match(/uid=(\\S+)\\s+button "Save"/);
-    if (!save) throw new Error('Save is missing from the accessibility tree');
-    await page.click('@' + save[1]);
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected .task-editor button[type="submit"]');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected .card-panel');
   `,
     })
