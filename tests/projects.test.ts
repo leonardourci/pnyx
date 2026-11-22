@@ -1,4 +1,6 @@
 import { discoverPullRequests } from '#tasks/delivery/discover.ts'
+import { withWriter } from '#app/writer.ts'
+import { base } from '#app/command-meta.ts'
 import * as processes from '#app/run-process.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -225,6 +227,229 @@ test(
         '--show-current',
       ],
     }))
+
+    await source.owner({
+      args: [
+        'task',
+        'copy',
+        starts[0]!.task,
+        'remove',
+        '--safe',
+      ],
+    })
+    await source.owner({
+      args: [
+        'task',
+        'detach',
+        starts[0]!.task,
+      ],
+    })
+    const firstTask = (await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'First concurrent checkout',
+        '--project',
+        project,
+      ],
+    })).card.id as string
+    const secondTask = (await target.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Second concurrent checkout',
+        '--project',
+        project,
+      ],
+    })).card.id as string
+    const bin = source.folder({ name: 'paused-git' })
+    const entered = join(
+      bin,
+      'entered',
+    )
+    const release = join(
+      bin,
+      'release',
+    )
+    writeFileSync(
+      join(
+        bin,
+        'git',
+      ),
+      `#!/usr/bin/env node
+const { spawnSync } = require('node:child_process')
+const { existsSync, mkdirSync } = require('node:fs')
+const args = process.argv.slice(2)
+;(async () => {
+  if (args[0] === '-C' && args[1] === ${JSON.stringify(first)} && args[2] === 'status' && args.includes('--untracked-files=normal') && !existsSync(${JSON.stringify(entered)})) {
+    mkdirSync(${JSON.stringify(entered)})
+    const end = Date.now() + 20000
+    while (!existsSync(${JSON.stringify(release)})) {
+      if (Date.now() > end) throw new Error('checkout gate was never released')
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+  }
+  const result = spawnSync('/usr/bin/git', args)
+  process.stdout.write(result.stdout ?? '')
+  process.stderr.write(result.stderr ?? '')
+  process.exitCode = result.status ?? 1
+})().catch(error => { console.error(error); process.exitCode = 1 })
+`,
+      { mode: 0o755 },
+    )
+    const previousPath = process.env.PATH
+    process.env.PATH = `${bin}:${previousPath}`
+    const pending = source.owner({
+      args: [
+        'task',
+        'start',
+        firstTask,
+      ],
+    })
+
+    try {
+      await until({
+        what: 'the first reservation pauses inside Git before its checkout changes',
+        check: () => existsSync(entered),
+      })
+      expect((await source.ownerRefused({
+        args: [
+          'task',
+          'move',
+          firstTask,
+          '--to-hydra',
+          target.id,
+        ],
+      })).code).toBe('CONFLICT')
+      expect((await source.task({ key: firstTask })).id).toBe(firstTask)
+      const competing = (await target.owner({
+        args: [
+          'task',
+          'start',
+          secondTask,
+        ],
+      })).agent.folder as string
+      expect(competing).not.toBe(first)
+      writeFileSync(
+        join(
+          competing,
+          'competing-work.txt',
+        ),
+        'Keep the other worker’s saved work',
+      )
+      writeFileSync(
+        release,
+        '',
+      )
+      expect((await pending).agent.folder).toBe(first)
+      expect(readFileSync(
+        join(
+          competing,
+          'competing-work.txt',
+        ),
+        'utf8',
+      )).toBe('Keep the other worker’s saved work')
+      await source.owner({
+        args: [
+          'task',
+          'move',
+          firstTask,
+          '--to-hydra',
+          target.id,
+        ],
+      })
+      expect((await target.owner({
+        args: [
+          'task',
+          'show',
+          firstTask,
+          '--full',
+        ],
+      })).task.agent.cwd).toBe(first)
+      await target.owner({
+        args: [
+          'task',
+          'copy',
+          firstTask,
+          'remove',
+          '--safe',
+        ],
+      })
+      await target.owner({
+        args: [
+          'task',
+          'detach',
+          firstTask,
+        ],
+      })
+      const legacy = join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        target.id,
+        'copies',
+        'retained-checkout',
+      )
+      mkdirSync(
+        join(
+          legacy,
+          '..',
+        ),
+        { recursive: true },
+      )
+      git({
+        cwd: project,
+        args: [
+          'worktree',
+          'move',
+          first,
+          legacy,
+        ],
+      })
+      await withWriter({
+        hydraId: target.id,
+        fn: ({ writer }) => {
+          const card = writer.state.cards[firstTask]!
+          writer.append({
+            event: {
+              ...base({
+                state: writer.state,
+                cardId: firstTask,
+                meta: {
+                  actor: 'fixture',
+                  at: new Date().toISOString(),
+                },
+              }),
+              type: 'task.copy',
+              data: {
+                before: card.copy!,
+                after: {
+                  ...card.copy!,
+                  path: legacy,
+                },
+              },
+            },
+          })
+        },
+      })
+      expect((await target.owner({
+        args: [
+          'task',
+          'start',
+          firstTask,
+        ],
+      })).agent.folder).toBe(legacy)
+    } finally {
+      writeFileSync(
+        release,
+        '',
+      )
+      await Promise.allSettled([pending])
+      process.env.PATH = previousPath
+    }
   },
 )
 

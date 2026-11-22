@@ -14,7 +14,10 @@ import { pnyxHome } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
 import { isFolder } from '#workers/folders.ts'
 
-const claims = new Set<string>()
+const claims = new Map<string, {
+  hydraId: string
+  task?: string
+}>()
 const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
@@ -124,24 +127,42 @@ const idle = ({
   })
 })
 
-export function releasedCopy({
+export function releasedCopyOwner({
   path,
   branch,
 }: {
   path: string
   branch: string
-}): Card | undefined {
+}): {
+  hydraId: string
+  card: Card
+} | undefined {
   for (const hydraId of hydraIds()) {
     const owner = Object.values(loadHydra({ hydraId }).state.cards).find(card =>
       card.copy?.path === path && card.copy.state === 'removed' && card.copy.branch === branch)
 
     if (owner) {
-      return owner
+      return {
+        hydraId,
+        card: owner,
+      }
     }
   }
 
   return undefined
 }
+
+export const releasedCopy = ({
+  path,
+  branch,
+}: {
+  path: string
+  branch: string
+}): Card | undefined =>
+  releasedCopyOwner({
+    path,
+    branch,
+  })?.card
 
 // A clean checkout of this project whose commit some branch keeps, so moving it to another branch loses nothing.
 export async function reusable({
@@ -198,10 +219,12 @@ export const checkout = ({
 
 async function claim({
   hydraId,
+  task,
   path,
   vacant = false,
 }: {
   hydraId: string
+  task?: string
   path: string
   vacant?: boolean
 }): Promise<boolean> {
@@ -212,7 +235,13 @@ async function claim({
         return false
       }
 
-      claims.add(path)
+      claims.set(
+        path,
+        {
+          hydraId,
+          task,
+        },
+      )
 
       return true
     },
@@ -222,6 +251,20 @@ async function claim({
 export function unclaim({ path }: { path: string }): void {
   claims.delete(path)
 }
+
+export const reservedCopies = ({ hydraId }: { hydraId: string }): string[] =>
+  [...claims].filter(([
+    , owner,
+  ]) => owner.hydraId !== hydraId).map(([path]) => path)
+
+export const reservingTaskCopy = ({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): boolean =>
+  [...claims.values()].some(owner => owner.hydraId === hydraId && owner.task === task)
 
 // Claiming first means the idle check sees every record a competing start wrote before letting go.
 export async function take({
@@ -235,6 +278,7 @@ export async function take({
 }): Promise<boolean> {
   if (!await claim({
     hydraId,
+    task: card?.id,
     path,
   })) {
     return false
@@ -255,9 +299,11 @@ export async function take({
 
 export async function freshSlot({
   hydraId,
+  task,
   project,
 }: {
   hydraId: string
+  task: string
   project: HydraProject
 }): Promise<string> {
   for (let n = 1; ; n++) {
@@ -268,6 +314,7 @@ export async function freshSlot({
 
     if (!existsSync(path) && await claim({
       hydraId,
+      task,
       path,
       vacant: true,
     })) {

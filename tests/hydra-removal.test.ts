@@ -307,6 +307,43 @@ test(
       unrelatedFile,
       'keep this file',
     )
+    await shared.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'released-neighbor',
+        '--title',
+        'Released neighbor',
+        '--project',
+        folder,
+      ],
+    })
+    const foreignPool = (await shared.owner({
+      args: [
+        'task',
+        'start',
+        'released-neighbor',
+      ],
+    })).agent.folder as string
+    await shared.owner({
+      args: [
+        'task',
+        'copy',
+        'released-neighbor',
+        'remove',
+        '--safe',
+      ],
+    })
+    expect((await shared.owner({
+      args: [
+        'task',
+        'copy',
+        'released-neighbor',
+      ],
+    })).copy.state).toBe('removed')
+    expect(existsSync(foreignPool)).toBe(true)
 
     const session = await caller.chat({ text: 'remove the other Hydra' })
     const unsafe = await caller.as({ session }).refused({
@@ -344,6 +381,7 @@ test(
     expect(existsSync(copy)).toBe(false)
     expect(existsSync(pooled)).toBe(false)
     expect(existsSync(neighbor)).toBe(true)
+    expect(existsSync(foreignPool)).toBe(true)
     expect(readFileSync(
       unrelatedFile,
       'utf8',

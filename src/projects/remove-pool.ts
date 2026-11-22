@@ -3,7 +3,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
-import { copiesDir } from './copy-pool.ts'
+import { copiesDir, releasedCopyOwner, reservedCopies } from './copy-pool.ts'
 import { commonDir, git } from './git.ts'
 
 function within({
@@ -61,7 +61,7 @@ export function protectedCopiesFolder({
 
   const folder = canonicalPath({ path: root })
 
-  const survivors: string[] = []
+  const survivors = reservedCopies({ hydraId }).map(path => canonicalPath({ path }))
 
   for (const id of hydraIds()) {
     const current = loadHydra({ hydraId: id }).state
@@ -205,6 +205,22 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       }))
 
       if (insideRoot && (insideFolder || !existsSync(path)) && !survives) {
+        const branch = await git({
+          cwd: path,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        })
+        const released = releasedCopyOwner({
+          path: canonical,
+          branch: branch.out,
+        })
+
+        if (released && released.hydraId !== hydraId) {
+          continue
+        }
+
         slots.push({
           project,
           path,

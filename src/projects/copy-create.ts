@@ -278,7 +278,7 @@ async function worktreeCopy({
     project,
   })
   const previousPath = previous?.path
-  const candidates = previousPath && pooled.includes(previousPath)
+  const candidates = previousPath && isFolder({ path: previousPath })
     ? [
       previousPath,
       ...pooled.filter(path => path !== previousPath),
@@ -386,6 +386,7 @@ async function worktreeCopy({
 
   const path = await freshSlot({
     hydraId,
+    task: card.id,
     project,
   })
   const checkoutArgs = exists ? [
