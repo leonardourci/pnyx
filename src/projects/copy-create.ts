@@ -245,6 +245,7 @@ async function worktreeCopy({
       message: `Copies folder is a symbolic link: ${pool}`,
     })
   }
+
   const {
     base,
     start,

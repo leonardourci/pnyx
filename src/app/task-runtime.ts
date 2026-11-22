@@ -179,7 +179,10 @@ export function taskUsages({ hydraId }: { hydraId: string }): Map<string, Omit<H
   }
 
   const empty = new Map<string, Omit<HostedUsage, 'type'>>()
-  usages.set(hydraId, empty)
+  usages.set(
+    hydraId,
+    empty,
+  )
 
   return empty
 }
@@ -350,7 +353,10 @@ export function prepareTaskRuntimeMove({
       const reading = sourceUsage?.get(session)
 
       if (reading && targetUsage) {
-        targetUsage.set(session, reading)
+        targetUsage.set(
+          session,
+          reading,
+        )
         sourceUsage?.delete(session)
       }
     }
