@@ -130,6 +130,7 @@ Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for det
 | --- | --- |
 | `pnyx board` | Show the current Hydra. |
 | `pnyx task create` | Create a task and start its worker. |
+| `pnyx task ack` | Acknowledge one instruction read by its assigned worker. |
 | `pnyx send --text <message>` | Send to Hydra, or add `--task <id>` for a worker. |
 | `pnyx answer <task> <question> --text <answer>` | Answer a saved question. |
 | `pnyx serve` | Run the app server. |
@@ -149,7 +150,7 @@ Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for det
 
 ## Documentation
 
-- [pnyx reference](docs/pnyx.md): immediate actions and transitional reads.
+- [pnyx reference](docs/pnyx.md): immediate actions and native records.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
 - [Development](docs/development.md): build, tests and verification.

@@ -416,7 +416,6 @@ export function createAgentSwitch({
           const historyThrough = milestone.through
           const historyContext = compactionContext({ state: loadHydra({ hydraId }).state })
 
-          // A previous agent with no usage left hands inscribe to the new agent, which pages through Pnyx's log instead of taking the conversation in its prompt.
           const handOver = await host().agentExhausted({ agent: change.previous })
 
           if (choice === 'inscribe') {
@@ -442,7 +441,7 @@ export function createAgentSwitch({
                 }),
               }),
             })
-            const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. ${recordContext({ hydraId })} Finish the started inscribe milestone silently before returning. Complete the inscribe pass before this agent switch.</pnyx-wake>`
+            const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. ${recordContext({ hydraId })} Read conversation after ${JSON.stringify(inscriptionSince)} through the start record of the current inscribe pass. Finish the started inscribe milestone silently before returning.</pnyx-wake>`
             await host().hydra({
               id: inscribeId,
               actor: 'pnyx',
