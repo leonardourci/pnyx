@@ -660,7 +660,30 @@ test(
       'stored-pass-start',
     ]
     const first = await hydra.owner({ args })
-    await hydra.owner({
+    const overlapping = await hydra.owner({
+      args: [
+        'hydra',
+        'inscribe',
+        'start',
+        '--key',
+        'overlapping-pass',
+      ],
+    })
+    expect(overlapping.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    const duplicate = await hydra.owner({ args })
+    expect(duplicate.notices ?? []).not.toContainEqual(expect.objectContaining({ reason: expect.stringContaining('still open') }))
+    expect((await hydra.ownerRefused({
+      args: [
+        'hydra',
+        'inscribe',
+        'finish',
+        '--key',
+        'stored-pass',
+        '--through',
+        String(Number.MAX_SAFE_INTEGER),
+      ],
+    })).code).toBe('VALIDATION_ERROR')
+    const completed = await hydra.owner({
       args: [
         'hydra',
         'inscribe',
@@ -669,6 +692,25 @@ test(
         'stored-pass',
       ],
     })
+    expect(completed.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('history snapshot') }))
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'last-inscribe',
+        '--count',
+      ],
+    })).totalTokens).toBe(0)
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'stored-pass',
+        '--count',
+      ],
+    })).totalTokens).toBe(0)
     const log = join(
       process.env.PNYX_HOME!,
       'hydras',
