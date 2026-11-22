@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { HYDRA_ID } from '#hydra/identity.ts'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { COMPONENT, hydraFiles, taskFiles } from '#store/file-home.ts'
 import { readLog, type LogEntry } from '#store/log.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { assembleNative, nativeId, nativeReferences, reduceNative, type NativeState } from './native-state.ts'
@@ -15,7 +15,7 @@ function directories({ path }: { path: string }): string[] {
   return readdirSync(
     path,
     { withFileTypes: true },
-  ).filter(entry => entry.isDirectory())
+  ).filter(entry => entry.isDirectory() && COMPONENT.test(entry.name))
     .map(entry => entry.name)
 }
 
