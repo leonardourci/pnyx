@@ -23,6 +23,7 @@ import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
 
 const RESTART_FLOW_TIMEOUT_MS = 120_000
+const HANDOFF_QUEUE_DELAY_MS = 100
 
 let pnyx: Pnyx
 const github = join(
@@ -3588,7 +3589,7 @@ if (branch === 'iris/target') {
         'utf8',
       )).toBe('keep committed-checkout work')
       rmSync(committedWork)
-      await pnyx.restart()
+      await pnyx.restart({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
       const committedTarget = (await hydra.owner({
         args: [
           'task',
@@ -3655,13 +3656,6 @@ if (branch === 'iris/target') {
           targetId,
           'done',
         ],
-      })
-      // The scratch server checks its queue again every 100 ms; the shared one waits 30 seconds after its check on start.
-      await pnyx.stop()
-      child = launch({ afterCommit: false })
-      await until({
-        what: 'third scratch server ready',
-        check: childReady,
       })
       await until({
         what: 'worker advances again after committed intent recovery',

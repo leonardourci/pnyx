@@ -246,12 +246,13 @@ export async function startPnyx({
   // Kept across stops, so an open page reconnects to the server that replaces this one.
   let port: number | undefined
 
-  const start = async () => {
+  const start = async ({ queueDelay }: { queueDelay?: number } = {}) => {
     server = await startServer({
       port,
       query: claude.query,
       spawnCodex: codex.spawnCodex,
       wakeDelay: 50,
+      queueDelay,
       // Retries wait longer than a test file, so only the owner's messages try a failed start again.
       retryDelays: [600_000],
       followDelay: 100,
@@ -299,10 +300,16 @@ export async function startPnyx({
     home: () => homePage!.read().home,
     cursor: () => homePage!.read().cursor,
     // Stops the server and starts it again on the same home and port, as a restart does.
-    restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
+    restart: async ({
+      whileStopped,
+      queueDelay,
+    }: {
+      whileStopped?(): void | Promise<void>
+      queueDelay?: number
+    } = {}) => {
       await stop()
       await whileStopped?.()
-      await start()
+      await start({ queueDelay })
     },
     start,
     stop,
