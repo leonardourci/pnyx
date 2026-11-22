@@ -713,6 +713,7 @@ export function eventWriter({
   const writer: Writer = {
     dir,
     observe({ observation }) {
+      // Observation-only ordering advances last for this daemon epoch.
       state = draft({
         state,
         change: ({ state }) => applyObservation({
