@@ -1,7 +1,12 @@
 import { readEvents } from '#app/event-log.ts'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { WAIT_MS } from './setup/until.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 let hydra: Hydra
@@ -388,6 +393,104 @@ test(
       sequence: stoppedSource.source.results[0].sequence,
       handled: handledSource.result.handled,
     }))
+
+    const {
+      folder: sourceFolder,
+      worker: sourceWorker,
+    } = await hydra.startTask({ key: 'source-notice' })
+    const sourceTask = await hydra.task({ key: 'source-notice' })
+    await hydra.as({ session: sourceWorker }).run({
+      args: [
+        'task',
+        'source',
+        'register',
+        sourceTask.id,
+        'delivered-result',
+        '--executable',
+        process.execPath,
+        '--argv',
+        JSON.stringify([
+          '-e',
+          "process.stdout.write('SOURCE-CALLER-PAYLOAD')",
+        ]),
+        '--cwd',
+        sourceFolder,
+      ],
+    })
+    const taskLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      sourceTask.id,
+      'task.log',
+    )
+    const records = () => readFileSync(
+      taskLog,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    const result = await until({
+      what: 'the visible source result in the native task log',
+      check: () => records().find(record => record.event?.type === 'task.source.result'
+        && record.event.data.source === 'delivered-result')?.event.data.result,
+    })
+    expect(result.stdout).toBe('SOURCE-CALLER-PAYLOAD')
+    const notice = await until({
+      what: 'the source caller to save its ID-only notification',
+      check: () => records().find(record => record.event?.type === 'card.replied'
+        && record.event.data.reply.startsWith(`source-notice:${result.message}:`))?.event.data.text,
+    })
+    expect(notice).toContain('Pnyx steering inbox has pending instruction IDs ')
+    expect(notice).toContain(result.message)
+    expect(notice).not.toContain('SOURCE-CALLER-PAYLOAD')
+    await until({
+      what: 'the source notification to reach its assigned worker',
+      check: () => sourceWorker.received.some(text => text.includes(notice)),
+    })
+    const command = notice.match(/^pnyx task ack .+$/m)![0]
+    const acknowledge = () => promisify(execFile)(
+      '/bin/sh',
+      [
+        '-c',
+        `pnyx() { "$PNYX_TEST_NODE" "$PNYX_TEST_CLI" "$@"; }\n${command} --json`,
+      ],
+      {
+        env: {
+          ...sourceWorker.env,
+          PNYX_TEST_NODE: process.execPath,
+          PNYX_TEST_CLI: CLI,
+        },
+        timeout: WAIT_MS,
+      },
+    )
+    expect(JSON.parse((await acknowledge()).stdout)).toMatchObject({
+      instruction: result.message,
+      acknowledged: 'read',
+    })
+    const handled = records().filter(record => record.event?.type === 'task.steering.handled'
+      && record.event.data.message === result.message)
+    expect(JSON.parse((await acknowledge()).stdout)).toMatchObject({
+      instruction: result.message,
+      acknowledged: 'read',
+    })
+    expect(records().filter(record => record.event?.type === 'task.steering.handled'
+      && record.event.data.message === result.message)).toEqual(handled)
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'read',
+        sourceTask.id,
+        'delivered-result',
+      ],
+    })).results).toContainEqual(expect.objectContaining({
+      sequence: result.sequence,
+      message: result.message,
+    }))
+    expect(records().some(record => record.event?.type === 'task.source.handled'
+      && record.event.data.source === 'delivered-result')).toBe(false)
   },
 )
 
