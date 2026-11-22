@@ -159,7 +159,9 @@ export function foldWorkerLog({
     )
     let start = 0
     let lines = 0
-    let discarding = previous?.identity === identity && previous.off === off && previous.discarding === true
+    let discarding = previous?.identity === identity
+      && previous.off === off
+      && previous.discarding === true
 
     const complete = bytes.subarray(
       0,
