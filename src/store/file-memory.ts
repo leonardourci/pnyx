@@ -304,7 +304,7 @@ function replayFile<Value>({
   let value = cached && !log.fromStart ? cached.value : undefined
   let cursor: Pick<FileSegment<unknown>, 'worker' | 'workerIdentity'> = { worker: cached && !log.fromStart ? worker : 0 }
 
-  if (cached?.workerIdentity && !log.fromStart) {
+  if (cached?.workerIdentity !== undefined && !log.fromStart) {
     cursor.workerIdentity = cached.workerIdentity
   }
 

@@ -1180,6 +1180,166 @@ test(
 )
 
 test(
+  'read views cannot change saved receipts or remove their idempotency checks',
+  async () => {
+    const home = store({ home: homeFolder() })
+    await create({ home })
+    const message = fact({
+      id: 'saved-message',
+      text: 'Keep this receipt',
+    })
+    const hydraReceipt = await home.changeHydra({
+      hydra: 'a',
+      decide: () => [message],
+    })
+    const taskReceipt = await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [message],
+    })
+
+    for (const view of [
+      home.read({ hydra: 'a' })!,
+      home.positions({ hydra: 'a' })!,
+    ]) {
+      for (const accepted of [
+        view.accepted,
+        view.tasks.get('task')!.accepted,
+      ]) {
+        const receipt = accepted.get(message.id)!
+        receipt.n = 999
+        receipt.digest = 'changed outside the writer'
+        accepted.clear()
+      }
+    }
+
+    expect(await home.changeHydra({
+      hydra: 'a',
+      decide: () => [message],
+    })).toEqual([
+      {
+        ...hydraReceipt[0],
+        duplicate: true,
+      },
+    ])
+    expect(await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [message],
+    })).toEqual([
+      {
+        ...taskReceipt[0],
+        duplicate: true,
+      },
+    ])
+    await home.close()
+  },
+)
+
+test(
+  'bounded readers reject mismatched positions without truncating the log',
+  async () => {
+    const dir = homeFolder()
+    const home = store({ home: dir })
+    await create({ home })
+    const path = join(
+      dir,
+      'hydras/a/tasks/task/task.log',
+    )
+    const through = home.read({ hydra: 'a' })!.tasks.get('task')!.position
+    await home.close()
+    const contents = readFileSync(
+      path,
+      'utf8',
+    )
+
+    for (const position of [
+      {
+        ...through,
+        n: 0,
+      },
+      {
+        ...through,
+        n: through.n + 1,
+      },
+      {
+        ...through,
+        bytes: through.bytes - 1,
+      },
+    ]) {
+      const accepted: string[] = []
+      expect(() => readLog({
+        path,
+        through: position,
+        accept: ({ entry }) => accepted.push(entry.id),
+      })).toThrow()
+      expect(readFileSync(
+        path,
+        'utf8',
+      )).toBe(contents)
+
+      if (position.n === 0) {
+        expect(accepted).toEqual([])
+      }
+    }
+
+    expect(readLog({
+      path,
+      through,
+      accept: () => {},
+    })).toEqual(through)
+  },
+)
+
+test(
+  'snapshot replay preserves an empty worker identity for inherited truncation reports',
+  async () => {
+    const dir = homeFolder()
+    let home = store({ home: dir })
+    await create({ home })
+    await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        fact({
+          id: 'worker-empty',
+          t: 'worker',
+          by: 'worker',
+          identity: '',
+          off: 37,
+          text: 'Before truncation',
+        }),
+      ],
+    })
+    await home.close()
+    appendFileSync(
+      join(
+        dir,
+        'hydras/a/tasks/task/task.log',
+      ),
+      `${JSON.stringify({
+        n: 3,
+        ...fact({
+          id: 'worker-truncated',
+          t: 'worker',
+          by: 'worker',
+          off: 37,
+          code: 'invalid',
+          text: 'Truncation recorded',
+        }),
+      })}\n`,
+    )
+    home = store({ home: dir })
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')).toMatchObject({
+      worker: 37,
+      state: { latest: 'Truncation recorded' },
+      issue: undefined,
+    })
+    await home.close()
+  },
+)
+
+test(
   'readers page only acknowledged bytes and never repair a canonical log',
   async () => {
     const dir = homeFolder()

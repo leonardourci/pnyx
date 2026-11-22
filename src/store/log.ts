@@ -202,7 +202,7 @@ export function readLog({
       throw error
     }
 
-    if (after.bytes) {
+    if (after.bytes || through?.bytes || through?.n) {
       throw positionError({ path })
     }
 
@@ -320,7 +320,7 @@ export function readLog({
 
           const last = readAt === size && end + 1 === contents.length
 
-          if (!last || readOnly) {
+          if (!last || readOnly || through) {
             throw corrupt({
               path,
               offset: lineOffset,
@@ -344,6 +344,11 @@ export function readLog({
           offset: lineOffset,
           n: n + 1,
         })
+
+        if (through && entry.n > through.n) {
+          throw positionError({ path })
+        }
+
         accept({ entry })
         n = entry.n
         offset += pendingLength + part.length + 1
@@ -352,6 +357,10 @@ export function readLog({
         start = end + 1
 
         if (n - after.n >= limit) {
+          if (through && offset === size && n !== through.n) {
+            throw positionError({ path })
+          }
+
           return {
             bytes: offset,
             n,
@@ -366,7 +375,7 @@ export function readLog({
     }
 
     if (pendingLength) {
-      if (readOnly) {
+      if (readOnly || through) {
         throw corrupt({
           path,
           offset,
@@ -377,6 +386,10 @@ export function readLog({
         fd,
         bytes: offset,
       })
+    }
+
+    if (through && n !== through.n) {
+      throw positionError({ path })
     }
 
     return {
