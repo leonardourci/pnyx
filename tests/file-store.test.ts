@@ -1369,6 +1369,7 @@ test(
       path,
       'utf8',
     )
+
     for (const limit of [
       NaN,
       1.5,

@@ -162,7 +162,10 @@ function savedEvents({
         hydra: hydraId,
         id: entry.id,
         scope: scope.scope,
-        seq: Object.hasOwn(eventIds, entry.id) ? eventIds[entry.id] : undefined,
+        seq: Object.hasOwn(
+          eventIds,
+          entry.id,
+        ) ? eventIds[entry.id] : undefined,
       })
       const event = nativeEvent({
         entry,
@@ -556,7 +559,10 @@ export function eventSeq({
 }): number | undefined {
   const { state } = nativeHome().read({ hydra: hydraId })
 
-  return Object.hasOwn(state.eventIds, id) ? state.eventIds[id] : undefined
+  return Object.hasOwn(
+    state.eventIds,
+    id,
+  ) ? state.eventIds[id] : undefined
 }
 
 export const replySeq = ({
