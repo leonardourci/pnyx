@@ -5,7 +5,9 @@ import { foldWorkerLog } from '#workers/worker-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
+import { WAIT_MS } from './setup/until.ts'
 import { once } from 'node:events'
 import { constants, openSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -26,7 +28,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { pnyx as runPnyx, parsed, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, pnyx as runPnyx, parsed, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
 
@@ -1734,14 +1736,26 @@ test(
       })).status).not.toBe(0)
     }
 
-    const acknowledged = await runPnyx({
-      args,
-      env: worker.env,
+    const command = notice!.match(/^pnyx task ack .+$/m)![0]
+    const acknowledged = await promisify(execFile)(
+      '/bin/sh',
+      [
+        '-c',
+        `pnyx() { "$PNYX_TEST_NODE" "$PNYX_TEST_CLI" "$@"; }\n${command} --json`,
+      ],
+      {
+        env: {
+          ...worker.env,
+          PNYX_TEST_NODE: process.execPath,
+          PNYX_TEST_CLI: CLI,
+        },
+        timeout: WAIT_MS,
+      },
+    )
+    expect(JSON.parse(acknowledged.stdout)).toMatchObject({
+      instruction: message.id,
+      acknowledged: 'read',
     })
-    expect(
-      acknowledged.status,
-      acknowledged.stderr,
-    ).toBe(0)
     expect((await runPnyx({
       args,
       env: worker.env,
@@ -2155,6 +2169,73 @@ test(
       sessions: [worker],
       text: 'owner follow-up',
     })).toBe(1)
+    await hydra.owner({
+      args: [
+        'task',
+        'hold',
+        'stoppable',
+        '--reason',
+        'Keep the next owner instruction unread until Stop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'reply',
+        'stoppable',
+        '--text',
+        'Cancel this unread owner instruction',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'stop',
+        'stoppable',
+      ],
+    })
+    const taskId = stopped.stopped as string
+    const taskLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      taskId,
+      'task.log',
+    )
+    const records = () => readFileSync(
+      taskLog,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    const cancelled = records().find(record => record.event?.type === 'task.steering.queued'
+      && record.event.data.message.text === 'Cancel this unread owner instruction').event.data.message
+    expect(records()).toContainEqual(expect.objectContaining({
+      event: expect.objectContaining({
+        type: 'task.steering.stopped',
+        data: { messages: expect.arrayContaining([cancelled.id]) },
+      }),
+    }))
+    const handled = records().filter(record => record.event?.type === 'task.steering.handled')
+    const delayed = await runPnyx({
+      args: [
+        'task',
+        'ack',
+        taskId,
+        cancelled.id,
+        '--session',
+        cancelled.queuedFor.session,
+        '--generation',
+        JSON.stringify(cancelled.queuedFor.generation),
+        '--hydra',
+        hydra.id,
+        '--json',
+      ],
+      env: worker.env,
+    })
+    expect(delayed.status).not.toBe(0)
+    expect(JSON.parse(delayed.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
+    expect(records().filter(record => record.event?.type === 'task.steering.handled')).toEqual(handled)
   },
 )
 

@@ -473,6 +473,14 @@ describe(
           args: staleSession,
           env: workerEnv,
         })).status).not.toBe(0)
+        const staleGeneration = args.map(value => value === JSON.stringify(claim.generation)
+          ? JSON.stringify({ native: `${id}\u0000${queued.id}` }) : value)
+        const staleAssignment = await pnyx({
+          args: staleGeneration,
+          env: workerEnv,
+        })
+        expect(staleAssignment.status).not.toBe(0)
+        expect(JSON.parse(staleAssignment.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
         expect(acknowledgements()).toHaveLength(0)
         const accepted = await pnyx({
           args,

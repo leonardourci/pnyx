@@ -335,7 +335,14 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
         })
       }
 
-      acknowledgeSteering({
+      if (card.steering?.find(message => message.id === id)?.stopped) {
+        throw new HydraError({
+          code: 'STALE_CLAIM',
+          message: 'This instruction was cancelled before it was read',
+        })
+      }
+
+      const acknowledged = acknowledgeSteering({
         writer,
         ref: card.id,
         id,
@@ -355,7 +362,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
       return {
         task: card.id,
         instruction: id,
-        acknowledged: 'read',
+        acknowledged: acknowledged.ack?.outcome,
       }
     },
   })
