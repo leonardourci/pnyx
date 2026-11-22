@@ -60,7 +60,7 @@ export function requireSteeringWorker({
     inform({
       task: card.id,
       reason: 'Steering acknowledged by another actor',
-      clear: `Use pnyx task inbox read ${card.id} to inspect its steering`,
+      clear: `Read tasks/${card.id}/task.log to inspect its steering`,
     })
 
     return
@@ -271,7 +271,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering acknowledged by another actor',
-      clear: `Use pnyx task inbox read ${card.id} to inspect its steering`,
+      clear: `Read tasks/${card.id}/task.log to inspect its steering`,
     })
   }
 
@@ -306,7 +306,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering handled before an older pending instruction',
-      clear: `Use pnyx task inbox read ${card.id} to inspect the remaining instructions`,
+      clear: `Read tasks/${card.id}/task.log to inspect the remaining instructions`,
     })
   }
 

@@ -400,7 +400,7 @@ export function decideUndo({
     throw new HydraError({
       message: `${target.id} no longer matches card ${card.id}: it changed since`,
       code: 'CONFLICT',
-      help: [`Run \`pnyx history --card ${card.id}\` to see the later change`],
+      help: [`Read tasks/${card.id}/task.log to see the later change`],
     })
   }
 

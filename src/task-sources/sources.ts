@@ -113,7 +113,7 @@ export function sourceTask({
     inform({
       task: card.id,
       reason: 'External source changed by another actor',
-      clear: `Use pnyx task show ${card.id} --full to inspect its sources`,
+      clear: `Read tasks/${card.id}/task.log to inspect its sources`,
     })
   }
 
@@ -451,7 +451,7 @@ export function handleResult({
     inform({
       task: card.id,
       reason: 'Source result handled before its steering message was acknowledged',
-      clear: `Use pnyx task inbox read ${card.id} to inspect its pending instructions`,
+      clear: `Read tasks/${card.id}/task.log to inspect its pending instructions`,
     })
   }
 

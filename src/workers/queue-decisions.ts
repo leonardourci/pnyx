@@ -123,14 +123,14 @@ export function queueGap({
   if (!current) {
     return {
       reason: `${behind} has no live task worker to queue behind`,
-      clear: 'Read `pnyx task sessions` for live workers, or send this task a message from the UI.',
+      clear: 'Read task.log session records for live workers, or send this task a message from the UI.',
     }
   }
 
   if (!current.project) {
     return {
       reason: `queued tasks use the worker’s project, and ${current.id} is in Ideas`,
-      clear: 'Queue it behind a worker on an attached project; `pnyx task sessions` lists live workers',
+      clear: 'Queue it behind a worker on an attached project; task.log session records lists live workers',
     }
   }
 

@@ -277,7 +277,7 @@ export function createPermissionBridge({
           inform({
             task: card.id,
             reason: 'Helper answered a question or form',
-            clear: `Use pnyx task show ${card.id} --full to inspect the answer`,
+            clear: `Read tasks/${card.id}/task.log to inspect the answer`,
           })
         }
 

@@ -98,7 +98,7 @@ async function releaseQueue({
       }
 
       const previous = current && writer.state.cards[current]
-      const note = `Continue after ${previous ? `"${previous.title}" (${previous.id})` : session}. ${reason}. Read its task history before starting a fresh worker.`
+      const note = `Continue after ${previous ? `"${previous.title}" (${previous.id})` : session}. ${reason}. Read its task.log and worker.log before starting a fresh worker.`
       const column = roleColumn({
         columns: hydraConfig({ state: writer.state }).columns,
         role: 'queued',

@@ -434,7 +434,7 @@ export async function mountOwnedHydra({
         return {
           refreshing: 'pull requests',
           task: card.id,
-          help: [`Run \`pnyx task show ${card.id} --hydra ${hydraId}\` for the links once read`],
+          help: [`Read tasks/${card.id}/task.log for the links once read`],
         }
       }
 

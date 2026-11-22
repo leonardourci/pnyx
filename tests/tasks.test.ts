@@ -671,7 +671,7 @@ test(
       launch: 'started',
       queued: expect.stringContaining('is in Ideas'),
     })
-    expect(behind.help.join('\n')).toContain('pnyx task sessions')
+    expect(behind.help.join('\n')).toContain('task.log session records')
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
     expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 

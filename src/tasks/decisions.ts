@@ -223,6 +223,6 @@ export function decisionsBlock({
 
       return `- ${subject} ${item.kind}${waited}: ${item.detail}`
     }),
-    ...omitted ? [`- ${omitted} more left out of this batch; \`hydra check\` lists them`] : [],
+    ...omitted ? [`- ${omitted} more left out of this batch; task.log files contain them`] : [],
   ].join('\n')
 }

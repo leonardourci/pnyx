@@ -292,10 +292,10 @@ export function planDocument({
     0,
     RECEIPT_HINT_LIMIT,
   )
-    .map(task => `Run \`pnyx task history ${task} --hydra ${hydraId}\` for changed events; add --full for event data`)
+    .map(task => `Read tasks/${task}/task.log in Hydra ${hydraId} for changed events`)
 
   if (!help.length) {
-    help.push(`Run \`pnyx task list --hydra ${hydraId}\` for current tasks`)
+    help.push(`Use pnyx board --hydra ${hydraId} for current tasks`)
   }
 
   return {

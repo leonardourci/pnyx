@@ -112,7 +112,7 @@ function pageOutput({
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
       `Run \`pnyx page --full --hydra ${hydraId}\` for the server's whole page projection`,
-      `Run \`pnyx card <id> --hydra ${hydraId}\` or \`pnyx task list --hydra ${hydraId}\` to read tasks`,
+      `Read hydra.log and tasks/<task>/task.log in Hydra ${hydraId}`,
     ],
   }
 }

@@ -19,7 +19,7 @@ const TASK_WRITES = HELPER_TASK_WRITES
 function denied(): void {
   inform({
     reason: 'Helper acted outside its default task scope',
-    clear: 'Use pnyx task history <task> to inspect the change',
+    clear: 'Read the task’s task.log to inspect the change',
   })
 }
 

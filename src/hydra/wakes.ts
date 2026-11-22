@@ -1,3 +1,4 @@
+import { recordContext } from './file-context.ts'
 import { WAKE_TURN, WAKE_HANDLED } from './wake-ids.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import type { HydraState } from '#app/model.ts'
@@ -65,7 +66,6 @@ export function wakeText({
   hydraId,
   state,
   now,
-  after,
   reasons,
   reports,
   check,
@@ -75,7 +75,6 @@ export function wakeText({
   hydraId: string
   state: HydraState
   now: number
-  after: number
   reasons: string[]
   reports: HydraMessage[]
   check: boolean
@@ -149,15 +148,8 @@ export function wakeText({
     lines.push('Some wake details were shortened or omitted.')
   }
 
-  if (pick && check) {
-    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
-  } else if (check || overflow) {
-    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
-  }
-
-  if (reviewOverflow) {
-    const reviewedThrough = state.hydraReview?.seq ?? state.seq
-    lines.push(`Read \`pnyx history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
+  if (check || overflow || reviewOverflow) {
+    lines.push(`${recordContext({ hydraId })} Act on pending reports marked unhandled when they need you.`)
   }
 
   lines.push(decisionsText({
@@ -371,7 +363,7 @@ export function findHydraTurnToResume({
     finishedThrough ?? lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
-  const unansweredMessages: number[] = []
+  const unansweredMessages: string[] = []
 
   for (const event of scanChanges({
     hydraId,
@@ -382,7 +374,7 @@ export function findHydraTurnToResume({
       continue
     }
 
-    unansweredMessages.push(event.seq)
+    unansweredMessages.push(event.id)
   }
 
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
@@ -404,13 +396,13 @@ export function findHydraTurnToResume({
   }
 
   const interruptedWork = unfinishedWork.join(' and ') || 'a turn'
-  const ownerReads = unansweredMessages.map(seq =>
-    `Read owner message ${seq} in full with \`pnyx hydra messages --after ${seq - 1} --limit 1 --hydra ${hydraId}\`.`)
+  const ownerReads = unansweredMessages.map(id =>
+    `Read owner message ${JSON.stringify(id)} in hydra.log in full.`)
 
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. ${recordContext({ hydraId })} Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
       ...ownerReads,
       decisionsText({
         state,

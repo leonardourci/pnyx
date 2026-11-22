@@ -89,7 +89,7 @@ export async function hydraSend({
       }
 
       const entered = task
-        ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
+        ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task.log and worker.log before continuing.`)
         : required({
           value: values.text as string | undefined,
           what: '--text',
@@ -312,10 +312,6 @@ export function hydraMessages({
       })
       : `none: no messages after seq ${after}`,
     through,
-    help: [
-      events.length > limit
-        ? `Run \`pnyx hydra messages --after ${through} --hydra ${hydraId}\` for the next page`
-        : `Run \`pnyx hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`,
-    ],
+
   }
 }

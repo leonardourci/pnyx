@@ -102,7 +102,7 @@ export function decideQuestionAction({
       inform({
         task: card.id,
         reason: 'An answer is already being delivered while this question is deferred',
-        clear: `Use pnyx task show ${card.id} --full to inspect its delivery`,
+        clear: `Read tasks/${card.id}/task.log to inspect its delivery`,
       })
     }
 

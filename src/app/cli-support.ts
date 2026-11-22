@@ -253,7 +253,7 @@ function receipt({
       message: event.id,
       hydra: event.data.hydra,
       state: 'queued',
-      help: ['Hydra can read this in `pnyx hydra messages`; no worker was launched'],
+      help: ['Hydra can read this in hydra.log; no worker was launched'],
     }
   }
 

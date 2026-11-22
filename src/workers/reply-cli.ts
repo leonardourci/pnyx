@@ -157,7 +157,7 @@ export const reply = guard({
     } else if (receipt.state === 'queued') {
       out.help = ["Check the task's inbox or the session before sending again; a retry with the same key does not resend"]
     } else {
-      out.help = [`Run \`pnyx history --card ${receipt.card} --kind replied\` for its receipts`]
+      out.help = [`Read tasks/${receipt.card}/task.log for its receipts`]
     }
 
     return out

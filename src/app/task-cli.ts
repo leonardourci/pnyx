@@ -30,7 +30,7 @@ import { startTask } from '#workers/start.ts'
 import { createCommand } from '#workers/create.ts'
 import { workerGap } from '#tasks/card-status.ts'
 import { taskUpdates } from '#tasks/updates-page.ts'
-import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
+import { taskFields, attentionLabel, cardRow, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, startFlags, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
@@ -657,17 +657,10 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       }
     }
 
-    const help = [`Run \`pnyx task show <id> --hydra ${hydraId}\` for one task`]
-
-    if (!fields.length) {
-      help.push(`Run \`pnyx task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`)
-    }
-
     return {
       hydraId,
       count: tasks.length,
       tasks,
-      help,
     }
   }
 
@@ -818,7 +811,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         declarations: task.statusLog?.length ?? 0,
         ...(task.hold ? { hold: task.hold } : {}),
       },
-      help: [`Run \`pnyx task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx task history ${task.id} --hydra ${hydraId}\` for its events`],
+      help: [`Read tasks/${task.id}/task.log in Hydra ${hydraId} for its record`],
     }
 
     if (task.asks?.length) {

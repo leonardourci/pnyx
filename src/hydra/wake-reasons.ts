@@ -26,7 +26,7 @@ export interface WakeReason {
   detail?: string
 }
 
-// How much of a worker's own words a reason line quotes; the full text is on the card and in hydra check.
+// How much of a worker's own words a reason line quotes; the full text is in its worker.log.
 const QUOTE_CHARS = 200
 
 // Declarations that need Hydra's judgment; working and paused stay on the card until its next check.
@@ -570,7 +570,7 @@ export function eventReasons({
       {
         kind: 'instruction unread',
         card: event.cardId,
-        detail: `instruction ${message.id} remains unread: ${event.data.recovery.detail}. Read it with pnyx task inbox read ${event.cardId}; review the worker route or hold before resuming`,
+        detail: `instruction ${message.id} remains unread: ${event.data.recovery.detail}. Read it in tasks/${event.cardId}/task.log; review the worker route or hold before resuming`,
       },
     ]
   }

@@ -1,3 +1,4 @@
+import { recordContext } from '#hydra/file-context.ts'
 import { workerTaskDir } from './worker-log.ts'
 import { runForClient, requestEnv, requestCwd } from '#app/request-context.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
@@ -30,7 +31,6 @@ function workerPrompt({
 }): string {
   return [
     `You are the Pnyx worker for task ${id} "${title}" on Hydra ${hydraId}. Follow the ${REPORT_PROGRESS_SKILL} skill when it is installed.`,
-    `Start with \`pnyx task show ${id} --hydra ${hydraId}\` and \`pnyx task history ${id} --hydra ${hydraId}\`.`,
     `Append one line to "${workerTaskDir({
       hydraId,
       task: id,
@@ -67,6 +67,10 @@ function workerHeader({
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
     `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report through this task’s worker.log.`,
+    recordContext({
+      hydraId,
+      task: id,
+    }),
     "Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under .agents/skills, .claude/skills and skills/. Follow them over generic habits, and use the project's skills for the jobs they cover.",
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking. Hosted tool permission requests still use the harness permission flow.',
@@ -164,4 +168,4 @@ export async function taskPrompt({
 
 export const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
   `You are Hydra, the orchestrator of the Pnyx Hydra "${hydraId}". Read ${HYDRA_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(HYDRA_SKILL))}. `
-  + `Start with \`pnyx hydra digest --hydra ${hydraId}\` and \`pnyx hydra messages --hydra ${hydraId}\`.`
+  + recordContext({ hydraId })

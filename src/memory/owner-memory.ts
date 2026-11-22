@@ -119,7 +119,7 @@ function checkOwnerRevision({
     throw new HydraError({
       message: 'Owner memory changed; read its writable documents again before saving',
       code: 'REVISION_CONFLICT',
-      help: ['Run `pnyx owner memory list`, merge your change into the current text and save again'],
+      help: ['Read the saved owner memory logs, merge your change into the current text and save again'],
     })
   }
 }

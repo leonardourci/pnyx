@@ -1,3 +1,4 @@
+import { recordContext } from './file-context.ts'
 import { createHash } from 'node:crypto'
 import { OWNER_CONTEXT_TOKENS } from './context-limits.ts'
 import type { HydraState } from '#app/model.ts'
@@ -22,7 +23,7 @@ export const TEMPLATE_NUDGE = 'Heads dispatch uses the shipped template until yo
 
 const TASK_LIMIT = 40
 const DIGEST_HASH_CHARS = 12
-const DIGEST_CHECKPOINT_VERSION = 1
+const DIGEST_CHECKPOINT_VERSION = 2
 const PENDING_CARD = '-'.repeat(DIGEST_HASH_CHARS)
 
 export const clip = ({
@@ -198,7 +199,7 @@ function ownerDigest({
 
   const notice = [
     '\nOwner memory omitted beyond the context budget.',
-    'Read `pnyx owner memory list` before a decision needs an omitted preference or learning.',
+    'Read owner/memory.jsonl and the assigned owner/poleis/<polis>/memory.jsonl under PNYX_HOME before a decision needs an omitted preference or learning.',
   ].join(' ')
   const encoder = new TextEncoder()
   const budgetBytes = OWNER_CONTEXT_TOKENS * ESTIMATED_TOKEN_BYTES
@@ -357,7 +358,7 @@ function digestParts({
 
         return `- ${id} · ${name} · ${counts.asks} / ${counts.working} / ${counts.waiting} / ${counts.done}`
       }),
-      'Counts include sub-tasks. Lifecycle columns and rules remain available through column list for compatibility.',
+      'Counts include sub-tasks. Read hydra.log or use the UI for lifecycle columns and rules.',
     ].join('\n'),
   )
   parts.set(
@@ -463,13 +464,10 @@ function digestHash({ text }: { text: string }): string {
 function previousCheckpoint({
   text,
   hydraId,
-  through,
 }: {
   text?: string
   hydraId: string
-  through: number
 }): {
-  through: number
   parts: Record<string, string>
 } | undefined {
   const encoded = text?.match(/^<pnyx-digest\b[^>]* checkpoint="([A-Za-z0-9_-]+)"/)?.[1]
@@ -505,17 +503,6 @@ function previousCheckpoint({
     return
   }
 
-  if (!('through' in value) || typeof value.through !== 'number') {
-    return
-  }
-
-  const validCursor = Number.isSafeInteger(value.through)
-    && value.through >= 0 && value.through <= through
-
-  if (!validCursor) {
-    return
-  }
-
   if (!('parts' in value) || !value.parts || typeof value.parts !== 'object' || Array.isArray(value.parts)) {
     return
   }
@@ -534,7 +521,6 @@ function previousCheckpoint({
   }
 
   return {
-    through: value.through,
     parts,
   }
 }
@@ -579,7 +565,6 @@ export function hydraDigest({
   const checkpointBefore = previousCheckpoint({
     text: previousDigest,
     hydraId,
-    through: state.seq,
   })
   const before = checkpointBefore?.parts.totals ? checkpointBefore : undefined
   const hashes: Record<string, string> = {}
@@ -647,7 +632,7 @@ export function hydraDigest({
           hashes[key] = before.parts[key]
           omitted++
         } else {
-          cards.push(`- ${card.id} is no longer listed in this digest; read task show for its current state.`)
+          cards.push(`- ${card.id} is no longer listed in this digest; read its task.log for its current state.`)
         }
       }
     }
@@ -659,7 +644,6 @@ export function hydraDigest({
     const encoded = Buffer.from(JSON.stringify({
       v: DIGEST_CHECKPOINT_VERSION,
       hydra: hydraId,
-      through: state.seq,
       parts: hashes,
     })).toString('base64url')
     checkpoint = ` checkpoint="${encoded}"`
@@ -669,14 +653,13 @@ export function hydraDigest({
     state,
     id: hydraId,
   })
-  const checkAfter = before?.through ?? state.seq
   const lines = [
-    `<pnyx-digest hydra="${hydraId}" through="${state.seq}"${checkpoint}>`,
-    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx hydra check --after ${checkAfter} --hydra ${hydraId}\` lists what changed since.`,
+    `<pnyx-digest hydra="${hydraId}"${checkpoint}>`,
+    `Hydra ${hydraId} ("${config.name}"). ${recordContext({ hydraId })}`,
   ]
 
   if (before) {
-    lines.push(`Changes since event ${before.through}; unlisted context still applies.`)
+    lines.push('Changes since your previous digest; unlisted context still applies.')
   }
 
   lines.push(
@@ -686,7 +669,7 @@ export function hydraDigest({
   )
 
   if (omitted) {
-    lines.push(`${omitted} more changed cards. Full list: \`pnyx task list --hydra ${hydraId}\`; details: \`pnyx task show <task> --full --hydra ${hydraId}\`.`)
+    lines.push(`${omitted} more changed cards. Read their task.log files for details.`)
   }
 
   lines.push(
