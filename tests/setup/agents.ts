@@ -241,11 +241,12 @@ export function fakeClaude() {
       transcript,
       `${JSON.stringify({
         type: role,
-        uuid,
+        uuid: uuid ?? randomUUID(),
         timestamp: new Date().toISOString(),
         message: {
           role,
           content: text,
+          stop_reason: role === 'assistant' ? 'end_turn' : undefined,
         },
       })}\n`,
     )
