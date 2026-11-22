@@ -18,10 +18,6 @@ const PROGRESS_POLL_MS = 1000
 const QUERY_TIMEOUT_MS = 30_000
 // Migrating a large history outlasts an ordinary statement's wait.
 const MIGRATION_TIMEOUT_MS = 10 * 60_000
-// Postgres refuses U+0000 and a lone UTF-16 surrogate even in json columns, so one stored value holding either would
-// fail every later write.
-const NUL = '\u0000'
-const REPLACEMENT = '\ufffd'
 const LIVE_DATABASE = 'pnyx'
 const CONDITIONS = '--conditions='
 
@@ -110,9 +106,6 @@ export function homeDatabase({ home = pnyxHome() }: { home?: string } = {}): str
       16,
     )}`
 }
-
-// A key for caches of one home's Hydra, so a process that moves between homes, as tests do, never mixes them.
-export const homeScoped = ({ hydraId }: { hydraId: string }) => `${homeDatabase()}\u0000${hydraId}`
 
 function connection({ url }: { url?: string }): Connection {
   const database = homeDatabase()
@@ -222,34 +215,6 @@ export function useDatabase({ url }: { url: string }): void {
 // The next query reads the postgresUrl setting again.
 export function useConfiguredDatabase(): void {
   configuredUrls.delete(homeDatabase())
-}
-
-// Replaces U+0000 and lone surrogates with U+FFFD in every string and key of a record headed for Postgres, in place, so
-// memory and rows keep the same text.
-export function storable<Value>({ value }: { value: Value }): Value {
-  if (typeof value === 'string') {
-    return value.toWellFormed().replaceAll(
-      NUL,
-      REPLACEMENT,
-    ) as Value
-  }
-
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-
-    for (const key of Object.keys(record)) {
-      const cleaned = storable({ value: key })
-      const item = storable({ value: record[key] })
-
-      if (cleaned !== key) {
-        delete record[key]
-      }
-
-      record[cleaned] = item
-    }
-  }
-
-  return value
 }
 
 // Runs statements on the home's database and waits for them, so the writer and the reducer stay synchronous. A
