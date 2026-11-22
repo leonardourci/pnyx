@@ -1,3 +1,4 @@
+import { nativeHome } from '#app/native-home.ts'
 import { inform } from '#app/command-notices.ts'
 import { prepareTaskRuntimeMove } from '#app/task-runtime.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -381,6 +382,20 @@ function depart({
   meta: Meta
   moving?: MovedCard['moving']
 }): void {
+  const data: Extract<HydraMoveEvent, { type: 'task.moved-out' }>['data'] = {
+    to,
+    card: structuredClone(card),
+    sessions: carried({
+      hydraId,
+      state: source.state,
+      card,
+    }).sessions,
+  }
+
+  if (moving) {
+    data.moving = moving
+  }
+
   source.append({
     event: {
       ...base({
@@ -392,16 +407,7 @@ function depart({
         cardId: card.id,
       }),
       type: 'task.moved-out',
-      data: {
-        to,
-        moving,
-        card: structuredClone(card),
-        sessions: carried({
-          hydraId,
-          state: source.state,
-          card,
-        }).sessions,
-      },
+      data,
     },
     effects: false,
   })
@@ -525,7 +531,13 @@ export function stageTaskMove({
 
   current = source.state.cards[cardId]!
 
-  const event = {
+  const arriving = nativeHome().cardForMove({
+    from: hydraId,
+    to,
+    card: current,
+    state: target.state,
+  })
+  const event: Extract<HydraMoveEvent, { type: 'task.moved-in' }> = {
     ...base({
       state: target.state,
       meta: {
@@ -537,14 +549,13 @@ export function stageTaskMove({
     type: 'task.moved-in',
     data: {
       from: hydraId,
-      moving,
       column: targetColumn({
         source: source.state,
         target: target.state,
         card: current,
       }),
       card: {
-        ...structuredClone(current),
+        ...arriving,
         workerLogDir: workerTaskDir({
           hydraId,
           task: cardId,
@@ -556,7 +567,12 @@ export function stageTaskMove({
         card: current,
       }),
     },
-  } satisfies HydraMoveEvent
+  }
+
+  if (moving) {
+    event.data.moving = moving
+  }
+
   const moveRuntime = prepareTaskRuntimeMove({
     task: cardId,
     from: hydraId,
