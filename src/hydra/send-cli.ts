@@ -273,25 +273,20 @@ export function hydraMessages({
 
     events.push(event)
 
-    if (events.length > limit) {
+    if (events.length === limit) {
       break
     }
   }
 
-  const page = events.slice(
-    0,
-    limit,
-  )
-
-  const through = page.at(-1)?.seq ?? after
+  const through = events.at(-1)?.seq ?? after
 
   return {
     hydra: hydraConfig({
       state,
       id: hydraId,
     }).hydra.id,
-    messages: page.length
-      ? page.map(e => {
+    messages: events.length
+      ? events.map(e => {
         if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
           throw new Error(`Unexpected ${e.type} in Hydra messages`)
         }
