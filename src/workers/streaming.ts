@@ -68,10 +68,15 @@ export function liveReplies() {
 
       for (const entry of messages.values()) {
         const text = redact({ text: entry.text })
+        const liveText = text.trim()
         const match = [...saved].find(([
           , value,
-        ]) => value === text
-          || (working && text.length > 0 && value.startsWith(text)))
+        ]) => {
+          const savedText = value.trim()
+
+          return savedText === liveText
+            || (working && text.length > 0 && value.startsWith(text))
+        })
 
         if (match) {
           saved.delete(match[0])
