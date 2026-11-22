@@ -125,6 +125,17 @@ export function foldWorkerLog({
     const off = previous?.identity === identity ? previous.off : 0
 
     if (stat.size < off) {
+      const warning: Omit<WorkerLine, 'at'> = {
+        identity,
+        off,
+        code: 'invalid',
+        text: 'worker.log was truncated; restore its appended history or replace the file to resume updates',
+      }
+
+      if (previous?.discarding) {
+        warning.discarding = true
+      }
+
       writer.append({
         event: {
           v: 1,
@@ -134,12 +145,7 @@ export function foldWorkerLog({
           cardId: task,
           actor: `worker:${task}`,
           type: 'task.worker-line',
-          data: {
-            identity,
-            off,
-            code: 'invalid',
-            text: 'worker.log was truncated; restore its appended history or replace the file to resume updates',
-          },
+          data: warning,
         },
       })
 

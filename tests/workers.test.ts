@@ -2813,6 +2813,17 @@ test(
       what: 'an oversized incomplete line produces a visible warning',
       check: async () => (await hydra.task({ key: task.id })).latest?.includes('exceeds the worker.log line limit'),
     })
+    await until({
+      what: 'the incomplete line is drained before restart',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task.workerLog?.latest.off === readFileSync(path).length,
+    })
     await pnyx.restart()
     appendFileSync(
       path,
@@ -4206,5 +4217,60 @@ test(
     })
     expect(resumed.closed).toBe(false)
     expect((await target.task({ key: task.id })).worker).toBe(`claude-code:${worker.id}`)
+  },
+)
+
+test(
+  'restoring a truncated report keeps discarding its oversized unfinished line',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'truncated-discard' })
+    const task = await hydra.task({ key: 'truncated-discard' })
+    const path = join(
+      worker.env.PNYX_TASK_DIR!,
+      'worker.log',
+    )
+    const partial = 'note: ' + 'x'.repeat(20 * 1024)
+    writeFileSync(
+      path,
+      partial,
+    )
+    await until({
+      what: 'the oversized partial report is fully discarded',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task.workerLog?.latest.off === Buffer.byteLength(partial),
+    })
+    writeFileSync(
+      path,
+      '',
+    )
+    await until({
+      what: 'the truncation warning',
+      check: async () => (await hydra.task({ key: task.id })).latest?.includes('was truncated'),
+    })
+    writeFileSync(
+      path,
+      partial + 'blocked: not a separate report\nnote: valid after restoration\n',
+    )
+    await until({
+      what: 'the restored report continues after the discarded line',
+      check: async () => (await hydra.task({ key: task.id })).latest === 'valid after restoration',
+    })
+    const history = await hydra.owner({
+      args: [
+        'task',
+        'history',
+        task.id,
+        '--limit',
+        '100',
+      ],
+    })
+    expect(JSON.stringify(history.events)).not.toContain('not a separate report')
   },
 )
