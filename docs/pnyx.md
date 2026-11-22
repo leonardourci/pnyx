@@ -22,11 +22,11 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 
 ## Migrate from pnyx-axi
 
-Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README, keeping the same `PNYX_HOME`. Run `pnyx setup postgres --check` before starting the new server. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
+Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README. This storage release starts fresh: preserve the old home and choose an empty `PNYX_HOME` before starting the new server. No database or legacy events are imported. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
 
 ## Reads during the storage cutover
 
-The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Agents use the following reads while the app still stores its records in Postgres. These reads use plain text by default and accept `--json`.
+The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Records now live in `hydras/<hydra>/hydra.log`, `tasks/<task>/task.log` and `snapshot.json`. Workers append their assigned `worker.log`. The following transitional reads remain until the remaining command cleanup lands. These reads use plain text by default and accept `--json`.
 
 ```sh
 pnyx task list --hydra work --json
@@ -40,6 +40,8 @@ pnyx task inbox read <task> --hydra work --json
 ```
 
 Task messages, chats, updates, sessions, questions and reminders remain readable. The read-only project, column, dispatch, account, layout, view, settings, integrations, context, logs, history, card and Oracle paths also remain available. Inbox reads acknowledge receipt as before. Mutation subcommands such as task rename, layout reset and logs clean are not exposed by this CLI.
+
+`hydra check` returns an `epoch` beside `through`. Pass both as `--after <through> --epoch <epoch>` for the next check. A nonzero cursor without the current epoch expires; read without `--after` for fresh state after restart.
 
 Workers continue to report through their assigned `worker.log`; the server observes it and keeps the task record. After the app's file-store cutover, direct reads of `hydra.log`, `task.log`, `worker.log` and the snapshot replace these transitional read commands.
 

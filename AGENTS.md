@@ -6,7 +6,7 @@ Vocabulary: Pnyx is the app, a **Hydra** holds its tasks (always say Hydra, neve
 
 ## Build and test
 
-Node 22.13 or newer (for the built-in `node:sqlite`; `pnpm deslop` needs 22.18), pnpm (the version is pinned in `package.json`) and, for the tests, PostgreSQL 15 or newer (`brew install postgresql@17`) and Google Chrome.
+Node 22.13 or newer (for the built-in `node:sqlite`; `pnpm deslop` needs 22.18), pnpm (the version is pinned in `package.json`) and, for the browser tests, Google Chrome.
 
 ```sh
 pnpm install
@@ -20,9 +20,9 @@ For owner-facing trials in this repository, use an isolated `PNYX_HOME` and port
 
 Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
 
-Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, Herdr, tmux or any real terminal: each test file gets a scratch home, its own copy of a migrated database and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.
+Node runs the source directly through its type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests run on Vitest and never touch the real `~/.pnyx`, Herdr, tmux or any real terminal: each test file gets a scratch home, native log files and random ports, and fixtures live in `tests/setup/fixtures/`. `docs/testing.md` describes the suite.
 
-Every change to behaviour adds or updates tests for it; instruction-only and behaviour-preserving changes need none. Integration tests go in `tests/<area>.test.ts`, run through real `pnyx` commands and the page's data calls against a scratch home and Postgres, with tricky edge cases in the same file. Shared setup goes in `tests/setup/`. A test must survive a rename or refactor that keeps behaviour; write no duplicate, cosmetic or snapshot tests. A bug fix starts with a test that reproduces the bug, and the PR shows that each new test of new or changed behaviour fails without its change.
+Every change to behaviour adds or updates tests for it; instruction-only and behaviour-preserving changes need none. Integration tests go in `tests/<area>.test.ts`, run through real `pnyx` commands and the page's data calls against a scratch home, with tricky edge cases in the same file. Shared setup goes in `tests/setup/`. A test must survive a rename or refactor that keeps behaviour; write no duplicate, cosmetic or snapshot tests. A bug fix starts with a test that reproduces the bug, and the PR shows that each new test of new or changed behaviour fails without its change.
 
 ## Layout
 
@@ -31,8 +31,8 @@ One folder per feature. Code for a feature lives in its folder. Inside a feature
 | Folder | Holds |
 |---|---|
 | `src/cli/` | the `pnyx` entry, its help and version |
-| `src/app/` | the app shell that composes the features: event log, Postgres rows and the writer, the closed event unions and the pure reducer, the CLI registry, and the server and host, with the resumed home socket |
-| `src/store/` | storage primitives: private folders, durable writes, lock files, the Postgres connection, spool files, the event envelope, event ids and `HydraError`; the Postgres tables (`schema.sql`) and native file-store primitives |
+| `src/app/` | the app shell that composes the features: native event logs, in-memory state and the writer, the closed event unions and the pure reducer, the CLI registry, and the server and host, with the resumed home socket |
+| `src/store/` | storage primitives: private folders, durable writes, spool files, native log headers, snapshots, event ids and `HydraError` |
 | `src/tasks/` | tasks, cards and columns, questions, holds and dependencies, reminders and retention; delivery (links, outcomes, landing and merges) in `src/tasks/delivery/` |
 | `src/workers/` | dispatch, launch and sessions, the Claude and Codex providers, replies, steering, permissions, the queue and spend; compaction in `src/workers/compaction/` |
 | `src/hydra/` | Hydra's identity and configuration, wakes, stalls and review, its session and commands, transcripts and the catalog, mentions and attachments |
@@ -63,8 +63,8 @@ CodeRabbit is the on-request challenger before merge, replacing a separate agent
 ## Design rules
 
 - Pnyx is a view plus a reply queue over existing tools. Pnyx runs the agents it is asked to start; Hydra still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server inside the Pnyx server, which stops them when it stops and resumes a turn it cut from the saved session when it starts again; a start can instead go through the Hydra's own command, and Pnyx never watches over those.
-- The server (`pnyx serve`) is the only writer of Hydra state, and `pnyx` is its client: every command except `serve`, `setup` and help runs in the server. Pnyx's own data lives in Postgres (`src/store/schema.sql`), one database per Pnyx home. Decisions and owner words append to the `events` table. Derived observations update memory and the current rows without adding history events. The server keeps each Hydra in memory; each command commits its events and the rows they changed in one transaction, which moves the Hydra's `seq` only from the value the command started at.
-- The reducer is pure and deterministic: no I/O, clock or randomness inside it. Applying the same changes to the same starting state gives the same Hydra. Restart loads the current rows, which include observations omitted from history.
+- The server (`pnyx serve`) is the only writer of Hydra state, and `pnyx` is its client: every command except `serve`, `setup` and help runs in the server. Pnyx keeps state in memory and saves decisions to `hydra.log` and per-task `task.log` files through one ordered queue. Acknowledgements follow durable file writes. Snapshots cache folded state and byte positions; task folders determine Hydra membership. Derived observations stay in memory and are rebuilt from native agent files after restart.
+- The reducer is pure and deterministic: no I/O, clock or randomness inside it. Applying the same changes to the same starting state gives the same Hydra. Restart loads a snapshot and each log tail, then rereads native agent observations.
 - No AI model calls or model tokens anywhere in the Hydra's logic. Oracle searches tasks, events and notes with a derived SQLite index, never agent transcripts. Queries catch up only unread events; no index work runs in the background. The server's only token is a local per-install auth token for writes. The browser reads Hydra state, shared settings, agent activity, conversation pages and command receipts through one authenticated WebSocket. Reconnect resumes retained home changes by epoch and sequence, with a fresh snapshot when the cursor is unavailable.
 - Hooks are fast and always exit 0, and they never wait on a network call, browser or model. They print nothing, except the session-start hook, which prints a short summary of the Hydra's open work for the session's project.
 - GitHub pull request state comes from `gh-axi`.
@@ -72,4 +72,4 @@ CodeRabbit is the on-request challenger before merge, replacing a separate agent
 
 ## Runtime data
 
-A Pnyx home's data is in its Postgres database: `pnyx` for `~/.pnyx`, and a name derived from the path for any other `PNYX_HOME`. Each Hydra's folder, `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set), holds the spool, `oracle.db` (the derived Oracle cache), the `harvest.json` transcript cursors, and `agent/`, the hosted Hydra's folder, whose contract and skills Pnyx rewrites before each Hydra turn. An `events.jsonl` from before Postgres is imported in one transaction when the server first serves its Hydra and stays as a backup. Nothing at runtime writes inside the repository.
+A Pnyx home is `~/.pnyx`, or `$PNYX_HOME` when set. Each `hydras/<hydra>/` holds `hydra.log`, `snapshot.json`, `tasks/<task>/task.log`, the task's `worker.log` and derived `brief.md`, `oracle.db` (a derived search index), transcript cursors, spool files and `agent/`. Copies live under the home’s `copies/`; stable worker runtime files live under `runtime/tasks/<task>/`. Moving a task renames its folder while preserving its captured report path. This release starts fresh in an empty home and does not import or delete existing installations. Nothing at runtime writes inside the repository.
