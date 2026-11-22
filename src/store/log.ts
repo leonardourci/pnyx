@@ -167,7 +167,9 @@ export function readLog({
   const invalidEnd = through && (!validLogPosition({ position: through })
     || after.bytes > through.bytes || after.n > through.n)
 
-  if (!validLogPosition({ position: after }) || limit < 1 || invalidEnd) {
+  const validLimit = limit === Infinity || (Number.isSafeInteger(limit) && limit > 0)
+
+  if (!validLogPosition({ position: after }) || !validLimit || invalidEnd) {
     throw positionError({ path })
   }
 

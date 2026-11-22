@@ -215,6 +215,7 @@ else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fres
 
 export interface PnyxOptions {
   compactionDelay?: number
+  queueDelay?: number
   codexConfig?: Record<string, unknown>
   upgradeRoot?: string
   restart?(): void | Promise<void>
@@ -225,6 +226,7 @@ export type Pnyx = Awaited<ReturnType<typeof startPnyx>>
 // Starts the server once for a test file; it stops when the file ends.
 export async function startPnyx({
   compactionDelay,
+  queueDelay,
   codexConfig,
   upgradeRoot,
   restart,
@@ -246,18 +248,20 @@ export async function startPnyx({
   // Kept across stops, so an open page reconnects to the server that replaces this one.
   let port: number | undefined
 
-  const start = async ({ queueDelay }: { queueDelay?: number } = {}) => {
+  const start = async ({
+    queueDelay: resumedQueueDelay = queueDelay,
+  }: { queueDelay?: number } = {}) => {
     server = await startServer({
       port,
       query: claude.query,
       spawnCodex: codex.spawnCodex,
       wakeDelay: 50,
-      queueDelay,
       // Retries wait longer than a test file, so only the owner's messages try a failed start again.
       retryDelays: [600_000],
       followDelay: 100,
       recoveryPause: 100,
       compactionDelay,
+      queueDelay: resumedQueueDelay,
       upgradeRoot: upgradeRoot ?? join(
         root,
         'no-upgrade-folder',

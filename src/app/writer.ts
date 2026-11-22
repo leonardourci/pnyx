@@ -222,7 +222,6 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             event,
             before,
             after,
-            receipt,
           }) => {
             if (event.type === 'session.observed' || event.type === 'card.pushed') {
               const agent = sessionFields({
@@ -249,7 +248,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               }
             }
 
-            if (receipt && event.type === 'hydra.operation' && event.data.kind === 'inscribe') {
+            if (event.type === 'hydra.operation' && event.data.kind === 'inscribe') {
               add({
                 scope: HYDRA_CARD,
                 fact: nativeInscribe({
@@ -713,7 +712,6 @@ export function eventWriter({
   const writer: Writer = {
     dir,
     observe({ observation }) {
-      // Observation-only ordering advances last for this daemon epoch.
       state = draft({
         state,
         change: ({ state }) => applyObservation({
