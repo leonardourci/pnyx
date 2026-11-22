@@ -27,7 +27,6 @@ interface TaskHandoff {
 }
 
 export interface TaskSessionOwner extends LiveSessionScope {
-  changed(): void
   requireMovable({ task }: { task: string }): void
   suspendTask({ card }: { card: Card }): TaskHandoff
   adoptTask({
@@ -360,8 +359,5 @@ export function prepareTaskRuntimeMove({
       from,
       to,
     })
-
-    source.changed()
-    target.changed()
   }
 }

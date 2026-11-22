@@ -189,7 +189,6 @@ export interface Host {
     details?: string
   }): Promise<Record<string, unknown>>
   reconcile({ state }: { state: HydraState }): Promise<void>
-  // Ends a task's idle live session before the task moves to another Hydra; reports busy while it starts or is mid-turn.
   release({
     task,
     permanent,

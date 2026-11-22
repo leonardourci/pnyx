@@ -1708,7 +1708,6 @@ export function createHost({
 
   const taskOwner: TaskSessionOwner = {
     ...sessionScope,
-    changed,
     retire,
     requireMovable({ task }) {
       const entry = [...live.values()].find(entry => entry.task === task)

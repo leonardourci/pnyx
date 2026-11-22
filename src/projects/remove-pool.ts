@@ -179,7 +179,9 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       })
     }
 
-    for (const field of listed.out.split('\0')) {
+    for (const record of listed.out.split('\0\0')) {
+      const [field, ...details] = record.split('\0')
+
       if (!field.startsWith('worktree ')) {
         continue
       }
@@ -212,16 +214,11 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       }))
 
       if (insideRoot && (insideFolder || !existsSync(path)) && !survives) {
-        const branch = await git({
-          cwd: path,
-          args: [
-            'branch',
-            '--show-current',
-          ],
-        })
-        const released = releasedCopyOwner({
+        const branchPrefix = 'branch refs/heads/'
+        const branch = details.find(detail => detail.startsWith(branchPrefix))?.slice(branchPrefix.length)
+        const released = branch === undefined ? undefined : releasedCopyOwner({
           path: canonical,
-          branch: branch.out,
+          branch,
         })
 
         if (released && released.hydraId !== hydraId) {
