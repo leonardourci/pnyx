@@ -1,14 +1,14 @@
 import { collectingNotices, commandNotices, inform } from './command-notices.ts'
-import { applyObservation, observationKey, observationStatement, type SourceObservation } from '#tasks/observations.ts'
+import { applyObservation, type SourceObservation } from '#tasks/observations.ts'
 import type { Output } from './cli-support.ts'
-import { transactionReceipt, transactionStatement } from './transactions.ts'
+import { transactionReceipt } from './transactions.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
 import { requireHydra, writableHydra, reloadHydra } from './store.ts'
-import { query, storable, type QueryTimings } from '#store/postgres.ts'
-import { privateDir } from '#store/storage.ts'
-import { hydraDir } from './home-migration.ts'
+import { nativeHome, bindNativeTask, type NativeHeld } from './native-home.ts'
+import { nativeChanges, nativeDecision, nativeFact, nativeInscribe, nativeSessionSource, nativeJson, nativeReferences, nativeId, projectNative, reduceNative, type NativeFact, type NativeState } from './native-state.ts'
+import { taskRuntimeDir } from '#store/paths.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
 import { agentActor } from '#hydra/hydra.ts'
 import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/leases.ts'
@@ -16,18 +16,18 @@ import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
 import { replayOwned } from './reducer.ts'
-import { preimage, type PreimageObserver, type Touched } from './preimage.ts'
+import { draft } from './draft.ts'
 import { reconcileAsks, retireableReviewQuestions } from '#tasks/delivery/merge-questions.ts'
 import { lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
-import { eventStatements, rowChanges, type SavedRows } from './rows.ts'
 import { log } from './diagnostics.ts'
-import { rememberFirstEvent } from './hydra-summary.ts'
 import { durableEvent } from './event-policy.ts'
 import { enqueueSteering } from '#workers/inbox.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { sessionFields } from '#workers/session-facts.ts'
+import { sessionId } from '#workers/session-attachments.ts'
 
 const RECENT_CHANGES = 50_000
-
 const MESSAGE_EVENTS = new Set<string>([
   'card.replied',
   'task.steering.queued',
@@ -38,7 +38,6 @@ export interface Writer {
   readonly state: HydraState
   readonly dir: string
   observe({ observation }: { observation: SourceObservation }): void
-  // Work outside Postgres, such as removing an ingested spool file, that must happen only once the write commits.
   afterCommit({ run }: { run(): void }): void
   append({
     event,
@@ -49,33 +48,6 @@ export interface Writer {
     effects?: boolean
     receipt?: boolean
   }): void
-}
-
-// Tests set this, so every write in the suite proves that comparing every row finds nothing the touched rows missed.
-const CHECK_ROWS = 'PNYX_CHECK_ROWS'
-
-function checkTouched({
-  hydraId,
-  state,
-  saved,
-}: {
-  hydraId: string
-  state: HydraState
-  saved: SavedRows
-}): void {
-  if (!process.env[CHECK_ROWS]) {
-    return
-  }
-
-  const missed = rowChanges({
-    hydraId,
-    state,
-    saved,
-  }).statements
-
-  if (missed.length) {
-    throw new Error(`a write changed rows it did not mark: ${missed.map(statement => statement.text.split('\n')[0]).join('; ')}`)
-  }
 }
 
 interface WriterOptions<T> {
@@ -97,6 +69,19 @@ interface WriterOptions<T> {
   }): T
 }
 
+interface Stage {
+  id: string
+  held: NativeHeld
+  initial: HydraState
+  writer: Writer
+  pending: HydraEvent[]
+  committed: (() => void)[]
+  facts: Map<string, NativeFact[]>
+  incoming: Map<string, NativeState>
+  outgoing: Map<string, NativeState>
+  projections: Map<string, NativeState>
+}
+
 export function withWriter<T>({ fn }: WriterOptions<T> & { transaction?: undefined }): Promise<T>
 export function withWriter({ fn }: WriterOptions<Output> & {
   transaction: {
@@ -105,308 +90,603 @@ export function withWriter({ fn }: WriterOptions<Output> & {
   }
 }): Promise<Output>
 
-// One command's write: its events and the rows they changed commit in one Postgres transaction, which moves the
-// Hydra's seq only from the value this write started at. The state in memory changes as the events apply; a write
-// that throws or fails to commit reads the Hydra back from its committed rows.
-export async function withWriter<T>({
-  hydraId,
-  fn,
-  create = false,
-  removal = false,
-  also = [],
-  transaction,
-  migrate = true,
-}: WriterOptions<T>): Promise<T | Output> {
-  if (!create) {
-    requireHydra({ hydraId })
-  }
+export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Output> {
+  const home = nativeHome()
 
-  const live = writableHydra({
-    hydraId,
-    migrate,
-  })
-
-  if (transaction) {
-    const previous = transactionReceipt({
-      hydraId,
-      ...transaction,
-      eventIds: live.state.eventIds,
-    })
-
-    if (previous) {
-      return previous
-    }
-  }
-
-  const stages = [
-    ...new Set([
-      hydraId,
-      ...also,
-    ]),
-  ].sort().map(id => {
-    if (id !== hydraId) {
-      requireHydra({ hydraId: id })
-    }
-
-    const held = id === hydraId ? live : writableHydra({
-      hydraId: id,
-      migrate,
-    })
-
-    if (held.state.config?.removing && !removal) {
-      throw new HydraError({
-        message: `Hydra removal is pending: ${id}`,
-        code: 'CONFLICT',
-      })
-    }
-
-    if (held.state.config?.removed) {
-      throw new HydraError({
-        message: `Hydra was removed: ${id}`,
-        code: 'NOT_FOUND',
-      })
-    }
-
-    privateDir({
-      dir: hydraDir({
-        hydraId: id,
-        migrate,
-      }),
-    })
-    const pending: HydraEvent[] = []
-    const receipts: HydraEvent[] = []
-    const committed: (() => void)[] = []
-    const observations = new Map<string, SourceObservation>()
-    const touched: Touched = {
-      cards: new Set(),
-      fields: new Set(),
-    }
-    const writer = eventWriter({
-      state: held.state,
-      owned: true,
-      dir: held.dir,
-      hydraId: id,
-      transaction: id === hydraId ? transaction?.id : undefined,
-      touched,
-      committed,
-      onAppend: ({
-        event,
-        receipt,
-      }) => {
-        pending.push(event)
-
-        if (receipt && !durableEvent({ event })) {
-          receipts.push(event)
-        }
-      },
-      onObserve: ({ observation }) => observations.set(
-        observationKey(observation),
-        observation,
-      ),
-    })
-
-    return {
-      id,
-      held,
-      writer,
-      pending,
-      receipts,
-      observations,
-      committed,
-      touched,
-      from: held.state.seq,
-    }
-  })
-  const writers = new Map(stages.map(stage => [
-    stage.id,
-    stage.writer,
-  ]))
-  const primary = writers.get(hydraId)!
-  let result: T
-  const started = performance.now()
-
-  try {
-    for (const stage of stages) {
-      if (migrate) {
-        retireReviewQuestions({ writer: stage.writer })
-      }
-
-      const migrated = migrate ? migrateColumns({
-        state: stage.writer.state,
-        meta: {
-          at: new Date().toISOString(),
-          actor: 'pnyx',
-        },
-      }) : { skipped: 'unchanged' }
-
-      if ('event' in migrated) {
-        stage.writer.append({ event: migrated.event })
-      }
-    }
-
-    result = fn({
-      writer: primary,
-      writers,
-    })
-
-    const changes = stages.filter(stage => stage.pending.length).map(stage => {
-      const rows = rowChanges({
-        hydraId: stage.id,
-        state: stage.held.state,
-        saved: stage.held.saved,
-        touched: stage.from === 0 ? undefined : stage.touched,
-      })
-      checkTouched({
-        hydraId: stage.id,
-        state: stage.held.state,
-        saved: rows.next,
-      })
-
-      return {
-        stage,
-        rows,
-      }
-    })
-    const statements = changes.flatMap(({
-      stage,
-      rows,
-    }) => [
-      ...eventStatements({
-        hydraId: stage.id,
-        from: stage.from,
-        to: stage.held.state.seq,
-        events: stage.pending.filter(event => durableEvent({ event })),
-      }),
-      ...rows.statements,
-    ])
-
-    for (const stage of stages) {
-      if (stage.receipts.length) {
-        statements.push({
-          text: `insert into observation_receipts (hydra_id, id, seq, at)
-            select $1, id, seq, at from json_to_recordset($2::json) as receipt(id text, seq bigint, at text)`,
-          values: [
-            stage.id,
-            JSON.stringify(stage.receipts.map(({
-              id,
-              seq,
-              at,
-            }) => ({
-              id,
-              seq,
-              at,
-            }))),
-          ],
-        })
-      }
-
-      for (const observation of stage.observations.values()) {
-        statements.push(observationStatement({
-          hydraId: stage.id,
-          observation,
-        }))
-      }
-    }
-
-    if (transaction && changes.length) {
-      statements.push(transactionStatement({
+  return home.run({
+    fn: async () => {
+      const {
         hydraId,
-        ...transaction,
-        receipt: result as Output,
-      }))
-    }
+        fn,
+        create = false,
+        removal = false,
+        also = [],
+        transaction,
+        migrate = true,
+      } = options
 
-    let timings: QueryTimings | undefined
+      if (!create) {
+        requireHydra({ hydraId })
+      }
 
-    if (statements.length) {
-      query({
-        timed: ({ timings: measured }) => {
-          timings = measured
-        },
-        transaction: true,
-        statements,
-      })
-    }
+      await home.ensure({ hydra: hydraId })
+      const initial = writableHydra({ hydraId })
 
-    for (const {
-      stage,
-      rows,
-    } of changes) {
-      log({
-        operation: 'events.write',
-        connectionWaitMs: timings?.connectionWaitMs,
-        commitMs: timings?.commitMs,
-        name: stage.pending.at(-1)!.type,
-        ms: performance.now() - started,
-        hydraId: stage.id,
-        eventSeq: stage.held.state.seq,
-        count: stage.pending.length,
-      })
-      stage.held.saved = rows.next
-      stage.held.committed = stage.held.state.seq
-      stage.held.pending = stage.held.pending.concat(stage.pending)
-      const observations = stage.pending.filter(event => !durableEvent({ event }))
-      const recent = stage.held.changes.concat(observations)
-      stage.held.changes = recent.slice(-RECENT_CHANGES)
-
-      if (stage.from === 0) {
-        rememberFirstEvent({
-          hydraId: stage.id,
-          event: stage.pending[0]!,
+      if (transaction) {
+        const previous = transactionReceipt({
+          hydraId,
+          ...transaction,
+          eventIds: initial.state.eventIds,
         })
-      }
-    }
-  } catch (error) {
-    for (const stage of stages) {
-      if (stage.pending.length || stage.observations.size) {
-        reloadHydra({ hydraId: stage.id })
-      }
-    }
 
-    throw error
-  }
+        if (previous) {
+          return previous
+        }
+      }
 
-  for (const stage of stages) {
-    for (const run of stage.committed) {
+      const stages: Stage[] = [
+        ...new Set([
+          hydraId,
+          ...also,
+        ]),
+      ].sort().map(id => {
+        requireHydra({ hydraId: id })
+        const held = writableHydra({ hydraId: id })
+
+        if (held.state.config?.removing && !removal) {
+          throw new HydraError({
+            code: 'CONFLICT',
+            message: `Hydra removal is pending: ${id}`,
+          })
+        }
+
+        if (held.state.config?.removed) {
+          throw new HydraError({
+            code: 'NOT_FOUND',
+            message: `Hydra was removed: ${id}`,
+          })
+        }
+
+        const stage: Omit<Stage, 'writer'> = {
+          id,
+          held,
+          initial: held.state,
+          pending: [],
+          committed: [],
+          facts: new Map(),
+          incoming: new Map(),
+          outgoing: new Map(),
+          projections: new Map(),
+        }
+
+        const basis = ({ scope }: { scope: string }): NativeState => {
+          let current = stage.projections.get(scope)
+
+          if (!current) {
+            current = home.files.value({
+              hydra: id,
+              task: scope === HYDRA_CARD ? undefined : scope,
+            })?.state ?? {}
+            stage.projections.set(
+              scope,
+              current,
+            )
+          }
+
+          return current
+        }
+
+        const add = ({
+          scope,
+          fact,
+        }: {
+          scope: string
+          fact: NativeFact
+        }) => {
+          const facts = stage.facts.get(scope) ?? []
+          facts.push(fact)
+          stage.facts.set(
+            scope,
+            facts,
+          )
+          stage.projections.set(
+            scope,
+            reduceNative({
+              state: structuredClone(basis({ scope })),
+              entry: {
+                ...fact,
+                n: 0,
+              },
+              id: scope,
+            }),
+          )
+        }
+
+        const writer = eventWriter({
+          state: held.state,
+          dir: held.dir,
+          hydraId: id,
+          transaction: id === hydraId ? transaction?.id : undefined,
+          committed: stage.committed,
+          onAppend: ({ event }) => {
+            home.position({
+              hydra: id,
+              scope: event.cardId.startsWith('$') || event.type.startsWith('hydra.') || event.type.startsWith('board.') ? id : event.cardId,
+              id: event.id,
+              seq: event.seq,
+            })
+            stage.pending.push(event)
+          },
+          onApplied: ({
+            event,
+            before,
+            after,
+            receipt,
+          }) => {
+            if (event.type === 'session.observed' || event.type === 'card.pushed') {
+              const agent = sessionFields({
+                event,
+                state: after,
+              })?.agent
+              const session = agent && after.sessions?.[sessionId({ agent })]
+
+              if (session && session.agent.host !== 'pnyx') {
+                const owner = session.taskId ?? session.originCardId
+                const scope = after.cards[owner] ? owner : HYDRA_CARD
+                const source = nativeSessionSource({
+                  session,
+                  previous: basis({ scope }).sessions?.[session.id],
+                  event,
+                })
+
+                if (source) {
+                  add({
+                    scope,
+                    fact: source,
+                  })
+                }
+              }
+            }
+
+            if (receipt && event.type === 'hydra.operation' && event.data.kind === 'inscribe') {
+              add({
+                scope: HYDRA_CARD,
+                fact: nativeInscribe({
+                  event,
+                  ids: home.references({ hydra: id }),
+                  basis: basis({ scope: HYDRA_CARD }),
+                  beforeSeq: before.seq,
+                }),
+              })
+
+              return
+            }
+
+            if (!durableEvent({ event }) || event.type === 'apply.recorded') {
+              return
+            }
+
+            const metadata = nativeFact({
+              event,
+              before,
+              after,
+              ids: home.references({ hydra: id }),
+              basis: basis({ scope: HYDRA_CARD }),
+            })
+            const scoped = before.cards[event.cardId] ?? after.cards[event.cardId]
+            const hydraEvent = event.type.startsWith('hydra.') || event.type.startsWith('board.')
+            || event.cardId === HYDRA_CARD || !scoped
+
+            if (metadata.change?.length || hydraEvent) {
+              if (!hydraEvent) {
+                delete metadata.event
+                metadata.t = 'config'
+                metadata.id = `native-metadata:${event.id}`
+              }
+
+              add({
+                scope: HYDRA_CARD,
+                fact: metadata,
+              })
+            }
+
+            if (event.type === 'task.moved-out') {
+              stage.outgoing.set(
+                event.cardId,
+                projectNative({
+                  state: before,
+                  task: event.cardId,
+                  ids: home.references({ hydra: id }),
+                }),
+              )
+            }
+
+            if (event.type === 'task.moved-in') {
+              stage.incoming.set(
+                event.cardId,
+                projectNative({
+                  state: after,
+                  task: event.cardId,
+                  ids: home.references({ hydra: id }),
+                }),
+              )
+              stage.projections.set(
+                event.cardId,
+                stage.incoming.get(event.cardId)!,
+              )
+            }
+
+            const tasks = new Set<string>()
+
+            for (const task of new Set([
+              ...Object.keys(before.cards),
+              ...Object.keys(after.cards),
+            ])) {
+              if (before.cards[task] !== after.cards[task]) {
+                tasks.add(task)
+              }
+            }
+
+            for (const key of new Set([
+              ...Object.keys(before.sessions ?? {}),
+              ...Object.keys(after.sessions ?? {}),
+            ])) {
+              const prior = before.sessions?.[key]
+              const next = after.sessions?.[key]
+
+              if (prior !== next) {
+                for (const session of [
+                  prior,
+                  next,
+                ]) {
+                  const task = session?.taskId ?? session?.originCardId
+
+                  if (task) {
+                    tasks.add(task)
+                  }
+                }
+              }
+            }
+
+            if (scoped && event.cardId !== HYDRA_CARD) {
+              tasks.add(event.cardId)
+            }
+
+            tasks.delete(HYDRA_CARD)
+
+            for (const task of tasks) {
+              if (task === event.cardId && (event.type === 'task.moved-in' || event.type === 'task.moved-out')) {
+                continue
+              }
+
+              const issue = home.files.positions({ hydra: id })?.tasks.get(task)?.issue
+
+              if (issue) {
+                if (event.cardId === task) {
+                  throw issue
+                }
+
+                continue
+              }
+
+              const fact = nativeFact({
+                event,
+                before,
+                after,
+                task,
+                ids: home.references({ hydra: id }),
+                basis: basis({ scope: task }),
+              })
+              const fresh = !home.files.locateTask({ task }) && !stage.facts.has(task)
+
+              if (fresh) {
+                fact.t = 'created'
+                fact.change = nativeChanges({
+                  before: {},
+                  after: projectNative({
+                    state: after,
+                    task,
+                    ids: home.references({ hydra: id }),
+                  }),
+                })
+              }
+
+              if (fact.change?.length || task === event.cardId) {
+                add({
+                  scope: task,
+                  fact,
+                })
+              }
+            }
+          },
+        })
+
+        return {
+          ...stage,
+          writer,
+        }
+      })
+      const writers = new Map(stages.map(stage => [
+        stage.id,
+        stage.writer,
+      ]))
+      const primary = writers.get(hydraId)!
+      let result: T
+      let attemptedWrite = false
+
       try {
-        run()
-      } catch (error) {
-        log({
-          level: 'error',
-          operation: 'events.after-commit',
-          hydraId: stage.id,
-          error,
+        for (const stage of stages) {
+          if (migrate) {
+            retireReviewQuestions({ writer: stage.writer })
+            const columns = migrateColumns({
+              state: stage.writer.state,
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'pnyx',
+              },
+            })
+
+            if ('event' in columns) {
+              stage.writer.append({ event: columns.event })
+            }
+          }
+        }
+
+        result = fn({
+          writer: primary,
+          writers,
         })
+        const moves = stages.flatMap(stage => stage.pending.flatMap(event => event.type === 'task.moved-in'
+          ? [
+            {
+              event,
+              stage,
+            },
+          ] : []))
+        const moving = new Map(moves.map(({
+          event,
+          stage,
+        }) => [
+          event.cardId,
+          stage.id,
+        ]))
+        const changes = stages.flatMap(stage => [...stage.facts].flatMap(([
+          scope,
+          facts,
+        ]) => {
+          if (moving.get(scope) === stage.id) {
+            return []
+          }
+
+          return [
+            {
+              hydra: stage.id,
+              task: scope === HYDRA_CARD ? undefined : scope,
+              create: scope !== HYDRA_CARD && !home.files.locateTask({ task: scope }),
+              facts,
+            },
+          ]
+        }))
+
+        if (changes.length) {
+          attemptedWrite = true
+          await home.files.change({ decide: () => changes })
+        }
+
+        for (const {
+          event,
+          stage,
+        } of moves) {
+          const source = stages.find(candidate => candidate.id === event.data.from)
+          const before = source?.outgoing.get(event.cardId)
+          const after = stage.incoming.get(event.cardId)
+
+          if (!before || !after) {
+            throw new HydraError({
+              code: 'INVALID_MOVE',
+              message: 'task move has no matching source and destination',
+            })
+          }
+
+          attemptedWrite = true
+          await home.files.moveTask({
+            from: event.data.from,
+            to: stage.id,
+            task: event.cardId,
+            id: event.id,
+            at: event.at,
+            by: 'daemon',
+            data: {
+              event: nativeDecision({
+                event,
+                ids: home.references({ hydra: stage.id }),
+              }),
+              key: before.card?.key ?? event.cardId,
+              change: nativeChanges({
+                before: source?.projections.get(event.cardId)
+                  ?? home.files.value({
+                    hydra: event.data.from,
+                    task: event.cardId,
+                  })?.state ?? {},
+                after: {
+                  ...source?.projections.get(event.cardId)
+                    ?? home.files.value({
+                      hydra: event.data.from,
+                      task: event.cardId,
+                    })?.state,
+                  ...after,
+                },
+              }),
+            },
+          })
+          const remaining = stage.facts.get(event.cardId)
+
+          if (remaining?.length) {
+            await home.files.changeTask({
+              hydra: stage.id,
+              task: event.cardId,
+              decide: () => remaining,
+            })
+          }
+        }
+
+        if (transaction) {
+          attemptedWrite = true
+          const value = nativeReferences({
+            value: nativeJson({ value: result as Output }),
+            ids: home.references({ hydra: hydraId }),
+            kind: 'receipt',
+          }) as Output
+          await home.files.changeHydra({
+            hydra: hydraId,
+            decide: () => [
+              {
+                t: 'config',
+                id: transaction.id,
+                at: primary.state.changedAt ?? new Date().toISOString(),
+                by: 'daemon',
+                receipt: {
+                  ...transaction,
+                  value,
+                },
+              },
+            ],
+          })
+        }
+
+        if (transaction) {
+          const receipts = home.receipts.get(hydraId) ?? new Map()
+          receipts.set(
+            transaction.id,
+            {
+              digest: transaction.digest,
+              value: nativeJson({ value: result as Output }),
+            },
+          )
+          home.receipts.set(
+            hydraId,
+            receipts,
+          )
+        }
+
+        for (const stage of stages) {
+          const state = stage.writer.state
+          const receiptChanged = transaction !== undefined && stage.id === hydraId
+          home.remember({
+            hydra: stage.id,
+            state,
+            events: stage.pending,
+            dirty: stage.facts.size > 0 || stage.incoming.size > 0 || receiptChanged,
+          })
+          const observations = stage.pending.filter(event => !durableEvent({ event }))
+          stage.held.changes = stage.held.changes.concat(observations).slice(-RECENT_CHANGES)
+
+          for (const [
+            task,
+            facts,
+          ] of stage.facts) {
+            if (task !== HYDRA_CARD && state.cards[task] && facts.length) {
+              bindNativeTask({
+                home: home.path,
+                hydra: stage.id,
+                card: state.cards[task]!,
+              })
+            }
+          }
+
+          for (const task of stage.incoming.keys()) {
+            bindNativeTask({
+              home: home.path,
+              hydra: stage.id,
+              card: state.cards[task]!,
+            })
+          }
+        }
+      } catch (error) {
+        for (const stage of stages) {
+          for (const event of stage.pending) {
+            const root = event.cardId.startsWith('$') || event.type.startsWith('hydra.') || event.type.startsWith('board.')
+            const holder = root ? undefined : home.files.locateTask({ task: event.cardId })
+            const scope = root ? stage.id : event.cardId
+            const accepted = home.files.has({
+              hydra: holder?.hydra ?? stage.id,
+              task: root ? undefined : event.cardId,
+              id: event.id,
+            })
+
+            if (!accepted) {
+              home.references({ hydra: stage.id }).delete(nativeId({
+                scope,
+                id: event.id,
+              }))
+            }
+          }
+
+          if (!attemptedWrite) {
+            continue
+          }
+
+          const pending = stage.held.pending
+          const changes = stage.held.changes
+          reloadHydra({ hydraId: stage.id })
+          stage.held.state.eventIds = {
+            ...stage.initial.eventIds,
+            ...stage.held.state.eventIds,
+          }
+          stage.held.state.seq = Math.max(
+            stage.initial.seq,
+            stage.held.state.seq,
+          )
+          stage.held.pending = pending
+          stage.held.changes = changes
+        }
+
+        if (attemptedWrite) {
+          home.restoreMoves()
+        }
+
+        throw error
       }
-    }
-  }
 
-  for (const stage of stages) {
-    if (stage.pending.length) {
-      stage.held.changed()
-    }
-  }
+      for (const stage of stages) {
+        for (const run of stage.committed) {
+          try {
+            run()
+          } catch (error) {
+            log({
+              level: 'error',
+              operation: 'events.after-commit',
+              hydraId: stage.id,
+              error,
+            })
+          }
+        }
+      }
 
-  return result
+      for (const stage of stages) {
+        if (stage.pending.length) {
+          stage.held.changed()
+        }
+      }
+
+      return result
+    },
+  })
 }
 
 export function eventWriter({
   state: initial,
-  owned = false,
   dir,
   hydraId,
   transaction,
-  touched,
   committed = [],
   onAppend,
-  onObserve,
+  onApplied,
 }: {
   state: HydraState
-  owned?: boolean
   dir: string
   hydraId: string
   transaction?: string
-  touched?: Touched
   committed?: (() => void)[]
   onAppend({
     event,
@@ -415,17 +695,29 @@ export function eventWriter({
     event: HydraEvent
     receipt?: boolean
   }): void
-  onObserve?({ observation }: { observation: SourceObservation }): void
+  onApplied?({
+    event,
+    before,
+    after,
+    receipt,
+  }: {
+    event: HydraEvent
+    before: HydraState
+    after: HydraState
+    receipt: boolean
+  }): void
 }): Writer {
-  const state = owned ? initial : structuredClone(initial)
-  const observers = new Set<PreimageObserver>()
+  let state = { ...initial }
+  let ownedIds: HydraState['eventIds'] | undefined
   const writer: Writer = {
     dir,
     observe({ observation }) {
-      onObserve?.({ observation })
-      applyObservation({
+      state = draft({
         state,
-        observation,
+        change: ({ state }) => applyObservation({
+          state,
+          observation,
+        }),
       })
       log({
         operation: 'card.observed',
@@ -446,7 +738,16 @@ export function eventWriter({
       effects = true,
       receipt = false,
     }) {
-      storable({ value: event })
+      if (event.type === 'task.created' && !event.data.workerLogDir) {
+        event = {
+          ...event,
+          data: {
+            ...event.data,
+            workerLogDir: taskRuntimeDir({ task: event.cardId }),
+          },
+        }
+      }
+
       // What a worker's transcript recorded is an observation, never another Hydra session's change, so a lease never refuses it.
       const harvested = event.actor === 'harvest'
       // A message to a task's agent is never refused for the routine helper's lease; it queues like any message.
@@ -499,13 +800,16 @@ export function eventWriter({
         })
       }
 
-      // The reducer skips an event it has already applied, so it is not sent again for the events table to refuse.
+      // The reducer skips a previously applied event before the writer can replay it.
       if (known) {
         return
       }
 
       if (event.seq !== state.seq + 1) {
-        throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
+        throw new HydraError({
+          code: 'INVALID_EVENT',
+          message: `append out of sequence: ${event.seq} after ${state.seq}`,
+        })
       }
 
       const knownLabels = new Set(state.labelColors?.map(entry => entry.label))
@@ -597,117 +901,117 @@ export function eventWriter({
         receipt,
       })
 
-      if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.source) {
-        onObserve?.({
-          observation: {
-            cardId: event.cardId,
-            source: event.data.source,
+      const before = state
+
+      if (!ownedIds) {
+        ownedIds = { ...state.eventIds }
+      }
+
+      state = draft({
+        state: {
+          ...state,
+          eventIds: ownedIds,
+        },
+        owned: [ownedIds],
+        change: ({ state }) => {
+          replayOwned({
+            state,
+            events: [event],
+          })
+        },
+      })
+      ownedIds = state.eventIds
+      onApplied?.({
+        event,
+        before,
+        after: state,
+        receipt,
+      })
+
+      if (!effects) {
+        return
+      }
+
+      if (event.type === 'task.brief' && event.data.before !== event.data.after && card?.agent) {
+        enqueueSteering({
+          writer,
+          ref: event.cardId,
+          id: `description:${event.id}`,
+          text: `Description updated:\n\n${event.data.after || '(Description cleared.)'}`,
+          source: event.actor,
+          meta: {
             at: event.at,
+            actor: event.actor,
           },
         })
       }
 
-      const {
-        before,
-        release,
-      } = preimage({
+      for (const question of reconcileAsks({
         state,
-        observers,
-        touched,
-        change: ({ state: draft }) => replayOwned({
-          state: draft,
-          events: [event],
-        }),
-      })
+        event,
+      })) {
+        // Earlier questions can append lifecycle events before the next closure.
+        writer.append({
+          event: {
+            ...question,
+            seq: state.seq + 1,
+          },
+        })
+      }
 
-      try {
-        if (!effects) {
-          return
-        }
+      switch (event.type) {
+        case 'task.edited':
+        case 'card.pushed':
+        case 'board.configured':
+        case 'card.linked':
+        case 'card.outcome':
+        case 'hydra.project':
+        case 'task.declared':
+        case 'task.landing':
+        case 'task.moved-in':
+        case 'task.moved-out':
+        case 'task.project':
+          if ((event.type === 'card.pushed' || event.type === 'task.edited')
+              && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
+            break
+          }
 
-        if (event.type === 'task.brief' && event.data.before !== event.data.after && card?.agent) {
-          enqueueSteering({
+          retireReviewQuestions({
             writer,
-            ref: event.cardId,
-            id: `description:${event.id}`,
-            text: `Description updated:\n\n${event.data.after || '(Description cleared.)'}`,
-            source: event.actor,
-            meta: {
-              at: event.at,
-              actor: event.actor,
-            },
+            at: event.at,
           })
-        }
+          break
+      }
 
-        for (const question of reconcileAsks({
+      // A task's explicit lifecycle change moves its card, as its own event in the same write.
+      for (const move of lifecycleMoves({
+        before,
+        state,
+        event,
+      })) {
+        const moved = decideMove({
           state,
-          event,
-        })) {
-          // Earlier questions can append lifecycle events before the next closure.
+          ref: move.cardId,
+          column: move.column,
+          meta: {
+            id: lifecycleMoveId({
+              event: event.id,
+              cardId: move.cardId,
+            }),
+            at: event.at,
+            actor: 'pnyx',
+            reason: move.reason,
+          },
+        })
+
+        if ('event' in moved) {
           writer.append({
             event: {
-              ...question,
-              seq: state.seq + 1,
+              ...moved.event,
+              derived: true,
             },
           })
         }
-
-        switch (event.type) {
-          case 'task.edited':
-          case 'card.pushed':
-          case 'board.configured':
-          case 'card.linked':
-          case 'card.outcome':
-          case 'hydra.project':
-          case 'task.declared':
-          case 'task.landing':
-          case 'task.moved-in':
-          case 'task.moved-out':
-          case 'task.project':
-            if ((event.type === 'card.pushed' || event.type === 'task.edited')
-              && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
-              break
-            }
-
-            retireReviewQuestions({
-              writer,
-              at: event.at,
-            })
-            break
-        }
-
-        // A task's explicit lifecycle change moves its card, as its own event in the same write.
-        for (const move of lifecycleMoves({
-          before,
-          state,
-          event,
-        })) {
-          const moved = decideMove({
-            state,
-            ref: move.cardId,
-            column: move.column,
-            meta: {
-              id: lifecycleMoveId({
-                event: event.id,
-                cardId: move.cardId,
-              }),
-              at: event.at,
-              actor: 'pnyx',
-              reason: move.reason,
-            },
-          })
-
-          if ('event' in moved) {
-            writer.append({
-              event: {
-                ...moved.event,
-                derived: true,
-              },
-            })
-          }
-        }
-      } finally {
-        release()
       }
     },
   }

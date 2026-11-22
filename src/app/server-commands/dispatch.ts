@@ -2,7 +2,6 @@ import { pageInterest, parsePage } from '#app/page-cli.ts'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
 import { HydraError } from '#store/errors.ts'
-import { nonblockingLocks } from '#store/storage.ts'
 import type { createHost } from '#app/host.ts'
 import type { HydraState } from '#app/model.ts'
 import { saveEventId, savedEvent, type SaveCommand } from '#app/save-receipts.ts'
@@ -83,13 +82,10 @@ export function createServerCommands({
   const runCommand = ({
     ws,
     message,
-  }: Parameters<typeof attemptCommand>[0]) => nonblockingLocks.run(
-    true,
-    () => attemptCommand({
-      ws,
-      message,
-    }),
-  )
+  }: Parameters<typeof attemptCommand>[0]) => attemptCommand({
+    ws,
+    message,
+  })
 
   const attemptCommand = async ({
     ws,
