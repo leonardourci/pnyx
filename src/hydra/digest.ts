@@ -463,10 +463,12 @@ function digestHash({ text }: { text: string }): string {
 function previousCheckpoint({
   text,
   hydraId,
+  epoch,
   through,
 }: {
   text?: string
   hydraId: string
+  epoch: string
   through: number
 }): {
   through: number
@@ -502,6 +504,10 @@ function previousCheckpoint({
   }
 
   if (!('hydra' in value) || value.hydra !== hydraId) {
+    return
+  }
+
+  if (!('epoch' in value) || value.epoch !== epoch) {
     return
   }
 
@@ -541,6 +547,7 @@ function previousCheckpoint({
 
 export function hydraDigest({
   hydraId,
+  epoch,
   state,
   owner,
   ownerWrite = owner,
@@ -553,6 +560,7 @@ export function hydraDigest({
   conditions = learningConditions({ states: { [hydraId]: state } }),
 }: {
   hydraId: string
+  epoch: string
   state: HydraState
   owner: Memory
   ownerWrite?: Memory
@@ -578,6 +586,7 @@ export function hydraDigest({
   })
   const checkpointBefore = previousCheckpoint({
     text: previousDigest,
+    epoch,
     hydraId,
     through: state.seq,
   })
@@ -659,6 +668,7 @@ export function hydraDigest({
     const encoded = Buffer.from(JSON.stringify({
       v: DIGEST_CHECKPOINT_VERSION,
       hydra: hydraId,
+      epoch,
       through: state.seq,
       parts: hashes,
     })).toString('base64url')
@@ -672,7 +682,7 @@ export function hydraDigest({
   const checkAfter = before?.through ?? state.seq
   const lines = [
     `<pnyx-digest hydra="${hydraId}" through="${state.seq}"${checkpoint}>`,
-    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx hydra check --after ${checkAfter} --hydra ${hydraId}\` lists what changed since.`,
+    `Hydra ${hydraId} ("${config.name}") as of event ${state.seq}. \`pnyx hydra check --after ${checkAfter} --epoch ${epoch} --hydra ${hydraId}\` lists what changed since.`,
   ]
 
   if (before) {

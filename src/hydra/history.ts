@@ -729,7 +729,8 @@ export function applyHistory({
     return
   }
 
-  const through = operation.through ?? previous?.through ?? operation.after ?? event.seq - 1
+  const boundary = event.type === 'session.compaction' ? event.seq : event.seq - 1
+  const through = operation.through ?? previous?.through ?? operation.after ?? boundary
   const milestone: HistoryMilestone = {
     ...previous,
     ...operation,

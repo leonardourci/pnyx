@@ -188,7 +188,7 @@ export async function hydraInscribe({
   const savedSeq = m.id ? state.eventIds[m.id] : undefined
   const saved = savedSeq === undefined ? undefined : readChanges({
     hydraId,
-    seqs: [savedSeq],
+    ids: [m.id!],
   })[0]
   const savedOperation = saved?.type === 'hydra.operation' && saved.data.kind === 'inscribe' ? saved.data.id : undefined
   const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')

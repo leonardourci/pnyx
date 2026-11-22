@@ -1,3 +1,4 @@
+import { nativeHome } from '#app/native-home.ts'
 import { projectsFor } from '#projects/read.ts'
 
 import { createDigestContext } from './digest-context.ts'
@@ -224,6 +225,7 @@ export function createHydraTurns({
 
     if (onlyTasks) {
       return hydraDigest({
+        epoch: nativeHome().epoch,
         hydraId,
         state,
         owner,
@@ -259,6 +261,7 @@ export function createHydraTurns({
     }
 
     return hydraDigest({
+      epoch: nativeHome().epoch,
       previousDigest,
       checkpointed,
       conditions: memoryConditions(),
@@ -853,6 +856,7 @@ export function createHydraTurns({
         const pendingNotes = contextState.contextNotes ?? []
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
         const context = contextNoteBlock({
+          epoch: nativeHome().epoch,
           notes,
           hydraId,
           state: contextState,

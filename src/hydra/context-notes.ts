@@ -307,10 +307,12 @@ export function contextReportStatus({
 export function contextNoteBlock({
   notes,
   hydraId,
+  epoch,
   state,
 }: {
   notes: ContextNote[]
   hydraId: string
+  epoch: string
   state: HydraState
 }): string {
   if (!notes.length) {
@@ -354,7 +356,7 @@ export function contextNoteBlock({
   const overflow = []
 
   if (firstReport) {
-    overflow.push(`${reports.length} more worker reports; read \`pnyx hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` and follow its \`through\` cursor when it offers another page.`)
+    overflow.push(`${reports.length} more worker reports; read \`pnyx hydra check --after ${firstReport.seq - 1} --epoch ${epoch} --hydra ${hydraId}\` and follow its \`through\` cursor when it offers another page.`)
   }
 
   const otherNotes = omitted.length - reports.length

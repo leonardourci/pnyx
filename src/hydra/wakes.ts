@@ -1,3 +1,4 @@
+import { nativeHome } from '#app/native-home.ts'
 import { WAKE_TURN, WAKE_HANDLED } from './wake-ids.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import type { HydraState } from '#app/model.ts'
@@ -150,9 +151,9 @@ export function wakeText({
   }
 
   if (pick && check) {
-    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+    lines.push(`Run \`pnyx hydra check --after ${after} --epoch ${nativeHome().epoch} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   } else if (check || overflow) {
-    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
+    lines.push(`Run \`pnyx hydra check --after ${after} --epoch ${nativeHome().epoch} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
   }
 
   if (reviewOverflow) {
@@ -410,7 +411,7 @@ export function findHydraTurnToResume({
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx hydra check --after ${lastFinishedTurnSeq} --epoch ${nativeHome().epoch} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
       ...ownerReads,
       decisionsText({
         state,
