@@ -1671,7 +1671,13 @@ test(
     })
     expect(await until({
       what: 'the reminder-only Hydra summary',
-      check: () => pnyx.home().hydras.find(summary => summary.id === id),
+      check: () => {
+        const summary = pnyx.home().hydras.find(summary => summary.id === id)
+
+        if (summary?.projects.length === 1) {
+          return summary
+        }
+      },
     })).toMatchObject({
       asks: 0,
       projects: [expect.objectContaining({ asks: 0 })],
