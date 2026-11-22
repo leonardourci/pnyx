@@ -7,9 +7,6 @@ import pg from 'pg'
 import { HydraError } from '#store/errors.ts'
 import { closePostgres, configuredUrl, homeDatabase, migrateSchema, query, useConfiguredDatabase, useDatabase } from '#store/postgres.ts'
 import { SCHEMA_VERSION } from '#store/schema.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import { hydraExists, importLegacy, loadHydra } from '#app/store.ts'
-import { recordExitCode } from '#app/request-context.ts'
 import type { Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { saveSettings, shownSettings } from '#settings/store.ts'
@@ -207,57 +204,6 @@ const ready = () => ({
   help: ['Run `pnyx setup check` to see what else is missing'],
 })
 
-// A load refuses a log an older Pnyx appended to since its import.
-function checkHydras(): Output {
-  const imported: string[] = []
-  const failed: {
-    hydra: string
-    error: string
-  }[] = []
-
-  for (const hydraId of hydraIds({ migrate: false })) {
-    try {
-      if (hydraExists({ hydraId })) {
-        loadHydra({
-          hydraId,
-          migrate: false,
-        })
-      } else if (importLegacy({
-        hydraId,
-        dir: hydraDir({
-          hydraId,
-          migrate: false,
-        }),
-        trial: true,
-      })) {
-        imported.push(hydraId)
-      }
-    } catch (error) {
-      if (!(error instanceof HydraError)) {
-        throw error
-      }
-
-      failed.push({
-        hydra: hydraId,
-        error: error.message,
-      })
-    }
-  }
-
-  const checked = { imported: imported.length ? imported : 'none: no Hydra waiting' }
-
-  if (!failed.length) {
-    return checked
-  }
-
-  recordExitCode({ code: 1 })
-
-  return {
-    ...checked,
-    failed,
-  }
-}
-
 // Homebrew installs postgresql@17 keg-only, so its pg_dump and pg_restore are not on PATH unless the owner put them
 // there; they are searched after PATH's own.
 function copyEnv(): NodeJS.ProcessEnv {
@@ -387,7 +333,6 @@ async function checkOnCopy({
     return {
       schema: version,
       migration: `checked on a copy: serve migrates schema ${version} to ${SCHEMA_VERSION} when it starts`,
-      ...checkHydras(),
     }
   } finally {
     rmSync(
@@ -406,7 +351,6 @@ async function checkOnCopy({
   }
 }
 
-// An upgrade stops before its restart when this fails.
 async function checkData(): Promise<Output> {
   requireReady({ found: server() })
   const database = targetDatabase()
@@ -428,7 +372,7 @@ async function checkData(): Promise<Output> {
     statements: [{ text: 'select max(version)::integer as version from schema_version' }],
   })
   const version = Number(versions?.[0]?.version)
-  const checked = version === SCHEMA_VERSION ? checkHydras() : await checkOnCopy({
+  const checked = version === SCHEMA_VERSION ? { schema: version } : await checkOnCopy({
     database,
     version,
   })
