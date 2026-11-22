@@ -5,7 +5,8 @@ import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
 import type { Query, SearchSnapshot } from './model.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { loadHydra } from '#app/store.ts'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { hydraFiles } from '#store/file-home.ts'
+import { taskRuntimeDir } from '#store/paths.ts'
 import { join } from 'node:path'
 import type { search } from './search.ts'
 import { HydraError } from '#store/errors.ts'
@@ -38,6 +39,8 @@ function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapsho
         })
       }
 
+      const state = loadHydra({ hydraId }).state
+
       const sources: SearchSnapshot['sources'] = [
         {
           key: `hydra:${hydraId}`,
@@ -66,11 +69,7 @@ function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapsho
           key: `task:${task}`,
           scope: task,
           path: join(
-            taskFiles({
-              home: home.path,
-              hydra: hydraId,
-              task,
-            }),
+            state.cards[task]?.workerLogDir ?? taskRuntimeDir({ task }),
             'task.log',
           ),
           position: stored.position,
@@ -79,7 +78,7 @@ function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapsho
       }
 
       return structuredClone({
-        state: loadHydra({ hydraId }).state,
+        state,
         positions: home.references({ hydra: hydraId }),
         sources,
       })
