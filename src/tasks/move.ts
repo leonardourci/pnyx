@@ -1,9 +1,9 @@
 import { inform } from '#app/command-notices.ts'
+import { prepareTaskRuntimeMove } from '#app/task-runtime.ts'
 import { applyDecision } from '#app/decision.ts'
 import { decideSession } from '#workers/sessions.ts'
 import { captureResult } from '#task-sources/sources.ts'
-import { join } from 'node:path'
-import { foldWorkerLog } from '#workers/worker-log.ts'
+import { foldWorkerLog, workerTaskDir } from '#workers/worker-log.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -26,7 +26,6 @@ import type { Column } from './columns-model.ts'
 import type { Card } from './model.ts'
 import { movedAway, type HydraMoveEvent, type MovedCard } from './move-state.ts'
 import { isManagedTask } from './select.ts'
-import { agentActivity } from '#workers/activity.ts'
 import { activeHelperBatches } from '#routine-helper/state.ts'
 
 const LIVE_SOURCE_STATES = new Set([
@@ -170,17 +169,6 @@ export function moveRefusal({
     return refuse({
       message: `Hydra ${to} already has a task with id or key ${card.id}`,
       help: `Run \`pnyx task show ${card.id} --hydra ${to}\``,
-    })
-  }
-
-  if (agentActivity({
-    card,
-    cards: source.cards,
-  }) === 'working') {
-    inform({
-      task: card.id,
-      reason: `Stopped ${card.id}'s mid-turn worker before moving; its saved session remains`,
-      clear: restoreRelationships,
     })
   }
 
@@ -557,11 +545,10 @@ export function stageTaskMove({
       }),
       card: {
         ...structuredClone(current),
-        workerLogDir: current.workerLogDir ?? join(
-          source.dir,
-          'tasks',
-          cardId,
-        ),
+        workerLogDir: workerTaskDir({
+          hydraId,
+          task: cardId,
+        }),
       },
       ...carried({
         hydraId,
@@ -570,6 +557,18 @@ export function stageTaskMove({
       }),
     },
   } satisfies HydraMoveEvent
+  const moveRuntime = prepareTaskRuntimeMove({
+    task: cardId,
+    from: hydraId,
+    to,
+  })
+
+  if (moveRuntime) {
+    source.afterCommit({
+      run: () => moveRuntime({ card: target.state.cards[cardId]! }),
+    })
+  }
+
   target.append({
     event,
     effects: false,
@@ -678,13 +677,18 @@ export async function moveTask({
     throw early
   }
 
-  await releaseWorker({
-    hydraId,
-    card,
-    actor: meta.actor,
-  })
+  if (!prepareTaskRuntimeMove({
+    task: card.id,
+    from: hydraId,
+    to,
+  })) {
+    await releaseWorker({
+      hydraId,
+      card,
+      actor: meta.actor,
+    })
+  }
 
-  // The release ran the source host; no turn can start before the move commits.
   return await withWriter({
     hydraId,
     also: [to],

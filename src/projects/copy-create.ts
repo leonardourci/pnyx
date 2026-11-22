@@ -1,12 +1,12 @@
 import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
-import { mkdirSync, realpathSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { lstatSync, mkdirSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
-import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, reusable, slots, take, unclaim } from './copy-pool.ts'
+import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopyOwner, requireUnlinkedCopyFolder, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import { runProcess } from '#app/run-process.ts'
@@ -103,7 +103,6 @@ async function landedSlotBranch({
   base?: string
   common: string
 }): Promise<string | undefined> {
-  const state = loadHydra({ hydraId }).state
   const branch = (await git({
     cwd: path,
     args: [
@@ -111,10 +110,12 @@ async function landedSlotBranch({
       '--show-current',
     ],
   })).out
-  const previous = Object.values(state.cards).find(owner => owner.copy?.path === path
-    && owner.copy.state === 'removed' && owner.copy.branch === branch)
+  const released = releasedCopyOwner({
+    path,
+    branch,
+  })
 
-  if (!previous?.copy) {
+  if (!released?.card.copy) {
     const slotCommon = await commonDir({ cwd: path })
 
     // Projects with the same folder name share slot names; another repository's slot is that project's to settle.
@@ -175,8 +176,8 @@ async function landedSlotBranch({
   }
 
   const check = await checkCopy({
-    card: previous,
-    copy: previous.copy,
+    card: released.card,
+    copy: released.card.copy,
   })
 
   if (!('reason' in check)) {
@@ -184,11 +185,12 @@ async function landedSlotBranch({
   }
 
   await withWriter({
-    hydraId,
+    hydraId: released.hydraId,
     fn: ({ writer }) => {
-      const current = writer.state.cards[previous.id]
+      const current = writer.state.cards[released.card.id]
 
-      if (current?.copy?.path !== path || current.copy.state !== 'removed') {
+      if (current?.copy?.state !== 'removed' || current.copy.branch !== branch
+        || canonical({ path: current.copy.path }) !== path) {
         return
       }
 
@@ -231,10 +233,13 @@ async function worktreeCopy({
   project: HydraProject
 }): Promise<TaskCopy> {
   await gitProject({ project })
+  const pool = copiesDir()
+  requireUnlinkedCopyFolder({ path: pool })
   mkdirSync(
-    copiesDir({ hydraId }),
+    pool,
     { recursive: true },
   )
+
   const {
     base,
     start,
@@ -274,14 +279,20 @@ async function worktreeCopy({
     branches,
   })
   const pooled = slots({
-    hydraId,
     project,
   })
   const previousPath = previous?.path
-  const candidates = previousPath && pooled.includes(previousPath)
+  const retainedEntry = previousPath ? lstatSync(
+    previousPath,
+    { throwIfNoEntry: false },
+  ) : undefined
+  const retainedPath = previousPath && retainedEntry?.isDirectory()
+    ? realpathSync(previousPath)
+    : undefined
+  const candidates = retainedPath
     ? [
-      previousPath,
-      ...pooled.filter(path => path !== previousPath),
+      retainedPath,
+      ...pooled.filter(path => path !== retainedPath),
     ]
     : pooled
   const common = await commonDir({ cwd: project.path })
@@ -338,6 +349,26 @@ async function worktreeCopy({
     let allocated = false
 
     try {
+      const repository = await git({
+        cwd: path,
+        args: [
+          'rev-parse',
+          '--path-format=absolute',
+          '--show-toplevel',
+          '--git-dir',
+        ],
+      })
+      const [
+        root,
+        gitDirectory,
+      ] = repository.out.split('\n')
+      const ownRoot = canonical({ path: root }) === path
+      const linked = canonical({ path: gitDirectory }) !== canonical({ path: common })
+
+      if (!repository.ok || !ownRoot || !linked) {
+        continue
+      }
+
       const slotBranch = await landedSlotBranch({
         hydraId,
         path,
@@ -386,6 +417,7 @@ async function worktreeCopy({
 
   const path = await freshSlot({
     hydraId,
+    task: card.id,
     project,
   })
   const checkoutArgs = exists ? [
@@ -568,6 +600,16 @@ export async function taskFolder({
 
   const live = liveCopy({ card })
 
+  if (live) {
+    const pool = copiesDir()
+
+    if (live.via === 'worktree' && dirname(live.path) === pool) {
+      requireUnlinkedCopyFolder({ path: pool })
+    }
+
+    requireUnlinkedCopyFolder({ path: live.path })
+  }
+
   if (live && live.project !== project.path) {
     inform({
       task: card.id,
@@ -673,7 +715,7 @@ export async function taskFolder({
       },
     })
   } finally {
-    if (!ready) {
+    if (!ready && copy.via === 'worktree') {
       unclaim({ path: copy.path })
     }
   }

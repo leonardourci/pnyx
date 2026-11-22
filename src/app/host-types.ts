@@ -1,5 +1,5 @@
 import type { Card } from '#tasks/model.ts'
-import type { AgentConfig, AgentSettings } from '#workers/model.ts'
+import type { AgentConfig, AgentSettings, AgentRef } from '#workers/model.ts'
 import type { AgentUsage, UsageReading, ModelOption, HostedSession } from '#workers/provider.ts'
 import type { DispatchChoice } from '#workers/dispatch.ts'
 import type { HydraState, HydraEvent } from './model.ts'
@@ -9,6 +9,7 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import type { RuntimeHealth } from '#diagnostics/health.ts'
+import type { TaskSessionOwner } from './task-runtime.ts'
 
 export type UsageInputs = {
   spend?: Record<string, import('#workers/task-spend.ts').TaskSpend>
@@ -188,7 +189,6 @@ export interface Host {
     details?: string
   }): Promise<Record<string, unknown>>
   reconcile({ state }: { state: HydraState }): Promise<void>
-  // Ends a task's idle live session before the task moves to another Hydra; reports busy while it starts or is mid-turn.
   release({
     task,
     permanent,
@@ -251,6 +251,8 @@ export interface Host {
 }
 
 export interface Live {
+  owner?: TaskSessionOwner
+  assignment?: Card & { agent: AgentRef }
   consumed?: Promise<void>
   input: ReturnType<typeof inbox>
   replies: ReturnType<typeof liveReplies>

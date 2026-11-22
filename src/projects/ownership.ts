@@ -1,4 +1,5 @@
 import { inform } from '#app/command-notices.ts'
+import { prepareTaskRuntimeMove } from '#app/task-runtime.ts'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -148,11 +149,17 @@ export async function keepProject({
     cards,
   } of sources) {
     for (const card of cards) {
-      await releaseWorker({
-        hydraId: id,
-        card,
-        actor: meta.actor,
-      })
+      if (!prepareTaskRuntimeMove({
+        task: card.id,
+        from: id,
+        to: hydraId,
+      })) {
+        await releaseWorker({
+          hydraId: id,
+          card,
+          actor: meta.actor,
+        })
+      }
     }
   }
 

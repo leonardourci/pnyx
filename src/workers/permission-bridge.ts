@@ -1,4 +1,5 @@
 import { inform } from '#app/command-notices.ts'
+import { permissionWaiters } from '#app/task-runtime.ts'
 import { requirePermissionApprover } from './worker-identity.ts'
 import { randomUUID } from 'node:crypto'
 import { permissionAnswer, permissionEvent } from './permission-rules.ts'
@@ -33,11 +34,7 @@ export function createPermissionBridge({
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
   note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
 }) {
-  const pending = new Map<string, {
-    card: string
-    entry: Live
-    finish({ result }: { result: PermissionDecision }): void
-  }>()
+  const pending = permissionWaiters()
 
   const expirePermission = ({
     writer,
@@ -79,11 +76,14 @@ export function createPermissionBridge({
     })
 
     // A stop records nothing about running turns; the next start expires what was left waiting, as after a crash.
-    if (closing()) {
+    const ownerClosing = waiting.entry.owner?.closing ?? closing
+
+    if (ownerClosing()) {
       return
     }
 
-    note({
+    const ownerNote = waiting.entry.owner?.note ?? note
+    ownerNote({
       fn: ({ writer }) => {
         const card = writer.state.cards[waiting.card]
         const request = card?.permissions?.find(p => p.id === id && p.status === 'pending')
@@ -402,6 +402,10 @@ export function createPermissionBridge({
       id,
       waiting,
     ] of pending) {
+      if (waiting.entry.owner && waiting.entry.owner.hydraId !== hydraId) {
+        continue
+      }
+
       const card = state.cards[waiting.card]
       const request = card?.permissions?.find(p => p.id === id)
 

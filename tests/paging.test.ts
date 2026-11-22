@@ -1,4 +1,5 @@
 import { beforeAll, expect, test } from 'vitest'
+import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Compaction } from '#workers/compaction/model.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
@@ -507,9 +508,9 @@ test(
         ],
       })
       await until({
-        what: 'the compaction to finish',
-        check: () => compactions({ hydra }).filter(operation => operation.state !== 'running')
-          .length > before,
+        what: 'the compaction to finish and Hydra to resume accepting messages',
+        check: () => compactions({ hydra }).filter(operation => operation.state === 'done').length > before
+          && !loadHydra({ hydraId: hydra.id }).state.hydraOperation,
       })
       compacted += 1
     }

@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { hydraRemoval, infoPath, processStart } from '#app/server-state.ts'
 import { spawn } from 'node:child_process'
 import { stopOldHost, trackChildren } from '#workers/children.ts'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pnyxHome } from '#store/storage.ts'
 import { beforeAll, expect, test } from 'vitest'
@@ -307,6 +307,50 @@ test(
       unrelatedFile,
       'keep this file',
     )
+    await shared.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'released-neighbor',
+        '--title',
+        'Released neighbor',
+        '--project',
+        folder,
+      ],
+    })
+    const foreignPool = (await shared.owner({
+      args: [
+        'task',
+        'start',
+        'released-neighbor',
+      ],
+    })).agent.folder as string
+    await shared.owner({
+      args: [
+        'task',
+        'copy',
+        'released-neighbor',
+        'remove',
+        '--safe',
+      ],
+    })
+    expect((await shared.owner({
+      args: [
+        'task',
+        'copy',
+        'released-neighbor',
+      ],
+    })).copy.state).toBe('removed')
+    await shared.owner({
+      args: [
+        'task',
+        'detach',
+        'released-neighbor',
+      ],
+    })
+    expect(existsSync(foreignPool)).toBe(true)
 
     const session = await caller.chat({ text: 'remove the other Hydra' })
     const unsafe = await caller.as({ session }).refused({
@@ -334,16 +378,82 @@ test(
       copy: pooled,
       project: folder,
     })
+    const parkedForeignPool = join(
+      process.env.TMPDIR!,
+      'parked-foreign-copy',
+    )
+    const normal = await pnyx.hydra()
+    await normal.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+        '--landing',
+        'branch',
+      ],
+    })
+    const foreignContents = readFileSync(
+      join(
+        foreignPool,
+        'source.txt',
+      ),
+      'utf8',
+    )
     await caller.owner({
       args: [
         'hydra',
         'remove',
-        target.id,
+        normal.id,
       ],
     })
+    expect(readFileSync(
+      join(
+        foreignPool,
+        'source.txt',
+      ),
+      'utf8',
+    )).toBe(foreignContents)
+    expect(git({
+      cwd: folder,
+      args: [
+        'worktree',
+        'list',
+        '--porcelain',
+      ],
+    })).toContain(foreignPool)
+    renameSync(
+      foreignPool,
+      parkedForeignPool,
+    )
+
+    try {
+      await caller.owner({
+        args: [
+          'hydra',
+          'remove',
+          target.id,
+        ],
+      })
+      expect(git({
+        cwd: folder,
+        args: [
+          'worktree',
+          'list',
+          '--porcelain',
+        ],
+      }))
+        .toContain('worktree ' + foreignPool)
+    } finally {
+      renameSync(
+        parkedForeignPool,
+        foreignPool,
+      )
+    }
+
     expect(existsSync(copy)).toBe(false)
     expect(existsSync(pooled)).toBe(false)
     expect(existsSync(neighbor)).toBe(true)
+    expect(existsSync(foreignPool)).toBe(true)
     expect(readFileSync(
       unrelatedFile,
       'utf8',

@@ -1,19 +1,24 @@
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { lstatSync, readdirSync, realpathSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { COPY_TIMEOUT_MS, commonDir, git, onBranch } from './git.ts'
+import { commonDir, git, onBranch } from './git.ts'
 import { checkCopy, removeCopy } from './copy-check.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import { pnyxHome } from '#store/storage.ts'
+import { canonical, within } from '#store/paths.ts'
+import { HydraError } from '#store/errors.ts'
 import { isFolder } from '#workers/folders.ts'
 
-// A claim older than the git steps it guards was left by a start that crashed.
-const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
+const claims = new Map<string, {
+  hydraId: string
+  task?: string
+}>()
 const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
@@ -54,34 +59,50 @@ export function recordedBranches({
   return [...branches]
 }
 
-export const copiesDir = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
-  'copies',
-)
+export function copiesDir(): string {
+  const home = resolve(pnyxHome())
 
-// Slots are named <project>-<n>, so one can pass from task to task.
+  return join(
+    canonical({ path: home }) ?? home,
+    'copies',
+  )
+}
+
+export function requireUnlinkedCopyFolder({ path }: { path: string }): void {
+  if (lstatSync(
+    path,
+    { throwIfNoEntry: false },
+  )?.isSymbolicLink()) {
+    throw new HydraError({
+      message: `Copies folder is a symbolic link: ${path}`,
+      code: 'CONFLICT',
+    })
+  }
+}
+
 export function slots({
-  hydraId,
   project,
 }: {
-  hydraId: string
   project: HydraProject
 }): string[] {
-  const dir = copiesDir({ hydraId })
+  const dir = copiesDir()
   const prefix = `${project.name}-`
+
+  requireUnlinkedCopyFolder({ path: dir })
 
   if (!isFolder({ path: dir })) {
     return []
   }
 
-  return readdirSync(dir)
-    .filter(name => name.startsWith(prefix) && /^\d+$/.test(name.slice(prefix.length)))
-    .map(name => join(
+  return readdirSync(
+    dir,
+    { withFileTypes: true },
+  )
+    .filter(entry => entry.isDirectory() && entry.name.startsWith(prefix) && /^\d+$/.test(entry.name.slice(prefix.length)))
+    .map(entry => join(
       dir,
-      name,
+      entry.name,
     ))
-    .filter(path => isFolder({ path }))
-    .map(path => realpathSync(path))
 }
 
 const runsIn = ({
@@ -91,7 +112,14 @@ const runsIn = ({
   state: HydraState
   path: string
 }) =>
-  Object.values(state.cards).some(c => c.sessionIds?.length && c.agent?.cwd === path)
+  Object.values(state.cards).some(card => {
+    const cwd = canonical({ path: card.agent?.cwd })
+
+    return card.sessionIds?.length && cwd !== undefined && within({
+      root: path,
+      path: cwd,
+    })
+  })
 
 const holds = ({
   state,
@@ -102,25 +130,54 @@ const holds = ({
   path: string
   except?: string
 }) =>
-  Object.values(state.cards).some(c => c.id !== except && liveCopy({ card: c })?.path === path)
+  Object.values(state.cards).some(card =>
+    card.id !== except && canonical({ path: liveCopy({ card })?.path }) === path)
 
 const idle = ({
-  state,
+  hydraId,
   path,
   except,
 }: {
-  state: HydraState
+  hydraId: string
   path: string
   except?: string
-}) =>
-  !runsIn({
+}) => hydraIds().every(id => {
+  const state = loadHydra({ hydraId: id }).state
+
+  return !runsIn({
     state,
     path,
   }) && !holds({
     state,
     path,
-    except,
+    except: id === hydraId ? except : undefined,
   })
+})
+
+export function releasedCopyOwner({
+  path,
+  branch,
+}: {
+  path: string
+  branch: string
+}): {
+  hydraId: string
+  card: Card
+} | undefined {
+  for (const hydraId of hydraIds()) {
+    const owner = Object.values(loadHydra({ hydraId }).state.cards).find(card =>
+      card.copy?.state === 'removed' && card.copy.branch === branch && canonical({ path: card.copy.path }) === path)
+
+    if (owner) {
+      return {
+        hydraId,
+        card: owner,
+      }
+    }
+  }
+
+  return undefined
+}
 
 // A clean checkout of this project whose commit some branch keeps, so moving it to another branch loses nothing.
 export async function reusable({
@@ -175,101 +232,77 @@ export const checkout = ({
       ],
     })
 
-function claimIsStale({ file }: { file: string }): boolean {
-  try {
-    const pid = Number(readFileSync(
-      file,
-      'utf8',
-    ))
-
-    if (!Number.isInteger(pid) || pid <= 0) {
-      return Date.now() - statSync(file).mtimeMs > CLAIM_STALE_MS
-    }
-
-    process.kill(
-      pid,
-      0,
-    )
-
-    return false
-  } catch (error) {
-    if (error instanceof Error && 'code' in error) {
-      if (error.code === 'ESRCH' || error.code === 'ENOENT') {
-        return true
-      }
-
-      if (error.code === 'EPERM') {
-        return false
-      }
-    }
-
-    throw error
-  }
-}
-
 async function claim({
   hydraId,
+  task,
   path,
   vacant = false,
 }: {
   hydraId: string
+  task?: string
   path: string
   vacant?: boolean
 }): Promise<boolean> {
   return await withWriter({
     hydraId,
-    fn: () => {
-      if (vacant && existsSync(path)) {
+    fn: ({ writer }) => {
+      requireUnlinkedCopyFolder({ path: copiesDir() })
+
+      const entry = lstatSync(
+        path,
+        { throwIfNoEntry: false },
+      )
+
+      const available = vacant ? entry === undefined : entry?.isDirectory()
+
+      if (!available || claims.has(path)) {
         return false
       }
 
-      let fd: number
-
-      try {
-        fd = openSync(
-          `${path}.claim`,
-          'wx',
-        )
-      } catch (error) {
-        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') {
-          throw error
-        }
-
-        if (!claimIsStale({ file: `${path}.claim` })) {
-          return false
-        }
-
-        rmSync(
-          `${path}.claim`,
-          { force: true },
-        )
-        fd = openSync(
-          `${path}.claim`,
-          'wx',
-        )
+      if (!idle({
+        hydraId,
+        path,
+        except: task,
+      })) {
+        return false
       }
 
-      try {
-        writeFileSync(
-          fd,
-          String(process.pid),
-        )
-      } finally {
-        closeSync(fd)
-      }
+      writer.afterCommit({
+        run: () => {
+          claims.set(
+            path,
+            {
+              hydraId,
+              task,
+            },
+          )
+        },
+      })
 
       return true
     },
   })
 }
 
-export const unclaim = ({ path }: { path: string }) => rmSync(
-  `${path}.claim`,
-  { force: true },
-)
+export function unclaim({ path }: { path: string }): void {
+  claims.delete(path)
+}
 
-// Claiming first means the idle check sees every record a competing start wrote before letting go.
-export async function take({
+export const reservedCopies = ({ hydraId }: { hydraId: string }): string[] =>
+  [...claims].filter(([
+    , owner,
+  ]) => owner.hydraId !== hydraId).map(([path]) => path)
+
+export const reservingTaskCopy = ({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}): boolean =>
+  [...claims.values()].some(owner => owner.hydraId === hydraId && owner.task === task)
+
+export function take({
   hydraId,
   card,
   path,
@@ -278,41 +311,33 @@ export async function take({
   card?: Card
   path: string
 }): Promise<boolean> {
-  if (!await claim({
+  return claim({
     hydraId,
+    task: card?.id,
     path,
-  })) {
-    return false
-  }
-
-  if (idle({
-    state: loadHydra({ hydraId }).state,
-    path,
-    except: card?.id,
-  })) {
-    return true
-  }
-
-  unclaim({ path })
-
-  return false
+  })
 }
 
 export async function freshSlot({
   hydraId,
+  task,
   project,
 }: {
   hydraId: string
+  task: string
   project: HydraProject
 }): Promise<string> {
+  const pool = copiesDir()
+
   for (let n = 1; ; n++) {
     const path = join(
-      copiesDir({ hydraId }),
+      pool,
       `${project.name}-${n}`,
     )
 
-    if (!existsSync(path) && await claim({
+    if (await claim({
       hydraId,
+      task,
       path,
       vacant: true,
     })) {
@@ -337,7 +362,6 @@ export async function staysInPool({
   const path = realpathSync(copy.path)
   const common = project && await commonDir({ cwd: project.path })
   const pooled = project ? slots({
-    hydraId,
     project,
   }) : []
 
@@ -352,7 +376,7 @@ export async function staysInPool({
 
   for (const slot of pooled) {
     if (slot !== path && idle({
-      state,
+      hydraId,
       path: slot,
     }) && await reusable({
       path: slot,
@@ -373,7 +397,6 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
 
   for (const project of projectsFor({ state }).filter(p => !p.detached)) {
     const pooled = slots({
-      hydraId,
       project,
     })
 
@@ -384,10 +407,7 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
     let kept = 0
     const common = await commonDir({ cwd: project.path })
 
-    for (const path of slots({
-      hydraId,
-      project,
-    })) {
+    for (const path of pooled) {
       if (!await take({
         hydraId,
         path,
@@ -396,7 +416,6 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
       }
 
       try {
-        const current = loadHydra({ hydraId }).state
         const branch = (await git({
           cwd: path,
           args: [
@@ -406,10 +425,12 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
             'HEAD',
           ],
         })).out
-        const owner = Object.values(current.cards).find(c => c.copy?.path === path
-          && c.copy.state === 'removed' && c.copy.project === project.path && c.copy.branch === branch)
+        const owner = releasedCopyOwner({
+          path,
+          branch,
+        })?.card
 
-        if (!owner?.copy || !await reusable({
+        if (!owner?.copy || owner.copy.project !== project.path || !await reusable({
           path,
           common,
         }) || 'reason' in await checkCopy({

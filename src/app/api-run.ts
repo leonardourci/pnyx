@@ -1,4 +1,6 @@
 import { Writable } from 'node:stream'
+import { taskHydra } from './task-runtime.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { runCli } from '#cli/run.ts'
@@ -69,6 +71,13 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
     env,
     stdin,
   } = request({ body })
+  const task = workerIdentity({ env })?.task
+  const owner = task && taskHydra({ task })
+
+  if (owner) {
+    env.PNYX_HYDRA = owner
+  }
+
   let stdout = ''
   const sink = new Writable({
     // eslint-disable-next-line pnyx/object-params -- Node's Writable owns the write signature.

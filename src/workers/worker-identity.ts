@@ -16,8 +16,13 @@ const taskOf = ({ actor }: { actor?: string }) =>
 // Whether a command line comes from a worker, and from which task. It reads every variable Pnyx sets for a worker
 // and the --actor of one Pnyx does not run. It guards against a worker's mistakes; one that rewrites its own
 // environment is not stopped.
-export function workerIdentity({ actor }: { actor?: string } = {}): WorkerIdentity | undefined {
-  const env = requestEnv()
+export function workerIdentity({
+  actor,
+  env = requestEnv(),
+}: {
+  actor?: string
+  env?: NodeJS.ProcessEnv
+} = {}): WorkerIdentity | undefined {
   const started = env.PNYX_TASK && env.PNYX_TASK !== HYDRA_CARD ? env.PNYX_TASK : undefined
   const task = taskOf({ actor: env.PNYX_ACTOR }) ?? started ?? taskOf({ actor })
   const claimed = [

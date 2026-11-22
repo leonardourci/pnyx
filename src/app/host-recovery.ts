@@ -28,6 +28,7 @@ import type { AgentRef } from '#workers/model.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { decideReply } from '#workers/reply-rules.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
+import { sweepTaskProcesses } from './task-runtime.ts'
 
 // Startup recovery after the server stopped: what each owner left running is ended, resumed or woken, in this order.
 export function createHostRecovery({
@@ -84,6 +85,10 @@ export function createHostRecovery({
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
     fenced = false
     fenced = await children.sweep()
+    fenced = await sweepTaskProcesses({
+      hydraId,
+      state: loadHydra({ hydraId }).state,
+    }) && fenced
     await upgrades.recover()
 
     if (fenced) {

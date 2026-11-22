@@ -56,9 +56,11 @@ export interface AgentSession {
   useTool?({
     tool,
     input,
+    signal,
   }: {
     tool: string
     input: Record<string, unknown>
+    signal?: AbortSignal
   }): Promise<PermissionResult | null>
 }
 
@@ -206,11 +208,12 @@ export function fakeClaude() {
       useTool: ({
         tool,
         input,
+        signal,
       }) => options.canUseTool!(
         tool,
         input,
         {
-          signal: new AbortController().signal,
+          signal: signal ?? new AbortController().signal,
           toolUseID: randomUUID(),
           requestId: randomUUID(),
         },
@@ -632,6 +635,11 @@ export function fakeClaude() {
 export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } = {}) {
   let refuseInterrupt = false
   let reusedSession: string | undefined
+  const starts = new Map<string, {
+    wait: Promise<void>
+    release(): void
+    entered: boolean
+  }>()
   const sessions: AgentSession[] = []
   const turns = plans()
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
@@ -790,6 +798,16 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         }
 
         const params = (message.params ?? {}) as Message
+
+        if (message.method === 'initialize' && env.PNYX_ACTOR) {
+          const held = starts.get(env.PNYX_ACTOR)
+
+          if (held) {
+            starts.delete(env.PNYX_ACTOR)
+            held.entered = true
+            await held.wait
+          }
+        }
 
         if (message.method === 'config/read') {
           send({
@@ -972,6 +990,26 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
   return {
     spawnCodex,
     sessions,
+    holdStart: ({ task }: { task: string }) => {
+      const {
+        promise: wait,
+        resolve: release,
+      } = Promise.withResolvers<void>()
+      const held = {
+        wait,
+        release,
+        entered: false,
+      }
+      starts.set(
+        `worker:${task}`,
+        held,
+      )
+
+      return {
+        release,
+        entered: () => held.entered,
+      }
+    },
     refuseNextInterrupt: () => {
       refuseInterrupt = true
     },

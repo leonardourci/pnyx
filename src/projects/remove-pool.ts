@@ -1,25 +1,11 @@
-import { existsSync, lstatSync, realpathSync, rmdirSync } from 'node:fs'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { existsSync, realpathSync, rmdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { within } from '#store/paths.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
-import { copiesDir } from './copy-pool.ts'
+import { copiesDir, releasedCopyOwner, requireUnlinkedCopyFolder, reservedCopies } from './copy-pool.ts'
 import { commonDir, git } from './git.ts'
-
-function within({
-  root,
-  path,
-}: {
-  root: string
-  path: string
-}): boolean {
-  const part = relative(
-    root,
-    path,
-  )
-
-  return !isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`)
-}
 
 const canonicalPath = ({ path }: { path: string }) =>
   existsSync(path) ? realpathSync(path) : resolve(path)
@@ -42,26 +28,18 @@ function overlaps({
 
 export function protectedCopiesFolder({
   hydraId,
-  root = copiesDir({ hydraId }),
+  root = copiesDir(),
   preserveSurvivors = true,
 }: {
   hydraId: string
   root?: string
   preserveSurvivors?: boolean
 }) {
-  if (lstatSync(
-    root,
-    { throwIfNoEntry: false },
-  )?.isSymbolicLink()) {
-    throw new HydraError({
-      message: `Copies folder is a symbolic link: ${root}`,
-      code: 'CONFLICT',
-    })
-  }
+  requireUnlinkedCopyFolder({ path: root })
 
   const folder = canonicalPath({ path: root })
 
-  const survivors: string[] = []
+  const survivors = reservedCopies({ hydraId }).map(path => canonicalPath({ path }))
 
   for (const id of hydraIds()) {
     const current = loadHydra({ hydraId: id }).state
@@ -74,8 +52,15 @@ export function protectedCopiesFolder({
     ]
 
     if (id !== hydraId) {
-      survivors.push(...Object.values(current.cards).flatMap(card =>
-        card.copy && card.copy.state !== 'removed' ? [canonicalPath({ path: card.copy.path })] : []))
+      for (const card of Object.values(current.cards)) {
+        if (card.copy && card.copy.state !== 'removed') {
+          survivors.push(canonicalPath({ path: card.copy.path }))
+        }
+
+        if (card.sessionIds?.length && card.agent?.cwd) {
+          survivors.push(canonicalPath({ path: card.agent.cwd }))
+        }
+      }
     }
 
     for (const path of protectedPaths) {
@@ -172,7 +157,12 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       })
     }
 
-    for (const field of listed.out.split('\0')) {
+    for (const record of listed.out.split('\0\0')) {
+      const [
+        field,
+        ...details
+      ] = record.split('\0')
+
       if (!field.startsWith('worktree ')) {
         continue
       }
@@ -205,6 +195,18 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       }))
 
       if (insideRoot && (insideFolder || !existsSync(path)) && !survives) {
+        const branchPrefix = 'branch refs/heads/'
+        const branchField = details.find(detail => detail.startsWith(branchPrefix))
+        const branch = branchField?.slice(branchPrefix.length)
+        const released = branch === undefined ? undefined : releasedCopyOwner({
+          path: canonical,
+          branch,
+        })
+
+        if (released && released.hydraId !== hydraId) {
+          continue
+        }
+
         slots.push({
           project,
           path,

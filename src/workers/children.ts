@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { hydraDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
 import { pnyxHome, replaceFile } from '#store/storage.ts'
+import { taskRuntimeDir } from '#store/paths.ts'
 import { HydraError } from '#store/errors.ts'
 
 const OLD_HOST_STOP_MS = 30_000
@@ -131,8 +132,17 @@ const verified = ({
   localTime,
 }) === start
 
-export function trackChildren({ hydraId }: { hydraId: string }) {
-  const path = childrenPath({ hydraId })
+export function trackChildren({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task?: string
+}) {
+  const path = task ? join(
+    taskRuntimeDir({ task }),
+    'children.json',
+  ) : childrenPath({ hydraId })
   const live = new Map<number, Recorded>()
   const save = () => replaceFile({
     path,
