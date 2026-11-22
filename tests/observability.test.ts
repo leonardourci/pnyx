@@ -575,7 +575,7 @@ test(
 )
 
 test(
-  'stopping the resource sampler ignores an in-flight process listing',
+  'resource sampling preserves unopened logs and ignores an in-flight listing after stop',
   async () => {
     const hydra = await pnyx.hydra()
     const home = hydra.folder({ name: 'stopped-sampler' })
@@ -590,7 +590,8 @@ test(
       import { promisify } from 'node:util';
       import { syncBuiltinESMExports } from 'node:module';
       import { setImmediate } from 'node:timers/promises';
-      import { readFileSync } from 'node:fs';
+      import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+      import { join } from 'node:path';
       import { openLogs, closeLogs, log, flushLogs } from '#app/diagnostics.ts';
       import { logFiles } from '#diagnostics/log-files.ts';
 
@@ -608,6 +609,9 @@ test(
       // Import after installing the external process gate, before promisify captures execFile.
       const { startProcessLines } = await import('#diagnostics/process-line.ts');
       const { watchAgent } = await import('#workers/agent-memory.ts');
+      const unserved = join(process.env.PNYX_HOME, 'hydras', 'unserved');
+      mkdirSync(unserved, { recursive: true });
+      writeFileSync(join(unserved, 'hydra.log'), '{"n":1');
       openLogs();
       watchAgent({ child: process, ids: { hydraId: 'synthetic' } });
       const sampler = startProcessLines({ every: 1 });
@@ -636,6 +640,15 @@ test(
       result.status,
       result.stderr,
     ).toBe(0)
+    expect(readFileSync(
+      join(
+        home,
+        'hydras',
+        'unserved',
+        'hydra.log',
+      ),
+      'utf8',
+    )).toBe('{"n":1')
     expect(JSON.parse(result.stdout)).toEqual([
       expect.objectContaining({
         agents: [
