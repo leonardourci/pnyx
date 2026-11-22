@@ -56,9 +56,11 @@ export interface AgentSession {
   useTool?({
     tool,
     input,
+    signal,
   }: {
     tool: string
     input: Record<string, unknown>
+    signal?: AbortSignal
   }): Promise<PermissionResult | null>
 }
 
@@ -206,11 +208,12 @@ export function fakeClaude() {
       useTool: ({
         tool,
         input,
+        signal,
       }) => options.canUseTool!(
         tool,
         input,
         {
-          signal: new AbortController().signal,
+          signal: signal ?? new AbortController().signal,
           toolUseID: randomUUID(),
           requestId: randomUUID(),
         },

@@ -76,7 +76,9 @@ export function createPermissionBridge({
     })
 
     // A stop records nothing about running turns; the next start expires what was left waiting, as after a crash.
-    if (closing()) {
+    const ownerClosing = waiting.entry.owner?.closing ?? closing
+
+    if (ownerClosing()) {
       return
     }
 

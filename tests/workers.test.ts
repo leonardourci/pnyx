@@ -6,6 +6,7 @@ import { withWriter } from '#app/writer.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -828,8 +829,17 @@ test(
         stdio: 'ignore',
       },
     )
-    onTestFinished(() => {
+    onTestFinished(async () => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        return
+      }
+
+      const exited = once(
+        child,
+        'exit',
+      )
       child.kill('SIGKILL')
+      await exited
     })
     const children = taskChildren({
       hydraId: source.id,
@@ -844,6 +854,13 @@ test(
       tool: 'Bash',
       input: { command: 'echo moved-worker' },
     })
+    const cancellation = new AbortController()
+    onTestFinished(() => cancellation.abort())
+    const cancelled = worker.useTool!({
+      tool: 'Bash',
+      input: { command: 'echo provider-cancelled' },
+      signal: cancellation.signal,
+    })
 
     try {
       const request = await until({
@@ -855,7 +872,24 @@ test(
             task.id,
             '--full',
           ],
-        })).task.permissions?.find((request: { status: string }) => request.status === 'pending'),
+        })).task.permissions?.find((request: {
+          status: string
+          input: { command?: string }
+        }) => request.status === 'pending' && request.input.command === 'echo moved-worker'),
+      })
+      const pending = await until({
+        what: 'the source records the cancellable permission before moving',
+        check: async () => (await source.owner({
+          args: [
+            'task',
+            'show',
+            task.id,
+            '--full',
+          ],
+        })).task.permissions?.find((candidate: {
+          status: string
+          input: { command?: string }
+        }) => candidate.status === 'pending' && candidate.input.command === 'echo provider-cancelled'),
       })
       await source.owner({
         args: [
@@ -891,7 +925,8 @@ test(
       await until({
         what: 'the source Hydra unmounts without closing the moved worker',
         check: async () => {
-          const health = await fetch(`http://127.0.0.1:${pnyx.port()}/health`).then(response => response.json()) as { hydras: string[] }
+          const response = await fetch(`http://127.0.0.1:${pnyx.port()}/health`)
+          const health = await response.json() as { hydras: string[] }
 
           return !health.hydras.includes(source.id)
         },
@@ -899,7 +934,7 @@ test(
       expect(worker.closed).toBe(false)
       expect(child.exitCode).toBeNull()
       expect(child.signalCode).toBeNull()
-      const command = await fetch(
+      const response = await fetch(
         `http://127.0.0.1:${pnyx.port()}/api/run`,
         {
           method: 'POST',
@@ -922,7 +957,8 @@ test(
             },
           }),
         },
-      ).then(response => response.json()) as {
+      )
+      const command = await response.json() as {
         exitCode: number
         stdout: string
       }
@@ -951,6 +987,22 @@ test(
         ],
       })
       expect(await decision).toMatchObject({ behavior: 'allow' })
+      cancellation.abort()
+      expect(await cancelled).toMatchObject({ behavior: 'deny' })
+      await until({
+        what: 'provider cancellation expires the destination permission after source removal',
+        check: async () => (await target.owner({
+          args: [
+            'task',
+            'show',
+            task.id,
+            '--full',
+          ],
+        })).task.permissions?.some((candidate: {
+          id: string
+          status: string
+        }) => candidate.id === pending.id && candidate.status === 'expired'),
+      })
       await target.owner({
         args: [
           'reply',
@@ -1017,7 +1069,6 @@ test(
           ],
         }),
       ])
-      await Promise.allSettled([decision])
     }
   },
 )
