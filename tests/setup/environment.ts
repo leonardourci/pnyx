@@ -1,9 +1,7 @@
-// Each test file's process: a scratch home, a guarded PATH, no inherited identity and a copy of the migrated template.
+// Each test process gets a scratch home, a guarded PATH and no inherited identity.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import pg from 'pg'
-import { afterAll, inject } from 'vitest'
-import { closePostgres, homeDatabase } from '#store/postgres.ts'
+import { afterAll } from 'vitest'
 import { keepFiles } from './keep.ts'
 
 // Commands a test must never reach for real; each fails loudly instead.
@@ -75,8 +73,6 @@ Object.assign(
       'codex',
     ),
     PNYX_GH_AXI: 'false',
-    // Every write checks that the rows it saved are all the rows its change touched.
-    PNYX_CHECK_ROWS: '1',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(
       root,
@@ -84,7 +80,6 @@ Object.assign(
     ),
     LANG: 'en_US.UTF-8',
     NODE_OPTIONS: `--max-old-space-size=${CHILD_HEAP_MB}`,
-    ...inject('postgres'),
   },
 )
 
@@ -101,11 +96,6 @@ for (const key of [
   )
 }
 
-const admin = new pg.Client({ database: 'postgres' })
-await admin.connect()
-await admin.query(`create database ${pg.escapeIdentifier(homeDatabase())} template ${pg.escapeIdentifier(inject('template'))} strategy file_copy`)
-await admin.end()
-
 const removeRoot = () => rmSync(
   root,
   {
@@ -115,7 +105,8 @@ const removeRoot = () => rmSync(
 )
 
 afterAll(async () => {
-  await closePostgres()
+  const { closeNativeHomes } = await import('#app/native-home.ts')
+  await closeNativeHomes()
   keepFiles({ from: root })
   removeRoot()
   // The server's exit handler flushes its log into the home after this hook, so a listener added later removes it again.

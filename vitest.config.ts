@@ -20,13 +20,12 @@ export default defineConfig({
       // wrapper of its calls twice when one ends, killing the process (nodejs/node#66366); untiered calls never reach it.
       '--wasm-wrapper-tiering-budget=2147483647',
     ],
-    globalSetup: ['tests/setup/global-setup.ts'],
     setupFiles: ['tests/setup/environment.ts'],
     sequence: {
       // A file's own afterAll hooks, such as stopping its server, run before the setup file deletes its scratch home.
       hooks: 'stack',
       // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order. Files keep
-      // Vitest's order, longest first, since each runs alone in its own process, home and database.
+      // Vitest's order, longest first, since each runs alone in its own process and home.
       shuffle: {
         files: false,
         tests: true,
