@@ -446,12 +446,18 @@ describe(
           env: env(),
         })
         expect(wrongActor.status).not.toBe(0)
-        const otherWorker = await pnyx({
+        const actorOverride = await pnyx({
           args: [
             ...args,
             '--actor',
             `worker:${id}`,
           ],
+          env: env(),
+        })
+        expect(actorOverride.status).toBe(2)
+        expect(JSON.parse(actorOverride.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        const otherWorker = await pnyx({
+          args,
           env: {
             ...workerEnv,
             PNYX_ACTOR: 'worker:another-task',

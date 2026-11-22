@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync } from 'node:fs'
+import { lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HydraState } from '#app/model.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
@@ -25,10 +25,13 @@ export function compactionFiles({
     dir,
     'tasks',
   )
-  const directories = existsSync(tasks) ? readdirSync(
+  const directories = lstatSync(
     tasks,
-    { withFileTypes: true },
-  ).filter(entry => entry.isDirectory() && !entry.name.startsWith('.')) : []
+    { throwIfNoEntry: false },
+  )?.isDirectory() ? readdirSync(
+      tasks,
+      { withFileTypes: true },
+    ).filter(entry => entry.isDirectory() && !entry.name.startsWith('.')) : []
 
   return [
     ...new Set([

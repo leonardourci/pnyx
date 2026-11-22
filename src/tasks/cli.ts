@@ -821,7 +821,7 @@ export const card = guard({
     const help = [`Read tasks/${found.id}/task.log for its events`]
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
-      help.unshift(`Run \`pnyx card ${found.id} --full\` for the brief and every note in full`)
+      help.unshift(`Read tasks/${found.id}/task.log for the full brief and notes`)
     }
 
     return {

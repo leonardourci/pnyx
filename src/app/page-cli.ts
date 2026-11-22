@@ -111,7 +111,7 @@ function pageOutput({
     ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Hydra',
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
-      `Run \`pnyx page --full --hydra ${hydraId}\` for the server's whole page projection`,
+      `Use the UI to inspect the full Hydra ${hydraId}`,
       `Read hydra.log and tasks/<task>/task.log in Hydra ${hydraId}`,
     ],
   }
