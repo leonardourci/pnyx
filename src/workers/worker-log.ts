@@ -1,6 +1,7 @@
-import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
+import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadHydra } from '#app/store.ts'
+import { hydraDir } from '#app/home-migration.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
@@ -32,10 +33,37 @@ export function workerTaskDir({
   hydraId: string
   task: string
 }): string {
-  const dir = loadHydra({ hydraId }).state.cards[task]?.workerLogDir ?? taskRuntimeDir({ task })
+  const card = loadHydra({ hydraId }).state.cards[task]
+  const dir = reportDirectory({
+    hydraFolder: hydraDir({ hydraId }),
+    task,
+    recorded: card?.workerLogDir,
+  })
   privateDir({ dir })
 
   return dir
+}
+
+function reportDirectory({
+  hydraFolder,
+  task,
+  recorded,
+}: {
+  hydraFolder: string
+  task: string
+  recorded?: string
+}): string {
+  if (recorded) {
+    return recorded
+  }
+
+  const legacy = join(hydraFolder, 'tasks', task)
+
+  if (existsSync(legacy)) {
+    return legacy
+  }
+
+  return taskRuntimeDir({ task })
 }
 
 export function foldWorkerLog({
@@ -52,7 +80,11 @@ export function foldWorkerLog({
   }
 
   const path = join(
-    card.workerLogDir ?? taskRuntimeDir({ task }),
+    reportDirectory({
+      hydraFolder: writer.dir,
+      task,
+      recorded: card.workerLogDir,
+    }),
     'worker.log',
   )
   let fd: number

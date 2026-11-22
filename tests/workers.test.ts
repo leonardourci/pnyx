@@ -2829,6 +2829,60 @@ test(
 )
 
 test(
+  'an existing Hydra-local worker report is read after moving the task',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Keep the existing worker report',
+      ],
+    })
+    const task = created.card.id as string
+    const directory = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      source.id,
+      'tasks',
+      task,
+    )
+    const report = join(
+      directory,
+      'worker.log',
+    )
+    mkdirSync(
+      directory,
+      { recursive: true },
+    )
+    writeFileSync(
+      report,
+      'note: report written before upgrading\n',
+    )
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        task,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    appendFileSync(
+      report,
+      'note: report written after moving\n',
+    )
+    await until({
+      what: 'the destination reads the existing worker report',
+      check: async () => (await target.task({ key: task })).latest === 'report written after moving',
+    })
+  },
+)
+
+test(
   'worker log status and complete lines survive restarts',
   async () => {
     const hydra = await pnyx.hydra()

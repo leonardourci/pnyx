@@ -224,7 +224,7 @@ async function claim({
 }): Promise<boolean> {
   return await withWriter({
     hydraId,
-    fn: () => {
+    fn: ({ writer }) => {
       if (claims.has(path) || vacant && existsSync(path)) {
         return false
       }
@@ -237,13 +237,17 @@ async function claim({
         return false
       }
 
-      claims.set(
-        path,
-        {
-          hydraId,
-          task,
+      writer.afterCommit({
+        run: () => {
+          claims.set(
+            path,
+            {
+              hydraId,
+              task,
+            },
+          )
         },
-      )
+      })
 
       return true
     },

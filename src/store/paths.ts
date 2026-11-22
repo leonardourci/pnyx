@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 export function pnyxHome(): string {
   return process.env.PNYX_HOME || join(
@@ -9,7 +9,7 @@ export function pnyxHome(): string {
   )
 }
 
-export const taskRuntimeDir = ({ task }: { task: string }) => join(
+export const taskRuntimeDir = ({ task }: { task: string }) => resolve(
   pnyxHome(),
   'runtime',
   'tasks',
