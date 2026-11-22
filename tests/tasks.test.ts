@@ -2600,7 +2600,17 @@ test(
         'Include archived',
       ],
     })
-    expect((pnyx.home().hydras.find(summary => summary.id === hydra.id))).toMatchObject({
+    const summary = await until({
+      what: 'the grouped owner decision in the project summary',
+      check: () => {
+        const summary = pnyx.home().hydras.find(summary => summary.id === hydra.id)
+
+        if (summary?.projects.some(project => project.name === 'exports' && project.asks === 1)) {
+          return summary
+        }
+      },
+    })
+    expect(summary).toMatchObject({
       asks: 1,
       projects: expect.arrayContaining([
         expect.objectContaining({
