@@ -207,7 +207,7 @@ test(
 )
 
 test(
-  'the removed database setting is refused without publishing a home change',
+  'the home socket never exposes the database URL in snapshots or changes',
   async () => {
     const hydra = await pnyx.hydra()
     const page = await openHomePage({
@@ -217,7 +217,7 @@ test(
 
     try {
       const before = page.read().home.settings.revision
-      const rejected = await hydra.ownerRefused({
+      await hydra.owner({
         args: [
           'settings',
           'set',
@@ -225,8 +225,10 @@ test(
           JSON.stringify({postgresUrl: 'postgres://owner:PRIVATE-DATABASE-PASSWORD@localhost/private-database'}),
         ],
       })
-      expect(rejected.code).toBe('VALIDATION_ERROR')
-      expect(page.read().home.settings.revision).toBe(before)
+      await until({
+        what: 'the settings revision on the home socket',
+        check: () => page.read().home.settings.revision > before,
+      })
       expect(page.read().home.settings.settings).not.toHaveProperty('postgresUrl')
       expect(JSON.stringify(page.frames)).not.toContain('PRIVATE-DATABASE-PASSWORD')
       const snapshot = await openHomePage({
@@ -241,6 +243,14 @@ test(
         snapshot.close()
       }
     } finally {
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          '{"postgresUrl":""}',
+        ],
+      })
       page.close()
     }
   },
