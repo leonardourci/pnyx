@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, type Pnyx } from './setup/pnyx.ts'
@@ -147,5 +147,51 @@ test(
     })).toBe('outside-preserve')
     expect(lstatSync(linked).isSymbolicLink()).toBe(true)
     expect(lstatSync(dangling).isSymbolicLink()).toBe(true)
+
+    for (const action of [
+      'stop',
+      'detach',
+    ]) {
+      await hydra.owner({
+        args: [
+          'task',
+          action,
+          'linked-copy',
+        ],
+      })
+    }
+
+    const parkedPool = `${pool}-parked`
+    renameSync(
+      pool,
+      parkedPool,
+    )
+
+    try {
+      symlinkSync(
+        parkedPool,
+        pool,
+        'dir',
+      )
+      expect(await hydra.ownerRefused({
+        args: [
+          'task',
+          'start',
+          'linked-copy',
+        ],
+      })).toMatchObject({
+        code: 'CONFLICT',
+        error: expect.stringContaining('Copies folder is a symbolic link'),
+      })
+    } finally {
+      if (existsSync(pool)) {
+        unlinkSync(pool)
+      }
+
+      renameSync(
+        parkedPool,
+        pool,
+      )
+    }
   },
 )

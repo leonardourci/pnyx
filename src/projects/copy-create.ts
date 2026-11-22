@@ -2,7 +2,7 @@ import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { dirname, isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
@@ -601,6 +601,12 @@ export async function taskFolder({
   const live = liveCopy({ card })
 
   if (live) {
+    const pool = copiesDir()
+
+    if (live.via === 'worktree' && dirname(live.path) === pool) {
+      requireUnlinkedCopyFolder({ path: pool })
+    }
+
     requireUnlinkedCopyFolder({ path: live.path })
   }
 
