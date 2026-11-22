@@ -519,7 +519,7 @@ test(
 )
 
 test(
-  'completed native replies remain in history after observations leave the log and after restart',
+  'completed native replies with offset clocks remain in history after observations leave the log and after restart',
   async () => {
     const hydra = await pnyx.hydra()
     pnyx.claude.plan({
@@ -560,34 +560,39 @@ test(
           throw new Error('The native Hydra session is missing')
         }
 
-        applyDecision({
-          writer,
-          decision: decideSessionFacts({
-            state: writer.state,
-            fields: {
-              agent: native.agent,
-              activity: 'working',
-            },
-            meta: {
-              actor: 'pnyx',
-              at: '2099-01-01T00:00:04.999Z',
-            },
-          }),
-        })
-        applyDecision({
-          writer,
-          decision: decideSessionFacts({
-            state: writer.state,
-            fields: {
-              agent: native.agent,
-              activity: 'finished',
-            },
-            meta: {
-              actor: 'pnyx',
-              at: '2099-01-01T00:00:05.001Z',
-            },
-          }),
-        })
+        for (const reading of [
+          {
+            activity: 'working',
+            at: '2099-01-01T02:00:00.000+02:00',
+          },
+          {
+            activity: 'finished',
+            at: '2099-01-01T02:00:00.001+02:00',
+          },
+          {
+            activity: 'working',
+            at: '2099-01-01T00:00:04.999Z',
+          },
+          {
+            activity: 'finished',
+            at: '2099-01-01T00:00:05.001Z',
+          },
+        ] as const) {
+          applyDecision({
+            writer,
+            decision: decideSessionFacts({
+              state: writer.state,
+              fields: {
+                agent: native.agent,
+                activity: reading.activity,
+              },
+              meta: {
+                actor: 'pnyx',
+                at: reading.at,
+              },
+            }),
+          })
+        }
       },
     })
     const live = await hydra.owner({
@@ -599,6 +604,7 @@ test(
       ],
     })
     expect(live.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
+    expect(live.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
     const at = await hydra.owner({
       args: [
         'hydra',
@@ -618,6 +624,7 @@ test(
       ],
     })
     expect(restored.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
+    expect(restored.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
     const restoredAt = await hydra.owner({
       args: [
         'hydra',

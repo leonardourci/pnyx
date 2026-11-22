@@ -26,13 +26,17 @@ export function hydraIds({
   }
 
   return ids.filter(id => {
-    if (home?.files.positions({ hydra: id })?.issue) {
+    try {
+      const state = home ? home.read({ hydra: id }).state : readNativeHydra({ hydraId: id }).state
+
+      return !state.config?.removed
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+
       return true
     }
-
-    const state = home ? home.read({ hydra: id }).state : readNativeHydra({ hydraId: id }).state
-
-    return !state.config?.removed
   })
 }
 
