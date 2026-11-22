@@ -71,6 +71,7 @@ function workerHeader({
       hydraId,
       task: id,
     }),
+    'When an ID-only steering notice arrives, read the full instruction in these files, then use its supplied pnyx task ack action for each exact ID and assignment. Acknowledge only what you read; keep the same IDs on retries. A read receipt never means completed work or permission approval.',
     "Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under .agents/skills, .claude/skills and skills/. Follow them over generic habits, and use the project's skills for the jobs they cover.",
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking. Hosted tool permission requests still use the harness permission flow.',

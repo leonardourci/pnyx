@@ -8,6 +8,7 @@ pnyx setup --preview
 pnyx setup check
 pnyx debug health --hydra work --json
 pnyx board --hydra work
+pnyx task ack <task> <instruction-id> --session <session> --generation '<native-reference>' --hydra work
 pnyx task create --title "Fix the empty state" --brief "Implement and check the empty state" --project app --hydra work
 pnyx send --text "Review the open work" --hydra work
 pnyx send --task <task> --text "Also check mobile" --hydra work
@@ -19,6 +20,8 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 `send` addresses Hydra by default, or a task's worker with `--task`. Give `--text` or `--file <path|->`. Choose an `--idempotency-key` before the first attempt and reuse the same key and message if the receipt is lost. A queued receipt records acceptance for delivery.
 
 `answer` records an answer to a saved question and routes it to Hydra or the task's worker according to who asked. Hydra can identify an owner's answer using `--from-message <id>`.
+
+`task ack` is an acknowledgement-only action for the assigned worker, after it reads the full instruction in its task record. Pass one exact instruction ID and copy the session and native generation reference from the notice or record. The same ID and assignment can be retried after a lost reply or server restart. A different task, worker launch or assignment is refused. It records read receipt only; it does not complete work, approve permissions or infer that a terminal injection succeeded. Hosted native input confirmations continue to record their own receipts. ID-only retries remain ID-only.
 
 ## Migrate from pnyx-axi
 
