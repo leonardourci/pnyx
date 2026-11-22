@@ -1334,18 +1334,11 @@ test(
     const card = await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
-      return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
+      return { id: card.closest('[data-task]').dataset.task, expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
     console.log(JSON.stringify({ fields: { ...fields, ...reachability, titleGrows: fields.titleHeight > titleHeight }, card }));
   `,
     }))
-    await until({
-      what: 'the saved task',
-      check: () => Object.values(loadHydra({
-        hydraId: hydra.id,
-      }).state.cards).filter(card => card.title === title)
-        .map(card => ({ id: card.id })).length === 1,
-    })
     expect(result.fields).toMatchObject({
       titleFits: true,
       titleGrows: true,
@@ -1357,6 +1350,7 @@ test(
       multiLine: true,
     })
     expect(result.card).toEqual({
+      id: expect.any(String),
       expanded: 'false',
       column: 'ideas',
       title,
@@ -1364,10 +1358,7 @@ test(
       focusLabel: 'Fold Ideas',
     })
     const saved = await hydra.task({
-      key: Object.values(loadHydra({
-        hydraId: hydra.id,
-      }).state.cards).filter(card => card.title === title)
-        .map(card => ({ id: card.id }))[0]!.id as string,
+      key: result.card.id,
     })
     const initialDescription = await chrome({
       script: `
