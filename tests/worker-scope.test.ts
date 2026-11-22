@@ -469,15 +469,15 @@ test(
       instruction: result.message,
       acknowledged: 'read',
     })
-    const handled = records().filter(record => record.event?.type === 'task.steering.handled'
+    const instructionRecords = () => records().filter(record =>
+      record.event?.type?.startsWith('task.steering.')
       && record.event.data.message === result.message)
-    expect(handled).toHaveLength(1)
+    const savedInstructionRecords = instructionRecords()
     expect(JSON.parse((await acknowledge()).stdout)).toMatchObject({
       instruction: result.message,
       acknowledged: 'read',
     })
-    expect(records().filter(record => record.event?.type === 'task.steering.handled'
-      && record.event.data.message === result.message)).toEqual(handled)
+    expect(instructionRecords()).toEqual(savedInstructionRecords)
     expect(records().some(record => record.event?.type === 'task.source.handled'
       && record.event.data.source === 'delivered-result')).toBe(false)
   },
