@@ -115,12 +115,15 @@ test(
       what: 'the server applies Detailed logging',
       check: () => logMode() === 'detailed',
     })
-    await hydra.owner({
+    expect((await pnyxCommand({
       args: [
-        'task',
-        'list',
+        'board',
+        '--hydra',
+        hydra.id,
+        '--json',
       ],
-    })
+      env: process.env,
+    })).status).toBe(0)
     await hydra.owner({
       args: ['history'],
     })
@@ -268,7 +271,7 @@ test(
       }),
     ])
     const command = recorded.filter(line => line.operation === 'command.cli'
-      && line.name === 'task list' && line.hydraId === hydra.id).at(-1)
+      && line.name === 'board' && line.hydraId === hydra.id).at(-1)
     expect(command.requestId).toEqual(expect.any(String))
     expect(recorded).toContainEqual(expect.objectContaining({
       operation: 'http.request',
