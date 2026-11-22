@@ -17,4 +17,6 @@ Use `pnyx --help` for syntax. Pass your assigned `--hydra <id>` on actions.
 
 During the storage cutover, use `pnyx task list`, `task show <task> --full`, `task history <task>`, `hydra check`, `hydra digest`, `hydra messages` and `task inbox read <task>` for the records the current app serves. Read-only project, memory, dispatch and Oracle commands remain available. Use `--json` for structured reads; output has no next-step hints. Use the UI for configuration and task edits.
 
+`hydra check` returns `epoch` and `through`. Continue with `--after <through> --epoch <epoch>`; a nonzero cursor without the current epoch expires. After restart, read without `--after` for fresh state.
+
 Workers report through their assigned `worker.log` using `pnyx-report-progress`. A queued receipt is not proof of delivery. Reconcile the saved record before repeating a side effect.
