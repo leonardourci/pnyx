@@ -4,7 +4,7 @@ import { eventTime } from '#app/event-log.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
 import { failHydraInput } from '#hydra/received.ts'
-import { operationEvent } from '#hydra/operations.ts'
+import { createHydraOperations, operationEvent } from '#hydra/operations.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -3135,6 +3135,71 @@ test(
       text: 'held after the stop',
     })
     page.close()
+  },
+)
+
+test(
+  'a queued operation recap waits for a later operation and keeps the first stop boundary',
+  async () => {
+    const hydra = await pnyx.hydra()
+    let now = Date.now()
+    const firstSince = new Date(now).toISOString()
+    const recaps: {
+      id: string
+      text: string
+    }[] = []
+    const operations = createHydraOperations({
+      hydraId: hydra.id,
+      queuedHydra: new Set(),
+      at: () => new Date(now).toISOString(),
+      note: ({ fn }) => withWriter({
+        hydraId: hydra.id,
+        fn,
+      }),
+      armWake: () => {},
+      host: () => ({
+        hydra: async ({
+          id,
+          text,
+        }) => {
+          recaps.push({
+            id,
+            text,
+          })
+
+          return { state: 'queued' }
+        },
+      }),
+    })
+    await operations.startOperation({
+      id: 'first-review-operation',
+      kind: 'compaction',
+    })
+    operations.endOperation({
+      id: 'first-review-operation',
+      error: 'first operation failed',
+    })
+    await until({
+      what: 'the first recap to enter the turn queue',
+      check: () => recaps.length === 1,
+    })
+    now += 1
+    await operations.startOperation({
+      id: 'second-review-operation',
+      kind: 'compaction',
+    })
+    expect(operations.stoppedFor({ id: recaps[0]!.id })).toBe(true)
+    operations.endOperation({
+      id: 'second-review-operation',
+      error: 'second operation failed',
+    })
+    await until({
+      what: 'the final recap to enter the turn queue',
+      check: () => recaps.length === 2,
+    })
+    expect(recaps[1]!.text).toContain(`waited from ${firstSince}`)
+    expect(operations.stoppedFor({ id: recaps[0]!.id })).toBe(true)
+    expect(operations.stoppedFor({ id: recaps[1]!.id })).toBe(false)
   },
 )
 
