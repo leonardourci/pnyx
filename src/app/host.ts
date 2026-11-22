@@ -221,7 +221,7 @@ export function createHost({
     hydraId,
     streamed,
     usageChanged,
-    usages: taskUsages(),
+    usages: taskUsages({ hydraId }),
   })
 
   let closing = false

@@ -1,7 +1,7 @@
 import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
-import { mkdirSync, realpathSync } from 'node:fs'
+import { lstatSync, mkdirSync, realpathSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
@@ -233,10 +233,18 @@ async function worktreeCopy({
   project: HydraProject
 }): Promise<TaskCopy> {
   await gitProject({ project })
+  const pool = copiesDir()
   mkdirSync(
-    copiesDir(),
+    pool,
     { recursive: true },
   )
+
+  if (lstatSync(pool).isSymbolicLink()) {
+    throw new HydraError({
+      code: 'CONFLICT',
+      message: `Copies folder is a symbolic link: ${pool}`,
+    })
+  }
   const {
     base,
     start,

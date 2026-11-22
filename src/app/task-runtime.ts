@@ -67,7 +67,7 @@ interface HomeRuntime {
     children: ReturnType<typeof trackChildren>
   }>
   permissions: Map<string, PermissionWaiter>
-  usages: Map<string, Omit<HostedUsage, 'type'>>
+  usages: Map<string, Map<string, Omit<HostedUsage, 'type'>>>
 }
 
 const homes = new Map<string, HomeRuntime>()
@@ -117,6 +117,7 @@ export function registerTaskHost({ owner }: { owner: TaskSessionOwner }): () => 
   return () => {
     if (current.hosts.get(owner.hydraId) === owner) {
       current.hosts.delete(owner.hydraId)
+      current.usages.delete(owner.hydraId)
     }
 
     if (!current.hosts.size && homes.get(home) === current) {
@@ -169,7 +170,19 @@ export function untrackTaskSession({ entry }: { entry: Live }): void {
 
 export const permissionWaiters = (): Map<string, PermissionWaiter> => runtime().permissions
 
-export const taskUsages = (): Map<string, Omit<HostedUsage, 'type'>> => runtime().usages
+export function taskUsages({ hydraId }: { hydraId: string }): Map<string, Omit<HostedUsage, 'type'>> {
+  const { usages } = runtime()
+  const readings = usages.get(hydraId)
+
+  if (readings) {
+    return readings
+  }
+
+  const empty = new Map<string, Omit<HostedUsage, 'type'>>()
+  usages.set(hydraId, empty)
+
+  return empty
+}
 
 export function taskHydra({ task }: { task: string }): string | undefined {
   const current = runtime()
@@ -330,6 +343,18 @@ export function prepareTaskRuntimeMove({
   }
 
   return ({ card }) => {
+    const sourceUsage = current.usages.get(from)
+    const targetUsage = current.usages.get(to)
+
+    for (const session of card.sessionIds ?? []) {
+      const reading = sourceUsage?.get(session)
+
+      if (reading && targetUsage) {
+        targetUsage.set(session, reading)
+        sourceUsage?.delete(session)
+      }
+    }
+
     if (active && current.tasks.get(task) === active) {
       source.live.delete(active.key)
       target.live.set(
