@@ -28,6 +28,7 @@ export function requireCopyAvailable({
     task,
   })) {
     throw copySettlingRefusal({
+      hydraId,
       task,
       code: 'CONFLICT',
     })

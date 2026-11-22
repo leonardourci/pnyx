@@ -1,4 +1,5 @@
-import { recordContext } from '#hydra/file-context.ts'
+import { recordContext, recordFiles } from '#hydra/file-context.ts'
+import { compactionPermission, readCommand } from '#hydra/compaction-files.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { base } from '#app/command-meta.ts'
@@ -9,7 +10,7 @@ import { agentInput } from '#app/agent-input.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
@@ -474,6 +475,16 @@ export function createRoutineHelper({
           throw new Error('Helper turn was stopped')
         }
 
+        const paths = [
+          ...new Set(batch.tasks.flatMap(task => Object.values(recordFiles({
+            hydraId,
+            task,
+          })))),
+        ]
+          .filter(path => lstatSync(
+            path,
+            { throwIfNoEntry: false },
+          )?.isFile())
         const session = await provider({ harness: candidate.harness }).open({
           cwd,
           agent,
@@ -535,7 +546,7 @@ export function createRoutineHelper({
             state,
             tasks: batch.tasks,
           })
-          const text = `Use pnyx with --hydra ${hydraId}. ${recordContext({ hydraId })} Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}`
+          const text = `Use pnyx with --hydra ${hydraId}. ${recordContext({ hydraId })} Read-only commands for this grant: ${paths.map(path => readCommand({ path })).join('; ')}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}`
           yield agentInput({
             id: batch.id,
             text,
@@ -549,9 +560,13 @@ export function createRoutineHelper({
 
         for await (const event of active.run({
           input: input(),
-          permission: async () => ({
-            behavior: 'deny',
-            message: 'Leave this action to the main Hydra',
+          permission: async ({
+            tool,
+            input,
+          }) => compactionPermission({
+            tool,
+            input,
+            paths,
           }),
         })) {
           if (typeof event === 'object' && event.type === 'usage') {

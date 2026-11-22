@@ -22,16 +22,18 @@ interface Lease {
 export const isHelper = ({ actor }: { actor: string }) => actor.startsWith('helper:')
 
 export function copySettlingRefusal({
+  hydraId,
   task,
   code,
 }: {
+  hydraId: string
   task: string
   code: string
 }): HydraError {
   return new HydraError({
     message: `Task ${task} is settling its copy; try again when cleanup finishes`,
     code,
-    help: [`Read tasks/${task}/task.log for the copy's state`],
+    help: [`Read tasks/${task}/task.log in Hydra ${hydraId} for the copy's state`],
   })
 }
 
@@ -124,7 +126,12 @@ export function guardTaskLease({
     inform({
       task,
       reason: `Task is leased to ${lease?.actor ?? 'another Hydra session'}`,
-      clear: `Read tasks/${task}/task.log to inspect overlapping work`,
+      clear: `Read ${JSON.stringify(join(
+        dir,
+        'tasks',
+        task,
+        'task.log',
+      ))} to inspect overlapping work`,
     })
   }
 }
@@ -161,6 +168,7 @@ export function taskLease({
   if (lease && (lease.actor !== owner || copyHeld)) {
     if (actor.startsWith(COPY_LEASE_PREFIX) || lease.actor.startsWith(COPY_LEASE_PREFIX)) {
       throw copySettlingRefusal({
+        hydraId,
         task,
         code: 'TASK_LEASED',
       })
@@ -169,7 +177,12 @@ export function taskLease({
     inform({
       task,
       reason: `Task is also being handled by ${lease.actor}`,
-      clear: `Read tasks/${task}/task.log to inspect overlapping work`,
+      clear: `Read ${JSON.stringify(join(
+        dir,
+        'tasks',
+        task,
+        'task.log',
+      ))} to inspect overlapping work`,
     })
 
     owner = lease.actor
@@ -183,7 +196,7 @@ export function taskLease({
     inform({
       task,
       reason: 'Helper has no current task grant',
-      clear: `Read tasks/${task}/task.log to inspect the change`,
+      clear: `Read tasks/${task}/task.log in Hydra ${hydraId} to inspect the change`,
     })
   }
 
