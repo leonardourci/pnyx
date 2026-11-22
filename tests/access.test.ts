@@ -1,3 +1,4 @@
+import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -6,7 +7,7 @@ import { request } from 'node:http'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { localToken } from '#app/server-state.ts'
-import { openPage, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { openPage, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -442,49 +443,42 @@ test(
   'a saved command approval runs once without another confirmation or progress history',
   async () => {
     const id = 'legacy-approval'
-    const folder = join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      id,
-    )
-    mkdirSync(
-      folder,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        folder,
-        'events.jsonl',
-      ),
-      `${JSON.stringify({
-        v: 1,
-        seq: 1,
-        id: 'saved-proposal',
-        at: '2026-01-01T00:00:00Z',
-        actor: 'hydra',
-        cardId: '$hydra',
-        type: 'hydra.dispatch-proposed',
-        data: {
-          token: 'saved-command',
-          kind: 'command',
-          shared: false,
-          before: 'old-context',
-          value: JSON.stringify({
-            name: 'task',
-            args: [
-              'create',
-              '--no-start',
-              '--title',
-              'Saved command task',
-              '--key',
-              'saved-command-task',
-            ],
-            cwd: process.cwd(),
-          }),
-          summary: 'Create the saved task',
-        },
-      })}\n`,
-    )
+    await withWriter({
+      hydraId: id,
+      create: true,
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: 1,
+            id: 'saved-proposal',
+            at: '2026-01-01T00:00:00Z',
+            actor: 'hydra',
+            cardId: '$hydra',
+            type: 'hydra.dispatch-proposed',
+            data: {
+              token: 'saved-command',
+              kind: 'command',
+              shared: false,
+              before: 'old-context',
+              value: JSON.stringify({
+                name: 'task',
+                args: [
+                  'create',
+                  '--no-start',
+                  '--title',
+                  'Saved command task',
+                  '--key',
+                  'saved-command-task',
+                ],
+                cwd: process.cwd(),
+              }),
+              summary: 'Create the saved task',
+            },
+          },
+        })
+      },
+    })
     const hydra = await pnyx.hydra({
       id,
       create: false,
@@ -500,10 +494,10 @@ test(
     })
     expect(result.state).toBe('confirmed')
     expect(result.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('target changed') }))
-    const progress = rows<{ status: string }>({
-      text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress'",
-      values: [id],
-    })
+    const progress = readEvents({
+      hydraId: id,
+      types: ['hydra.dispatch-progress'],
+    }).map(event => ({ status: event.type === 'hydra.dispatch-progress' ? event.data.status : undefined }))
     expect(progress).toEqual([])
     expect((await hydra.task({ key: 'saved-command-task' })).title).toBe('Saved command task')
     expect(await hydra.owner({
@@ -522,51 +516,44 @@ test(
   'a saved non-removal approval keeps the child revision-conflict refusal code',
   async () => {
     const id = 'stale-command-approval'
-    const folder = join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      id,
-    )
-    mkdirSync(
-      folder,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        folder,
-        'events.jsonl',
-      ),
-      `${JSON.stringify({
-        v: 1,
-        seq: 1,
-        id: 'stale-proposal',
-        at: '2026-01-01T00:00:00Z',
-        actor: 'hydra',
-        cardId: '$hydra',
-        type: 'hydra.dispatch-proposed',
-        data: {
-          token: 'stale-command',
-          kind: 'command',
-          shared: false,
-          before: 'old-context',
-          value: JSON.stringify({
-            name: 'owner',
-            args: [
-              'memory',
-              'set',
-              '--key',
-              'preferences',
-              '--text',
-              'Stale replacement',
-              '--if-revision',
-              '0',
-            ],
-            cwd: process.cwd(),
-          }),
-          summary: 'Replace the owner preference',
-        },
-      })}\n`,
-    )
+    await withWriter({
+      hydraId: id,
+      create: true,
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: 1,
+            seq: 1,
+            id: 'stale-proposal',
+            at: '2026-01-01T00:00:00Z',
+            actor: 'hydra',
+            cardId: '$hydra',
+            type: 'hydra.dispatch-proposed',
+            data: {
+              token: 'stale-command',
+              kind: 'command',
+              shared: false,
+              before: 'old-context',
+              value: JSON.stringify({
+                name: 'owner',
+                args: [
+                  'memory',
+                  'set',
+                  '--key',
+                  'preferences',
+                  '--text',
+                  'Stale replacement',
+                  '--if-revision',
+                  '0',
+                ],
+                cwd: process.cwd(),
+              }),
+              summary: 'Replace the owner preference',
+            },
+          },
+        })
+      },
+    })
     const hydra = await pnyx.hydra({
       id,
       create: false,
@@ -597,10 +584,10 @@ test(
         'list',
       ],
     })).writable.preferences.text).toBe('Keep the current preference')
-    expect(rows<{ status: string }>({
-      text: "select data->'data'->>'status' as status from events where hydra_id = $1 and type = 'hydra.dispatch-progress' order by seq",
-      values: [id],
-    })).toEqual([])
+    expect(readEvents({
+      hydraId: id,
+      types: ['hydra.dispatch-progress'],
+    }).map(event => ({ status: event.type === 'hydra.dispatch-progress' ? event.data.status : undefined }))).toEqual([])
   },
 )
 

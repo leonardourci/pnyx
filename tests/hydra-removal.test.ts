@@ -1,3 +1,6 @@
+import { taskLease } from '#routine-helper/leases.ts'
+import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { once } from 'node:events'
 import { hydraRemoval, infoPath, processStart } from '#app/server-state.ts'
@@ -7,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from 'node:path'
 import { pnyxHome } from '#store/storage.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { git } from './setup/upgrade.ts'
 
@@ -514,14 +517,11 @@ test(
         folder,
       ],
     })).project).toBeDefined()
-    expect(rows({
-      text: 'select data from events where hydra_id = $1 and type = \'task.created\'',
-      values: [target.id],
+    expect(readEvents({
+      hydraId: target.id,
+      types: ['task.created'],
     })).toHaveLength(3)
-    expect(rows<{ config: { removed: boolean } }>({
-      text: 'select config from hydras where id = $1',
-      values: [target.id],
-    })[0]?.config.removed).toBe(true)
+    expect(loadHydra({ hydraId: target.id }).state.config?.removed).toBe(true)
     await pnyx.restart()
     expect((await caller.owner({
       args: [
@@ -832,10 +832,17 @@ test(
     })
     await pnyx.restart({
       whileStopped: () => {
-        rows({
-          text: 'delete from hydras where id = $1',
-          values: [legacy.id],
-        })
+        rmSync(
+          join(
+            process.env.PNYX_HOME!,
+            'hydras',
+            legacy.id,
+          ),
+          {
+            recursive: true,
+            force: true,
+          },
+        )
       },
     })
     expect(existsSync(locked)).toBe(false)
@@ -964,22 +971,11 @@ process.exit(result.status ?? 1)
         '--full',
       ],
     })).task
-    const lease = join(
-      hydraDir({ hydraId: target.id }),
-      `helper-lease-${encodeURIComponent(currentTask.id)}.json`,
-    )
-    writeFileSync(
-      lease,
-      JSON.stringify({
-        actor: 'helper:active',
-        holders: [
-          {
-            id: 'active',
-            pid: process.pid,
-          },
-        ],
-      }),
-    )
+    const releaseLease = taskLease({
+      hydraId: target.id,
+      task: currentTask.id,
+      actor: 'helper:active',
+    })
 
     try {
       expect((await target.ownerRefused({
@@ -993,10 +989,7 @@ process.exit(result.status ?? 1)
       })).code).toBe('TASK_LEASED')
       expect(existsSync(copy)).toBe(true)
     } finally {
-      rmSync(
-        lease,
-        { force: true },
-      )
+      releaseLease()
     }
 
     const trackedRace = join(

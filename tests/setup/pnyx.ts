@@ -6,7 +6,6 @@ import { serverOperation } from './operations.ts'
 import { afterAll } from 'vitest'
 import { startServer } from '#app/server-daemon.ts'
 import type { RunningServer } from '#app/server-transport.ts'
-import { query } from '#store/postgres.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
 import { fakeClaude, fakeCodex, type AgentSession } from './agents.ts'
 import { until, WAIT_MS } from './until.ts'
@@ -150,24 +149,6 @@ export type Output = Record<string, any>
 
 export const parsed = ({ stdout }: { stdout: string }): Output =>
   JSON.parse(stdout.trimEnd()) as Output
-
-// Rows of this file's own database, for the facts a command saved.
-export function rows<Row = Record<string, unknown>>({
-  text,
-  values,
-}: {
-  text: string
-  values?: unknown[]
-}): Row[] {
-  return query({
-    statements: [
-      {
-        text,
-        values,
-      },
-    ],
-  })[0] as Row[]
-}
 
 // The owner's terminal: no agent identity.
 const ownerEnv = () => {
@@ -336,6 +317,7 @@ export async function startPnyx({
     codex,
     port: () => server!.port,
     home: () => homePage!.read().home,
+    cursor: () => homePage!.read().cursor,
     // Stops the server and starts it again on the same home and port, as a restart does.
     restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
       await stop()

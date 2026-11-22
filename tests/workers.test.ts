@@ -1,4 +1,4 @@
-import { query } from '#store/postgres.ts'
+import { loadHydra } from '#app/store.ts'
 import { taskChildren } from '#app/task-runtime.ts'
 import { localToken } from '#app/server-state.ts'
 import { foldWorkerLog } from '#workers/worker-log.ts'
@@ -7,10 +7,10 @@ import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { constants, openSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { base } from '#app/command-meta.ts'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra, replayOwned } from '#app/reducer.ts'
@@ -19,15 +19,28 @@ import { applySessionMove } from '#workers/reduce.ts'
 import { applySessionFacts } from '#workers/session-facts.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
+import { WORKER_RESUME } from '#workers/host.ts'
 import { claudeProvider } from '#workers/claude.ts'
 import { codexProvider } from '#workers/codex.ts'
 import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { parsed, operation, rows, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
+
+vi.mock(
+  'node:fs',
+  async () => {
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+
+    return {
+      ...filesystem,
+      openSync: vi.fn(filesystem.openSync),
+    }
+  },
+)
 
 let pnyx: Pnyx
 
@@ -503,13 +516,9 @@ test(
     })
     const worker = await hydra.agent({ cwd: folder })
     const session = `claude-code:${worker.id}`
-    const activity = () => rows<{ activity: string }>({
-      text: "select data->>'sessionActivity' as activity from sessions where hydra_id = $1 and id = $2",
-      values: [
-        hydra.id,
-        session,
-      ],
-    })[0]?.activity
+    const activity = () => (loadHydra({
+      hydraId: hydra.id,
+    }).state.sessions?.[session]?.sessionActivity)
     await until({
       what: 'the held worker turn',
       check: () => worker.received.length === 1,
@@ -1607,7 +1616,84 @@ test(
     expect(sessions).toHaveLength(2)
     expect(times({
       sessions,
+      text: 'Also migrate the archive',
+    })).toBe(1)
+    expect(times({
+      sessions,
       text: '<pnyx-worker',
+    })).toBe(1)
+  },
+)
+
+test(
+  'a completed resume and ID-only inbox notice leave an interrupted instruction unread across restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const {
+      folder,
+      worker,
+    } = await hydra.startTask({ key: 'unread-notice' })
+    const held = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Keep this instruction unread'),
+      partial: 'Starting',
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await hydra.owner({
+      args: [
+        'reply',
+        'unread-notice',
+        '--text',
+        'Keep this instruction unread',
+      ],
+    })
+    await until({
+      what: 'the instruction to reach the interrupted turn',
+      check: () => worker.received.some(text => text.includes('Keep this instruction unread')),
+    })
+    const state = loadHydra({ hydraId: hydra.id }).state
+    const task = state.cards[state.keys['unread-notice']!]!
+    const path = task.agent!.transcriptPath!
+    await pnyx.restart({
+      whileStopped: () => {
+        const at = new Date().toISOString()
+        appendFileSync(
+          path,
+          `${JSON.stringify({
+            type: 'user',
+            uuid: '7b87d9bb-d450-4dfd-a5a1-6fc0792b3747',
+            timestamp: at,
+            message: {
+              role: 'user',
+              content: WORKER_RESUME,
+            },
+          })}\n${JSON.stringify({
+            type: 'assistant',
+            uuid: 'c92141fa-4f76-4305-8ced-075202369db3',
+            timestamp: at,
+            message: {
+              id: 'msg_resume',
+              role: 'assistant',
+              content: 'Resumed.',
+              stop_reason: 'end_turn',
+            },
+          })}\n`,
+        )
+      },
+    })
+    const inbox = await hydra.as({ session: worker }).run({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        'unread-notice',
+      ],
+    })
+    expect(JSON.stringify(inbox.messages)).toContain('Keep this instruction unread')
+    expect(times({
+      sessions: pnyx.claude.sessions.filter(session => session.cwd === folder),
+      text: 'Keep this instruction unread',
     })).toBe(1)
   },
 )
@@ -2891,7 +2977,14 @@ test(
       ],
     })
     appendFileSync(
-      report,
+      join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        target.id,
+        'tasks',
+        task,
+        'worker.log',
+      ),
       'note: report written after moving\n',
     )
     await until({
@@ -3031,33 +3124,38 @@ test(
       taskRoot,
       unavailable.card.id,
     )
-    query({
-      statements: [
-        { text: 'create sequence worker_log_write_attempts' },
-        {
-          text: `create function fail_worker_log_once() returns trigger language plpgsql as $$
-          begin
-            if nextval('worker_log_write_attempts') = 1 then
-              raise exception 'injected initial worker log write failure';
-            end if;
-            return new;
-          end $$`,
-        },
-        {
-          text: `create trigger fail_worker_log_once before insert on events for each row
-          when (new.type = 'task.worker-line' and new.data->'data'->>'text' = 'completed offline')
-          execute function fail_worker_log_once()`,
-        },
-      ],
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+    const taskLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      done.task.id,
+      'task.log',
+    )
+    let attempts = 0
+    // eslint-disable-next-line pnyx/object-params -- Node owns openSync's positional signature.
+    vi.mocked(openSync).mockImplementation((...args) => {
+      const [
+        file,
+        flags,
+      ] = args
+
+      if (String(file) === taskLog && typeof flags === 'number' && (flags & constants.O_APPEND)) {
+        attempts++
+
+        if (attempts === 1) {
+          throw Object.assign(
+            new Error('injected initial worker log append failure'),
+            { code: 'EIO' },
+          )
+        }
+      }
+
+      return filesystem.openSync(...args)
     })
     onTestFinished(() => {
-      query({
-        statements: [
-          { text: 'drop trigger if exists fail_worker_log_once on events' },
-          { text: 'drop function if exists fail_worker_log_once()' },
-          { text: 'drop sequence if exists worker_log_write_attempts' },
-        ],
-      })
+      vi.mocked(openSync).mockImplementation(filesystem.openSync)
     })
     await pnyx.restart({
       whileStopped: () => {
@@ -3071,6 +3169,10 @@ test(
         writeFileSync(
           unavailableDir,
           'A file occupies the task directory',
+        )
+        rmSync(
+          unreadableLog,
+          { force: true },
         )
         symlinkSync(
           'worker.log',
@@ -3100,8 +3202,7 @@ test(
         return shown.task.workerLog?.latest.text === 'completed offline' && shown
       },
     })
-    expect(query({ statements: [{ text: 'select last_value::int as attempts from worker_log_write_attempts' }] })[0]![0]!.attempts)
-      .toBeGreaterThan(1)
+    expect(attempts).toBeGreaterThan(1)
     expect(restored.task.workerLog.status).toEqual(done.task.workerLog.status)
     expect(restored.task.workerLog.latest.text).toBe('completed offline')
     writeFileSync(
@@ -3517,31 +3618,46 @@ test(
       ],
     })).task.activity).toBe('interrupted')
 
-    for (const activity of [
-      'interrupted',
-      'working',
-    ]) {
-      await hydra.owner({
-        args: [
-          'push',
-          '--key',
-          'migration',
-          '--file',
-          '-',
-        ],
-        input: JSON.stringify({
-          agent,
-          activity,
-        }),
-      })
-    }
-
     pnyx.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Pnyx restarted'),
       hold: true,
     })
-    await pnyx.restart()
+    const nativeSession = Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.sessions ?? {}).find(session =>
+      session.agent.sessionId === agent.sessionId && !session.agent.agentId)!
+    await pnyx.restart({
+      whileStopped: () => {
+        const at = new Date().toISOString()
+        const records = [
+          {
+            type: 'assistant',
+            uuid: '3a5f6548-960d-4a17-829b-883fe5160651',
+            timestamp: at,
+            message: {
+              id: 'msg_closed_turn',
+              role: 'assistant',
+              content: [],
+              stop_reason: 'end_turn',
+            },
+          },
+          {
+            type: 'user',
+            uuid: 'cb825ede-2319-4d3e-83eb-e68b570aa20b',
+            timestamp: at,
+            message: {
+              role: 'user',
+              content: 'Start a separate turn after interruption',
+            },
+          },
+        ]
+        appendFileSync(
+          nativeSession.agent.transcriptPath!,
+          `${records.map(record => JSON.stringify(record)).join('\n')}\n`,
+        )
+      },
+    })
     await until({
       what: 'the new cut turn to resume independently after interruption',
       check: () => pnyx.claude.sessions.filter(session => session.cwd === folder).length === 5,

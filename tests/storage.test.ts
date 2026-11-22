@@ -634,7 +634,7 @@ test(
 )
 
 test(
-  'an async registry decision retains ownership through settlement without blocking another caller',
+  'registry decisions run in order while synchronous reads remain immediate',
   async () => {
     const entered = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
@@ -657,7 +657,7 @@ test(
     const decisions: Promise<string>[] = [first]
 
     try {
-      expect(() => withRegistryLock({fn: () => 'unrelated'})).toThrow(expect.objectContaining({code: 'LOCKED'}))
+      expect(withRegistryLock({ fn: () => 'unrelated' })).toBe('unrelated')
       const second = withAsyncRegistryLock({
         timeout: 0,
         fn: () => {
@@ -719,7 +719,7 @@ test(
       await entered.promise
       await immediate()
       expect(outerSettled).toBe(false)
-      expect(() => withRegistryLock({ fn: () => 'unrelated' })).toThrow(expect.objectContaining({ code: 'LOCKED' }))
+      expect(withRegistryLock({ fn: () => 'unrelated' })).toBe('unrelated')
       decisions.push(withAsyncRegistryLock({
         timeout: 0,
         fn: () => 'after nested',
@@ -774,6 +774,6 @@ test(
         },
       },
     )
-    expect(result.trim()).toBe('contended LOCKED\nhandled EEXIST\nreleased')
+    expect(result.trim()).toBe('escaped\nhandled EEXIST\nreleased')
   },
 )

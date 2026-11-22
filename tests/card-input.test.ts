@@ -168,6 +168,11 @@ test(
     })
     expect(selected.thread.entries).not.toContainEqual(expect.objectContaining({
       text: 'Recorded reply.',
+      session: `claude-code:${worker.id}`,
+    }))
+    expect(selected.thread.entries).toContainEqual(expect.objectContaining({
+      text: 'Recorded reply.',
+      session: `codex:${next.id}`,
     }))
     expect(next.cwd).toBe(folder)
     expect(worker.closed).toBe(true)

@@ -2,7 +2,6 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { spoolDir } from '#store/storage.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
-import { query } from '#store/postgres.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
@@ -234,7 +233,7 @@ test(
       }),
       expect.objectContaining({
         operation: 'storage',
-        databaseBytes: expect.any(Number),
+        stateBytes: expect.any(Number),
         logBytes: expect.any(Number),
       }),
       expect.objectContaining({
@@ -535,7 +534,7 @@ test(
     })
     log({
       operation: 'storage',
-      databaseBytes: 4194304,
+      stateBytes: 4194304,
       logBytes: 5242880,
     })
     await flushLogs()
@@ -550,7 +549,7 @@ test(
     ].includes(row.operation))).toBe(false)
     expect(report.memory).toContainEqual(expect.objectContaining({
       agentsMB: 2,
-      databaseMB: 4,
+      stateMB: 4,
       logsMB: 5,
       activeResources: 5,
     }))
@@ -594,7 +593,6 @@ test(
       import { readFileSync } from 'node:fs';
       import { openLogs, closeLogs, log, flushLogs } from '#app/diagnostics.ts';
       import { logFiles } from '#diagnostics/log-files.ts';
-      import { closePostgres } from '#store/postgres.ts';
 
       let complete;
       let started;
@@ -627,7 +625,6 @@ test(
         .filter(line => line.operation === 'agent.memory');
       console.log(JSON.stringify(memory));
       closeLogs();
-      await closePostgres();
       `,
       ],
       env: {
@@ -649,54 +646,6 @@ test(
         ],
       }),
     ])
-  },
-)
-
-// The database is this file's scratch clone. Stall only its metadata function, restoring the original definition.
-test(
-  'a stalled storage sample reports its short database timeout',
-  async () => {
-    await flushLogs()
-    const start = lines().length
-    query({
-      statements: [
-        {
-          text: `alter function pg_catalog.pg_database_size(name) rename to pnyx_original_database_size;
-    create function pg_catalog.pg_database_size(name) returns bigint
-    language plpgsql strict as $$ begin perform pg_sleep(1); return 1; end $$`,
-        },
-      ],
-    })
-    const sample = startProcessLines({ every: 20 })
-
-    try {
-      const result = await until({
-        what: 'storage sample outcome',
-        check: async () => {
-          await flushLogs()
-
-          return lines().slice(start)
-            .find(line => [
-              'storage',
-              'storage.sample',
-            ].includes(line.operation))
-        },
-      })
-      expect(result).toMatchObject({
-        operation: 'storage.sample',
-        level: 'error',
-      })
-    } finally {
-      sample.stop()
-      query({
-        statements: [
-          {
-            text: `drop function pg_catalog.pg_database_size(name);
-        alter function pg_catalog.pnyx_original_database_size(name) rename to pg_database_size`,
-          },
-        ],
-      })
-    }
   },
 )
 

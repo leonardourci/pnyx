@@ -1,6 +1,7 @@
+import { readEvents } from '#app/event-log.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { rows, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 let hydra: Hydra
@@ -149,13 +150,10 @@ test(
       reason: expect.stringContaining('task brief is outside'),
     }))
     expect(retriedReceipt.notices).toEqual(firstReceipt.notices)
-    expect(rows({
-      text: "select id from events where hydra_id = $1 and type = 'task.brief' and data->'data'->>'after' = $2",
-      values: [
-        hydra.id,
-        'Retried guidance',
-      ],
-    })).toHaveLength(1)
+    expect(readEvents({
+      hydraId: hydra.id,
+      types: ['task.brief'],
+    }).filter(event => event.type === 'task.brief' && event.data.after === 'Retried guidance')).toHaveLength(1)
 
     expect((await hydra.task({ key: 'target' })).status).toBe('done')
     expect((await hydra.task({ key: 'target' })).notices).toBeDefined()
@@ -338,6 +336,7 @@ test(
         'manual-result',
       ],
     })
+    await pnyx.restart()
     const unread = await hydra.owner({
       args: [
         'task',
@@ -347,6 +346,9 @@ test(
         'manual-result',
       ],
     })
+    expect(unread.results).toContainEqual(expect.objectContaining({
+      sequence: stoppedSource.source.results[0].sequence,
+    }))
     const handledSource = await asWorker.run({
       args: [
         'task',
@@ -363,6 +365,29 @@ test(
     })
     expect(handledSource.result.handled).toBeDefined()
     expect(handledSource.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('before its steering message') }))
+    await pnyx.restart()
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'read',
+        'inbox-target',
+        'manual-result',
+      ],
+    })).results).toBe('none: no unread results')
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'source',
+        'read',
+        'inbox-target',
+        'manual-result',
+        '--all',
+      ],
+    })).results).toContainEqual(expect.objectContaining({
+      sequence: stoppedSource.source.results[0].sequence,
+      handled: handledSource.result.handled,
+    }))
   },
 )
 

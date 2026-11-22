@@ -1,10 +1,15 @@
+import { WORKER_RESUME } from '#workers/host.ts'
+import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
+import { nativeHome } from '#app/native-home.ts'
+import { type NativeFact } from '#app/native-state.ts'
 import { appendFileSync } from 'node:fs'
-import { beforeAll, expect, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { applyDecision } from '#app/decision.ts'
 import { withWriter } from '#app/writer.ts'
 import { decideSessionFacts } from '#workers/session-facts.ts'
 import { transcriptPath } from '#workers/claude.ts'
-import { rows, startPnyx, until, type Hydra, type Output, type Pnyx } from './setup/pnyx.ts'
+import { startPnyx, until, type Hydra, type Output, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -14,7 +19,7 @@ beforeAll(async () => {
 
 // A live-size Hydra: its log holds tens of thousands of events, a few of them words that history shows, and its native
 // transcript holds thousands of replies spread between them. Reading the range once used to run one statement per reply
-// over the whole log, which Postgres cancelled after ten seconds.
+// over the whole log.
 const EVENTS = 60_000
 const BRIEF_EVERY = 25
 const INSERT_BATCH = 5_000
@@ -30,6 +35,7 @@ interface Fixture {
   hydra: Hydra
   // The log position before the first bulk event.
   last: number
+  through: number
   // The words in log order: a brief is placed at its event, a reply between two events.
   order: string[]
   replySeq: ({ k }: { k: number }) => number
@@ -43,9 +49,8 @@ const replyAfter = ({ k }: { k: number }) => 1 + Math.floor(k * (EVENTS - 1) / R
 const inGap = ({ k }: { k: number }) => k >= GAP.from && k < GAP.to
 
 // Events a second apart from 2099-01-01, a task brief every BRIEF_EVERY of them.
-function insertEvents({
+async function insertEvents({
   hydraId,
-  first,
   card,
   count,
 }: {
@@ -53,31 +58,55 @@ function insertEvents({
   first: number
   card: string
   count: number
-}) {
-  // Several statements, so a loaded machine never pushes one past the statement limit.
+}): Promise<void> {
+  const home = nativeHome()
+
   for (let start = 1; start <= count; start += INSERT_BATCH) {
-    rows({
-      text: `insert into events (hydra_id, seq, id, type, at, actor, card_id, data)
-      select $1::text, $2::bigint + n, 'bulk' || n, kind, at, 'hook:claude', $3::text, json_build_object('v', 1,
-        'id', 'bulk' || n, 'seq', $2::bigint + n, 'type', kind, 'cardId', $3::text, 'actor', 'hook:claude', 'at', at,
-        'data', case kind when 'task.brief' then json_build_object('before', 'bulk ' || (n - 1), 'after', 'bulk ' || n)
-          else json_build_object('before', false, 'after', false) end)
-      from generate_series($4::integer, $6::integer) as n,
-        lateral (select to_char(timestamp '2099-01-01' + n * interval '1 second', 'YYYY-MM-DD"T"HH24:MI:SS.000"Z"') as at,
-          case when n % $5::integer = 0 then 'task.brief' else 'task.visibility' end as kind) as time`,
-      values: [
-        hydraId,
-        first,
-        card,
-        start,
-        BRIEF_EVERY,
-        Math.min(
-          start + INSERT_BATCH - 1,
-          count,
-        ),
-      ],
+    const facts: NativeFact[] = []
+
+    for (let n = start; n < Math.min(
+      start + INSERT_BATCH,
+      count + 1,
+    ); n++) {
+      const at = new Date(BASE + n * 1000).toISOString()
+      const id = `bulk${n}`
+      const brief = n % BRIEF_EVERY === 0
+      const event = {
+        v: 1,
+        boardId: hydraId,
+        actor: 'hook:claude',
+        cardId: card,
+        type: brief ? 'task.brief' : 'task.visibility',
+        data: brief ? {
+          before: `bulk ${n - 1}`,
+          after: `bulk ${n}`,
+        } : {
+          before: false,
+          after: false,
+        },
+      } as NativeFact['event']
+      facts.push({
+        at,
+        by: 'daemon',
+        t: brief ? 'brief' : 'visibility',
+        id,
+        event,
+      })
+      home.position({
+        hydra: hydraId,
+        scope: card,
+        id,
+      })
+    }
+
+    await home.files.changeTask({
+      hydra: hydraId,
+      task: card,
+      decide: () => facts,
     })
   }
+
+  home.reload({ hydra: hydraId })
 }
 
 // A Hydra that has answered once, with a task to hang bulk events on and the path of its transcript.
@@ -110,11 +139,7 @@ async function seededHydra({ id }: { id: string }) {
     folder: session.env.CLAUDE_CONFIG_DIR,
   })
 
-  const [{ last }] = rows<{ last: string }>({
-    text: 'select max(seq) as last from events where hydra_id = $1',
-    values: [hydra.id],
-  })
-  const first = Number(last)
+  const first = loadHydra({ hydraId: hydra.id }).state.seq
 
   return {
     hydra,
@@ -137,17 +162,12 @@ async function longHydra(): Promise<Fixture> {
   } = await seededHydra({ id: 'long' })
 
   await pnyx.restart({
-    whileStopped: () => {
-      insertEvents({
+    whileStopped: async () => {
+      await insertEvents({
         hydraId: hydra.id,
         first,
         card: busy,
         count: EVENTS,
-      })
-
-      rows({
-        text: 'update hydras set seq = (select max(seq) from events where hydra_id = $1) where id = $1',
-        values: [hydra.id],
       })
 
       let lines = ''
@@ -162,8 +182,10 @@ async function longHydra(): Promise<Fixture> {
           type: 'assistant',
           timestamp: new Date(BASE + replyAfter({ k }) * 1000 + 500).toISOString(),
           message: {
+            id: `msg_bulk_${k}`,
             role: 'assistant',
             content: `reply-${k} ${long} end-${k}`,
+            stop_reason: k === REPLIES - 1 ? 'end_turn' : null,
           },
         })}\n`
       }
@@ -206,9 +228,14 @@ async function longHydra(): Promise<Fixture> {
 
   fixture = {
     hydra,
-    last: first,
+    get last() {
+      return loadHydra({ hydraId: hydra.id }).state.eventIds.bulk1! - 1
+    },
+    get through() {
+      return loadHydra({ hydraId: hydra.id }).state.seq
+    },
     order,
-    replySeq: ({ k }) => first + replyAfter({ k }) + 1,
+    replySeq: ({ k }) => loadHydra({ hydraId: hydra.id }).state.eventIds[`bulk${replyAfter({ k }) + 1}`]!,
   }
 
   return fixture
@@ -348,95 +375,96 @@ test(
 )
 
 test(
-  'expired observation ids cannot replay stale activity after restart',
+  'a completed native worker stays finished when an earlier hook observation is retried after restart',
   async () => {
     const hydra = await pnyx.hydra()
-    const receipts: {
-      key: string
-      id: string
-    }[] = []
-
-    for (const key of [
-      'explicit',
-      'generated',
-    ]) {
-      await hydra.owner({
-        args: [
-          'task',
-          'create',
-          '--no-start',
-          '--key',
-          key,
-          '--title',
-          key,
-        ],
-      })
-      const first = await hydra.owner({
-        args: [
-          'push',
-          '--key',
-          key,
-          '--file',
-          '-',
-          ...(key === 'explicit' ? [
-            '--event-id',
-            'start-1',
-          ] : []),
-        ],
-        input: JSON.stringify({ activity: 'working' }),
-      })
-      receipts.push({
+    const key = 'hook-replay'
+    const folder = hydra.folder({ name: key })
+    const fullTask = async () => (await hydra.owner({
+      args: [
+        'task',
+        'show',
         key,
-        id: first.event.id,
-      })
-      await hydra.owner({
-        args: [
-          'push',
-          '--key',
-          key,
-          '--file',
-          '-',
-        ],
-        input: JSON.stringify({ activity: 'finished' }),
-      })
-    }
-
-    await pnyx.restart()
-
-    for (const {
+        '--full',
+      ],
+    })).task
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        key,
+        '--title',
+        'Replay native hook',
+        '--folder',
+        folder,
+      ],
+    })
+    const turn = pnyx.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('<pnyx-worker'),
+      partial: 'Native work in progress',
+      reply: 'Native work completed',
+      hold: true,
+    })
+    onTestFinished(turn.release)
+    await hydra.owner({
+      args: [
+        'task',
+        'start',
+        key,
+      ],
+    })
+    await hydra.agent({ cwd: folder })
+    const task = await fullTask()
+    const id = `hook:${task.agent.sessionId}`
+    const input = JSON.stringify({
+      activity: 'working',
+      agent: task.agent,
+      source: {
+        adapter: 'hooks',
+        instanceId: 'claude',
+        objectId: task.agent.sessionId,
+        observedAt: new Date().toISOString(),
+      },
+    })
+    const args = [
+      'push',
+      '--key',
       key,
+      '--file',
+      '-',
+      '--event-id',
       id,
-    } of receipts) {
-      const refused = await hydra.ownerRefused({
-        args: [
-          'push',
-          '--key',
-          key,
-          '--file',
-          '-',
-          '--event-id',
-          id,
-        ],
-        input: JSON.stringify({ activity: 'working' }),
-      })
-      expect(refused.code).toBe('RECEIPT_EXPIRED')
-      const { task } = await hydra.owner({
-        args: [
-          'task',
-          'show',
-          key,
-          '--full',
-        ],
-      })
-      expect(task.activity).toBe('finished')
-      expect(rows({
-        text: 'select id from events where hydra_id = $1 and id = $2',
-        values: [
-          hydra.id,
-          id,
-        ],
-      })).toEqual([])
-    }
+    ]
+    await hydra.owner({
+      args,
+      input,
+    })
+    turn.release()
+    await until({
+      what: 'the native completion updates the task',
+      check: async () => (await fullTask()).activity === 'finished',
+    })
+    const unexpectedResume = pnyx.claude.plan({
+      hydra: hydra.id,
+      text: WORKER_RESUME,
+      hold: true,
+      partial: 'Resumed work is still running',
+    })
+    onTestFinished(unexpectedResume.release)
+    await pnyx.restart()
+    expect((await fullTask()).activity).toBe('finished')
+    await hydra.owner({
+      args,
+      input,
+    })
+    expect((await fullTask()).activity).toBe('finished')
+    expect(readEvents({
+      hydraId: hydra.id,
+      ids: [id],
+    })).toEqual([])
   },
 )
 
@@ -558,8 +586,10 @@ test(
         type: 'assistant',
         timestamp: delayedAt,
         message: {
+          id: 'msg_native-time-lookup',
           role: 'assistant',
           content: 'NATIVE-TIME-LOOKUP',
+          stop_reason: 'end_turn',
         },
       })}\n`,
     )
@@ -658,6 +688,11 @@ test(
   'an inscribe retry survives a restart without another history event',
   async () => {
     const hydra = await pnyx.hydra()
+    const session = await hydra.chat({ text: 'Conversation before the saved inscribe boundary' })
+    await until({
+      what: 'the conversation before inscribe to finish',
+      check: () => session.answered === 1 && !pnyx.home().scopes[hydra.id]?.queue?.chat?.working,
+    })
     const args = [
       'hydra',
       'inscribe',
@@ -677,23 +712,28 @@ test(
         'stored-pass',
       ],
     })
-    const saved = rows<{
-      id: string
-      type: string
-    }>({
-      text: 'select id, type from events where hydra_id = $1 order by seq',
-      values: [hydra.id],
-    })
+    const saved = readEvents({ hydraId: hydra.id }).map(event => ({
+      id: event.id,
+      type: event.type,
+    }))
     expect(saved.map(event => event.type)).not.toContain('hydra.operation')
     await pnyx.restart()
     const retried = await hydra.owner({ args })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
     expect(retried.milestone).toBe('stored-pass')
-    expect(rows({
-      text: 'select id, type from events where hydra_id = $1 order by seq',
-      values: [hydra.id],
-    })).toEqual(saved)
+    expect(readEvents({ hydraId: hydra.id }).map(event => ({
+      id: event.id,
+      type: event.type,
+    }))).toEqual(saved)
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'history',
+        '--since',
+        'last-inscribe',
+      ],
+    })).text).not.toContain('Conversation before the saved inscribe boundary')
   },
 )
 
@@ -703,7 +743,7 @@ test(
     const {
       hydra,
       order,
-      last,
+      through,
     } = await longHydra()
 
     const pages = await readAll({
@@ -716,7 +756,7 @@ test(
 
     expect(pages.length).toBeGreaterThan(20)
     expect(wordsOf({ pages })).toEqual(order)
-    expect(pages.every(page => page.snapshot === last + EVENTS)).toBe(true)
+    expect(pages.every(page => page.snapshot === through)).toBe(true)
     expect(pages.at(-1)!.more).toBe(false)
 
     const count = await hydra.owner({
@@ -1062,16 +1102,12 @@ test(
     } = await seededHydra({ id: 'dense' })
 
     await pnyx.restart({
-      whileStopped: () => {
-        insertEvents({
+      whileStopped: async () => {
+        await insertEvents({
           hydraId: hydra.id,
           first,
           card: busy,
           count: DENSE_EVENTS,
-        })
-        rows({
-          text: 'update hydras set seq = (select max(seq) from events where hydra_id = $1) where id = $1',
-          values: [hydra.id],
         })
 
         let lines = ''
@@ -1086,8 +1122,10 @@ test(
             type: 'assistant',
             timestamp: new Date(BASE + after * 1000 + 10 * (1 + inside)).toISOString(),
             message: {
+              id: `msg_dense_${k}`,
               role: 'assistant',
               content: `reply-${k} end`,
+              stop_reason: k === DENSE_REPLIES - 1 ? 'end_turn' : null,
             },
           })}\n`
         }

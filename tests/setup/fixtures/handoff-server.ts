@@ -1,7 +1,6 @@
+import { writeFileSync } from 'node:fs'
 // A real server process with fake AI providers, so a checkout hook can kill it mid-handoff.
-import workerThreads from 'node:worker_threads'
-import { syncBuiltinESMExports } from 'node:module'
-import { execFileSync } from 'node:child_process'
+import { afterHandoffSync } from '../handoff-sync.ts'
 import { startServer } from '#app/server-daemon.ts'
 import { fakeClaude, fakeCodex } from '../agents.ts'
 
@@ -14,33 +13,35 @@ if (!hydraId) {
 }
 
 if (crashAfterCommit) {
-  const receive = workerThreads.receiveMessageOnPort
+  const source = process.env.PNYX_CRASH_SOURCE
+  const target = process.env.PNYX_CRASH_TARGET
 
-  // eslint-disable-next-line pnyx/object-params -- Node owns this transport signature.
-  workerThreads.receiveMessageOnPort = port => {
-    const reply = receive(port)
+  if (!source || !target || !process.env.PNYX_HOME) {
+    throw new Error('The crash fixture needs both native task logs')
+  }
 
-    if (reply && !reply.message.error && reply.message.results?.length > 1
-      && execFileSync(
-        'git',
-        [
-          '-C',
-          crashAfterCommit,
-          'branch',
-          '--show-current',
-        ],
-        { encoding: 'utf8' },
-      ).trim() === 'iris/target-2') {
+  afterHandoffSync({
+    home: process.env.PNYX_HOME,
+    hydra: hydraId,
+    source,
+    target,
+    cwd: crashAfterCommit,
+    branch: 'iris/target-2',
+    cut: process.env.PNYX_CRASH_SCOPE_CUT === 'first' ? 'first' : 'both',
+    after: ({ first }) => {
+      if (process.env.PNYX_CRASH_PROOF) {
+        writeFileSync(
+          process.env.PNYX_CRASH_PROOF,
+          first,
+        )
+      }
+
       process.kill(
         process.pid,
         'SIGKILL',
       )
-    }
-
-    return reply
-  }
-
-  syncBuiltinESMExports()
+    },
+  })
 }
 
 const claude = fakeClaude()
