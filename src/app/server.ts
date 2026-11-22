@@ -59,6 +59,7 @@ export async function mountOwnedHydra({
   busyDelay,
   stallRepeatMax,
   pauseDelay,
+  compactionDelay,
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
   queueDelay = QUEUE_POLL_MS,
@@ -80,6 +81,7 @@ export async function mountOwnedHydra({
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  compactionDelay?: number
   retryDelays?: number[]
   followDelay?: number
   queueDelay?: number
@@ -364,6 +366,7 @@ export async function mountOwnedHydra({
     busyDelay,
     stallRepeatMax,
     pauseDelay,
+    compactionDelay,
     retryDelays,
     upgradeRoot,
     restart,

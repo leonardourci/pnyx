@@ -4,12 +4,15 @@ import { isManagedTask } from '#tasks/select.ts'
 import type { HydraState } from './model.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
+import { taskRuntimeDir } from '#store/paths.ts'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Card } from '#tasks/model.ts'
 import type { PermissionDecision, HostedUsage } from '#workers/provider.ts'
 import type { LiveSessionScope } from '#workers/live-sessions.ts'
-import type { Host, Live } from './host-types.ts'
+import type { Live } from './host-types.ts'
 import type { CompactionHandoff } from '#workers/compaction/control.ts'
 
 export interface ToolApplication {
@@ -25,7 +28,6 @@ interface TaskHandoff {
 }
 
 export interface TaskSessionOwner extends LiveSessionScope {
-  host: Host
   changed(): void
   requireMovable({ task }: { task: string }): void
   suspendTask({ card }: { card: Card }): TaskHandoff
@@ -266,7 +268,12 @@ export async function sweepTaskProcesses({
   let ready = true
 
   for (const card of Object.values(state.cards)) {
-    if (card.id !== HYDRA_CARD && !isManagedTask({ card }) && card.agent?.host === 'pnyx') {
+    const recorded = existsSync(join(
+      taskRuntimeDir({ task: card.id }),
+      'children.json',
+    ))
+
+    if (!isManagedTask({ card }) && (card.agent?.host === 'pnyx' || recorded)) {
       const owned = taskProcess({
         hydraId,
         task: card.id,

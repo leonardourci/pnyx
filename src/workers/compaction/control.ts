@@ -77,8 +77,10 @@ export function createCompactionControl({
   // The card's compactions have settled: none runs, and none follows at once.
   released({ card }: { card: string }): void
 }) {
-  const compactionDeadlines = new Map<string, NodeJS.Timeout>()
-  const deadlineEnds = new Map<string, number>()
+  const compactionDeadlines = new Map<string, {
+    timer: NodeJS.Timeout
+    endsAt: number
+  }>()
 
   const compactChange = async ({
     card,
@@ -113,60 +115,57 @@ export function createCompactionControl({
     operation: Compaction
     delay?: number
   }) => {
-    clearTimeout(compactionDeadlines.get(operation.session))
+    clearTimeout(compactionDeadlines.get(operation.session)?.timer)
     compactionDeadlines.delete(operation.session)
-    deadlineEnds.delete(operation.session)
 
     if (operation.state !== 'running') {
       return
     }
 
-    deadlineEnds.set(
-      operation.session,
-      Date.now() + delay,
-    )
     compactionDeadlines.set(
       operation.session,
-      setTimeout(
-        () => background({
-          name: 'compaction deadline',
-          run: async () => {
-            compactionDeadlines.delete(operation.session)
-            deadlineEnds.delete(operation.session)
+      {
+        endsAt: Date.now() + delay,
+        timer: setTimeout(
+          () => background({
+            name: 'compaction deadline',
+            run: async () => {
+              compactionDeadlines.delete(operation.session)
 
-            if (closing()) {
-              return
-            }
+              if (closing()) {
+                return
+              }
 
-            const { cards } = loadHydra({ hydraId }).state
-            const card = Object.values(cards).find(candidate => candidate.compaction?.operations
-              .some(known => known.id === operation.id && known.state === 'running'))
+              const { cards } = loadHydra({ hydraId }).state
+              const card = Object.values(cards).find(candidate => candidate.compaction?.operations
+                .some(known => known.id === operation.id && known.state === 'running'))
 
-            if (!card) {
-              return
-            }
+              if (!card) {
+                return
+              }
 
-            await compactChange({
-              card: card.id,
-              change: {
-                kind: 'status',
-                operation: {
-                  ...operation,
-                  state: 'failed',
-                  endedAt: at(),
-                  error: 'The agent stopped reporting this compaction before it finished',
+              await compactChange({
+                card: card.id,
+                change: {
+                  kind: 'status',
+                  operation: {
+                    ...operation,
+                    state: 'failed',
+                    endedAt: at(),
+                    error: 'The agent stopped reporting this compaction before it finished',
+                  },
                 },
-              },
-            })
-            releaseCompact({ card: card.id })
-          },
-          retry: () => resetCompactionDeadline({
-            operation,
-            delay: COMPACTION_RETRY_MS,
+              })
+              releaseCompact({ card: card.id })
+            },
+            retry: () => resetCompactionDeadline({
+              operation,
+              delay: COMPACTION_RETRY_MS,
+            }),
           }),
-        }),
-        delay,
-      ).unref(),
+          delay,
+        ).unref(),
+      },
     )
   }
 
@@ -197,8 +196,10 @@ export function createCompactionControl({
 
   const releasingCompact = new Set<string>()
   // After a result the agent may compact again at once, so held input waits until it moves on, or for one deadline.
-  const settlingCompactions = new Map<string, NodeJS.Timeout>()
-  const settlingEnds = new Map<string, number>()
+  const settlingCompactions = new Map<string, {
+    timer: NodeJS.Timeout
+    endsAt: number
+  }>()
 
   const compactionBusy = ({ card }: { card?: Card }) => Boolean(activeCompaction({ card }))
     || Boolean(card && settlingCompactions.has(card.id))
@@ -213,24 +214,22 @@ export function createCompactionControl({
     delay?: number
   }) => {
     const moved = settlingCompactions.has(card) && !settling
-    clearTimeout(settlingCompactions.get(card))
+    clearTimeout(settlingCompactions.get(card)?.timer)
     settlingCompactions.delete(card)
-    settlingEnds.delete(card)
 
     if (settling) {
-      settlingEnds.set(
-        card,
-        Date.now() + delay,
-      )
       settlingCompactions.set(
         card,
-        setTimeout(
-          () => settleCompaction({
-            card,
-            settling: false,
-          }),
-          delay,
-        ).unref(),
+        {
+          endsAt: Date.now() + delay,
+          timer: setTimeout(
+            () => settleCompaction({
+              card,
+              settling: false,
+            }),
+            delay,
+          ).unref(),
+        },
       )
     } else if (moved) {
       releaseCompact({ card })
@@ -429,38 +428,35 @@ export function createCompactionControl({
     sessionOwner,
     settleCompaction,
     settling: settlingCompactions,
-    releasing: releasingCompact,
     syncCompactions,
     suspendTask({ card }: { card: Card }): CompactionHandoff {
       const deadlines: CompactionHandoff['deadlines'] = []
 
       for (const operation of card.compaction?.operations ?? []) {
-        const end = deadlineEnds.get(operation.session)
+        const deadline = compactionDeadlines.get(operation.session)
 
-        if (end !== undefined) {
+        if (deadline) {
           deadlines.push({
             operation,
             remaining: Math.max(
               0,
-              end - Date.now(),
+              deadline.endsAt - Date.now(),
             ),
           })
-          clearTimeout(compactionDeadlines.get(operation.session))
+          clearTimeout(compactionDeadlines.get(operation.session)?.timer)
           compactionDeadlines.delete(operation.session)
-          deadlineEnds.delete(operation.session)
         }
       }
 
-      const end = settlingEnds.get(card.id)
-      clearTimeout(settlingCompactions.get(card.id))
+      const deadline = settlingCompactions.get(card.id)
+      clearTimeout(settlingCompactions.get(card.id)?.timer)
       settlingCompactions.delete(card.id)
-      settlingEnds.delete(card.id)
 
       return {
         deadlines,
-        settling: end === undefined ? undefined : Math.max(
+        settling: deadline === undefined ? undefined : Math.max(
           0,
-          end - Date.now(),
+          deadline.endsAt - Date.now(),
         ),
       }
     },
@@ -496,7 +492,7 @@ export function createCompactionControl({
         ...compactionDeadlines.values(),
         ...settlingCompactions.values(),
       ]) {
-        clearTimeout(timer)
+        clearTimeout(timer.timer)
       }
     },
   }

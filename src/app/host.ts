@@ -9,6 +9,7 @@ import { background } from './background.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { toolInstructions, toolEnvironment } from '#workers/tools.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
+import { reservingTaskCopy } from '#projects/copy-pool.ts'
 import { log } from './diagnostics.ts'
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
@@ -1706,18 +1707,20 @@ export function createHost({
 
   const taskOwner: TaskSessionOwner = {
     ...sessionScope,
-    host,
     changed,
     retire,
     requireMovable({ task }) {
       const entry = [...live.values()].find(entry => entry.task === task)
-      const opening = starting({ task }) || entry && (!entry.session || entry.toolResume)
-      const busy = opening || compaction.releasing.has(task)
+      const opening = starting({ task }) || reservingTaskCopy({
+        hydraId,
+        task,
+      })
+        || entry && (!entry.session || entry.toolResume)
 
-      if (busy) {
+      if (opening) {
         throw new HydraError({
           code: 'CONFLICT',
-          message: `Task ${task} is starting or delivering held input; retry its move after that settles`,
+          message: `Task ${task} is starting; retry its move after startup settles`,
         })
       }
     },
