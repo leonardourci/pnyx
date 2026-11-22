@@ -149,7 +149,7 @@ Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for det
 
 ## Documentation
 
-- [pnyx reference](docs/pnyx.md): immediate actions and transitional reads.
+- [pnyx reference](docs/pnyx.md): immediate actions and record reads.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
 - [Development](docs/development.md): build, tests and verification.

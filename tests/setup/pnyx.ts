@@ -215,6 +215,7 @@ else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fres
 
 export interface PnyxOptions {
   compactionDelay?: number
+  queueDelay?: number
   codexConfig?: Record<string, unknown>
   upgradeRoot?: string
   restart?(): void | Promise<void>
@@ -225,6 +226,7 @@ export type Pnyx = Awaited<ReturnType<typeof startPnyx>>
 // Starts the server once for a test file; it stops when the file ends.
 export async function startPnyx({
   compactionDelay,
+  queueDelay,
   codexConfig,
   upgradeRoot,
   restart,
@@ -258,6 +260,7 @@ export async function startPnyx({
       followDelay: 100,
       recoveryPause: 100,
       compactionDelay,
+      queueDelay,
       upgradeRoot: upgradeRoot ?? join(
         root,
         'no-upgrade-folder',
