@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { ownerMemoryLogPath, readOwnerLogs } from '#memory/owner-memory-log.ts'
 import { projectsFor } from '#projects/read.ts'
 
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
@@ -6,9 +8,16 @@ import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '#memory/learnings.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProject } from './model.ts'
-import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
+import { projectMemoryLogPath, PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
+
+function fullMemory({ id }: { id: string }): string {
+  const paths = [...readOwnerLogs().keys()].map(polis => ownerMemoryLogPath({ polis }))
+  const owners = paths.filter(existsSync)
+
+  return `Read ${JSON.stringify(projectMemoryLogPath({ id }))} and these owner memory logs: ${JSON.stringify(owners)}. Include projectMove.event records for project ${JSON.stringify(id)}, also within nested polisMove.entry records. Combine them with the project log and replay by the project event's seq, applying after values and removals in order.`
+}
 
 export async function projectDigest({
   hydraId,
@@ -41,7 +50,7 @@ export async function projectDigest({
     })
     const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-    return [`- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
+    return [`- ${project.name} (${project.path}) · full memory: ${fullMemory({ id: view.id })} · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
   }))
 
   const summaries = lines.flat()
@@ -51,7 +60,7 @@ export async function projectDigest({
   }
 
   return [
-    'Projects (load memory on demand with pnyx project show <name|path>):',
+    'Projects (replay the supplied records for full memory):',
     ...summaries,
   ]
 }
@@ -121,7 +130,7 @@ export async function projectWorkerContext({
         ] : []
       }),
       'Read the project conventions in your current copy before starting; the shared profile may need refreshing.',
-      `Full memory: pnyx project show ${JSON.stringify(project.path)} --hydra ${hydraId}.`,
+      `Full memory: ${fullMemory({ id: view.id })}`,
     ].join('\n'),
   }
 }

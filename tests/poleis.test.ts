@@ -804,6 +804,22 @@ test(
     expect(destination.memory.learnings).toBe('Keep importer conventions with its project')
     expect(destination.learnings).toEqual(confirmed.writable.learnings.lines)
     expect(destination.learnings).toContainEqual(expect.objectContaining({ evidence: 'Verified against the importer' }))
+    const session = await owner.chat({ text: 'Inspect the moved project memory records' })
+    const context = session.received.at(-1)!
+    const ownerLog = join(
+      process.env.PNYX_HOME!,
+      'owner',
+      'poleis',
+      'moved-journal',
+      'memory.jsonl',
+    )
+    expect(context).toContain(ownerLog)
+    expect(context).toContain('projectMove.event')
+    expect(context).toContain('polisMove.entry')
+    expect(readFileSync(
+      ownerLog,
+      'utf8',
+    )).toContain('Keep importer conventions with its project')
     await owner.owner({
       args: [
         'project',
