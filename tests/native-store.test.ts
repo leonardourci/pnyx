@@ -1,6 +1,6 @@
 import { syncBuiltinESMExports } from 'node:module'
 import { execFileSync } from 'node:child_process'
-import filesystem, { appendFileSync, existsSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import filesystem, { appendFileSync, existsSync, readFileSync, rmSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { readEvents } from '#app/event-log.ts'
@@ -9,6 +9,7 @@ import { nativeHome } from '#app/native-home.ts'
 import { readNativeHydra } from '#app/native-read.ts'
 import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
+import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
 import { pnyx as runPnyx, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -59,6 +60,56 @@ test(
         ],
         input,
       })).code).toBe('IDEMPOTENCY_CONFLICT')
+    }
+  },
+)
+
+test(
+  'task leases use one identity through a symlinked home',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Leased task',
+      ],
+    })
+    const original = process.env.PNYX_HOME!
+    const alias = join(
+      process.env.TMPDIR!,
+      `lease-alias-${hydra.id}`,
+    )
+    symlinkSync(
+      original,
+      alias,
+    )
+    let release: (() => void) | undefined
+
+    try {
+      process.env.PNYX_HOME = alias
+      release = taskLease({
+        hydraId: hydra.id,
+        task: created.card.id,
+        actor: `${COPY_LEASE_PREFIX}test`,
+      })
+      process.env.PNYX_HOME = original
+      expect(taskLeasePresent({
+        hydraId: hydra.id,
+        task: created.card.id,
+      })).toBe(true)
+      dropCopyLeases({ hydraId: hydra.id })
+      process.env.PNYX_HOME = alias
+      expect(taskLeasePresent({
+        hydraId: hydra.id,
+        task: created.card.id,
+      })).toBe(false)
+    } finally {
+      process.env.PNYX_HOME = original
+      release?.()
+      rmSync(alias)
     }
   },
 )
