@@ -4274,3 +4274,72 @@ test(
     expect(JSON.stringify(history.events)).not.toContain('not a separate report')
   },
 )
+
+test(
+  'a native worker settles provider startup before its task can move',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Starting native worker',
+        '--folder',
+        source.folder({ name: 'starting-native-worker' }),
+      ],
+    })
+    const task = created.card.id as string
+    const held = pnyx.codex.holdStart({ task })
+    const pending = source.owner({
+      args: [
+        'task',
+        'start',
+        task,
+        '--harness',
+        'codex',
+      ],
+    })
+    onTestFinished(async () => {
+      held.release()
+      await Promise.allSettled([pending])
+    })
+    await until({
+      what: 'the provider to wait during startup',
+      check: held.entered,
+    })
+    await source.ownerRefused({
+      args: [
+        'task',
+        'move',
+        task,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    expect((await source.owner({
+      args: [
+        'task',
+        'show',
+        task,
+        '--full',
+      ],
+    })).task.id).toBe(task)
+    held.release()
+    const started = await pending
+    const worker = await source.agent({ cwd: started.agent.folder })
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        task,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    expect((await target.task({ key: task })).worker).toBe(`codex:${worker.id}`)
+    expect(worker.closed).toBe(false)
+  },
+)

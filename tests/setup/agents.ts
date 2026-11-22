@@ -635,6 +635,11 @@ export function fakeClaude() {
 export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } = {}) {
   let refuseInterrupt = false
   let reusedSession: string | undefined
+  const starts = new Map<string, {
+    wait: Promise<void>
+    release(): void
+    entered: boolean
+  }>()
   const sessions: AgentSession[] = []
   const turns = plans()
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
@@ -793,6 +798,16 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         }
 
         const params = (message.params ?? {}) as Message
+
+        if (message.method === 'initialize' && env.PNYX_ACTOR) {
+          const held = starts.get(env.PNYX_ACTOR)
+
+          if (held) {
+            starts.delete(env.PNYX_ACTOR)
+            held.entered = true
+            await held.wait
+          }
+        }
 
         if (message.method === 'config/read') {
           send({
@@ -975,6 +990,26 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
   return {
     spawnCodex,
     sessions,
+    holdStart: ({ task }: { task: string }) => {
+      let release!: () => void
+      const wait = new Promise<void>(resolve => {
+        release = resolve
+      })
+      const held = {
+        wait,
+        release,
+        entered: false,
+      }
+      starts.set(
+        `worker:${task}`,
+        held,
+      )
+
+      return {
+        release,
+        entered: () => held.entered,
+      }
+    },
     refuseNextInterrupt: () => {
       refuseInterrupt = true
     },
