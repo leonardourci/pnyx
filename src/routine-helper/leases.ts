@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
+import { canonical } from '#store/paths.ts'
 
 export const COPY_LEASE_PREFIX = 'copy-settlement:'
 
@@ -41,14 +42,15 @@ const leasePath = ({
   dir: string
   task: string
 }) => join(
-  dir,
+  canonical({ path: dir }) ?? dir,
   `helper-lease-${encodeURIComponent(task)}.json`,
 )
 
 const leases = new Map<string, Lease>()
 
 export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
-  const dir = hydraDir({ hydraId })
+  const requested = hydraDir({ hydraId })
+  const dir = canonical({ path: requested }) ?? requested
 
   for (const [
     path,

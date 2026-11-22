@@ -26,6 +26,7 @@ import { enqueueSteering } from '#workers/inbox.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import { sessionId } from '#workers/session-attachments.ts'
+import { requireHandoffAvailable } from '#workers/handoff-checkout.ts'
 
 const RECENT_CHANGES = 50_000
 const MESSAGE_EVENTS = new Set<string>([
@@ -712,6 +713,7 @@ export function eventWriter({
   const writer: Writer = {
     dir,
     observe({ observation }) {
+      // Observation-only ordering advances last for this daemon epoch.
       state = draft({
         state,
         change: ({ state }) => applyObservation({
@@ -802,6 +804,26 @@ export function eventWriter({
 
       if (known) {
         return
+      }
+
+      if (event.type === 'task.session' && !event.data.handoff) {
+        const current = state.sessions?.[event.data.session]
+        const replaced = event.data.replaces ? state.sessions?.[event.data.replaces] : undefined
+        const affected = new Set([
+          event.data.before,
+          event.data.after,
+          current?.taskId,
+          replaced?.taskId,
+        ])
+
+        for (const task of affected) {
+          if (task) {
+            requireHandoffAvailable({
+              hydraId,
+              task,
+            })
+          }
+        }
       }
 
       if (event.seq !== state.seq + 1) {
@@ -895,31 +917,50 @@ export function eventWriter({
         }
       }
 
-      onAppend({
-        event,
-        receipt,
-      })
-
       const before = state
 
       if (!ownedIds) {
         ownedIds = { ...state.eventIds }
       }
 
-      state = draft({
-        state: {
-          ...state,
-          eventIds: ownedIds,
-        },
-        owned: [ownedIds],
-        change: ({ state }) => {
-          replayOwned({
-            state,
-            events: [event],
-          })
-        },
-      })
+      const previousId = Object.getOwnPropertyDescriptor(
+        ownedIds,
+        event.id,
+      )
+
+      try {
+        state = draft({
+          state: {
+            ...state,
+            eventIds: ownedIds,
+          },
+          owned: [ownedIds],
+          change: ({ state }) => {
+            replayOwned({
+              state,
+              events: [event],
+            })
+          },
+        })
+      } catch (error) {
+        if (previousId) {
+          Object.defineProperty(
+            ownedIds,
+            event.id,
+            previousId,
+          )
+        } else {
+          delete ownedIds[event.id]
+        }
+
+        throw error
+      }
+
       ownedIds = state.eventIds
+      onAppend({
+        event,
+        receipt,
+      })
       onApplied?.({
         event,
         before,

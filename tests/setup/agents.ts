@@ -947,6 +947,14 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         }
 
         if (message.method === 'turn/steer') {
+          record({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'user',
+              content: params.input,
+            },
+          })
           send({
             message: {
               id: message.id,

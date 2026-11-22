@@ -90,6 +90,18 @@ function receiptOf({ accepted }: { accepted: AcceptedFact & { duplicate: boolean
   }
 }
 
+function copyAccepted({ accepted }: {
+  accepted: ReadonlyMap<string, AcceptedFact>
+}): Map<string, AcceptedFact> {
+  return new Map([...accepted].map(([
+    id,
+    receipt,
+  ]) => [
+    id,
+    { ...receipt },
+  ]))
+}
+
 export function openFileStore<Hydra, Task>({
   home: requestedHome,
   reduceHydra,
@@ -177,7 +189,7 @@ export function openFileStore<Hydra, Task>({
     return {
       state: structuredClone(current.hydra.value),
       position: { ...current.hydra.position },
-      accepted: new Map(current.hydra.accepted),
+      accepted: copyAccepted({ accepted: current.hydra.accepted }),
       worker: current.hydra.worker,
       issue: current.hydra.issue,
       tasks: new Map([...current.tasks].map(([
@@ -188,7 +200,7 @@ export function openFileStore<Hydra, Task>({
         {
           state: structuredClone(task.value),
           position: { ...task.position },
-          accepted: new Map(task.accepted),
+          accepted: copyAccepted({ accepted: task.accepted }),
           worker: task.worker,
           issue: task.issue,
         },
@@ -680,7 +692,7 @@ export function openFileStore<Hydra, Task>({
 
       const position = <Value>({ segment }: { segment: FileSegment<Value> }) => ({
         position: { ...segment.position },
-        accepted: segment.accepted as ReadonlyMap<string, AcceptedFact>,
+        accepted: copyAccepted({ accepted: segment.accepted }),
         issue: segment.issue,
       })
 
@@ -833,19 +845,18 @@ export function openFileStore<Hydra, Task>({
           source,
         ] = located
         const current = source.tasks.get(task)!
+        const fact: LogFact = {
+          ...plainJson({ value: data }),
+          id,
+          at,
+          by,
+          t: 'moved',
+          from,
+          to,
+        }
         const applied = applyFileFacts({
           segment: current,
-          facts: [
-            {
-              ...plainJson({ value: data }),
-              id,
-              at,
-              by,
-              t: 'moved',
-              from,
-              to,
-            },
-          ],
+          facts: [fact],
           reduce: reduceTask,
           path: pathOf({
             scope: {
@@ -877,11 +888,8 @@ export function openFileStore<Hydra, Task>({
             from,
             to,
             task,
-            id,
-            at,
-            by,
+            fact,
             after: current.position,
-            data,
           })
         } catch (error) {
           recover()

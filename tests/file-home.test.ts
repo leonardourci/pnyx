@@ -199,9 +199,14 @@ test(
           to: 'b',
           task: 'moving',
           after,
-          at: AT,
-          by: 'owner',
-          id: 'native-move',
+          fact: {
+            at: AT,
+            by: 'owner',
+            t: 'moved',
+            id: 'native-move',
+            from: 'a',
+            to: 'b',
+          },
         })
         expect(existsSync(source)).toBe(false)
         expect(existsSync(taskFiles({
@@ -406,9 +411,14 @@ test(
       to: 'b',
       task: 'same',
       after,
-      at: AT,
-      by: 'owner',
-      id: 'native-move',
+      fact: {
+        at: AT,
+        by: 'owner',
+        t: 'moved',
+        id: 'native-move',
+        from: 'a',
+        to: 'b',
+      },
     })).toThrow(/already exists/)
     expect(readFileSync(source)).toEqual(original.source)
     expect(readFileSync(destination)).toEqual(original.destination)
@@ -453,9 +463,14 @@ test(
       to: 'legacy',
       task: 'healthy',
       after,
-      at: AT,
-      by: 'owner',
-      id: 'move-to-legacy',
+      fact: {
+        at: AT,
+        by: 'owner',
+        t: 'moved',
+        id: 'move-to-legacy',
+        from: 'a',
+        to: 'legacy',
+      },
     })).toThrow(/no regular native log/)
     expect(existsSync(join(
       legacy,
@@ -494,9 +509,14 @@ test(
       to: 'b',
       task: 'healthy',
       after,
-      at: AT,
-      by: 'owner',
-      id: 'move-through-alias',
+      fact: {
+        at: AT,
+        by: 'owner',
+        t: 'moved',
+        id: 'move-through-alias',
+        from: 'a',
+        to: 'b',
+      },
     })).toThrow(/not a file-store directory/)
     expect(existsSync(join(
       unexpected,

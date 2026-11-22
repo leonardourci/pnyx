@@ -2724,6 +2724,15 @@ test(
       check: () => events.some(event => typeof event === 'object' && event.type === 'input'
         && event.receipt.inputId === 'steer' && event.receipt.phase === 'confirmed'),
     })
+    const nativeInputs = readFileSync(
+      session.path!,
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => readTranscriptRecord({ record: JSON.parse(line) }))
+      .filter(record => record.role === 'user')
+      .flatMap(record => record.messages.map(message => message.text))
+    expect(nativeInputs.filter(text => text.includes('LATEST_MESSAGE'))).toHaveLength(1)
     await session.interrupt({ cancelQueued: false })
     await until({
       what: 'the continuation turn to start',

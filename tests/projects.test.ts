@@ -3584,6 +3584,38 @@ if (branch === 'iris/target') {
         ],
       })).code).toBe('CONFLICT')
       expect(blockedTarget.replies ?? []).toEqual([])
+      const pendingSession = blockedTarget.sessionIds?.[0] ?? source.sessionIds[0]
+      expect(await hydra.ownerRefused({
+        args: [
+          'task',
+          'attach',
+          'gate',
+          '--session',
+          pendingSession,
+        ],
+      })).toMatchObject({
+        code: 'CONFLICT',
+        error: expect.stringContaining('unresolved handoff'),
+      })
+      const currentHolder = (await hydra.owner({
+        args: [
+          'task',
+          'sessions',
+          '--full',
+        ],
+      })).sessions
+        .find((session: { id: string }) => session.id === pendingSession).taskId
+      expect(await hydra.ownerRefused({
+        args: [
+          'task',
+          'detach',
+          currentHolder,
+        ],
+      }))
+        .toMatchObject({
+          code: 'CONFLICT',
+          error: expect.stringContaining('unresolved handoff'),
+        })
       expect(readFileSync(
         committedWork,
         'utf8',

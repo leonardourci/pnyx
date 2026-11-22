@@ -31,6 +31,10 @@ See [AGENTS.md](../AGENTS.md) for the layout and design rules, and [follow-conve
 
 Owner actions run in the daemon, which is the only writer. One ordered queue stages each command against memory and appends its meaningful facts to the Hydra and task logs. It syncs the touched files before returning a receipt and publishes the resulting state afterward. State reducers perform no I/O, clock reads or random choices.
 
+Observation-only source advances (`generation`, `cursor` and observed time) live in daemon memory. Their stale-report checks compare the currently reconstructed source refs; restart restores available evidence from native agent files. Push-only ordering watermarks expire at restart. Worker report identity and byte-offset facts remain durable in each task log. Integrations that need ordering across restarts keep their evidence in a native source Pnyx can reread.
+
+Dispatch reads use the committed journal without rewriting its human-readable config mirrors. The daemon repairs those mirrors after claiming the home and when preparing a configuration change, so local setup diagnostics cannot overwrite a newer daemon commit.
+
 Native IDs preserve idempotency across restart and folder moves. Each log assigns its own `n`. Sequence references in saved projections use native IDs; process-local positions are rebuilt when the daemon opens the home. History is read from the native logs and cached on demand. An item sent to a page, such as an update, is capped at64KB. Hook reports log only their id and byte count in Detailed mode; their content never enters diagnostic logs.
 
 Snapshots cache folded decisions, accepted IDs and file offsets. The daemon snapshots after five minutes with changes and on clean stop. A bad cache falls back to log replay. Derived observations are rebuilt from the harness’s native files, with transcript cursors reset on open. A write failure reports its error; complete lines already written are reconciled before a retry can succeed. See [native file persistence](file-store.md) for recovery details.
