@@ -37,6 +37,7 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
 import { hydraExists, loadHydra } from './store.ts'
+import { repairDispatchMirrors } from '#workers/dispatch-config.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -106,6 +107,7 @@ export async function startServer({
   let epoch: string
 
   try {
+    repairDispatchMirrors()
     epoch = nativeHome().epoch
   } catch (error) {
     releaseClaim()

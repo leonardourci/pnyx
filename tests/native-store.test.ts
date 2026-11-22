@@ -20,6 +20,51 @@ beforeAll(async () => {
 })
 
 test(
+  'dispatch reads leave mirrors untouched and daemon startup repairs them from the journal',
+  () => {
+    const home = join(
+      process.env.TMPDIR!,
+      'dispatch-mirror-read',
+    )
+    const script = [
+      "import assert from 'node:assert/strict'",
+      "import {readFileSync, writeFileSync} from 'node:fs'",
+      "import {join} from 'node:path'",
+      "import {commitChange, savedDocument} from '#workers/dispatch-config.ts'",
+      "import {startServer} from '#app/server-daemon.ts'",
+      'const home = process.env.PNYX_HOME',
+      'const document = {rules: {}, default: [], workers: {}, projects: {}, accounts: {}}',
+      "commitChange({entry: {v: 1, id: 'dispatch-before-start', at: new Date().toISOString(), actor: 'web', document}})",
+      "const mirror = join(home, 'config', 'hydra-heads-dispatch.json')",
+      "writeFileSync(mirror, 'stale mirror bytes')",
+      'assert.deepEqual(savedDocument(), document)',
+      "assert.equal(readFileSync(mirror, 'utf8'), 'stale mirror bytes')",
+      "const server = await startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')})",
+      "assert.deepEqual(JSON.parse(readFileSync(mirror, 'utf8')).default, [])",
+      'await server.close()',
+      "console.log('read stayed pure; startup repaired mirrors')",
+    ].join('\n')
+    expect(execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        script,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+        },
+        timeout: 30_000,
+      },
+    ).trim()).toBe('read stayed pure; startup repaired mirrors')
+  },
+)
+
+test(
   'batch previews refuse an event id already accepted by an individual command',
   async () => {
     const hydra = await pnyx.hydra()
