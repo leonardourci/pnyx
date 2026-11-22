@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HydraState } from '#app/model.ts'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { COMPONENT, hydraFiles, taskFiles } from '#store/file-home.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { nativeSources } from './native-window.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -31,7 +31,7 @@ export function compactionFiles({
   )?.isDirectory() ? readdirSync(
       tasks,
       { withFileTypes: true },
-    ).filter(entry => entry.isDirectory() && !entry.name.startsWith('.')) : []
+    ).filter(entry => entry.isDirectory() && COMPONENT.test(entry.name)) : []
 
   return [
     ...new Set([
