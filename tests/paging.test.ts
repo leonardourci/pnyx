@@ -1,12 +1,11 @@
 import { beforeAll, expect, test } from 'vitest'
 import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { Compaction } from '#workers/compaction/model.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
 import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
-import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendRecords, appendToolCalls } from './setup/transcripts.ts'
 
 let pnyx: Pnyx
@@ -460,15 +459,9 @@ test(
 )
 
 // What the chat holds for a Hydra: its saved compactions, oldest first.
-const compactions = ({ hydra }: { hydra: Hydra }) => rows<{
-  data: { compaction?: { operations: Compaction[] } }
-}>({
-  text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
-  values: [
-    hydra.id,
-    HYDRA_CARD,
-  ],
-})[0]?.data.compaction?.operations ?? []
+const compactions = ({ hydra }: { hydra: Hydra }) => (loadHydra({
+  hydraId: hydra.id,
+}).state.cards[HYDRA_CARD]).compaction?.operations ?? []
 
 test(
   'a chat page shows only the compactions that happened within its messages, and compactions with no message between them fold into one run',

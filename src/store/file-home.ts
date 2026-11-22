@@ -416,6 +416,7 @@ export function moveTaskFiles({
   at,
   by,
   id,
+  data = {},
 }: {
   home: string
   from: string
@@ -425,6 +426,7 @@ export function moveTaskFiles({
   at: string
   by: LogFact['by']
   id: string
+  data?: Record<string, unknown>
 }): LogPosition {
   const placement = prepareMove({
     home,
@@ -445,6 +447,7 @@ export function moveTaskFiles({
     after,
     entries: [
       {
+        ...data,
         at,
         by,
         t: 'moved',

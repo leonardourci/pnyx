@@ -1,7 +1,6 @@
 import { HydraError } from '#store/errors.ts'
-import { guard, WRITE, parse, integer, meta, type Options, type Output } from '#app/cli-support.ts'
+import { guard, WRITE, parse, integer, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
-import { setupPostgres } from './postgres.ts'
 import { requireSetupHome } from './home.ts'
 import { setupSkills } from './skills.ts'
 import { setupService } from './service.ts'
@@ -17,8 +16,6 @@ export const setup = guard({
       preview: { type: 'boolean' },
       'allow-custom-home': { type: 'boolean' },
       port: { type: 'string' },
-      check: { type: 'boolean' },
-      url: { type: 'string' },
     }
     const {
       values,
@@ -30,45 +27,8 @@ export const setup = guard({
       positionals: 1,
     })
 
-    const postgresOnly = [
-      'check',
-      'url',
-    ].filter(flag => values[flag] !== undefined)
-
-    if (postgresOnly.length && positionals[0] !== 'postgres') {
-      throw new HydraError({
-        message: `--${postgresOnly[0]} applies only to setup postgres`,
-        code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx setup check` to list what is missing'],
-      })
-    }
-
-    if (postgresOnly.length > 1) {
-      throw new HydraError({
-        message: '--check and --url run separately',
-        code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx setup postgres --url <url>`, then `pnyx setup postgres --check`'],
-      })
-    }
-
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
-    }
-
-    if (values.preview && positionals[0] === 'postgres') {
-      throw new HydraError({
-        message: '--preview does not apply to setup postgres',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (positionals[0] === 'postgres') {
-      return setupPostgres({
-        check: !!values.check,
-        allowCustomHome: !!values['allow-custom-home'],
-        url: typeof values.url === 'string' ? values.url : undefined,
-        meta: meta({ values }),
-      })
     }
 
     if (positionals[0] === undefined || [
@@ -107,7 +67,7 @@ export const setup = guard({
       throw new HydraError({
         message: `unknown setup target: ${positionals[0] ?? '(none)'}`,
         code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx setup`, `pnyx setup check`, `pnyx setup postgres`, `pnyx setup skills` or `pnyx setup hooks`'],
+        help: ['Run `pnyx setup`, `pnyx setup check`, `pnyx setup skills` or `pnyx setup hooks`'],
       })
     }
 

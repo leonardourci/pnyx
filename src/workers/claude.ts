@@ -15,7 +15,7 @@ import { questions } from './native-prompts.ts'
 import { object, count, usageNumber, taskContext, textContent } from './transcript-usage.ts'
 import type { TranscriptUsageReader, HostedImage, HostedUsage, InputReceipt, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
-import { imageBytes } from './input.ts'
+import { imageBytes, ownerInputUuid } from './input.ts'
 import { compactCommand } from './compact-command.ts'
 import { watchIntake } from './claude-intake.ts'
 import { readTranscript } from './transcript-read.ts'
@@ -23,7 +23,6 @@ import { readTranscript } from './transcript-read.ts'
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 let permissionWarningLogged = false
 
 function startQuery({
@@ -1316,9 +1315,9 @@ function unsentUuid({
   owner?: string
   sent: Set<string>
 }): UUID {
-  const reusable = owner !== undefined && UUID_PATTERN.test(owner) && !sent.has(owner)
+  const uuid = owner === undefined ? undefined : ownerInputUuid({ id: owner })
 
-  return reusable ? owner as UUID : randomUUID()
+  return uuid !== undefined && !sent.has(uuid) ? uuid : randomUUID()
 }
 
 export const readClaudeTranscript: TranscriptReader = ({

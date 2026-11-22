@@ -190,7 +190,7 @@ export function createAgentSwitch({
     kind: HydraOperation['kind']
     after?: number
     independent?: boolean
-  }): void
+  }): Promise<void>
   endOperation({
     id,
     error,
@@ -397,7 +397,7 @@ export function createAgentSwitch({
               at: at(),
             }),
           })
-          startOperation({
+          await startOperation({
             id: operationId,
             kind: 'compaction',
             after: (loadHydra({ hydraId }).state.eventIds[id] ?? 1) - 1,

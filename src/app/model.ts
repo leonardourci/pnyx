@@ -173,6 +173,7 @@ export type HydraChange = EventBase & (
       column?: Column
       rank?: number
       folder?: string
+      workerLogDir?: string
       project?: string
       kind?: 'build' | 'investigation'
     }

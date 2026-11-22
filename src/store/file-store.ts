@@ -21,10 +21,14 @@ interface Receipt {
 }
 interface View<Hydra, Task> {
   state?: Hydra
+  position: LogPosition
+  accepted: Map<string, AcceptedFact>
   worker: number
   issue?: HydraError
   tasks: Map<string, {
     state?: Task
+    position: LogPosition
+    accepted: Map<string, AcceptedFact>
     worker: number
     issue?: HydraError
   }>
@@ -172,6 +176,8 @@ export function openFileStore<Hydra, Task>({
 
     return {
       state: structuredClone(current.hydra.value),
+      position: { ...current.hydra.position },
+      accepted: new Map(current.hydra.accepted),
       worker: current.hydra.worker,
       issue: current.hydra.issue,
       tasks: new Map([...current.tasks].map(([
@@ -181,6 +187,8 @@ export function openFileStore<Hydra, Task>({
         id,
         {
           state: structuredClone(task.value),
+          position: { ...task.position },
+          accepted: new Map(task.accepted),
           worker: task.worker,
           issue: task.issue,
         },
@@ -634,6 +642,59 @@ export function openFileStore<Hydra, Task>({
 
   return {
     read,
+    has: ({
+      hydra,
+      task,
+      id,
+    }: {
+      hydra: string
+      task?: string
+      id: string
+    }): boolean => {
+      const current = memory.get(hydra)
+      const segment = task === undefined ? current?.hydra : current?.tasks.get(task)
+
+      return segment?.accepted.has(id) ?? false
+    },
+    value: ({
+      hydra,
+      task,
+    }: {
+      hydra: string
+      task?: string
+    }) => {
+      const current = memory.get(hydra)
+      const segment = task === undefined ? current?.hydra : current?.tasks.get(task)
+
+      return segment ? {
+        state: structuredClone(segment.value),
+        issue: segment.issue,
+      } : undefined
+    },
+    positions: ({ hydra }: { hydra: string }) => {
+      const current = memory.get(hydra)
+
+      if (!current) {
+        return undefined
+      }
+
+      const position = <Value>({ segment }: { segment: FileSegment<Value> }) => ({
+        position: { ...segment.position },
+        accepted: segment.accepted as ReadonlyMap<string, AcceptedFact>,
+        issue: segment.issue,
+      })
+
+      return {
+        ...position({ segment: current.hydra }),
+        tasks: new Map([...current.tasks].map(([
+          task,
+          segment,
+        ]) => [
+          task,
+          position({ segment }),
+        ])),
+      }
+    },
     hydras: () => [...memory.keys()],
     locateTask: ({ task }: { task: string }) => {
       const found = findTask({
@@ -743,6 +804,7 @@ export function openFileStore<Hydra, Task>({
       id,
       at,
       by,
+      data = {},
     }: {
       from: string
       to: string
@@ -750,6 +812,7 @@ export function openFileStore<Hydra, Task>({
       id: string
       at: string
       by: LogFact['by']
+      data?: Record<string, unknown>
     }) => control({
       run: (): Receipt[] => {
         const located = findTask({
@@ -774,6 +837,7 @@ export function openFileStore<Hydra, Task>({
           segment: current,
           facts: [
             {
+              ...plainJson({ value: data }),
               id,
               at,
               by,
@@ -817,6 +881,7 @@ export function openFileStore<Hydra, Task>({
             at,
             by,
             after: current.position,
+            data,
           })
         } catch (error) {
           recover()

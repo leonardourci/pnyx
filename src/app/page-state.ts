@@ -4,7 +4,7 @@ import { ownerActor } from './actors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { cardReference } from './rows.ts'
+import { cardReference } from './card-reference.ts'
 import { isManagedTask, knownCards, liveTask } from '#tasks/select.ts'
 
 export interface PageInterest {

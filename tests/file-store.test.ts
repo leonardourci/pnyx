@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { openFileStore } from '#store/file-store.ts'
-import type { LogEntry, LogFact } from '#store/log.ts'
+import { readLog, type LogEntry, type LogFact } from '#store/log.ts'
 
 vi.hoisted(() => {
   vi.resetModules()
@@ -1175,6 +1175,136 @@ test(
         text: 'Still readable',
       },
     ])
+    await home.close()
+  },
+)
+
+test(
+  'readers page only acknowledged bytes and never repair a canonical log',
+  async () => {
+    const dir = homeFolder()
+    const home = store({ home: dir })
+    await create({ home })
+    await home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        fact({
+          id: 'kept',
+          text: 'Acknowledged',
+        }),
+      ],
+    })
+    const through = home.read({ hydra: 'a' })!.tasks.get('task')!.position
+    const path = join(
+      dir,
+      'hydras/a/tasks/task/task.log',
+    )
+    await home.close()
+    appendFileSync(
+      path,
+      '{torn',
+    )
+    const contents = readFileSync(
+      path,
+      'utf8',
+    )
+    const first: string[] = []
+    const cursor = readLog({
+      path,
+      through,
+      readOnly: true,
+      limit: 1,
+      accept: ({ entry }) => first.push(entry.id),
+    })
+    expect(first).toEqual(['create-task'])
+    const second: string[] = []
+    expect(readLog({
+      path,
+      after: cursor,
+      through,
+      readOnly: true,
+      accept: ({ entry }) => second.push(entry.id),
+    })).toEqual(through)
+    expect(second).toEqual(['kept'])
+    expect(() => readLog({
+      path,
+      readOnly: true,
+      accept: () => {},
+    })).toThrow(expect.objectContaining({ code: 'LOG_CORRUPT' }))
+    expect(readFileSync(
+      path,
+      'utf8',
+    )).toBe(contents)
+  },
+)
+
+test(
+  'a replaced worker file starts its own cursor and truncation warnings survive restart',
+  async () => {
+    const dir = homeFolder()
+    let home = store({ home: dir })
+    await create({ home })
+    const append = ({
+      id,
+      identity,
+      off,
+      code = 'note',
+    }: {
+      id: string
+      identity: string
+      off: number
+      code?: string
+    }) => home.changeTask({
+      hydra: 'a',
+      task: 'task',
+      decide: () => [
+        fact({
+          id,
+          t: 'worker',
+          by: 'worker',
+          identity,
+          off,
+          code,
+          text: id,
+        }),
+      ],
+    })
+    await append({
+      id: 'first',
+      identity: 'file-a',
+      off: 100,
+    })
+    await expect(append({
+      id: 'same-offset',
+      identity: 'file-a',
+      off: 100,
+    })).rejects.toMatchObject({ code: 'INVALID_EVENT' })
+    await append({
+      id: 'truncated',
+      identity: 'file-a',
+      off: 100,
+      code: 'invalid',
+    })
+    await home.close()
+    home = store({ home: dir })
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state?.latest).toBe('truncated')
+    await append({
+      id: 'replaced',
+      identity: 'file-b',
+      off: 12,
+    })
+    await home.close()
+    home = store({ home: dir })
+    expect(home.read({ hydra: 'a' })?.tasks.get('task')).toMatchObject({
+      worker: 12,
+      state: { latest: 'replaced' },
+    })
+    await expect(append({
+      id: 'older',
+      identity: 'file-b',
+      off: 10,
+    })).rejects.toMatchObject({ code: 'INVALID_EVENT' })
     await home.close()
   },
 )

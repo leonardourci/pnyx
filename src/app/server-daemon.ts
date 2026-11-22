@@ -1,3 +1,4 @@
+import { nativeHome } from './native-home.ts'
 import { trackChildren } from '#workers/children.ts'
 import { finishHydraRemoval } from '#hydra/remove.ts'
 import { recoverOwnerCommands } from './confirmations.ts'
@@ -22,7 +23,7 @@ import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
-import { hydraRemoval, reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { hydraRemoval, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
@@ -35,8 +36,7 @@ import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
-import { holdHydra, hydraExists, loadHydra } from './store.ts'
-import { migrateSchema, query } from '#store/postgres.ts'
+import { hydraExists, loadHydra } from './store.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -104,13 +104,6 @@ export async function startServer({
   const starting = performance.now()
   const releaseClaim = claimServer()
 
-  try {
-    migrateSchema({ progress: reportStartup })
-  } catch (error) {
-    releaseClaim()
-    throw error
-  }
-
   const logs = startServerLogs({
     settings: readSettings().settings,
     processLineMs: options.processLineMs,
@@ -137,6 +130,7 @@ export async function startServer({
     changes: frame.value,
   })
   const homeHistory = createSocketHistory<PageChanges>({
+    epoch: nativeHome().epoch,
     measure: ({ frame }) => Buffer.byteLength(JSON.stringify(homeDelta({ frame }))),
   })
   const homeClients = new Set<({ message }: { message: HomeMessage }) => void>()
@@ -788,18 +782,8 @@ export async function startServer({
     ready()
   }
 
-  const removalPending = ({ id }: { id: string }) => {
-    const [rows] = query({
-      statements: [
-        {
-          text: "select 1 from hydras where id = $1 and config->>'removing' = 'true'",
-          values: [id],
-        },
-      ],
-    })
-
-    return Boolean(rows?.length)
-  }
+  const removalPending = ({ id }: { id: string }) =>
+    hydraExists({ hydraId: id }) && loadHydra({ hydraId: id }).state.config?.removing === true
 
   const mount = async ({ id }: { id: string }): Promise<MountedHydra> => {
     if (removalPending({ id })) {
@@ -1075,27 +1059,7 @@ export async function startServer({
     }
   }
 
-  // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
-  // claim, instead of leaving a server that holds it without serving.
   try {
-    // Holding a Hydra once imports a legacy events.jsonl, so the removal checks below read its rows.
-    for (const id of hydraIds()) {
-      try {
-        const release = holdHydra({
-          hydraId: id,
-          changed: () => {},
-        })
-        release()
-      } catch (error) {
-        log({
-          level: 'warn',
-          operation: 'hydra.import',
-          hydraId: id,
-          error,
-        })
-      }
-    }
-
     for (const id of hydraIds()) {
       try {
         if (removalPending({ id })) {

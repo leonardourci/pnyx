@@ -7,14 +7,14 @@ import { operationEvent } from '#hydra/operations.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { workerLine } from './setup/worker-log.ts'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { constants, openSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
@@ -22,11 +22,23 @@ import { parse } from 'yaml'
 import { hydraMessages } from '#hydra/chat-messages.ts'
 import { splitEntry } from '#hydra/transcripts-read.ts'
 import { safeEnd } from '../web/src/shared/ui/reveal.ts'
-import { openPage, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { openPage, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { appendToolCalls } from './setup/transcripts.ts'
 
 const DOCS_MESSAGE = '3d6b8f20-5a4c-4e1b-9f72-6c8d0e1a2b34'
 const CHANGELOG_MESSAGE = '4e7c9031-6b5d-4f2c-8a83-7d9e1f2b3c45'
+
+vi.mock(
+  'node:fs',
+  async () => {
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+
+    return {
+      ...filesystem,
+      openSync: vi.fn(filesystem.openSync),
+    }
+  },
+)
 
 let pnyx: Pnyx
 
@@ -99,10 +111,13 @@ test(
       CHANGELOG_MESSAGE,
     ])
     expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)).toHaveLength(1)
-    expect(rows({
-      text: 'select key from cards where hydra_id = $1 order by key',
-      values: [hydra.id],
-    })).toEqual([{ key: '$hydra' }])
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).map(card => ({ key: card.key }))
+      .sort((
+        a,
+        b,
+      ) => a.key.localeCompare(b.key))).toEqual([{ key: '$hydra' }])
 
     const { messages } = await hydra.owner({
       args: [
@@ -1255,106 +1270,6 @@ test(
 )
 
 test(
-  'a cached Hydra turn with a legacy finished boundary resumes only unanswered owner messages',
-  async () => {
-    const hydra = await pnyx.hydra()
-    pnyx.claude.plan({
-      hydra: hydra.id,
-      text: 'Already answered',
-      reply: 'Answered.',
-    })
-    const session = await hydra.chat({ text: 'Already answered' })
-    const finished = await until({
-      what: 'the answered Hydra turn to finish',
-      check: () => {
-        const state = loadHydra({ hydraId: hydra.id }).state
-        const sessions = Object.values(state.sessions ?? {})
-        const facts = sessions.find(candidate => candidate.agent.sessionId === session.id)
-
-        const finishedTurn = facts?.sessionActivity === 'finished' && facts.turnFinishedSeq !== undefined
-
-        return session.answered === 1 && finishedTurn && facts
-      },
-    })
-    pnyx.claude.plan({
-      hydra: hydra.id,
-      text: 'Still unanswered',
-      hold: true,
-    })
-    await hydra.chat({ text: 'Still unanswered' })
-
-    await pnyx.restart({
-      whileStopped: () => {
-        const legacy = {
-          v: 1,
-          id: 'legacy-finished',
-          seq: finished.turnFinishedSeq!,
-          at: finished.activityObservedAt!,
-          actor: 'pnyx',
-          cardId: HYDRA_CARD,
-          type: 'card.pushed',
-          data: {
-            key: '$hydra',
-            agent: finished.agent,
-            activity: 'finished',
-          },
-        }
-        rows({
-          text: 'insert into events (hydra_id, seq, id, type, at, actor, card_id, data) values ($1,$2,$3,$4,$5,$6,$7,$8)',
-          values: [
-            hydra.id,
-            legacy.seq,
-            legacy.id,
-            legacy.type,
-            legacy.at,
-            legacy.actor,
-            legacy.cardId,
-            JSON.stringify(legacy),
-          ],
-        })
-        rows({
-          text: `update sessions set data = jsonb_set(data::jsonb - 'turn' - 'turnFinishedSeq',
-            '{hydraTurn,finishedThrough}', '0')::json
-          where hydra_id = $1 and id = $2`,
-          values: [
-            hydra.id,
-            finished.id,
-          ],
-        })
-      },
-    })
-    const recovery = await until({
-      what: 'the recovery recap from the legacy boundary',
-      check: () => {
-        const resumed = pnyx.claude.sessions.find(candidate =>
-          candidate.env.PNYX_HYDRA === hydra.id && candidate.resumed)
-
-        return resumed?.received.find(text => text.includes('restart cut your last turn'))
-      },
-    })
-    const messages = []
-
-    const facts = readFileSync(
-      join(
-        process.env.PNYX_HOME!,
-        'hydras',
-        hydra.id,
-        'hydra.log',
-      ),
-      'utf8',
-    ).trimEnd()
-      .split('\n')
-      .map(line => JSON.parse(line))
-
-    for (const match of recovery.matchAll(/Read owner message "([^"]+)" in hydra.log in full/g)) {
-      messages.push(facts.find(fact => fact.id === match[1])?.event.data.text)
-    }
-
-    expect(messages).toEqual(['Still unanswered'])
-  },
-)
-
-test(
   'owner messages sent while Hydra works survive a restart that cuts its turn: Hydra resumes once, is pointed at what it did not answer, and the messages stay in order',
   async () => {
     const hydra = await pnyx.hydra()
@@ -1638,13 +1553,9 @@ test(
     // The message waits behind the compaction.
     await until({
       what: 'the message to wait behind the running compaction',
-      check: () => rows<{ data: { compaction?: { inputs: { id: string }[] } } }>({
-        text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
-        values: [
-          hydra.id,
-          id,
-        ],
-      })[0]?.data.compaction?.inputs.some(input => input.id === held.reply.reply),
+      check: () => (loadHydra({
+        hydraId: hydra.id,
+      }).state.cards[id]).compaction?.inputs.some(input => input.id === held.reply.reply),
     })
     expect(heard()).toBe(0)
 
@@ -2028,15 +1939,9 @@ test(
 )
 
 // The texts Hydra's own compaction holds as its inputs, as its card saves them.
-const compactionInputs = ({ hydraId }: { hydraId: string }) => rows<{
-  data: { compaction?: { inputs: { text: string }[] } }
-}>({
-  text: 'select data from card_bodies where hydra_id = $1 and card_id = $2',
-  values: [
-    hydraId,
-    '$hydra',
-  ],
-})[0]?.data.compaction?.inputs.map(input => input.text)
+const compactionInputs = ({ hydraId }: { hydraId: string }) => (loadHydra({
+  hydraId,
+}).state.cards['$hydra']).compaction?.inputs.map(input => input.text)
 
 test(
   'a message removed from the queue never reaches Hydra once its compaction ends, whether the compaction held it as its input or behind its stop, and the kept ones reach it once',
@@ -2132,24 +2037,12 @@ test(
 type Page = Awaited<ReturnType<Hydra['page']>>
 
 // The agent change waiting for the owner's choice, as the page reads it.
-const agentChange = ({ hydraId }: { hydraId: string }) => rows<{
-  value: {
-    id: string
-    state: string
-    next: { effort?: string }
-  }
-}>({
-  text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraAgentChange\'',
-  values: [hydraId],
-})[0]?.value
+const agentChange = ({ hydraId }: { hydraId: string }) => (loadHydra({
+  hydraId,
+}).state.hydraAgentChange)
 
 // The agent Hydra last ran with, as the page's Last used mark reads it.
-const lastRan = ({ hydraId }: { hydraId: string }) => rows<{
-  value: { effort?: string }
-}>({
-  text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraAgent\'',
-  values: [hydraId],
-})[0]?.value
+const lastRan = ({ hydraId }: { hydraId: string }) => (loadHydra({ hydraId }).state.hydraAgent)
 
 // Claude's catalog runs "opus" at "high" effort when Hydra names neither.
 const chooseAgent = async ({
@@ -2367,10 +2260,7 @@ test(
     const page = await hydra.page()
     await hydra.chat({ text: 'first message' })
 
-    const compaction = () => rows<{ value: { kind: string } }>({
-      text: 'select value from hydra_values where hydra_id = $1 and key = \'hydraOperation\'',
-      values: [hydra.id],
-    })[0]?.value
+    const compaction = () => (loadHydra({ hydraId: hydra.id }).state.hydraOperation)
 
     // The owner changes the agent, answers Compact only, and can act while the compaction runs.
     const compactOnly = async ({
@@ -2884,6 +2774,11 @@ test(
       })
       now += 4 * 60 * 60_000
       await timer.check()
+      await until({
+        what: 'Hydra to finish the task question reminder',
+        check: () => !queue({ hydraId: hydra.id })?.working,
+      })
+      await timer.check()
       expect(wakes).toBe(3)
       const overdue = await hydra.owner({
         args: [
@@ -2922,6 +2817,11 @@ test(
         },
       })
       now += 4 * 60 * 60_000
+      await timer.check()
+      await until({
+        what: 'Hydra to finish its question reminder',
+        check: () => !queue({ hydraId: hydra.id })?.working,
+      })
       await timer.check()
       expect(wakes).toBe(4)
       const ownQuestion = await hydra.owner({
@@ -3201,7 +3101,38 @@ test.each([
     await hydra.chat({ text: 'Read the last hidden-card change' })
     const lastHidden = session.received.find(text => text.endsWith('Read the last hidden-card change'))!
     expect(lastHidden.match(/is no longer listed/g)).toHaveLength(1)
+    await until({
+      what: 'the last hidden-card turn to finish',
+      check: () => !queue({ hydraId: hydra.id })?.working,
+    })
     page.close()
+
+    expect(lastHidden).toContain('hydra.log')
+    const countArgs = [
+      'hydra',
+      'history',
+      '--since',
+      'last-compaction',
+      '--count',
+    ]
+    const beforeRestart = await hydra.owner({ args: countArgs })
+    expect(beforeRestart.totalTokens).toBeGreaterThan(0)
+    const logPath = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'hydra.log',
+    )
+    expect(readFileSync(
+      logPath,
+      'utf8',
+    )).toContain('Read the full snapshot after compaction')
+    await pnyx.restart()
+    expect((await hydra.owner({ args: countArgs })).totalTokens).toBe(beforeRestart.totalTokens)
+    expect(readFileSync(
+      logPath,
+      'utf8',
+    )).toContain('Read the full snapshot after compaction')
   },
 )
 
@@ -3796,7 +3727,31 @@ test(
       check: () => agentChange({hydraId: hydra.id}),
     })
     const sessions = pnyx.claude.sessions.length
-    rows({text: "alter table events add constraint reject_running_agent_change check (type <> 'hydra.agent-change' or data->'data'->>'state' is distinct from 'running') not valid"})
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+    const path = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'hydra.log',
+    )
+    let failed = false
+    // eslint-disable-next-line pnyx/object-params -- Node owns openSync's positional signature.
+    vi.mocked(openSync).mockImplementation((...args) => {
+      const [
+        file,
+        flags,
+      ] = args
+
+      if (!failed && String(file) === path && typeof flags === 'number' && (flags & constants.O_APPEND)) {
+        failed = true
+        throw Object.assign(
+          new Error('injected native append failure'),
+          { code: 'EIO' },
+        )
+      }
+
+      return filesystem.openSync(...args)
+    })
 
     try {
       const answer = await page.send({
@@ -3808,12 +3763,12 @@ test(
       })
       expect(answer).toMatchObject({
         type: 'error',
-        code: 'DATABASE_ERROR',
+        code: 'WRITE_FAILED',
       })
       expect(agentChange({hydraId: hydra.id})?.state).toBe(change.state)
       expect(pnyx.claude.sessions.length).toBe(sessions)
     } finally {
-      rows({text: 'alter table events drop constraint reject_running_agent_change'})
+      vi.mocked(openSync).mockImplementation(filesystem.openSync)
       page.close()
     }
   },

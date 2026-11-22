@@ -214,6 +214,16 @@ test(
       herdrSession: 'hook-session',
       herdrPane: 'hook-pane',
     })
+    const sourceLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'default',
+      'hydra.log',
+    )
+    const firstBinding = readFileSync(
+      sourceLog,
+      'utf8',
+    )
     runs.push(await hook({
       event: 'UserPromptSubmit',
       env: {
@@ -234,6 +244,10 @@ test(
         return facts?.terminal?.tmuxPane === '%8' && facts?.terminal?.herdrPane === 'prompt-pane' && facts
       },
     })
+    expect(readFileSync(
+      sourceLog,
+      'utf8',
+    )).toBe(firstBinding)
     expect(working).toMatchObject({
       title: 'Fix the flaky login test',
       activity: 'working',

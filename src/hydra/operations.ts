@@ -117,7 +117,7 @@ export function createHydraOperations({
   hydraId: string
   queuedHydra: Set<string>
   at(): string
-  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
+  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): Promise<void>
   armWake(): void
   host(): Host
 }) {
@@ -233,20 +233,7 @@ export function createHydraOperations({
       ended.error = error
     }
 
-    note({
-      fn: ({ writer }) => applyDecision({
-        writer,
-        decision: operationEvent({
-          state: writer.state,
-          operation: ended,
-          meta: {
-            at: at(),
-            actor: 'pnyx',
-          },
-        }),
-      }),
-    })
-    background({
+    const recap = () => background({
       name: 'Hydra back after a stop',
       run: async () => {
         const state = loadHydra({ hydraId }).state
@@ -297,6 +284,23 @@ export function createHydraOperations({
         }
 
         armWake()
+      },
+    })
+
+    note({
+      fn: ({ writer }) => {
+        applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            operation: ended,
+            meta: {
+              at: at(),
+              actor: 'pnyx',
+            },
+          }),
+        })
+        writer.afterCommit({ run: recap })
       },
     })
   }

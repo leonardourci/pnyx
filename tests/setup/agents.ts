@@ -241,11 +241,15 @@ export function fakeClaude() {
       transcript,
       `${JSON.stringify({
         type: role,
-        uuid,
+        uuid: uuid ?? randomUUID(),
         timestamp: new Date().toISOString(),
         message: {
           role,
           content: text,
+          ...(role === 'assistant' ? {
+            id: `msg_${randomUUID()}`,
+            stop_reason: 'end_turn',
+          } : {}),
         },
       })}\n`,
     )
@@ -697,6 +701,27 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
       answered: 0,
       closed: false,
     }
+    let transcript: string | undefined
+
+    const record = ({
+      type,
+      payload,
+    }: {
+      type: string
+      payload: Message
+    }) => {
+      if (transcript) {
+        appendFileSync(
+          transcript,
+          `${JSON.stringify({
+            type,
+            timestamp: new Date().toISOString(),
+            payload,
+          })}\n`,
+        )
+      }
+    }
+
     const stdin = new PassThrough()
     const stdout = new PassThrough()
     const stderr = new PassThrough()
@@ -845,6 +870,15 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
             session.id = randomUUID()
           }
 
+          transcript = join(
+            env.CODEX_HOME ?? process.env.CODEX_HOME!,
+            'sessions',
+            `${session.id}.jsonl`,
+          )
+          mkdirSync(
+            dirname(transcript),
+            { recursive: true },
+          )
           sessions.push(session)
         }
 
@@ -887,6 +921,10 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           }
 
           session.answered = session.received.length
+          record({
+            type: 'event_msg',
+            payload: { type: 'turn_aborted' },
+          })
           send({
             message: {
               id: message.id,
@@ -947,10 +985,38 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           await plan?.acknowledgeStartAfter
         }
 
+        let result = found.result
+
+        if (message.method === 'thread/start' || message.method === 'thread/resume') {
+          result = {
+            ...result,
+            thread: {
+              ...result.thread as Message,
+              path: transcript,
+              ephemeral: false,
+            },
+          }
+        }
+
+        if (replay) {
+          record({
+            type: 'event_msg',
+            payload: { type: 'task_started' },
+          })
+          record({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'user',
+              content: params.input,
+            },
+          })
+        }
+
         send({
           message: {
             id: message.id,
-            result: found.result,
+            result,
           },
           turn: replay?.id,
         })
@@ -970,6 +1036,27 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
 
           if (notification.method === 'turn/completed' && plan?.compactTo !== undefined) {
             compact({ tokens: plan.compactTo })
+          }
+
+          if (notification.method === 'turn/completed') {
+            record({
+              type: 'response_item',
+              payload: {
+                type: 'message',
+                role: 'assistant',
+                phase: 'final_answer',
+                content: [
+                  {
+                    type: 'output_text',
+                    text: reply,
+                  },
+                ],
+              },
+            })
+            record({
+              type: 'event_msg',
+              payload: { type: 'task_complete' },
+            })
           }
 
           send({

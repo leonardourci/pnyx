@@ -1,8 +1,9 @@
+import { loadHydra } from '#app/store.ts'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from './page.ts'
 import { chrome } from './chrome.ts'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
+import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
 const PROJECTS = 8
@@ -1051,13 +1052,10 @@ test(
       what: 'the worker first turn',
       check: () => worker.answered > 0,
     })
-    expect(rows({
-      text: 'select id from cards where hydra_id = $1 and title = $2',
-      values: [
-        hydra.id,
-        'One task, one card',
-      ],
-    })).toEqual([{ id: task }])
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.title === 'One task, one card')
+      .map(card => ({ id: card.id }))).toEqual([{ id: task }])
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
 
     expect(await taskCard.evaluate(
@@ -1343,13 +1341,10 @@ test(
     }))
     await until({
       what: 'the saved task',
-      check: () => rows({
-        text: 'select id from cards where hydra_id = $1 and title = $2',
-        values: [
-          hydra.id,
-          title,
-        ],
-      }).length === 1,
+      check: () => Object.values(loadHydra({
+        hydraId: hydra.id,
+      }).state.cards).filter(card => card.title === title)
+        .map(card => ({ id: card.id })).length === 1,
     })
     expect(result.fields).toMatchObject({
       titleFits: true,
@@ -1369,13 +1364,10 @@ test(
       focusLabel: 'Fold Ideas',
     })
     const saved = await hydra.task({
-      key: rows({
-        text: 'select id from cards where hydra_id = $1 and title = $2',
-        values: [
-          hydra.id,
-          title,
-        ],
-      })[0]!.id as string,
+      key: Object.values(loadHydra({
+        hydraId: hydra.id,
+      }).state.cards).filter(card => card.title === title)
+        .map(card => ({ id: card.id }))[0]!.id as string,
     })
     const initialDescription = await chrome({
       script: `

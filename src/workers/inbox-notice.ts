@@ -68,3 +68,29 @@ export function steeringNotice({
     task,
   })} Apply the pending messages in order; report progress and blockers separately. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
 }
+
+export function readSteeringMessages({
+  text,
+  task,
+}: {
+  text: string
+  task: string
+}): string[] {
+  const prefix = `New instructions for task ${task}, in order (Pnyx inbox IDs `
+  const end = text.indexOf('):\n')
+
+  if (!text.startsWith(prefix) || end < prefix.length) {
+    return []
+  }
+
+  try {
+    const ids: unknown = JSON.parse(text.slice(
+      prefix.length,
+      end,
+    ))
+
+    return Array.isArray(ids) && ids.every(id => typeof id === 'string') ? ids : []
+  } catch {
+    return []
+  }
+}

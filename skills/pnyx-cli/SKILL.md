@@ -17,4 +17,6 @@ Use `pnyx --help` for syntax. Pass your assigned `--hydra <id>` on actions.
 
 Read `$PNYX_HOME/hydras/<hydra>/hydra.log` and `tasks/<task>/task.log` and `worker.log` directly; the default home is `~/.pnyx`. The optional `snapshot.json` is a cached view and may be older than the logs. Each native log has its own line numbers; retain file scope and record IDs, and follow recorded transcript paths for full agent replies. Use the UI for configuration and task edits.
 
+`hydra check` returns `epoch` and `through`. Continue with `--after <through> --epoch <epoch>`; a nonzero cursor without the current epoch expires. After restart, read without `--after` for fresh state.
+
 Workers report through their assigned `worker.log` using `pnyx-report-progress`. A queued receipt is not proof of delivery. Reconcile the saved record before repeating a side effect.

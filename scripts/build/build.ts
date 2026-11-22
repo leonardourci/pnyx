@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { chmodSync, copyFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { stagedBuild } from './staged.ts'
 
@@ -54,17 +54,6 @@ try {
         ),
         "#!/usr/bin/env node\nimport './pnyx.js'\n",
         { mode: 0o755 },
-      )
-      // tsc copies no SQL; the server applies this migration to a new database.
-      copyFileSync(
-        join(
-          root,
-          'src/store/schema.sql',
-        ),
-        join(
-          out,
-          'store/schema.sql',
-        ),
       )
       run({
         command: 'vite',

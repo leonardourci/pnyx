@@ -1,5 +1,4 @@
 import { HydraError } from '#store/errors.ts'
-import { nonblockingLocks } from '#store/storage.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
 import { followUpSteering } from '#workers/inbox-follow-up.ts'
 import { agent } from '#workers/agent-cli.ts'
@@ -40,7 +39,6 @@ const handlerOf = ({ name }: { name: string }) => {
     : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
 }
 
-// Runs a command the page asked for in the server, as the page's own actor, without waiting on a held lock.
 export async function runPageCommand({ argv }: { argv: string[] }): Promise<PageAnswer> {
   const [
     name = '',
@@ -52,12 +50,9 @@ export async function runPageCommand({ argv }: { argv: string[] }): Promise<Page
     const result = await runForClient({
       identity: {},
       cwd: process.cwd(),
-      run: () => nonblockingLocks.run(
+      run: () => browserCommand.run(
         true,
-        () => browserCommand.run(
-          true,
-          () => handler(args),
-        ),
+        () => handler(args),
       ),
     })
 

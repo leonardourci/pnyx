@@ -1,5 +1,5 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { cloneValue } from '#app/preimage.ts'
+import { cloneValue } from '#app/json-copy.ts'
 import type { AgentRef, AgentSession, Attention, TerminalFacts } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'

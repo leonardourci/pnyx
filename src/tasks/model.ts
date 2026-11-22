@@ -46,7 +46,7 @@ export interface SourceNote extends Note {
   ref: string
 }
 
-export interface NoteRef {
+interface NoteRef {
   id: string
   kind: NoteKind
   source: string

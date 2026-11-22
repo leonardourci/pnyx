@@ -42,3 +42,9 @@ export function canonical({ path }: { path: unknown }): string | undefined {
     return path
   }
 }
+
+export const homeScoped = ({ hydraId }: { hydraId: string }) => {
+  const home = resolve(pnyxHome())
+
+  return `${canonical({ path: home }) ?? home}\u0000${hydraId}`
+}

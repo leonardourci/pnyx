@@ -1,5 +1,5 @@
 import { taskSessions } from '#workers/session-history.ts'
-import { query } from '#store/postgres.ts'
+import { readEvents } from '#app/event-log.ts'
 import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
@@ -1096,22 +1096,10 @@ function readThreadPage(
   if (card.id === HYDRA_CARD) {
     const firstAt = page[0]?.item.at
     const beforeAt = excludedAt.toSorted()[0]
-    const [rows] = firstAt === undefined ? [[]] : query({
-      statements: [
-        {
-          text: `select data from events where hydra_id = $1 and at >= $2
-        and ($3::text is null or at <= $3)
-        and ((type = 'card.replied' and coalesce(data->'data'->>'text', '') <> '')
-          or (actor = 'hydra' and type <> 'hydra.message')) order by seq`,
-          values: [
-            hydraId,
-            firstAt,
-            beforeAt ?? null,
-          ],
-        },
-      ],
-    }) as { data: HydraEvent }[][]
-    result.actions = rows!.map(row => row.data).filter(event => threadAction({
+    const events = firstAt === undefined ? [] : readEvents({ hydraId }).filter(event =>
+      event.at >= firstAt && (beforeAt === undefined || event.at <= beforeAt)
+      && ((event.type === 'card.replied' && event.data.text) || (event.actor === 'hydra' && event.type !== 'hydra.message')))
+    result.actions = events.filter(event => threadAction({
       event,
       state,
     }))

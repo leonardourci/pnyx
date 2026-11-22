@@ -17,6 +17,7 @@ export interface FileSegment<Value> {
   position: LogPosition
   accepted: Map<string, AcceptedFact>
   worker: number
+  workerIdentity?: string
   issue?: HydraError
 }
 
@@ -43,6 +44,7 @@ export interface FileReducers<Hydra, Task> {
 interface CachedSegment<Value> {
   value: Value
   accepted: AcceptedFact[]
+  workerIdentity?: string
 }
 
 interface CachedMemory<Hydra, Task> {
@@ -100,23 +102,34 @@ export function emptyFileSegment<Value>(): FileSegment<Value> {
 
 function workerOffset({
   entry,
-  after,
+  segment,
 }: {
   entry: LogEntry
-  after: number
-}): number {
+  segment: Pick<FileSegment<unknown>, 'worker' | 'workerIdentity'>
+}): Pick<FileSegment<unknown>, 'worker' | 'workerIdentity'> {
   if (entry.by !== 'worker' || (entry.t !== 'worker' && entry.t !== 'link') || entry.off === undefined) {
-    return after
+    return segment
   }
 
-  if (!Number.isSafeInteger(entry.off) || Number(entry.off) <= after) {
+  const identity = typeof entry.identity === 'string' ? entry.identity : segment.workerIdentity
+  const replaced = identity !== undefined && identity !== segment.workerIdentity
+  const truncated = identity !== undefined && identity === segment.workerIdentity && entry.code === 'invalid' && entry.off === segment.worker
+
+  if (!Number.isSafeInteger(entry.off) || Number(entry.off) < 0
+    || (!replaced && !truncated && Number(entry.off) <= segment.worker)) {
     throw new HydraError({
       code: 'INVALID_EVENT',
-      message: 'worker offsets must advance in order',
+      message: 'worker offsets must advance within the same file',
     })
   }
 
-  return Number(entry.off)
+  const next: Pick<FileSegment<unknown>, 'worker' | 'workerIdentity'> = { worker: Number(entry.off) }
+
+  if (identity !== undefined) {
+    next.workerIdentity = identity
+  }
+
+  return next
 }
 
 export function applyFileFacts<Value>({
@@ -180,10 +193,13 @@ export function applyFileFacts<Value>({
     next.value = plainJson({ value })
     next.position = prepared.position
 
-    next.worker = workerOffset({
-      entry,
-      after: next.worker,
-    })
+    Object.assign(
+      next,
+      workerOffset({
+        entry,
+        segment: next,
+      }),
+    )
 
     const receipt = {
       id: entry.id,
@@ -231,7 +247,8 @@ function cachedSegment({ value }: { value: unknown }): boolean {
   return Boolean(segment && Object.hasOwn(
     segment,
     'value',
-  ) && Array.isArray(segment.accepted)
+  ) && (segment.workerIdentity === undefined || typeof segment.workerIdentity === 'string')
+    && Array.isArray(segment.accepted)
     && segment.accepted.every(receipt => receipt && typeof receipt.id === 'string'
       && Number.isSafeInteger(receipt.n) && receipt.n > 0 && typeof receipt.at === 'string'
       && typeof receipt.digest === 'string'))
@@ -285,7 +302,11 @@ function replayFile<Value>({
     receipt,
   ])) : new Map()
   let value = cached && !log.fromStart ? cached.value : undefined
-  let offset = cached && !log.fromStart ? worker : 0
+  let cursor: Pick<FileSegment<unknown>, 'worker' | 'workerIdentity'> = { worker: cached && !log.fromStart ? worker : 0 }
+
+  if (cached?.workerIdentity && !log.fromStart) {
+    cursor.workerIdentity = cached.workerIdentity
+  }
 
   try {
     for (const entry of log.entries) {
@@ -310,9 +331,9 @@ function replayFile<Value>({
         },
       )
 
-      offset = workerOffset({
+      cursor = workerOffset({
         entry,
-        after: offset,
+        segment: cursor,
       })
     }
 
@@ -320,7 +341,7 @@ function replayFile<Value>({
       value,
       position: log.position,
       accepted,
-      worker: offset,
+      ...cursor,
     }
   } catch (cause) {
     return {
@@ -442,6 +463,7 @@ export function fileMemorySnapshot<Hydra, Task>({
   const cached = <Value>({ segment }: { segment: FileSegment<Value> }): CachedSegment<Value> => ({
     value: segment.value!,
     accepted: [...segment.accepted.values()],
+    ...(segment.workerIdentity === undefined ? {} : { workerIdentity: segment.workerIdentity }),
   })
   const tasks = [...memory.tasks].filter(([
     , segment,

@@ -25,7 +25,6 @@ pnyx answer <task> <question> --text <answer> [--from-message <id>]
 pnyx board
 pnyx serve [--port <n>]
 pnyx setup [check|hooks|skills] [--preview]
-pnyx setup postgres [--check | --url <url>]
 pnyx debug health
 
 Task creation starts its worker. Use --harness, --account, --model, --effort,

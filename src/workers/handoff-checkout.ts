@@ -8,9 +8,14 @@ import { sameProjectPath } from '#projects/identity.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { log } from '#app/diagnostics.ts'
 import { loadHydra, reloadHydra } from '#app/store.ts'
-import { query } from '#store/postgres.ts'
+import { readEvents } from '#app/event-log.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
+import { nativeHome } from '#app/native-home.ts'
+import { nativeFact, nativeReferences, reduceNative, type NativeState } from '#app/native-state.ts'
+import { taskFiles } from '#store/file-home.ts'
+import { readLog } from '#store/log.ts'
+import { applySessionMove } from './reduce.ts'
 
 const GIT_TIMEOUT_MS = 30_000
 
@@ -306,6 +311,125 @@ export function requireHandoffAvailable({
   }
 }
 
+async function completeHandoff({
+  hydraId,
+  intent,
+  event,
+}: {
+  hydraId: string
+  intent: HandoffIntent
+  event: Extract<HydraEvent, { type: 'task.session' }>
+}): Promise<void> {
+  const home = nativeHome()
+  await home.run({
+    fn: async () => {
+      const tasks = [
+        intent.source,
+        intent.target,
+      ]
+      const missing = tasks.filter(task => !home.files.has({
+        hydra: hydraId,
+        task,
+        id: event.id,
+      }))
+
+      if (!missing.length) {
+        return
+      }
+
+      const before = structuredClone(loadHydra({ hydraId }).state)
+      const positions = home.files.positions({ hydra: hydraId })
+      const ids = home.references({ hydra: hydraId })
+
+      for (const task of tasks) {
+        const position = positions?.tasks.get(task)?.position
+
+        if (!position) {
+          throw new Error(`Handoff task log is missing; inspect ${intent.cwd}`)
+        }
+
+        let previous: NativeState = {}
+        let reached = false
+        readLog({
+          path: join(
+            taskFiles({
+              home: home.path,
+              hydra: hydraId,
+              task,
+            }),
+            'task.log',
+          ),
+          through: position,
+          readOnly: true,
+          accept: ({ entry }) => {
+            reached = reached || entry.id === event.id
+
+            if (!reached) {
+              previous = reduceNative({
+                state: previous,
+                entry,
+                id: task,
+              })
+            }
+          },
+        })
+        const restored = nativeReferences({
+          value: previous,
+          ids,
+          restore: true,
+        }) as NativeState
+
+        if (!restored.card) {
+          throw new Error(`Handoff task history is missing; inspect ${intent.cwd}`)
+        }
+
+        before.cards[task] = restored.card
+        before.sessions = {
+          ...before.sessions,
+          ...restored.sessions,
+        }
+      }
+
+      const after = structuredClone(before)
+      applySessionMove({
+        state: after,
+        event,
+      })
+
+      if (after.sessions?.[intent.session]?.taskId !== intent.target) {
+        throw new Error(`Handoff decision cannot be recovered; inspect ${intent.cwd}`)
+      }
+
+      for (const task of missing) {
+        home.position({
+          hydra: hydraId,
+          scope: task,
+          id: event.id,
+          seq: event.seq,
+        })
+        const fact = nativeFact({
+          event,
+          before,
+          after,
+          task,
+          ids,
+          basis: home.files.value({
+            hydra: hydraId,
+            task,
+          })?.state,
+        })
+        await home.files.changeTask({
+          hydra: hydraId,
+          task,
+          decide: () => [fact],
+        })
+      }
+
+      reloadHydra({ hydraId })
+    },
+  })
+}
+
 // Runs before any worker resumes, so its checkout agrees with the committed assignment.
 export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise<void> {
   const recover = async ({ path }: { path: string }) => {
@@ -314,15 +438,24 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
       hydraId,
       eventId: intent.eventId,
     })
-    const state = loadHydra({ hydraId }).state
-    const assigned = state.sessions?.[intent.session]
     const committed = event?.type === 'task.session' && event.cardId === intent.target
       && event.data.session === intent.session && event.data.handoff?.folder === intent.cwd
+      && event.data.before === intent.source && event.data.after === intent.target
 
     if (event && !committed) {
       throw new Error(`Handoff event differs from its intent; inspect ${intent.cwd}`)
     }
 
+    if (committed) {
+      await completeHandoff({
+        hydraId,
+        intent,
+        event,
+      })
+    }
+
+    const state = loadHydra({ hydraId }).state
+    const assigned = state.sessions?.[intent.session]
     const expectedTask = committed ? intent.target : intent.source
     const copy = state.cards[expectedTask]?.copy
     const copyChanged = copy && (!sameProjectPath({
@@ -387,27 +520,11 @@ export function readHandoffEvent({
   hydraId: string
   eventId: string
 }): HydraEvent | undefined {
-  // Wait on the old transaction's row lock, then reload any commit whose reply was lost.
-  const [
-    , events,
-  ] = query({
-    transaction: true,
-    statements: [
-      {
-        text: 'select id from hydras where id = $1 for update',
-        values: [hydraId],
-        expectRows: 1,
-      },
-      {
-        text: 'select data from events where hydra_id = $1 and id = $2',
-        values: [
-          hydraId,
-          eventId,
-        ],
-      },
-    ],
-  })
   reloadHydra({ hydraId })
 
-  return events?.[0]?.data as HydraEvent | undefined
+  return readEvents({
+    hydraId,
+    ids: [eventId],
+    limit: 1,
+  })[0]
 }

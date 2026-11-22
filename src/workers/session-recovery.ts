@@ -1,31 +1,40 @@
 import { loadHydra } from '#app/store.ts'
 import { log } from '#app/diagnostics.ts'
-import { withWriter } from '#app/writer.ts'
+import { withWriter, type Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { readTranscript } from './transcript-read.ts'
 import { readTranscriptRecord } from './transcripts.ts'
+import { WORKER_RESUME } from './host.ts'
 import { decideSessionFacts } from './session-facts.ts'
+import { acknowledgeSteering, recordSteeringAttempt } from './inbox.ts'
+import { readSteeringMessages } from './inbox-notice.ts'
+import { steeringClaim, steeringWorkerIdentity } from './steering.ts'
+import { cardSessionId } from './session-attachments.ts'
+import type { AgentSession } from './model.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { compactCommand } from './compact-command.ts'
 
 const ACTIVITY_READ_BYTES = 1024 * 1024
 
-export async function restoreOutsideSessions({ hydraId }: { hydraId: string }): Promise<void> {
+export async function restoreSessionActivity({ hydraId }: { hydraId: string }): Promise<void> {
   const state = loadHydra({ hydraId }).state
 
   for (const session of Object.values(state.sessions ?? {})) {
     const path = session.agent.transcriptPath
 
-    if (session.agent.host || !path) {
+    if (!path) {
       continue
     }
 
-    let cursor = session.activityCursor?.source === path
-      ? { ...session.activityCursor } : {
-        source: path,
-        identity: '',
-        pos: 0,
-      }
+    let cursor = {
+      source: path,
+      identity: '',
+      pos: 0,
+    }
     let through: number | undefined
     let pending = true
+    let manualCompact = false
+    const readInstructions = new Map<string, string>()
 
     try {
       while (pending) {
@@ -43,12 +52,17 @@ export async function restoreOutsideSessions({ hydraId }: { hydraId: string }): 
           through = tail.size
         }
 
+        if (tail.reset) {
+          manualCompact = false
+          readInstructions.clear()
+        }
+
         const committed = await withWriter({
           hydraId,
           fn: ({ writer }) => {
             const bound = writer.state.sessions?.[session.id]
 
-            if (!bound || bound.agent.host || bound.agent.transcriptPath !== path) {
+            if (!bound || bound.agent.transcriptPath !== path) {
               return false
             }
 
@@ -60,14 +74,73 @@ export async function restoreOutsideSessions({ hydraId }: { hydraId: string }): 
                 subagent: Boolean(current.agent.agentId),
               })
               const observedAt = Date.parse(parsed.at ?? '')
-              const knownAt = Date.parse(current.activityObservedAt ?? '')
 
-              if (!parsed.activity || !parsed.at || !Number.isFinite(observedAt)
-              || (Number.isFinite(knownAt) && observedAt < knownAt)) {
+              if (!parsed.at || !Number.isFinite(observedAt)) {
                 continue
               }
 
-              const attention = parsed.activity === 'finished' ? [] : undefined
+              const resumed = parsed.messages.some(message => message.text.trim() === WORKER_RESUME
+                || message.text.startsWith('<pnyx-wake>A Pnyx server restart cut your last turn'))
+
+              if (resumed) {
+                readInstructions.clear()
+              }
+
+              if (parsed.role === 'user') {
+                manualCompact = parsed.messages.some(message => compactCommand({
+                  text: message.text,
+                }))
+
+                const inputs = new Map<string, string>()
+
+                for (const message of parsed.messages) {
+                  const ids = readSteeringMessages({
+                    text: message.text,
+                    task: current.taskId ?? '',
+                  })
+
+                  for (const id of ids) {
+                    inputs.set(
+                      id,
+                      parsed.at,
+                    )
+                    readInstructions.set(
+                      id,
+                      parsed.at,
+                    )
+                  }
+                }
+
+                restoreInstructionReceipts({
+                  writer,
+                  session: current,
+                  inputs,
+                  receipt: {
+                    type: 'notice',
+                    id: `native-notice:${current.id}:${tail.identity}:${line.pos}`,
+                  },
+                })
+              }
+
+              if (parsed.final) {
+                restoreInstructionReceipts({
+                  writer,
+                  session: current,
+                  inputs: readInstructions,
+                  receipt: { type: 'read' },
+                })
+                readInstructions.clear()
+              }
+
+              const activity = parsed.contextReset && manualCompact ? 'finished' : parsed.activity
+
+              if (!activity) {
+                continue
+              }
+
+              const attention = activity === 'finished' ? [] : undefined
+              const native = `native-activity:${session.id}:${tail.identity}:${line.pos}`
+              const id = resumed ? `resume:${native}` : native
               applyDecision({
                 writer,
                 decision: decideSessionFacts({
@@ -75,17 +148,21 @@ export async function restoreOutsideSessions({ hydraId }: { hydraId: string }): 
                   session: current,
                   fields: {
                     agent: current.agent,
-                    activity: parsed.activity,
+                    activity,
                     attention,
                   },
                   source: {
                     adapter: 'transcript',
+                    instanceId: tail.identity,
+                    generation: line.pos,
+                    cursor: parsed.inputUuid,
                     objectId: path,
                     observedAt: parsed.at,
                   },
                   meta: {
                     at: parsed.at,
                     actor: 'pnyx',
+                    id,
                   },
                 }),
               })
@@ -137,5 +214,86 @@ export async function restoreOutsideSessions({ hydraId }: { hydraId: string }): 
         error,
       })
     }
+  }
+}
+
+function restoreInstructionReceipts({
+  writer,
+  session,
+  inputs,
+  receipt,
+}: {
+  writer: Writer
+  session: AgentSession
+  inputs: ReadonlyMap<string, string>
+  receipt: {
+    type: 'notice'
+    id: string
+  } | { type: 'read' }
+}): void {
+  const card = writer.state.cards[session.taskId ?? '']
+
+  if (!card || card.id === HYDRA_CARD || cardSessionId({ card }) !== session.id) {
+    return
+  }
+
+  const claim = steeringClaim({ card })
+
+  if (!claim) {
+    return
+  }
+
+  const actor = `worker:${card.id}`
+
+  for (const message of card.steering ?? []) {
+    const at = inputs.get(message.id)
+    const recordedAfterQueue = at !== undefined && Date.parse(message.at) <= Date.parse(at)
+
+    if (message.ack || message.stopped || !at || !recordedAfterQueue) {
+      continue
+    }
+
+    if (receipt.type === 'notice') {
+      if (!message.attempts.length) {
+        recordSteeringAttempt({
+          writer,
+          ref: card.id,
+          id: message.id,
+          attempt: {
+            id: `${receipt.id}:${message.id}`,
+            at,
+            actor: 'pnyx',
+            claim,
+            result: 'delivered',
+          },
+          meta: {
+            at,
+            actor: 'pnyx',
+          },
+        })
+      }
+
+      continue
+    }
+
+    acknowledgeSteering({
+      writer,
+      ref: card.id,
+      id: message.id,
+      ack: {
+        at,
+        actor,
+        claim,
+        outcome: 'read',
+      },
+      meta: {
+        at,
+        actor,
+      },
+      worker: steeringWorkerIdentity({
+        state: writer.state,
+        card,
+      }),
+    })
   }
 }

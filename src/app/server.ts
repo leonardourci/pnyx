@@ -100,14 +100,14 @@ export async function mountOwnedHydra({
   let recovered = false
 
   const dir = hydraDir({ hydraId })
-  privateDir({ dir: spoolDir({ dir }) })
-  const token = Buffer.from(localToken())
-  const identity = hydraIdentity({ hydraId })
   // The server holds the Hydra in memory; its own writes call kick in the same step.
-  const releaseHold = holdHydra({
+  const releaseHold = await holdHydra({
     hydraId,
     changed: () => kick(),
   })
+  privateDir({ dir: spoolDir({ dir }) })
+  const token = Buffer.from(localToken())
+  const identity = hydraIdentity({ hydraId })
   dropCopyLeases({ hydraId })
   let { state } = loadHydra({ hydraId })
   // The seq of the last event this server has handled.
@@ -126,7 +126,7 @@ export async function mountOwnedHydra({
     bindThread,
   } = createThreadSubscriptions({
     hydraId,
-    state: () => state,
+    state: () => loadHydra({ hydraId }).state,
     closed: () => closed,
     send: ({
       ws,
@@ -700,7 +700,7 @@ export async function mountOwnedHydra({
     agents.close()
     await spend.close()
 
-    releaseHold()
+    await releaseHold()
 
     const threads = threadSubscriptions().flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))

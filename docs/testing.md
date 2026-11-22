@@ -6,14 +6,14 @@ The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx se
 tests/
 ├── <area>.test.ts      one file per area: its integration tests and its tricky edge cases
 ├── browser/            targeted checks in isolated headless Chrome
-└── setup/              the shared setup: Postgres, the server, fake agents, fixtures
+└── setup/              the shared setup: scratch files, the server, fake agents, fixtures
 ```
 
 ## Running
 
 The targeted browser checks require an installed Chrome; they launch their own headless session with a scratch profile and never attach to an existing browser. The harnesses use pinned `playwright-core` and `chrome-devtools-axi` development dependencies.
 
-Install PostgreSQL 15 or newer (`brew install postgresql@17`, or `sudo apt-get install postgresql`). Then:
+Run:
 
 ```sh
 pnpm test                                   # builds, then runs everything
@@ -26,9 +26,9 @@ pnpm exec vitest run -t "outside hooks"         # tests whose name matches
 
 The tests run the built CLI and serve the built page, so run `pnpm run build` after changing code under `src/` or `web/` before a focused run. CI builds first.
 
-Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes and the Postgres log there before they are deleted; CI does this and uploads the folder when a run fails.
+Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes there before they are deleted; CI does this and uploads the folder when a run fails.
 
-A run starts one throwaway PostgreSQL cluster on a random port, and migrates one template database through Pnyx's own connection code. Each test file then runs in its own process with a scratch `HOME` and `PNYX_HOME`, its own copy of the template database, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
+Each test file runs in its own process with a scratch `HOME` and `PNYX_HOME`, native files, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
 ## Writing a test
 
@@ -61,7 +61,7 @@ test('a reply reaches the worker once', async () => {
 - `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Pnyx gave that agent.
 - `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
-- `rows({ text, values })` reads this file's database to check persisted facts; page assertions read `pnyx.home()` or `openHomePage` through the real home socket.
+- Check persistence by restarting and reading through the CLI or page. Page assertions read `pnyx.home()` or `openHomePage` through the real home socket.
 - `pnyx.restart({ whileStopped })` stops the server and starts it again on the same home and port.
 
 Rules:
@@ -88,14 +88,14 @@ Rules:
 ## What each file covers
 
 - `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files.
-- `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity, and exclusion of private steering and the database URL.
+- `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity and exclusion of private steering.
 - `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.
 - `paging.test.ts`: chat pages and a card's Activity pages.
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
 - `settings.test.ts`: the settings every Hydra shares.
-- `migration.test.ts`: the migration from #378's schema at live size, and the upgrade's data check on a copy of an older schema.
+- `native-store.test.ts`: durable receipts, task folder moves, corrupt logs, permission recovery and read-only setup.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its checkout notices, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.

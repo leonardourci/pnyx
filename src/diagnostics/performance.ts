@@ -25,7 +25,7 @@ interface Line {
   ms?: number
   rss?: number
   agentRss?: number
-  databaseBytes?: number
+  stateBytes?: number
   logBytes?: number
   activeResources?: number
   heapUsed?: number
@@ -81,7 +81,7 @@ function readLine({ text }: { text: string }): Line | undefined {
       ) => sum + (number({ value: asRecord({ value: agent })?.rss }) ?? 0),
       0,
     ) : undefined,
-    databaseBytes: number({ value: record.databaseBytes }),
+    stateBytes: number({ value: record.stateBytes }),
     logBytes: number({ value: record.logBytes }),
     activeResources: number({ value: record.activeResources }),
     heapUsed: number({ value: record.heapUsed }),
@@ -127,7 +127,7 @@ function memoryPoints({ samples }: { samples: Line[] }) {
     rssMB: megabytes({ bytes: point.rss }),
     heapMB: megabytes({ bytes: point.heapUsed }),
     agentsMB: megabytes({ bytes: point.agentRss }),
-    databaseMB: megabytes({ bytes: point.databaseBytes }),
+    stateMB: megabytes({ bytes: point.stateBytes }),
     logsMB: megabytes({ bytes: point.logBytes }),
     activeResources: point.activeResources,
     cpuPercent: point.cpuPercent,
@@ -201,7 +201,7 @@ export async function performanceReport({
         if (sample) {
           for (const key of [
             'agentRss',
-            'databaseBytes',
+            'stateBytes',
             'logBytes',
           ] as const) {
             if (line[key] !== undefined) {

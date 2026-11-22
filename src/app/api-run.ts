@@ -2,7 +2,6 @@ import { Writable } from 'node:stream'
 import { taskHydra } from './task-runtime.ts'
 import { workerIdentity } from '#workers/worker-identity.ts'
 import { HydraError } from '#store/errors.ts'
-import { nonblockingLocks } from '#store/storage.ts'
 import { runCli } from '#cli/run.ts'
 import { log } from './diagnostics.ts'
 import { DEFAULT_HYDRA } from './home-migration.ts'
@@ -97,15 +96,11 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
     stdin,
     run: async () => {
       const started = performance.now()
-      // Inside the server a held lock is refused at once, never waited on with the event loop blocked.
-      await nonblockingLocks.run(
-        true,
-        () => runCli({
-          argv,
-          stdout: sink,
-          remote: true,
-        }),
-      )
+      await runCli({
+        argv,
+        stdout: sink,
+        remote: true,
+      })
       const exitCode = requestExitCode() ?? 0
 
       log({

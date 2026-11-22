@@ -57,7 +57,7 @@ const upgrade = ({ hydra }: { hydra: Hydra }) => hydra.owner({
 })
 
 test(
-  'a failed install, build or data check goes back to the previous commit and its build, while Hydra keeps working',
+  'a failed install or build goes back to the previous commit and its build, while Hydra keeps working',
   async () => {
     const hydra = await pnyx.hydra()
     const turn = pnyx.claude.plan({
@@ -107,23 +107,6 @@ test(
         'failed',
       ],
     ])
-    expect(folder.head()).toBe(previous)
-    expect(folder.built()).toBe('one')
-
-    folder.publish({
-      files: {
-        'build.sh': building({
-          version: 'unreadable data',
-          dataExit: 1,
-        }),
-      },
-      message: 'a build whose data check fails',
-    })
-    await upgrade({ hydra })
-    await until({
-      what: 'the data check to fail',
-      check: () => upgrades({ hydra }).find(upgrade => upgrade.failed === 'data' && upgrade.state === 'failed'),
-    })
     expect(folder.head()).toBe(previous)
     expect(folder.built()).toBe('one')
 
@@ -228,7 +211,7 @@ test(
     await upgrade({ hydra })
     await until({
       what: 'the build to finish and wait for Hydra',
-      check: () => upgrades({ hydra }).at(-1)?.steps.some(step => step.step === 'data' && step.state === 'done'),
+      check: () => upgrades({ hydra }).at(-1)?.steps.some(step => step.step === 'build' && step.state === 'done'),
     })
     expect(restarts).toBe(0)
     expect(folder.built()).toBe('two')
@@ -438,8 +421,12 @@ test(
 
     await upgrade({ hydra })
     await until({
-      what: 'the build to finish and wait for the worker',
-      check: () => upgrades({ hydra }).at(-1)?.steps.some(step => step.step === 'data' && step.state === 'done'),
+      what: 'the finished build to wait for the worker',
+      check: () => {
+        const upgrade = upgrades({ hydra }).at(-1)
+
+        return upgrade?.state === 'waiting' && upgrade.steps.some(step => step.step === 'build' && step.state === 'done')
+      },
     })
     expect(upgrades({ hydra }).at(-1)?.state).toBe('waiting')
     expect(worker.answered).toBe(0)

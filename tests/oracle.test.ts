@@ -1,3 +1,4 @@
+import { readEvents } from '#app/event-log.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -7,7 +8,7 @@ import { appendFileSync, existsSync } from 'node:fs'
 import { transcriptPath } from '#workers/claude.ts'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
-import { parsed, operation, rows, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
@@ -206,13 +207,12 @@ test(
       }),
     ])
     expect(notes.notes.summary).toEqual([expect.objectContaining({ text: 'Keep amber reconciliation enabled.' })])
-    expect(rows({
-      text: "select data->'data'->>'kind' as kind from events where hydra_id = $1 and card_id = $2 and type = 'card.noted' and actor = 'harvest' order by seq",
-      values: [
-        hydra.id,
-        notes.card.id,
-      ],
-    })).toEqual([
+    expect(readEvents({
+      hydraId: hydra.id,
+      cardId: notes.card.id,
+      types: ['card.noted'],
+    }).filter(event => event.actor === 'harvest')
+      .map(event => ({ kind: event.type === 'card.noted' ? event.data.kind : undefined }))).toEqual([
       { kind: 'decision' },
       { kind: 'summary' },
     ])
@@ -443,6 +443,82 @@ test(
     }) as unknown as { hits: Result[] }
     expect(fromPage.hits.map(hit => hit.title)).toEqual(['Roadmap beta'])
     page.close()
+  },
+)
+
+test(
+  'the Oracle follows task log tails across restart and a folder move',
+  async () => {
+    const source = await pnyx.hydra()
+    const destination = await pnyx.hydra()
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'travel',
+        '--title',
+        'Portable notes',
+      ],
+    })
+    await workerLine({
+      hydra: source,
+      key: 'travel',
+      line: 'note: nebularocket continuity evidence',
+    })
+    await workerLine({
+      hydra: source,
+      key: 'travel',
+      line: 'note: Later report without the earlier keyword',
+    })
+    const find = async ({ hydra }: { hydra: Hydra }) => search({
+      hydra,
+      args: ['nebularocket'],
+    })
+    const portable = expect.objectContaining({ card: created.card.id })
+    const concurrent = await Promise.all([
+      find({ hydra: source }),
+      find({ hydra: source }),
+    ])
+    expect(concurrent).toEqual([
+      [portable],
+      [portable],
+    ])
+    await pnyx.restart()
+    expect(await find({ hydra: source })).toEqual([portable])
+    await source.owner({
+      args: [
+        'task',
+        'rename',
+        'travel',
+        '--title',
+        'Moved notes',
+      ],
+    })
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        'travel',
+        '--to-hydra',
+        destination.id,
+      ],
+    })
+    expect(await find({ hydra: source })).toEqual(expect.any(String))
+    expect(await find({ hydra: destination })).toEqual([
+      expect.objectContaining({
+        card: created.card.id,
+        title: 'Moved notes',
+      }),
+    ])
+    await pnyx.restart()
+    expect(await find({ hydra: destination })).toEqual([
+      expect.objectContaining({
+        card: created.card.id,
+        title: 'Moved notes',
+      }),
+    ])
   },
 )
 

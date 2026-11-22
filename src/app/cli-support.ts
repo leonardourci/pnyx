@@ -417,7 +417,7 @@ export async function commit(
         // Observations have receipts only while they remain in the daemon's recent changes.
         const original = readChanges({
           hydraId,
-          seqs: [seq],
+          ids: [meta.id!],
         })[0]
 
         if (!original) {

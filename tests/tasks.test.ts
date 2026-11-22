@@ -1,3 +1,5 @@
+import { withWriter } from '#app/writer.ts'
+import { loadHydra } from '#app/store.ts'
 import { migrateDefaultRule } from '#tasks/column-defaults.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
@@ -8,7 +10,7 @@ import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { operation, rows, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { operation, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
 
@@ -1062,10 +1064,7 @@ test(
     })).code).toBe('CONFLICT')
     expect((await hydra.task({ key: 'later' })).column).toBe(board.done)
 
-    const seq = () => rows<{ seq: string }>({
-      text: 'select seq from hydras where id = $1',
-      values: [hydra.id],
-    })[0]!.seq
+    const seq = () => loadHydra({ hydraId: hydra.id }).state.seq
     const before = seq()
     const preview = await hydra.owner({
       args: [
@@ -1257,13 +1256,13 @@ test(
         'Parent work completed',
       ],
     })
-    expect(rows({
-      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
-      values: [
-        hydra.id,
-        'family',
-      ],
-    })).toEqual([
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.key === 'family')
+      .map(card => ({
+        done_at: card.doneAt ?? null,
+        hidden: card.hidden ?? false,
+      }))).toEqual([
       {
         done_at: null,
         hidden: false,
@@ -1278,13 +1277,13 @@ test(
         'Child completed',
       ],
     })
-    expect(rows({
-      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
-      values: [
-        hydra.id,
-        'family',
-      ],
-    })).toEqual([
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.key === 'family')
+      .map(card => ({
+        done_at: card.doneAt ?? null,
+        hidden: card.hidden ?? false,
+      }))).toEqual([
       {
         done_at: null,
         hidden: false,
@@ -1299,13 +1298,10 @@ test(
         'Validation completed',
       ],
     })
-    expect(rows({
-      text: 'select done_at from cards where hydra_id = $1 and key = $2',
-      values: [
-        hydra.id,
-        'family',
-      ],
-    })[0]?.done_at).toBeTypeOf('string')
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.key === 'family')
+      .map(card => ({ done_at: card.doneAt }))[0]?.done_at).toBeTypeOf('string')
     await hydra.owner({
       args: [
         'outcome',
@@ -1313,26 +1309,26 @@ test(
         '--clear',
       ],
     })
-    expect(rows({
-      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
-      values: [
-        hydra.id,
-        'family',
-      ],
-    })).toEqual([
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.key === 'family')
+      .map(card => ({
+        done_at: card.doneAt ?? null,
+        hidden: card.hidden ?? false,
+      }))).toEqual([
       {
         done_at: null,
         hidden: false,
       },
     ])
     await pnyx.restart()
-    expect(rows({
-      text: 'select done_at, hidden from cards where hydra_id = $1 and key = $2',
-      values: [
-        hydra.id,
-        'family',
-      ],
-    })).toEqual([
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.key === 'family')
+      .map(card => ({
+        done_at: card.doneAt ?? null,
+        hidden: card.hidden ?? false,
+      }))).toEqual([
       {
         done_at: null,
         hidden: false,
@@ -1482,15 +1478,7 @@ test(
   'untracked pushes refuse grandchildren and hook observations remain separate sessions',
   async () => {
     const id = 'unconfigured-depth'
-    const folder = join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      id,
-    )
-    mkdirSync(
-      folder,
-      { recursive: true },
-    )
+
     const events = [
       {
         seq: 1,
@@ -1518,13 +1506,20 @@ test(
       actor: 'cli',
       ...event,
     })).join('\n')
-    writeFileSync(
-      join(
-        folder,
-        'events.jsonl',
-      ),
-      `${events}\n`,
-    )
+    await withWriter({
+      hydraId: id,
+      create: true,
+      fn: ({ writer }) => {
+        for (const line of events.split('\n')) {
+          writer.append({
+            event: {
+              ...JSON.parse(line),
+              seq: writer.state.seq + 1,
+            },
+          })
+        }
+      },
+    })
     const hydra = await pnyx.hydra({
       id,
       create: false,
@@ -1585,17 +1580,9 @@ test(
   'a reminder-only task stays out of project and Hydra waiting counts',
   async () => {
     const id = 'reminder-summary'
-    const folder = join(
-      process.env.PNYX_HOME!,
-      'hydras',
-      id,
-    )
-    mkdirSync(
-      folder,
-      { recursive: true },
-    )
+
     const path = join(
-      folder,
+      process.env.TMPDIR!,
       'repository',
     )
     mkdirSync(path)
@@ -1657,13 +1644,20 @@ test(
       actor: 'cli',
       ...event,
     })).join('\n')
-    writeFileSync(
-      join(
-        folder,
-        'events.jsonl',
-      ),
-      `${events}\n`,
-    )
+    await withWriter({
+      hydraId: id,
+      create: true,
+      fn: ({ writer }) => {
+        for (const line of events.split('\n')) {
+          writer.append({
+            event: {
+              ...JSON.parse(line),
+              seq: writer.state.seq + 1,
+            },
+          })
+        }
+      },
+    })
     const hydra = await pnyx.hydra({
       id,
       create: false,
@@ -1675,15 +1669,7 @@ test(
         'reminded',
       ],
     })
-    expect(rows<{
-      summary: {
-        asks: number
-        projects: { asks: number }[]
-      }
-    }>({
-      text: 'select summary from hydras where id = $1',
-      values: [id],
-    })[0]?.summary).toMatchObject({
+    expect((pnyx.home().hydras.find(summary => summary.id === id))).toMatchObject({
       asks: 0,
       projects: [expect.objectContaining({ asks: 0 })],
     })
@@ -1767,14 +1753,19 @@ async function placementFamily() {
 
   const parent = (await hydra.task({ key: 'parent' })).id
   const child = (await hydra.task({ key: 'child' })).id
-  const order = ({ parent }: { parent?: string } = {}) => rows<{ key: string }>({
-    text: 'select key from cards where hydra_id = $1 and parent_id is not distinct from $2::text and key = any($3::text[]) order by coalesce(rank, created_seq)',
-    values: [
-      hydra.id,
-      parent ?? null,
-      entries.map(entry => entry.key),
-    ],
-  }).map(card => card.key)
+  const order = ({ parent }: { parent?: string } = {}) => Object.values(loadHydra({
+    hydraId: hydra.id,
+  }).state.cards).filter(card => {
+    const inParent = (card.parentId ?? null) === (parent ?? null)
+
+    return inParent && entries.some(entry => entry.key === card.key)
+  })
+    .sort((
+      a,
+      b,
+    ) => (a.rank ?? a.createdSeq) - (b.rank ?? b.createdSeq))
+    .map(card => ({ key: card.key }))
+    .map(card => card.key)
 
   return {
     hydra,
@@ -1923,17 +1914,14 @@ test(
         repository,
       ],
     })
-    const snapshot = () => rows<{
-      parent_id: string | null
-      rank: number | null
-      updated_seq: number
-    }>({
-      text: 'select parent_id, rank, updated_seq from cards where hydra_id = $1 and id = $2',
-      values: [
-        hydra.id,
-        child,
-      ],
-    })
+    const snapshot = () => Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.id === child)
+      .map(card => ({
+        parent_id: card.parentId ?? null,
+        rank: card.rank ?? null,
+        updated_seq: card.updatedSeq,
+      }))
     const before = snapshot()
 
     for (const target of [
@@ -2448,10 +2436,7 @@ test(
         'questions',
       ],
     })).count).toBe(0)
-    expect(rows<{ summary: { asks: number } }>({
-      text: 'select summary from hydras where id = $1',
-      values: [hydra.id],
-    })[0]?.summary.asks).toBe(0)
+    expect((pnyx.home().hydras.find(summary => summary.id === hydra.id))?.asks).toBe(0)
     expect((await asHydra.run({
       args: [
         'task',
@@ -2603,18 +2588,7 @@ test(
         'Include archived',
       ],
     })
-    expect(rows<{
-      summary: {
-        asks: number
-        projects: {
-          name: string
-          asks: number
-        }[]
-      }
-    }>({
-      text: 'select summary from hydras where id = $1',
-      values: [hydra.id],
-    })[0]?.summary).toMatchObject({
+    expect((pnyx.home().hydras.find(summary => summary.id === hydra.id))).toMatchObject({
       asks: 1,
       projects: expect.arrayContaining([
         expect.objectContaining({
