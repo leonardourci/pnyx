@@ -703,7 +703,7 @@ export function createSourceRunner({
                   data: {
                     source: source.id,
                     sequence: captured.sequence,
-                    detail: `External result ${message} is unread; its worker notification ${result}: ${detail}. Read task source ${source.id} and restore worker delivery.`,
+                    detail: `External result ${message} is unread. Worker notification: ${result} (${detail}). Read source ${source.id}, result ${captured.sequence}, in tasks/${card}/task.log and restore worker delivery.`,
                   },
                 },
               })

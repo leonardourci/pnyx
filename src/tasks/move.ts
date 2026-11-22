@@ -166,10 +166,12 @@ export function moveRefusal({
     })
   }
 
-  if (target.cards[card.id] || target.keys[card.key]) {
+  const conflictingTask = target.cards[card.id]?.id ?? target.keys[card.key]
+
+  if (conflictingTask) {
     return refuse({
       message: `Hydra ${to} already has a task with id or key ${card.id}`,
-      help: `Read tasks/${card.id}/task.log in Hydra ${to}`,
+      help: `Read tasks/${conflictingTask}/task.log in Hydra ${to}`,
     })
   }
 

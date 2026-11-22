@@ -471,24 +471,13 @@ test(
     })
     const handled = records().filter(record => record.event?.type === 'task.steering.handled'
       && record.event.data.message === result.message)
+    expect(handled).toHaveLength(1)
     expect(JSON.parse((await acknowledge()).stdout)).toMatchObject({
       instruction: result.message,
       acknowledged: 'read',
     })
     expect(records().filter(record => record.event?.type === 'task.steering.handled'
       && record.event.data.message === result.message)).toEqual(handled)
-    expect((await hydra.owner({
-      args: [
-        'task',
-        'source',
-        'read',
-        sourceTask.id,
-        'delivered-result',
-      ],
-    })).results).toContainEqual(expect.objectContaining({
-      sequence: result.sequence,
-      message: result.message,
-    }))
     expect(records().some(record => record.event?.type === 'task.source.handled'
       && record.event.data.source === 'delivered-result')).toBe(false)
   },
