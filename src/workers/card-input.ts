@@ -10,6 +10,7 @@ import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { recordContext } from '#hydra/file-context.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
@@ -270,9 +271,19 @@ export function createCardInputs({
 
       if (change === 'session') {
         const previous = current && sessionId({ agent: current })
-        const history = previous
-          ? `Read the previous conversation with pnyx task chat ${card.id} --session ${previous} --hydra ${hydraId}. Follow every continuation cursor before continuing.`
-          : ''
+        const history: string[] = []
+
+        if (previous) {
+          history.push(recordContext({
+            hydraId,
+            task: card.id,
+          }))
+          history.push(`Read the previous session ${JSON.stringify(previous)} completely before continuing.`)
+
+          if (current?.transcriptPath) {
+            history.push(`Its recorded transcript is ${JSON.stringify(current.transcriptPath)}.`)
+          }
+        }
 
         if (previous) {
           const released = await host().release({ task: card.id })
@@ -296,7 +307,7 @@ export function createCardInputs({
           folder: previous ? card.folder : undefined,
           inputId: reply.id,
           prompt: [
-            history,
+            history.join(' '),
             reply.text,
           ].filter(Boolean).join('\n\n'),
           meta: {
