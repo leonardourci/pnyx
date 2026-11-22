@@ -467,10 +467,14 @@ test(
       key: 'travel',
       line: 'note: nebularocket continuity evidence',
     })
+    expect(await search({
+      hydra: source,
+      args: ['nebularocket'],
+    })).toEqual([expect.objectContaining({ card: created.card.id })])
     await workerLine({
       hydra: source,
       key: 'travel',
-      line: 'note: Later report without the earlier keyword',
+      line: 'note: latercomet tail evidence',
     })
     const find = async ({ hydra }: { hydra: Hydra }) => search({
       hydra,
@@ -478,6 +482,10 @@ test(
     })
     const portable = expect.objectContaining({ card: created.card.id })
     expect(await find({ hydra: source })).toEqual([portable])
+    expect(await search({
+      hydra: source,
+      args: ['latercomet'],
+    })).toEqual([portable])
     await pnyx.restart()
     expect(await find({ hydra: source })).toEqual([portable])
     await source.owner({
