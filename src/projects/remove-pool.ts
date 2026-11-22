@@ -74,8 +74,15 @@ export function protectedCopiesFolder({
     ]
 
     if (id !== hydraId) {
-      survivors.push(...Object.values(current.cards).flatMap(card =>
-        card.copy && card.copy.state !== 'removed' ? [canonicalPath({ path: card.copy.path })] : []))
+      for (const card of Object.values(current.cards)) {
+        if (card.copy && card.copy.state !== 'removed') {
+          survivors.push(canonicalPath({ path: card.copy.path }))
+        }
+
+        if (card.sessionIds?.length && card.agent?.cwd) {
+          survivors.push(canonicalPath({ path: card.agent.cwd }))
+        }
+      }
     }
 
     for (const path of protectedPaths) {

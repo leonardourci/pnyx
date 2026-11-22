@@ -2745,13 +2745,13 @@ test(
         index,
       ) => `note: batch entry ${index} ${'x'.repeat(1024)}\n`,
     ).join('')
-    writeFileSync(
-      path,
-      burst,
-    )
     const first = await withWriter({
       hydraId: hydra.id,
       fn: ({ writer }) => {
+        writeFileSync(
+          path,
+          burst,
+        )
         const from = writer.state.seq
         foldWorkerLog({
           writer,
@@ -2771,6 +2771,24 @@ test(
       what: 'all remaining batches fold without another append',
       check: async () => (await hydra.task({ key: task.id })).latest?.startsWith('batch entry 999 '),
     })
+    const shortLine = 'note: short report\n'
+    const shortBurst = shortLine.repeat(256)
+    const shortBatchBytes = await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        appendFileSync(
+          path,
+          shortBurst,
+        )
+        foldWorkerLog({
+          writer,
+          task: task.id,
+        })
+
+        return writer.state.cards[task.id]!.workerLog!.latest.off - Buffer.byteLength(burst)
+      },
+    })
+    expect(shortBatchBytes).toBe(128 * Buffer.byteLength(shortLine))
     appendFileSync(
       path,
       `note: oversized complete ${'x'.repeat(17 * 1024)}\nnote: valid after complete line\n`,

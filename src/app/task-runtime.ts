@@ -3,8 +3,7 @@ import { moveAgentMemory } from '#workers/agent-memory.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import type { HydraState } from './model.ts'
 import { pnyxHome } from '#store/storage.ts'
-import { canonical } from '#store/paths.ts'
-import { taskRuntimeDir } from '#store/paths.ts'
+import { canonical, taskRuntimeDir } from '#store/paths.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
@@ -242,10 +241,14 @@ export function abortHydraTasks({ hydraId }: { hydraId: string }): void {
   }
 }
 
-export async function stopHydraTaskTools({ hydraId }: { hydraId: string }): Promise<void> {
-  for (const owned of runtime().processes.values()) {
-    if (owned.hydraId === hydraId) {
-      await owned.children.stopAll()
+export function taskToolCleanup({ hydraId }: { hydraId: string }): () => Promise<void> {
+  const { processes } = runtime()
+
+  return async () => {
+    for (const owned of processes.values()) {
+      if (owned.hydraId === hydraId) {
+        await owned.children.stopAll()
+      }
     }
   }
 }

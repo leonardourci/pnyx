@@ -159,7 +159,6 @@ export interface LiveSessionScope {
   turns(): ReturnType<typeof createHydraTurns>
 }
 
-// One provider process per hosted session: opening it, feeding it input, following what it does, and retiring it.
 export function createLiveSessions({
   getOwner,
   hydraId,
@@ -301,8 +300,7 @@ export function createLiveSessions({
     card: Card & { agent: AgentRef }
     entry: Live
   }) => {
-    // A live session keeps its callbacks while its task changes Hydra.
-    const currentOwner = () => entry.owner!
+    const currentOwner = () => entry.owner ?? getOwner()
     const closing: LiveSessionScope['closing'] = () => currentOwner().closing()
     const streamed: LiveSessionScope['streamed'] = ({ ...input }) => currentOwner().streamed(input)
     const write: LiveSessionScope['write'] = ({ ...input }) => currentOwner().write(input)

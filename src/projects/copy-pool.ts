@@ -93,7 +93,7 @@ const runsIn = ({
   state: HydraState
   path: string
 }) =>
-  Object.values(state.cards).some(c => c.sessionIds?.length && c.agent?.cwd === path)
+  Object.values(state.cards).some(card => card.sessionIds?.length && canonical({ path: card.agent?.cwd }) === path)
 
 const holds = ({
   state,
@@ -104,7 +104,7 @@ const holds = ({
   path: string
   except?: string
 }) =>
-  Object.values(state.cards).some(c => c.id !== except && liveCopy({ card: c })?.path === path)
+  Object.values(state.cards).some(card => card.id !== except && canonical({ path: liveCopy({ card })?.path }) === path)
 
 const idle = ({
   hydraId,
@@ -139,7 +139,7 @@ export function releasedCopyOwner({
 } | undefined {
   for (const hydraId of hydraIds()) {
     const owner = Object.values(loadHydra({ hydraId }).state.cards).find(card =>
-      card.copy?.path === path && card.copy.state === 'removed' && card.copy.branch === branch)
+      card.copy?.state === 'removed' && card.copy.branch === branch && canonical({ path: card.copy.path }) === path)
 
     if (owner) {
       return {
@@ -235,6 +235,14 @@ async function claim({
         return false
       }
 
+      if (!idle({
+        hydraId,
+        path,
+        except: task,
+      })) {
+        return false
+      }
+
       claims.set(
         path,
         {
@@ -266,8 +274,7 @@ export const reservingTaskCopy = ({
 }): boolean =>
   [...claims.values()].some(owner => owner.hydraId === hydraId && owner.task === task)
 
-// Claiming first means the idle check sees every record a competing start wrote before letting go.
-export async function take({
+export function take({
   hydraId,
   card,
   path,
@@ -276,25 +283,11 @@ export async function take({
   card?: Card
   path: string
 }): Promise<boolean> {
-  if (!await claim({
+  return claim({
     hydraId,
     task: card?.id,
     path,
-  })) {
-    return false
-  }
-
-  if (idle({
-    hydraId,
-    path,
-    except: card?.id,
-  })) {
-    return true
-  }
-
-  unclaim({ path })
-
-  return false
+  })
 }
 
 export async function freshSlot({

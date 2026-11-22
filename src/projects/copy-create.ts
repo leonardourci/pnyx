@@ -6,7 +6,7 @@ import { isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
-import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopy, reusable, slots, take, unclaim } from './copy-pool.ts'
+import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopyOwner, reusable, slots, take, unclaim } from './copy-pool.ts'
 import type { HydraProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import { runProcess } from '#app/run-process.ts'
@@ -110,12 +110,12 @@ async function landedSlotBranch({
       '--show-current',
     ],
   })).out
-  const previous = releasedCopy({
+  const released = releasedCopyOwner({
     path,
     branch,
   })
 
-  if (!previous?.copy) {
+  if (!released?.card.copy) {
     const slotCommon = await commonDir({ cwd: path })
 
     // Projects with the same folder name share slot names; another repository's slot is that project's to settle.
@@ -176,8 +176,8 @@ async function landedSlotBranch({
   }
 
   const check = await checkCopy({
-    card: previous,
-    copy: previous.copy,
+    card: released.card,
+    copy: released.card.copy,
   })
 
   if (!('reason' in check)) {
@@ -185,11 +185,12 @@ async function landedSlotBranch({
   }
 
   await withWriter({
-    hydraId,
+    hydraId: released.hydraId,
     fn: ({ writer }) => {
-      const current = writer.state.cards[previous.id]
+      const current = writer.state.cards[released.card.id]
 
-      if (current?.copy?.path !== path || current.copy.state !== 'removed') {
+      if (current?.copy?.state !== 'removed' || current.copy.branch !== branch
+        || canonical({ path: current.copy.path }) !== path) {
         return
       }
 
@@ -278,10 +279,11 @@ async function worktreeCopy({
     project,
   })
   const previousPath = previous?.path
-  const candidates = previousPath && isFolder({ path: previousPath })
+  const retainedPath = previousPath && isFolder({ path: previousPath }) ? realpathSync(previousPath) : undefined
+  const candidates = retainedPath
     ? [
-      previousPath,
-      ...pooled.filter(path => path !== previousPath),
+      retainedPath,
+      ...pooled.filter(path => path !== retainedPath),
     ]
     : pooled
   const common = await commonDir({ cwd: project.path })
@@ -674,7 +676,7 @@ export async function taskFolder({
       },
     })
   } finally {
-    if (!ready) {
+    if (!ready && copy.via === 'worktree') {
       unclaim({ path: copy.path })
     }
   }

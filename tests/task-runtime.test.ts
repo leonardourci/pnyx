@@ -177,20 +177,6 @@ test(
         source.id,
       ],
     })
-    await until({
-      what: 'the destination fails the silent compaction',
-      check: async () => (await target.owner({
-        args: [
-          'task',
-          'show',
-          task.id,
-          '--full',
-        ],
-      })).task.compaction?.operations.some((operation: {
-        state: string
-        error?: string
-      }) => operation.state === 'failed' && operation.error?.includes('stopped reporting')),
-    })
     await target.owner({
       args: [
         'task',
@@ -206,6 +192,20 @@ test(
         'remove',
         target.id,
       ],
+    })
+    await until({
+      what: 'the final destination fails the silent compaction',
+      check: async () => (await final.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task.compaction?.operations.some((operation: {
+        state: string
+        error?: string
+      }) => operation.state === 'failed' && operation.error?.includes('stopped reporting')),
     })
     expect((await final.owner({
       args: [

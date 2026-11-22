@@ -57,7 +57,7 @@ import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
 import { createHostRecovery } from './host-recovery.ts'
 import { createLiveSessions, type LiveSessionScope } from '#workers/live-sessions.ts'
-import { abortHydraTasks, registerTaskHost, taskChildren, taskUsages, trackedTaskTools, stopHydraTaskTools, type TaskSessionOwner, type ToolApplication } from './task-runtime.ts'
+import { abortHydraTasks, registerTaskHost, taskChildren, taskToolCleanup, taskUsages, trackedTaskTools, type TaskSessionOwner, type ToolApplication } from './task-runtime.ts'
 import { createCardInputs, waitingCardInput } from '#workers/card-input.ts'
 import { createLiveSettings } from '#workers/live-settings.ts'
 import { createHydraTurns } from '#hydra/turns.ts'
@@ -146,6 +146,7 @@ export function createHost({
   const live = new Map<string, Live>()
   const toolRetries = new Map<string, NodeJS.Timeout>()
   const toolApplications = new Map<string, ToolApplication>()
+  const stopTaskTools = taskToolCleanup({ hydraId })
 
   const retryTools = ({
     task,
@@ -1679,7 +1680,7 @@ export function createHost({
 
     stopTools: async () => {
       await children.stopAll()
-      await stopHydraTaskTools({ hydraId })
+      await stopTaskTools()
     },
 
     close: () => {
