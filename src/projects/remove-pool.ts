@@ -218,7 +218,8 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
 
       if (insideRoot && (insideFolder || !existsSync(path)) && !survives) {
         const branchPrefix = 'branch refs/heads/'
-        const branch = details.find(detail => detail.startsWith(branchPrefix))?.slice(branchPrefix.length)
+        const branchField = details.find(detail => detail.startsWith(branchPrefix))
+        const branch = branchField?.slice(branchPrefix.length)
         const released = branch === undefined ? undefined : releasedCopyOwner({
           path: canonical,
           branch,
