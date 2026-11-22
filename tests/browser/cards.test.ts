@@ -1410,7 +1410,7 @@ test(
       return bounds.top >= Math.max(0, Math.floor(surface.top)) && bounds.bottom <= Math.min(innerHeight, Math.ceil(surface.bottom)) && button.contains(hit);
     });
     if (!reachable) throw new Error('The description Save button is outside the scrolling card panel');
-    await page.click('.task-editor button[type="submit"]');
+    await page.click('[data-hydra-workspace="${hydra.id}"] .card.selected .task-editor button[type="submit"]');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected .card-panel');
   `,
     })
