@@ -142,6 +142,7 @@ function savedEvents({
         accept: ({ entry }) => appended.push(entry),
       })
       cached.position = position
+
       for (const entry of appended) {
         cached.entries.push(entry)
       }
@@ -386,10 +387,12 @@ export function eventPositions({
   const events = clocks({ hydraId }).map(clock => ({
     ...clock,
     time: Date.parse(clock.at),
-  })).filter(clock => Number.isFinite(clock.time)).sort((
-    a,
-    b,
-  ) => a.time - b.time
+  }))
+    .filter(clock => Number.isFinite(clock.time))
+    .sort((
+      a,
+      b,
+    ) => a.time - b.time
     || Number(Boolean(a.complete)) - Number(Boolean(b.complete))
     || a.seq - b.seq)
   const next = events.reduce(
@@ -414,6 +417,7 @@ export function eventPositions({
       while (low < high) {
         const middle = Math.floor((low + high) / 2)
         const event = events[middle]!
+
         if (event.time > time || (event.complete && event.time === time)) {
           high = middle
         } else {
