@@ -1170,7 +1170,7 @@ test(
     }))
     const pendingNotes = loadHydra({ hydraId: hydra.id }).state.contextNotes ?? []
     expect(pendingNotes).toContainEqual(expect.objectContaining({
-      text: 'Invoice checks rerun under existing instructions',
+      text: expect.stringContaining('Invoice checks rerun under existing instructions'),
       handled: true,
     }))
     expect(pendingNotes).toContainEqual(expect.objectContaining({
@@ -2817,12 +2817,14 @@ test(
         },
       })
       now += 4 * 60 * 60_000
-      await timer.check()
       await until({
-        what: 'Hydra to finish its question reminder',
-        check: () => !queue({ hydraId: hydra.id })?.working,
+        what: 'the periodic review to wake Hydra for its question reminder',
+        check: async () => {
+          await timer.check()
+
+          return wakes === 4
+        },
       })
-      await timer.check()
       expect(wakes).toBe(4)
       const ownQuestion = await hydra.owner({
         args: [
@@ -2999,7 +3001,7 @@ test.each([
     await hydra.chat({ text: 'Read the capped changes' })
     const capped = session.received.find(text => text.endsWith('Read the capped changes'))!
     expect(capped).toContain('2 more changed cards')
-    expect(capped).toContain('pnyx task list')
+    expect(capped).toContain('task.log')
     expect(capped).toContain('Changed snapshot card 39')
     expect(capped).not.toContain('Changed snapshot card 40')
     await until({

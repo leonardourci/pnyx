@@ -1669,7 +1669,10 @@ test(
         'reminded',
       ],
     })
-    expect((pnyx.home().hydras.find(summary => summary.id === id))).toMatchObject({
+    expect(await until({
+      what: 'the reminder-only Hydra summary',
+      check: () => pnyx.home().hydras.find(summary => summary.id === id),
+    })).toMatchObject({
       asks: 0,
       projects: [expect.objectContaining({ asks: 0 })],
     })
@@ -2436,7 +2439,10 @@ test(
         'questions',
       ],
     })).count).toBe(0)
-    expect((pnyx.home().hydras.find(summary => summary.id === hydra.id))?.asks).toBe(0)
+    await until({
+      what: 'the Hydra summary to clear its owner question count',
+      check: () => pnyx.home().hydras.find(summary => summary.id === hydra.id)?.asks === 0,
+    })
     expect((await asHydra.run({
       args: [
         'task',

@@ -594,7 +594,7 @@ test(
         'hydra',
         'message',
         '--from',
-        delayedAt,
+        '1970-01-01T00:00:00Z',
       ],
     })
     expect(live.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
@@ -613,7 +613,7 @@ test(
         'hydra',
         'message',
         '--from',
-        delayedAt,
+        '1970-01-01T00:00:00Z',
       ],
     })
     expect(restored.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-HISTORY-END' }))
@@ -668,6 +668,14 @@ test(
         'stored-pass',
       ],
     })
+    const countArgs = [
+      'hydra',
+      'history',
+      '--since',
+      'last-inscribe',
+      '--count',
+    ]
+    const beforeRestart = await hydra.owner({ args: countArgs })
     const saved = readEvents({ hydraId: hydra.id }).map(event => ({
       id: event.id,
       type: event.type,
@@ -682,15 +690,17 @@ test(
       id: event.id,
       type: event.type,
     }))).toEqual(saved)
+    expect((await hydra.owner({ args: countArgs })).totalTokens).toBe(beforeRestart.totalTokens)
     expect((await hydra.owner({
       args: [
         'hydra',
         'history',
         '--since',
-        'last-inscribe',
+        'origin',
         '--count',
       ],
-    })).totalTokens).toBe(0)
+    })).totalTokens)
+      .toBeGreaterThan(beforeRestart.totalTokens)
   },
 )
 

@@ -53,12 +53,15 @@ test(
     })
     await flushLogs()
     const onStart = lines().length
-    await hydra.owner({
+    expect((await pnyxCommand({
       args: [
-        'task',
-        'list',
+        'board',
+        '--hydra',
+        hydra.id,
+        '--json',
       ],
-    })
+      env: process.env,
+    })).status).toBe(0)
     const spool = spoolDir({ dir: hydraDir({ hydraId: hydra.id }) })
     mkdirSync(
       spool,
