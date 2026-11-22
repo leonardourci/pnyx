@@ -110,7 +110,6 @@ export interface ThreadPage {
 }
 const HYDRA_PAGE_SIZE = 20
 const MAX_BYTES = 10 * 1024 * 1024
-// How many transcripts' parsed messages the server keeps between reads.
 // Parts bound each transport entry without cutting a logical message at a page boundary.
 const MAX_TEXT = 1000
 
