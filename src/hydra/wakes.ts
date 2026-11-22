@@ -1,4 +1,6 @@
-import { recordContext } from './file-context.ts'
+import { dirname } from 'node:path'
+import { contextReportStatus, contextTurnNotes } from './context-notes.ts'
+import { recordContext, recordFiles } from './file-context.ts'
 import { WAKE_TURN, WAKE_HANDLED } from './wake-ids.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import type { HydraState } from '#app/model.ts'
@@ -70,6 +72,8 @@ export function wakeText({
   reports,
   check,
   review,
+  reviewId,
+  reportSeqs,
   pick,
 }: {
   hydraId: string
@@ -79,6 +83,8 @@ export function wakeText({
   reports: HydraMessage[]
   check: boolean
   review?: string
+  reviewId?: string
+  reportSeqs?: number[]
   pick?: Parameters<typeof decisionsText>[0]['pick']
 }): string {
   const lines: string[] = []
@@ -149,7 +155,35 @@ export function wakeText({
   }
 
   if (check || overflow || reviewOverflow) {
-    lines.push(`${recordContext({ hydraId })} Act on pending reports marked unhandled when they need you.`)
+    const notes = state.contextNotes ?? []
+    const supplied = pick ? notes : contextTurnNotes({ notes })
+    const pending = supplied.filter(note => {
+      if (!note.report || note.handled) {
+        return false
+      }
+
+      return pick ? pick.tasks?.includes(note.task ?? '') && reportSeqs?.includes(note.seq)
+        : contextReportStatus({
+          state,
+          note,
+        }) === 'unhandled'
+    })
+    const scope = pick ? 'Only handle the granted tasks and selected updates listed below.'
+      : 'Act on these pending reports when they need you.'
+    lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ hydraId }).hydra))}. ${scope}`)
+
+    lines.push(`Pending reports: ${JSON.stringify(pending.map(note => ({
+      id: note.id,
+      file: note.task && note.task !== HYDRA_CARD ? `tasks/${note.task}/task.log` : 'hydra.log',
+      status: contextReportStatus({
+        state,
+        note,
+      }),
+    })))}`)
+
+    if (reviewOverflow) {
+      lines.push(`Read the full hydra.review record ${JSON.stringify(reviewId)} in hydra.log.`)
+    }
   }
 
   lines.push(decisionsText({
