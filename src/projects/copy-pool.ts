@@ -154,18 +154,6 @@ export function releasedCopyOwner({
   return undefined
 }
 
-export const releasedCopy = ({
-  path,
-  branch,
-}: {
-  path: string
-  branch: string
-}): Card | undefined =>
-  releasedCopyOwner({
-    path,
-    branch,
-  })?.card
-
 // A clean checkout of this project whose commit some branch keeps, so moving it to another branch loses nothing.
 export async function reusable({
   path,
@@ -399,10 +387,10 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
             'HEAD',
           ],
         })).out
-        const owner = releasedCopy({
+        const owner = releasedCopyOwner({
           path,
           branch,
-        })
+        })?.card
 
         if (!owner?.copy || owner.copy.project !== project.path || !await reusable({
           path,
