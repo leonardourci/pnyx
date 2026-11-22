@@ -1,5 +1,5 @@
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
@@ -54,10 +54,10 @@ function reportDirectory({
   recorded?: string
 }): string {
   if (recorded) {
-    return recorded
+    return resolve(recorded)
   }
 
-  const legacy = join(
+  const legacy = resolve(
     hydraFolder,
     'tasks',
     task,
@@ -159,7 +159,7 @@ export function foldWorkerLog({
     )
     let start = 0
     let lines = 0
-    let discarding = previous?.identity === identity && previous.discarding === true
+    let discarding = previous?.identity === identity && previous.off === off && previous.discarding === true
 
     const complete = bytes.subarray(
       0,

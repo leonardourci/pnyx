@@ -323,6 +323,13 @@ export function prepareTaskRuntimeMove({
     })
   }
 
+  if (active && target.live.has(active.key)) {
+    throw new HydraError({
+      code: 'SESSION_CONFLICT',
+      message: `The destination Hydra already runs session ${active.key}`,
+    })
+  }
+
   return ({ card }) => {
     if (active && current.tasks.get(task) === active) {
       source.live.delete(active.key)

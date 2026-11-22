@@ -375,9 +375,7 @@ export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> 
     let kept = 0
     const common = await commonDir({ cwd: project.path })
 
-    for (const path of slots({
-      project,
-    })) {
+    for (const path of pooled) {
       if (!await take({
         hydraId,
         path,
