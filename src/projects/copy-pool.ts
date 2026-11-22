@@ -93,7 +93,8 @@ const runsIn = ({
   state: HydraState
   path: string
 }) =>
-  Object.values(state.cards).some(card => card.sessionIds?.length && canonical({ path: card.agent?.cwd }) === path)
+  Object.values(state.cards).some(card =>
+    card.sessionIds?.length && canonical({ path: card.agent?.cwd }) === path)
 
 const holds = ({
   state,
@@ -104,7 +105,8 @@ const holds = ({
   path: string
   except?: string
 }) =>
-  Object.values(state.cards).some(card => card.id !== except && canonical({ path: liveCopy({ card })?.path }) === path)
+  Object.values(state.cards).some(card =>
+    card.id !== except && canonical({ path: liveCopy({ card })?.path }) === path)
 
 const idle = ({
   hydraId,

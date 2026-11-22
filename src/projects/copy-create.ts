@@ -279,7 +279,9 @@ async function worktreeCopy({
     project,
   })
   const previousPath = previous?.path
-  const retainedPath = previousPath && isFolder({ path: previousPath }) ? realpathSync(previousPath) : undefined
+  const retainedPath = previousPath && isFolder({ path: previousPath })
+    ? realpathSync(previousPath)
+    : undefined
   const candidates = retainedPath
     ? [
       retainedPath,
