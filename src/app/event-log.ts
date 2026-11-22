@@ -345,7 +345,8 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
     complete: event.type === 'session.observed' && 'fields' in event.data
       && event.data.fields.activity === 'finished',
     decision: durableEvent({ event }),
-  })).filter(event => Number.isFinite(event.time))
+  }))
+    .filter(event => Number.isFinite(event.time))
   const lastDecisionTime = events.reduce(
     (
       latest,
