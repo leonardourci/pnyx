@@ -2743,7 +2743,7 @@ test(
       (
         _,
         index,
-      ) => `note: batch entry ${index}\n`,
+      ) => `note: batch entry ${index} ${'x'.repeat(1024)}\n`,
     ).join('')
     writeFileSync(
       path,
@@ -2765,10 +2765,19 @@ test(
       },
     })
     expect(first.off).toBeLessThan(Buffer.byteLength(burst))
+    expect(first.off).toBeLessThanOrEqual(64 * 1024)
     expect(first.events).toBeLessThanOrEqual(256)
     await until({
       what: 'all remaining batches fold without another append',
-      check: async () => (await hydra.task({ key: task.id })).latest === 'batch entry 999',
+      check: async () => (await hydra.task({ key: task.id })).latest?.startsWith('batch entry 999 '),
+    })
+    appendFileSync(
+      path,
+      `note: oversized complete ${'x'.repeat(17 * 1024)}\nnote: valid after complete line\n`,
+    )
+    await until({
+      what: 'a valid line follows an oversized complete report',
+      check: async () => (await hydra.task({ key: task.id })).latest === 'valid after complete line',
     })
     appendFileSync(
       path,
@@ -2797,6 +2806,7 @@ test(
       ],
     })).events
     expect(JSON.stringify(history)).not.toContain('this is still the discarded line')
+    expect(JSON.stringify(history)).not.toContain('oversized complete')
   },
 )
 

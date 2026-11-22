@@ -6,7 +6,7 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
 import { watchPath } from '#app/watch.ts'
 import type { HydraState } from '#app/model.ts'
-import type { WorkerCode } from '#tasks/model.ts'
+import type { WorkerCode, WorkerLine } from '#tasks/model.ts'
 import { parseLink, decideLink } from '#tasks/delivery/links.ts'
 import { applyDecision } from '#app/decision.ts'
 import { HydraError } from '#store/errors.ts'
@@ -141,6 +141,17 @@ export function foldWorkerLog({
       if (discarding || oversized) {
         const next = newline < 0 ? count : newline + 1
         discarding = newline < 0
+        const warning: Omit<WorkerLine, 'at'> = {
+          identity,
+          off: off + next,
+          code: 'invalid',
+          text: 'Line exceeds the worker.log line limit; discarding through its next newline',
+        }
+
+        if (discarding) {
+          warning.discarding = true
+        }
+
         writer.append({
           event: {
             v: 1,
@@ -150,13 +161,7 @@ export function foldWorkerLog({
             cardId: task,
             actor: `worker:${task}`,
             type: 'task.worker-line',
-            data: {
-              identity,
-              off: off + next,
-              ...(discarding ? { discarding: true as const } : {}),
-              code: 'invalid',
-              text: 'Line exceeds the worker.log line limit; discarding through its next newline',
-            },
+            data: warning,
           },
         })
         start = next
