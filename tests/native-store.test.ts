@@ -42,9 +42,8 @@ test(
       "const server = await startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')})",
       "assert.deepEqual(JSON.parse(readFileSync(mirror, 'utf8')).default, [])",
       'await server.close()',
-      "console.log('read stayed pure; startup repaired mirrors')",
     ].join('\n')
-    expect(execFileSync(
+    execFileSync(
       process.execPath,
       [
         '--conditions=source',
@@ -60,7 +59,7 @@ test(
         },
         timeout: 30_000,
       },
-    ).trim()).toBe('read stayed pure; startup repaired mirrors')
+    )
   },
 )
 

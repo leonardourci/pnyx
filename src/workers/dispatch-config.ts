@@ -118,7 +118,6 @@ function templateAccounts(): { accounts: Record<string, Account> } {
   return template
 }
 
-// Nothing is saved yet when the change log holds no document.
 export function onTemplate(): boolean {
   return !committedDocument()
 }
@@ -205,7 +204,6 @@ const mirrorFiles = ({ document }: { document: DispatchDocument }) => {
   ]
 }
 
-// The daemon mirrors the committed journal for people reading the config files.
 export function writeDocument({ document }: { document: DispatchDocument }): void {
   for (const file of mirrorFiles({ document })) {
     writeJson(file)
@@ -536,7 +534,6 @@ export function repairDispatchMirrors(): DispatchDocument | undefined {
   return committed
 }
 
-// The daemon can repair mirrors while preparing a configuration change.
 export function lockedDocument(): DispatchDocument {
   mergeHydraFiles()
 

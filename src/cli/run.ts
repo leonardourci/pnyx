@@ -31,7 +31,7 @@ pnyx debug health
 Task creation starts its worker. Use --harness, --account, --model, --effort,
 --mode, --fast or --rule to choose its settings.
 Send addresses Hydra unless --task names a worker. --file <path|-> reads message text.
-Transitional reads: task list|show|history|updates|messages|chat|questions|inbox read,
+Reads: task list|show|history|updates|messages|chat|questions|inbox read,
 hydra check|digest|messages|message|history, card, history, context and oracle.
 Add --json when a script or agent reads structured records.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.

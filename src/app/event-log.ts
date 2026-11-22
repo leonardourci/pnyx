@@ -359,12 +359,11 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
       && event.data.fields.activity === 'finished',
     decision: durableEvent({ event }),
   }))
-    .filter(event => Number.isFinite(event.time))
   const lastDecisionTime = events.reduce(
     (
       latest,
       event,
-    ) => event.decision
+    ) => event.decision && Number.isFinite(event.time)
       ? Math.max(
         latest,
         event.time,
@@ -404,7 +403,7 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
   }
 
   return [
-    ...events.filter(event => event.decision || inLiveTail(event)),
+    ...events.filter(event => event.decision ? Number.isFinite(event.time) : inLiveTail(event)),
     ...observed.filter(inLiveTail),
   ]
 }
