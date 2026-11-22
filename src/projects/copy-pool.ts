@@ -80,7 +80,6 @@ export function requireUnlinkedCopyFolder({ path }: { path: string }): void {
   }
 }
 
-// Slots are named <project>-<n>, so one can pass from task to task.
 export function slots({
   project,
 }: {
@@ -241,12 +240,16 @@ async function claim({
   return await withWriter({
     hydraId,
     fn: ({ writer }) => {
-      const occupied = vacant && lstatSync(
+      requireUnlinkedCopyFolder({ path: copiesDir() })
+
+      const entry = lstatSync(
         path,
         { throwIfNoEntry: false },
       )
 
-      if (claims.has(path) || occupied) {
+      const available = vacant ? entry === undefined : entry?.isDirectory()
+
+      if (!available || claims.has(path)) {
         return false
       }
 
@@ -318,9 +321,11 @@ export async function freshSlot({
   task: string
   project: HydraProject
 }): Promise<string> {
+  const pool = copiesDir()
+
   for (let n = 1; ; n++) {
     const path = join(
-      copiesDir(),
+      pool,
       `${project.name}-${n}`,
     )
 

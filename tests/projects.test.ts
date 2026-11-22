@@ -1,4 +1,5 @@
 import { discoverPullRequests } from '#tasks/delivery/discover.ts'
+import { symlinkSync as linkCopyFolder, unlinkSync as unlinkCopyFolder } from 'node:fs'
 import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
 import * as processes from '#app/run-process.ts'
@@ -409,6 +410,12 @@ const args = process.argv.slice(2)
           legacy,
         ],
       })
+      const recordedPath = `${legacy}-recorded`
+      linkCopyFolder(
+        legacy,
+        recordedPath,
+        'dir',
+      )
       await withWriter({
         hydraId: target.id,
         fn: ({ writer }) => {
@@ -428,12 +435,29 @@ const args = process.argv.slice(2)
                 before: card.copy!,
                 after: {
                   ...card.copy!,
-                  path: legacy,
+                  path: recordedPath,
                 },
               },
             },
           })
         },
+      })
+      expect((await target.ownerRefused({
+        args: [
+          'task',
+          'start',
+          firstTask,
+        ],
+      })).code).toBe('COPY_FAILED')
+      unlinkCopyFolder(recordedPath)
+      git({
+        cwd: project,
+        args: [
+          'worktree',
+          'move',
+          legacy,
+          recordedPath,
+        ],
       })
       expect((await target.owner({
         args: [
@@ -441,7 +465,7 @@ const args = process.argv.slice(2)
           'start',
           firstTask,
         ],
-      })).agent.folder).toBe(legacy)
+      })).agent.folder).toBe(recordedPath)
     } finally {
       writeFileSync(
         release,
