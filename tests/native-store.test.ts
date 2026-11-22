@@ -8,6 +8,8 @@ import { loadHydra } from '#app/store.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { readNativeHydra } from '#app/native-read.ts'
 import { withWriter } from '#app/writer.ts'
+import { applyDecision } from '#app/decision.ts'
+import { operationEvent } from '#hydra/operations.ts'
 import { base } from '#app/command-meta.ts'
 import { askHost } from '#app/server-state.ts'
 import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
@@ -18,6 +20,143 @@ let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx()
 })
+
+test.each([
+  { phase: 'interrupted' },
+  { phase: 'finished' },
+] as const)(
+  'receiptless compaction and $phase child inscribe keep their file-only cutoff and recovery bounds',
+  async ({ phase }) => {
+    const hydra = await pnyx.hydra()
+    const boundary = readEvents({ hydraId: hydra.id }).at(-1)!.id
+    await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const through = writer.state.eventIds[boundary]!
+        applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            operation: {
+              id: 'cutoff-compaction',
+              kind: 'compaction',
+              state: 'started',
+              through,
+              after: through,
+            },
+          }),
+        })
+        writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              cardId: '$board',
+              meta: {
+                id: 'after-cutoff-message',
+                actor: 'cli',
+                at: new Date().toISOString(),
+              },
+            }),
+            type: 'hydra.message',
+            data: {
+              action: 'send',
+              text: 'Owner message after the saved cutoff',
+              hydra: 'hydra',
+            },
+          },
+        })
+        applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            operation: {
+              id: 'cutoff-inscribe',
+              kind: 'inscribe',
+              state: 'started',
+              through,
+              historySince: 'origin',
+              parent: 'cutoff-compaction',
+              blocking: false,
+            },
+          }),
+        })
+      },
+    })
+    const saved = readNativeHydra({ hydraId: hydra.id }).state
+    const through = saved.eventIds[boundary]
+    expect(saved.hydraOperation).toMatchObject({
+      id: 'cutoff-compaction',
+      kind: 'compaction',
+      seq: through,
+    })
+    expect(saved.historyMilestones).toContainEqual(expect.objectContaining({
+      id: 'cutoff-compaction',
+      state: 'started',
+      through,
+      after: through,
+    }))
+    expect(saved.historyMilestones).toContainEqual(expect.objectContaining({
+      id: 'cutoff-inscribe',
+      state: 'started',
+      through,
+      parent: 'cutoff-compaction',
+      blocking: false,
+      historySince: 'origin',
+    }))
+    expect(saved.eventIds['after-cutoff-message']).toBeGreaterThan(through!)
+
+    if (phase === 'finished') {
+      await withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            operation: {
+              id: 'cutoff-inscribe',
+              kind: 'inscribe',
+              state: 'finished',
+            },
+          }),
+        }),
+      })
+    }
+
+    await pnyx.restart()
+    const recovered = readNativeHydra({ hydraId: hydra.id }).state
+    const restoredThrough = recovered.eventIds[boundary]
+    expect(recovered.hydraOperation).toBeUndefined()
+
+    for (const id of [
+      'cutoff-compaction',
+      'cutoff-inscribe',
+    ]) {
+      expect(recovered.historyMilestones).toContainEqual(expect.objectContaining({
+        id,
+        state: id === 'cutoff-inscribe' && phase === 'finished' ? 'finished' : 'failed',
+        through: restoredThrough,
+      }))
+    }
+
+    const child = recovered.historyMilestones?.find(item => item.id === 'cutoff-inscribe')
+    expect(child).toMatchObject({
+      parent: 'cutoff-compaction',
+      blocking: false,
+    })
+  },
+)
 
 test(
   'dispatch reads leave mirrors untouched and daemon startup repairs them from the journal',

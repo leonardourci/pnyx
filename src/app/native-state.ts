@@ -21,7 +21,10 @@ interface Inscription {
   key: string
   phase: 'started' | 'finished' | 'failed'
   throughSeq?: number
+  afterSeq?: number
   since?: string
+  parent?: string
+  blocking?: false
   error?: string
   notices?: HydraEvent['notices']
 }
@@ -564,6 +567,7 @@ const SEQUENCE_FIELDS = new Set([
   'turnEndedSeq',
   'turnFinishedSeq',
   'throughSeq',
+  'afterSeq',
   'finishedThrough',
   'steeringGeneration',
   'stateSeq',
@@ -577,6 +581,7 @@ const THROUGH_PARENTS = new Set([
   'value',
 ])
 const AFTER_PARENTS = new Set([
+  'historyMilestones',
   'hydraContext',
   'hydraStatus',
   'hydraOperation',
@@ -781,7 +786,10 @@ export function nativeInscribe({
         key: event.data.id,
         phase: event.data.state,
         throughSeq: previous?.throughSeq ?? boundary,
-        since: event.data.historySince,
+        afterSeq: event.data.after ?? previous?.afterSeq,
+        since: event.data.historySince ?? previous?.since,
+        parent: event.data.parent ?? previous?.parent,
+        blocking: event.data.blocking ?? previous?.blocking,
         error: event.data.error,
         notices: event.notices,
       },
@@ -985,7 +993,10 @@ export function assembleNative({
         kind: 'inscribe',
         state: inscription.phase,
         through: inscription.throughSeq,
+        after: inscription.afterSeq,
         historySince: inscription.since,
+        parent: inscription.parent,
+        blocking: inscription.blocking,
         error: inscription.error,
       },
       notices: inscription.notices,
