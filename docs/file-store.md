@@ -1,6 +1,6 @@
 # Native file store
 
-The file store is the persistence layer for the storage replacement. It keeps canonical state in memory and appends native facts to one Hydra log and one log per task. The application uses it with the resumed home socket. There is no importer or automatic deletion of an existing home.
+The daemon keeps canonical state in memory and appends native facts to one Hydra log and one log per task. Start this release with an empty home and keep any existing home separately.
 
 ## Files and identity
 

@@ -348,7 +348,7 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
     (
       latest,
       event,
-    ) => event.decision
+    ) => event.decision && Number.isFinite(Date.parse(event.at))
       ? Math.max(
         latest,
         Date.parse(event.at),
@@ -455,7 +455,11 @@ export function eventTime({
     }
   }
 
-  const found = clocks({ hydraId }).filter(clock => exact ? clock.seq === seq : clock.seq <= seq)
+  const found = clocks({ hydraId }).map(clock => ({
+    ...clock,
+    time: Date.parse(clock.at),
+  }))
+    .filter(clock => Number.isFinite(clock.time) && (exact ? clock.seq === seq : clock.seq <= seq))
     .sort((
       a,
       b,
@@ -464,14 +468,14 @@ export function eventTime({
         return b.seq - a.seq
       }
 
-      return b.at.localeCompare(a.at) || Number(Boolean(b.complete)) - Number(Boolean(a.complete))
+      return b.time - a.time || Number(Boolean(b.complete)) - Number(Boolean(a.complete))
     })[0]
 
   if (!found || exact || !found.complete) {
     return found?.at
   }
 
-  const timeAfterCompletion = Date.parse(found.at) + 1
+  const timeAfterCompletion = found.time + 1
 
   return new Date(timeAfterCompletion).toISOString()
 }
