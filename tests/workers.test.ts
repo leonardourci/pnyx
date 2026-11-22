@@ -4104,3 +4104,99 @@ test(
     })).context.used).toBe(recorded)
   },
 )
+
+test(
+  'a queued tool update follows a busy native worker across Hydra moves',
+  async () => {
+    const source = await pnyx.hydra()
+    const middle = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const key = 'moving-tools'
+    const { worker } = await source.startTask({ key })
+    const task = await source.task({ key })
+    const held = pnyx.claude.plan({
+      hydra: source.id,
+      match: ({ text }) => text.includes('pending tools turn'),
+      partial: 'Still working before tool refresh',
+      hold: true,
+    })
+    onTestFinished(() => held.release())
+    await reply({
+      hydra: source,
+      key,
+      text: 'pending tools turn',
+    })
+    await until({
+      what: 'the busy native turn before moving',
+      check: () => worker.received.some(text => text.includes('pending tools turn')),
+    })
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        middle.id,
+      ],
+    })
+    await source.owner({
+      args: [
+        'hydra',
+        'remove',
+        source.id,
+      ],
+    })
+    await middle.owner({
+      args: [
+        'task',
+        'tools',
+        task.id,
+        '--grant',
+        'browser',
+      ],
+    })
+    expect((await middle.owner({
+      args: [
+        'task',
+        'tools',
+        task.id,
+      ],
+    })).selection).toBe('pending')
+    expect(worker.closed).toBe(false)
+    await middle.owner({
+      args: [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        target.id,
+      ],
+    })
+    await middle.owner({
+      args: [
+        'hydra',
+        'remove',
+        middle.id,
+      ],
+    })
+    expect(worker.closed).toBe(false)
+    held.release()
+    await until({
+      what: 'the queued tools to apply on the final Hydra',
+      check: async () => (await target.owner({
+        args: [
+          'task',
+          'tools',
+          task.id,
+        ],
+      })).selection === 'applied',
+    })
+    const resumed = await until({
+      what: 'the same native session to resume with the destination scope',
+      check: () => pnyx.claude.sessions.find(session => session.id === worker.id
+        && session.resumed && session.env.PNYX_HYDRA === target.id),
+    })
+    expect(resumed.closed).toBe(false)
+    expect((await target.task({ key: task.id })).worker).toBe(`claude-code:${worker.id}`)
+  },
+)

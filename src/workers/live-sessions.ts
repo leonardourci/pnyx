@@ -325,6 +325,7 @@ export function createLiveSessions({
     const settleCompaction: LiveSessionScope['compaction']['settleCompaction'] = ({ ...input }) => currentOwner().compaction.settleCompaction(input)
     const syncCompactions: LiveSessionScope['compaction']['syncCompactions'] = ({ ...input }) => currentOwner().compaction.syncCompactions(input)
     const retire: TaskSessionOwner['retire'] = ({ ...input }) => currentOwner().retire(input)
+    const resumeTools: TaskSessionOwner['resumeTools'] = ({ ...input }) => currentOwner().resumeTools(input)
 
     let failure: string | undefined
     const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
