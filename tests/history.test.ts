@@ -1,9 +1,10 @@
+import { join } from 'node:path'
 import { WORKER_RESUME } from '#workers/host.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { type NativeFact } from '#app/native-state.ts'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { applyDecision } from '#app/decision.ts'
 import { withWriter } from '#app/writer.ts'
@@ -668,14 +669,22 @@ test(
         'stored-pass',
       ],
     })
-    const countArgs = [
-      'hydra',
-      'history',
-      '--since',
-      'last-inscribe',
-      '--count',
-    ]
-    const beforeRestart = await hydra.owner({ args: countArgs })
+    const log = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'hydra.log',
+    )
+    const inscriptions = () => readFileSync(
+      log,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+      .filter(fact => fact.inscribe?.key === 'stored-pass')
+      .map(fact => fact.id)
+    const beforeRestart = inscriptions()
+    expect(beforeRestart).toHaveLength(2)
     const saved = readEvents({ hydraId: hydra.id }).map(event => ({
       id: event.id,
       type: event.type,
@@ -690,17 +699,11 @@ test(
       id: event.id,
       type: event.type,
     }))).toEqual(saved)
-    expect((await hydra.owner({ args: countArgs })).totalTokens).toBe(beforeRestart.totalTokens)
-    expect((await hydra.owner({
-      args: [
-        'hydra',
-        'history',
-        '--since',
-        'origin',
-        '--count',
-      ],
-    })).totalTokens)
-      .toBeGreaterThan(beforeRestart.totalTokens)
+    expect(inscriptions()).toEqual(beforeRestart)
+    expect(readFileSync(
+      log,
+      'utf8',
+    )).toContain('Conversation before the saved inscribe boundary')
   },
 )
 
