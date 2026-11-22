@@ -65,12 +65,12 @@ export function afterHandoffSync({
           event?: {
             type: string
             cardId: string
-            data: { handoff?: { copy: { branch: string } } }
+            data: { handoff?: { copy?: { branch: string } } }
           }
         }
 
         return record.event?.type === 'task.session' && record.event.cardId === target
-        && record.event.data.handoff?.copy.branch === branch ? [record.id] : []
+        && record.event.data.handoff?.copy?.branch === branch ? [record.id] : []
       }))
 
     const current = inodes.indexOf(inode)

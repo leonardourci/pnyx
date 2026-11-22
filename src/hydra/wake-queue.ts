@@ -111,6 +111,7 @@ export function createWakeQueue({
       reasons: [...new Set(seqs.flatMap(seq => wakeReasonsAt.get(seq) ?? []))],
       reports,
       check: reports.length < chosen.size,
+      reportSeqs: seqs,
       pick: {
         tasks: updates.filter(update => chosen.has(update.seq)).map(update => update.card),
         asks: reports.flatMap(message => message.ask ?? []),
@@ -319,6 +320,10 @@ export function createWakeQueue({
       reports,
       check: batch.some(update => !reportSeqs.has(update.seq)) || !reports.length,
       review: reviewText,
+      reviewId: reviewText && review ? readChanges({
+        hydraId,
+        seqs: [review.seq],
+      })[0]?.id : undefined,
     })
 
     return wakeMain({

@@ -1210,6 +1210,23 @@ test(
   'parent retention waits for every child and reopens when a child resumes',
   async () => {
     const hydra = await pnyx.hydra()
+
+    const retention = async () => {
+      const { task } = await hydra.owner({
+        args: [
+          'task',
+          'show',
+          'family',
+          '--full',
+        ],
+      })
+
+      return {
+        doneAt: task.doneAt ?? null,
+        hidden: task.hidden ?? false,
+      }
+    }
+
     await hydra.owner({
       args: [
         'task',
@@ -1256,18 +1273,10 @@ test(
         'Parent work completed',
       ],
     })
-    expect(Object.values(loadHydra({
-      hydraId: hydra.id,
-    }).state.cards).filter(card => card.key === 'family')
-      .map(card => ({
-        done_at: card.doneAt ?? null,
-        hidden: card.hidden ?? false,
-      }))).toEqual([
-      {
-        done_at: null,
-        hidden: false,
-      },
-    ])
+    expect(await retention()).toEqual({
+      doneAt: null,
+      hidden: false,
+    })
     await hydra.owner({
       args: [
         'outcome',
@@ -1277,18 +1286,10 @@ test(
         'Child completed',
       ],
     })
-    expect(Object.values(loadHydra({
-      hydraId: hydra.id,
-    }).state.cards).filter(card => card.key === 'family')
-      .map(card => ({
-        done_at: card.doneAt ?? null,
-        hidden: card.hidden ?? false,
-      }))).toEqual([
-      {
-        done_at: null,
-        hidden: false,
-      },
-    ])
+    expect(await retention()).toEqual({
+      doneAt: null,
+      hidden: false,
+    })
     await hydra.owner({
       args: [
         'outcome',
@@ -1298,10 +1299,7 @@ test(
         'Validation completed',
       ],
     })
-    expect(Object.values(loadHydra({
-      hydraId: hydra.id,
-    }).state.cards).filter(card => card.key === 'family')
-      .map(card => ({ done_at: card.doneAt }))[0]?.done_at).toBeTypeOf('string')
+    expect((await retention()).doneAt).toBeTypeOf('string')
     await hydra.owner({
       args: [
         'outcome',
@@ -1309,31 +1307,15 @@ test(
         '--clear',
       ],
     })
-    expect(Object.values(loadHydra({
-      hydraId: hydra.id,
-    }).state.cards).filter(card => card.key === 'family')
-      .map(card => ({
-        done_at: card.doneAt ?? null,
-        hidden: card.hidden ?? false,
-      }))).toEqual([
-      {
-        done_at: null,
-        hidden: false,
-      },
-    ])
+    expect(await retention()).toEqual({
+      doneAt: null,
+      hidden: false,
+    })
     await pnyx.restart()
-    expect(Object.values(loadHydra({
-      hydraId: hydra.id,
-    }).state.cards).filter(card => card.key === 'family')
-      .map(card => ({
-        done_at: card.doneAt ?? null,
-        hidden: card.hidden ?? false,
-      }))).toEqual([
-      {
-        done_at: null,
-        hidden: false,
-      },
-    ])
+    expect(await retention()).toEqual({
+      doneAt: null,
+      hidden: false,
+    })
   },
 )
 
@@ -2446,9 +2428,10 @@ test(
       ],
     })).count).toBe(0)
     await until({
-      what: 'the Hydra summary to clear its owner question count',
-      check: () => pnyx.home().hydras.find(summary => summary.id === hydra.id)?.asks === 0,
+      what: 'the Hydra summary to reflect no owner questions',
+      check: () => (pnyx.home().hydras.find(summary => summary.id === hydra.id))?.asks === 0,
     })
+    expect((pnyx.home().hydras.find(summary => summary.id === hydra.id))?.asks).toBe(0)
     expect((await asHydra.run({
       args: [
         'task',

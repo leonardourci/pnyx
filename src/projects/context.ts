@@ -6,7 +6,7 @@ import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '#memory/learnings.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProject } from './model.ts'
-import { projectMemoryLogPath, PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
+import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
 
@@ -41,7 +41,7 @@ export async function projectDigest({
     })
     const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-    return [`- ${project.name} (${project.path}) · memory log: ${JSON.stringify(projectMemoryLogPath({ id: view.id }))} · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
+    return [`- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
   }))
 
   const summaries = lines.flat()
@@ -51,7 +51,7 @@ export async function projectDigest({
   }
 
   return [
-    'Projects (read the supplied memory log for full memory):',
+    'Projects (load memory on demand with pnyx project show <name|path>):',
     ...summaries,
   ]
 }
@@ -121,7 +121,7 @@ export async function projectWorkerContext({
         ] : []
       }),
       'Read the project conventions in your current copy before starting; the shared profile may need refreshing.',
-      `Full memory: read ${JSON.stringify(projectMemoryLogPath({ id: view.id }))} directly.`,
+      `Full memory: pnyx project show ${JSON.stringify(project.path)} --hydra ${hydraId}.`,
     ].join('\n'),
   }
 }

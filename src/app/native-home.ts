@@ -82,6 +82,7 @@ function loadedState({
   }
 
   const state = assembleNative({
+    positions,
     hydra: nativeReferences({
       value: view.state,
       ids: positions,
@@ -101,21 +102,6 @@ function loadedState({
       ] as [string, NativeState],
     ] : []),
   })
-
-  for (const [
-    key,
-    seq,
-  ] of positions) {
-    recordEventId({
-      state,
-      id: key.slice(key.indexOf('\0') + 1),
-      seq,
-    })
-    state.seq = Math.max(
-      state.seq,
-      seq,
-    )
-  }
 
   for (const [
     id,
@@ -142,9 +128,15 @@ function linkFile({
 }): void {
   const target = lstatSync(
     destination,
-    { throwIfNoEntry: false },
+    {
+      throwIfNoEntry: false,
+      bigint: true,
+    },
   )
-  const original = lstatSync(source)
+  const original = lstatSync(
+    source,
+    { bigint: true },
+  )
 
   if (!original.isFile()) {
     throw new HydraError({

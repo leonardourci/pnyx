@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraEvent, HydraState } from './model.ts'
 import { emptyHydra } from './reducer.ts'
+import { recordEventId } from './command-meta.ts'
 import { projectSession } from '#workers/session-attachments.ts'
 import { applyHistory } from '#hydra/history.ts'
 import { applyHydra } from '#hydra/reduce.ts'
@@ -87,6 +88,19 @@ function record({ value }: { value: unknown }): Record<string, unknown> | undefi
     ? value as Record<string, unknown> : undefined
 }
 
+function ownValue({
+  value,
+  key,
+}: {
+  value: Record<string, unknown>
+  key: string
+}): unknown {
+  return Object.hasOwn(
+    value,
+    key,
+  ) ? value[key] : undefined
+}
+
 export function nativeChanges({
   before,
   after,
@@ -152,8 +166,14 @@ export function nativeChanges({
         ...Object.keys(right),
       ]),
     ].flatMap(key => nativeChanges({
-      before: left[key],
-      after: right[key],
+      before: ownValue({
+        value: left,
+        key,
+      }),
+      after: ownValue({
+        value: right,
+        key,
+      }),
       path: [
         ...path,
         key,
@@ -209,23 +229,35 @@ function reconcileNative({
       ...Object.keys(left),
       ...Object.keys(right),
     ])) {
+      const beforeValue = ownValue({
+        value: left,
+        key,
+      })
+      const afterValue = ownValue({
+        value: right,
+        key,
+      })
+
       if (isDeepStrictEqual(
-        left[key],
-        right[key],
+        beforeValue,
+        afterValue,
       )) {
         continue
       }
 
-      if (right[key] === undefined) {
+      if (afterValue === undefined) {
         delete next[key]
       } else {
         define({
           target: next,
           key,
           value: reconcileNative({
-            before: left[key],
-            after: right[key],
-            basis: saved[key],
+            before: beforeValue,
+            after: afterValue,
+            basis: ownValue({
+              value: saved,
+              key,
+            }),
           }),
         })
       }
@@ -926,9 +958,11 @@ export function nativeEvent({
 export function assembleNative({
   hydra,
   tasks,
+  positions = new Map(),
 }: {
   hydra?: NativeState
   tasks: Iterable<[string, NativeState]>
+  positions?: ReadonlyMap<string, number>
 }): HydraState {
   const state = {
     ...emptyHydra(),
@@ -1009,6 +1043,21 @@ export function assembleNative({
       state,
       session,
     })
+  }
+
+  for (const [
+    key,
+    seq,
+  ] of positions) {
+    recordEventId({
+      state,
+      id: key.slice(key.indexOf('\0') + 1),
+      seq,
+    })
+    state.seq = Math.max(
+      state.seq,
+      seq,
+    )
   }
 
   return state

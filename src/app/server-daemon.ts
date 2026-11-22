@@ -37,6 +37,7 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
 import { hydraExists, loadHydra } from './store.ts'
+import { repairDispatchMirrors } from '#workers/dispatch-config.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -103,6 +104,15 @@ export async function startServer({
 }): Promise<RunningServer> {
   const starting = performance.now()
   const releaseClaim = claimServer()
+  let epoch: string
+
+  try {
+    repairDispatchMirrors()
+    epoch = nativeHome().epoch
+  } catch (error) {
+    releaseClaim()
+    throw error
+  }
 
   const logs = startServerLogs({
     settings: readSettings().settings,
@@ -130,7 +140,7 @@ export async function startServer({
     changes: frame.value,
   })
   const homeHistory = createSocketHistory<PageChanges>({
-    epoch: nativeHome().epoch,
+    epoch,
     measure: ({ frame }) => Buffer.byteLength(JSON.stringify(homeDelta({ frame }))),
   })
   const homeClients = new Set<({ message }: { message: HomeMessage }) => void>()
@@ -1118,11 +1128,11 @@ export async function startServer({
     }
 
     for (const id of hydraIds()) {
-      if (removalPending({ id })) {
-        continue
-      }
-
       try {
+        if (removalPending({ id })) {
+          continue
+        }
+
         await mount({ id })
       } catch (error) {
         log({

@@ -821,7 +821,7 @@ export const card = guard({
     const help = [`Read tasks/${found.id}/task.log for its events`]
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
-      help.unshift(`Read tasks/${found.id}/task.log for the full brief and notes`)
+      help.unshift(`Read tasks/${found.id}/task.log in Hydra ${hydraId} for the full brief and notes. For a moved task, follow its move records to earlier Hydra task logs for older notes`)
     }
 
     return {

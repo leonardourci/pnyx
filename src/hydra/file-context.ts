@@ -2,13 +2,18 @@ import { join } from 'node:path'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
 import { pnyxHome } from '#store/paths.ts'
 
-export function recordContext({
+export function recordFiles({
   hydraId,
   task,
 }: {
   hydraId: string
   task?: string
-}): string {
+}): {
+  hydra: string
+  task: string
+  worker: string
+  snapshot: string
+} {
   const home = pnyxHome()
   const dir = hydraFiles({
     home,
@@ -24,17 +29,34 @@ export function recordContext({
     '<task>',
   )
 
-  return `Read ${JSON.stringify(join(
-    dir,
-    'hydra.log',
-  ))} and the relevant ${JSON.stringify(join(
-    records,
-    'task.log',
-  ))} and ${JSON.stringify(join(
-    records,
-    'worker.log',
-  ))} directly. ${JSON.stringify(join(
-    dir,
-    'snapshot.json',
-  ))} is an optional cached view; logs are authoritative and may be newer. Keep record IDs with their file scope; line numbers belong only to that file. Follow recorded transcript paths for full agent replies. Do not edit server-owned records.`
+  return {
+    hydra: join(
+      dir,
+      'hydra.log',
+    ),
+    task: join(
+      records,
+      'task.log',
+    ),
+    worker: join(
+      records,
+      'worker.log',
+    ),
+    snapshot: join(
+      dir,
+      'snapshot.json',
+    ),
+  }
+}
+
+export function recordContext({
+  hydraId,
+  task,
+}: Parameters<typeof recordFiles>[0]): string {
+  const files = recordFiles({
+    hydraId,
+    task,
+  })
+
+  return `Read ${JSON.stringify(files.hydra)} and the relevant ${JSON.stringify(files.task)} and ${JSON.stringify(files.worker)} directly. ${JSON.stringify(files.snapshot)} is an optional cached view; logs are authoritative and may be newer. Keep record IDs with their file scope; line numbers belong only to that file. Follow recorded transcript paths for full agent replies. Do not edit server-owned records.`
 }

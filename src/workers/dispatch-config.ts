@@ -118,10 +118,8 @@ function templateAccounts(): { accounts: Record<string, Account> } {
   return template
 }
 
-// Nothing is saved yet: the change log holds no document, even after the one-time merge.
+// Nothing is saved yet when the change log holds no document.
 export function onTemplate(): boolean {
-  migrate()
-
   return !committedDocument()
 }
 
@@ -207,7 +205,7 @@ const mirrorFiles = ({ document }: { document: DispatchDocument }) => {
   ]
 }
 
-// The two files only mirror the change log for people reading them; a read rewrites them from the log.
+// The daemon mirrors the committed journal for people reading the config files.
 export function writeDocument({ document }: { document: DispatchDocument }): void {
   for (const file of mirrorFiles({ document })) {
     writeJson(file)
@@ -528,53 +526,28 @@ function mergeHydraFiles(): void {
   }
 }
 
-// The one-time merge takes the registry lock, so callers run it before taking a Hydra writer.
-function migrate(): void {
-  if (!existsSync(changesPath())) {
-    withRegistryLock({ fn: mergeHydraFiles })
-  }
-}
-
-// For writers holding the registry lock: the saved document, errors included, with files a cut-short save left behind rewritten.
-export function lockedDocument(): DispatchDocument {
-  mergeHydraFiles()
+export function repairDispatchMirrors(): DispatchDocument | undefined {
   const committed = committedDocument()
 
-  if (!committed) {
-    return filesDocument()
-  }
-
-  if (!mirrored({ document: committed })) {
+  if (committed && !mirrored({ document: committed })) {
     writeDocument({ document: committed })
   }
 
   return committed
 }
 
-// A reader never waits for the lock: the log already gave it the document, and a later read repairs the files.
-function repairFiles(): void {
-  try {
-    withRegistryLock({
-      fn: lockedDocument,
-      timeout: 0,
-    })
-  } catch (error) {
-    if (!(error instanceof HydraError && error.code === 'LOCKED')) {
-      throw error
-    }
-  }
+// The daemon can repair mirrors while preparing a configuration change.
+export function lockedDocument(): DispatchDocument {
+  mergeHydraFiles()
+
+  return repairDispatchMirrors() ?? filesDocument()
 }
 
 // The saved document with any errors it holds, so a patch can still repair it; readers take effectiveDispatch.
 export function savedDocument(): DispatchDocument {
-  migrate()
   const committed = committedDocument()
 
   if (committed) {
-    if (!mirrored({ document: committed })) {
-      repairFiles()
-    }
-
     return committed
   }
 

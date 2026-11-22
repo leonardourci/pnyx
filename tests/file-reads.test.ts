@@ -92,6 +92,16 @@ test(
         },
       },
     }
+    mkdirSync(join(
+      dir,
+      'tasks',
+      'old export',
+    ))
+    mkdirSync(join(
+      dir,
+      'tasks',
+      '.pending-task',
+    ))
     const paths = compactionFiles({
       hydraId: 'file-reads',
       state,
@@ -225,8 +235,8 @@ test(
       hydraId: 'file-reads',
       task: 'task-one',
     })
-    expect(context).toContain(JSON.stringify(taskLog))
-    expect(context).toContain(JSON.stringify(workerLog))
+    expect(context).toContain(taskLog)
+    expect(context).toContain(workerLog)
     const tasks = join(
       dir,
       'tasks',

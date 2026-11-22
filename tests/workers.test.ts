@@ -1727,13 +1727,15 @@ test(
       '',
       'another-launch',
     ]) {
-      expect((await runPnyx({
+      const refused = await runPnyx({
         args,
         env: {
           ...worker.env,
           PNYX_STEERING_WORKER: identity,
         },
-      })).status).not.toBe(0)
+      })
+      expect(refused.status).not.toBe(0)
+      expect(JSON.parse(refused.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
     }
 
     const command = notice!.match(/^pnyx task ack .+$/m)![0]
@@ -1776,6 +1778,96 @@ test(
       sessions: pnyx.claude.sessions.filter(session => session.cwd === folder),
       text: 'Keep this instruction unread',
     })).toBe(1)
+  },
+)
+
+test(
+  'an explicit read persists after native input confirmation and stays idempotent across restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'confirmed-read' })
+    const task = await hydra.task({ key: 'confirmed-read' })
+    await hydra.owner({
+      args: [
+        'reply',
+        task.id,
+        '--text',
+        'Read this through the native harness',
+      ],
+    })
+    const instruction = await until({
+      what: 'native input confirmation to mark the instruction read',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'inbox',
+          'read',
+          task.id,
+          '--all',
+        ],
+      })).messages
+        .find((message: {
+          text: string
+          ack?: { outcome: string }
+        }) =>
+          message.text === 'Read this through the native harness' && message.ack?.outcome === 'read'),
+    })
+    const path = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+    const records = () => readFileSync(
+      path,
+      'utf8',
+    ).trimEnd()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    const queued = records().find(record => record.event?.type === 'task.steering.queued'
+      && record.event.data.message.id === instruction.id).event.data.message
+    const acknowledgements = () => records().filter(record => record.event?.type === 'task.steering.handled'
+      && record.event.data.message === instruction.id)
+    expect(acknowledgements()).toHaveLength(0)
+    const args = [
+      'task',
+      'ack',
+      task.id,
+      instruction.id,
+      '--session',
+      queued.queuedFor.session,
+      '--generation',
+      JSON.stringify(queued.queuedFor.generation),
+      '--hydra',
+      hydra.id,
+      '--json',
+    ]
+    const accepted = await runPnyx({
+      args,
+      env: worker.env,
+    })
+    expect(
+      accepted.status,
+      accepted.stderr,
+    ).toBe(0)
+    expect(JSON.parse(accepted.stdout)).toMatchObject({
+      instruction: instruction.id,
+      acknowledged: 'read',
+    })
+    const saved = acknowledgements()
+    expect(saved).toHaveLength(1)
+    await pnyx.restart()
+    const retry = await runPnyx({
+      args,
+      env: worker.env,
+    })
+    expect(
+      retry.status,
+      retry.stderr,
+    ).toBe(0)
+    expect(acknowledgements()).toEqual(saved)
   },
 )
 
@@ -2724,6 +2816,15 @@ test(
       check: () => events.some(event => typeof event === 'object' && event.type === 'input'
         && event.receipt.inputId === 'steer' && event.receipt.phase === 'confirmed'),
     })
+    const nativeInputs = readFileSync(
+      session.path!,
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => readTranscriptRecord({ record: JSON.parse(line) }))
+      .filter(record => record.role === 'user')
+      .flatMap(record => record.messages.map(message => message.text))
+    expect(nativeInputs.filter(text => text.includes('LATEST_MESSAGE'))).toHaveLength(1)
     await session.interrupt({ cancelQueued: false })
     await until({
       what: 'the continuation turn to start',

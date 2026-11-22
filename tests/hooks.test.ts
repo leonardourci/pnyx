@@ -801,6 +801,13 @@ test(
       })).status).toBe(0)
     }
 
+    mkdirSync(join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'default',
+      'tasks',
+      '.pending-task-XXXXXX',
+    ))
     const inProject = await hook({
       event: 'SessionStart',
       payload: {
