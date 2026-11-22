@@ -75,7 +75,7 @@ export function liveReplies() {
           const savedText = value.trim()
 
           return savedText === liveText
-            || (working && liveText.length > 0 && savedText.startsWith(liveText))
+            || (working && liveText.length > 0 && savedText.startsWith(text.trimStart()))
         })
 
         if (match) {
