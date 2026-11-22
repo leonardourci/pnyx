@@ -1,4 +1,4 @@
-import { nativeHome } from '#app/native-home.ts'
+import { openedNativeHome } from '#app/native-home.ts'
 import { getHeapSpaceStatistics } from 'node:v8'
 import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:perf_hooks'
 import { logFiles } from './log-files.ts'
@@ -84,11 +84,16 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
     background({
       name: 'storage.sample',
       run: () => {
-        const home = nativeHome()
+        const home = openedNativeHome()
         let stateBytes = 0
 
-        for (const hydra of home.files.hydras()) {
-          const positions = home.files.positions({ hydra })!
+        for (const hydra of home?.files.hydras() ?? []) {
+          const positions = home?.files.positions({ hydra })
+
+          if (!positions) {
+            continue
+          }
+
           stateBytes += positions.position.bytes
 
           for (const task of positions.tasks.values()) {
