@@ -1,4 +1,4 @@
-import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import type { Page } from 'playwright-core'
 import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 import { appendRecords } from '../setup/transcripts.ts'
@@ -353,10 +353,20 @@ const exchange = async ({
   })
 }
 
-async function hydraWithLongConversation({ exchanges = EXCHANGES }: { exchanges?: number } = {}) {
+async function hydraWithLongConversation({
+  exchanges = EXCHANGES,
+  tieLast = false,
+}: {
+  exchanges?: number
+  tieLast?: boolean
+} = {}) {
   const hydra = await pnyx.hydra()
 
   for (let number = 1; number <= exchanges; number++) {
+    if (tieLast && number === exchanges) {
+      vi.useFakeTimers({ toFake: ['Date'] })
+    }
+
     await exchange({
       hydra,
       number,
@@ -401,7 +411,10 @@ const setFocusMode = ({
 test(
   'Hydra\'s chat and a task\'s chat open on their latest row, hold still and keep the end in view as rows arrive, in a card as tall as its column',
   async () => {
-    const hydra = await hydraWithLongConversation()
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    const hydra = await hydraWithLongConversation({ tieLast: true })
     const { worker } = await hydra.startTask({ key: 'notes' })
     await appendRecords({
       session: worker,
@@ -424,6 +437,7 @@ test(
       chat: 'Hydra conversation',
       text: `answer ${EXCHANGES}`,
     })
+    vi.useRealTimers()
     await nextFrames({
       page,
       count: SETTLING_FRAMES,
@@ -761,7 +775,13 @@ test(
 test(
   'reading back, older messages load above the ones on screen without moving them, a failed load says why and Retry reads it again, and Jump returns to the latest',
   async () => {
-    const hydra = await hydraWithLongConversation({ exchanges: 32 })
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    const hydra = await hydraWithLongConversation({
+      tieLast: true,
+      exchanges: 32,
+    })
     const { worker } = await hydra.startTask({ key: 'older-notes' })
     await appendRecords({
       session: worker,
@@ -830,6 +850,7 @@ test(
       chat: 'Hydra conversation',
       text: 'answer 32',
     })
+    vi.useRealTimers()
 
     for (const label of [
       'Hydra conversation',
