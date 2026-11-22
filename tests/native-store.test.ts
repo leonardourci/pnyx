@@ -9,6 +9,7 @@ import { nativeHome } from '#app/native-home.ts'
 import { readNativeHydra } from '#app/native-read.ts'
 import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
+import { askHost } from '#app/server-state.ts'
 import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
 import { pnyx as runPnyx, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -111,6 +112,82 @@ test(
       release?.()
       rmSync(alias)
     }
+  },
+)
+
+test(
+  'a permission answered while its request commits reaches the registered waiter',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'answer-during-write' })
+    const task = await hydra.task({ key: 'answer-during-write' })
+    const path = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+    const inode = statSync(path).ino
+    const sync = filesystem.fdatasyncSync
+    const controller = new AbortController()
+    const command = 'echo answer-before-publication'
+    let answering: Promise<Record<string, unknown>> | undefined
+
+    // eslint-disable-next-line pnyx/object-params -- Node owns the sync signature.
+    filesystem.fdatasyncSync = fd => {
+      sync(fd)
+
+      if (answering || filesystem.fstatSync(fd).ino !== inode) {
+        return
+      }
+
+      const facts = readFileSync(
+        path,
+        'utf8',
+      ).trim()
+        .split('\n')
+        .map(line => JSON.parse(line))
+      const request = facts.find(fact => fact.event?.type === 'task.permission' && fact.event.data.input?.command === command)
+        ?.event.data
+
+      if (request) {
+        answering = askHost({
+          hydraId: hydra.id,
+          body: {
+            action: 'permission',
+            task: task.id,
+            request: request.id,
+            choice: 'deny',
+            actor: 'web',
+            reason: 'Declined during commit',
+          },
+        })
+        void answering.catch(() => {})
+      }
+    }
+
+    syncBuiltinESMExports()
+    onTestFinished(() => {
+      filesystem.fdatasyncSync = sync
+      syncBuiltinESMExports()
+      controller.abort()
+    })
+    const decision = worker.useTool!({
+      tool: 'Bash',
+      input: { command },
+      signal: controller.signal,
+    })
+    await until({
+      what: 'the answer to enter during the request sync',
+      check: () => answering !== undefined,
+    })
+    expect(await answering).toMatchObject({ status: 'deny' })
+    expect(await decision).toMatchObject({
+      behavior: 'deny',
+      message: 'Declined during commit',
+    })
   },
 )
 
