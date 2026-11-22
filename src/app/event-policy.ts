@@ -16,10 +16,10 @@ export function durableEvent({ event }: { event: HydraEvent }): boolean {
     case 'hydra.status':
     case 'hydra.dispatch-progress':
     case 'task.steering.notified':
-    case 'task.steering.handled':
     case 'task.steering.recovery':
     case 'project.refreshed':
       return false
+    case 'task.steering.handled':
     case 'card.moved':
       return !event.derived
     case 'card.noted':

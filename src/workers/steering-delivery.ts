@@ -140,6 +140,7 @@ export function createSteeringDelivery({
 
       for (const message of pendingSteering({ card }).filter(message => ids.includes(message.id))) {
         acknowledgeSteering({
+          derived: true,
           writer,
           ref: card.id,
           id: message.id,

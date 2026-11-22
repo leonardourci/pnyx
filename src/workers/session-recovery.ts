@@ -277,6 +277,7 @@ function restoreInstructionReceipts({
     }
 
     acknowledgeSteering({
+      derived: true,
       writer,
       ref: card.id,
       id: message.id,

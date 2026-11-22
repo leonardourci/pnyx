@@ -536,6 +536,10 @@ const SEQUENCE_FIELDS = new Set([
   'steeringGeneration',
   'stateSeq',
 ])
+const GENERATION_PARENTS = new Set([
+  'claim',
+  'queuedFor',
+])
 const THROUGH_PARENTS = new Set([
   'data',
   'historyMilestones',
@@ -582,7 +586,8 @@ export function nativeReferences({
       && typeof owner.session === 'string' && typeof owner.status === 'string'
     const internal = enabled && !unknownRoot && !permissionPayload
     const fields = record({ value })
-    const sequence = SEQUENCE_FIELDS.has(key) || (key === 'through' && THROUGH_PARENTS.has(parent))
+    const sequence = SEQUENCE_FIELDS.has(key) || (key === 'generation' && GENERATION_PARENTS.has(parent))
+      || (key === 'through' && THROUGH_PARENTS.has(parent))
       || (key === 'after' && AFTER_PARENTS.has(parent))
 
     if (restore && internal && (sequence || key === 'through' || key === 'after')

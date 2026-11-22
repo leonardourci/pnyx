@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraState } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
@@ -254,6 +254,7 @@ export function acknowledgeSteering({
   ack,
   meta,
   worker,
+  derived = false,
 }: {
   writer: Writer
   ref: string
@@ -261,6 +262,7 @@ export function acknowledgeSteering({
   ack: SteeringAck
   meta: Meta
   worker?: string
+  derived?: boolean
 }): SteeringMessage {
   const card = inboxTask({
     writer,
@@ -322,20 +324,24 @@ export function acknowledgeSteering({
     }
   }
 
-  writer.append({
-    event: {
-      ...eventBase({
-        writer,
-        card,
-        meta,
-      }),
-      type: 'task.steering.handled',
-      data: {
-        message: id,
-        ack,
-      },
+  const event: Extract<HydraEvent, { type: 'task.steering.handled' }> = {
+    ...eventBase({
+      writer,
+      card,
+      meta,
+    }),
+    type: 'task.steering.handled',
+    data: {
+      message: id,
+      ack,
     },
-  })
+  }
+
+  if (derived) {
+    event.derived = true
+  }
+
+  writer.append({ event })
 
   return writer.state.cards[card.id]!.steering!.find(message => message.id === id)!
 }
