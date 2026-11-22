@@ -821,15 +821,6 @@ if (branch === 'hercules/add-cart') {
         'core.hooksPath',
       ],
     })
-    await hydra.owner({
-      args: [
-        'task',
-        'undepend',
-        'next',
-        '--on',
-        'gate',
-      ],
-    })
     const nextTask = await hydra.task({ key: 'next' })
     let lostReply = false
     const restoreSync = afterHandoffSync({
@@ -864,6 +855,15 @@ if (branch === 'hercules/add-cart') {
             ],
           })).toContain('hercules/next-chart-2')
         },
+      })
+      await hydra.owner({
+        args: [
+          'task',
+          'undepend',
+          'next',
+          '--on',
+          'gate',
+        ],
       })
       await until({
         what: 'queued task handoff on its readable branch',
