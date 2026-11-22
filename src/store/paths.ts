@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 export function pnyxHome(): string {
   return process.env.PNYX_HOME || join(
@@ -15,6 +15,21 @@ export const taskRuntimeDir = ({ task }: { task: string }) => resolve(
   'tasks',
   task,
 )
+
+export function within({
+  root,
+  path,
+}: {
+  root: string
+  path: string
+}): boolean {
+  const part = relative(
+    root,
+    path,
+  )
+
+  return !isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`)
+}
 
 export function canonical({ path }: { path: unknown }): string | undefined {
   if (typeof path !== 'string' || !path.startsWith('/')) {
