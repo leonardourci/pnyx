@@ -4003,3 +4003,104 @@ test.each([
     ])
   },
 )
+
+test(
+  'usage stays scoped to its Hydra and follows a moving native worker',
+  async () => {
+    const source = await pnyx.hydra()
+    const peer = await pnyx.hydra()
+    const destination = await pnyx.hydra()
+    const { worker } = await source.startTask({
+      key: 'usage-source',
+      harness: 'codex',
+    })
+    pnyx.codex.reuseNextSession({ id: worker.id })
+    const { worker: other } = await peer.startTask({
+      key: 'usage-peer',
+      harness: 'codex',
+    })
+    expect(other.id).toBe(worker.id)
+    const recorded = pnyx.codex.context.used
+    await contextReported({
+      hydra: peer,
+      key: 'usage-peer',
+      what: 'the peer context before compaction',
+      check: ({ context }) => context.used === recorded,
+    })
+    pnyx.codex.plan({
+      hydra: source.id,
+      match: ({ text }) => text.includes('isolated usage turn'),
+      compactTo: 9000,
+    })
+    await reply({
+      hydra: source,
+      key: 'usage-source',
+      text: 'isolated usage turn',
+    })
+    await contextReported({
+      hydra: source,
+      key: 'usage-source',
+      what: 'the source compacted context',
+      check: ({ context }) => context.used === 9000,
+    })
+    expect((await peer.owner({
+      args: [
+        'hydra',
+        'usage',
+        '--task',
+        'usage-peer',
+      ],
+    })).context.used).toBe(recorded)
+    const task = await source.task({ key: 'usage-source' })
+    const collision = await source.ownerRefused({
+      args: [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        peer.id,
+      ],
+    })
+    expect(collision.code).toBe('SESSION_CONFLICT')
+    expect(worker.closed).toBe(false)
+    expect(other.closed).toBe(false)
+    await source.owner({
+      args: [
+        'task',
+        'move',
+        task.id,
+        '--to-hydra',
+        destination.id,
+      ],
+    })
+    await contextReported({
+      hydra: destination,
+      key: task.id,
+      what: 'the moved context before another native report',
+      check: ({ context }) => context.used === 9000,
+    })
+    await source.owner({
+      args: [
+        'hydra',
+        'remove',
+        source.id,
+      ],
+    })
+    expect((await destination.owner({
+      args: [
+        'hydra',
+        'usage',
+        '--task',
+        task.id,
+      ],
+    })).context.used).toBe(9000)
+    expect((await peer.owner({
+      args: [
+        'hydra',
+        'usage',
+        '--task',
+        'usage-peer',
+      ],
+    })).context.used).toBe(recorded)
+  },
+)
