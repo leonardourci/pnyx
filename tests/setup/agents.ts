@@ -991,7 +991,10 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     spawnCodex,
     sessions,
     holdStart: ({ task }: { task: string }) => {
-      const { promise: wait, resolve: release } = Promise.withResolvers<void>()
+      const {
+        promise: wait,
+        resolve: release,
+      } = Promise.withResolvers<void>()
       const held = {
         wait,
         release,
