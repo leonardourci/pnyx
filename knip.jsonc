@@ -5,6 +5,7 @@
     // Worker URLs select the source or built extension at runtime.
     "src/store/postgres-worker.ts",
     "src/oracle/search-worker.ts",
+    "src/setup/hook-context.ts",
     // The test harness launches these files in child processes.
     "tests/setup/template.ts",
     "tests/setup/fixtures/**/*.{ts,mjs}"

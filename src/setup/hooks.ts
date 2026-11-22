@@ -87,12 +87,11 @@ function configPath({ harness }: { harness: Harness }): string {
   )
 }
 
-// The CLI the session-start hook runs for its summary; setup rewrites it on every run.
-const CLI_ENTRY = join(
+const CONTEXT_ENTRY = join(
   import.meta.dirname,
   '..',
-  'cli',
-  import.meta.url.endsWith('.ts') ? 'pnyx.ts' : 'pnyx.js',
+  'setup',
+  import.meta.url.endsWith('.ts') ? 'hook-context.ts' : 'hook-context.js',
 )
 
 function scriptPath(): string {
@@ -166,7 +165,7 @@ function merged({
         event,
         {
           type: 'command',
-          command: `${quote({ value: scriptPath() })} ${harness} ${event}${event === 'SessionStart' ? ` ${quote({ value: CLI_ENTRY })}` : ''}`,
+          command: `${quote({ value: scriptPath() })} ${harness} ${event}${event === 'SessionStart' ? ` ${quote({ value: CONTEXT_ENTRY })}` : ''}`,
           timeout: TIMEOUT_SECONDS,
         },
       ]),

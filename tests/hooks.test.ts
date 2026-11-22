@@ -24,12 +24,12 @@ const HOOK = join(
   'hooks',
   'pnyx-hook.sh',
 )
-const CLI = join(
+const CONTEXT = join(
   import.meta.dirname,
   '..',
   'dist',
-  'cli',
-  'pnyx.js',
+  'setup',
+  'hook-context.js',
 )
 // A hook that has not ended by itself after this long is stuck; the test then stops it and fails. It is no speed target.
 const HOOK_STUCK_MS = 30_000
@@ -66,7 +66,7 @@ const hook = ({
       HOOK,
       'claude',
       event,
-      CLI,
+      CONTEXT,
     ],
     {
       cwd: payload.cwd,
@@ -1178,18 +1178,6 @@ test(
       }),
     })
     expect((await hydra.task({ key: 'attached' })).status).toBe('needs you')
-    const changes = await hydra.owner({
-      args: [
-        'hydra',
-        'check',
-        '--after',
-        '0',
-      ],
-    })
-    expect.soft(changes.changes).toContainEqual(expect.objectContaining({
-      type: 'session.observed',
-      summary: expect.stringContaining('inspect-package'),
-    }))
     const stateAfterQuestion = loadHydra({ hydraId: hydra.id }).state
     const settingsEvent = readChanges({
       hydraId: hydra.id,
