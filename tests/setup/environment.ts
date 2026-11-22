@@ -2,8 +2,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import pg from 'pg'
-import { afterAll, inject } from 'vitest'
-import { closePostgres, homeDatabase } from '#store/postgres.ts'
+import { afterAll, beforeAll, inject } from 'vitest'
 import { keepFiles } from './keep.ts'
 
 // Commands a test must never reach for real; each fails loudly instead.
@@ -101,10 +100,13 @@ for (const key of [
   )
 }
 
-const admin = new pg.Client({ database: 'postgres' })
-await admin.connect()
-await admin.query(`create database ${pg.escapeIdentifier(homeDatabase())} template ${pg.escapeIdentifier(inject('template'))} strategy file_copy`)
-await admin.end()
+beforeAll(async () => {
+  const { homeDatabase } = await import('#store/postgres.ts')
+  const admin = new pg.Client({ database: 'postgres' })
+  await admin.connect()
+  await admin.query(`create database ${pg.escapeIdentifier(homeDatabase())} template ${pg.escapeIdentifier(inject('template'))} strategy file_copy`)
+  await admin.end()
+})
 
 const removeRoot = () => rmSync(
   root,
@@ -117,6 +119,7 @@ const removeRoot = () => rmSync(
 afterAll(async () => {
   const { closeNativeHomes } = await import('#app/native-home.ts')
   await closeNativeHomes()
+  const { closePostgres } = await import('#store/postgres.ts')
   await closePostgres()
   keepFiles({ from: root })
   removeRoot()
