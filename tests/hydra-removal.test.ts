@@ -382,6 +382,45 @@ test(
       process.env.TMPDIR!,
       'parked-foreign-copy',
     )
+    const normal = await pnyx.hydra()
+    await normal.owner({
+      args: [
+        'project',
+        'add',
+        folder,
+        '--landing',
+        'branch',
+      ],
+    })
+    const foreignContents = readFileSync(
+      join(
+        foreignPool,
+        'source.txt',
+      ),
+      'utf8',
+    )
+    await caller.owner({
+      args: [
+        'hydra',
+        'remove',
+        normal.id,
+      ],
+    })
+    expect(readFileSync(
+      join(
+        foreignPool,
+        'source.txt',
+      ),
+      'utf8',
+    )).toBe(foreignContents)
+    expect(git({
+      cwd: folder,
+      args: [
+        'worktree',
+        'list',
+        '--porcelain',
+      ],
+    })).toContain(foreignPool)
     renameSync(
       foreignPool,
       parkedForeignPool,

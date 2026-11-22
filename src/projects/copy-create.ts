@@ -349,6 +349,26 @@ async function worktreeCopy({
     let allocated = false
 
     try {
+      const repository = await git({
+        cwd: path,
+        args: [
+          'rev-parse',
+          '--path-format=absolute',
+          '--show-toplevel',
+          '--git-dir',
+        ],
+      })
+      const [
+        root,
+        gitDirectory,
+      ] = repository.out.split('\n')
+      const ownRoot = canonical({ path: root }) === path
+      const linked = canonical({ path: gitDirectory }) !== canonical({ path: common })
+
+      if (!repository.ok || !ownRoot || !linked) {
+        continue
+      }
+
       const slotBranch = await landedSlotBranch({
         hydraId,
         path,
@@ -579,6 +599,10 @@ export async function taskFolder({
   }
 
   const live = liveCopy({ card })
+
+  if (live) {
+    requireUnlinkedCopyFolder({ path: live.path })
+  }
 
   if (live && live.project !== project.path) {
     inform({

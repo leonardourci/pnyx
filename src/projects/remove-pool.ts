@@ -1,25 +1,11 @@
 import { existsSync, realpathSync, rmdirSync } from 'node:fs'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
+import { within } from '#store/paths.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
 import { copiesDir, releasedCopyOwner, requireUnlinkedCopyFolder, reservedCopies } from './copy-pool.ts'
 import { commonDir, git } from './git.ts'
-
-function within({
-  root,
-  path,
-}: {
-  root: string
-  path: string
-}): boolean {
-  const part = relative(
-    root,
-    path,
-  )
-
-  return !isAbsolute(part) && part !== '..' && !part.startsWith(`..${sep}`)
-}
 
 const canonicalPath = ({ path }: { path: string }) =>
   existsSync(path) ? realpathSync(path) : resolve(path)

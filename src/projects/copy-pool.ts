@@ -11,7 +11,7 @@ import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
-import { canonical } from '#store/paths.ts'
+import { canonical, within } from '#store/paths.ts'
 import { HydraError } from '#store/errors.ts'
 import { isFolder } from '#workers/folders.ts'
 
@@ -112,8 +112,14 @@ const runsIn = ({
   state: HydraState
   path: string
 }) =>
-  Object.values(state.cards).some(card =>
-    card.sessionIds?.length && canonical({ path: card.agent?.cwd }) === path)
+  Object.values(state.cards).some(card => {
+    const cwd = canonical({ path: card.agent?.cwd })
+
+    return card.sessionIds?.length && cwd !== undefined && within({
+      root: path,
+      path: cwd,
+    })
+  })
 
 const holds = ({
   state,

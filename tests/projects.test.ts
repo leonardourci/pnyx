@@ -276,6 +276,16 @@ test(
       bin,
       'release',
     )
+    const previousPath = process.env.PATH
+    const gitExecutable = spawnSync(
+      'sh',
+      [
+        '-c',
+        'command -v git',
+      ],
+      { encoding: 'utf8' },
+    )
+    expect(gitExecutable.status).toBe(0)
     writeFileSync(
       join(
         bin,
@@ -294,7 +304,7 @@ const args = process.argv.slice(2)
       await new Promise(resolve => setTimeout(resolve, 20))
     }
   }
-  const result = spawnSync('/usr/bin/git', args)
+  const result = spawnSync(${JSON.stringify(gitExecutable.stdout.trim())}, args)
   process.stdout.write(result.stdout ?? '')
   process.stderr.write(result.stderr ?? '')
   process.exitCode = result.status ?? 1
@@ -302,7 +312,6 @@ const args = process.argv.slice(2)
 `,
       { mode: 0o755 },
     )
-    const previousPath = process.env.PATH
     process.env.PATH = `${bin}:${previousPath}`
     const pending = source.owner({
       args: [
@@ -5099,5 +5108,292 @@ test(
       }))
         .task.links.some((link: { url: string }) => link.url.endsWith('/904')),
     })
+  },
+)
+
+test(
+  'copy reuse skips an ordinary retained directory inside the source repository',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = await createProject({
+      hydra,
+      landing: 'branch',
+      name: 'retained-directory',
+    })
+    const task = (await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Retained directory',
+        '--project',
+        project,
+      ],
+    })).card.id as string
+    const first = (await hydra.owner({
+      args: [
+        'task',
+        'start',
+        task,
+      ],
+    })).agent.folder as string
+    await hydra.owner({
+      args: [
+        'task',
+        'copy',
+        task,
+        'remove',
+        '--safe',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        task,
+      ],
+    })
+    const ordinary = join(
+      project,
+      'ignored-retained',
+    )
+    mkdirSync(ordinary)
+    appendFileSync(
+      join(
+        project,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      '\nignored-retained/\n',
+    )
+    await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const card = writer.state.cards[task]!
+        writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              cardId: task,
+              meta: {
+                actor: 'fixture',
+                at: new Date().toISOString(),
+              },
+            }),
+            type: 'task.copy',
+            data: {
+              before: card.copy!,
+              after: {
+                ...card.copy!,
+                path: ordinary,
+              },
+            },
+          },
+        })
+      },
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'start',
+        task,
+      ],
+    })).agent.folder).toBe(first)
+    expect(git({
+      cwd: project,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('main')
+  },
+)
+
+test(
+  'copy reuse protects a worker running in a released slot subdirectory',
+  async () => {
+    const source = await pnyx.hydra()
+    const peer = await pnyx.hydra()
+    const project = await createProject({
+      hydra: source,
+      landing: 'branch',
+      name: 'nested-worker',
+    })
+    const task = (await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Released copy',
+        '--project',
+        project,
+      ],
+    })).card.id as string
+    const first = (await source.owner({
+      args: [
+        'task',
+        'start',
+        task,
+      ],
+    })).agent.folder as string
+    await source.owner({
+      args: [
+        'task',
+        'copy',
+        task,
+        'remove',
+        '--safe',
+      ],
+    })
+    await source.owner({
+      args: [
+        'task',
+        'detach',
+        task,
+      ],
+    })
+    appendFileSync(
+      join(
+        project,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      '\npackages/\n',
+    )
+    const nested = join(
+      first,
+      'packages',
+      'app',
+    )
+    mkdirSync(
+      nested,
+      { recursive: true },
+    )
+    const other = (await peer.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Nested worker',
+        '--folder',
+        nested,
+      ],
+    })).card.id as string
+    await peer.owner({
+      args: [
+        'task',
+        'start',
+        other,
+      ],
+    })
+    const worker = await peer.agent({ cwd: nested })
+    const next = (await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Another copy',
+        '--project',
+        project,
+      ],
+    })).card.id as string
+    expect((await source.owner({
+      args: [
+        'task',
+        'start',
+        next,
+      ],
+    })).agent.folder).not.toBe(first)
+    expect(worker.closed).toBe(false)
+    expect((await peer.task({ key: other })).worker).toBe(`claude-code:${worker.id}`)
+  },
+)
+
+test(
+  'copy reuse refuses a linked active checkout before restarting its worker',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const project = await createProject({
+      hydra,
+      landing: 'branch',
+      name: 'active-copy-link',
+    })
+    const task = (await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Active copy link',
+        '--project',
+        project,
+      ],
+    })).card.id as string
+    const first = (await hydra.owner({
+      args: [
+        'task',
+        'start',
+        task,
+      ],
+    })).agent.folder as string
+    await hydra.owner({
+      args: [
+        'task',
+        'stop',
+        task,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'detach',
+        task,
+      ],
+    })
+    const parked = join(
+      hydra.folder({ name: 'parked-active-copy' }),
+      'checkout',
+    )
+    git({
+      cwd: project,
+      args: [
+        'worktree',
+        'move',
+        first,
+        parked,
+      ],
+    })
+    linkCopyFolder(
+      parked,
+      first,
+      'dir',
+    )
+
+    try {
+      expect((await hydra.ownerRefused({
+        args: [
+          'task',
+          'start',
+          task,
+        ],
+      })).code).toBe('CONFLICT')
+    } finally {
+      unlinkCopyFolder(first)
+      git({
+        cwd: project,
+        args: [
+          'worktree',
+          'move',
+          parked,
+          first,
+        ],
+      })
+    }
   },
 )
