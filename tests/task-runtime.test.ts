@@ -1,7 +1,8 @@
 import { taskChildren } from '#app/task-runtime.ts'
 import { processStart } from '#app/server-state.ts'
 import { once } from 'node:events'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { relative } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -9,8 +10,52 @@ const COMPACTION_TEST_DEADLINE_MS = 10_000
 let pnyx: Pnyx
 
 beforeAll(async () => {
+  process.env.PNYX_HOME = relative(
+    process.cwd(),
+    process.env.PNYX_HOME!,
+  )
   pnyx = await startPnyx({ compactionDelay: COMPACTION_TEST_DEADLINE_MS })
 })
+
+test(
+  'a worker with a relative Pnyx home writes reports from its own directory',
+  async () => {
+    const hydra = await pnyx.hydra()
+    onTestFinished(async () => {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'remove',
+          hydra.id,
+        ],
+      })
+    })
+    const { worker } = await hydra.startTask({ key: 'relative-home' })
+    const report = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        'require("node:fs").appendFileSync(process.env.PNYX_TASK_DIR + "/worker.log", "note: relative home report\\n")',
+      ],
+      {
+        cwd: worker.cwd,
+        env: worker.env,
+        encoding: 'utf8',
+      },
+    )
+    expect({
+      status: report.status,
+      stderr: report.stderr,
+    }).toEqual({
+      status: 0,
+      stderr: '',
+    })
+    await until({
+      what: 'the worker report reaches its task from the worker’s directory',
+      check: async () => (await hydra.task({ key: 'relative-home' })).latest === 'relative home report',
+    })
+  },
+)
 
 test(
   'a detached worker’s retained tools are recovered after restart and stopped on Hydra removal',
