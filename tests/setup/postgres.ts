@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
-import pg from 'pg'
 
 const USER = 'pnyx'
 const MIN_VERSION = 15
@@ -23,7 +22,7 @@ const ROOTS = [
   },
 ]
 
-export function binaries(): string {
+function binaries(): string {
   const found = ROOTS.flatMap(root => existsSync(root.dir)
     ? readdirSync(root.dir).flatMap(name => {
       const version = Number(root.version.exec(name)?.[1])
@@ -163,28 +162,5 @@ export async function startPostgres({ dir }: { dir: string }) {
         'stop',
       ],
     }),
-  }
-}
-
-// One statement on a database of the run's cluster, outside Pnyx's own connection.
-export async function sql({
-  database,
-  text,
-  values,
-}: {
-  database: string
-  text: string
-  values?: unknown[]
-}) {
-  const client = new pg.Client({ database })
-  await client.connect()
-
-  try {
-    return (await client.query(
-      text,
-      values,
-    )).rows
-  } finally {
-    await client.end()
   }
 }

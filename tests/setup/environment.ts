@@ -115,6 +115,8 @@ const removeRoot = () => rmSync(
 )
 
 afterAll(async () => {
+  const { closeNativeHomes } = await import('#app/native-home.ts')
+  await closeNativeHomes()
   await closePostgres()
   keepFiles({ from: root })
   removeRoot()
