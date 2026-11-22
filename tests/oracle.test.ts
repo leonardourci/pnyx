@@ -7,11 +7,59 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { appendFileSync, existsSync } from 'node:fs'
 import { transcriptPath } from '#workers/claude.ts'
 import { join } from 'node:path'
-import { beforeAll, expect, test, vi } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
+import type { WorkerOptions } from 'node:worker_threads'
 import { parsed, operation, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
 
 let pnyx: Pnyx
+
+const searchStart = vi.hoisted(() => ({
+  enabled: false,
+  release: undefined as (() => void) | undefined,
+}))
+const releaseCapturedSearch = () => searchStart.release?.()
+
+vi.mock(
+  'node:worker_threads',
+  async () => {
+    const native = await vi.importActual<typeof import('node:worker_threads')>('node:worker_threads')
+
+    return {
+      ...native,
+      Worker: class extends native.Worker {
+      // eslint-disable-next-line pnyx/object-params -- Worker owns its constructor signature.
+        constructor(
+          filename: string | URL,
+          options: WorkerOptions = {},
+        ) {
+          if (!searchStart.enabled || !String(filename).includes('/oracle/search-worker.')) {
+            super(
+              filename,
+              options,
+            )
+
+            return
+          }
+
+          searchStart.enabled = false
+          super(
+            "const {parentPort,workerData}=require('node:worker_threads'); parentPort.once('message',()=>import(workerData.searchModule));",
+            {
+              ...options,
+              eval: true,
+              workerData: {
+                ...options.workerData,
+                searchModule: String(filename),
+              },
+            },
+          )
+          searchStart.release = () => this.postMessage('resume')
+        }
+      },
+    }
+  },
+)
 
 beforeAll(async () => {
   pnyx = await startPnyx()
@@ -447,6 +495,72 @@ test(
 )
 
 test(
+  'a task folder can move after an Oracle snapshot is captured and before its worker reads',
+  async () => {
+    const source = await pnyx.hydra()
+    const target = await pnyx.hydra()
+    const created = await source.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'captured',
+        '--title',
+        'Captured notes',
+      ],
+    })
+    await workerLine({
+      hydra: source,
+      key: 'captured',
+      line: 'note: snapshotorbit evidence',
+    })
+    await workerLine({
+      hydra: source,
+      key: 'captured',
+      line: 'note: a later report',
+    })
+    searchStart.enabled = true
+    searchStart.release = undefined
+    const pending = search({
+      hydra: source,
+      args: ['snapshotorbit'],
+    })
+    void pending.catch(() => {})
+    onTestFinished(() => {
+      searchStart.enabled = false
+      releaseCapturedSearch()
+      searchStart.release = undefined
+    })
+
+    try {
+      const release = await until({
+        what: 'the Oracle worker to hold its captured snapshot',
+        check: () => searchStart.release,
+      })
+      await source.owner({
+        args: [
+          'task',
+          'move',
+          'captured',
+          '--to-hydra',
+          target.id,
+        ],
+      })
+      release()
+      expect(await pending).toEqual([expect.objectContaining({ card: created.card.id })])
+      expect(await search({
+        hydra: target,
+        args: ['snapshotorbit'],
+      })).toEqual([expect.objectContaining({ card: created.card.id })])
+    } finally {
+      releaseCapturedSearch()
+      await Promise.allSettled([pending])
+    }
+  },
+)
+
+test(
   'the Oracle follows task log tails across restart and a folder move',
   async () => {
     const source = await pnyx.hydra()
@@ -467,10 +581,14 @@ test(
       key: 'travel',
       line: 'note: nebularocket continuity evidence',
     })
+    expect(await search({
+      hydra: source,
+      args: ['nebularocket'],
+    })).toEqual([expect.objectContaining({ card: created.card.id })])
     await workerLine({
       hydra: source,
       key: 'travel',
-      line: 'note: Later report without the earlier keyword',
+      line: 'note: latercomet tail evidence',
     })
     const find = async ({ hydra }: { hydra: Hydra }) => search({
       hydra,
@@ -485,6 +603,10 @@ test(
       [portable],
       [portable],
     ])
+    expect(await search({
+      hydra: source,
+      args: ['latercomet'],
+    })).toEqual([portable])
     await pnyx.restart()
     expect(await find({ hydra: source })).toEqual([portable])
     await source.owner({

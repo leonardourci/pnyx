@@ -20,12 +20,13 @@ export function transactionReceipt({
   eventIds?: Record<string, unknown>
 }): Output | undefined {
   const home = nativeHome()
-  home.read({ hydra: hydraId })
+  const current = home.read({ hydra: hydraId })
+  const knownIds = eventIds ?? current.state.eventIds
   const recorded = home.receipts.get(hydraId)?.get(id)
 
   if (!recorded) {
-    if (eventIds && Object.hasOwn(
-      eventIds,
+    if (Object.hasOwn(
+      knownIds,
       id,
     )) {
       throw new HydraError({

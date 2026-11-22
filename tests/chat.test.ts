@@ -4,7 +4,7 @@ import { eventTime } from '#app/event-log.ts'
 import { applyDecision } from '#app/decision.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
 import { failHydraInput } from '#hydra/received.ts'
-import { operationEvent } from '#hydra/operations.ts'
+import { createHydraOperations, operationEvent } from '#hydra/operations.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { hydraConversation } from '#hydra/conversation.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -19,6 +19,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
+import { fireReminders } from '#tasks/fire-reminders.ts'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
@@ -3138,6 +3139,71 @@ test(
 )
 
 test(
+  'a queued operation recap waits for a later operation and keeps the first stop boundary',
+  async () => {
+    const hydra = await pnyx.hydra()
+    let now = Date.now()
+    const firstSince = new Date(now).toISOString()
+    const recaps: {
+      id: string
+      text: string
+    }[] = []
+    const operations = createHydraOperations({
+      hydraId: hydra.id,
+      queuedHydra: new Set(),
+      at: () => new Date(now).toISOString(),
+      note: ({ fn }) => withWriter({
+        hydraId: hydra.id,
+        fn,
+      }),
+      armWake: () => {},
+      host: () => ({
+        hydra: async ({
+          id,
+          text,
+        }) => {
+          recaps.push({
+            id,
+            text,
+          })
+
+          return { state: 'queued' }
+        },
+      }),
+    })
+    await operations.startOperation({
+      id: 'first-review-operation',
+      kind: 'compaction',
+    })
+    operations.endOperation({
+      id: 'first-review-operation',
+      error: 'first operation failed',
+    })
+    await until({
+      what: 'the first recap to enter the turn queue',
+      check: () => recaps.length === 1,
+    })
+    now += 1
+    await operations.startOperation({
+      id: 'second-review-operation',
+      kind: 'compaction',
+    })
+    expect(operations.stoppedFor({ id: recaps[0]!.id })).toBe(true)
+    operations.endOperation({
+      id: 'second-review-operation',
+      error: 'second operation failed',
+    })
+    await until({
+      what: 'the final recap to enter the turn queue',
+      check: () => recaps.length === 2,
+    })
+    expect(recaps[1]!.text).toContain(`waited from ${firstSince}`)
+    expect(operations.stoppedFor({ id: recaps[0]!.id })).toBe(true)
+    expect(operations.stoppedFor({ id: recaps[1]!.id })).toBe(false)
+  },
+)
+
+test(
   'timed reviews wake Hydra for a quiet running card and stay quiet for healthy or unchanged work',
   async () => {
     const hydra = await pnyx.hydra()
@@ -3147,7 +3213,7 @@ test(
         'show',
       ],
     })).settings.reviewMinutes
-    await hydra.chat({ text: 'Prepare heartbeat review' })
+    const session = await hydra.chat({ text: 'Prepare heartbeat review' })
     await until({
       what: 'Hydra to finish preparing',
       check: () => !queue({ hydraId: hydra.id })?.working,
@@ -3312,18 +3378,24 @@ test(
         ],
       })
       now += 4 * 60 * 60_000
+      const reminderCount = await fireReminders({
+        hydraId: hydra.id,
+        at: new Date(now).toISOString(),
+        state: loadHydra({ hydraId: hydra.id }).state,
+      })
+      expect(reminderCount).toBe(1)
+      expect(Object.values(loadHydra({ hydraId: hydra.id }).state.questionReminders ?? {}))
+        .toContain(new Date(now).toISOString())
+      await until({
+        what: 'Hydra to be idle before reviewing the committed task question reminder',
+        check: () => session.answered === session.received.length
+          && loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished'
+          && !queue({ hydraId: hydra.id })?.working,
+      })
       await timer.check()
       await until({
-        what: 'Hydra to finish the task question reminder',
-        check: () => !queue({ hydraId: hydra.id })?.working,
-      })
-      await until({
         what: 'the periodic review to wake Hydra for the task question reminder',
-        check: async () => {
-          await timer.check()
-
-          return wakes === 3
-        },
+        check: () => wakes === 3,
       })
       expect(wakes).toBe(3)
       const overdue = await hydra.owner({

@@ -590,7 +590,7 @@ test(
         },
       })}\n`,
     )
-    await withWriter({
+    const through = await withWriter({
       hydraId: hydra.id,
       fn: ({ writer }) => {
         const native = Object.values(writer.state.sessions ?? {}).find(candidate =>
@@ -633,6 +633,8 @@ test(
             }),
           })
         }
+
+        return writer.state.seq
       },
     })
     const live = await hydra.owner({
@@ -654,6 +656,36 @@ test(
       ],
     })
     expect(at.messages).toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
+    const fixedArgs = [
+      'hydra',
+      'history',
+      '--since',
+      'origin',
+      '--through',
+      String(through),
+    ]
+    const fixed = await hydra.owner({ args: fixedArgs })
+    expect(fixed.text).toContain('NATIVE-TIME-LOOKUP')
+    await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: writer.state.seq + 1,
+          id: 'later-history-decision',
+          at: '2099-01-01T00:00:10.000Z',
+          actor: 'web',
+          cardId: '$board',
+          type: 'hydra.memory',
+          data: {
+            key: 'later-history',
+            before: null,
+            after: 'Unrelated later decision',
+          },
+        },
+      }),
+    })
+    expect((await hydra.owner({ args: fixedArgs })).text).toContain('NATIVE-TIME-LOOKUP')
     await pnyx.restart()
     const restored = await hydra.owner({
       args: [

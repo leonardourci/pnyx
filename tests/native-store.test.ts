@@ -1,10 +1,16 @@
 import { syncBuiltinESMExports } from 'node:module'
-import filesystem, { appendFileSync, existsSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import filesystem, { appendFileSync, existsSync, readFileSync, rmSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { nativeHome } from '#app/native-home.ts'
+import { readNativeHydra } from '#app/native-read.ts'
+import { withWriter } from '#app/writer.ts'
+import { base } from '#app/command-meta.ts'
+import { askHost } from '#app/server-state.ts'
+import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
 import { pnyx as runPnyx, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -12,6 +18,498 @@ let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx()
 })
+
+test(
+  'batch previews refuse an event id already accepted by an individual command',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const id = 'individual-command-id'
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Original task',
+        '--event-id',
+        id,
+      ],
+    })
+    const input = JSON.stringify({
+      version: 1,
+      changes: [
+        {
+          op: 'task.create',
+          title: 'Conflicting batch',
+          noStart: true,
+        },
+      ],
+    })
+
+    for (const preview of [
+      true,
+      false,
+    ]) {
+      expect((await hydra.ownerRefused({
+        args: [
+          'apply',
+          '--file',
+          '-',
+          '--event-id',
+          id,
+          ...(preview ? ['--check'] : []),
+        ],
+        input,
+      })).code).toBe('IDEMPOTENCY_CONFLICT')
+    }
+  },
+)
+
+test(
+  'task leases use one identity through a symlinked home',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const created = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Leased task',
+      ],
+    })
+    const original = process.env.PNYX_HOME!
+    const alias = join(
+      process.env.TMPDIR!,
+      `lease-alias-${hydra.id}`,
+    )
+    symlinkSync(
+      original,
+      alias,
+    )
+    let release: (() => void) | undefined
+
+    try {
+      process.env.PNYX_HOME = alias
+      release = taskLease({
+        hydraId: hydra.id,
+        task: created.card.id,
+        actor: `${COPY_LEASE_PREFIX}test`,
+      })
+      process.env.PNYX_HOME = original
+      expect(taskLeasePresent({
+        hydraId: hydra.id,
+        task: created.card.id,
+      })).toBe(true)
+      dropCopyLeases({ hydraId: hydra.id })
+      process.env.PNYX_HOME = alias
+      expect(taskLeasePresent({
+        hydraId: hydra.id,
+        task: created.card.id,
+      })).toBe(false)
+    } finally {
+      process.env.PNYX_HOME = original
+      release?.()
+      rmSync(alias)
+    }
+  },
+)
+
+test(
+  'a permission answered while its request commits reaches the registered waiter',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const { worker } = await hydra.startTask({ key: 'answer-during-write' })
+    const task = await hydra.task({ key: 'answer-during-write' })
+    const path = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'tasks',
+      task.id,
+      'task.log',
+    )
+    const inode = statSync(path).ino
+    const sync = filesystem.fdatasyncSync
+    const controller = new AbortController()
+    const command = 'echo answer-before-publication'
+    let answering: Promise<Record<string, unknown>> | undefined
+
+    // eslint-disable-next-line pnyx/object-params -- Node owns the sync signature.
+    filesystem.fdatasyncSync = fd => {
+      sync(fd)
+
+      if (answering || filesystem.fstatSync(fd).ino !== inode) {
+        return
+      }
+
+      const facts = readFileSync(
+        path,
+        'utf8',
+      ).trim()
+        .split('\n')
+        .map(line => JSON.parse(line))
+      const request = facts.find(fact => fact.event?.type === 'task.permission' && fact.event.data.input?.command === command)
+        ?.event.data
+
+      if (request) {
+        answering = askHost({
+          hydraId: hydra.id,
+          body: {
+            action: 'permission',
+            task: task.id,
+            request: request.id,
+            choice: 'deny',
+            actor: 'web',
+            reason: 'Declined during commit',
+          },
+        })
+        void answering.catch(() => {})
+      }
+    }
+
+    syncBuiltinESMExports()
+    onTestFinished(() => {
+      filesystem.fdatasyncSync = sync
+      syncBuiltinESMExports()
+      controller.abort()
+    })
+    const decision = worker.useTool!({
+      tool: 'Bash',
+      input: { command },
+      signal: controller.signal,
+    })
+    await until({
+      what: 'the answer to enter during the request sync',
+      check: () => answering !== undefined,
+    })
+    expect(await answering).toMatchObject({ status: 'deny' })
+    expect(await decision).toMatchObject({
+      behavior: 'deny',
+      message: 'Declined during commit',
+    })
+  },
+)
+
+test(
+  'a corrupt optional Hydra does not prevent healthy Hydras from starting',
+  async () => {
+    const healthy = await pnyx.hydra()
+    const broken = await pnyx.hydra()
+    const path = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      broken.id,
+      'hydra.log',
+    )
+    const contents = readFileSync(
+      path,
+      'utf8',
+    )
+
+    try {
+      await pnyx.restart({
+        whileStopped: () => writeFileSync(
+          path,
+          `invalid frame\n${contents}`,
+        ),
+      })
+      const created = await healthy.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--title',
+          'Healthy after corruption',
+        ],
+      })
+      expect((await healthy.task({ key: created.card.id })).title).toBe('Healthy after corruption')
+    } finally {
+      await pnyx.restart({
+        whileStopped: () => writeFileSync(
+          path,
+          contents,
+        ),
+      })
+    }
+  },
+)
+
+test(
+  'a failed optional mount releases its home before the next restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const spool = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'spool',
+    )
+
+    try {
+      await pnyx.restart({
+        whileStopped: () => {
+          rmSync(
+            spool,
+            {
+              recursive: true,
+              force: true,
+            },
+          )
+          writeFileSync(
+            spool,
+            'not a spool directory',
+          )
+        },
+      })
+      const failedMountEpoch = pnyx.cursor().epoch
+      await pnyx.restart({ whileStopped: () => rmSync(spool) })
+      expect(pnyx.cursor().epoch).not.toBe(failedMountEpoch)
+      const created = await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--title',
+          'Recovered mount',
+        ],
+      })
+      expect((await hydra.task({ key: created.card.id })).title).toBe('Recovered mount')
+    } finally {
+      if (existsSync(spool) && statSync(spool).isFile()) {
+        rmSync(spool)
+        await pnyx.restart()
+      }
+    }
+  },
+)
+
+test(
+  'a home initialization failure releases the daemon claim for a corrected start',
+  () => {
+    const home = join(
+      process.env.TMPDIR!,
+      'initialization-retry',
+    )
+    const script = [
+      "import assert from 'node:assert/strict'",
+      "import {mkdirSync, writeFileSync, rmSync} from 'node:fs'",
+      "import {join} from 'node:path'",
+      "import {startServer} from '#app/server-daemon.ts'",
+      'const home = process.env.PNYX_HOME',
+      'mkdirSync(home, {recursive: true})',
+      "const hydras = join(home, 'hydras')",
+      "writeFileSync(hydras, 'not a Hydra directory')",
+      "await assert.rejects(startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')}))",
+      'rmSync(hydras)',
+      "const server = await startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')})",
+      'await server.close()',
+      "console.log('corrected start succeeded')",
+    ].join('\n')
+    expect(execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        script,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+        },
+        timeout: 30_000,
+      },
+    ).trim()).toBe('corrected start succeeded')
+  },
+)
+
+test(
+  'Hydra memory can replace and forget a key named constructor across restarts',
+  async () => {
+    const hydra = await pnyx.hydra()
+
+    for (const text of [
+      'First memory',
+      'Replacement memory',
+    ]) {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'memory',
+          'set',
+          '--key',
+          'constructor',
+          '--text',
+          text,
+        ],
+      })
+      await pnyx.restart()
+      expect((await hydra.owner({
+        args: [
+          'hydra',
+          'memory',
+          'list',
+        ],
+      })).memory).toEqual([
+        expect.objectContaining({
+          key: 'constructor',
+          text,
+        }),
+      ])
+    }
+
+    await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'forget',
+        '--key',
+        'constructor',
+      ],
+    })
+    await pnyx.restart()
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
+    })).memory).toBe('none: no Hydra memory yet')
+  },
+)
+
+test(
+  'a caught reducer failure leaves its event id available for a corrected append',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const failure = new Error('Injected reducer failure')
+    const id = 'corrected-after-reducer-failure'
+    await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const append = ({
+          key,
+          text,
+        }: {
+          key: string
+          text: string
+        }) => writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'web',
+                id: key,
+              },
+              cardId: '$board',
+            }),
+            type: 'hydra.memory',
+            data: {
+              key,
+              before: null,
+              after: text,
+            },
+          },
+        })
+        append({
+          key: 'accepted-before-failure',
+          text: 'First accepted change',
+        })
+        expect(() => writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'web',
+                id,
+              },
+              cardId: '$board',
+            }),
+            type: 'hydra.memory',
+            data: {
+              key: id,
+              before: null,
+              get after(): string {
+                throw failure
+              },
+            },
+          },
+        })).toThrow(failure)
+        append({
+          key: id,
+          text: 'Corrected accepted change',
+        })
+      },
+    })
+    await pnyx.restart()
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
+    })).memory).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'accepted-before-failure',
+        text: 'First accepted change',
+      }),
+      expect.objectContaining({
+        key: id,
+        text: 'Corrected accepted change',
+      }),
+    ]))
+    expect(readEvents({ hydraId: hydra.id }).filter(event => event.id === id)).toHaveLength(1)
+  },
+)
+
+test(
+  'offline configuration reads retain the canonical sequence and accepted event ids',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Offline configuration',
+      ],
+    })
+    let ids: string[] = []
+    let offline: ReturnType<typeof readNativeHydra>['state'] | undefined
+    await pnyx.restart({
+      whileStopped: () => {
+        const entries = readFileSync(
+          join(
+            process.env.PNYX_HOME!,
+            'hydras',
+            hydra.id,
+            'hydra.log',
+          ),
+          'utf8',
+        )
+          .trim()
+          .split('\n')
+          .map(line => JSON.parse(line) as { id: string })
+        ids = entries.map(entry => entry.id)
+        offline = readNativeHydra({ hydraId: hydra.id }).state
+      },
+    })
+    expect(offline?.seq).toBe(ids.length)
+    expect(Object.keys(offline!.eventIds).sort()).toEqual(ids.sort())
+    expect(Object.values(offline!.eventIds).sort((
+      a,
+      b,
+    ) => a - b)).toEqual(ids.map((
+      _,
+      index,
+    ) => index + 1))
+  },
+)
 
 test.each([
   { eventId: 'native-create-once' },
@@ -332,7 +830,25 @@ test(
       ],
     })).task
     expect((await task()).attention).toContainEqual(expect.objectContaining({ key: 'volatile' }))
-    await hydra.ownerRefused({
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+    )
+    const paths = [
+      join(
+        folder,
+        'hydra.log',
+      ),
+      join(
+        folder,
+        'tasks',
+        (await task()).id,
+        'task.log',
+      ),
+    ]
+    const before = paths.map(path => readFileSync(path))
+    expect((await hydra.ownerRefused({
       args: [
         'task',
         'rename',
@@ -342,8 +858,9 @@ test(
         '--if-revision',
         '0',
       ],
-    })
+    })).code).toBe('REVISION_CONFLICT')
     expect((await task()).attention).toContainEqual(expect.objectContaining({ key: 'volatile' }))
+    expect(paths.map(path => readFileSync(path))).toEqual(before)
   },
 )
 

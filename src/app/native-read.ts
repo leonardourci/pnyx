@@ -131,6 +131,7 @@ export function readNativeHydra({ hydraId }: { hydraId: string }): {
   return {
     dir,
     state: assembleNative({
+      positions,
       hydra: hydrated({ id: hydraId }),
       tasks: scopes.slice(1).map(scope => [
         scope.id,
