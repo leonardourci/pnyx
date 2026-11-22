@@ -23,9 +23,9 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 
 `task ack` is an acknowledgement-only action for the assigned worker, after it reads the full instruction in its task record. Pass one exact instruction ID and copy the session and native generation reference from the notice or record. The same ID and assignment can be retried after a lost reply or server restart. A different task, worker launch or assignment is refused. It records read receipt only; it does not complete work, approve permissions or infer that a terminal injection succeeded. Hosted native input confirmations continue to record their own receipts. ID-only retries remain ID-only.
 
-## Migrate from pnyx-axi
+## Migrate from a Postgres installation
 
-Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README. This storage release starts fresh: preserve the old home and choose an empty `PNYX_HOME` before starting the new server. No database or legacy events are imported. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
+Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`pnyx` or `pnyx-axi`) before rebuilding. Update and build the clone using the install steps in the README. Keep the old home and set `PNYX_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, rerun `pnyx setup hooks` with the new home selected. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
 
 ## Read records and report through files
 
