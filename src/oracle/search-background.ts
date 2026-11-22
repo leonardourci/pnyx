@@ -140,7 +140,9 @@ export async function searchInBackground({
   }
 }
 
-const searches = new WeakMap<ReturnType<typeof nativeHome>, Map<string, Promise<ReturnType<typeof search>>>>()
+type PendingSearches = Map<string, Promise<ReturnType<typeof search>>>
+
+const searches = new WeakMap<ReturnType<typeof nativeHome>, PendingSearches>()
 
 function runSearch({
   hydraId,
