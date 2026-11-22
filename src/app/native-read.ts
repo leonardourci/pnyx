@@ -38,7 +38,6 @@ export function nativeHydraIds(): string[] {
     .sort()
 }
 
-// Offline reads never open the writer, repair a log, or finish a folder move.
 export function readNativeHydra({ hydraId }: { hydraId: string }): {
   dir: string
   state: HydraState

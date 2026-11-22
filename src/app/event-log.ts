@@ -133,13 +133,17 @@ function savedEvents({
     }
 
     if (cached.position.bytes < scope.position.bytes) {
+      const appended: LogEntry[] = []
       cached.position = readLog({
         path: scope.path,
         after: cached.position,
         through: scope.position,
         readOnly: true,
-        accept: ({ entry }) => cached!.entries.push(entry),
+        accept: ({ entry }) => appended.push(entry),
       })
+      for (const entry of appended) {
+        cached.entries.push(entry)
+      }
     }
 
     return cached.entries.flatMap(entry => {
@@ -362,9 +366,12 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
     })
   }
 
-  // Historic transcript rows use decision positions; replay receipts only bound the live tail.
+  const decisions = events.filter(event => event.decision)
+  const liveReceipts = events.filter(event => !event.decision && tail(event))
+
   return [
-    ...events.filter(event => event.decision || tail(event)),
+    ...decisions,
+    ...liveReceipts,
     ...observed.filter(tail),
   ]
 }
@@ -382,7 +389,8 @@ export function eventPositions({
   const events = clocks({ hydraId }).sort((
     a,
     b,
-  ) => a.at.localeCompare(b.at) || a.seq - b.seq)
+  ) => Date.parse(a.at) - Date.parse(b.at)
+    || a.seq - b.seq)
   const next = events.reduce(
     (
       last,
@@ -407,11 +415,21 @@ export function eventPositions({
         const event = events[middle]!
         const at = Date.parse(event.at)
 
-        if (at > time || (event.complete && at === time)) {
+        if (at >= time) {
           high = middle
         } else {
           low = middle + 1
         }
+      }
+
+      while (low < events.length) {
+        const event = events[low]!
+
+        if (Date.parse(event.at) > time || event.complete) {
+          break
+        }
+
+        low++
       }
 
       positions.set(
@@ -460,8 +478,9 @@ export function eventTime({
     return found?.at
   }
 
-  // Transcript windows exclude their upper time; a completion includes its own native record.
-  return new Date(Date.parse(found.at) + 1).toISOString()
+  const exclusiveEnd = Date.parse(found.at) + 1
+
+  return new Date(exclusiveEnd).toISOString()
 }
 
 export function seqsAround({

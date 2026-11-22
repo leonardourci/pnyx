@@ -21,10 +21,22 @@ export function hydraIds({
   const home = openedNativeHome()
   const ids = home ? home.files.hydras().sort() : nativeHydraIds()
 
-  return ids.filter(id => {
-    const state = home ? home.read({ hydra: id }).state : readNativeHydra({ hydraId: id }).state
+  if (includeRemoved) {
+    return ids
+  }
 
-    return includeRemoved || !state.config?.removed
+  return ids.filter(id => {
+    try {
+      const state = home ? home.read({ hydra: id }).state : readNativeHydra({ hydraId: id }).state
+
+      return !state.config?.removed
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+
+      return true
+    }
   })
 }
 
