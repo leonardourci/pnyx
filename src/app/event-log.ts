@@ -141,6 +141,7 @@ function savedEvents({
         readOnly: true,
         accept: ({ entry }) => appended.push(entry),
       })
+
       for (const entry of appended) {
         cached.entries.push(entry)
       }
