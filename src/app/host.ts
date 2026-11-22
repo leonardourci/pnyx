@@ -1709,13 +1709,14 @@ export function createHost({
   const taskOwner: TaskSessionOwner = {
     ...sessionScope,
     retire,
+    resumeTools,
     requireMovable({ task }) {
       const entry = [...live.values()].find(entry => entry.task === task)
       const opening = starting({ task }) || reservingTaskCopy({
         hydraId,
         task,
       })
-        || entry && (!entry.session || entry.toolResume)
+        || entry && !entry.session
 
       if (opening) {
         throw new HydraError({

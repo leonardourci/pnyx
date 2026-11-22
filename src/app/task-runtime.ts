@@ -27,6 +27,13 @@ interface TaskHandoff {
 }
 
 export interface TaskSessionOwner extends LiveSessionScope {
+  resumeTools({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }): void
   requireMovable({ task }: { task: string }): void
   suspendTask({ card }: { card: Card }): TaskHandoff
   adoptTask({
