@@ -267,7 +267,6 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
     positionals: 2,
     options: {
       ...COMMON,
-      actor: { type: 'string' },
       session: { type: 'string' },
       generation: { type: 'string' },
     },

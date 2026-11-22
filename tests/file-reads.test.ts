@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { emptyHydra } from '#app/reducer.ts'
@@ -227,6 +227,25 @@ test(
     })
     expect(context).toContain(JSON.stringify(taskLog))
     expect(context).toContain(JSON.stringify(workerLog))
-    expect(context).toContain('logs are authoritative and may be newer')
+    const tasks = join(
+      dir,
+      'tasks',
+    )
+    const relocated = join(
+      dir,
+      'relocated',
+    )
+    renameSync(
+      tasks,
+      relocated,
+    )
+    symlinkSync(
+      relocated,
+      tasks,
+    )
+    expect(compactionFiles({
+      hydraId: 'file-reads',
+      state,
+    })).not.toContain(taskLog)
   },
 )
