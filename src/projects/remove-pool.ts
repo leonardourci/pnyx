@@ -180,7 +180,10 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     }
 
     for (const record of listed.out.split('\0\0')) {
-      const [field, ...details] = record.split('\0')
+      const [
+        field,
+        ...details
+      ] = record.split('\0')
 
       if (!field.startsWith('worktree ')) {
         continue
