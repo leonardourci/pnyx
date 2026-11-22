@@ -329,6 +329,7 @@ test(
         selector,
         label: 'Idle',
       })
+      expect(worker.received.filter(message => message.includes(text))).toHaveLength(1)
       expect((await target.owner({
         args: [
           'task',
