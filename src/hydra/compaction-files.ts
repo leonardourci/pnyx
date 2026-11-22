@@ -29,9 +29,9 @@ export function compactionFiles({
     tasks,
     { throwIfNoEntry: false },
   )?.isDirectory() ? readdirSync(
-    tasks,
-    { withFileTypes: true },
-  ).filter(entry => entry.isDirectory() && !entry.name.startsWith('.')) : []
+      tasks,
+      { withFileTypes: true },
+    ).filter(entry => entry.isDirectory() && !entry.name.startsWith('.')) : []
 
   return [
     ...new Set([
