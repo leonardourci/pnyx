@@ -99,12 +99,12 @@ export async function mountOwnedHydra({
     let permanentClose: Promise<void> | undefined
     let closed = false
     let recovered = false
-    let notifyChange: (() => void) | undefined
+    let notifyChange = (): void => {}
 
     const dir = hydraDir({ hydraId })
     const releaseHold = await holdHydra({
       hydraId,
-      changed: () => notifyChange?.(),
+      changed: () => notifyChange(),
     })
     failedRelease = releaseHold
     privateDir({ dir: spoolDir({ dir }) })
