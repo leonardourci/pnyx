@@ -26,6 +26,7 @@ import { enqueueSteering } from '#workers/inbox.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import { sessionId } from '#workers/session-attachments.ts'
+import { requireHandoffAvailable } from '#workers/handoff-checkout.ts'
 
 const RECENT_CHANGES = 50_000
 const MESSAGE_EVENTS = new Set<string>([
@@ -802,6 +803,26 @@ export function eventWriter({
 
       if (known) {
         return
+      }
+
+      if (event.type === 'task.session' && !event.data.handoff) {
+        const current = state.sessions?.[event.data.session]
+        const replaced = event.data.replaces ? state.sessions?.[event.data.replaces] : undefined
+        const affected = new Set([
+          event.data.before,
+          event.data.after,
+          current?.taskId,
+          replaced?.taskId,
+        ])
+
+        for (const task of affected) {
+          if (task) {
+            requireHandoffAvailable({
+              hydraId,
+              task,
+            })
+          }
+        }
       }
 
       if (event.seq !== state.seq + 1) {
