@@ -654,12 +654,17 @@ test(
       const recovered = session.received.find(text => text.endsWith('Resume after the interrupted read'))!
       expect(recovered).toContain('Report 0:')
       replacementTurn.release()
-      await until({
-        what: 'the replacement turn to finish',
-        check: () => queue({ hydraId: hydra.id })?.working === false,
+      const remaining = await until({
+        what: 'the completed replacement turn to consume its presented reports',
+        check: () => {
+          const state = loadHydra({ hydraId: hydra.id }).state
+          const reports = state.contextNotes?.filter(note => note.report) ?? []
+
+          if (queue({ hydraId: hydra.id })?.working === false && reports.length < 300) {
+            return reports
+          }
+        },
       })
-      const remainingState = loadHydra({ hydraId: hydra.id }).state
-      const remaining = remainingState.contextNotes?.filter(note => note.report) ?? []
       expect(remaining.length).toBeGreaterThan(0)
       expect(remaining.length).toBeLessThan(300)
       await hydra.chat({ text: 'Read the remaining reports' })
@@ -2778,7 +2783,14 @@ test(
         what: 'Hydra to finish the task question reminder',
         check: () => !queue({ hydraId: hydra.id })?.working,
       })
-      await timer.check()
+      await until({
+        what: 'the periodic review to wake Hydra for the task question reminder',
+        check: async () => {
+          await timer.check()
+
+          return wakes === 3
+        },
+      })
       expect(wakes).toBe(3)
       const overdue = await hydra.owner({
         args: [
