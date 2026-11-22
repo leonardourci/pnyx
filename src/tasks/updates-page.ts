@@ -1,11 +1,10 @@
 import { readEvents } from '#app/event-log.ts'
-import { updateTasks } from './updates.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
 import { capItem } from '#store/size-cap.ts'
 import { findCard } from './push-rules.ts'
-import { UPDATES_MAX_PAGE, UPDATES_PAGE, type UpdatesPage } from './updates.ts'
+import { UPDATES_MAX_PAGE, UPDATES_PAGE, updateTasks, type UpdatesPage } from './updates.ts'
 
 export function taskUpdates({
   hydraId,

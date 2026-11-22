@@ -97,16 +97,14 @@ export async function mountOwnedHydra({
 
   try {
     let permanentClose: Promise<void> | undefined
-    // Set by close(): work already scheduled then must not open new watchers or timers.
     let closed = false
-    // Until recovery has stopped the previous server's agents, nothing may reopen a session.
     let recovered = false
+    let notifyChange: (() => void) | undefined
 
     const dir = hydraDir({ hydraId })
-    // The server holds the Hydra in memory; its own writes call kick in the same step.
     const releaseHold = await holdHydra({
       hydraId,
-      changed: () => kick(),
+      changed: () => notifyChange?.(),
     })
     failedRelease = releaseHold
     privateDir({ dir: spoolDir({ dir }) })
@@ -114,8 +112,7 @@ export async function mountOwnedHydra({
     const identity = hydraIdentity({ hydraId })
     dropCopyLeases({ hydraId })
     let { state } = loadHydra({ hydraId })
-    // The seq of the last event this server has handled.
-    let offset = state.seq
+    let handledThrough = state.seq
     const catalogIndex = createCatalogIndex({ locations: catalogLocations })
     const {
       threadSubscriptions,
@@ -162,7 +159,7 @@ export async function mountOwnedHydra({
 
     const reload = () => {
       ({ state } = loadHydra({ hydraId }))
-      offset = state.seq
+      handledThrough = state.seq
 
       if (recovered) {
         background({
@@ -224,25 +221,20 @@ export async function mountOwnedHydra({
       return changed
     }
 
-    // Only events that change what GitHub reports or how often it is read make a task's links due.
     const pump = () => {
       const read = readChanges({
         hydraId,
-        after: offset,
+        after: handledThrough,
       })
 
       const live = heldHydra({ hydraId })
 
-      // A write that failed reads the held Hydra back into a new state, with no event to carry it here.
       if (live) {
         state = live.state
       }
 
       for (const event of read) {
-      // A held Hydra's writer has already applied the event to the state this server reads.
         if (live) {
-          state = live.state
-
           if (event.seq > state.seq) {
             return reload()
           }
@@ -300,10 +292,10 @@ export async function mountOwnedHydra({
         }
       }
 
-      offset = (read.at(-1)?.seq ?? offset)
+      handledThrough = read.at(-1)?.seq ?? handledThrough
 
       if (live) {
-        live.pending = live.pending.filter(event => event.seq > offset)
+        live.pending = live.pending.filter(event => event.seq > handledThrough)
       }
 
       hydrasChanged()
@@ -359,6 +351,7 @@ export async function mountOwnedHydra({
     })
 
     const { kick } = tick
+    notifyChange = kick
     workerLogs.reconcile({ state })
 
     const agents = createHost({
@@ -555,9 +548,7 @@ export async function mountOwnedHydra({
       startWorker,
     })
 
-    // The page sends its open cards again as a page command once connected, which reports bad arguments and
-    // missing cards; here they only scope the first latest batch, so arguments that do not parse keep the default.
-    const openPage = ({
+    const openPageWithInitialInterest = ({
       ws,
       page,
     }: {
@@ -591,7 +582,7 @@ export async function mountOwnedHydra({
       page?: string[]
     }): HydraSubscription => {
       clients.add(ws)
-      openPage({
+      openPageWithInitialInterest({
         ws,
         page,
       })
@@ -661,26 +652,7 @@ export async function mountOwnedHydra({
       }
     }
 
-    const ingest = await listenIngest({
-      hydraId,
-      onLine: ({ line }) => {
-        try {
-          const entry = JSON.parse(line) as { id?: unknown }
-
-          if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
-            spoolWrite({
-              hydraId,
-              entry: entry as { id: string },
-            })
-            // The server knows it just spooled a file, so the drain need not wait for the folder watcher.
-            tick.spooled()
-          }
-        } catch {
-          // Not JSON: dropped, as a hook never waits for an answer.
-        }
-      },
-    })
-
+    let ingest: Awaited<ReturnType<typeof listenIngest>> | undefined
     const watchers: PathWatch[] = []
 
     const stop = async () => {
@@ -706,6 +678,7 @@ export async function mountOwnedHydra({
       await spend.close()
 
       await releaseHold()
+      failedRelease = undefined
 
       const threads = threadSubscriptions().flatMap(map =>
         [...map.values()].flatMap(sub => sub.watcher ?? []))
@@ -747,9 +720,10 @@ export async function mountOwnedHydra({
       }
 
       clients.clear()
-      await (ingest && new Promise(r => ingest.close(r)))
+      const listener = ingest
 
-      if (ingest) {
+      if (listener) {
+        await new Promise(resolve => listener.close(resolve))
         rmSync(
           socketPath({ hydraId }),
           { force: true },
@@ -757,18 +731,53 @@ export async function mountOwnedHydra({
       }
     }
 
-    // A mount that fails partway stops what it started.
     try {
-      watchers.push(
-        watchPath({
-          path: dir,
-          changed: kick,
-        }),
-        watchPath({
-          path: spoolDir({ dir }),
-          changed: tick.spooled,
-        }),
-      )
+      ingest = await listenIngest({
+        hydraId,
+        onLine: ({ line }) => {
+          let entry: unknown
+
+          try {
+            entry = JSON.parse(line)
+          } catch (error) {
+            if (error instanceof SyntaxError) {
+              return
+            }
+
+            throw error
+          }
+
+          if (typeof entry !== 'object' || entry === null || !('id' in entry) || typeof entry.id !== 'string') {
+            return
+          }
+
+          try {
+            spoolWrite({
+              hydraId,
+              entry: {
+                ...entry,
+                id: entry.id,
+              },
+            })
+            tick.spooled()
+          } catch (error) {
+            log({
+              level: 'error',
+              operation: 'ingest.spool',
+              hydraId,
+              error,
+            })
+          }
+        },
+      })
+      watchers.push(watchPath({
+        path: dir,
+        changed: kick,
+      }))
+      watchers.push(watchPath({
+        path: spoolDir({ dir }),
+        changed: tick.spooled,
+      }))
       workerLogs.reconcile({ state })
     } catch (error) {
       await stop()
@@ -816,7 +825,6 @@ export async function mountOwnedHydra({
           }
         }
 
-        // The Done deadline follows the shared hours.
         kick()
       },
       async close({ permanent = false } = {}) {

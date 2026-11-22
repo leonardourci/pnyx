@@ -1369,6 +1369,19 @@ test(
       path,
       'utf8',
     )
+    for (const limit of [
+      NaN,
+      1.5,
+    ]) {
+      expect(() => readLog({
+        path,
+        through,
+        readOnly: true,
+        limit,
+        accept: () => {},
+      })).toThrow()
+    }
+
     const first: string[] = []
     const cursor = readLog({
       path,
