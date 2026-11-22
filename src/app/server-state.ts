@@ -262,7 +262,7 @@ const startupPath = () => join(
   'server.startup.json',
 )
 
-export function reportStartup(): void {
+function reportStartup(): void {
   if (!startup || Date.now() - lastStartupWrite < STARTUP_PULSE_MS) {
     return
   }

@@ -521,24 +521,6 @@ async function upgrade({
         signal,
       }),
     })
-    // The new build checks Postgres, migrates a copy of an older schema and imports every Hydra still kept in
-    // events.jsonl in a transaction it rolls back; if that fails, the folder goes back and the running server keeps its
-    // files.
-    await step({
-      name: 'data',
-      work: () => run({
-        root,
-        command: process.execPath,
-        args: [
-          'dist/cli/pnyx.js',
-          'setup',
-          'postgres',
-          '--check',
-        ],
-        timeout: BUILD_MS,
-        signal,
-      }),
-    })
 
     return ended({
       result: {
