@@ -358,7 +358,8 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
       ) : latest,
     -Infinity,
   )
-  const inLiveTail = ({ time }: { time: number }) => Number.isFinite(time) && time >= lastDecisionTime
+  const inLiveTail = ({ time }: { time: number }) =>
+    Number.isFinite(time) && time >= lastDecisionTime
   const observed: EventClock[] = live?.state.nativeTimes?.map(clock => ({
     ...clock,
     time: Date.parse(clock.at),
