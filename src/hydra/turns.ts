@@ -1,3 +1,4 @@
+import { recordContext } from './file-context.ts'
 import { projectsFor } from '#projects/read.ts'
 
 import { createDigestContext } from './digest-context.ts'
@@ -224,6 +225,7 @@ export function createHydraTurns({
 
     if (onlyTasks) {
       return hydraDigest({
+        records: recordContext({ hydraId }),
         hydraId,
         state,
         owner,
@@ -259,6 +261,7 @@ export function createHydraTurns({
     }
 
     return hydraDigest({
+      records: recordContext({ hydraId }),
       previousDigest,
       checkpointed,
       conditions: memoryConditions(),
@@ -854,7 +857,7 @@ export function createHydraTurns({
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
         const context = contextNoteBlock({
           notes,
-          hydraId,
+          records: recordContext({ hydraId }),
           state: contextState,
         })
 

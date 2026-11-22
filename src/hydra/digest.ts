@@ -1,4 +1,3 @@
-import { recordContext } from './file-context.ts'
 import { createHash } from 'node:crypto'
 import { OWNER_CONTEXT_TOKENS } from './context-limits.ts'
 import type { HydraState } from '#app/model.ts'
@@ -527,6 +526,7 @@ function previousCheckpoint({
 
 export function hydraDigest({
   hydraId,
+  records,
   state,
   owner,
   ownerWrite = owner,
@@ -539,6 +539,7 @@ export function hydraDigest({
   conditions = learningConditions({ states: { [hydraId]: state } }),
 }: {
   hydraId: string
+  records: string
   state: HydraState
   owner: Memory
   ownerWrite?: Memory
@@ -655,7 +656,7 @@ export function hydraDigest({
   })
   const lines = [
     `<pnyx-digest hydra="${hydraId}"${checkpoint}>`,
-    `Hydra ${hydraId} ("${config.name}"). ${recordContext({ hydraId })}`,
+    `Hydra ${hydraId} ("${config.name}"). ${records}`,
   ]
 
   if (before) {

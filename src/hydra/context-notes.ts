@@ -3,7 +3,6 @@ import { askWording } from '#tasks/ask-state.ts'
 import { ownerActor, reportActor } from '#app/actors.ts'
 import { activeHelperBatches, needsMain } from '#routine-helper/state.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { recordContext } from './file-context.ts'
 
 const CONTEXT_NOTE_LIMIT = 20
 const CONTEXT_TURN_LINES = 8
@@ -306,11 +305,11 @@ export function contextReportStatus({
 
 export function contextNoteBlock({
   notes,
-  hydraId,
+  records,
   state,
 }: {
   notes: ContextNote[]
-  hydraId: string
+  records: string
   state: HydraState
 }): string {
   if (!notes.length) {
@@ -350,8 +349,8 @@ export function contextNoteBlock({
   const omitted = notes.slice(shown.length)
 
   if (omitted.length) {
-    lines.push(`- ${omitted.length} more worker reports and context notes. ${recordContext({ hydraId })}`)
+    lines.push(`- ${omitted.length} more worker reports and context notes; read the remaining native records.`)
   }
 
-  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Reports marked handled or helper handling and other notes are context. ${recordContext({ hydraId })}\n${lines.join('\n')}\n</pnyx-context>`
+  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Reports marked handled or helper handling and other notes are context. ${records}\n${lines.join('\n')}\n</pnyx-context>`
 }
