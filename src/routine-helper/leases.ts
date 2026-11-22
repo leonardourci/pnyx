@@ -2,12 +2,10 @@ import { inform } from '#app/command-notices.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
-import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
-import { acquireLock } from '#store/storage.ts'
 
 export const COPY_LEASE_PREFIX = 'copy-settlement:'
 
@@ -47,36 +45,18 @@ const leasePath = ({
   `helper-lease-${encodeURIComponent(task)}.json`,
 )
 
-// Only the server settles copies, so a settlement lease it finds when it mounts a Hydra was left by a server that stopped mid-settlement.
+const leases = new Map<string, Lease>()
+
 export function dropCopyLeases({ hydraId }: { hydraId: string }): void {
   const dir = hydraDir({ hydraId })
-  const unlock = acquireLock({ dir })
 
-  try {
-    for (const name of readdirSync(dir).filter(name => name.startsWith('helper-lease-') && name.endsWith('.json'))) {
-      const path = join(
-        dir,
-        name,
-      )
-      let actor: unknown
-
-      try {
-        actor = JSON.parse(readFileSync(
-          path,
-          'utf8',
-        )).actor
-      } catch {
-        // An unreadable lease is not provably a settlement's, so it stays.
-        continue
-      }
-
-      // Its holder's pid may belong to any process by now, so liveness is not checked.
-      if (typeof actor === 'string' && actor.startsWith(COPY_LEASE_PREFIX)) {
-        rmSync(path)
-      }
+  for (const [
+    path,
+    lease,
+  ] of leases) {
+    if (path.startsWith(`${dir}/`) && lease.actor.startsWith(COPY_LEASE_PREFIX)) {
+      leases.delete(path)
     }
-  } finally {
-    unlock()
   }
 }
 
@@ -89,111 +69,30 @@ export function taskLeasePresent({
   task: string
   actorPrefix?: string
 }): boolean {
-  const path = leasePath({
+  const lease = leases.get(leasePath({
     dir: hydraDir({ hydraId }),
     task,
-  })
+  }))
 
-  try {
-    const entry = lstatSync(
-      path,
-      { throwIfNoEntry: false },
-    )
-
-    if (!entry) {
-      return false
-    }
-
-    if (!entry.isFile()) {
-      return true
-    }
-
-    const lease = readLease({
-      path,
-      cleanup: false,
-    })
-
-    return lease !== undefined && (actorPrefix === undefined || lease.actor.startsWith(actorPrefix))
-  } catch {
-    // Unknown ownership must never authorize an automatic resend.
-    return true
-  }
+  return lease !== undefined && (actorPrefix === undefined || lease.actor.startsWith(actorPrefix))
 }
 
-function readLease({
-  path,
-  cleanup = true,
-}: {
+const readLease = ({ path }: {
   path: string
   cleanup?: boolean
-}): Lease | undefined {
-  if (!existsSync(path)) {
-    return undefined
-  }
+}): Lease | undefined => leases.get(path)
 
-  const lease: Lease = JSON.parse(readFileSync(
-    path,
-    'utf8',
-  ))
-
-  if (typeof lease.actor !== 'string' || !Array.isArray(lease.holders)
-    || lease.holders.some(holder => typeof holder.id !== 'string' || !Number.isInteger(holder.pid) || holder.pid <= 0)) {
-    throw new Error('Invalid task lease')
-  }
-
-  lease.holders = lease.holders.filter(holder => {
-    try {
-      process.kill(
-        holder.pid,
-        0,
-      )
-
-      return true
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-        throw error
-      }
-
-      return false
-    }
-  })
-
-  if (!lease.holders.length) {
-    if (cleanup) {
-      rmSync(path)
-    }
-
-    return undefined
-  }
-
-  return lease
-}
-
-function writeLease({
+const writeLease = ({
   path,
   lease,
 }: {
   path: string
   lease: Lease
-}): void {
-  const temporary = `${path}.${randomUUID()}.tmp`
-
-  try {
-    writeFileSync(
-      temporary,
-      JSON.stringify(lease),
-      { mode: 0o600 },
-    )
-    renameSync(
-      temporary,
-      path,
-    )
-  } finally {
-    rmSync(
-      temporary,
-      { force: true },
-    )
-  }
+}): void => {
+  leases.set(
+    path,
+    lease,
+  )
 }
 
 // Set while Pnyx delivers a message to a task's agent; the delivery's own writes pass a helper's lease.
@@ -234,7 +133,6 @@ export function taskLease({
   actor,
   message = false,
   pid = process.pid,
-  lockTimeout,
 }: {
   hydraId: string
   task: string
@@ -246,71 +144,62 @@ export function taskLease({
   const holder = randomUUID()
   let owner = actor
   const dir = hydraDir({ hydraId })
-  const unlock = acquireLock({
+  const path = leasePath({
     dir,
-    timeout: lockTimeout,
+    task,
   })
+  const lease = readLease({ path })
 
-  try {
-    const path = leasePath({
-      dir,
-      task,
-    })
-    const lease = readLease({ path })
+  const copyHeld = message && lease?.actor.startsWith(COPY_LEASE_PREFIX)
 
-    const copyHeld = message && lease?.actor.startsWith(COPY_LEASE_PREFIX)
-
-    if (message && lease && !copyHeld) {
-      owner = lease.actor
-    }
-
-    if (lease && (lease.actor !== owner || copyHeld)) {
-      if (actor.startsWith(COPY_LEASE_PREFIX) || lease.actor.startsWith(COPY_LEASE_PREFIX)) {
-        throw copySettlingRefusal({
-          task,
-          code: 'TASK_LEASED',
-        })
-      }
-
-      inform({
-        task,
-        reason: `Task is also being handled by ${lease.actor}`,
-        clear: `Use pnyx task history ${task} to inspect overlapping work`,
-      })
-
-      owner = lease.actor
-    }
-
-    if (isHelper({ actor }) && !helperGrant({
-      state: loadHydra({ hydraId }).state,
-      actor,
-      task,
-    })) {
-      inform({
-        task,
-        reason: 'Helper has no current task grant',
-        clear: `Use pnyx task history ${task} to inspect the change`,
-      })
-    }
-
-    const holders = [
-      ...lease?.holders ?? [],
-      {
-        id: holder,
-        pid,
-        actor,
-      },
-    ]
-    writeLease({
-      path,
-      lease: {
-        actor: owner,
-        holders,
-      },
-    })
-  } finally {
-    unlock()
+  if (message && lease && !copyHeld) {
+    owner = lease.actor
   }
+
+  if (lease && (lease.actor !== owner || copyHeld)) {
+    if (actor.startsWith(COPY_LEASE_PREFIX) || lease.actor.startsWith(COPY_LEASE_PREFIX)) {
+      throw copySettlingRefusal({
+        task,
+        code: 'TASK_LEASED',
+      })
+    }
+
+    inform({
+      task,
+      reason: `Task is also being handled by ${lease.actor}`,
+      clear: `Use pnyx task history ${task} to inspect overlapping work`,
+    })
+
+    owner = lease.actor
+  }
+
+  if (isHelper({ actor }) && !helperGrant({
+    state: loadHydra({ hydraId }).state,
+    actor,
+    task,
+  })) {
+    inform({
+      task,
+      reason: 'Helper has no current task grant',
+      clear: `Use pnyx task history ${task} to inspect the change`,
+    })
+  }
+
+  const holders = [
+    ...lease?.holders ?? [],
+    {
+      id: holder,
+      pid,
+      actor,
+    },
+  ]
+  writeLease({
+    path,
+    lease: {
+      actor: owner,
+      holders,
+    },
+  })
 
   return () => {
     releaseTask({
@@ -318,7 +207,6 @@ export function taskLease({
       task,
       actor: owner,
       holder,
-      lockTimeout,
     })
   }
 }
@@ -328,7 +216,6 @@ export function releaseTask({
   task,
   actor,
   holder,
-  lockTimeout,
 }: {
   hydraId: string
   task: string
@@ -337,37 +224,28 @@ export function releaseTask({
   lockTimeout?: number
 }): void {
   const dir = hydraDir({ hydraId })
-  const unlock = acquireLock({
+  const path = leasePath({
     dir,
-    timeout: lockTimeout,
+    task,
   })
+  const lease = readLease({ path })
 
-  try {
-    const path = leasePath({
-      dir,
-      task,
-    })
-    const lease = readLease({ path })
-
-    if (lease?.actor === actor) {
-      lease.holders = lease.holders.filter(entry => {
-        if (holder) {
-          return entry.id !== holder
-        }
-
-        return entry.pid !== process.pid || (entry.actor ?? lease.actor) !== actor
-      })
-
-      if (lease.holders.length) {
-        writeLease({
-          path,
-          lease,
-        })
-      } else {
-        rmSync(path)
+  if (lease?.actor === actor) {
+    lease.holders = lease.holders.filter(entry => {
+      if (holder) {
+        return entry.id !== holder
       }
+
+      return entry.pid !== process.pid || (entry.actor ?? lease.actor) !== actor
+    })
+
+    if (lease.holders.length) {
+      writeLease({
+        path,
+        lease,
+      })
+    } else {
+      leases.delete(path)
     }
-  } finally {
-    unlock()
   }
 }

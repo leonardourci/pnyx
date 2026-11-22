@@ -200,14 +200,22 @@ export function createPermissionBridge({
             })
           }
 
-          pending.set(
-            id,
-            {
-              card: current.id,
-              entry,
-              finish,
+          writer.afterCommit({
+            run: () => {
+              pending.set(
+                id,
+                {
+                  card: current.id,
+                  entry,
+                  finish,
+                },
+              )
+
+              if (closing() || signal.aborted) {
+                expire({ id })
+              }
             },
-          )
+          })
           writer.append({
             event: permissionEvent({
               state: writer.state,

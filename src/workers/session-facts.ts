@@ -9,6 +9,7 @@ import { checkRevision } from '#tasks/push-rules.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
 import { WAKE_TURN, WAKE_HANDLED } from '#hydra/wake-ids.ts'
+import { ownerInputUuid } from './input.ts'
 
 export function isSessionSource({ source }: { source?: SourceRef }): boolean {
   return !source || [
@@ -274,7 +275,9 @@ export function applySessionFacts({
 
   const activityAt = source?.observedAt ?? event.at
   const previousActivityAt = session.activityObservedAt
-  const staleActivity = previousActivityAt !== undefined
+  const fileOrdered = source?.adapter === 'transcript' && source.instanceId !== undefined
+    && source.generation !== undefined
+  const staleActivity = !fileOrdered && previousActivityAt !== undefined
     && Date.parse(activityAt) < Date.parse(previousActivityAt)
 
   if (source) {
@@ -345,6 +348,32 @@ export function applySessionFacts({
       seq: event.seq,
     })
     session.activityObservedAt = activityAt
+  }
+
+  if (fileOrdered && state.config?.hydra.session === session.id) {
+    const input = source.cursor && state.hydraMessages?.find(message =>
+      ownerInputUuid({ id: message.id }) === source.cursor)
+    const inputSeq = input && state.eventIds[input.id]
+
+    if (fields.activity === 'working' && input && typeof inputSeq === 'number') {
+      recordHydraTurn({
+        session,
+        event: {
+          ...event,
+          id: `${input.id}:hosted`,
+          seq: inputSeq,
+        },
+      })
+    } else if (fields.activity === 'working' && event.id.startsWith('resume:')) {
+      recordHydraTurn({
+        session,
+        event,
+      })
+    }
+
+    if (fields.activity === 'finished' && session.hydraTurn) {
+      session.turnFinishedSeq = session.hydraTurn.seq
+    }
   }
 
   projectSession({

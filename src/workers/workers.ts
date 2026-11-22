@@ -1,3 +1,4 @@
+import { nativeHome } from '#app/native-home.ts'
 import { projectsFor } from '#projects/read.ts'
 import { inform } from '#app/command-notices.ts'
 import { observedQuestions } from './session-attachments.ts'
@@ -83,6 +84,7 @@ export async function hydraCheck({
     options: {
       ...COMMON,
       after: { type: 'string' },
+      epoch: { type: 'string' },
       wait: { type: 'string' },
     },
     positionals: 1,
@@ -122,6 +124,16 @@ export async function hydraCheck({
     value: values.after,
     flag: '--after',
   }) ?? loadHydra({ hydraId }).state.seq
+  const epoch = nativeHome().epoch
+
+  if (values.after !== undefined && after > 0 && values.epoch !== epoch) {
+    throw new HydraError({
+      code: 'CURSOR_EXPIRED',
+      message: 'the Hydra check cursor belongs to another daemon epoch',
+      help: ['Read hydra check without --after, then pass its epoch with the next through cursor'],
+    })
+  }
+
   hydraDir({ hydraId })
   const deadline = Date.now() + wait * 1000
   const changes: HydraEvent[] = []
@@ -409,13 +421,14 @@ export async function hydraCheck({
   const paginationHelp: string[] = []
 
   if (paged) {
-    paginationHelp.push(`Run \`pnyx hydra check --after ${through} --hydra ${hydraId}\` for the next page`)
+    paginationHelp.push(`Run \`pnyx hydra check --after ${through} --epoch ${epoch} --hydra ${hydraId}\` for the next page`)
   } else if (requestEnv().PNYX_HOSTED !== 'hydra') {
-    paginationHelp.push(`Run \`pnyx hydra check --after ${through} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
+    paginationHelp.push(`Run \`pnyx hydra check --after ${through} --epoch ${epoch} --wait 1800 --hydra ${hydraId}\` to wait for the next change`)
   }
 
   const output: Output = {
     hydraId,
+    epoch,
     projects: projectRows({ state }),
     changes: page.length ? changesWithReportStatus : `none: nothing Hydra tracks changed after seq ${after}`,
     through,
@@ -498,6 +511,7 @@ const hydraDigestHandler = guard({
       }),
     ])
     const digest = hydraDigest({
+      epoch: nativeHome().epoch,
       conditions: memoryConditions(),
       hydraId,
       owner,
@@ -510,6 +524,7 @@ const hydraDigestHandler = guard({
     return [
       digest,
       contextNoteBlock({
+        epoch: nativeHome().epoch,
         notes: (state.contextNotes ?? []).filter(note => note.report),
         hydraId,
         state,
