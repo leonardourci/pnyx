@@ -1,5 +1,6 @@
 import { Writable } from 'node:stream'
 import { taskHydra } from './task-runtime.ts'
+import { workerIdentity } from '#workers/worker-identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { runCli } from '#cli/run.ts'
@@ -70,7 +71,7 @@ export async function runForRequest({ body }: { body: unknown }): Promise<RunAns
     env,
     stdin,
   } = request({ body })
-  const task = env.PNYX_ACTOR?.startsWith('worker:') ? env.PNYX_ACTOR.slice('worker:'.length) : env.PNYX_TASK
+  const task = workerIdentity({ env })?.task
   const owner = task && taskHydra({ task })
 
   if (owner) {

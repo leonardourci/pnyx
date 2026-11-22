@@ -934,36 +934,44 @@ test(
       expect(worker.closed).toBe(false)
       expect(child.exitCode).toBeNull()
       expect(child.signalCode).toBeNull()
-      const response = await fetch(
-        `http://127.0.0.1:${pnyx.port()}/api/run`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${localToken()}`,
-          },
-          body: JSON.stringify({
-            argv: [
-              'task',
-              'show',
-              task.id,
-              '--json',
-            ],
-            cwd: folder,
-            env: {
-              PNYX_ACTOR: worker.env.PNYX_ACTOR,
-              PNYX_HYDRA: source.id,
-              PNYX_STEERING_WORKER: worker.env.PNYX_STEERING_WORKER,
+
+      for (const actor of [
+        worker.env.PNYX_ACTOR,
+        'worker:',
+      ]) {
+        const response = await fetch(
+          `http://127.0.0.1:${pnyx.port()}/api/run`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${localToken()}`,
             },
-          }),
-        },
-      )
-      const command = await response.json() as {
-        exitCode: number
-        stdout: string
+            body: JSON.stringify({
+              argv: [
+                'task',
+                'show',
+                task.id,
+                '--json',
+              ],
+              cwd: folder,
+              env: {
+                PNYX_ACTOR: actor,
+                PNYX_TASK: task.id,
+                PNYX_HYDRA: source.id,
+                PNYX_STEERING_WORKER: worker.env.PNYX_STEERING_WORKER,
+              },
+            }),
+          },
+        )
+        const command = await response.json() as {
+          exitCode: number
+          stdout: string
+        }
+        expect(command.exitCode).toBe(0)
+        expect(JSON.parse(command.stdout).task.id).toBe(task.id)
       }
-      expect(command.exitCode).toBe(0)
-      expect(JSON.parse(command.stdout).task.id).toBe(task.id)
+
       appendFileSync(
         join(
           worker.env.PNYX_TASK_DIR!,
