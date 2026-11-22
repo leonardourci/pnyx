@@ -202,7 +202,7 @@ export function readLog({
       throw error
     }
 
-    if (after.bytes || through?.bytes || through?.n) {
+    if (after.bytes) {
       throw positionError({ path })
     }
 
