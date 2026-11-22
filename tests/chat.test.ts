@@ -3317,7 +3317,14 @@ test(
         what: 'Hydra to finish the task question reminder',
         check: () => !queue({ hydraId: hydra.id })?.working,
       })
-      await timer.check()
+      await until({
+        what: 'the periodic review to wake Hydra for the task question reminder',
+        check: async () => {
+          await timer.check()
+
+          return wakes === 3
+        },
+      })
       expect(wakes).toBe(3)
       const overdue = await hydra.owner({
         args: [
