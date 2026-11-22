@@ -15,7 +15,7 @@ Use `pnyx --help` for syntax. Pass your assigned `--hydra <id>` on actions.
 - `pnyx answer <task> <question> --text "<answer>"` answers a saved question. Hydra relaying an owner decision identifies its source with `--from-message <id>`.
 - `pnyx board` shows the current Hydra. Add `--json` when a script reads a receipt.
 
-During the storage cutover, use `pnyx task list`, `task show <task> --full`, `task history <task>`, `hydra check`, `hydra digest`, `hydra messages` and `task inbox read <task>` for the records the current app serves. Read-only project, memory, dispatch and Oracle commands remain available. Use `--json` for structured reads; output has no next-step hints. Use the UI for configuration and task edits.
+Read records with `pnyx task list`, `task show <task> --full`, `task history <task>`, `hydra check`, `hydra digest`, `hydra messages` and `task inbox read <task>`. Use `--json` for structured output. Use the UI for configuration and task edits.
 
 `hydra check` returns `epoch` and `through`. Continue with `--after <through> --epoch <epoch>`; a nonzero cursor without the current epoch expires. After restart, read without `--after` for fresh state.
 

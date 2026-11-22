@@ -24,9 +24,9 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 
 Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`pnyx` or `pnyx-axi`) before rebuilding. Update and build the clone using the install steps in the README. Keep the old home and set `PNYX_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, rerun `pnyx setup hooks` with the new home selected. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
 
-## Reads during the storage cutover
+## Read Hydra and task records
 
-The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Records now live in `hydras/<hydra>/hydra.log`, `tasks/<task>/task.log` and `snapshot.json`. Workers append their assigned `worker.log`. The following transitional reads remain until the remaining command cleanup lands. These reads use plain text by default and accept `--json`.
+The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Hydra decisions live in `hydras/<hydra>/hydra.log` and task decisions in `hydras/<hydra>/tasks/<task>/task.log`. These commands use plain text by default and accept `--json`.
 
 ```sh
 pnyx task list --hydra work --json

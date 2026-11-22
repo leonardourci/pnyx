@@ -95,6 +95,15 @@ export type SearchAnswer = { result: ReturnType<typeof search> } | {
   }
 }
 
+function requireSearchActive({ signal }: { signal?: AbortSignal }): void {
+  if (signal?.aborted) {
+    throw new HydraError({
+      message: 'Oracle search cancelled',
+      code: 'CANCELLED',
+    })
+  }
+}
+
 export async function searchInBackground({
   hydraId,
   query,
@@ -103,22 +112,14 @@ export async function searchInBackground({
   const previousSearch = searchQueues.get(hydraId)
 
   const next = async () => {
-    try {
-      await previousSearch
-    } catch {
-      // The previous caller receives its failure; later searches still run.
+    if (previousSearch) {
+      await Promise.allSettled([previousSearch])
     }
 
-    if (signal?.aborted) {
-      throw new HydraError({
-        message: 'Oracle search cancelled',
-        code: 'CANCELLED',
-      })
-    }
-
+    requireSearchActive({ signal })
     await migrateOwnerMemory()
 
-    return runSearch({
+    return searchInWorker({
       hydraId,
       query,
       signal,
@@ -140,54 +141,14 @@ export async function searchInBackground({
   }
 }
 
-type PendingSearches = Map<string, Promise<ReturnType<typeof search>>>
-
-const searches = new WeakMap<ReturnType<typeof nativeHome>, PendingSearches>()
-
-function runSearch({
-  hydraId,
-  query,
-  signal,
-}: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
-  const home = nativeHome()
-  let pending = searches.get(home)
-
-  if (!pending) {
-    pending = new Map()
-    searches.set(
-      home,
-      pending,
-    )
-  }
-
-  const queue = pending
-  const previous = queue.get(hydraId)
-  const next = (previous ? Promise.allSettled([previous]) : Promise.resolve()).then(() =>
-    searchInWorker({
-      hydraId,
-      query,
-      signal,
-    }))
-  queue.set(
-    hydraId,
-    next,
-  )
-
-  return next.finally(() => {
-    if (queue.get(hydraId) === next) {
-      queue.delete(hydraId)
-    }
-  })
-}
-
 async function searchInWorker({
   hydraId,
   query,
   signal,
 }: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
-  signal?.throwIfAborted()
+  requireSearchActive({ signal })
   const snapshot = await searchSnapshot({ hydraId })
-  signal?.throwIfAborted()
+  requireSearchActive({ signal })
 
   return new Promise((
     resolve,

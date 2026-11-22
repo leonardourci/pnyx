@@ -332,6 +332,7 @@ export const eventsOrLegacy = ({
 interface EventClock {
   seq: number
   at: string
+  time: number
   complete?: boolean
 }
 
@@ -340,24 +341,26 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
   const events = readChanges({ hydraId }).map(event => ({
     seq: event.seq,
     at: event.at,
+    time: Date.parse(event.at),
     complete: event.type === 'session.observed' && 'fields' in event.data
       && event.data.fields.activity === 'finished',
     decision: durableEvent({ event }),
-  }))
+  })).filter(event => Number.isFinite(event.time))
   const lastDecisionTime = events.reduce(
     (
       latest,
       event,
-    ) => event.decision && Number.isFinite(Date.parse(event.at))
+    ) => event.decision
       ? Math.max(
         latest,
-        Date.parse(event.at),
+        event.time,
       ) : latest,
     -Infinity,
   )
-  const inLiveTail = ({ at }: { at: string }) => Date.parse(at) >= lastDecisionTime
+  const inLiveTail = ({ time }: { time: number }) => Number.isFinite(time) && time >= lastDecisionTime
   const observed: EventClock[] = live?.state.nativeTimes?.map(clock => ({
     ...clock,
+    time: Date.parse(clock.at),
     complete: true,
   })) ?? []
 
@@ -365,6 +368,7 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
     observed.push({
       seq: live.state.seq,
       at: live.state.changedAt,
+      time: Date.parse(live.state.changedAt),
     })
   }
 
@@ -384,15 +388,10 @@ export function eventPositions({
     at?: string
   }[]
 }): Map<string, number> {
-  const events = clocks({ hydraId }).map(clock => ({
-    ...clock,
-    time: Date.parse(clock.at),
-  }))
-    .filter(clock => Number.isFinite(clock.time))
-    .sort((
-      a,
-      b,
-    ) => a.time - b.time
+  const events = clocks({ hydraId }).sort((
+    a,
+    b,
+  ) => a.time - b.time
     || Number(Boolean(a.complete)) - Number(Boolean(b.complete))
     || a.seq - b.seq)
   const next = events.reduce(
@@ -455,17 +454,14 @@ export function eventTime({
     }
   }
 
-  const found = clocks({ hydraId }).map(clock => ({
-    ...clock,
-    time: Date.parse(clock.at),
-  }))
-    .filter(clock => Number.isFinite(clock.time) && (exact ? clock.seq === seq : clock.seq <= seq))
+  const found = clocks({ hydraId })
+    .filter(clock => exact ? clock.seq === seq : clock.seq <= seq)
     .sort((
       a,
       b,
     ) => {
       if (exact) {
-        return b.seq - a.seq
+        return 0
       }
 
       return b.time - a.time || Number(Boolean(b.complete)) - Number(Boolean(a.complete))
@@ -497,7 +493,7 @@ export function seqsAround({
       (
         first,
         event,
-      ) => Date.parse(event.at) >= time - 1000 ? Math.min(
+      ) => event.time >= time - 1000 ? Math.min(
         first,
         event.seq,
       ) : first,
@@ -507,7 +503,7 @@ export function seqsAround({
       (
         last,
         event,
-      ) => Date.parse(event.at) <= time + 1000 ? Math.max(
+      ) => event.time <= time + 1000 ? Math.max(
         last,
         event.seq,
       ) : last,
