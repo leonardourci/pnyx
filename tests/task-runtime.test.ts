@@ -15,7 +15,10 @@ beforeAll(async () => {
 test(
   'a detached worker’s retained tools are recovered after restart and stopped on Hydra removal',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await pnyx.hydra({
+      id: 'default',
+      create: false,
+    })
     await hydra.startTask({ key: 'detached-tools' })
     const task = await hydra.task({ key: 'detached-tools' })
     const leader = spawn(
@@ -87,6 +90,14 @@ test(
     expect(processStart({ pid: tool })).not.toBeNull()
     await pnyx.restart()
     expect(processStart({ pid: tool })).not.toBeNull()
+    await until({
+      what: 'only the target Hydra is mounted before permanent removal',
+      check: () => {
+        const { scopes } = pnyx.home()
+
+        return Object.keys(scopes).length === 1 && Boolean(scopes[hydra.id])
+      },
+    })
     await hydra.owner({
       args: [
         'hydra',
@@ -330,5 +341,12 @@ test(
     })).task.agent.sessionId).toBe(worker.id)
     expect(worker.received.filter(message => message.includes(text))).toHaveLength(1)
     expect(worker.closed).toBe(false)
+    await final.owner({
+      args: [
+        'hydra',
+        'remove',
+        final.id,
+      ],
+    })
   },
 )
