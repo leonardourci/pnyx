@@ -363,9 +363,7 @@ async function worktreeCopy({
         gitDirectory,
       ] = repository.out.split('\n')
       const ownRoot = canonical({ path: root }) === path
-      const currentGitDirectory = canonical({ path: gitDirectory })
-      const mainGitDirectory = canonical({ path: common })
-      const linked = currentGitDirectory !== undefined && currentGitDirectory !== mainGitDirectory
+      const linked = canonical({ path: gitDirectory }) !== canonical({ path: common })
 
       if (!repository.ok || !ownRoot || !linked) {
         continue
