@@ -413,20 +413,14 @@ export function moveTaskFiles({
   to,
   task,
   after,
-  at,
-  by,
-  id,
-  data = {},
+  fact,
 }: {
   home: string
   from: string
   to: string
   task: string
   after: LogPosition
-  at: string
-  by: LogFact['by']
-  id: string
-  data?: Record<string, unknown>
+  fact: LogFact
 }): LogPosition {
   const placement = prepareMove({
     home,
@@ -445,17 +439,7 @@ export function moveTaskFiles({
       'task.log',
     ),
     after,
-    entries: [
-      {
-        ...data,
-        at,
-        by,
-        t: 'moved',
-        id,
-        from,
-        to,
-      },
-    ],
+    entries: [fact],
   })
   moveFolder(placement)
 

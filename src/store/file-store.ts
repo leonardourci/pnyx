@@ -845,19 +845,18 @@ export function openFileStore<Hydra, Task>({
           source,
         ] = located
         const current = source.tasks.get(task)!
+        const fact: LogFact = {
+          ...plainJson({ value: data }),
+          id,
+          at,
+          by,
+          t: 'moved',
+          from,
+          to,
+        }
         const applied = applyFileFacts({
           segment: current,
-          facts: [
-            {
-              ...plainJson({ value: data }),
-              id,
-              at,
-              by,
-              t: 'moved',
-              from,
-              to,
-            },
-          ],
+          facts: [fact],
           reduce: reduceTask,
           path: pathOf({
             scope: {
@@ -889,11 +888,8 @@ export function openFileStore<Hydra, Task>({
             from,
             to,
             task,
-            id,
-            at,
-            by,
+            fact,
             after: current.position,
-            data,
           })
         } catch (error) {
           recover()
