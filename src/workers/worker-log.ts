@@ -57,7 +57,11 @@ function reportDirectory({
     return recorded
   }
 
-  const legacy = join(hydraFolder, 'tasks', task)
+  const legacy = join(
+    hydraFolder,
+    'tasks',
+    task,
+  )
 
   if (existsSync(legacy)) {
     return legacy
