@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startPnyx, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
@@ -10,7 +10,7 @@ beforeAll(async () => {
 })
 
 test(
-  'copy allocation refuses a linked pool and skips a dangling slot inside a real pool',
+  'copy allocation refuses linked roots and leaves linked slots untouched',
   async () => {
     const hydra = await pnyx.hydra()
     const project = hydra.folder({ name: 'copy-root-project' })
@@ -98,16 +98,35 @@ test(
     }
 
     mkdirSync(pool)
-    const slot = join(
+    git({
+      cwd: project,
+      args: [
+        'worktree',
+        'add',
+        '-b',
+        'outside-preserve',
+        outside,
+      ],
+    })
+    const linked = join(
       pool,
       'copy-root-project-1',
+    )
+    const dangling = join(
+      pool,
+      'copy-root-project-2',
+    )
+    symlinkSync(
+      outside,
+      linked,
+      'dir',
     )
     symlinkSync(
       join(
         outside,
         'missing',
       ),
-      slot,
+      dangling,
       'dir',
     )
     const started = await hydra.owner({
@@ -117,10 +136,16 @@ test(
         'linked-copy',
       ],
     })
-    expect(started.agent.folder).toBe(join(
-      pool,
-      'copy-root-project-2',
-    ))
-    expect(lstatSync(slot).isSymbolicLink()).toBe(true)
+    expect(dirname(started.agent.folder)).toBe(pool)
+    expect(lstatSync(started.agent.folder).isDirectory()).toBe(true)
+    expect(git({
+      cwd: outside,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('outside-preserve')
+    expect(lstatSync(linked).isSymbolicLink()).toBe(true)
+    expect(lstatSync(dangling).isSymbolicLink()).toBe(true)
   },
 )
