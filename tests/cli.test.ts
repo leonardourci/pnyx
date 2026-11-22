@@ -446,6 +446,7 @@ describe(
           env: env(),
         })
         expect(wrongActor.status).not.toBe(0)
+        expect(JSON.parse(wrongActor.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
         const actorOverride = await pnyx({
           args: [
             ...args,
@@ -465,6 +466,7 @@ describe(
           },
         })
         expect(otherWorker.status).not.toBe(0)
+        expect(JSON.parse(otherWorker.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
         const permissionAttempt = await pnyx({
           args: [
             ...args,
@@ -474,11 +476,14 @@ describe(
           env: workerEnv,
         })
         expect(permissionAttempt.status).toBe(2)
+        expect(JSON.parse(permissionAttempt.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
         const staleSession = args.map(value => value === claim.session ? 'claude:another-session' : value)
-        expect((await pnyx({
+        const refusedSession = await pnyx({
           args: staleSession,
           env: workerEnv,
-        })).status).not.toBe(0)
+        })
+        expect(refusedSession.status).not.toBe(0)
+        expect(JSON.parse(refusedSession.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
         const staleGeneration = args.map(value => value === JSON.stringify(claim.generation)
           ? JSON.stringify({ native: `${id}\u0000${queued.id}` }) : value)
         const staleAssignment = await pnyx({
@@ -525,10 +530,12 @@ describe(
             id,
           ],
         })
-        expect((await pnyx({
+        const detached = await pnyx({
           args,
           env: workerEnv,
-        })).status).not.toBe(0)
+        })
+        expect(detached.status).not.toBe(0)
+        expect(JSON.parse(detached.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
         expect(acknowledgements()).toEqual(saved)
       },
     )

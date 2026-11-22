@@ -301,10 +301,12 @@ export function acknowledgeSteering({
       invalid({ message: 'This message was handled by another assignment' })
     }
 
-    return message
+    if (derived || !message.ackDerived) {
+      return message
+    }
   }
 
-  if (pendingSteering({ card })[0]?.id !== id) {
+  if (!message.ack && pendingSteering({ card })[0]?.id !== id) {
     inform({
       task: card.id,
       reason: 'Steering handled before an older pending instruction',
