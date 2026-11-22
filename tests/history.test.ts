@@ -17,9 +17,6 @@ beforeAll(async () => {
   pnyx = await startPnyx()
 })
 
-// A live-size Hydra: its log holds tens of thousands of events, a few of them words that history shows, and its native
-// transcript holds thousands of replies spread between them. Reading the range once used to run one statement per reply
-// over the whole log.
 const EVENTS = 60_000
 const BRIEF_EVERY = 25
 const INSERT_BATCH = 5_000

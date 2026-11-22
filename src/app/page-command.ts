@@ -39,7 +39,6 @@ const handlerOf = ({ name }: { name: string }) => {
     : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
 }
 
-// A page command uses the owner's identity.
 export async function runPageCommand({ argv }: { argv: string[] }): Promise<PageAnswer> {
   const [
     name = '',

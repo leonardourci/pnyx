@@ -49,7 +49,6 @@ export interface Settings extends SharedView {
   logMaxMB: number
 }
 
-// The shared settings sent to an open page.
 export type PageSettings = Settings
 
 export const SETTING_KEYS = [

@@ -24,8 +24,6 @@ export default defineConfig({
     sequence: {
       // A file's own afterAll hooks, such as stopping its server, run before the setup file deletes its scratch home.
       hooks: 'stack',
-      // A test that needs another one's leftovers fails at once; --sequence.seed=<printed seed> repeats an order. Files keep
-      // Vitest's order, longest first, since each runs alone in its own process and home.
       shuffle: {
         files: false,
         tests: true,

@@ -21,10 +21,18 @@ export function hydraIds({
   const home = openedNativeHome()
   const ids = home ? home.files.hydras().sort() : nativeHydraIds()
 
+  if (includeRemoved) {
+    return ids
+  }
+
   return ids.filter(id => {
+    if (home?.files.positions({ hydra: id })?.issue) {
+      return true
+    }
+
     const state = home ? home.read({ hydra: id }).state : readNativeHydra({ hydraId: id }).state
 
-    return includeRemoved || !state.config?.removed
+    return !state.config?.removed
   })
 }
 

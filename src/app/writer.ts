@@ -800,7 +800,6 @@ export function eventWriter({
         })
       }
 
-      // The reducer skips a previously applied event before the writer can replay it.
       if (known) {
         return
       }
@@ -950,7 +949,6 @@ export function eventWriter({
         state,
         event,
       })) {
-        // Earlier questions can append lifecycle events before the next closure.
         writer.append({
           event: {
             ...question,
@@ -983,7 +981,6 @@ export function eventWriter({
           break
       }
 
-      // A task's explicit lifecycle change moves its card, as its own event in the same write.
       for (const move of lifecycleMoves({
         before,
         state,

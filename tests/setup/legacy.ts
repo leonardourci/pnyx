@@ -4,7 +4,6 @@ import { base } from '#app/command-meta.ts'
 import type { HydraProject } from '#projects/model.ts'
 import type { Pnyx } from './pnyx.ts'
 
-// Bypasses attachment validation to exercise recovery from conflicting project ownership.
 export async function legacyDuplicate({
   pnyx,
   id,

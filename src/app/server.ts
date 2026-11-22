@@ -126,7 +126,6 @@ export async function mountOwnedHydra({
     bindThread,
   } = createThreadSubscriptions({
     hydraId,
-    // Native output can arrive before the daemon pumps its cached state.
     state: () => loadHydra({ hydraId }).state,
     closed: () => closed,
     send: ({

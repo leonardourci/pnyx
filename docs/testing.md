@@ -61,7 +61,7 @@ test('a reply reaches the worker once', async () => {
 - `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Pnyx gave that agent.
 - `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
-- `rows({ text, values })` reads this file's database to check persisted facts; page assertions read `pnyx.home()` or `openHomePage` through the real home socket.
+- Check persistence by restarting and reading through the CLI or page. Page assertions read `pnyx.home()` or `openHomePage` through the real home socket.
 - `pnyx.restart({ whileStopped })` stops the server and starts it again on the same home and port.
 
 Rules:
@@ -88,14 +88,14 @@ Rules:
 ## What each file covers
 
 - `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files.
-- `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity, and exclusion of private steering and the database URL.
+- `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity and exclusion of private steering.
 - `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its column, project and date filters and what it never reads.
 - `paging.test.ts`: chat pages and a card's Activity pages.
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
 - `settings.test.ts`: the settings every Hydra shares.
-- `migration.test.ts`: the migration from #378's schema at live size, and the upgrade's data check on a copy of an older schema.
+- `native-store.test.ts`: durable receipts, task folder moves, corrupt logs, permission recovery and read-only setup.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its checkout notices, its rollback and its restart.
 - `verification.test.ts`: which local commands, CI checks and review instructions a change's paths select, and the staged build.

@@ -1,4 +1,3 @@
-// Reducers can pass draft proxies, so copy their JSON fields without structuredClone.
 export function cloneValue<T>({ value }: { value: T }): T {
   if (Array.isArray(value)) {
     return value.map(child => cloneValue({ value: child })) as T

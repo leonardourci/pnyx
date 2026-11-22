@@ -78,7 +78,6 @@ export function readUpdateEvents({
 }): HydraEvent[] {
   return readEvents({
     hydraId,
-    cardId,
     before,
     types,
     descending: true,

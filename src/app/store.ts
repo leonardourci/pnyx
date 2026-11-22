@@ -1,4 +1,4 @@
-import { readNativeHydra } from './native-read.ts'
+import { nativeHydraIds, readNativeHydra } from './native-read.ts'
 import type { HydraState } from './model.ts'
 import { nativeHome, openedNativeHome, type NativeHeld } from './native-home.ts'
 import { DEFAULT_HYDRA } from './home-migration.ts'
@@ -13,9 +13,9 @@ export interface HydraSnapshot {
 export type Held = NativeHeld
 
 export const heldHydra = ({ hydraId }: { hydraId: string }): Held | undefined => {
-  const home = nativeHome()
+  const home = openedNativeHome()
 
-  return home.held.has(hydraId) ? home.read({ hydra: hydraId }) : undefined
+  return home?.held.has(hydraId) ? home.read({ hydra: hydraId }) : undefined
 }
 
 export async function holdHydra({
@@ -99,7 +99,9 @@ export function loadHydra({
 }
 
 export function hydraExists({ hydraId }: { hydraId: string }): boolean {
-  return nativeHome().files.hydras().includes(hydraId)
+  const home = openedNativeHome()
+
+  return (home?.files.hydras() ?? nativeHydraIds()).includes(hydraId)
 }
 
 export function requireHydra({ hydraId }: { hydraId: string }): void {

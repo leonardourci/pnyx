@@ -29,7 +29,6 @@ export const git = ({
   },
 ).trim()
 
-// A build that records its version.
 export const building = ({
   version,
   fail = false,

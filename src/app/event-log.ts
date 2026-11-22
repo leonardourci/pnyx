@@ -133,13 +133,18 @@ function savedEvents({
     }
 
     if (cached.position.bytes < scope.position.bytes) {
-      cached.position = readLog({
+      const appended: LogEntry[] = []
+      const position = readLog({
         path: scope.path,
         after: cached.position,
         through: scope.position,
         readOnly: true,
-        accept: ({ entry }) => cached!.entries.push(entry),
+        accept: ({ entry }) => appended.push(entry),
       })
+      cached.position = position
+      for (const entry of appended) {
+        cached.entries.push(entry)
+      }
     }
 
     return cached.entries.flatMap(entry => {
@@ -349,7 +354,7 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
       ) : latest,
     -Infinity,
   )
-  const tail = ({ at }: { at: string }) => Date.parse(at) >= lastDecisionTime
+  const inLiveTail = ({ at }: { at: string }) => Date.parse(at) >= lastDecisionTime
   const observed: EventClock[] = live?.state.nativeTimes?.map(clock => ({
     ...clock,
     complete: true,
@@ -362,10 +367,9 @@ function clocks({ hydraId }: { hydraId: string }): EventClock[] {
     })
   }
 
-  // Historic transcript rows use decision positions; replay receipts only bound the live tail.
   return [
-    ...events.filter(event => event.decision || tail(event)),
-    ...observed.filter(tail),
+    ...events.filter(event => event.decision || inLiveTail(event)),
+    ...observed.filter(inLiveTail),
   ]
 }
 
@@ -379,10 +383,15 @@ export function eventPositions({
     at?: string
   }[]
 }): Map<string, number> {
-  const events = clocks({ hydraId }).sort((
+  const events = clocks({ hydraId }).map(clock => ({
+    ...clock,
+    time: Date.parse(clock.at),
+  })).filter(clock => Number.isFinite(clock.time)).sort((
     a,
     b,
-  ) => a.at.localeCompare(b.at) || a.seq - b.seq)
+  ) => a.time - b.time
+    || Number(Boolean(a.complete)) - Number(Boolean(b.complete))
+    || a.seq - b.seq)
   const next = events.reduce(
     (
       last,
@@ -405,9 +414,7 @@ export function eventPositions({
       while (low < high) {
         const middle = Math.floor((low + high) / 2)
         const event = events[middle]!
-        const at = Date.parse(event.at)
-
-        if (at > time || (event.complete && at === time)) {
+        if (event.time > time || (event.complete && event.time === time)) {
           high = middle
         } else {
           low = middle + 1
@@ -460,8 +467,9 @@ export function eventTime({
     return found?.at
   }
 
-  // Transcript windows exclude their upper time; a completion includes its own native record.
-  return new Date(Date.parse(found.at) + 1).toISOString()
+  const timeAfterCompletion = Date.parse(found.at) + 1
+
+  return new Date(timeAfterCompletion).toISOString()
 }
 
 export function seqsAround({

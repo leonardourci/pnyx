@@ -140,12 +140,52 @@ export async function searchInBackground({
   }
 }
 
-async function runSearch({
+const searches = new WeakMap<ReturnType<typeof nativeHome>, Map<string, Promise<ReturnType<typeof search>>>>()
+
+function runSearch({
   hydraId,
   query,
   signal,
 }: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
+  const home = nativeHome()
+  let pending = searches.get(home)
+
+  if (!pending) {
+    pending = new Map()
+    searches.set(
+      home,
+      pending,
+    )
+  }
+
+  const queue = pending
+  const previous = queue.get(hydraId)
+  const next = (previous ? Promise.allSettled([previous]) : Promise.resolve()).then(() =>
+    searchInWorker({
+      hydraId,
+      query,
+      signal,
+    }))
+  queue.set(
+    hydraId,
+    next,
+  )
+
+  return next.finally(() => {
+    if (queue.get(hydraId) === next) {
+      queue.delete(hydraId)
+    }
+  })
+}
+
+async function searchInWorker({
+  hydraId,
+  query,
+  signal,
+}: SearchInput & { signal?: AbortSignal }): Promise<ReturnType<typeof search>> {
+  signal?.throwIfAborted()
   const snapshot = await searchSnapshot({ hydraId })
+  signal?.throwIfAborted()
 
   return new Promise((
     resolve,

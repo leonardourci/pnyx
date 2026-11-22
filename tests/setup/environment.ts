@@ -1,4 +1,3 @@
-// Each test process gets a scratch home, a guarded PATH and no inherited identity.
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { afterAll } from 'vitest'

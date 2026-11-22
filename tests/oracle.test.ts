@@ -477,7 +477,14 @@ test(
       args: ['nebularocket'],
     })
     const portable = expect.objectContaining({ card: created.card.id })
-    expect(await find({ hydra: source })).toEqual([portable])
+    const concurrent = await Promise.all([
+      find({ hydra: source }),
+      find({ hydra: source }),
+    ])
+    expect(concurrent).toEqual([
+      [portable],
+      [portable],
+    ])
     await pnyx.restart()
     expect(await find({ hydra: source })).toEqual([portable])
     await source.owner({
