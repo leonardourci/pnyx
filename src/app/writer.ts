@@ -895,31 +895,50 @@ export function eventWriter({
         }
       }
 
-      onAppend({
-        event,
-        receipt,
-      })
-
       const before = state
 
       if (!ownedIds) {
         ownedIds = { ...state.eventIds }
       }
 
-      state = draft({
-        state: {
-          ...state,
-          eventIds: ownedIds,
-        },
-        owned: [ownedIds],
-        change: ({ state }) => {
-          replayOwned({
-            state,
-            events: [event],
-          })
-        },
-      })
+      const previousId = Object.getOwnPropertyDescriptor(
+        ownedIds,
+        event.id,
+      )
+
+      try {
+        state = draft({
+          state: {
+            ...state,
+            eventIds: ownedIds,
+          },
+          owned: [ownedIds],
+          change: ({ state }) => {
+            replayOwned({
+              state,
+              events: [event],
+            })
+          },
+        })
+      } catch (error) {
+        if (previousId) {
+          Object.defineProperty(
+            ownedIds,
+            event.id,
+            previousId,
+          )
+        } else {
+          delete ownedIds[event.id]
+        }
+
+        throw error
+      }
+
       ownedIds = state.eventIds
+      onAppend({
+        event,
+        receipt,
+      })
       onApplied?.({
         event,
         before,

@@ -5,6 +5,9 @@ import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { nativeHome } from '#app/native-home.ts'
+import { readNativeHydra } from '#app/native-read.ts'
+import { withWriter } from '#app/writer.ts'
+import { base } from '#app/command-meta.ts'
 import { pnyx as runPnyx, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -12,6 +15,187 @@ let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx()
 })
+
+test(
+  'Hydra memory can replace and forget a key named constructor across restarts',
+  async () => {
+    const hydra = await pnyx.hydra()
+
+    for (const text of [
+      'First memory',
+      'Replacement memory',
+    ]) {
+      await hydra.owner({
+        args: [
+          'hydra',
+          'memory',
+          'set',
+          '--key',
+          'constructor',
+          '--text',
+          text,
+        ],
+      })
+      await pnyx.restart()
+      expect((await hydra.owner({
+        args: [
+          'hydra',
+          'memory',
+          'list',
+        ],
+      })).memory).toEqual([
+        expect.objectContaining({
+          key: 'constructor',
+          text,
+        }),
+      ])
+    }
+
+    await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'forget',
+        '--key',
+        'constructor',
+      ],
+    })
+    await pnyx.restart()
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
+    })).memory).toBe('none: no Hydra memory yet')
+  },
+)
+
+test(
+  'a caught reducer failure leaves its event id available for a corrected append',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const failure = new Error('Injected reducer failure')
+    const id = 'corrected-after-reducer-failure'
+    await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const append = ({
+          key,
+          text,
+        }: {
+          key: string
+          text: string
+        }) => writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'web',
+                id: key,
+              },
+              cardId: '$board',
+            }),
+            type: 'hydra.memory',
+            data: {
+              key,
+              before: null,
+              after: text,
+            },
+          },
+        })
+        append({
+          key: 'accepted-before-failure',
+          text: 'First accepted change',
+        })
+        expect(() => writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              meta: {
+                at: new Date().toISOString(),
+                actor: 'web',
+                id,
+              },
+              cardId: '$board',
+            }),
+            type: 'hydra.memory',
+            data: {
+              key: id,
+              before: null,
+              get after(): string {
+                throw failure
+              },
+            },
+          },
+        })).toThrow(failure)
+        append({
+          key: id,
+          text: 'Corrected accepted change',
+        })
+      },
+    })
+    await pnyx.restart()
+    expect((await hydra.owner({
+      args: [
+        'hydra',
+        'memory',
+        'list',
+      ],
+    })).memory).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'accepted-before-failure',
+        text: 'First accepted change',
+      }),
+      expect.objectContaining({
+        key: id,
+        text: 'Corrected accepted change',
+      }),
+    ]))
+    expect(readEvents({ hydraId: hydra.id }).filter(event => event.id === id)).toHaveLength(1)
+  },
+)
+
+test(
+  'offline configuration reads retain the canonical sequence and accepted event ids',
+  async () => {
+    const hydra = await pnyx.hydra()
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--name',
+        'Offline configuration',
+      ],
+    })
+    await pnyx.restart({
+      whileStopped: () => {
+        const entries = readFileSync(
+          join(
+            process.env.PNYX_HOME!,
+            'hydras',
+            hydra.id,
+            'hydra.log',
+          ),
+          'utf8',
+        )
+          .trim()
+          .split('\n')
+          .map(line => JSON.parse(line) as { id: string })
+        const offline = readNativeHydra({ hydraId: hydra.id }).state
+        expect(offline.seq).toBe(entries.length)
+        expect(offline.eventIds).toEqual(Object.fromEntries(entries.map((
+          entry,
+          index,
+        ) => [
+          entry.id,
+          index + 1,
+        ])))
+      },
+    })
+  },
+)
 
 test.each([
   { eventId: 'native-create-once' },
