@@ -1,4 +1,5 @@
 import { syncBuiltinESMExports } from 'node:module'
+import { execFileSync } from 'node:child_process'
 import filesystem, { appendFileSync, existsSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
@@ -15,6 +16,141 @@ let pnyx: Pnyx
 beforeAll(async () => {
   pnyx = await startPnyx()
 })
+
+test(
+  'a corrupt optional Hydra does not prevent healthy Hydras from starting',
+  async () => {
+    const healthy = await pnyx.hydra()
+    const broken = await pnyx.hydra()
+    const path = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      broken.id,
+      'hydra.log',
+    )
+    const contents = readFileSync(
+      path,
+      'utf8',
+    )
+
+    try {
+      await pnyx.restart({
+        whileStopped: () => writeFileSync(
+          path,
+          `invalid frame\n${contents}`,
+        ),
+      })
+      const created = await healthy.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--title',
+          'Healthy after corruption',
+        ],
+      })
+      expect((await healthy.task({ key: created.card.id })).title).toBe('Healthy after corruption')
+    } finally {
+      await pnyx.restart({
+        whileStopped: () => writeFileSync(
+          path,
+          contents,
+        ),
+      })
+    }
+  },
+)
+
+test(
+  'a failed optional mount releases its home before the next restart',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const spool = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+      'spool',
+    )
+
+    try {
+      await pnyx.restart({
+        whileStopped: () => {
+          rmSync(
+            spool,
+            {
+              recursive: true,
+              force: true,
+            },
+          )
+          writeFileSync(
+            spool,
+            'not a spool directory',
+          )
+        },
+      })
+      const failedMountEpoch = pnyx.cursor().epoch
+      await pnyx.restart({ whileStopped: () => rmSync(spool) })
+      expect(pnyx.cursor().epoch).not.toBe(failedMountEpoch)
+      const created = await hydra.owner({
+        args: [
+          'task',
+          'create',
+          '--no-start',
+          '--title',
+          'Recovered mount',
+        ],
+      })
+      expect((await hydra.task({ key: created.card.id })).title).toBe('Recovered mount')
+    } finally {
+      if (existsSync(spool) && statSync(spool).isFile()) {
+        rmSync(spool)
+        await pnyx.restart()
+      }
+    }
+  },
+)
+
+test(
+  'a home initialization failure releases the daemon claim for a corrected start',
+  () => {
+    const home = join(
+      process.env.TMPDIR!,
+      'initialization-retry',
+    )
+    const script = [
+      "import assert from 'node:assert/strict'",
+      "import {mkdirSync, writeFileSync, rmSync} from 'node:fs'",
+      "import {join} from 'node:path'",
+      "import {startServer} from '#app/server-daemon.ts'",
+      'const home = process.env.PNYX_HOME',
+      'mkdirSync(home, {recursive: true})',
+      "const hydras = join(home, 'hydras')",
+      "writeFileSync(hydras, 'not a Hydra directory')",
+      "await assert.rejects(startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')}))",
+      'rmSync(hydras)',
+      "const server = await startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')})",
+      'await server.close()',
+      "console.log('corrected start succeeded')",
+    ].join('\n')
+    expect(execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        script,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PNYX_HOME: home,
+        },
+        timeout: 30_000,
+      },
+    ).trim()).toBe('corrected start succeeded')
+  },
+)
 
 test(
   'Hydra memory can replace and forget a key named constructor across restarts',
