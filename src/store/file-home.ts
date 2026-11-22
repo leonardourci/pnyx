@@ -6,7 +6,7 @@ import { readSnapshot, type FileSnapshot } from './snapshot.ts'
 import { privateDir, syncDirectory } from './storage.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 
-const COMPONENT = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
+export const COMPONENT = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const EMPTY: LogPosition = {
   bytes: 0,
   n: 0,
