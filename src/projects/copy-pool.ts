@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { commonDir, git, onBranch } from './git.ts'
 import { checkCopy, removeCopy } from './copy-check.ts'
@@ -58,10 +58,14 @@ export function recordedBranches({
   return [...branches]
 }
 
-export const copiesDir = () => join(
-  canonical({ path: pnyxHome() })!,
-  'copies',
-)
+export function copiesDir(): string {
+  const home = resolve(pnyxHome())
+
+  return join(
+    canonical({ path: home }) ?? home,
+    'copies',
+  )
+}
 
 // Slots are named <project>-<n>, so one can pass from task to task.
 export function slots({

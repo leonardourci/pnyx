@@ -109,6 +109,30 @@ test(
     const final = await pnyx.hydra()
     const { worker } = await source.startTask({ key: 'silent-compaction' })
     const task = await source.task({ key: 'silent-compaction' })
+    pnyx.claude.plan({
+      hydra: source.id,
+      text: '/compact',
+      compacting: true,
+    })
+    await source.owner({
+      args: [
+        'reply',
+        task.id,
+        '--text',
+        '/compact',
+      ],
+    })
+    await until({
+      what: 'the same session completes its first compaction',
+      check: async () => (await source.owner({
+        args: [
+          'task',
+          'show',
+          task.id,
+          '--full',
+        ],
+      })).task.compaction?.operations.some((operation: { state: string }) => operation.state === 'done'),
+    })
     const held = pnyx.claude.plan({
       hydra: source.id,
       text: '/compact',

@@ -435,7 +435,7 @@ export function createCompactionControl({
       for (const operation of card.compaction?.operations ?? []) {
         const deadline = compactionDeadlines.get(operation.session)
 
-        if (deadline) {
+        if (operation.state === 'running' && deadline) {
           deadlines.push({
             operation,
             remaining: Math.max(
@@ -443,13 +443,13 @@ export function createCompactionControl({
               deadline.endsAt - Date.now(),
             ),
           })
-          clearTimeout(compactionDeadlines.get(operation.session)?.timer)
+          clearTimeout(deadline.timer)
           compactionDeadlines.delete(operation.session)
         }
       }
 
       const deadline = settlingCompactions.get(card.id)
-      clearTimeout(settlingCompactions.get(card.id)?.timer)
+      clearTimeout(deadline?.timer)
       settlingCompactions.delete(card.id)
 
       return {

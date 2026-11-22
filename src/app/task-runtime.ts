@@ -5,7 +5,7 @@ import type { HydraState } from './model.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { canonical, taskRuntimeDir } from '#store/paths.ts'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Card } from '#tasks/model.ts'
@@ -73,8 +73,13 @@ interface HomeRuntime {
 
 const homes = new Map<string, HomeRuntime>()
 
-function runtime(): HomeRuntime {
-  const home = canonical({ path: pnyxHome() })!
+function runtimeHome(): string {
+  const path = resolve(pnyxHome())
+
+  return canonical({ path }) ?? path
+}
+
+function runtime({ home = runtimeHome() }: { home?: string } = {}): HomeRuntime {
   let current = homes.get(home)
 
   if (!current) {
@@ -95,8 +100,8 @@ function runtime(): HomeRuntime {
 }
 
 export function registerTaskHost({ owner }: { owner: TaskSessionOwner }): () => void {
-  const home = canonical({ path: pnyxHome() })!
-  const current = runtime()
+  const home = runtimeHome()
+  const current = runtime({ home })
 
   if (current.hosts.has(owner.hydraId)) {
     throw new HydraError({
