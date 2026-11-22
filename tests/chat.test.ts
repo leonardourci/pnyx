@@ -18,6 +18,7 @@ import { startReviewTimer } from '#hydra/review-timer.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { parse } from 'yaml'
@@ -2899,9 +2900,18 @@ test(
       ],
     })).settings.reviewMinutes
     const session = await hydra.chat({ text: 'Prepare heartbeat review' })
+
+    const readyForReview = () => {
+      const card = loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]
+
+      return session.answered === session.received.length && card?.sessionActivity === 'finished'
+        && !card.attention.some(item => item.key === INTERRUPTED)
+        && !queue({ hydraId: hydra.id })?.working
+    }
+
     await until({
       what: 'Hydra to finish preparing',
-      check: () => !queue({ hydraId: hydra.id })?.working,
+      check: readyForReview,
     })
     await hydra.owner({
       args: [
@@ -3073,9 +3083,7 @@ test(
         .toContain(new Date(now).toISOString())
       await until({
         what: 'Hydra to be idle before reviewing the committed task question reminder',
-        check: () => session.answered === session.received.length
-          && loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished'
-          && !queue({ hydraId: hydra.id })?.working,
+        check: readyForReview,
       })
       await timer.check()
       await until({
@@ -3122,8 +3130,7 @@ test(
       now += 4 * 60 * 60_000
       await until({
         what: 'the preceding review turn to finish',
-        check: () => session.answered === session.received.length
-          && !queue({ hydraId: hydra.id })?.working,
+        check: readyForReview,
       })
       await timer.check()
       await until({
