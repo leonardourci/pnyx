@@ -830,7 +830,25 @@ test(
       ],
     })).task
     expect((await task()).attention).toContainEqual(expect.objectContaining({ key: 'volatile' }))
-    await hydra.ownerRefused({
+    const folder = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      hydra.id,
+    )
+    const paths = [
+      join(
+        folder,
+        'hydra.log',
+      ),
+      join(
+        folder,
+        'tasks',
+        (await task()).id,
+        'task.log',
+      ),
+    ]
+    const before = paths.map(path => readFileSync(path))
+    expect((await hydra.ownerRefused({
       args: [
         'task',
         'rename',
@@ -840,8 +858,9 @@ test(
         '--if-revision',
         '0',
       ],
-    })
+    })).code).toBe('REVISION_CONFLICT')
     expect((await task()).attention).toContainEqual(expect.objectContaining({ key: 'volatile' }))
+    expect(paths.map(path => readFileSync(path))).toEqual(before)
   },
 )
 
