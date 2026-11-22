@@ -1,3 +1,18 @@
+import type { HydraState } from '#app/model.ts'
+import type { LogPosition } from '#store/log.ts'
+
+export interface SearchSnapshot {
+  state: HydraState
+  positions: Map<string, number>
+  sources: {
+    key: string
+    scope: string
+    path: string
+    position: LogPosition
+    accepted: ReadonlyMap<string, { n: number }>
+  }[]
+}
+
 export const KINDS = [
   'event',
   'note',

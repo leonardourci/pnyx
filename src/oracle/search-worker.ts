@@ -1,27 +1,18 @@
-import { loadHydra } from '#app/store.ts'
 import { readProjectMemory } from '#memory/project-memory.ts'
 import { projectIdentity } from '#projects/sources.ts'
 import { projectsFor } from '#projects/read.ts'
 import { parentPort, workerData } from 'node:worker_threads'
 import { HydraError } from '#store/errors.ts'
-import type { SearchAnswer, SearchInput } from './search-background.ts'
+import type { SearchAnswer, SearchWork } from './search-background.ts'
 import { search } from './search.ts'
 
-const input: SearchInput = workerData
+const input: SearchWork = workerData
 
 try {
-  const state = loadHydra({ hydraId: input.hydraId }).state
+  const state = input.state
   const projects = (projectsFor({ state })).filter(project => !project.detached)
   const memoryDocuments = (await Promise.all(projects.map(async project => {
     const { id } = await projectIdentity(project)
-    const current = loadHydra({ hydraId: input.hydraId }).state
-    const attached = projectsFor({ state: current }).some(candidate =>
-      !candidate.detached && candidate.path === project.path)
-
-    if (!attached) {
-      return []
-    }
-
     const memory = readProjectMemory({id})
 
     return Object.values(memory.documents).map(text => ({
