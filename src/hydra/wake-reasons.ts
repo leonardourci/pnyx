@@ -26,7 +26,6 @@ export interface WakeReason {
   detail?: string
 }
 
-// How much of a worker's own words a reason line quotes; the full text is in its worker.log.
 const QUOTE_CHARS = 200
 
 // Declarations that need Hydra's judgment; working and paused stay on the card until its next check.

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HydraState } from '#app/model.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
@@ -63,7 +63,10 @@ export function compactionFiles({
         card: HYDRA_CARD,
       }).map(source => source.path),
     ]),
-  ].filter(path => existsSync(path))
+  ].filter(path => lstatSync(
+    path,
+    { throwIfNoEntry: false },
+  )?.isFile())
 }
 
 export const readCommand = ({ path }: { path: string }) => `cat -- '${path.replace(

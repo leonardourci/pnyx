@@ -124,7 +124,7 @@ The **Oracle** searches tasks, their events and notes by keyword, matching word 
 
 ## CLI reference
 
-Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for details. Workers append reports to their assigned `worker.log`. Hydra and workers read `hydra.log`, `task.log`, `worker.log` and the optional snapshot directly.
+Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for details. Workers append reports to their assigned `worker.log`.
 
 | Command | Description |
 | --- | --- |

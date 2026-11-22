@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { emptyHydra } from '#app/reducer.ts'
@@ -204,6 +204,15 @@ test(
       dir,
       'snapshot.json',
     )
+    symlinkSync(
+      transcript,
+      snapshot,
+    )
+    expect(compactionFiles({
+      hydraId: 'file-reads',
+      state,
+    })).not.toContain(snapshot)
+    unlinkSync(snapshot)
     writeFileSync(
       snapshot,
       '{"v":1,"at":"2026-11-21T00:00:00Z"}\n',
