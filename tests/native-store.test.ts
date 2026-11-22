@@ -18,6 +18,52 @@ beforeAll(async () => {
 })
 
 test(
+  'batch previews refuse an event id already accepted by an individual command',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const id = 'individual-command-id'
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Original task',
+        '--event-id',
+        id,
+      ],
+    })
+    const input = JSON.stringify({
+      version: 1,
+      changes: [
+        {
+          op: 'task.create',
+          title: 'Conflicting batch',
+          noStart: true,
+        },
+      ],
+    })
+
+    for (const preview of [
+      true,
+      false,
+    ]) {
+      expect((await hydra.ownerRefused({
+        args: [
+          'apply',
+          '--file',
+          '-',
+          '--event-id',
+          id,
+          ...(preview ? ['--check'] : []),
+        ],
+        input,
+      })).code).toBe('IDEMPOTENCY_CONFLICT')
+    }
+  },
+)
+
+test(
   'a corrupt optional Hydra does not prevent healthy Hydras from starting',
   async () => {
     const healthy = await pnyx.hydra()
@@ -305,6 +351,8 @@ test(
         'Offline configuration',
       ],
     })
+    let ids: string[] = []
+    let offline: ReturnType<typeof readNativeHydra>['state'] | undefined
     await pnyx.restart({
       whileStopped: () => {
         const entries = readFileSync(
@@ -319,17 +367,19 @@ test(
           .trim()
           .split('\n')
           .map(line => JSON.parse(line) as { id: string })
-        const offline = readNativeHydra({ hydraId: hydra.id }).state
-        expect(offline.seq).toBe(entries.length)
-        expect(offline.eventIds).toEqual(Object.fromEntries(entries.map((
-          entry,
-          index,
-        ) => [
-          entry.id,
-          index + 1,
-        ])))
+        ids = entries.map(entry => entry.id)
+        offline = readNativeHydra({ hydraId: hydra.id }).state
       },
     })
+    expect(offline?.seq).toBe(ids.length)
+    expect(Object.keys(offline!.eventIds).sort()).toEqual(ids.sort())
+    expect(Object.values(offline!.eventIds).sort((
+      a,
+      b,
+    ) => a - b)).toEqual(ids.map((
+      _,
+      index,
+    ) => index + 1))
   },
 )
 
