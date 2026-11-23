@@ -4,7 +4,7 @@ export interface ViewPreferences {
   workspace: import('./workspace.ts').WorkspaceLayout
   focusMode: boolean
   lastMessageOnCards: boolean
-  defaultTitanWidth: number
+  defaultHydraWidth: number
   theme: 'light' | 'dark' | 'system'
   fontSize: number
   chatFontSize: number

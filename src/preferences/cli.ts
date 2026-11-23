@@ -147,7 +147,7 @@ export const layout = guard({
           projects: view.workspace.projectWidths,
         },
         defaults: {
-          hydra: view.defaultTitanWidth,
+          hydra: view.defaultHydraWidth,
         },
       }
     }

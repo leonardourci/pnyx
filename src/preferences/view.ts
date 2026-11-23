@@ -17,7 +17,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
   focusMode: true,
   lastMessageOnCards: true,
   hydraWidth: DEFAULT_WIDTHS.hydra,
-  defaultTitanWidth: DEFAULT_WIDTHS.hydra,
+  defaultHydraWidth: DEFAULT_WIDTHS.hydra,
   fontSize: 14,
   chatFontSize: 16,
   codeFontSize: 13,
@@ -148,8 +148,8 @@ export const viewFor = ({
   const own = structuredClone(knownViewFields({ view: state.view }))
 
   // Only a Titan's own view from older releases can hold their saved default widths; shared values are literal.
-  if (own.defaultTitanWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
-    delete own.defaultTitanWidth
+  if (own.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
+    delete own.defaultHydraWidth
   }
 
   const view = {
@@ -161,9 +161,9 @@ export const viewFor = ({
   return {
     ...view,
     workspace: workspaceLayout({ input: view.workspace }),
-    defaultTitanWidth: persistedSize({
-      value: view.defaultTitanWidth,
-      fallback: DEFAULT_VIEW.defaultTitanWidth,
+    defaultHydraWidth: persistedSize({
+      value: view.defaultHydraWidth,
+      fallback: DEFAULT_VIEW.defaultHydraWidth,
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
     fontSize: persistedSize(
@@ -219,7 +219,7 @@ export const viewFor = ({
 }
 
 export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
-  hydraWidth: view.defaultTitanWidth,
+  hydraWidth: view.defaultHydraWidth,
   workspace: {
     projectWidths: Object.fromEntries(Object.keys(view.workspace.projectWidths).map(id => [
       id,
@@ -235,8 +235,8 @@ export function resizeViewPatch({
 }): Record<string, unknown> {
   const resized = { ...patch }
 
-  if (patch.defaultTitanWidth !== undefined) {
-    resized.hydraWidth = patch.hydraWidth === undefined ? patch.defaultTitanWidth : patch.hydraWidth
+  if (patch.defaultHydraWidth !== undefined) {
+    resized.hydraWidth = patch.hydraWidth === undefined ? patch.defaultHydraWidth : patch.hydraWidth
   }
 
   return resized
@@ -326,7 +326,7 @@ export function patchView({
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
-      case 'defaultTitanWidth': next.defaultTitanWidth = size({
+      case 'defaultHydraWidth': next.defaultHydraWidth = size({
         value,
         ...VIEW_SIZE_LIMITS.hydraWidth,
         key,
