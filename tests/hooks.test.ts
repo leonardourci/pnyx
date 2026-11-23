@@ -808,6 +808,17 @@ test(
       'tasks',
       '.pending-task-XXXXXX',
     ))
+    mkdirSync(
+      join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        'default',
+        'tasks',
+        'unpublished-task',
+        'task.log',
+      ),
+      { recursive: true },
+    )
     const inProject = await hook({
       event: 'SessionStart',
       payload: {
