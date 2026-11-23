@@ -29,7 +29,7 @@ import { deliveredInputs, replyEchoes } from './task-messages.ts'
 import { hydraConfig } from './config.ts'
 import type { HydraMessage } from './model.ts'
 
-// messageId and part let the Hydra rejoin a long message split into transport chunks.
+// messageId and part rejoin native message fragments and transport chunks.
 export interface ThreadEntry {
   targetAgent?: AgentConfig
   offset?: number
@@ -153,8 +153,8 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
     parts.push({
       ...entry,
       id: `${entry.id}.${start}`,
-      messageId: entry.id,
-      part: start,
+      messageId: entry.messageId ?? entry.id,
+      part: (entry.part ?? 0) + start,
       text: text.slice(
         start,
         end,
@@ -172,6 +172,7 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
 }
 
 interface EntryOptions {
+  path?: string
   offset: number
   tools?: boolean
   thinking?: boolean
@@ -184,7 +185,13 @@ export function recordEntries({
   ...options
 }: EntryOptions & { record: unknown }): ThreadEntry[] {
   return transcriptEntries({
-    parsed: readTranscriptRecord({ record }),
+    parsed: readTranscriptRecord({
+      record,
+      source: options.path ? {
+        path: options.path,
+        offset: options.offset,
+      } : undefined,
+    }),
     ...options,
   })
 }
@@ -213,6 +220,7 @@ function transcriptEntries({
   session,
 }: EntryOptions & { parsed: TranscriptRecord }): ThreadEntry[] {
   const messages = parsed.messages.filter(message => boundaries || !message.internal)
+  let part = 0
   const entries: ThreadEntry[] = messages.map((
     message,
     index,
@@ -222,12 +230,16 @@ function transcriptEntries({
       offset,
       kind: 'message',
       role: parsed.role,
-      text: message.text,
+      text: message.messageId ? redact({ text: message.text }) : message.text,
+      messageId: message.messageId,
+      part: message.messageId ? part : undefined,
       at: message.at,
       hidden: message.internal,
       final: parsed.final,
       block: message.block,
     }
+
+    part += entry.text.length
 
     if (message.pnyx) {
       entry.pnyx = true
@@ -273,6 +285,7 @@ function transcriptEntries({
     entry: {
       ...entry,
       id: session ? `${session}:${entry.id}` : entry.id,
+      messageId: entry.messageId && session ? `${session}:${entry.messageId}` : entry.messageId,
       session,
     },
   }))
@@ -724,7 +737,13 @@ function readNative({
             newline,
           ).toString())
 
-          const decoded = readTranscriptRecord({ record })
+          const decoded = readTranscriptRecord({
+            record,
+            source: {
+              path,
+              offset,
+            },
+          })
 
           if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
             excludedAt.push(decoded.at)

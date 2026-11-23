@@ -63,6 +63,7 @@ function entriesOf({
   return recordEntries({
     record,
     offset,
+    path: source.path,
     session: source.session,
     tools: false,
     thinking: false,
