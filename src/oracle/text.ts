@@ -37,10 +37,20 @@ const INJECTED = new RegExp(
   'g',
 )
 
-export const withoutInjected = ({ text }: { text: string }) => text.replace(
-  INJECTED,
-  '',
-).trim()
+export const withoutInjected = ({
+  text,
+  trim = true,
+}: {
+  text: string
+  trim?: boolean
+}) => {
+  const visible = text.replace(
+    INJECTED,
+    '',
+  )
+
+  return trim ? visible.trim() : visible
+}
 
 // A wake's trailing reminders are internal too, even after other injected context.
 export function wakeInput({ text }: { text: string }): boolean {
@@ -64,8 +74,17 @@ export function wakeInput({ text }: { text: string }): boolean {
   return false
 }
 
-export const visibleText = ({ text }: { text: string }): string =>
-  wakeInput({ text }) ? '' : withoutInjected({ text })
+export const visibleText = ({
+  text,
+  trim,
+}: {
+  text: string
+  trim?: boolean
+}): string =>
+  wakeInput({ text }) ? '' : withoutInjected({
+    text,
+    trim,
+  })
 
 export function redact({ text }: { text: string }): string {
   return SECRETS.reduce(
