@@ -2,6 +2,7 @@ import { COMMON, guard, parse, type Options } from './cli-support.ts'
 import type { HydraState } from './model.ts'
 import { loadHydra } from './store.ts'
 import { pageState, type PageInterest } from './page-state.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { projectGroups } from '#projects/groups.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -100,15 +101,28 @@ function pageOutput({
   }
 
   const cards = Object.values(page.cards)
+  const counts = new Map<string, number>()
+
+  for (const card of cards) {
+    if (card.id === HYDRA_CARD || !liveTask({ card })) {
+      continue
+    }
+
+    const group = taskProjectGroup({
+      state,
+      card,
+    })
+    counts.set(
+      group,
+      (counts.get(group) ?? 0) + 1,
+    )
+  }
 
   return {
     seq: page.seq,
     columns: projectGroups({ state }).map(column => ({
       column: column.id,
-      cards: cards.filter(card => liveTask({ card }) && taskProjectGroup({
-        state,
-        card,
-      }) === column.id).length,
+      cards: counts.get(column.id) ?? 0,
     })),
     opened: opened.length ? opened : 'none: no --card given',
     hidden: interest.hidden ? cards.filter(card => !liveTask({ card })).length : 'not included; pass --hidden',

@@ -3,6 +3,7 @@ import type { Card } from '#tasks/model.ts'
 import { matchingSuggestions, suggestionMatch, type SuggestionMatch } from './suggestion-matches.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveTask, isManagedTask } from '#tasks/select.ts'
+import { currentState } from '#tasks/card-status.ts'
 import { paragraphs } from '#oracle/text.ts'
 
 export interface TaskMention {
@@ -238,7 +239,10 @@ export function mentionContext({
         return `Task ${mention.id}: ${mention.title}\nUnavailable in this Hydra.`
       }
 
-      const update = card.workerLog?.latest.text ?? 'No update yet.'
+      const update = currentState({
+        card,
+        workerOnly: true,
+      })?.text ?? 'No update yet.'
 
       return `Task ${card.id}: ${card.title}\nMentioned as: ${mention.title}\nInitial prompt: ${card.initialPrompt ?? card.brief ?? 'No initial prompt.'}\nLatest update: ${update}`
     }),

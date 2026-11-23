@@ -14,27 +14,31 @@ const project = projectsFor({ state }).find(project => !project.detached
   && folder && (folder === project.path || folder.startsWith(`${project.path}/`)))
 
 if (project) {
-  const open = Object.values(state.cards).filter(card => liveTask({ card })
-    && card.project === project.path && cardStatus({
-    card,
-    cards: state.cards,
-    sessions: state.sessions,
-  }).kind !== 'done')
+  const open = Object.values(state.cards)
+    .filter(card => liveTask({ card }) && card.project === project.path)
+    .map(card => ({
+      card,
+      status: cardStatus({
+        card,
+        cards: state.cards,
+        sessions: state.sessions,
+      }),
+    }))
+    .filter(({ status }) => status.kind !== 'done' && status.kind !== 'merged')
     .sort((
       a,
       b,
-    ) => rankOf({ card: a }) - rankOf({ card: b }))
+    ) => rankOf({ card: a.card }) - rankOf({ card: b.card }))
 
   console.log([
     `Pnyx Hydra ${hydraId}, project ${project.name}: ${open.length} open tasks.`,
     ...open.slice(
       0,
       CONTEXT_TASKS,
-    ).map(card => `${card.id}: ${card.title} (${cardStatus({
+    ).map(({
       card,
-      cards: state.cards,
-      sessions: state.sessions,
-    }).text})`),
+      status,
+    }) => `${card.id}: ${card.title} (${status.text})`),
     recordContext({ hydraId }),
   ].join('\n'))
 }
