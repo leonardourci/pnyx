@@ -104,6 +104,7 @@ test(
     const detachedCard = {
       ...state.cards[HYDRA_CARD],
       agent: undefined,
+      sessionIds: [],
     }
     const detachedHistory = readThread({
       hydraId: hydra.id,
