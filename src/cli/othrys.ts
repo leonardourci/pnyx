@@ -1,6 +1,12 @@
 #!/usr/bin/env node
+import { compatibleEnvironment } from '#store/legacy-env.ts'
 import { cliArguments } from './arguments.ts'
 import { installedVersion } from './version.ts'
+
+Object.assign(
+  process.env,
+  compatibleEnvironment({ env: process.env }),
+)
 
 const argv = process.argv.slice(2)
 let argumentsToRun: ReturnType<typeof cliArguments>

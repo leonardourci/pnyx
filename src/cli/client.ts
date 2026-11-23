@@ -2,7 +2,7 @@ import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { MAX_BODY } from '#app/server-protocol.ts'
 import { request as httpRequest } from 'node:http'
 import { setTimeout as delay } from 'node:timers/promises'
-import { pnyxHome } from '#store/paths.ts'
+import { othrysHome } from '#store/paths.ts'
 import { cliArguments } from './arguments.ts'
 import { IDENTITY } from '#app/request-context.ts'
 import type { RunAnswer } from '#app/api-run.ts'
@@ -16,7 +16,7 @@ const record = () => {
   try {
     return JSON.parse(readFileSync(
       join(
-        pnyxHome(),
+        othrysHome(),
         'server.json',
       ),
       'utf8',
@@ -147,14 +147,14 @@ async function send({
           'content-length': Buffer.byteLength(body),
           'authorization': `Bearer ${readFileSync(
             join(
-              pnyxHome(),
+              othrysHome(),
               'token',
             ),
             'utf8',
           ).trim()}`,
         },
       },
-      // eslint-disable-next-line pnyx/object-params -- node:http owns the response callback signature.
+      // eslint-disable-next-line othrys/object-params -- node:http owns the response callback signature.
       response => {
         let text = ''
         response.setEncoding('utf8')
@@ -168,7 +168,7 @@ async function send({
           'end',
           () => {
             if (response.statusCode !== 200) {
-              reject(new Error(`the Pnyx server answered ${response.statusCode}`))
+              reject(new Error(`the Othrys server answered ${response.statusCode}`))
 
               return
             }
@@ -260,14 +260,14 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
       }
     } else if (!started) {
       started = true
-      const { restartPnyx } = await import('#upgrade/restart.ts')
+      const { restartOthrys } = await import('#upgrade/restart.ts')
       const { serviceFile } = await import('#setup/service.ts')
 
       // Only the login service starts it; a server nobody installed is started by its owner.
       if (!existsSync(serviceFile().path)) {
         failure({
           argv,
-          message: 'Pnyx is not running',
+          message: 'Othrys is not running',
           code: 'NOT_RUNNING',
         })
 
@@ -275,7 +275,7 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
       }
 
       try {
-        await restartPnyx()
+        await restartOthrys()
       } catch (error) {
         failure({
           argv,

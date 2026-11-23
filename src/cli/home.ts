@@ -1,20 +1,20 @@
 import { HOME_LIMIT, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
-import { DEFAULT_HYDRA } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { DEFAULT_TITAN } from '#app/home-migration.ts'
+import { loadTitan } from '#app/store.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { readServer } from '#app/server-state.ts'
 import { projectRows } from '#projects/read.ts'
 import { spoolFiles } from '#store/storage.ts'
 import { cardRow } from '#tasks/cli.ts'
 
-export async function home({ hydraId = DEFAULT_HYDRA }: { hydraId?: string }): Promise<Output> {
+export async function home({ hydraId = DEFAULT_TITAN }: { hydraId?: string }): Promise<Output> {
   await hideDone({ hydraId })
   const {
     dir,
     state,
-  } = loadHydra({ hydraId })
+  } = loadTitan({ hydraId })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const config = hydraConfig({ state })
   const server = await readServer({ hydraId })

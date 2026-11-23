@@ -2,10 +2,10 @@ import { acknowledgeInstruction } from '#workers/inbox-cli.ts'
 import { cliArguments } from './arguments.ts'
 import type { Writable } from 'node:stream'
 import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/cli-support.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { createCommand } from '#workers/create.ts'
 import { sendReply } from '#workers/reply.ts'
-import { hydraSend } from '#hydra/send-cli.ts'
+import { hydraSend } from '#titan/send-cli.ts'
 import { taskCommand } from '#app/task-cli.ts'
 import { setup } from '#setup/cli.ts'
 import { serve } from '#app/server-cli.ts'
@@ -16,24 +16,24 @@ import { version } from './version.ts'
 import { withCommandNotices } from '#app/command-notices.ts'
 import { workerScoped } from '#workers/worker-scope.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
-import { agentNotices } from '#hydra/hydra-session.ts'
+import { agentNotices } from '#titan/titan-session.ts'
 
-const HELP = `usage: pnyx <command> [--hydra <id>] [--json]
+const HELP = `usage: othrys <command> [--titan <id>] [--json]
 
-pnyx task create --title <title> --brief <instructions> [--project <name|path>]
-pnyx task ack <task> <instruction> --session <session> --generation <reference>
-pnyx send --text <message> [--task <id>] [--idempotency-key <key>]
-pnyx answer <task> <question> --text <answer> [--from-message <id>]
-pnyx board
-pnyx serve [--port <n>]
-pnyx setup [check|hooks|skills] [--preview]
-pnyx debug health
+othrys task create --title <title> --brief <instructions> [--project <name|path>]
+othrys task ack <task> <instruction> --session <session> --generation <reference>
+othrys send --text <message> [--task <id>] [--idempotency-key <key>]
+othrys answer <task> <question> --text <answer> [--from-message <id>]
+othrys board
+othrys serve [--port <n>]
+othrys setup [check|hooks|skills] [--preview]
+othrys debug health
 
 Task creation starts its worker. Use --harness, --account, --model, --effort,
 --mode, --fast or --rule to choose its settings.
-Send addresses Hydra unless --task names a worker. --file <path|-> reads message text.
+Send addresses Titan unless --task names a worker. --file <path|-> reads message text.
 Read hydra.log, tasks/<task>/task.log, worker.log and snapshot.json directly.
-Add --json when a script reads an action receipt or the Hydra.
+Add --json when a script reads an action receipt or the Titan.
 Workers append needs-you, blocked, done, link or note lines to their worker.log.
 `
 
@@ -174,7 +174,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     })
 
     if ((values.text === undefined) === (values.file === undefined)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'give either --text or --file',
         code: 'VALIDATION_ERROR',
       })
@@ -190,7 +190,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
         reply: await runAction({
           name: 'reply',
           args: [
-            `--hydra=${hydraId}`,
+            `--titan=${hydraId}`,
             ...(values.actor ? [`--actor=${values.actor}`] : []),
             '--',
             task,
@@ -301,7 +301,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     })
   }
 
-  throw new HydraError({
+  throw new TitanError({
     message: `unknown command: ${argv.join(' ')}`,
     code: 'VALIDATION_ERROR',
   })
@@ -383,14 +383,14 @@ export async function runCli({
     const command = args[0]
 
     if (remote && (command === 'serve' || command === 'setup')) {
-      throw new HydraError({
+      throw new TitanError({
         message: `${command} must run in the local CLI`,
         code: 'VALIDATION_ERROR',
       })
     }
 
     if (remote && command === 'send' && parsed.tokens.some(token => token.kind === 'option' && token.name === 'file' && token.value !== '-')) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'send file contents through stdin with --file -',
         code: 'VALIDATION_ERROR',
       })
@@ -419,7 +419,7 @@ export async function runCli({
     const argumentError = error instanceof Error && 'code' in error && String(error.code).startsWith('ERR_PARSE_ARGS')
     let code = 'UNKNOWN'
 
-    if (error instanceof HydraError) {
+    if (error instanceof TitanError) {
       code = error.code
     } else if (argumentError) {
       code = 'VALIDATION_ERROR'

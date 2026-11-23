@@ -43,18 +43,26 @@ try {
       chmodSync(
         join(
           out,
-          'cli/pnyx.js',
+          'cli/othrys.js',
         ),
         0o755,
       )
-      writeFileSync(
-        join(
-          out,
-          'cli/pnyx-axi.js',
-        ),
-        "#!/usr/bin/env node\nimport './pnyx.js'\n",
-        { mode: 0o755 },
-      )
+
+      for (const alias of [
+        'othrys-axi',
+        'pnyx',
+        'pnyx-axi',
+      ]) {
+        writeFileSync(
+          join(
+            out,
+            `cli/${alias}.js`,
+          ),
+          "#!/usr/bin/env node\nimport './othrys.js'\n",
+          { mode: 0o755 },
+        )
+      }
+
       run({
         command: 'vite',
         args: [
