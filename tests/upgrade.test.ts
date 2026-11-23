@@ -443,6 +443,101 @@ test(
 )
 
 test(
+  'an interrupted legacy upgrade keeps its original commit and saved local work when it resumes',
+  async () => {
+    const hydra = await othrys.hydra()
+    const previous = folder.head()
+    const next = folder.publish({
+      files: { 'build.sh': building({ version: 'resumed' }) },
+      message: 'finish interrupted upgrade',
+    })
+    writeFileSync(
+      join(
+        folder.install,
+        'build.sh',
+      ),
+      'echo saved local work\n',
+    )
+    git({
+      cwd: folder.install,
+      args: [
+        'stash',
+        'push',
+        '-m',
+        'saved before interrupted upgrade',
+      ],
+    })
+    const saved = git({
+      cwd: folder.install,
+      args: [
+        'rev-parse',
+        'refs/stash',
+      ],
+    })
+    git({
+      cwd: folder.install,
+      args: [
+        'fetch',
+        'origin',
+        'main',
+      ],
+    })
+    git({
+      cwd: folder.install,
+      args: [
+        'merge',
+        '--ff-only',
+        'FETCH_HEAD',
+      ],
+    })
+    const marker = join(
+      folder.install,
+      git({
+        cwd: folder.install,
+        args: [
+          'rev-parse',
+          '--git-path',
+          'pnyx-upgrade-from',
+        ],
+      }),
+    )
+    writeFileSync(
+      marker,
+      JSON.stringify({
+        from: previous,
+        stashes: [saved],
+      }),
+    )
+    expect(folder.built()).toBe('one')
+
+    await upgrade({ hydra })
+    const result = await settled({
+      hydra,
+      state: 'restarting',
+    })
+    expect(result).toMatchObject({
+      from: previous,
+      to: next,
+    })
+    expect(result.reasons?.join(' ')).toContain(`Saved local work as ${saved}`)
+    expect(folder.built()).toBe('resumed')
+    expect(git({
+      cwd: folder.install,
+      args: [
+        'show',
+        `${saved}:build.sh`,
+      ],
+    })).toBe('echo saved local work')
+    expect(existsSync(marker)).toBe(false)
+    await othrys.restart()
+    await settled({
+      hydra,
+      state: 'done',
+    })
+  },
+)
+
+test(
   'a detached restart imports an installation path containing a fragment character',
   async () => {
     const install = join(
