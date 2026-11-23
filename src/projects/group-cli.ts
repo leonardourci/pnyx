@@ -6,10 +6,10 @@ import { parse, meta, WRITE, required } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { withWriter } from '#app/writer.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
-import { HydraError } from '#store/errors.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import type { HydraProject } from './model.ts'
-import { findProject, projectFolder, sharingHydras } from './read.ts'
+import { TitanError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import type { TitanProject } from './model.ts'
+import { findProject, projectFolder, sharingTitans } from './read.ts'
 import { checkProjectsRevision } from './ownership.ts'
 
 export function childRepositories({ path }: { path: string }) {
@@ -52,8 +52,8 @@ export function attachProjectGroup({
   groupId?: string
   meta: Meta
   attach: boolean
-  landing?: HydraProject['landing']
-  merge?: HydraProject['merge']
+  landing?: TitanProject['landing']
+  merge?: TitanProject['merge']
 }) {
   return withAsyncRegistryLock({
     fn: () => withWriter({
@@ -90,14 +90,14 @@ export function attachProjectGroup({
             })
           }
 
-          const others = sharingHydras({
+          const others = sharingTitans({
             hydraId,
             path,
           })
 
           if ((!before || before.detached) && others.length) {
             inform({
-              reason: `${path} is also attached to Hydra ${others.map(hydra => hydra.id).join(', ')}`,
+              reason: `${path} is also attached to Titan ${others.map(hydra => hydra.id).join(', ')}`,
               clear: `Review the repository keeper for ${path} in the UI.`,
             })
           }
@@ -184,7 +184,7 @@ export function projectGroupCommand({ args }: { args: string[] }) {
   const paths = positionals.slice(2)
 
   if (!paths.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use project group <name> <repo-path>...',
       code: 'VALIDATION_ERROR',
     })

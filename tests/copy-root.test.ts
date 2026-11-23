@@ -1,18 +1,18 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, type Othrys } from './setup/othrys.ts'
 import { git } from './setup/upgrade.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test(
   'copy allocation refuses linked roots and leaves linked slots untouched',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = hydra.folder({ name: 'copy-root-project' })
     writeFileSync(
       join(
@@ -65,7 +65,7 @@ test(
       ],
     })
     const pool = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'copies',
     )
     const outside = hydra.folder({ name: 'outside-pool' })

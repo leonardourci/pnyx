@@ -5,7 +5,7 @@ import { readlink, realpath, stat, symlink, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import type { ProjectRefresh } from './refresh-types.ts'
-import { PNYX_ROOT } from '#upgrade/runner.ts'
+import { OTHRYS_ROOT } from '#upgrade/runner.ts'
 
 const GIT_TIMEOUT_MS = 30_000
 const GIT_OUTPUT_BYTES = 1024 * 1024
@@ -472,9 +472,9 @@ export async function refreshProject({
       return
     }
 
-    if (root === await realpath(PNYX_ROOT)) {
+    if (root === await realpath(OTHRYS_ROOT)) {
       result.state = 'needs-attention'
-      result.reason = 'this checkout is the running Pnyx install; use /upgrade to pull, build and restart together'
+      result.reason = 'this checkout is the running Othrys install; use /upgrade to pull, build and restart together'
 
       return
     }

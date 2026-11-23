@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { afterHandoffSync } from './setup/handoff-sync.ts'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 import { createProject } from './setup/projects.ts'
 import { git } from './setup/upgrade.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -16,16 +16,16 @@ const PAGE_COMMAND = join(
 )
 const RESTART_FLOW_TIMEOUT_MS = 120_000
 const HANDOFF_QUEUE_DELAY_MS = 100
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
+  othrys = await startOthrys({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
 })
 
 test(
   'a project task runs in its own copy on its own readable branch, leaves the project folder alone, is done only once its work is committed, and hands its worker to the queued task across declined, lost and failed checkouts',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'hydra',
@@ -60,7 +60,7 @@ test(
     })
     const copy = started.agent.folder as string
     expect(copy.startsWith(join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'copies',
     ))).toBe(true)
     await hydra.agent({ cwd: copy })
@@ -281,7 +281,7 @@ if (branch === 'hercules/add-cart') {
       hook,
       { mode: 0o700 },
     )
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: async () => {
         git({
           cwd: path,
@@ -379,7 +379,7 @@ if (branch === 'hercules/add-cart') {
     const nextTask = await hydra.task({ key: 'next' })
     let lostReply = false
     const restoreSync = afterHandoffSync({
-      home: process.env.PNYX_HOME!,
+      home: process.env.OTHRYS_HOME!,
       hydra: hydra.id,
       source: createdSource.card.id,
       target: nextTask.id,
@@ -392,7 +392,7 @@ if (branch === 'hercules/add-cart') {
     })
 
     try {
-      await pnyx.restart({
+      await othrys.restart({
         whileStopped: () => {
           expect(git({
             cwd: copy,
@@ -522,7 +522,7 @@ if (branch === 'hercules/next-chart-3' && existsSync(${JSON.stringify(failureMar
         'done',
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     await until({
       what: 'checkout hook failure',
       check: () => existsSync(failureMarker),
@@ -649,7 +649,7 @@ test.each([
     cut,
     first,
   }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'hydra',
@@ -793,11 +793,11 @@ test.each([
             })
           }
         } finally {
-          await pnyx.restart()
+          await othrys.restart()
         }
       }
     })
-    await pnyx.stop()
+    await othrys.stop()
     const hooks = join(
       project,
       'crash-hooks',
@@ -827,7 +827,7 @@ if (branch === 'iris/target') {
     'gate',
   ])})
   writeFileSync(${JSON.stringify(marker)}, branch)
-  process.kill(Number(process.env.PNYX_HANDOFF_CRASH_PID), 'SIGKILL')
+  process.kill(Number(process.env.OTHRYS_HANDOFF_CRASH_PID), 'SIGKILL')
 }
 `,
       { mode: 0o700 },
@@ -860,12 +860,12 @@ if (branch === 'iris/target') {
         {
           env: {
             ...process.env,
-            PNYX_CRASH_HYDRA: hydra.id,
-            PNYX_CRASH_SOURCE: sourceId,
-            PNYX_CRASH_TARGET: targetId,
-            PNYX_CRASH_SCOPE_CUT: cut,
-            PNYX_CRASH_PROOF: syncProof,
-            PNYX_CRASH_AFTER_COMMIT: afterCommit ? cwd : '',
+            OTHRYS_CRASH_TITAN: hydra.id,
+            OTHRYS_CRASH_SOURCE: sourceId,
+            OTHRYS_CRASH_TARGET: targetId,
+            OTHRYS_CRASH_SCOPE_CUT: cut,
+            OTHRYS_CRASH_PROOF: syncProof,
+            OTHRYS_CRASH_AFTER_COMMIT: afterCommit ? cwd : '',
           },
           stdio: [
             'ignore',
@@ -945,7 +945,7 @@ if (branch === 'iris/target') {
         'no',
       ],
     })
-    await pnyx.start()
+    await othrys.start()
     await hydra.task({ key: sourceId })
     expect(readFileSync(
       kept,
@@ -982,7 +982,7 @@ if (branch === 'iris/target') {
       error: expect.stringContaining('unresolved handoff'),
     })
     expect(existsSync(cwd)).toBe(true)
-    await pnyx.restart()
+    await othrys.restart()
     const source = (await hydra.owner({
       args: [
         'task',
@@ -1016,7 +1016,7 @@ if (branch === 'iris/target') {
         'iris/target',
       ],
     })).toContain('iris/target')
-    await pnyx.stop()
+    await othrys.stop()
     child = launch({ afterCommit: true })
     await until({
       what: 'second scratch server ready',
@@ -1047,7 +1047,7 @@ if (branch === 'iris/target') {
       committedWork,
       'keep committed-checkout work',
     )
-    await pnyx.start()
+    await othrys.start()
     expect((await hydra.ownerRefused({
       args: [
         'reply',
@@ -1102,7 +1102,7 @@ if (branch === 'iris/target') {
       'utf8',
     )).toBe('keep committed-checkout work')
     rmSync(committedWork)
-    await pnyx.restart({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
+    await othrys.restart({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
     const committedTarget = (await hydra.owner({
       args: [
         'task',

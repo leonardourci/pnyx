@@ -1,30 +1,30 @@
 import { inform } from '#app/command-notices.ts'
 import { prepareTaskRuntimeMove } from '#app/task-runtime.ts'
 import { randomUUID } from 'node:crypto'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { ownerActor } from '#app/actors.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TitanError } from '#store/errors.ts'
 import { moveRefusal, releaseWorker, stageTaskMove } from '#tasks/move.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { matchesProject } from './identity.ts'
-import { findProject, sharingHydras } from './read.ts'
-import type { HydraProject } from './model.ts'
+import { findProject, sharingTitans } from './read.ts'
+import type { TitanProject } from './model.ts'
 
 export function checkProjectsRevision({
   state,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   meta: Meta
 }) {
   const revision = state.projectsRevision ?? 0
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
-    throw new HydraError({
+    throw new TitanError({
       message: `revision ${revision}, not ${meta.ifRevision}`,
       code: 'REVISION_CONFLICT',
     })
@@ -38,9 +38,9 @@ function migrationPlan({
   stateFor,
 }: {
   to: string
-  project: HydraProject
+  project: TitanProject
   ids: string[]
-  stateFor({ id }: { id: string }): HydraState
+  stateFor({ id }: { id: string }): TitanState
 }) {
   const target = stateFor({ id: to })
   const sources = ids.map(id => {
@@ -82,7 +82,7 @@ function migrationPlan({
       inform({
         task: card.id,
         reason: `Moving a task with open pull request ${openPR.url}`,
-        clear: `Review the pull request links on task ${card.id} in the destination Hydra.`,
+        clear: `Review the pull request links on task ${card.id} in the destination Titan.`,
       })
     }
 
@@ -92,7 +92,7 @@ function migrationPlan({
   }))
 
   if (refused.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: `Repository keeper unchanged. Blocking tasks: ${refused.join('; ')}`,
       code: 'CONFLICT',
       help: ['Settle every blocker, then retry the same keeper choice. Nothing moved.'],
@@ -118,7 +118,7 @@ export async function keepProject({
     })
   }
 
-  const keeper = loadHydra({ hydraId }).state
+  const keeper = loadTitan({ hydraId }).state
   checkProjectsRevision({
     state: keeper,
     meta,
@@ -133,7 +133,7 @@ export async function keepProject({
     ref,
     attached: true,
   })
-  const ids = sharingHydras({
+  const ids = sharingTitans({
     hydraId,
     path: project.path,
   }).map(hydra => hydra.id)
@@ -141,7 +141,7 @@ export async function keepProject({
     to: hydraId,
     project,
     ids,
-    stateFor: ({ id }) => loadHydra({ hydraId: id }).state,
+    stateFor: ({ id }) => loadTitan({ hydraId: id }).state,
   })
 
   for (const {

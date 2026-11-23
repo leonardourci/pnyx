@@ -2,7 +2,7 @@ import { opendir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { hydraIds, hydrasDir } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { FOLDER_LIMIT } from './folder-limit.ts'
 
 export interface Folder {
@@ -96,7 +96,7 @@ export async function listFolders({
 
   for (const hydraId of hydraIds()) {
     try {
-      const { state } = loadHydra({ hydraId })
+      const { state } = loadTitan({ hydraId })
 
       for (const card of Object.values(state.cards).sort((
         a,
@@ -110,18 +110,18 @@ export async function listFolders({
           seen.add(cwd); candidates.push(cwd)
         }
       }
-    } catch { /* An unreadable Hydra does not hide the others' history. */ }
+    } catch { /* An unreadable Titan does not hide the others' history. */ }
   }
 
   const recent: Folder[] = []
-  // Hydra's own agent folders live under Pnyx's home; they are never a project to add.
-  const pnyxFolders = await realpath(hydrasDir()).catch(() => hydrasDir())
+  // Titan's own agent folders live under Othrys's home; they are never a project to add.
+  const othrysFolders = await realpath(hydrasDir()).catch(() => hydrasDir())
 
   for (const cwd of candidates) {
     try {
       const path = await realpath(cwd)
 
-      if ((await stat(path)).isDirectory() && !path.startsWith(`${pnyxFolders}${sep}`)) {
+      if ((await stat(path)).isDirectory() && !path.startsWith(`${othrysFolders}${sep}`)) {
         recent.push(folder({ path }))
       }
     } catch { /* Old working folders can have disappeared. */ }

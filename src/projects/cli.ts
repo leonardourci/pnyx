@@ -8,11 +8,11 @@ import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { runFile } from '#app/run-process.ts'
 import { isAbsolute, resolve } from 'node:path'
 import { commit, guard, meta, parse, required, WRITE, type Output } from '#app/cli-support.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError } from '#store/errors.ts'
-import { loadHydra } from '#app/store.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TitanError } from '#store/errors.ts'
+import { loadTitan } from '#app/store.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
-import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
+import { findProject, projectFolder, projectName, projectRows, sharingTitans } from './read.ts'
 import { parseLanding, parseMerger } from '#tasks/delivery/rule.ts'
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
@@ -58,7 +58,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     ref,
   ] = positionals
   const m = meta({ values })
-  const current = loadHydra({ hydraId }).state
+  const current = loadTitan({ hydraId }).state
 
   const settings = values['command-name'] !== undefined || values.command !== undefined || values['brings-own-folder'] !== undefined
   const landing = values.landing === undefined
@@ -70,14 +70,14 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   const rules = landing !== undefined || merge !== undefined
 
   if (rules && action !== 'set' && action !== 'add') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Landing rules need project add <path> or project set <name|path>',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if ((settings || values.copy !== undefined) && action !== 'set') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Command settings need project set <name|path>',
       code: 'VALIDATION_ERROR',
     })
@@ -111,18 +111,18 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
             'list',
             '--project',
             project.path,
-            '--hydra',
+            '--titan',
             hydraId,
           ],
         })
       } catch (error) {
-        if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
+        if (!(error instanceof TitanError) || error.code !== 'NOT_FOUND') {
           throw error
         }
       }
     }
 
-    const shownState = loadHydra({ hydraId }).state
+    const shownState = loadTitan({ hydraId }).state
     const shownProject = findProject({
       state: shownState,
       ref: project.path,
@@ -140,7 +140,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list' && !ref && !values.clone && !values.into) {
-    const listedState = loadHydra({ hydraId }).state
+    const listedState = loadTitan({ hydraId }).state
     const projects = projectRows({ state: listedState })
 
     const listed: Output = {
@@ -150,21 +150,21 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     }
 
     if (projects.length === 0) {
-      listed.help = ['Attach a project to this Hydra in the UI']
+      listed.help = ['Attach a project to this Titan in the UI']
     }
 
     return listed
   }
 
   if (action !== 'add' && action !== 'remove' && action !== 'set') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use project add <path>, project add --clone <url> --into <folder>, project list, project show <name|path>, project keep <path>, project set <name|path> or project remove <name|path>',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if ((values.clone && (action !== 'add' || ref || !values.into)) || (values.into && !values.clone)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use project add --clone <url> --into <folder>; the destination is required',
       code: 'VALIDATION_ERROR',
     })
@@ -180,7 +180,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
     })
 
     if (values.clone || values.into || (!settings && !rules && values.copy === undefined)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false], --copy <shell> or --landing pr|branch --merge owner|hydra',
         code: 'VALIDATION_ERROR',
       })
@@ -190,7 +190,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       'true',
       'false',
     ].includes(String(values['brings-own-folder']))) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--brings-own-folder must be true or false',
         code: 'VALIDATION_ERROR',
       })
@@ -212,7 +212,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         const name = String(values['command-name'] ?? before.startCommand?.name ?? '').trim()
 
         if (command && !name) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'Give the project command a name with --command-name',
             code: 'VALIDATION_ERROR',
           })
@@ -283,7 +283,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (m.actor === 'web' && action === 'add' && !isAbsolute(String(values.into ?? ref ?? ''))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Enter an absolute laptop folder path',
       code: 'VALIDATION_ERROR',
     })
@@ -319,7 +319,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         },
       })
     } catch {
-      throw new HydraError({
+      throw new TitanError({
         message: `git clone failed into ${destination}; check the URL, access and destination before retrying`,
         code: 'CLONE_FAILED',
       })
@@ -376,13 +376,13 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         const detached = action === 'remove'
 
         if (detached && !before) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'project not found',
             code: 'NOT_FOUND',
           })
         }
 
-        const sharedWith = detached ? [] : sharingHydras({
+        const sharedWith = detached ? [] : sharingTitans({
           hydraId,
           path,
         })
@@ -392,8 +392,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           const owners = sharedWith.map(hydra => hydra.id).sort()
             .join(', ')
           inform({
-            reason: `Project ${path} is also attached to Hydra ${owners}`,
-            clear: 'Choose which Hydra should keep this project and detach it from the others in the UI',
+            reason: `Project ${path} is also attached to Titan ${owners}`,
+            clear: 'Choose which Titan should keep this project and detach it from the others in the UI',
           })
         }
 

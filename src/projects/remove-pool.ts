@@ -2,8 +2,8 @@ import { existsSync, realpathSync, rmdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { within } from '#store/paths.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
-import { HydraError } from '#store/errors.ts'
+import { loadTitan } from '#app/store.ts'
+import { TitanError } from '#store/errors.ts'
 import { copiesDir, releasedCopyOwner, requireUnlinkedCopyFolder, reservedCopies } from './copy-pool.ts'
 import { commonDir, git } from './git.ts'
 
@@ -42,7 +42,7 @@ export function protectedCopiesFolder({
   const survivors = reservedCopies({ hydraId }).map(path => canonicalPath({ path }))
 
   for (const id of hydraIds()) {
-    const current = loadHydra({ hydraId: id }).state
+    const current = loadTitan({ hydraId: id }).state
     const projects = current.projects ?? []
     const sourcePaths = Object.values(current.cards).flatMap(card =>
       card.copy ? [card.copy.project] : [])
@@ -74,8 +74,8 @@ export function protectedCopiesFolder({
       })
 
       if (insideRoot || insideFolder) {
-        throw new HydraError({
-          message: `Copies folder contains a project or another Hydra’s copy: ${path}`,
+        throw new TitanError({
+          message: `Copies folder contains a project or another Titan’s copy: ${path}`,
           code: 'CONFLICT',
         })
       }
@@ -86,8 +86,8 @@ export function protectedCopiesFolder({
     left: folder,
     right: path,
   }))) {
-    throw new HydraError({
-      message: `Copy overlaps another Hydra’s checkout: ${root}`,
+    throw new TitanError({
+      message: `Copy overlaps another Titan’s checkout: ${root}`,
       code: 'CONFLICT',
     })
   }
@@ -105,7 +105,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     folder,
     survivors,
   } = protectedCopiesFolder({ hydraId })
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const attachedProjects = state.projects ?? []
   const copies = Object.values(state.cards).flatMap(card => card.copy ? [card.copy] : [])
   const projects = new Set([
@@ -126,7 +126,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
         && (existsSync(copy.path) || existsSync(project)))
 
       if (worktree) {
-        throw new HydraError({
+        throw new TitanError({
           message: `Cannot read the worktrees of ${project}`,
           code: 'CONFLICT',
         })
@@ -151,7 +151,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
     })
 
     if (!listed.ok) {
-      throw new HydraError({
+      throw new TitanError({
         message: listed.err,
         code: 'CONFLICT',
       })
@@ -183,7 +183,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
       })
 
       if (insideRoot !== insideFolder && existsSync(path)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `Worktree crosses the copies folder boundary: ${path}`,
           code: 'CONFLICT',
         })
@@ -222,7 +222,7 @@ export async function hydraPool({ hydraId }: { hydraId: string }) {
   }
 }
 
-export async function removeHydraPool({
+export async function removeTitanPool({
   hydraId,
   verify,
 }: {
@@ -235,7 +235,7 @@ export async function removeHydraPool({
     const current = protectedCopiesFolder({ hydraId })
 
     if (current.folder !== pool.folder) {
-      throw new HydraError({
+      throw new TitanError({
         message: `Copies folder changed during removal: ${pool.root}`,
         code: 'CONFLICT',
       })
@@ -257,7 +257,7 @@ export async function removeHydraPool({
       root: pool.folder,
       path: canonicalPath({ path: slot.path }),
     })) {
-      throw new HydraError({
+      throw new TitanError({
         message: `Worktree resolves outside the copies folder: ${slot.path}`,
         code: 'CONFLICT',
       })
@@ -273,7 +273,7 @@ export async function removeHydraPool({
     })
 
     if (!removed.ok) {
-      throw new HydraError({
+      throw new TitanError({
         message: `${slot.path}: git could not remove the worktree (${removed.err})`,
         code: 'CONFLICT',
       })

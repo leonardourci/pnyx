@@ -1,15 +1,15 @@
 import { canonicalProjectPath, sameProjectPath } from './identity.ts'
 import { statSync } from 'node:fs'
 import { basename } from 'node:path'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
-import type { HydraProject } from './model.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
+import type { TitanProject } from './model.ts'
 import { landingRule } from '#tasks/delivery/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 
-export function projectsFor({ state }: { state: HydraState }): HydraProject[] {
+export function projectsFor({ state }: { state: TitanState }): TitanProject[] {
   return [...state.projects ?? []].sort((
     a,
     b,
@@ -21,8 +21,8 @@ export function projectRows({
   state,
   projects = projectsFor({ state }),
 }: {
-  state: HydraState
-  projects?: HydraProject[]
+  state: TitanState
+  projects?: TitanProject[]
 }) {
   return projects.map(p => ({
     name: p.name,
@@ -39,11 +39,11 @@ export function findProject({
   attached = false,
   projects = projectsFor({ state }),
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   attached?: boolean
-  projects?: HydraProject[]
-}): HydraProject {
+  projects?: TitanProject[]
+}): TitanProject {
   const candidates = projects.filter(p => !attached || !p.detached)
   const pathRef = ref.includes('/') || ref === '.' || ref === '..'
   const exact = candidates.find(p => p.path === ref || (pathRef && sameProjectPath({
@@ -58,7 +58,7 @@ export function findProject({
   ] = matches
 
   if (!project || others.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: matches.length ? `project name is ambiguous: ${ref}; use its full path` : 'project not found',
       code: matches.length ? 'CONFLICT' : 'NOT_FOUND',
     })
@@ -67,15 +67,15 @@ export function findProject({
   return project
 }
 
-// A new task's project must be one attached to the Hydra; the task records its path.
+// A new task's project must be one attached to the Titan; the task records its path.
 export function taskProject({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): string {
-  let selected: HydraProject
+  let selected: TitanProject
 
   try {
     selected = findProject({
@@ -83,11 +83,11 @@ export function taskProject({
       ref,
     })
   } catch (error) {
-    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
-      throw new HydraError({
+    if (error instanceof TitanError && error.code === 'NOT_FOUND') {
+      throw new TitanError({
         message: `project not attached: ${ref}`,
         code: 'NOT_FOUND',
-        help: ['Run `pnyx project list` for attached projects. Attach a project in the UI.'],
+        help: ['Run `othrys project list` for attached projects. Attach a project in the UI.'],
       })
     }
 
@@ -95,7 +95,7 @@ export function taskProject({
   }
 
   if (selected.detached) {
-    throw new HydraError({
+    throw new TitanError({
       message: `project is detached: ${ref}`,
       code: 'NOT_FOUND',
       help: ['Re-attach the project before selecting it for new work'],
@@ -114,13 +114,13 @@ export function projectFolder({ path }: { path: string }): string {
     }
   } catch { /* Missing paths cannot be attached. */ }
 
-  throw new HydraError({
+  throw new TitanError({
     message: `project folder not found: ${path}`,
     code: 'NOT_FOUND',
   })
 }
 
-export function sharingHydras({
+export function sharingTitans({
   hydraId,
   path,
 }: {
@@ -129,7 +129,7 @@ export function sharingHydras({
 }) {
   return hydraIds().filter(id => id !== hydraId)
     .flatMap(id => {
-      const state = loadHydra({ hydraId: id }).state
+      const state = loadTitan({ hydraId: id }).state
 
       if (!projectsFor({ state }).some(p => !p.detached && sameProjectPath({
         left: p.path,

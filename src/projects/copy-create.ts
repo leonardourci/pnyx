@@ -6,25 +6,25 @@ import { dirname, isAbsolute } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { COPY_TIMEOUT_MS, branchExists, branchStart, clearDefaultUpstreams, commonDir, git, gitProject, createTaskBranch } from './git.ts'
 import { checkCopy } from './copy-check.ts'
-import { branchHydraName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopyOwner, requireUnlinkedCopyFolder, reusable, slots, take, unclaim } from './copy-pool.ts'
-import type { HydraProject, TaskCopy } from './model.ts'
+import { branchTitanName, checkout, copiesDir, freshSlot, liveCopy, recordedBranches, releasedCopyOwner, requireUnlinkedCopyFolder, reusable, slots, take, unclaim } from './copy-pool.ts'
+import type { TitanProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import { runProcess } from '#app/run-process.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { TitanError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { isFolder } from '#workers/folders.ts'
@@ -33,9 +33,9 @@ function taskProject({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
-}): HydraProject | undefined {
+}): TitanProject | undefined {
   return projectsFor({ state }).find(p => !p.detached && matchesProject({
     project: p,
     ref: card.project,
@@ -59,7 +59,7 @@ async function verifyCopyBranch({
   })
 
   if (!head.ok || head.out !== `refs/heads/${branch}`) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'COPY_FAILED',
       message: `the task copy did not stay on branch ${branch}`,
     })
@@ -77,11 +77,11 @@ function noteShared({
   const working = ({ card }: { card: Card }) => liveTask({ card }) && card.sessionIds?.length
     && !card.doneAt && (card.folder === path || card.agent?.cwd === path)
   const busy = hydraIds().filter(id => id !== hydraId
-    && Object.values(loadHydra({ hydraId: id }).state.cards).some(card => working({ card })))
+    && Object.values(loadTitan({ hydraId: id }).state.cards).some(card => working({ card })))
 
   if (busy.length) {
     inform({
-      reason: `A worker of Hydra ${busy.join(', ')} already uses ${path}`,
+      reason: `A worker of Titan ${busy.join(', ')} already uses ${path}`,
       clear: 'Start without --in-place or --folder to use a separate copy',
     })
   }
@@ -99,7 +99,7 @@ async function landedSlotBranch({
   hydraId: string
   path: string
   card: Card
-  project: HydraProject
+  project: TitanProject
   base?: string
   common: string
 }): Promise<string | undefined> {
@@ -151,7 +151,7 @@ async function landedSlotBranch({
         writer,
         decision: hydraEvent({
           state: writer.state,
-          cardId: HYDRA_CARD,
+          cardId: TITAN_CARD,
           meta: {
             id: `unrecorded-copy:${key}`,
             actor: 'pnyx',
@@ -230,7 +230,7 @@ async function worktreeCopy({
 }: {
   hydraId: string
   card: Card
-  project: HydraProject
+  project: TitanProject
 }): Promise<TaskCopy> {
   await gitProject({ project })
   const pool = copiesDir()
@@ -244,7 +244,7 @@ async function worktreeCopy({
     base,
     start,
   } = await branchStart({ project })
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const branches = recordedBranches({
     hydraId,
     state,
@@ -257,7 +257,7 @@ async function worktreeCopy({
   const previousBranch = previous?.branch
   const branch = previousBranch ?? await createTaskBranch({
     cwd: project.path,
-    hydraName: branchHydraName({
+    hydraName: branchTitanName({
       hydraId,
       state,
     }),
@@ -268,7 +268,7 @@ async function worktreeCopy({
   })
 
   if (!branch) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'COPY_FAILED',
       message: 'task branch allocation was cancelled',
     })
@@ -307,7 +307,7 @@ async function worktreeCopy({
   })
 
   if (!pruned.ok) {
-    throw new HydraError({
+    throw new TitanError({
       message: `could not prune missing worktrees: ${pruned.err}`,
       code: 'COPY_FAILED',
     })
@@ -394,7 +394,7 @@ async function worktreeCopy({
         })
 
         if (!checkedOut.ok) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'COPY_FAILED',
             message: `git could not switch the task's copy: ${checkedOut.err}`,
           })
@@ -443,7 +443,7 @@ async function worktreeCopy({
     })
 
     if (!added.ok) {
-      throw new HydraError({
+      throw new TitanError({
         message: `git could not make the task's copy: ${added.err}`,
         code: 'COPY_FAILED',
         help: ['Fix the project folder, or start with --in-place'],
@@ -473,7 +473,7 @@ async function commandCopy({
 }: {
   hydraId: string
   card: Card
-  project: HydraProject
+  project: TitanProject
   command: string
 }): Promise<TaskCopy> {
   const run = await runProcess({
@@ -486,11 +486,11 @@ async function commandCopy({
     timeout: COPY_TIMEOUT_MS,
     env: {
       ...process.env,
-      PNYX_HOME: pnyxHome(),
-      PNYX_HYDRA: hydraId,
-      PNYX_TASK: card.id,
-      PNYX_TASK_TITLE: card.title,
-      PNYX_PROJECT: project.path,
+      OTHRYS_HOME: othrysHome(),
+      OTHRYS_TITAN: hydraId,
+      OTHRYS_TASK: card.id,
+      OTHRYS_TASK_TITLE: card.title,
+      OTHRYS_PROJECT: project.path,
     },
   })
   const printed = run.stdout.trim().split('\n')
@@ -501,7 +501,7 @@ async function commandCopy({
     ? realpathSync(printed) : undefined
 
   if (!path || path === project.path) {
-    throw new HydraError({
+    throw new TitanError({
       message: run.status !== 0 ? `the copy command of ${project.name} failed: ${run.stderr.trim().slice(-500)}` : `the copy command of ${project.name} must print the new folder's absolute path last, other than the project folder`,
       code: 'COPY_FAILED',
       help: ['Fix the project copy command in Settings.'],
@@ -537,7 +537,7 @@ export async function taskFolder({
   ownFolder?: boolean
   meta: Meta
 }): Promise<string | undefined> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   const card = findCard({
     state,
@@ -550,7 +550,7 @@ export async function taskFolder({
   const given = canonical({ path: folder })
 
   if (given && inPlace) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'use either --folder or --in-place',
       code: 'VALIDATION_ERROR',
     })
@@ -572,7 +572,7 @@ export async function taskFolder({
 
   if (!project) {
     if (inPlace) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--in-place needs a task with an attached project',
         code: 'VALIDATION_ERROR',
         help: [`Assign a project to ${card.id} in the UI.`],
@@ -652,7 +652,7 @@ export async function taskFolder({
           left: selectedProject?.path,
           right: copy.project,
         })) {
-          throw new HydraError({
+          throw new TitanError({
             message: `the project of task ${card.id} changed while its copy was being prepared; start it again`,
             code: 'CONFLICT',
           })
@@ -664,7 +664,7 @@ export async function taskFolder({
           && now.copy.path !== copy.path
 
         if (startedMeanwhile || copiedMeanwhile) {
-          throw new HydraError({
+          throw new TitanError({
             message: `task ${card.id} was started meanwhile; its session keeps ${now.copy?.path ?? now.folder ?? 'its folder'}`,
             code: 'SESSION_CONFLICT',
           })

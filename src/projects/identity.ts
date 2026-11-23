@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { HydraProject } from './model.ts'
+import type { TitanProject } from './model.ts'
 import { requestCwd } from '#app/request-context.ts'
 
 export function canonicalProjectPath({ path }: { path: string }): string | undefined {
@@ -41,7 +41,7 @@ export function matchesProject({
   project,
   ref,
 }: {
-  project: HydraProject
+  project: TitanProject
   ref?: string
 }): boolean {
   return project.name === ref || sameProjectPath({

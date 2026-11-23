@@ -1,7 +1,7 @@
-import type { HydraState } from '#app/model.ts'
-import type { HydraProject } from './model.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanProject } from './model.ts'
 
-export function projectGroup({ project }: { project: HydraProject }) {
+export function projectGroup({ project }: { project: TitanProject }) {
   return project.group ?? {
     id: project.path,
     name: project.name,
@@ -13,7 +13,7 @@ export interface ProjectGroup {
   title: string
 }
 
-export function projectGroups({ state }: { state: Pick<HydraState, 'projects'> }): ProjectGroup[] {
+export function projectGroups({ state }: { state: Pick<TitanState, 'projects'> }): ProjectGroup[] {
   const groups = new Map<string, ProjectGroup>([
     [
       'ideas',
