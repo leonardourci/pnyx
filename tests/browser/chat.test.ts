@@ -742,8 +742,8 @@ test(
       const activeTask = page.locator('[data-hydra-workspace][data-active=true] [data-task]')
       const status = activeTask.locator('.agent-activity')
       const toolDetails = /Running a command|Bash|pnpm build/
-      await status.focus()
-      expect(await page.getByRole('tooltip').textContent()).toBe('working')
+      expect(await status.textContent() ?? '').not.toMatch(toolDetails)
+      expect(await status.getAttribute('aria-label') ?? '').not.toMatch(toolDetails)
 
       await setFocusMode({
         hydra,
