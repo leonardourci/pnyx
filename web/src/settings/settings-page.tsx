@@ -32,7 +32,7 @@ const UNITS: Record<string, string> = {
   fontSize: 'px',
   chatFontSize: 'px',
   codeFontSize: 'px',
-  defaultTitanWidth: 'px',
+  defaultHydraWidth: 'px',
   doneAfterHours: 'h',
   reviewMinutes: 'min',
   logDays: 'd',
@@ -43,7 +43,7 @@ export const SETTING_PREVIEWS = new Set([
   'fontSize',
   'chatFontSize',
   'codeFontSize',
-  'defaultTitanWidth',
+  'defaultHydraWidth',
   'resetWidths',
   'lastMessageOnCards',
   'focusMode',
@@ -158,7 +158,7 @@ export function SettingPreview({
       return <ChatTextPreview view={view} />
     case 'codeFontSize':
       return <CodeTextPreview view={view} />
-    case 'defaultTitanWidth':
+    case 'defaultHydraWidth':
       return <BoardPreview state={state} view={view} mark="chat" />
     case 'resetWidths':
       return <ResetPreview state={state} view={view} />
@@ -323,7 +323,7 @@ export function SettingControl({
           slide={slide}
         />
       )
-    case 'defaultTitanWidth':
+    case 'defaultHydraWidth':
       return (
         <NumberField
           label={entry.label}
@@ -333,11 +333,11 @@ export function SettingControl({
           step={1}
           slider={{
             max: WIDTH_SLIDER_MAX,
-            initial: DEFAULT_VIEW.defaultTitanWidth,
+            initial: DEFAULT_VIEW.defaultHydraWidth,
             unit: 'px',
           }}
-          onChange={({ value }) => save({ patch: { defaultTitanWidth: value } })}
-          onSlide={slideTo({ key: 'defaultTitanWidth' })}
+          onChange={({ value }) => save({ patch: { defaultHydraWidth: value } })}
+          onSlide={slideTo({ key: 'defaultHydraWidth' })}
         />
       )
     case 'resetWidths':

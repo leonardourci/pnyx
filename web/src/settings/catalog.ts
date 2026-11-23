@@ -5,7 +5,7 @@ export const SETTING_ICONS: Record<string, string> = {
   fontSize: 'text-size',
   chatFontSize: 'comment',
   codeFontSize: 'tool',
-  defaultTitanWidth: 'chat-width',
+  defaultHydraWidth: 'chat-width',
   resetWidths: 'reset',
   lastMessageOnCards: 'cards',
   focusMode: 'focus',
@@ -159,7 +159,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: 'defaultTitanWidth',
+    id: 'defaultHydraWidth',
     section: 'layout',
     label: 'Titan chat width',
     description: 'Resize this Titan’s chat and save the width for new Titans.',

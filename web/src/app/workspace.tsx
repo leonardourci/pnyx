@@ -374,7 +374,7 @@ export function TitanView({
     workspace: {
       ...configuredView.workspace,
       collapsed: state.view?.workspace?.collapsed
-        ?? shared?.hiddenTitans.includes(navigation.hydraId) ?? false,
+        ?? shared?.hiddenHydras.includes(navigation.hydraId) ?? false,
     },
   }
   const references = useTaskReferences({

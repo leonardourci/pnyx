@@ -239,7 +239,7 @@ function boardWidths({
   dragged: boolean
 }): Widths {
   return {
-    chat: dragged ? view.hydraWidth : view.defaultTitanWidth,
+    chat: dragged ? view.hydraWidth : view.defaultHydraWidth,
     columns: columnsFor({ state }).map(column => {
       const own = dragged ? view.workspace.projectWidths[column.id] : undefined
 
