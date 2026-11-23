@@ -744,6 +744,30 @@ test.each([
       'native-message:1',
       'native-message:3',
     ])
+
+    if (record.payload) {
+      const splitSecret = recordEntries({
+        record: {
+          ...record,
+          payload: {
+            ...record.payload,
+            content: [
+              {
+                type: 'output_text',
+                text: 'Before sk-01234567',
+              },
+              {
+                type: 'output_text',
+                text: '89abcdef after',
+              },
+            ],
+          },
+        },
+        offset: 200,
+      })
+      expect(splitSecret.map(entry => entry.text).join('')).toBe('Before [redacted] after')
+    }
+
     expect(recordEntries({
       record,
       offset: 900,

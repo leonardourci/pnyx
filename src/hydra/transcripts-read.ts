@@ -9,7 +9,7 @@ import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig, AgentRef, ReplyState } from '#workers/model.ts'
-import { redact } from '#oracle/text.ts'
+import { redact, redactFragments } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
@@ -29,7 +29,6 @@ import { deliveredInputs, replyEchoes } from './task-messages.ts'
 import { hydraConfig } from './config.ts'
 import type { HydraMessage } from './model.ts'
 
-// messageId and part rejoin native message fragments and transport chunks.
 export interface ThreadEntry {
   targetAgent?: AgentConfig
   offset?: number
@@ -220,6 +219,9 @@ function transcriptEntries({
   session,
 }: EntryOptions & { parsed: TranscriptRecord }): ThreadEntry[] {
   const messages = parsed.messages.filter(message => boundaries || !message.internal)
+  const fragments = messages.some(message => message.messageId !== undefined)
+    ? redactFragments({ fragments: messages.map(message => message.text) })
+    : messages.map(message => message.text)
   let part = 0
   const entries: ThreadEntry[] = messages.map((
     message,
@@ -230,7 +232,7 @@ function transcriptEntries({
       offset,
       kind: 'message',
       role: parsed.role,
-      text: message.messageId ? redact({ text: message.text }) : message.text,
+      text: fragments[index],
       messageId: message.messageId,
       part: message.messageId ? part : undefined,
       at: message.at,

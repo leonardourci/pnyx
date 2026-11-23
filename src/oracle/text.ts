@@ -12,6 +12,7 @@ const SECRETS = [
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ]
+const FRAGMENT_SECRETS = new RegExp(SECRETS.map(pattern => `(?:${pattern.source})`).join('|'), 'g')
 
 // Text a harness injects into a user turn: reminders, hook output, command tags,
 // Codex's context blocks and the AGENTS.md instructions Codex adds under a header line.
@@ -97,6 +98,53 @@ export function redact({ text }: { text: string }): string {
     ),
     text,
   )
+}
+
+export function redactFragments({ fragments }: { fragments: string[] }): string[] {
+  if (fragments.length < 2) {
+    return fragments.map(text => redact({ text }))
+  }
+
+  const text = fragments.join('')
+  const matches = [...text.matchAll(FRAGMENT_SECRETS)]
+
+  if (!matches.length) {
+    return fragments
+  }
+
+  let offset = 0
+  let index = 0
+
+  return fragments.map(fragment => {
+    const start = offset
+    offset += fragment.length
+    let visible = ''
+    let position = start
+
+    while (index < matches.length) {
+      const match = matches[index]
+      const first = match.index
+      const end = first + match[0].length
+
+      if (first >= offset) {
+        break
+      }
+
+      if (first >= start) {
+        visible += text.slice(position, first) + '[redacted]'
+      }
+
+      position = end
+
+      if (end > offset) {
+        break
+      }
+
+      index++
+    }
+
+    return visible + text.slice(position, offset)
+  })
 }
 
 // Paragraphs, keeping a fenced code block whole.
