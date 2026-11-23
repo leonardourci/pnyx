@@ -14,6 +14,7 @@ const GUARDED = [
   'herdr',
   'tmux',
   'pnyx',
+  'othrys',
   'quota-axi',
   'launchctl',
   'systemctl',
