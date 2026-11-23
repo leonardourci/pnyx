@@ -289,7 +289,7 @@ function checkTarget({
   if (!hydraIds().includes(to)) {
     throw refuse({
       message: `Hydra not found: ${to}`,
-      help: 'Run `pnyx hydra list` for Hydra ids',
+      help: 'Choose a destination Hydra in the UI',
       code: 'NOT_FOUND',
     })
   }
@@ -332,7 +332,7 @@ export async function releaseWorker({
   if (typeof released.busy === 'string') {
     throw refuse({
       message: `${card.id}'s worker is ${released.busy}`,
-      help: `Read tasks/${card.id}/task.log in Hydra ${hydraId}; when it finishes, retry the action in the UI`,
+      help: `Check worker activity for task ${card.id} in Hydra ${hydraId} in the UI. Retry the move when the worker is idle.`,
     })
   }
 }
