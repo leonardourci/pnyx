@@ -148,7 +148,7 @@ export function cardStatus({
       kind: 'done',
       state: 'done',
       text: 'done',
-      at: worker?.at ?? card.doneAt,
+      at: worker?.code === 'done' ? worker.at : card.doneAt,
     }
   }
 

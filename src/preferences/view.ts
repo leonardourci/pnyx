@@ -229,11 +229,10 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
   },
 })
 
-// Saved widths also resize the named Hydra; settings set deliberately does not use this patch.
 export function resizeViewPatch({
   patch,
 }: {
-  state: HydraState
+  state?: HydraState
   patch: Record<string, unknown>
 }): Record<string, unknown> {
   const resized = { ...patch }
