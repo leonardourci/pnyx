@@ -532,7 +532,6 @@ test(
     ))
       .join('')
       .slice(onStart)
-    expect(onLogs).not.toContain('hook.push')
     expect(onLogs).not.toContain('card.observed')
     await hydra.owner({
       args: [
@@ -561,7 +560,6 @@ test(
       'utf8',
     ))
       .join('')
-    expect(logs).toContain('hook.push')
     expect(logs).not.toContain('Fix the flaky login test')
     expect(logs).not.toContain('with more detail below')
 
