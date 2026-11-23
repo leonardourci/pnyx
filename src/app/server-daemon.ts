@@ -903,8 +903,12 @@ export async function startServer({
 
     const activeIds = hydraIds()
 
-    if (hydraId === removedId && (!activeIds.includes(removedId) || removedOrPending({ id: removedId }))) {
-      hydraId = findActiveHydra({ ids: activeIds }) ?? hydraId
+    if (hydraId === removedId) {
+      const primaryUnavailable = !activeIds.includes(removedId) || removedOrPending({ id: removedId })
+
+      if (primaryUnavailable) {
+        hydraId = findActiveHydra({ ids: activeIds }) ?? hydraId
+      }
     }
 
     mountAll()
