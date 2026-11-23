@@ -995,7 +995,7 @@ test(
 )
 
 test(
-  'apply --check previews task creation without writing',
+  'arrangement can be undone and apply --check previews task creation without writing',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.owner({
@@ -1009,6 +1009,27 @@ test(
         'later',
       ],
     })
+
+    const first = await hydra.owner({
+      args: ['task', 'create', '--key', 'first-in-ideas', '--title', 'First in Ideas'],
+    })
+    const arranged = await hydra.owner({
+      args: ['task', 'arrange', first.card.id, '--before', 'later'],
+    })
+    const { task: placed } = await hydra.owner({
+      args: ['task', 'show', first.card.id, '--full'],
+    })
+    const { task: later } = await hydra.owner({
+      args: ['task', 'show', 'later', '--full'],
+    })
+    expect(placed.rank).toBeLessThan(later.rank ?? later.createdSeq)
+    await hydra.owner({
+      args: ['undo', arranged.event.id],
+    })
+    const { task: restored } = await hydra.owner({
+      args: ['task', 'show', first.card.id, '--full'],
+    })
+    expect(restored.rank ?? restored.createdSeq).toBeGreaterThan(later.rank ?? later.createdSeq)
 
     const seq = () => loadHydra({ hydraId: hydra.id }).state.seq
     const before = seq()

@@ -334,7 +334,7 @@ function mergeQuestion({
   const report = state.hydraMessages?.findLast(message => message.task === card.id
     && reportActor({ actor: message.actor }) && !message.ask)
   const line = card.workerLog?.latest
-  const useReport = report && (!line || report.at >= line.at)
+  const useReport = report && (!line || Date.parse(report.at) >= Date.parse(line.at))
   const workerText = useReport ? report.text : line?.text
   const workerLabel = useReport ? 'Worker report' : 'Worker status line'
   const context = [
