@@ -42,7 +42,6 @@ export const settings = guard({
       return {
         defaults: DEFAULT_SETTINGS,
         help: [
-          'defaultColumnWidth is the fallback for every existing and future column; defaultColumnWidths holds per-column overrides',
           'Every key applies to every Hydra; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',

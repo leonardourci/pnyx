@@ -6,8 +6,6 @@ export interface ViewPreferences {
   focusMode: boolean
   lastMessageOnCards: boolean
   defaultHydraWidth: number
-  defaultColumnWidth: number
-  defaultColumnWidths: Record<string, number>
   theme: 'light' | 'dark' | 'system'
   fontSize: number
   chatFontSize: number
@@ -19,7 +17,6 @@ export interface ViewPreferences {
   cardColors: boolean
   toolDetails: boolean
   thinkingDetails: boolean
-  columnWidths: Record<string, number>
   cardHeights: Record<string, number>
   closedCardHeights: Record<string, number>
   cardTraceOverrides: Record<string, {
