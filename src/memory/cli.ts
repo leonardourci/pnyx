@@ -1,16 +1,16 @@
 import { findProject } from '#projects/read.ts'
 import { readOwnerLogs } from './owner-memory-log.ts'
-import { memorySize, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
+import { memorySize, OWNER_MEMORY_BUDGET, TITAN_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget, type Memory } from './budgets.ts'
 import { required, guard, parse, integer, COMMON, WRITE, meta, commit, explained, type Output } from '#app/cli-support.ts'
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { migrateOwnerMemory, ownerMemory, writableOwnerMemory, ownerArchive, saveOwnerMemory, moveOwnerLearning, moveOwnerPolis, type OwnerMeta } from './owner-memory.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraEvent } from '#titan/titan.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { POLIS_NAME } from './owner-polis.ts'
 
@@ -72,7 +72,7 @@ function memoryChange({
     'set',
     'forget',
   ].includes(action)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${usage}; keys use lowercase letters, digits and dashes`,
       code: 'VALIDATION_ERROR',
     })
@@ -84,7 +84,7 @@ function memoryChange({
   }).trim()
 
   if (after !== null && !after) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'memory text must not be empty',
       code: 'VALIDATION_ERROR',
     })
@@ -113,7 +113,7 @@ function ownerMeta({ values }: {
   const polis = second === undefined ? 'shared' : first
 
   if (polis === undefined || !POLIS_NAME.test(polis) || parts.length > 2) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use the revision from owner memory list',
       code: 'VALIDATION_ERROR',
     })
@@ -139,7 +139,7 @@ export const owner = guard({
       'set',
       'forget',
     ].includes(args[1] ?? '')) {
-      throw new HydraError({
+      throw new TitanError({
         message: usage,
         code: 'VALIDATION_ERROR',
       })
@@ -175,7 +175,7 @@ export const owner = guard({
     })
 
     if (positionals[0] !== 'memory') {
-      throw new HydraError({
+      throw new TitanError({
         message: usage,
         code: 'VALIDATION_ERROR',
       })
@@ -242,7 +242,7 @@ export const owner = guard({
     const mixedMoveSelectors = documentMove ? hasLearningSelector : values.key !== undefined
 
     if (action === 'move' && mixedMoveSelectors) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Use --key and --to for a document move, or --project and --text for a learning move',
         code: 'VALIDATION_ERROR',
       })
@@ -266,7 +266,7 @@ export const owner = guard({
 
     if (action === 'move') {
       const project = findProject({
-        state: loadHydra({ hydraId }).state,
+        state: loadTitan({ hydraId }).state,
         ref: required({
           value: values.project as string | undefined,
           what: '--project <name|path>',
@@ -358,12 +358,12 @@ export async function hydraMemory({
   const action = positionals[1] ?? 'list'
 
   if (action === 'list') {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
 
     return memoryList({
       memory: state.hydraMemory ?? {},
-      budget: HYDRA_MEMORY_BUDGET,
-      empty: 'none: no Hydra memory yet',
+      budget: TITAN_MEMORY_BUDGET,
+      empty: 'none: no Titan memory yet',
     })
   }
 
@@ -377,7 +377,7 @@ export async function hydraMemory({
   })
 
   if (key === 'inscribe-cursor' && after !== null) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Finish the inscribe milestone with hydra inscribe finish --through <snapshot>',
       code: 'VALIDATION_ERROR',
     })
@@ -387,10 +387,10 @@ export async function hydraMemory({
     OWNER_DOCUMENTS,
     key,
   )) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} belong in owner memory`,
       code: 'VALIDATION_ERROR',
-      help: ['Keep owner documents in owner memory; use another key for notes specific to this Hydra'],
+      help: ['Keep owner documents in owner memory; use another key for notes specific to this Titan'],
     })
   }
 
@@ -417,8 +417,8 @@ export async function hydraMemory({
         memory: state.hydraMemory ?? {},
         key,
         after,
-        budget: HYDRA_MEMORY_BUDGET,
-        layer: 'Hydra',
+        budget: TITAN_MEMORY_BUDGET,
+        layer: 'Titan',
       })
 
       return before === after ? { skipped: 'unchanged' } : hydraEvent({
@@ -450,7 +450,7 @@ export async function hydraMemory({
         if (saved) {
           workerNotesNotice({
             writer,
-            target: `Hydra ${hydraId}`,
+            target: `Titan ${hydraId}`,
             meta: saved,
           })
         }

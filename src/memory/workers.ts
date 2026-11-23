@@ -1,6 +1,6 @@
 import { inform } from '#app/command-notices.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraEvent } from '#titan/titan.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Writer } from '#app/writer.ts'
 

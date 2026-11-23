@@ -4,15 +4,15 @@ import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 
 export const OWNER_MEMORY_BUDGET = 24000
 
-// Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.
-export const HYDRA_MEMORY_BUDGET = 1500
+// Titan memory holds only what this Titan needs: its scope, where it left off, its check cursor.
+export const TITAN_MEMORY_BUDGET = 1500
 
 export const OWNER_DOCUMENTS = {
   preferences: 'Owner preferences',
   learnings: 'Learnings',
 } as const
 
-// The share of a budget past which the digest asks Hydra to curate that memory.
+// The share of a budget past which the digest asks Titan to curate that memory.
 const NEARLY_FULL = 0.8
 
 export type Memory = Record<string, {

@@ -1,5 +1,5 @@
 import { inform } from '#app/command-notices.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { findProject } from '#projects/read.ts'
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { ownerProjectMoves } from './owner-memory-log.ts'
@@ -9,10 +9,10 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Meta } from '#app/command-meta.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { withWriter } from '#app/writer.ts'
 import { privateDir, withRegistryLock, withAsyncRegistryLock } from '#store/storage.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { othrysHome } from '#store/paths.ts'
 import { projectIdentity, projectSources } from '#projects/sources.ts'
 
 export const PROJECT_MEMORY_BUDGET = 10000
@@ -62,7 +62,7 @@ const projectMemorySize = ({ documents }: Pick<ProjectMemory, 'documents'>) => O
 
 export function projectMemoryLogPath({ id }: { id: string }) {
   return join(
-    pnyxHome(),
+    othrysHome(),
     'projects',
     id,
     'events.jsonl',
@@ -90,7 +90,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
   ) : ''
 
   if (text && !text.endsWith('\n')) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Project memory has an incomplete event; inspect its log before writing',
       code: 'LOG_CORRUPT',
     })
@@ -100,7 +100,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
     try {
       events.push(JSON.parse(line))
     } catch {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Project memory contains an invalid event',
         code: 'LOG_CORRUPT',
       })
@@ -117,7 +117,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
       PROJECT_MEMORY_DOCUMENTS,
       event.key,
     ) || (event.after !== null && typeof event.after !== 'string')) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Project memory contains an invalid event',
         code: 'LOG_CORRUPT',
       })
@@ -239,7 +239,7 @@ export async function readableProjectMemory({
       hydraId,
     })
   } catch (error) {
-    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+    if (error instanceof TitanError && error.code === 'NOT_FOUND') {
       return undefined
     }
 
@@ -259,7 +259,7 @@ export function projectMemoryViewUnderLock({
     sources,
   } = facts
   findProject({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     ref: facts.path,
     attached: true,
   })
@@ -355,14 +355,14 @@ export async function writeProjectMemory({
       }
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== view.revision) {
-        throw new HydraError({
+        throw new TitanError({
           message: `Project memory revision is ${view.revision}`,
           code: 'REVISION_CONFLICT',
         })
       }
 
       if (key === 'profile' && after !== null && (!view.currentSources.available || sources !== view.currentSources.fingerprint)) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Profile sources are unavailable or changed since they were read',
           code: 'SOURCES_CHANGED',
           help: ['Run project memory list --project <name>; read its changed sources from the listed ref, then save the profile with --sources <fingerprint>'],
@@ -385,7 +385,7 @@ export async function writeProjectMemory({
       })
 
       if ((confirmed !== undefined || learning !== undefined) && key !== 'learnings') {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Only learnings need reconfirmation',
           code: 'VALIDATION_ERROR',
         })
@@ -445,7 +445,7 @@ export async function writeProjectMemory({
       }
 
       const dir = join(
-        pnyxHome(),
+        othrysHome(),
         'projects',
         view.id,
       )

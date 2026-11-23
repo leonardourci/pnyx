@@ -1,6 +1,6 @@
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import { inform } from '#app/command-notices.ts'
 import { taskDone } from '#tasks/select.ts'
 
@@ -54,14 +54,14 @@ export function learningChange({
   text?: string
 }): LearningChange | undefined {
   if ((kind !== undefined || until !== undefined) && action !== 'set') {
-    throw new HydraError({
+    throw new TitanError({
       message: '--kind and --until belong to memory set',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (used !== undefined && action !== 'save') {
-    throw new HydraError({
+    throw new TitanError({
       message: '--used belongs to memory save',
       code: 'VALIDATION_ERROR',
     })
@@ -76,7 +76,7 @@ export function learningChange({
 
   if (action === 'archive') {
     if (!text?.trim()) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Archive needs --text <existing learning line>',
         code: 'VALIDATION_ERROR',
       })
@@ -110,7 +110,7 @@ function checkCondition({ until }: { until?: string }): void {
   const validReference = validTask || validPullRequest || validVersion
 
   if (!validDate && !validReference) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'A for-now learning needs --until task:<hydra>/<task>, a PR URL, version:<version>, or date:YYYY-MM-DD',
       code: 'VALIDATION_ERROR',
     })
@@ -132,7 +132,7 @@ export function learningText({
     const lines = (before ?? '').split('\n')
 
     if (!lines.some(line => line.trim() === change.archive)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Archive an existing learning line exactly',
         code: 'VALIDATION_ERROR',
       })
@@ -207,14 +207,14 @@ export function dateLearnings({
   }
 
   if (reinforced.some(text => !texts.includes(text) || !before.some(line => line.text === text))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Confirm or use an existing learning line exactly',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (change?.used !== undefined && !change.save) {
-    throw new HydraError({
+    throw new TitanError({
       message: '--used belongs to a memory save',
       code: 'VALIDATION_ERROR',
     })
@@ -224,7 +224,7 @@ export function dateLearnings({
     'normal',
     'for-now',
   ].includes(change.kind)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Learning kind must be normal or for-now',
       code: 'VALIDATION_ERROR',
     })
@@ -233,7 +233,7 @@ export function dateLearnings({
   if (change?.kind === 'for-now') {
     checkCondition({ until: change.until })
   } else if (change?.until !== undefined) {
-    throw new HydraError({
+    throw new TitanError({
       message: '--until requires --kind for-now',
       code: 'VALIDATION_ERROR',
     })
@@ -273,7 +273,7 @@ export function dateLearnings({
 }
 
 export function learningConditions({ states }: {
-  states: Record<string, HydraState>
+  states: Record<string, TitanState>
 }): LearningConditions {
   const doneTasks: string[] = []
   const mergedPullRequests: string[] = []
