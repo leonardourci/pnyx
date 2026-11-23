@@ -102,6 +102,19 @@ test(
       'tasks',
       '.pending-task',
     ))
+    const unpublishedTask = join(
+      dir,
+      'tasks',
+      'unpublished-task',
+    )
+    mkdirSync(unpublishedTask)
+    writeFileSync(
+      join(
+        unpublishedTask,
+        'worker.log',
+      ),
+      'note: Unpublished task\n',
+    )
     const paths = compactionFiles({
       hydraId: 'file-reads',
       state,

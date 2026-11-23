@@ -417,6 +417,20 @@ test(
         ],
       })
       expect((await healthy.task({ key: created.card.id })).title).toBe('Healthy after corruption')
+      const discoveredId = `${broken.id}-healthy`
+      await healthy.owner({
+        args: [
+          'hydra',
+          'create',
+          discoveredId,
+          '--helper',
+          'off',
+        ],
+      })
+      await until({
+        what: 'a new healthy Hydra to mount after the corrupt Hydra in discovery',
+        check: () => pnyx.home().scopes[discoveredId]?.queue,
+      })
     } finally {
       await pnyx.restart({
         whileStopped: () => writeFileSync(

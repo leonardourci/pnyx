@@ -654,6 +654,16 @@ test(
         .split('\n')
         .map(line => JSON.parse(line))
       const reports = facts.filter(fact => fact.event?.type === 'hydra.message' && /^worker:burst-/.test(fact.event.actor))
+      const pendingLine = wake.split('\n').find(line => line.startsWith('Pending reports: '))
+      const pending: {
+        id: string
+        file: string
+        status: string
+      }[] = JSON.parse(pendingLine?.slice('Pending reports: '.length) ?? '[]')
+      const reportIdsInHydraLog = new Set(reports.map(report => report.id))
+      const advertised = pending.filter(report => reportIdsInHydraLog.has(report.id))
+      expect(advertised.length).toBeGreaterThan(0)
+      expect(advertised.every(report => report.file === 'hydra.log' && report.status === 'unhandled')).toBe(true)
       expect(reports.map(fact => fact.event.data.text)).toEqual(Array.from(
         { length: 300 },
         (
