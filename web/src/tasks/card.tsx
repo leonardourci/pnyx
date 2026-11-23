@@ -13,7 +13,6 @@ import { AgentDetails } from '#web-workers/agent-details.tsx'
 import { memo, useCallback, useMemo, useEffect, useLayoutEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor } from '#tasks/model.ts'
-import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { CardTitle } from './card-title.tsx'
 import { CardShell, CardContent, CardHeading, CardPanel, CardSection } from './card-shell.tsx'
@@ -41,7 +40,6 @@ const STATE_SOURCE = {
   reminder: 'Scheduled reminder',
   review: 'Pull request update',
   note: "Worker's status note",
-  progress: "Worker's progress report",
 }
 
 // With questions open, Intent and Current state sit below them; this row jumps there.
@@ -118,7 +116,6 @@ export const HydraCard = memo(function HydraCard({
   showProject = false,
   legacyProject,
   labelColors,
-  latest,
   selected,
   openInline = selected,
   open,
@@ -150,7 +147,6 @@ export const HydraCard = memo(function HydraCard({
   labelColors?: SavedLabelColor[]
   doneAfterHours?: DoneAfterHours
   notify({ text }: { text: string }): void
-  latest?: LatestMessage
   selected: boolean
   // A modal opened from a closed card leaves that card closed on the board.
   openInline?: boolean
@@ -360,12 +356,12 @@ export const HydraCard = memo(function HydraCard({
     colors: labelColors,
   })
   const said = currentState({ card })
-  const stateSource = said ? STATE_SOURCE[said.source] : "Agent's last message"
+  const stateSource = said ? STATE_SOURCE[said.source] : undefined
   const factual = said ? {
     role: 'assistant' as const,
     text: said.text,
     at: said.at,
-  } : latest?.role === 'assistant' ? latest : undefined
+  } : undefined
 
   const waiting = waitingQuestions({ card })
   const canStop = connected && card.agent?.host === 'pnyx'

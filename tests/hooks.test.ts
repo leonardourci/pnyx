@@ -808,6 +808,30 @@ test(
         '--state',
         'merged',
       ],
+      [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'finished-checkout',
+        '--title',
+        'Finished checkout with a PR still open',
+        '--project',
+        'checkout',
+      ],
+      [
+        'link',
+        'finished-checkout',
+        '--url',
+        'https://github.com/example/checkout/pull/2',
+        '--state',
+        'open',
+      ],
+      [
+        'outcome',
+        'finished-checkout',
+        'done',
+      ],
     ]) {
       expect((await operation({
         args: [
@@ -848,6 +872,7 @@ test(
     expect(inProject.status).toBe(0)
     expect(inProject.stdout).toContain('Speed up checkout')
     expect(inProject.stdout).not.toContain('Completed checkout')
+    expect(inProject.stdout).not.toContain('Finished checkout with a PR still open')
 
     const elsewhere = await hook({
       event: 'SessionStart',

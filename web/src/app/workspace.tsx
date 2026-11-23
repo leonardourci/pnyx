@@ -127,7 +127,6 @@ export function HydraView({
     hydraThread,
     hydraQueue,
     upgrade,
-    latest,
     actions,
     navigation,
     navigate,
@@ -984,7 +983,6 @@ export function HydraView({
         labelColors={state.labelColors}
         doneAfterHours={shared?.doneAfterHours}
         notify={cardActions.notify}
-        latest={latest[item.id]}
         action={actions[item.id]}
         answer={cardActions.answer}
         selected={opened}
