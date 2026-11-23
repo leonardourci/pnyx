@@ -15,4 +15,4 @@ This adds a reporting hook to `~/.claude/settings.json` and `~/.codex/hooks.json
 
 ## Sessions and reply routes
 
-Attach a recorded session to a task in the UI. Inspect it with `pnyx task show <task> --hydra <id>` and send a reply with `pnyx send --task <task> --text "<message>" --hydra <id>`. See [Provider sessions](provider-sessions.md) for hosted conversations and [Data and privacy](data.md) for retention.
+Attach a recorded session to a task in the UI. Inspect it in the UI or read its `task.log` and recorded transcript files and send a reply with `pnyx send --task <task> --text "<message>" --hydra <id>`. See [Provider sessions](provider-sessions.md) for hosted conversations and [Data and privacy](data.md) for retention.

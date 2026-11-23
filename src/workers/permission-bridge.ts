@@ -200,14 +200,22 @@ export function createPermissionBridge({
             })
           }
 
-          pending.set(
-            id,
-            {
-              card: current.id,
-              entry,
-              finish,
+          writer.afterCommit({
+            run: () => {
+              pending.set(
+                id,
+                {
+                  card: current.id,
+                  entry,
+                  finish,
+                },
+              )
+
+              if (closing() || signal.aborted) {
+                expire({ id })
+              }
             },
-          )
+          })
           writer.append({
             event: permissionEvent({
               state: writer.state,
@@ -249,9 +257,9 @@ export function createPermissionBridge({
         reason,
       },
     })
-    const waiting = pending.get(id)
     const result = await write({
       fn: ({ writer }) => {
+        const waiting = pending.get(id)
         const card = findCard({
           state: writer.state,
           ref: task,
@@ -277,7 +285,7 @@ export function createPermissionBridge({
           inform({
             task: card.id,
             reason: 'Helper answered a question or form',
-            clear: `Use pnyx task show ${card.id} --full to inspect the answer`,
+            clear: `Read tasks/${card.id}/task.log to inspect the answer`,
           })
         }
 
@@ -297,7 +305,10 @@ export function createPermissionBridge({
             request,
           })
 
-          return { expired: true as const }
+          return {
+            expired: true as const,
+            waiting,
+          }
         }
 
         if (request.delivery === 'needs_reentry' && choice !== request.status) {
@@ -359,6 +370,7 @@ export function createPermissionBridge({
 
         return {
           expired: false as const,
+          waiting,
           answered,
           receipt: {
             task: card.id,
@@ -371,7 +383,7 @@ export function createPermissionBridge({
     })
 
     if (result.expired) {
-      waiting?.finish({
+      result.waiting?.finish({
         result: {
           behavior: 'deny',
           message: 'This permission request expired.',
@@ -383,7 +395,7 @@ export function createPermissionBridge({
       })
     }
 
-    waiting?.finish({
+    result.waiting?.finish({
       result: choice === 'allow' ? {
         behavior: 'allow',
         ...result.answered,

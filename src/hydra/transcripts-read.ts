@@ -1,5 +1,5 @@
 import { taskSessions } from '#workers/session-history.ts'
-import { query } from '#store/postgres.ts'
+import { readEvents } from '#app/event-log.ts'
 import { THREAD_PAGE_LIMIT } from './thread-history.ts'
 import { log } from '#app/diagnostics.ts'
 import { messageReference } from './message-reference.ts'
@@ -11,7 +11,6 @@ import type { Card } from '#tasks/model.ts'
 import type { AgentConfig, AgentRef, ReplyState } from '#workers/model.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
-import { readTranscript } from '#workers/transcript-read.ts'
 import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
 import { traces } from '#preferences/view.ts'
@@ -111,8 +110,6 @@ export interface ThreadPage {
 }
 const HYDRA_PAGE_SIZE = 20
 const MAX_BYTES = 10 * 1024 * 1024
-// How many transcripts' parsed messages the server keeps between reads.
-const CACHED_TRANSCRIPTS = 16
 // Parts bound each transport entry without cutting a logical message at a page boundary.
 const MAX_TEXT = 1000
 
@@ -283,74 +280,6 @@ export type SessionEntry = ThreadEntry & {
   reference: string
   session: string
 }
-const parsedSessions = new Map<string, {
-  identity: string
-  end: number
-  entries: SessionEntry[]
-}>()
-
-// One session's messages from its whole native transcript, each with the reference its thread
-// page gives it. The parsed messages of recent transcripts are kept, so a later call parses
-// only the lines appended since.
-export function sessionEntries({
-  path,
-  session,
-  boundaries,
-}: {
-  path: string
-  session: string
-  boundaries: boolean
-}): SessionEntry[] {
-  const key = `${session}\n${boundaries}\n${path}`
-  const cached = parsedSessions.get(key)
-  const read = readTranscript({
-    cursor: {
-      source: path,
-      identity: cached?.identity ?? '',
-      pos: cached?.end ?? 0,
-    },
-  })
-
-  parsedSessions.delete(key)
-
-  if (!read) {
-    return []
-  }
-
-  const added = read.lines.flatMap(line => recordEntries({
-    record: line.record,
-    offset: line.pos,
-    tools: false,
-    thinking: false,
-    boundaries,
-  }).map(item => ({
-    ...item,
-    reference: messageReference({
-      session,
-      id: item.id,
-      messageId: item.messageId,
-    }),
-    session,
-  })))
-  const entries = cached && !read.reset ? cached.entries.concat(added) : added
-  parsedSessions.set(
-    key,
-    {
-      identity: read.identity,
-      end: read.end,
-      entries,
-    },
-  )
-
-  const [oldest] = parsedSessions.keys()
-
-  if (parsedSessions.size > CACHED_TRANSCRIPTS && oldest !== undefined) {
-    parsedSessions.delete(oldest)
-  }
-
-  return entries
-}
-
 export interface HydraSession {
   session: string
   agent: AgentRef
@@ -1166,22 +1095,10 @@ function readThreadPage(
   if (card.id === HYDRA_CARD) {
     const firstAt = page[0]?.item.at
     const beforeAt = excludedAt.toSorted()[0]
-    const [rows] = firstAt === undefined ? [[]] : query({
-      statements: [
-        {
-          text: `select data from events where hydra_id = $1 and at >= $2
-        and ($3::text is null or at <= $3)
-        and ((type = 'card.replied' and coalesce(data->'data'->>'text', '') <> '')
-          or (actor = 'hydra' and type <> 'hydra.message')) order by seq`,
-          values: [
-            hydraId,
-            firstAt,
-            beforeAt ?? null,
-          ],
-        },
-      ],
-    }) as { data: HydraEvent }[][]
-    result.actions = rows!.map(row => row.data).filter(event => threadAction({
+    const events = firstAt === undefined ? [] : readEvents({ hydraId }).filter(event =>
+      event.at >= firstAt && (beforeAt === undefined || event.at <= beforeAt)
+      && ((event.type === 'card.replied' && event.data.text) || (event.actor === 'hydra' && event.type !== 'hydra.message')))
+    result.actions = events.filter(event => threadAction({
       event,
       state,
     }))

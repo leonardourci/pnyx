@@ -110,7 +110,7 @@ function requireOwnTask({
   if (!ref) {
     inform({
       reason: `${what} has no worker task target`,
-      clear: 'Use pnyx task list to find the task ID.',
+      clear: 'Use pnyx board to find the task ID.',
     })
 
     return
@@ -125,7 +125,7 @@ function requireOwnTask({
     inform({
       task: card.id,
       reason: `Worker ${task} changed another task`,
-      clear: `Use pnyx task history ${card.id} to inspect the change`,
+      clear: `Read tasks/${card.id}/task.log to inspect the change`,
     })
   }
 }

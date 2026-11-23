@@ -232,6 +232,7 @@ export function applyTask({
       statusLog: [],
       ...(parentId ? { parentId } : {}),
       ...(folder ? { folder } : {}),
+      ...(event.data.workerLogDir ? { workerLogDir: event.data.workerLogDir } : {}),
       column: createdColumn({
         columns,
         column,

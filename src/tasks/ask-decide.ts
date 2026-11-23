@@ -81,7 +81,7 @@ const findAsk = ({
     throw new HydraError({
       message: `task ${card.id} has no question ${id}`,
       code: 'NOT_FOUND',
-      help: [`Run \`pnyx task show ${card.id}\` to see its questions`],
+      help: [`Read tasks/${card.id}/task.log to see its questions`],
     })
   }
 
@@ -494,7 +494,7 @@ export const askReport = ({
     o,
     i,
   ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
-  ...(ask.details ? [`Details: \`pnyx task show ${task} --full --hydra ${hydraId}\``] : []),
+  ...(ask.details ? [`Details: read tasks/${task}/task.log in Hydra ${hydraId}`] : []),
   `Answer with \`pnyx answer ${task} ${ask.id} --text "<answer>" --hydra ${hydraId}\` or pass --choice <n>.`,
   'If the owner must decide, present the question and its choices in Hydra chat.',
 ].join('\n')

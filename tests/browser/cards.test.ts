@@ -1,8 +1,9 @@
+import { loadHydra } from '#app/store.ts'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openHydra } from './page.ts'
 import { chrome } from './chrome.ts'
-import { rows, startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
+import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 
 const COLUMN_TASKS = 61
 const PROJECTS = 8
@@ -1051,13 +1052,10 @@ test(
       what: 'the worker first turn',
       check: () => worker.answered > 0,
     })
-    expect(rows({
-      text: 'select id from cards where hydra_id = $1 and title = $2',
-      values: [
-        hydra.id,
-        'One task, one card',
-      ],
-    })).toEqual([{ id: task }])
+    expect(Object.values(loadHydra({
+      hydraId: hydra.id,
+    }).state.cards).filter(card => card.title === 'One task, one card')
+      .map(card => ({ id: card.id }))).toEqual([{ id: task }])
     await taskCard.locator('.card-agent[aria-label="Codex"]').waitFor()
 
     expect(await taskCard.evaluate(
@@ -1336,21 +1334,11 @@ test(
     const card = await page.eval(() => {
       const card = document.querySelector('[data-hydra-workspace="${hydra.id}"] .card-open');
       const form = document.querySelector('[data-hydra-workspace="${hydra.id}"] .task-create');
-      return { expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
+      return { id: card.closest('[data-task]').dataset.task, expanded: card.getAttribute('aria-expanded'), column: card.closest('[data-column]').dataset.column, title: card.textContent, formClosed: form === null, focusLabel: document.activeElement?.getAttribute('aria-label') };
     });
     console.log(JSON.stringify({ fields: { ...fields, ...reachability, titleGrows: fields.titleHeight > titleHeight }, card }));
   `,
     }))
-    await until({
-      what: 'the saved task',
-      check: () => rows({
-        text: 'select id from cards where hydra_id = $1 and title = $2',
-        values: [
-          hydra.id,
-          title,
-        ],
-      }).length === 1,
-    })
     expect(result.fields).toMatchObject({
       titleFits: true,
       titleGrows: true,
@@ -1362,6 +1350,7 @@ test(
       multiLine: true,
     })
     expect(result.card).toEqual({
+      id: expect.any(String),
       expanded: 'false',
       column: 'ideas',
       title,
@@ -1369,13 +1358,7 @@ test(
       focusLabel: 'Fold Ideas',
     })
     const saved = await hydra.task({
-      key: rows({
-        text: 'select id from cards where hydra_id = $1 and title = $2',
-        values: [
-          hydra.id,
-          title,
-        ],
-      })[0]!.id as string,
+      key: result.card.id,
     })
     const initialDescription = await chrome({
       script: `

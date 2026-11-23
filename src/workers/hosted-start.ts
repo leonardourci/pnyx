@@ -126,7 +126,7 @@ export function createWorkerStarts({
     if (current.state === 'present') {
       inform({
         reason: 'Outside session is still present; continuing its saved conversation in Pnyx',
-        clear: 'Use pnyx task sessions to inspect both the outside session and its Pnyx worker',
+        clear: 'Read the task.log session records for both the outside session and its Pnyx worker',
       })
     }
   }
@@ -254,7 +254,7 @@ export function createWorkerStarts({
       throw new HydraError({
         message: `task ${target.id} is already starting`,
         code: 'TASK_STARTING',
-        help: [`Check \`pnyx task show ${target.id}\` once its session opens`],
+        help: [`Read tasks/${target.id}/task.log once its session opens`],
       })
     }
 
@@ -575,7 +575,7 @@ export function createWorkerStarts({
             launch: 'pending',
             session: claimed.existing,
             information: 'The provider returned an existing session. Pnyx kept its current worker unchanged.',
-            help: ['Retry the same start request to open a fresh worker, or use `pnyx task sessions` to see the existing session'],
+            help: ['Retry the same start request to open a fresh worker, or read task.log session records to see the existing session'],
           }
         }
 

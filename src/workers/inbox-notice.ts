@@ -1,3 +1,8 @@
+import { STEERING_NOTICE } from './steering-text.ts'
+import { HydraError } from '#store/errors.ts'
+import { nativeHome } from '#app/native-home.ts'
+import type { SteeringClaim } from './model.ts'
+import { recordContext } from '#hydra/file-context.ts'
 import type { ReplyState } from './model.ts'
 
 export interface NotificationResult {
@@ -23,13 +28,6 @@ export function notificationReceipt({ result }: NotificationResult): ReplyState 
   }
 }
 
-const NOTICE = 'Pnyx steering inbox has pending instruction IDs '
-const MESSAGES = /^New instructions for task \S+, in order \(Pnyx inbox IDs /
-
-// Text Pnyx sent a worker to steer it; the instructions it carries are already recorded as replies.
-export const steeringText = ({ text }: { text: string }) =>
-  text.startsWith(NOTICE) || MESSAGES.test(text)
-
 // The owner's instructions themselves, first time they reach the worker; the inbox keeps them as the record.
 export function steeringMessages({
   task,
@@ -46,7 +44,10 @@ export function steeringMessages({
   return [
     `New instructions for task ${task}, in order (Pnyx inbox IDs ${JSON.stringify(messages.map(message => message.id))}):`,
     messages.map(message => message.text).join('\n\n---\n\n'),
-    `Pnyx marks them read once you receive this; \`pnyx task inbox read ${task} --hydra ${hydraId}\` shows anything still pending. Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
+    `Pnyx marks them read once you receive this. ${recordContext({
+      hydraId,
+      task,
+    })} Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
   ].join('\n\n')
 }
 
@@ -54,10 +55,68 @@ export function steeringNotice({
   task,
   hydraId,
   ids,
+  claim,
 }: {
   task: string
   hydraId: string
   ids: string[]
+  claim: SteeringClaim
 }): string {
-  return `${NOTICE}${JSON.stringify(ids)}. Run \`pnyx task inbox read ${task} --hydra ${hydraId}\`, which records read acknowledgements and stops reminders. Apply the returned messages in order; report progress and blockers separately. An acknowledgement means read, never completed work. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
+  const assignment = [...nativeHome().references({ hydra: hydraId })].findLast(([
+    , position,
+  ]) => position === claim.generation)?.[0]
+
+  if (assignment === undefined) {
+    throw new HydraError({
+      code: 'STALE_CLAIM',
+      message: 'The inbox assignment has no durable record reference',
+    })
+  }
+
+  const quote = ({ value }: { value: string }) => `'${value.replace(
+    /'/g,
+    "'\\''",
+  )}'`
+  const acknowledgement = ids.map(id => [
+    'pnyx task ack',
+    quote({ value: task }),
+    quote({ value: id }),
+    '--session',
+    quote({ value: claim.session }),
+    '--generation',
+    quote({ value: JSON.stringify({ native: assignment }) }),
+    '--hydra',
+    quote({ value: hydraId }),
+  ].join(' ')).join('\n')
+
+  return `${STEERING_NOTICE}${JSON.stringify(ids)}. ${recordContext({
+    hydraId,
+    task,
+  })} Read the full instructions before acknowledging these exact IDs with the supplied assignment reference:\n${acknowledgement}\nAn acknowledgement means read, never completed work. Apply the pending messages in order; report progress and blockers separately. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
+}
+
+export function readSteeringMessages({
+  text,
+  task,
+}: {
+  text: string
+  task: string
+}): string[] {
+  const prefix = `New instructions for task ${task}, in order (Pnyx inbox IDs `
+  const end = text.indexOf('):\n')
+
+  if (!text.startsWith(prefix) || end < prefix.length) {
+    return []
+  }
+
+  try {
+    const ids: unknown = JSON.parse(text.slice(
+      prefix.length,
+      end,
+    ))
+
+    return Array.isArray(ids) && ids.every(id => typeof id === 'string') ? ids : []
+  } catch {
+    return []
+  }
 }

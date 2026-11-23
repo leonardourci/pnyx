@@ -1,3 +1,4 @@
+import { recordContext } from './file-context.ts'
 import { projectsFor } from '#projects/read.ts'
 
 import { createDigestContext } from './digest-context.ts'
@@ -224,6 +225,7 @@ export function createHydraTurns({
 
     if (onlyTasks) {
       return hydraDigest({
+        records: recordContext({ hydraId }),
         hydraId,
         state,
         owner,
@@ -259,6 +261,7 @@ export function createHydraTurns({
     }
 
     return hydraDigest({
+      records: recordContext({ hydraId }),
       previousDigest,
       checkpointed,
       conditions: memoryConditions(),
@@ -289,7 +292,7 @@ export function createHydraTurns({
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp
 
-    return changed ? ' Memory changed; load owner memory with owner memory list, Hydra memory with hydra memory list or project memory with project show <name|path> when needed.' : ''
+    return changed ? ' Memory changed; reread the saved owner memory logs, this Hydra’s hydra.log and the project memory logs named in your context when needed.' : ''
   }
 
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
@@ -395,7 +398,10 @@ export function createHydraTurns({
     }
 
     // While a restart, an upgrade or a compaction stops Hydra, everything for it waits in its queue; the recap when it ends tells Hydra.
-    if (stoppedFor({ id })) {
+    if (stoppedFor({
+      id,
+      actor,
+    })) {
       queued()
 
       return Promise.resolve({ state: 'queued' })
@@ -442,7 +448,10 @@ export function createHydraTurns({
         })
       }
 
-      if (stoppedFor({ id })) {
+      if (stoppedFor({
+        id,
+        actor,
+      })) {
         return { state: 'queued' }
       }
 
@@ -854,7 +863,7 @@ export function createHydraTurns({
         const notes = continuingTurn || compactCommand({ text }) ? [] : pendingNotes
         const context = contextNoteBlock({
           notes,
-          hydraId,
+          records: recordContext({ hydraId }),
           state: contextState,
         })
 
@@ -1105,49 +1114,6 @@ export function createHydraTurns({
     }
   }
 
-  const reportTurn = (): string | undefined => {
-    const agent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
-    const entry = agent && live.get(sessionId({ agent }))
-
-    if (!entry || entry.activity !== 'working' || entry.stopping || closing()) {
-      return undefined
-    }
-
-    const turns = entry.session?.snapshot().work.runningTurns
-
-    if (turns?.length !== 1) {
-      return undefined
-    }
-
-    return `${sessionId({ agent })}:${turns[0]}`
-  }
-
-  const reportsRead = ({
-    turn,
-    seqs,
-  }: {
-    turn: string
-    seqs: number[]
-  }) => {
-    if (turn !== reportTurn()) {
-      return false
-    }
-
-    const state = loadHydra({ hydraId }).state
-    const selected = new Set(seqs)
-
-    for (const note of state.contextNotes ?? []) {
-      if (note.report && selected.has(note.seq)) {
-        readContextNote({
-          note,
-          state,
-        })
-      }
-    }
-
-    return true
-  }
-
   return {
     cancel: () => {
       stopGeneration += 1
@@ -1157,8 +1123,6 @@ export function createHydraTurns({
       await hydraTurn
     },
     digest,
-    reportTurn,
-    reportsRead,
     hydraSession,
     hydra,
     startedByOwner,

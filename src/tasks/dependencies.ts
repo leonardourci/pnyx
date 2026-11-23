@@ -199,7 +199,7 @@ function readinessBlockers({
     if (!wait.ready) {
       blockers.push({
         reason: `waiting for ${wait.title} (${card.wait.task}): ${card.wait.condition}`,
-        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; inspect the dependency with \`pnyx task show ${card.wait.task}\``,
+        clear: `It resumes once ${card.wait.task} reaches ${card.wait.condition}; read tasks/${card.wait.task}/task.log to inspect the dependency`,
       })
     }
   }

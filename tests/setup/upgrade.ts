@@ -29,21 +29,18 @@ export const git = ({
   },
 ).trim()
 
-// A build that records its version and leaves a CLI whose data check (`setup postgres --check`) exits with dataExit.
 export const building = ({
   version,
-  dataExit = 0,
   fail = false,
   wait,
 }: {
   version: string
-  dataExit?: number
   fail?: boolean
   // A file the build waits for, so a test can act while it runs.
   wait?: string
 }) => `${wait ? `while [ ! -f '${wait}' ]; do sleep 0.05; done\n` : ''}${fail ? 'echo "type error in build" >&2; exit 1\n' : ''}echo ${version} > built.txt
 mkdir -p dist/cli
-echo "process.stderr.write('data check ${dataExit}'); process.exit(${dataExit})" > dist/cli/pnyx.js
+echo "process.exit(0)" > dist/cli/pnyx.js
 `
 
 export function upgradeFolder({ root }: { root: string }) {

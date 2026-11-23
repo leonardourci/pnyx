@@ -1,4 +1,4 @@
-import { cloneValue } from '#app/preimage.ts'
+import { cloneValue } from '#app/json-copy.ts'
 import { recordHydraTurn } from '#workers/session-facts.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'

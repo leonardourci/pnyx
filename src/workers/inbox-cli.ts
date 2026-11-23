@@ -1,3 +1,5 @@
+import { nativeHome } from '#app/native-home.ts'
+import { workerIdentity } from './worker-identity.ts'
 import { pendingSteering, steeringClaim } from './steering.ts'
 import { readInput } from '#app/request-context.ts'
 import { integer, meta, parse, required, COMMON, type Options, type Output } from '#app/cli-support.ts'
@@ -250,6 +252,116 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
           attempt,
           meta: actor,
         }),
+      }
+    },
+  })
+}
+
+export async function acknowledgeInstruction({ args }: { args: string[] }): Promise<Output> {
+  const {
+    values,
+    positionals,
+    hydraId,
+  } = parse({
+    args,
+    positionals: 2,
+    options: {
+      ...COMMON,
+      session: { type: 'string' },
+      generation: { type: 'string' },
+    },
+  })
+  const ref = required({
+    value: positionals[0],
+    what: 'task',
+  })
+  const id = required({
+    value: positionals[1],
+    what: 'instruction id',
+  })
+  const session = required({
+    value: values.session as string | undefined,
+    what: '--session',
+  })
+  const encoded = required({
+    value: values.generation as string | undefined,
+    what: '--generation',
+  })
+  let reference: unknown
+
+  try {
+    reference = JSON.parse(encoded)
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      throw error
+    }
+  }
+
+  if (!reference || typeof reference !== 'object' || !('native' in reference)
+    || typeof reference.native !== 'string' || Object.keys(reference).length !== 1) {
+    throw new HydraError({
+      code: 'VALIDATION_ERROR',
+      message: '--generation needs the native assignment reference from the notice or task record',
+    })
+  }
+
+  const assignment = reference.native
+  const m = meta({ values })
+  const identity = workerIdentity({ actor: m.actor })
+
+  return await withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const card = inboxTask({
+        writer,
+        ref,
+      })
+
+      if (identity?.task !== card.id || m.actor !== `worker:${card.id}`) {
+        throw new HydraError({
+          code: 'VALIDATION_ERROR',
+          message: 'Only the assigned worker may acknowledge its own instruction IDs',
+        })
+      }
+
+      const generation = nativeHome().references({ hydra: hydraId })
+        .get(assignment)
+
+      if (generation === undefined) {
+        throw new HydraError({
+          code: 'STALE_CLAIM',
+          message: 'This assignment no longer belongs to the task’s inbox',
+        })
+      }
+
+      if (card.steering?.find(message => message.id === id)?.stopped) {
+        throw new HydraError({
+          code: 'STALE_CLAIM',
+          message: 'This instruction was cancelled before it was read',
+        })
+      }
+
+      const acknowledged = acknowledgeSteering({
+        writer,
+        ref: card.id,
+        id,
+        ack: {
+          at: m.at,
+          actor: m.actor,
+          claim: {
+            session,
+            generation,
+          },
+          outcome: 'read',
+        },
+        meta: m,
+        worker: requestEnv().PNYX_STEERING_WORKER,
+      })
+
+      return {
+        task: card.id,
+        instruction: id,
+        acknowledged: acknowledged.ack?.outcome,
       }
     },
   })

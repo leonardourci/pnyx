@@ -1,3 +1,6 @@
+import { dirname } from 'node:path'
+import { contextReportStatus, contextTurnNotes } from './context-notes.ts'
+import { recordContext, recordFiles } from './file-context.ts'
 import { WAKE_TURN, WAKE_HANDLED } from './wake-ids.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import type { HydraState } from '#app/model.ts'
@@ -65,21 +68,23 @@ export function wakeText({
   hydraId,
   state,
   now,
-  after,
   reasons,
   reports,
   check,
   review,
+  reviewId,
+  reportSeqs,
   pick,
 }: {
   hydraId: string
   state: HydraState
   now: number
-  after: number
   reasons: string[]
   reports: HydraMessage[]
   check: boolean
   review?: string
+  reviewId?: string
+  reportSeqs?: number[]
   pick?: Parameters<typeof decisionsText>[0]['pick']
 }): string {
   const lines: string[] = []
@@ -149,15 +154,73 @@ export function wakeText({
     lines.push('Some wake details were shortened or omitted.')
   }
 
-  if (pick && check) {
-    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
-  } else if (check || overflow) {
-    lines.push(`Run \`pnyx hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change. Follow its \`through\` cursor when it offers another page. Act on pending reports marked unhandled when they need you.`)
-  }
+  if (check || overflow || reviewOverflow) {
+    const notes = state.contextNotes ?? []
+    const supplied = pick ? notes : contextTurnNotes({ notes })
+    const pending = supplied.filter(note => {
+      if (!note.report || note.handled) {
+        return false
+      }
 
-  if (reviewOverflow) {
-    const reviewedThrough = state.hydraReview?.seq ?? state.seq
-    lines.push(`Read \`pnyx history --kind hydra.review --before ${reviewedThrough + 1} --limit 1 --full --hydra ${hydraId}\` for the full timed-review details.`)
+      return pick ? pick.tasks?.includes(note.task ?? '') && reportSeqs?.includes(note.seq)
+        : contextReportStatus({
+          state,
+          note,
+        }) === 'unhandled'
+    })
+    const scope = pick ? 'Only handle the granted tasks and selected updates listed below.'
+      : 'Act on these pending reports when they need you.'
+    lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ hydraId }).hydra))}. ${scope}`)
+
+    const pendingEvents = new Map<string, string>()
+
+    if (pending.length) {
+      const first = Math.min(...pending.map(note => note.seq))
+      const last = Math.max(...pending.map(note => note.seq))
+      const ids = new Set(pending.map(note => note.id))
+
+      for (const event of scanChanges({
+        hydraId,
+        after: first - 1,
+      })) {
+        if (event.seq > last) {
+          break
+        }
+
+        if (ids.has(event.id)) {
+          const file = event.type === 'hydra.message' || event.cardId === HYDRA_CARD
+            ? 'hydra.log' : `tasks/${event.cardId}/task.log`
+          pendingEvents.set(
+            event.id,
+            file,
+          )
+        }
+      }
+    }
+
+    const savedReports = pending.flatMap(note => {
+      const file = pendingEvents.get(note.id)
+
+      if (!file) {
+        return []
+      }
+
+      return [
+        {
+          id: note.id,
+          file,
+          status: contextReportStatus({
+            state,
+            note,
+          }),
+        },
+      ]
+    })
+    lines.push(`Pending reports: ${JSON.stringify(savedReports)}`)
+
+    if (reviewOverflow) {
+      lines.push(`Read the full hydra.review record ${JSON.stringify(reviewId)} in hydra.log.`)
+    }
   }
 
   lines.push(decisionsText({
@@ -371,7 +434,7 @@ export function findHydraTurnToResume({
     finishedThrough ?? lastFinishedTurn?.seq ?? 0,
     source ? source.seq - 1 : Infinity,
   )
-  const unansweredMessages: number[] = []
+  const unansweredMessages: string[] = []
 
   for (const event of scanChanges({
     hydraId,
@@ -382,7 +445,7 @@ export function findHydraTurnToResume({
       continue
     }
 
-    unansweredMessages.push(event.seq)
+    unansweredMessages.push(event.id)
   }
 
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
@@ -404,13 +467,13 @@ export function findHydraTurnToResume({
   }
 
   const interruptedWork = unfinishedWork.join(' and ') || 'a turn'
-  const ownerReads = unansweredMessages.map(seq =>
-    `Read owner message ${seq} in full with \`pnyx hydra messages --after ${seq - 1} --limit 1 --hydra ${hydraId}\`.`)
+  const ownerReads = unansweredMessages.map(id =>
+    `Read owner message ${JSON.stringify(id)} in hydra.log in full.`)
 
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and follow its \`through\` cursor. Use \`pnyx hydra messages --after <seq minus one> --limit 1 --hydra ${hydraId}\` when you need a specific message in full. Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. ${recordContext({ hydraId })} Answer what is still open and tell the owner in one line that the restart cut your reply.\n${[
       ...ownerReads,
       decisionsText({
         state,

@@ -253,7 +253,7 @@ function receipt({
       message: event.id,
       hydra: event.data.hydra,
       state: 'queued',
-      help: ['Hydra can read this in `pnyx hydra messages`; no worker was launched'],
+      help: ['Hydra can read this in hydra.log; no worker was launched'],
     }
   }
 
@@ -417,7 +417,7 @@ export async function commit(
         // Observations have receipts only while they remain in the daemon's recent changes.
         const original = readChanges({
           hydraId,
-          seqs: [seq],
+          ids: [meta.id!],
         })[0]
 
         if (!original) {

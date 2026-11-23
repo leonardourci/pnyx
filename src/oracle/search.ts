@@ -1,9 +1,8 @@
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
-import { loadHydra } from '#app/store.ts'
 import { liveTask } from '#tasks/select.ts'
 import { HydraError } from '#store/errors.ts'
-import type { Document, Hit, Match, Query, Snippet } from './model.ts'
+import type { Document, Hit, Match, Query, SearchSnapshot, Snippet } from './model.ts'
 import { queryTerms, fold, tokens, matches, type Term } from './query.ts'
 import { openIndex } from './index.ts'
 import { redact } from './text.ts'
@@ -190,16 +189,18 @@ export function search({
   hydraId,
   query,
   memoryDocuments,
+  state,
+  sources,
+  positions,
 }: {
   hydraId: string
   query: Query
   memoryDocuments: Document[]
-}): {
+} & SearchSnapshot): {
   hits: Hit[]
   total: number
   match: Match
 } {
-  const state = loadHydra({ hydraId }).state
   const terms = queryTerms({ text: query.text })
 
   if (!terms.length) {
@@ -238,7 +239,8 @@ export function search({
     }))
   const index = openIndex({
     hydraId,
-    state,
+    sources,
+    positions,
   })
 
   const run = ({ fuzzy }: { fuzzy: boolean }) => {

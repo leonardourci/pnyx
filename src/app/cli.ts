@@ -16,7 +16,7 @@ import { owner } from '#memory/cli.ts'
 import { settings } from '#settings/cli.ts'
 import { harvest } from '#integrations/cli.ts'
 import { link, outcome } from '#tasks/delivery/cli.ts'
-import { columnCommandHandler, push, card, move, context } from '#tasks/cli.ts'
+import { columnCommandHandler, push, card, move } from '#tasks/cli.ts'
 import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
@@ -170,24 +170,6 @@ const history = guard({
     if (matches > limit) {
       const next = page.at(-1)!.seq
       out.next = next
-      const flags = [
-        'card',
-        'kind',
-        'workspace',
-        'limit',
-        'hydra',
-      ].flatMap(f => (values[f] ? [
-        `--${f}`,
-        String(values[f]),
-      ] : []))
-      out.help = [
-        `Run \`pnyx history ${[
-          ...flags,
-          ...values.updates ? ['--updates'] : [],
-          '--before',
-          String(next),
-        ].join(' ')}\` for older events`,
-      ]
     }
 
     return out
@@ -219,7 +201,7 @@ const undo = guard({
       throw new HydraError({
         message: `event not found: ${id}`,
         code: 'NOT_FOUND',
-        help: ['Run `pnyx history` to find event ids'],
+        help: ['Read hydra.log and task.log to find event IDs'],
       })
     }
 
@@ -268,6 +250,5 @@ export const commands = supervisedCommands({
     history,
     undo,
     setup,
-    context,
   },
 })

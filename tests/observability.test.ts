@@ -2,7 +2,6 @@ import { logPageLines } from '#diagnostics/page-lines.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { spoolDir } from '#store/storage.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
-import { query } from '#store/postgres.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
@@ -54,12 +53,15 @@ test(
     })
     await flushLogs()
     const onStart = lines().length
-    await hydra.owner({
+    expect((await pnyxCommand({
       args: [
-        'task',
-        'list',
+        'board',
+        '--hydra',
+        hydra.id,
+        '--json',
       ],
-    })
+      env: process.env,
+    })).status).toBe(0)
     const spool = spoolDir({ dir: hydraDir({ hydraId: hydra.id }) })
     mkdirSync(
       spool,
@@ -113,12 +115,15 @@ test(
       what: 'the server applies Detailed logging',
       check: () => logMode() === 'detailed',
     })
-    await hydra.owner({
+    expect((await pnyxCommand({
       args: [
-        'task',
-        'list',
+        'board',
+        '--hydra',
+        hydra.id,
+        '--json',
       ],
-    })
+      env: process.env,
+    })).status).toBe(0)
     await hydra.owner({
       args: ['history'],
     })
@@ -234,7 +239,7 @@ test(
       }),
       expect.objectContaining({
         operation: 'storage',
-        databaseBytes: expect.any(Number),
+        stateBytes: expect.any(Number),
         logBytes: expect.any(Number),
       }),
       expect.objectContaining({
@@ -266,7 +271,7 @@ test(
       }),
     ])
     const command = recorded.filter(line => line.operation === 'command.cli'
-      && line.name === 'task list' && line.hydraId === hydra.id).at(-1)
+      && line.name === 'board' && line.hydraId === hydra.id).at(-1)
     expect(command.requestId).toEqual(expect.any(String))
     expect(recorded).toContainEqual(expect.objectContaining({
       operation: 'http.request',
@@ -535,7 +540,7 @@ test(
     })
     log({
       operation: 'storage',
-      databaseBytes: 4194304,
+      stateBytes: 4194304,
       logBytes: 5242880,
     })
     await flushLogs()
@@ -550,7 +555,7 @@ test(
     ].includes(row.operation))).toBe(false)
     expect(report.memory).toContainEqual(expect.objectContaining({
       agentsMB: 2,
-      databaseMB: 4,
+      stateMB: 4,
       logsMB: 5,
       activeResources: 5,
     }))
@@ -576,7 +581,7 @@ test(
 )
 
 test(
-  'stopping the resource sampler ignores an in-flight process listing',
+  'resource sampling preserves unopened logs and ignores an in-flight listing after stop',
   async () => {
     const hydra = await pnyx.hydra()
     const home = hydra.folder({ name: 'stopped-sampler' })
@@ -591,10 +596,10 @@ test(
       import { promisify } from 'node:util';
       import { syncBuiltinESMExports } from 'node:module';
       import { setImmediate } from 'node:timers/promises';
-      import { readFileSync } from 'node:fs';
+      import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+      import { join } from 'node:path';
       import { openLogs, closeLogs, log, flushLogs } from '#app/diagnostics.ts';
       import { logFiles } from '#diagnostics/log-files.ts';
-      import { closePostgres } from '#store/postgres.ts';
 
       let complete;
       let started;
@@ -610,6 +615,9 @@ test(
       // Import after installing the external process gate, before promisify captures execFile.
       const { startProcessLines } = await import('#diagnostics/process-line.ts');
       const { watchAgent } = await import('#workers/agent-memory.ts');
+      const unserved = join(process.env.PNYX_HOME, 'hydras', 'unserved');
+      mkdirSync(unserved, { recursive: true });
+      writeFileSync(join(unserved, 'hydra.log'), '{"n":1');
       openLogs();
       watchAgent({ child: process, ids: { hydraId: 'synthetic' } });
       const sampler = startProcessLines({ every: 1 });
@@ -627,7 +635,6 @@ test(
         .filter(line => line.operation === 'agent.memory');
       console.log(JSON.stringify(memory));
       closeLogs();
-      await closePostgres();
       `,
       ],
       env: {
@@ -639,6 +646,15 @@ test(
       result.status,
       result.stderr,
     ).toBe(0)
+    expect(readFileSync(
+      join(
+        home,
+        'hydras',
+        'unserved',
+        'hydra.log',
+      ),
+      'utf8',
+    )).toBe('{"n":1')
     expect(JSON.parse(result.stdout)).toEqual([
       expect.objectContaining({
         agents: [
@@ -649,54 +665,6 @@ test(
         ],
       }),
     ])
-  },
-)
-
-// The database is this file's scratch clone. Stall only its metadata function, restoring the original definition.
-test(
-  'a stalled storage sample reports its short database timeout',
-  async () => {
-    await flushLogs()
-    const start = lines().length
-    query({
-      statements: [
-        {
-          text: `alter function pg_catalog.pg_database_size(name) rename to pnyx_original_database_size;
-    create function pg_catalog.pg_database_size(name) returns bigint
-    language plpgsql strict as $$ begin perform pg_sleep(1); return 1; end $$`,
-        },
-      ],
-    })
-    const sample = startProcessLines({ every: 20 })
-
-    try {
-      const result = await until({
-        what: 'storage sample outcome',
-        check: async () => {
-          await flushLogs()
-
-          return lines().slice(start)
-            .find(line => [
-              'storage',
-              'storage.sample',
-            ].includes(line.operation))
-        },
-      })
-      expect(result).toMatchObject({
-        operation: 'storage.sample',
-        level: 'error',
-      })
-    } finally {
-      sample.stop()
-      query({
-        statements: [
-          {
-            text: `drop function pg_catalog.pg_database_size(name);
-        alter function pg_catalog.pnyx_original_database_size(name) rename to pg_database_size`,
-          },
-        ],
-      })
-    }
   },
 )
 

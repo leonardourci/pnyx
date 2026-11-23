@@ -1,3 +1,4 @@
+import { nativeHome } from '#app/native-home.ts'
 import { inform } from '#app/command-notices.ts'
 import { prepareTaskRuntimeMove } from '#app/task-runtime.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -55,7 +56,7 @@ const missing = ({
   ref: string
 }) => refuse({
   message: `card not found: ${ref}`,
-  help: `Run \`pnyx task list --hydra ${hydraId}\``,
+  help: `Use pnyx board --hydra ${hydraId}`,
   code: 'NOT_FOUND',
 })
 
@@ -140,13 +141,13 @@ export function moveRefusal({
   moving?: string[]
 }): HydraError | undefined {
   const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
-  const restoreRelationships = `Review task ${card.id} in Hydra ${to}; read its previous relationships with \`pnyx task history ${card.id} --hydra ${hydraId}\``
+  const restoreRelationships = `After moving from Hydra ${hydraId} to ${to}, review the previous relationships in the destination's tasks/${card.id}/task.log`
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
     return refuse({
       message: `${card.id} is not an explicit task`,
-      help: 'Choose a task from `pnyx task list`',
+      help: 'Choose a task in the UI',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -165,10 +166,12 @@ export function moveRefusal({
     })
   }
 
-  if (target.cards[card.id] || target.keys[card.key]) {
+  const conflictingTask = target.cards[card.id]?.id ?? target.keys[card.key]
+
+  if (conflictingTask) {
     return refuse({
       message: `Hydra ${to} already has a task with id or key ${card.id}`,
-      help: `Run \`pnyx task show ${card.id} --hydra ${to}\``,
+      help: `Read tasks/${conflictingTask}/task.log in Hydra ${to}`,
     })
   }
 
@@ -286,7 +289,7 @@ function checkTarget({
   if (!hydraIds().includes(to)) {
     throw refuse({
       message: `Hydra not found: ${to}`,
-      help: 'Run `pnyx hydra list` for Hydra ids',
+      help: 'Choose a destination Hydra in the UI',
       code: 'NOT_FOUND',
     })
   }
@@ -329,7 +332,7 @@ export async function releaseWorker({
   if (typeof released.busy === 'string') {
     throw refuse({
       message: `${card.id}'s worker is ${released.busy}`,
-      help: `Wait for it to finish (\`pnyx task show ${card.id} --hydra ${hydraId}\`), then retry the action in the UI`,
+      help: `Check worker activity for task ${card.id} in Hydra ${hydraId} in the UI. Retry the move when the worker is idle.`,
     })
   }
 }
@@ -381,6 +384,20 @@ function depart({
   meta: Meta
   moving?: MovedCard['moving']
 }): void {
+  const data: Extract<HydraMoveEvent, { type: 'task.moved-out' }>['data'] = {
+    to,
+    card: structuredClone(card),
+    sessions: carried({
+      hydraId,
+      state: source.state,
+      card,
+    }).sessions,
+  }
+
+  if (moving) {
+    data.moving = moving
+  }
+
   source.append({
     event: {
       ...base({
@@ -392,16 +409,7 @@ function depart({
         cardId: card.id,
       }),
       type: 'task.moved-out',
-      data: {
-        to,
-        moving,
-        card: structuredClone(card),
-        sessions: carried({
-          hydraId,
-          state: source.state,
-          card,
-        }).sessions,
-      },
+      data,
     },
     effects: false,
   })
@@ -429,7 +437,7 @@ function receipt({
     event: move,
     copy: card.copy?.state === 'removed' ? 'none' : card.copy?.path ?? 'none',
     worker: card.sessionIds?.[0] ?? 'none',
-    help: [`Run \`pnyx task show ${card.id} --hydra ${to}\``],
+    help: [`Read tasks/${card.id}/task.log in Hydra ${to}`],
   }
 }
 
@@ -525,7 +533,13 @@ export function stageTaskMove({
 
   current = source.state.cards[cardId]!
 
-  const event = {
+  const arriving = nativeHome().cardForMove({
+    from: hydraId,
+    to,
+    card: current,
+    state: target.state,
+  })
+  const event: Extract<HydraMoveEvent, { type: 'task.moved-in' }> = {
     ...base({
       state: target.state,
       meta: {
@@ -537,14 +551,13 @@ export function stageTaskMove({
     type: 'task.moved-in',
     data: {
       from: hydraId,
-      moving,
       column: targetColumn({
         source: source.state,
         target: target.state,
         card: current,
       }),
       card: {
-        ...structuredClone(current),
+        ...arriving,
         workerLogDir: workerTaskDir({
           hydraId,
           task: cardId,
@@ -556,7 +569,12 @@ export function stageTaskMove({
         card: current,
       }),
     },
-  } satisfies HydraMoveEvent
+  }
+
+  if (moving) {
+    event.data.moving = moving
+  }
+
   const moveRuntime = prepareTaskRuntimeMove({
     task: cardId,
     from: hydraId,

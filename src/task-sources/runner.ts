@@ -2,6 +2,7 @@ import { fork } from 'node:child_process'
 import { log } from '#app/diagnostics.ts'
 import { randomUUID } from 'node:crypto'
 import { sendReply } from '#workers/reply.ts'
+import { steeringNotice } from '#workers/inbox-notice.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
 import type { SteeringMessage } from '#workers/model.ts'
@@ -642,7 +643,12 @@ export function createSourceRunner({
           card,
           expectedSession: claim.session,
           id: `source-notice:${message}:${claim.generation}`,
-          text: `External result waiting in your durable inbox: ${message}. Run task inbox read ${card}, then task source read ${card} <source-id>. Handle the inbox in order; a notification is not an acknowledgement.`,
+          text: steeringNotice({
+            task: card,
+            hydraId,
+            ids: [message],
+            claim,
+          }),
           actor: 'pnyx',
         },
       })
@@ -697,7 +703,7 @@ export function createSourceRunner({
                   data: {
                     source: source.id,
                     sequence: captured.sequence,
-                    detail: `External result ${message} is unread; its worker notification ${result}: ${detail}. Read task source ${source.id} and restore worker delivery.`,
+                    detail: `External result ${message} is unread. Worker notification: ${result} (${detail}). Read source ${source.id}, result ${captured.sequence}, in tasks/${card}/task.log in Hydra ${hydraId} and restore worker delivery.`,
                   },
                 },
               })

@@ -133,7 +133,7 @@ function requireLiveTask({
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx task list`'],
+      help: ['Use pnyx board'],
     })
   }
 

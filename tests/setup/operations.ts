@@ -3,7 +3,6 @@ import { commands } from '#app/cli.ts'
 import { approval } from '#app/confirmations.ts'
 import { project } from '#projects/cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
-import { workerCommands } from '#workers/workers.ts'
 import { agent } from '#workers/agent-cli.ts'
 import { reply } from '#workers/reply-cli.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
@@ -29,7 +28,6 @@ const operations = workerScoped({
         commands: {
           approval,
           project,
-          ...workerCommands,
           ...dispatchCommands,
           agent,
           reply,

@@ -73,7 +73,7 @@ export function createCompactionControl({
   }: {
     card: string
     operation: Compaction
-  }): void
+  }): Promise<void>
   // The card's compactions have settled: none runs, and none follows at once.
   released({ card }: { card: string }): void
 }) {
@@ -100,7 +100,7 @@ export function createCompactionControl({
 
     if (change.kind === 'status') {
       resetCompactionDeadline({ operation: change.operation })
-      statusChanged({
+      await statusChanged({
         card,
         operation: change.operation,
       })

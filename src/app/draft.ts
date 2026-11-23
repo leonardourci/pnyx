@@ -2,8 +2,10 @@
 export function draft<T extends object>({
   state,
   change,
+  owned = [],
 }: {
   state: T
+  owned?: readonly object[]
   change({ state }: { state: T }): void
 }): T {
   interface Branch {
@@ -12,6 +14,7 @@ export function draft<T extends object>({
     parent?: Branch
     proxy: object
   }
+  const mutable = new WeakSet(owned)
   const inserted = new WeakSet<object>()
   const branches = new WeakMap<object, Branch>()
   const proxies = new WeakMap<object, Branch>()
@@ -35,7 +38,7 @@ export function draft<T extends object>({
     value: object
     parent?: Branch
   }): object => {
-    if (inserted.has(value)) {
+    if (mutable.has(value) || inserted.has(value)) {
       return value
     }
 
@@ -146,7 +149,7 @@ export function draft<T extends object>({
   }
 
   const finish = ({ value }: { value: unknown }): unknown => {
-    if (!value || typeof value !== 'object') {
+    if (!value || typeof value !== 'object' || mutable.has(value)) {
       return value
     }
 

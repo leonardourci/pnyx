@@ -249,8 +249,8 @@ export async function startCommand({
     folder: claimed.cwd,
     help: [
       role === 'hydra'
-        ? `Its first session becomes the Hydra; check \`pnyx hydra show --hydra ${hydraId}\``
-        : `Its session attaches to ${target} when its hooks first report; check \`pnyx task show ${target} --hydra ${hydraId}\``,
+        ? `Its first session becomes the Hydra; read hydra.log in Hydra ${hydraId}`
+        : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Hydra ${hydraId}`,
     ],
   }
 }

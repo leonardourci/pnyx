@@ -1,5 +1,4 @@
 import { inform } from '#app/command-notices.ts'
-import { existsSync } from 'node:fs'
 import { readInput } from '#app/request-context.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -8,12 +7,9 @@ import type { HydraState, HydraEvent } from '#app/model.ts'
 import { projectsFor } from '#projects/read.ts'
 import { MAX_BRIEF_LENGTH, type Card } from './model.ts'
 import { clip, guard, parse, COMMON, WRITE, meta, required, commit, HISTORY_MAX, summarize, integer, TEXT_CUT, type Output } from '#app/cli-support.ts'
-import { canonical } from '#store/paths.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { liveTask, rankOf } from './select.ts'
-import { socketPath } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from './push-rules.ts'
@@ -26,7 +22,6 @@ import { columnByRef, validateColumns } from './column-rules.ts'
 import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
 import { decideMove } from './columns-decisions.ts'
-import { requestCwd } from '#app/request-context.ts'
 
 const INTENT_LIMIT = 4000
 
@@ -149,64 +144,6 @@ function cardDetail({
   return detail
 }
 
-const CONTEXT_TASKS = 5
-
-// The session-start hook's summary: the Hydra's open work for the attached project holding the
-// session's folder, kept short because it loads into every session there. Elsewhere it prints nothing.
-export const context = guard({
-  handler: ({ args }) => {
-    const {
-      values,
-      hydraId,
-    } = parse({
-      args,
-      options: {
-        ...COMMON,
-        cwd: { type: 'string' },
-      },
-      positionals: 0,
-    })
-    const folder = canonical({ path: String(values.cwd ?? requestCwd()) })
-    const { state } = loadHydra({ hydraId })
-    const project = folder ? projectsFor({ state }).find(p => !p.detached
-      && (folder === p.path || folder.startsWith(`${p.path}/`))) : undefined
-
-    if (!project) {
-      return {}
-    }
-
-    const done = new Set(hydraConfig({ state }).columns.filter(c => c.role === 'done').map(c => c.id))
-    const open = Object.values(state.cards).filter(card => liveTask({ card })
-      && card.project === project.path && !done.has(card.column))
-      .sort((
-        a,
-        b,
-      ) => rankOf({ card: a }) - rankOf({ card: b }))
-    // The server's socket file, not a health request: the hook never waits on the network.
-    const server = existsSync(socketPath({ hydraId }))
-
-    return {
-      pnyx: `Hydra ${hydraId}, project ${project.name}, server ${server ? 'running' : 'not running'}`,
-      count: `${Math.min(
-        open.length,
-        CONTEXT_TASKS,
-      )} of ${open.length} open tasks`,
-      tasks: open.length ? open.slice(
-        0,
-        CONTEXT_TASKS,
-      ).map(card => ({
-        id: card.id,
-        title: card.title,
-        column: card.column,
-      })) : 'none: no open tasks for this project',
-      help: [
-        `Run \`pnyx task list --hydra ${hydraId}\` for every task`,
-        `Run \`pnyx card <id> --hydra ${hydraId}\` for one task`,
-      ],
-    }
-  },
-})
-
 export const push = guard({
   handler: async ({ args }) => {
     const {
@@ -262,7 +199,7 @@ export const push = guard({
   },
 })
 
-export const TASK_FIELDS = [
+const TASK_FIELDS = [
   'attention',
   'parent',
   'status',
@@ -377,14 +314,12 @@ export function taskHistory({
   const moved = history.some(entry => entry.hydra !== hydraId)
   const last = page.at(-1)
   const more = matches.length > limit
-  const help: string[] = []
   const out: Output = {
     hydraId,
     task: task.id,
     sessions: sessions.size ? [...sessions].map(id => ({
       session: id,
       transcript: state.sessions?.[id]?.agent.transcriptPath ?? 'unavailable',
-      command: `pnyx task chat ${task.id} --session ${id} --hydra ${hydraId}`,
     })) : 'none: no agent has worked on this task',
     events: page.length ? page.map(entry => historyRow({
       entry,
@@ -397,15 +332,6 @@ export function taskHistory({
     // A cursor on this Hydra stays a plain seq; one on an earlier Hydra names it.
     const next = last.hydra === hydraId ? last.event.seq : `${last.hydra}:${last.event.seq}`
     out.next = next
-    help.push(`Run \`pnyx task history ${ref} --before ${next} --hydra ${hydraId}\` for older events`)
-  }
-
-  if (!full && page.length) {
-    help.push(`Run \`pnyx task history ${ref} --full --hydra ${hydraId}\` for each event's data`)
-  }
-
-  if (help.length) {
-    out.help = help
   }
 
   return out
@@ -892,10 +818,10 @@ export const card = guard({
       card: found,
       full: Boolean(values.full),
     })
-    const help = [`Run \`pnyx history --card ${found.id}\` for its events`]
+    const help = [`Read tasks/${found.id}/task.log for its events`]
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
-      help.unshift(`Run \`pnyx card ${found.id} --full\` for the brief and every note in full`)
+      help.unshift(`Read tasks/${found.id}/task.log in Hydra ${hydraId} for the full brief and notes. For a moved task, follow its move records to earlier Hydra task logs for older notes`)
     }
 
     return {

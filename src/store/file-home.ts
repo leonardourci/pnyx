@@ -6,7 +6,7 @@ import { readSnapshot, type FileSnapshot } from './snapshot.ts'
 import { privateDir, syncDirectory } from './storage.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 
-const COMPONENT = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
+export const COMPONENT = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const EMPTY: LogPosition = {
   bytes: 0,
   n: 0,
@@ -413,18 +413,14 @@ export function moveTaskFiles({
   to,
   task,
   after,
-  at,
-  by,
-  id,
+  fact,
 }: {
   home: string
   from: string
   to: string
   task: string
   after: LogPosition
-  at: string
-  by: LogFact['by']
-  id: string
+  fact: LogFact
 }): LogPosition {
   const placement = prepareMove({
     home,
@@ -443,16 +439,7 @@ export function moveTaskFiles({
       'task.log',
     ),
     after,
-    entries: [
-      {
-        at,
-        by,
-        t: 'moved',
-        id,
-        from,
-        to,
-      },
-    ],
+    entries: [fact],
   })
   moveFolder(placement)
 

@@ -1,7 +1,7 @@
+import { openedNativeHome } from '#app/native-home.ts'
 import { getHeapSpaceStatistics } from 'node:v8'
 import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:perf_hooks'
 import { logFiles } from './log-files.ts'
-import { query } from '#store/postgres.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal, SAMPLE_MS } from '#app/log-line.ts'
@@ -15,7 +15,6 @@ const US_PER_MS = 1000
 const PERCENT = 100
 // The loop's share of time keeps two decimals.
 const SHARE_DECIMALS = 100
-const STORAGE_SAMPLE_TIMEOUT_MS = 100
 
 // One line every 30 seconds by default with the server's CPU, event-loop delay and use, heap and garbage-collection
 // pauses, and one with the memory of every agent the server runs.
@@ -85,13 +84,26 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
     background({
       name: 'storage.sample',
       run: () => {
-        const [rows] = query({
-          statements: [{ text: 'select pg_database_size(current_database())::float8 as bytes' }],
-          timeoutMs: STORAGE_SAMPLE_TIMEOUT_MS,
-        })
+        const home = openedNativeHome()
+        let stateBytes = 0
+
+        for (const hydra of home?.files.hydras() ?? []) {
+          const positions = home?.files.positions({ hydra })
+
+          if (!positions) {
+            continue
+          }
+
+          stateBytes += positions.position.bytes
+
+          for (const task of positions.tasks.values()) {
+            stateBytes += task.position.bytes
+          }
+        }
+
         log({
           operation: 'storage',
-          databaseBytes: rows?.[0]?.bytes as number,
+          stateBytes,
           logBytes: logFiles().reduce(
             (
               sum,

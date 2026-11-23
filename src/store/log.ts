@@ -149,12 +149,27 @@ export function readLog({
   path,
   after = EMPTY,
   accept,
+  through,
+  readOnly = false,
+  limit = Infinity,
 }: {
   path: string
   after?: LogPosition
-  accept({ entry }: { entry: LogEntry }): void
+  through?: LogPosition
+  readOnly?: boolean
+  limit?: number
+  accept({
+    entry,
+  }: {
+    entry: LogEntry
+  }): void
 }): LogPosition {
-  if (!validLogPosition({ position: after })) {
+  const invalidEnd = through && (!validLogPosition({ position: through })
+    || after.bytes > through.bytes || after.n > through.n)
+
+  const validLimit = limit === Infinity || (Number.isSafeInteger(limit) && limit > 0)
+
+  if (!validLogPosition({ position: after }) || !validLimit || invalidEnd) {
     throw positionError({ path })
   }
 
@@ -172,9 +187,10 @@ export function readLog({
   }
 
   try {
+    const mode = readOnly ? constants.O_RDONLY : constants.O_RDWR
     fd = openSync(
       path,
-      constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      mode | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EISDIR') {
@@ -205,8 +221,18 @@ export function readLog({
       })
     }
 
-    const size = opened.size
-    syncDirectory({ dir: dirname(path) })
+    const size = through?.bytes ?? opened.size
+
+    if (size > opened.size) {
+      throw new HydraError({
+        code: 'LOG_CHANGED',
+        message: `${path} is shorter than its acknowledged position`,
+      })
+    }
+
+    if (!readOnly) {
+      syncDirectory({ dir: dirname(path) })
+    }
 
     if (after.bytes > size) {
       throw positionError({ path })
@@ -229,7 +255,7 @@ export function readLog({
 
     const hasUnverifiedTail = size > after.bytes
 
-    if (hasUnverifiedTail) {
+    if (hasUnverifiedTail && !readOnly) {
       fdatasyncSync(fd)
     }
 
@@ -296,7 +322,7 @@ export function readLog({
 
           const last = readAt === size && end + 1 === contents.length
 
-          if (!last) {
+          if (!last || readOnly || through) {
             throw corrupt({
               path,
               offset: lineOffset,
@@ -320,12 +346,28 @@ export function readLog({
           offset: lineOffset,
           n: n + 1,
         })
+
+        if (through && entry.n > through.n) {
+          throw positionError({ path })
+        }
+
         accept({ entry })
         n = entry.n
         offset += pendingLength + part.length + 1
         pending = []
         pendingLength = 0
         start = end + 1
+
+        if (n - after.n >= limit) {
+          if (through && offset === size && n !== through.n) {
+            throw positionError({ path })
+          }
+
+          return {
+            bytes: offset,
+            n,
+          }
+        }
       }
 
       if (start < contents.length) {
@@ -335,10 +377,21 @@ export function readLog({
     }
 
     if (pendingLength) {
+      if (readOnly || through) {
+        throw corrupt({
+          path,
+          offset,
+        })
+      }
+
       truncateTail({
         fd,
         bytes: offset,
       })
+    }
+
+    if (through && n !== through.n) {
+      throw positionError({ path })
     }
 
     return {

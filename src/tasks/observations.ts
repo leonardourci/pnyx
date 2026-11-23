@@ -1,6 +1,5 @@
 import type { HydraState, SourceRef } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
-import type { Statement } from '#store/postgres.ts'
 import { sameSource, isStaleSource } from './events.ts'
 import { observesPresence, sessionId } from '#workers/session-attachments.ts'
 
@@ -8,16 +7,6 @@ export interface SourceObservation {
   cardId: string
   source: SourceRef
   at: string
-}
-
-export interface ObservationRow {
-  card_id: string
-  adapter: string
-  instance_id: string
-  object_id: string
-  generation: number
-  observed_at: string
-  seen_at: string
 }
 
 export const observationKey = ({
@@ -102,70 +91,5 @@ export function applyObservation({
 
   if (target && target !== card) {
     target.sourceRefs = update({ refs: target.sourceRefs })
-  }
-}
-
-export function restoreObservations({
-  state,
-  rows,
-}: {
-  state: HydraState
-  rows: ObservationRow[]
-}): void {
-  for (const row of rows) {
-    const known = state.cards[row.card_id]?.sourceRefs.find(source => source.adapter === row.adapter
-      && (source.instanceId ?? '') === row.instance_id && source.objectId === row.object_id)
-
-    if (!known) {
-      continue
-    }
-
-    const source = {
-      ...known,
-      observedAt: row.observed_at,
-    }
-
-    if (row.generation !== (known.generation ?? 0)) {
-      source.generation = row.generation
-    }
-
-    applyObservation({
-      state,
-      observation: {
-        cardId: row.card_id,
-        source,
-        at: row.seen_at,
-      },
-    })
-  }
-}
-
-export function observationStatement({
-  hydraId,
-  observation,
-}: {
-  hydraId: string
-  observation: SourceObservation
-}): Statement {
-  const { source } = observation
-
-  return {
-    text: `insert into source_observations
-      (hydra_id, card_id, adapter, instance_id, object_id, generation, observed_at, seen_at)
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
-      on conflict (hydra_id, card_id, adapter, instance_id, object_id) do update
-      set generation = excluded.generation, observed_at = excluded.observed_at, seen_at = excluded.seen_at
-      where (source_observations.generation, source_observations.observed_at)
-        <= (excluded.generation, excluded.observed_at)`,
-    values: [
-      hydraId,
-      observation.cardId,
-      source.adapter,
-      source.instanceId ?? '',
-      source.objectId,
-      source.generation ?? 0,
-      source.observedAt ?? observation.at,
-      observation.at,
-    ],
   }
 }

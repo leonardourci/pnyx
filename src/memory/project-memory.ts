@@ -60,7 +60,7 @@ const projectMemorySize = ({ documents }: Pick<ProjectMemory, 'documents'>) => O
   0,
 )
 
-function memoryPath({ id }: { id: string }) {
+export function projectMemoryLogPath({ id }: { id: string }) {
   return join(
     pnyxHome(),
     'projects',
@@ -74,7 +74,7 @@ export function readProjectMemory({ id }: { id: string }): ProjectMemory {
 }
 
 function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
-  const file = memoryPath({ id })
+  const file = projectMemoryLogPath({ id })
   const memory: ProjectMemory = {
     revision: 0,
     archived: [],
@@ -451,7 +451,7 @@ export async function writeProjectMemory({
       )
       privateDir({ dir })
       appendFileSync(
-        memoryPath(view),
+        projectMemoryLogPath(view),
         `${JSON.stringify(event)}\n`,
         { mode: 0o600 },
       )

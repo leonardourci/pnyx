@@ -8,6 +8,7 @@ pnyx setup --preview
 pnyx setup check
 pnyx debug health --hydra work --json
 pnyx board --hydra work
+pnyx task ack <task> <instruction-id> --session <session> --generation '<native-reference>' --hydra work
 pnyx task create --title "Fix the empty state" --brief "Implement and check the empty state" --project app --hydra work
 pnyx send --text "Review the open work" --hydra work
 pnyx send --task <task> --text "Also check mobile" --hydra work
@@ -20,28 +21,17 @@ pnyx answer <task> <question> --text "Use the existing design" --hydra work
 
 `answer` records an answer to a saved question and routes it to Hydra or the task's worker according to who asked. Hydra can identify an owner's answer using `--from-message <id>`.
 
-## Migrate from pnyx-axi
+`task ack` is an acknowledgement-only action for the assigned worker, after it reads the full instruction in its task record. Pass one exact instruction ID and copy the session and native generation reference from the notice or record. The same ID and assignment can be retried after a lost reply or server restart. A different task, worker launch or assignment is refused. It records read receipt only; it does not complete work, approve permissions or infer that a terminal injection succeeded. Hosted native input confirmations continue to record their own receipts. ID-only retries remain ID-only.
 
-Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `pnyx-axi setup --remove` before rebuilding. Update and build the clone using the install steps in the README, keeping the same `PNYX_HOME`. Run `pnyx setup postgres --check` before starting the new server. If you installed hooks, rerun `pnyx setup hooks` to point them at the new executable. Use `pnyx setup --port <previous-port>` to reinstall the login service at the same address.
+## Migrate from a Postgres installation
 
-## Reads during the storage cutover
+Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`pnyx` or `pnyx-axi`) before rebuilding. Select the old installation's home for removal and add `--allow-custom-home` if it uses a custom home. Update and build the clone using the install steps in the README. Keep the old home and set `PNYX_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, run `pnyx setup hooks --allow-custom-home` with the new home selected. Use `pnyx setup --allow-custom-home --port <previous-port>` to reinstall the login service at the same address.
 
-The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Agents use the following reads while the app still stores its records in Postgres. These reads use plain text by default and accept `--json`.
+## Read records and report through files
 
-```sh
-pnyx task list --hydra work --json
-pnyx task show <task> --full --hydra work --json
-pnyx task history <task> --hydra work --json
-pnyx hydra check --hydra work --json
-pnyx hydra digest --hydra work
-pnyx hydra messages --hydra work --json
-pnyx hydra history --hydra work --since origin --json
-pnyx task inbox read <task> --hydra work --json
-```
+The default home is `~/.pnyx`. Set `PNYX_HOME` to select another home. Each Hydra has `hydras/<hydra>/hydra.log`, an optional `snapshot.json`, and a `tasks/<task>/` folder containing `task.log` and `worker.log`. Read these files directly with your harness's file tools. Logs are authoritative; the snapshot is a cached view and may be older or absent. Each native log numbers its own lines, so keep record IDs with their file scope rather than treating a line number as a global cursor. Follow recorded transcript paths for complete agent replies.
 
-Task messages, chats, updates, sessions, questions and reminders remain readable. The read-only project, column, dispatch, account, layout, view, settings, integrations, context, logs, history, card and Oracle paths also remain available. Inbox reads acknowledge receipt as before. Mutation subcommands such as task rename, layout reset and logs clean are not exposed by this CLI.
-
-Workers continue to report through their assigned `worker.log`; the server observes it and keeps the task record. After the app's file-store cutover, direct reads of `hydra.log`, `task.log`, `worker.log` and the snapshot replace these transitional read commands.
+The CLI has no read, history, status, inbox or report commands. Use the UI for configuration and task edits. Reconcile saved instructions and delivery receipts before retrying a send; reading a file does not acknowledge or complete work.
 
 Only the assigned worker appends to its `worker.log`, one complete line per update:
 

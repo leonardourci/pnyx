@@ -3,7 +3,6 @@ import { askWording } from '#tasks/ask-state.ts'
 import { ownerActor, reportActor } from '#app/actors.ts'
 import { activeHelperBatches, needsMain } from '#routine-helper/state.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { historyCommand } from './history-command.ts'
 
 const CONTEXT_NOTE_LIMIT = 20
 const CONTEXT_TURN_LINES = 8
@@ -306,11 +305,11 @@ export function contextReportStatus({
 
 export function contextNoteBlock({
   notes,
-  hydraId,
+  records,
   state,
 }: {
   notes: ContextNote[]
-  hydraId: string
+  records: string
   state: HydraState
 }): string {
   if (!notes.length) {
@@ -345,31 +344,13 @@ export function contextNoteBlock({
       }
     }
 
-    return `- seq ${note.seq} ${note.task ?? 'no task'} [${status}]${count}: ${text}`
+    return `- record ${JSON.stringify(note.id)} ${note.task ?? 'no task'} [${status}]${count}: ${text}`
   })
   const omitted = notes.slice(shown.length)
-  const lastOmitted = omitted.at(-1)
-  const reports = omitted.filter(note => note.report)
-  const firstReport = reports[0]
-  const overflow = []
 
-  if (firstReport) {
-    overflow.push(`${reports.length} more worker reports; read \`pnyx hydra check --after ${firstReport.seq - 1} --hydra ${hydraId}\` and follow its \`through\` cursor when it offers another page.`)
+  if (omitted.length) {
+    lines.push(`- ${omitted.length} more worker reports and context notes; read the remaining native records.`)
   }
 
-  const otherNotes = omitted.length - reports.length
-
-  if (otherNotes && lastOmitted) {
-    overflow.push(`${otherNotes} more context notes; read \`${historyCommand({
-      hydraId,
-      since: 'origin',
-      through: lastOmitted.seq,
-    })}\` for the rest.`)
-  }
-
-  if (overflow.length) {
-    lines.push(`- ${overflow.join(' ')}`)
-  }
-
-  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Reports marked handled or helper handling and other notes are context. To read a full report, use task history <task> --full or hydra messages --after <seq minus one> --limit 1.\n${lines.join('\n')}\n</pnyx-context>`
+  return `<pnyx-context>Since your last turn. Act on unhandled reports that need you. Reports marked handled or helper handling and other notes are context. ${records}\n${lines.join('\n')}\n</pnyx-context>`
 }

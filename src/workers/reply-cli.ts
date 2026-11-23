@@ -155,9 +155,9 @@ export const reply = guard({
     } else if (receipt.state === 'delivery_unknown') {
       out.help = ['The message may have landed; a retry with the same key does not resend. When its session has a transcript, Pnyx checks it once the session is idle and resends a missing message up to twice itself']
     } else if (receipt.state === 'queued') {
-      out.help = ["Check the task's inbox or the session before sending again; a retry with the same key does not resend"]
+      out.help = [`Read tasks/${receipt.card}/task.log in Hydra ${hydraId} or inspect the session before sending again. A retry with the same key does not resend.`]
     } else {
-      out.help = [`Run \`pnyx history --card ${receipt.card} --kind replied\` for its receipts`]
+      out.help = [`Read tasks/${receipt.card}/task.log in Hydra ${hydraId} for its receipts`]
     }
 
     return out

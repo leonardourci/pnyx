@@ -1,4 +1,3 @@
-import { readCommand } from '#cli/reads.ts'
 import { spawn } from 'node:child_process'
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -6,7 +5,6 @@ import { serverOperation } from './operations.ts'
 import { afterAll } from 'vitest'
 import { startServer } from '#app/server-daemon.ts'
 import type { RunningServer } from '#app/server-transport.ts'
-import { query } from '#store/postgres.ts'
 import { writeDocument } from '#workers/dispatch-config.ts'
 import { fakeClaude, fakeCodex, type AgentSession } from './agents.ts'
 import { until, WAIT_MS } from './until.ts'
@@ -119,25 +117,6 @@ export const operation = async ({
     }
   }
 
-  if (args[0] === 'hydra' && args[1] === 'digest') {
-    return pnyx(options)
-  }
-
-  if (readCommand({ argv: args })) {
-    const result = await pnyx({
-      ...options,
-      args: [
-        ...args,
-        '--json',
-      ],
-    })
-
-    return {
-      ...result,
-      stdout: result.stdout || result.stderr,
-    }
-  }
-
   if (options.args.includes('--help')) {
     return pnyx(options)
   }
@@ -150,24 +129,6 @@ export type Output = Record<string, any>
 
 export const parsed = ({ stdout }: { stdout: string }): Output =>
   JSON.parse(stdout.trimEnd()) as Output
-
-// Rows of this file's own database, for the facts a command saved.
-export function rows<Row = Record<string, unknown>>({
-  text,
-  values,
-}: {
-  text: string
-  values?: unknown[]
-}): Row[] {
-  return query({
-    statements: [
-      {
-        text,
-        values,
-      },
-    ],
-  })[0] as Row[]
-}
 
 // The owner's terminal: no agent identity.
 const ownerEnv = () => {
@@ -254,6 +215,7 @@ else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fres
 
 export interface PnyxOptions {
   compactionDelay?: number
+  queueDelay?: number
   codexConfig?: Record<string, unknown>
   upgradeRoot?: string
   restart?(): void | Promise<void>
@@ -264,6 +226,7 @@ export type Pnyx = Awaited<ReturnType<typeof startPnyx>>
 // Starts the server once for a test file; it stops when the file ends.
 export async function startPnyx({
   compactionDelay,
+  queueDelay,
   codexConfig,
   upgradeRoot,
   restart,
@@ -285,7 +248,9 @@ export async function startPnyx({
   // Kept across stops, so an open page reconnects to the server that replaces this one.
   let port: number | undefined
 
-  const start = async () => {
+  const start = async ({
+    queueDelay: resumedQueueDelay = queueDelay,
+  }: { queueDelay?: number } = {}) => {
     server = await startServer({
       port,
       query: claude.query,
@@ -296,6 +261,7 @@ export async function startPnyx({
       followDelay: 100,
       recoveryPause: 100,
       compactionDelay,
+      queueDelay: resumedQueueDelay,
       upgradeRoot: upgradeRoot ?? join(
         root,
         'no-upgrade-folder',
@@ -336,11 +302,18 @@ export async function startPnyx({
     codex,
     port: () => server!.port,
     home: () => homePage!.read().home,
+    cursor: () => homePage!.read().cursor,
     // Stops the server and starts it again on the same home and port, as a restart does.
-    restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
+    restart: async ({
+      whileStopped,
+      queueDelay,
+    }: {
+      whileStopped?(): void | Promise<void>
+      queueDelay?: number
+    } = {}) => {
       await stop()
       await whileStopped?.()
-      await start()
+      await start({ queueDelay })
     },
     start,
     stop,

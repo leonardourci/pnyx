@@ -1,3 +1,4 @@
+import { recordContext } from './file-context.ts'
 import { readChanges } from '#app/event-log.ts'
 import { randomUUID } from 'node:crypto'
 import { meta, commit, integer, type Output } from '#app/cli-support.ts'
@@ -5,12 +6,10 @@ import { loadHydra } from '#app/store.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from './identity.ts'
 import {
-  historyCommand,
   historyMessages,
   historyRange,
   historyTokens,
   inscribeOperation,
-  readHistory,
   type HistoryWindow,
 } from './history.ts'
 import { messageWindow } from './message-window.ts'
@@ -61,34 +60,6 @@ function hydraHistoryWindow({
   }
 }
 
-function hydraHistoryPage({
-  hydraId,
-  since,
-  after,
-  through,
-  budget,
-}: {
-  hydraId: string
-  since: string
-  after?: string
-  through?: number
-  budget?: number
-}) {
-  const state = loadHydra({ hydraId }).state
-
-  return readHistory({
-    window: hydraHistoryWindow({
-      hydraId,
-      state,
-    }),
-    state,
-    since,
-    after,
-    through,
-    budget,
-  })
-}
-
 export function hydraHistoryTokens({
   hydraId,
   since,
@@ -122,54 +93,11 @@ export function hydraHistory({
   values: Record<string, string | boolean | undefined>
   hydraId: string
 }): Output {
-  const request = {
-    hydraId,
-    since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
-    after: values.after as string | undefined,
-    through: integer({
-      value: values.through,
-      flag: '--through',
-    }),
-    budget: integer({
-      value: values.budget,
-      flag: '--budget',
-    }),
-  }
-
-  if (values.count) {
-    const state = loadHydra({ hydraId }).state
-    const range = historyRange({
-      state,
-      since: request.since,
-      after: request.after,
-      through: request.through,
-    })
-
-    return {
-      totalTokens: historyTokens({
-        window: hydraHistoryWindow({
-          hydraId,
-          state,
-        }),
-        boundary: range.boundary,
-        through: range.through,
-      }),
-      boundary: range.boundary,
-      snapshot: range.through,
-    }
-  }
-
-  const page = hydraHistoryPage(request)
-
   return {
-    ...page,
-    help: page.more ? [
-      `Run \`${historyCommand({
-        hydraId,
-        since: page.since,
-        budget: page.budget,
-      })} --after ${page.after}\` for the next page`,
-    ] : [],
+    totalTokens: hydraHistoryTokens({
+      hydraId,
+      since: String(values.since ?? 'last-compaction'),
+    }),
   }
 }
 
@@ -188,7 +116,7 @@ export async function hydraInscribe({
   const savedSeq = m.id ? state.eventIds[m.id] : undefined
   const saved = savedSeq === undefined ? undefined : readChanges({
     hydraId,
-    seqs: [savedSeq],
+    ids: [m.id!],
   })[0]
   const savedOperation = saved?.type === 'hydra.operation' && saved.data.kind === 'inscribe' ? saved.data.id : undefined
   const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
@@ -232,16 +160,10 @@ export async function hydraInscribe({
     throw new Error('Inscribe milestone was not recorded')
   }
 
-  const since = operation.historySince ?? 'origin'
-
   return {
     ...result,
     milestone: operationId,
     through: operation.through,
-    command: historyCommand({
-      hydraId,
-      since,
-      through: operation.through,
-    }),
+    records: recordContext({ hydraId }),
   }
 }

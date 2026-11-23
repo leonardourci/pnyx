@@ -2,13 +2,14 @@ import { chmodSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { HydraEvent } from '#app/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { readEvents } from '#app/event-log.ts'
+import { nativeEvent } from '#app/native-state.ts'
+import { readLog, type LogPosition } from '#store/log.ts'
 import { HydraError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { privateDir } from '#store/storage.ts'
-import type { Document } from './model.ts'
+import type { Document, SearchSnapshot } from './model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { chunk, eventText, redact } from './text.ts'
 import { fold, inflection, matches, tokens, type Term } from './query.ts'
@@ -28,7 +29,7 @@ function sqlite(): typeof import('node:sqlite') {
 }
 
 // Bump when the schema, stored text, visibility or tokenization changes.
-const INDEX_VERSION = 9
+const INDEX_VERSION = 10
 const CATCH_UP_BATCH_EVENTS = 500
 // The full-text index an earlier version kept beside each Hydra.
 const RETIRED_INDEX_FILES = [
@@ -39,11 +40,11 @@ const RETIRED_INDEX_FILES = [
 // Oracle indexes Pnyx data only: cards, their events and notes, never agent transcripts.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS cursors (
-  source TEXT PRIMARY KEY, pos INTEGER NOT NULL, seq INTEGER NOT NULL, event TEXT NOT NULL
+  source TEXT PRIMARY KEY, pos INTEGER NOT NULL, n INTEGER NOT NULL, event TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS docs (
   id INTEGER PRIMARY KEY, card TEXT NOT NULL, kind TEXT NOT NULL, at TEXT NOT NULL,
-  text TEXT NOT NULL, pos INTEGER NOT NULL, part INTEGER NOT NULL, UNIQUE(pos, part)
+  text TEXT NOT NULL, source TEXT NOT NULL, pos INTEGER NOT NULL, part INTEGER NOT NULL, UNIQUE(source, pos, part)
 );
 CREATE INDEX IF NOT EXISTS docs_card_at ON docs(card, at);
 CREATE VIRTUAL TABLE IF NOT EXISTS words USING fts5(terms, stems, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
@@ -54,17 +55,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS vocabulary USING fts5vocab(words, 'col');
 `
 
 interface Cursor {
-  seq: number
+  pos: number
+  n: number
   event: string
 }
 
 export function openIndex({
   hydraId,
-  state,
+  sources,
+  positions,
 }: {
   hydraId: string
-  state: HydraState
-}) {
+} & Pick<SearchSnapshot, 'sources' | 'positions'>) {
   const dir = hydraDir({ hydraId })
   privateDir({ dir })
 
@@ -111,7 +113,8 @@ export function openIndex({
     catchUp({
       db,
       hydraId,
-      state,
+      sources,
+      positions,
     })
   } catch (error) {
     db.close()
@@ -185,118 +188,125 @@ export function openIndex({
 function catchUp({
   db,
   hydraId,
-  state,
+  sources,
+  positions,
 }: {
   db: DatabaseSync
   hydraId: string
-  state: HydraState
-}) {
-  const getCursor = db.prepare("SELECT seq, event FROM cursors WHERE source='events'")
-  const putCursor = db.prepare(`INSERT INTO cursors(source, pos, seq, event)
-    VALUES('events', :seq, :seq, :event)
-    ON CONFLICT(source) DO UPDATE SET pos=:seq, seq=:seq, event=:event`)
-  const insert = db.prepare(`INSERT INTO docs(card, kind, at, text, pos, part)
-    VALUES(?, ?, ?, ?, ?, ?)`)
+} & Pick<SearchSnapshot, 'sources' | 'positions'>) {
+  const getCursor = db.prepare('SELECT pos, n, event FROM cursors WHERE source=?')
+  const putCursor = db.prepare(`INSERT INTO cursors(source, pos, n, event)
+    VALUES(:source, :pos, :n, :event)
+    ON CONFLICT(source) DO UPDATE SET pos=:pos, n=:n, event=:event`)
+  const insert = db.prepare(`INSERT INTO docs(card, kind, at, text, source, pos, part)
+    VALUES(?, ?, ?, ?, ?, ?, ?)`)
   const putWords = db.prepare('INSERT INTO words(rowid, terms, stems) VALUES(?, ?, ?)')
+  const deleteDocs = db.prepare('DELETE FROM docs WHERE source=?')
+  const deleteCursor = db.prepare('DELETE FROM cursors WHERE source=?')
+  const currentSources = new Set(sources.map(source => source.key))
 
-  const throughEvents = state.seq
-  let pendingEvents = true
+  transaction({
+    db,
+    fn: () => {
+      for (const row of db.prepare('SELECT source FROM cursors').all() as { source: string }[]) {
+        if (!currentSources.has(row.source)) {
+          deleteDocs.run(row.source)
+          deleteCursor.run(row.source)
+        }
+      }
+    },
+  })
 
-  while (pendingEvents) {
-    const cursor = (getCursor.get() as unknown as Cursor | undefined) ?? {
-      seq: 0,
-      event: '',
-    }
-    const read = readEvents({
-      hydraId,
-      after: cursor.seq,
-      limit: CATCH_UP_BATCH_EVENTS,
-      before: throughEvents + 1,
-    })
-    const captured = !cursor.event || state.eventIds[cursor.event] === cursor.seq
-    // A cursor past this state belongs only while the Hydra still holds the event it stopped at.
-    const ahead = cursor.seq > state.seq && readEvents({
-      hydraId,
-      after: cursor.seq - 1,
-      limit: 1,
-    })[0]?.id === cursor.event
-    const belongs = captured || ahead
+  for (const source of sources) {
+    let cursor = getCursor.get(source.key) as unknown as Cursor | undefined
+    const belongs = !cursor || (cursor.pos <= source.position.bytes
+      && source.accepted.get(cursor.event)?.n === cursor.n)
 
     if (!belongs) {
-      if (cursor.seq === 0) {
-        throw new HydraError({
-          code: 'LOG_CORRUPT',
-          message: 'Event log does not start at its first event',
-        })
-      }
-
-      // A restored or replaced Hydra leaves the derived cache behind; rebuild it from its events.
       transaction({
         db,
         fn: () => {
-          const current = getCursor.get() as unknown as Cursor | undefined
-
-          if (current?.seq === cursor.seq && current.event === cursor.event) {
-            recreate({ db })
-          }
+          deleteDocs.run(source.key)
+          deleteCursor.run(source.key)
         },
       })
+      cursor = undefined
       log({
         level: 'warn',
         operation: 'oracle.rebuild',
         hydraId,
-        status: 'cursor does not belong to the event log',
+        name: source.key,
+        status: 'cursor does not belong to its native log',
       })
-      continue
     }
 
-    const lastEvent = read.at(-1)
-
-    if (!lastEvent) {
-      break
+    let after: LogPosition = {
+      bytes: cursor?.pos ?? 0,
+      n: cursor?.n ?? 0,
     }
 
-    let superseded = false
-    transaction({
-      db,
-      fn: () => {
-        const current = getCursor.get() as unknown as Cursor | undefined
+    while (after.n < source.position.n) {
+      let last = cursor?.event ?? ''
+      transaction({
+        db,
+        fn: () => {
+          const next = readLog({
+            path: source.path,
+            after,
+            through: source.position,
+            readOnly: true,
+            limit: CATCH_UP_BATCH_EVENTS,
+            accept: ({ entry }) => {
+              last = entry.id
+              const event = nativeEvent({
+                entry,
+                ids: positions,
+                scope: source.scope,
+              })
 
-        if (current && current.seq !== cursor.seq) {
-          superseded = true
+              if (!event || (source.key.startsWith('task:') && event.cardId !== source.scope)) {
+                return
+              }
 
-          return
-        }
+              let part = 0
 
-        for (const event of read) {
-          let part = 0
+              for (const document of eventDocuments({ event })) {
+                const words = tokens({ text: fold({ text: document.text }) })
+                const inserted = insert.run(
+                  document.card,
+                  document.kind,
+                  document.at,
+                  document.text,
+                  source.key,
+                  entry.n,
+                  part++,
+                )
+                putWords.run(
+                  inserted.lastInsertRowid,
+                  words.join(' '),
+                  words.map(word => `s${inflection({ word })}`).join(' '),
+                )
+              }
+            },
+          })
 
-          for (const entry of eventDocuments({ event })) {
-            const words = tokens({ text: fold({ text: entry.text }) })
-            const inserted = insert.run(
-              entry.card,
-              entry.kind,
-              entry.at,
-              entry.text,
-              event.seq,
-              part,
-            )
-            putWords.run(
-              inserted.lastInsertRowid,
-              words.join(' '),
-              words.map(word => `s${inflection({ word })}`).join(' '),
-            )
-            part++
+          if (next.n <= after.n) {
+            throw new HydraError({
+              code: 'LOG_CORRUPT',
+              message: 'native log ended before its acknowledged position',
+            })
           }
-        }
 
-        putCursor.run({
-          seq: lastEvent.seq,
-          event: lastEvent.id,
-        })
-      },
-    })
-    pendingEvents = superseded || lastEvent.seq < throughEvents
+          putCursor.run({
+            source: source.key,
+            pos: next.bytes,
+            n: next.n,
+            event: last,
+          })
+          after = next
+        },
+      })
+    }
   }
 }
 

@@ -98,7 +98,7 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
           tasks,
         }
       })),
-      help: ['Run `pnyx hydra show --hydra <id>` for its columns and Hydra'],
+      help: ['Use pnyx board --hydra <id> to inspect the Hydra'],
     }
   }
 
@@ -480,7 +480,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
     })
   }
 
-  const readingHistory = positionals[0] === 'history' || (positionals[0] === 'messages' && values.inscribe)
+  const readingHistory = positionals[0] === 'history' && values.count
 
   if (readingHistory) {
     return hydraHistory({

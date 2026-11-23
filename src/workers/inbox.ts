@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraState } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
@@ -60,7 +60,7 @@ export function requireSteeringWorker({
     inform({
       task: card.id,
       reason: 'Steering acknowledged by another actor',
-      clear: `Use pnyx task inbox read ${card.id} to inspect its steering`,
+      clear: `Read tasks/${card.id}/task.log to inspect its steering`,
     })
 
     return
@@ -254,6 +254,7 @@ export function acknowledgeSteering({
   ack,
   meta,
   worker,
+  derived = false,
 }: {
   writer: Writer
   ref: string
@@ -261,6 +262,7 @@ export function acknowledgeSteering({
   ack: SteeringAck
   meta: Meta
   worker?: string
+  derived?: boolean
 }): SteeringMessage {
   const card = inboxTask({
     writer,
@@ -271,7 +273,7 @@ export function acknowledgeSteering({
     inform({
       task: card.id,
       reason: 'Steering acknowledged by another actor',
-      clear: `Use pnyx task inbox read ${card.id} to inspect its steering`,
+      clear: `Read tasks/${card.id}/task.log to inspect its steering`,
     })
   }
 
@@ -299,14 +301,16 @@ export function acknowledgeSteering({
       invalid({ message: 'This message was handled by another assignment' })
     }
 
-    return message
+    if (derived || !message.ackDerived) {
+      return message
+    }
   }
 
-  if (pendingSteering({ card })[0]?.id !== id) {
+  if (!message.ack && pendingSteering({ card })[0]?.id !== id) {
     inform({
       task: card.id,
       reason: 'Steering handled before an older pending instruction',
-      clear: `Use pnyx task inbox read ${card.id} to inspect the remaining instructions`,
+      clear: `Read tasks/${card.id}/task.log to inspect the remaining instructions`,
     })
   }
 
@@ -322,20 +326,24 @@ export function acknowledgeSteering({
     }
   }
 
-  writer.append({
-    event: {
-      ...eventBase({
-        writer,
-        card,
-        meta,
-      }),
-      type: 'task.steering.handled',
-      data: {
-        message: id,
-        ack,
-      },
+  const event: Extract<HydraEvent, { type: 'task.steering.handled' }> = {
+    ...eventBase({
+      writer,
+      card,
+      meta,
+    }),
+    type: 'task.steering.handled',
+    data: {
+      message: id,
+      ack,
     },
-  })
+  }
+
+  if (derived) {
+    event.derived = true
+  }
+
+  writer.append({ event })
 
   return writer.state.cards[card.id]!.steering!.find(message => message.id === id)!
 }

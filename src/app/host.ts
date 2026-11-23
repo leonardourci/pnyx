@@ -283,7 +283,7 @@ export function createHost({
 
       // Only the restart stops Hydra, of a /restart or of a built upgrade; the end recaps what waited.
       if (operation.state === 'restarting') {
-        startOperation({
+        await startOperation({
           id: operation.id,
           kind: operation.steps.some(step => step.step !== 'restart') ? 'upgrade' : 'restart',
         })
@@ -330,7 +330,7 @@ export function createHost({
     send: ({ ...input }) => send(input),
     host: () => host,
     helperPending: () => helperPending(),
-    statusChanged: ({
+    statusChanged: async ({
       card,
       operation,
     }) => {
@@ -339,7 +339,7 @@ export function createHost({
       }
 
       if (operation.state === 'running') {
-        startOperation({
+        await startOperation({
           id: operation.id,
           kind: 'compaction',
         })
@@ -1489,10 +1489,6 @@ export function createHost({
     wake,
 
     unread,
-
-    reportTurn: turns.reportTurn,
-
-    reportsRead: turns.reportsRead,
 
     queue,
 

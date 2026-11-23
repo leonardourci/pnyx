@@ -11,7 +11,6 @@ import { join } from 'node:path'
 // How long a command waits for a server that is starting; restart waits on its own.
 const STARTING_MS = 10_000
 const RETRY_MS = 100
-const CONTEXT_MS = 1000
 
 const record = () => {
   try {
@@ -114,13 +113,10 @@ async function send({
   port,
   argv,
   stdin,
-  timeout,
 }: {
   port: number
   argv: string[]
   stdin?: string
-  // Milliseconds of silence before giving up; without it a long `--wait` keeps the request open as long as it needs.
-  timeout?: number
 }): Promise<RunAnswer> {
   const body = JSON.stringify({
     argv,
@@ -134,7 +130,6 @@ async function send({
     stdin,
   })
 
-  // node:http rather than fetch, whose five-minute header timeout would cut a long `hydra check --wait`.
   return new Promise((
     resolve,
     reject,
@@ -147,7 +142,6 @@ async function send({
         method: 'POST',
         // A connection of its own: the shared agent's idle timeout would cut a command that takes longer than five seconds.
         agent: false,
-        timeout,
         headers: {
           'content-type': 'application/json',
           'content-length': Buffer.byteLength(body),
@@ -189,10 +183,6 @@ async function send({
       },
     )
     request.on(
-      'timeout',
-      () => request.destroy(new Error('the Pnyx server did not answer in time')),
-    )
-    request.on(
       'error',
       reject,
     )
@@ -217,34 +207,8 @@ const failure = ({
   process.exitCode = code === 'VALIDATION_ERROR' ? 2 : 1
 }
 
-async function printSessionStartContext({ argv }: { argv: string[] }) {
-  const server = record()
-
-  if (!server || !alive(server)) {
-    return
-  }
-
-  try {
-    const answer = await send({
-      port: server.port,
-      argv,
-      timeout: CONTEXT_MS,
-    })
-
-    if (answer.exitCode === 0) {
-      process.stdout.write(answer.stdout)
-    }
-  } catch {
-    return
-  }
-}
-
 // Sends one command line to the running server and prints its answer; when it is down, its login service starts it.
 export async function forward({ argv }: { argv: string[] }): Promise<void> {
-  if (cliArguments({ argv }).argv[0] === 'context') {
-    return printSessionStartContext({ argv })
-  }
-
   let input: Awaited<ReturnType<typeof commandInput>>
 
   try {

@@ -89,7 +89,7 @@ export async function hydraSend({
       }
 
       const entered = task
-        ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
+        ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task.log and worker.log before continuing.`)
         : required({
           value: values.text as string | undefined,
           what: '--text',
@@ -273,25 +273,20 @@ export function hydraMessages({
 
     events.push(event)
 
-    if (events.length > limit) {
+    if (events.length === limit) {
       break
     }
   }
 
-  const page = events.slice(
-    0,
-    limit,
-  )
-
-  const through = page.at(-1)?.seq ?? after
+  const through = events.at(-1)?.seq ?? after
 
   return {
     hydra: hydraConfig({
       state,
       id: hydraId,
     }).hydra.id,
-    messages: page.length
-      ? page.map(e => {
+    messages: events.length
+      ? events.map(e => {
         if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
           throw new Error(`Unexpected ${e.type} in Hydra messages`)
         }
@@ -312,10 +307,6 @@ export function hydraMessages({
       })
       : `none: no messages after seq ${after}`,
     through,
-    help: [
-      events.length > limit
-        ? `Run \`pnyx hydra messages --after ${through} --hydra ${hydraId}\` for the next page`
-        : `Run \`pnyx hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`,
-    ],
+
   }
 }

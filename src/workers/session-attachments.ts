@@ -1,5 +1,5 @@
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { cloneValue } from '#app/preimage.ts'
+import { cloneValue } from '#app/json-copy.ts'
 import type { AgentRef, AgentSession, Attention, TerminalFacts } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
@@ -56,7 +56,7 @@ export function findSession({
     throw new HydraError({
       message: `session not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx task sessions`'],
+      help: ['Read hydra.log for Hydra sessions or the task’s task.log for worker sessions'],
     })
   }
 
@@ -87,7 +87,7 @@ export function selfSession({
     throw new HydraError({
       message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no tmux or Herdr pane in the environment',
       code: 'NOT_FOUND',
-      help: ['Run `pnyx task sessions` and pass --session <id>'],
+      help: ['Read hydra.log for Hydra sessions or the task’s task.log for worker sessions, then select the session in the UI'],
     })
   }
 
@@ -149,18 +149,6 @@ export function projectedAttention({
     ...item,
     key: agent.agentId ? `hook:child:${sessionId({ agent })}:${item.key}` : item.key,
   }))
-}
-
-export function observedQuestions({ event }: { event: HydraEvent }): Attention[] {
-  let attention: Attention[] | undefined
-
-  if (event.type === 'session.observed') {
-    attention = 'fields' in event.data ? event.data.fields.attention : event.data.attention
-  } else if (event.type === 'card.pushed' || event.type === 'task.edited') {
-    attention = event.data.attention
-  }
-
-  return attention?.filter(item => item.blocking && !item.answered) ?? []
 }
 
 export function sessionAttention({

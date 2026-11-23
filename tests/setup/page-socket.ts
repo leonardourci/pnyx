@@ -92,7 +92,15 @@ export async function openPage({
 
     return until({
       what: `the answer to ${name} ${args.join(' ')}`,
-      check: () => answers.get(id),
+      check: () => {
+        const answer = answers.get(id)
+
+        if (!answer && socket.readyState === WebSocket.CLOSED) {
+          throw new Error(`Page connection to Hydra ${hydraId ?? 'default'} closed while waiting for ${name} ${args.join(' ')}`)
+        }
+
+        return answer
+      },
     })
   }
 

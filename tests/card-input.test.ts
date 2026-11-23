@@ -1,4 +1,5 @@
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
+import { loadHydra } from '#app/store.ts'
 import { git } from './setup/upgrade.ts'
 import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
@@ -144,7 +145,12 @@ test(
         session.cwd === folder && session.answered === 1),
     })
     const next = pnyx.codex.sessions.find(session => session.cwd === folder)!
-    expect(next.received[0]).toContain(`task chat ${task.id} --session claude-code:${worker.id}`)
+    const previous = loadHydra({ hydraId: hydra.id }).state.sessions?.[`claude-code:${worker.id}`]
+    expect(next.received[0]).toContain(`Read the previous session "claude-code:${worker.id}" completely before continuing.`)
+    expect(previous?.agent.transcriptPath).toEqual(expect.any(String))
+    expect(next.received[0]).toContain(`Its recorded transcript is ${JSON.stringify(previous?.agent.transcriptPath)}.`)
+    expect(next.received[0]).toContain('task.log')
+    expect(next.received[0]).not.toContain('pnyx task chat')
     expect(next.received[0]).toContain('Continue with the regression fix')
     const currentThread = await hydra.owner({
       args: [
@@ -168,6 +174,11 @@ test(
     })
     expect(selected.thread.entries).not.toContainEqual(expect.objectContaining({
       text: 'Recorded reply.',
+      session: `claude-code:${worker.id}`,
+    }))
+    expect(selected.thread.entries).toContainEqual(expect.objectContaining({
+      text: 'Recorded reply.',
+      session: `codex:${next.id}`,
     }))
     expect(next.cwd).toBe(folder)
     expect(worker.closed).toBe(true)

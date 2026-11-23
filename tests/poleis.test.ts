@@ -804,6 +804,22 @@ test(
     expect(destination.memory.learnings).toBe('Keep importer conventions with its project')
     expect(destination.learnings).toEqual(confirmed.writable.learnings.lines)
     expect(destination.learnings).toContainEqual(expect.objectContaining({ evidence: 'Verified against the importer' }))
+    const session = await owner.chat({ text: 'Inspect the moved project memory records' })
+    const context = session.received.at(-1)!
+    const ownerLog = join(
+      process.env.PNYX_HOME!,
+      'owner',
+      'poleis',
+      'moved-journal',
+      'memory.jsonl',
+    )
+    expect(context).toContain(ownerLog)
+    expect(context).toContain('projectMove.event')
+    expect(context).toContain('polisMove.entry')
+    expect(readFileSync(
+      ownerLog,
+      'utf8',
+    )).toContain('Keep importer conventions with its project')
     await owner.owner({
       args: [
         'project',
@@ -927,123 +943,6 @@ test(
         ']',
         '',
       )).toContain('Owner journal previously private')
-  },
-)
-
-test(
-  'a digest keeps the captured write journal when it changes during project checks',
-  async () => {
-    const hydra = await pnyx.hydra()
-    const project = hydra.folder({ name: 'digest-snapshot' })
-    await hydra.owner({
-      args: [
-        'project',
-        'add',
-        project,
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'digest-a',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'AAA',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'digest-b',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'BBBBBBBBBB',
-      ],
-    })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'set',
-        '--polis',
-        'digest-a',
-      ],
-    })
-    const resume = Promise.withResolvers<void>()
-    let entered = false
-    const nativeRun = processes.runProcess
-    const spy = vi.spyOn(
-      processes,
-      'runProcess',
-    ).mockImplementation(async ({
-      command,
-      args,
-      ...options
-    }) => {
-      if (!entered && command === 'git' && args.includes(project)) {
-        entered = true
-        await resume.promise
-      }
-
-      return nativeRun({
-        command,
-        args,
-        ...options,
-      })
-    })
-    const pending = operation({
-      args: [
-        'hydra',
-        'digest',
-        '--hydra',
-        hydra.id,
-      ],
-      env: process.env,
-    })
-
-    try {
-      await until({
-        what: 'the digest project read',
-        check: () => entered,
-      })
-      await hydra.owner({
-        args: [
-          'hydra',
-          'set',
-          '--polis',
-          'digest-b',
-        ],
-      })
-    } finally {
-      resume.resolve()
-      spy.mockRestore()
-    }
-
-    const result = await pending
-    expect(
-      result.status,
-      result.stdout + result.stderr,
-    ).toBe(0)
-    expect(result.stdout).toContain('Owner memory uses 3 of 24000 characters.')
   },
 )
 

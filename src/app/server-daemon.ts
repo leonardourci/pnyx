@@ -1,3 +1,4 @@
+import { nativeHome } from './native-home.ts'
 import { trackChildren } from '#workers/children.ts'
 import { finishHydraRemoval } from '#hydra/remove.ts'
 import { recoverOwnerCommands } from './confirmations.ts'
@@ -22,7 +23,7 @@ import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
-import { hydraRemoval, reportStartup, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { hydraRemoval, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
@@ -35,8 +36,8 @@ import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
-import { holdHydra, hydraExists, loadHydra } from './store.ts'
-import { migrateSchema, query } from '#store/postgres.ts'
+import { hydraExists, loadHydra } from './store.ts'
+import { repairDispatchMirrors } from '#workers/dispatch-config.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
@@ -103,9 +104,11 @@ export async function startServer({
 }): Promise<RunningServer> {
   const starting = performance.now()
   const releaseClaim = claimServer()
+  let epoch: string
 
   try {
-    migrateSchema({ progress: reportStartup })
+    repairDispatchMirrors()
+    epoch = nativeHome().epoch
   } catch (error) {
     releaseClaim()
     throw error
@@ -137,6 +140,7 @@ export async function startServer({
     changes: frame.value,
   })
   const homeHistory = createSocketHistory<PageChanges>({
+    epoch,
     measure: ({ frame }) => Buffer.byteLength(JSON.stringify(homeDelta({ frame }))),
   })
   const homeClients = new Set<({ message }: { message: HomeMessage }) => void>()
@@ -788,18 +792,8 @@ export async function startServer({
     ready()
   }
 
-  const removalPending = ({ id }: { id: string }) => {
-    const [rows] = query({
-      statements: [
-        {
-          text: "select 1 from hydras where id = $1 and config->>'removing' = 'true'",
-          values: [id],
-        },
-      ],
-    })
-
-    return Boolean(rows?.length)
-  }
+  const removalPending = ({ id }: { id: string }) =>
+    hydraExists({ hydraId: id }) && loadHydra({ hydraId: id }).state.config?.removing === true
 
   const mount = async ({ id }: { id: string }): Promise<MountedHydra> => {
     if (removalPending({ id })) {
@@ -921,27 +915,55 @@ export async function startServer({
 
   let named: MountedHydra
 
-  // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
+  const recordSkippedHydra = ({
+    id,
+    error,
+    before,
+  }: {
+    id: string
+    error: unknown
+    before?: string
+  }) => {
+    const reason = error instanceof Error ? error.message : String(error)
+    skipped[id] = reason
+
+    if (reason !== before) {
+      log({
+        level: 'warn',
+        operation: 'hydra.skipped',
+        hydraId: id,
+        error,
+      })
+    }
+  }
+
+  const mountDiscoveredHydra = async ({ id }: { id: string }) => {
+    const before = skipped[id]
+
+    try {
+      if (!removalPending({ id })) {
+        await mount({ id })
+      }
+    } catch (error) {
+      recordSkippedHydra({
+        id,
+        error,
+        before,
+      })
+    }
+  }
+
   const mountAll = () => {
     if (importing) {
       return
     }
 
     for (const id of hydraIds()) {
-      const before = skipped[id]
-
-      if (!closed && !mounts.has(id) && !removalPending({ id })) {
-        mount({ id }).catch((error: Error) => {
-          if (error.message !== before) {
-            log({
-              level: 'warn',
-              operation: 'hydra.skipped',
-              hydraId: id,
-              error,
-            })
-          }
-        })
+      if (closed || mounts.has(id)) {
+        continue
       }
+
+      void mountDiscoveredHydra({ id })
     }
   }
 
@@ -1075,27 +1097,7 @@ export async function startServer({
     }
   }
 
-  // Everything from here reads Postgres, so a Postgres that is down or misconfigured stops the start and releases the
-  // claim, instead of leaving a server that holds it without serving.
   try {
-    // Holding a Hydra once imports a legacy events.jsonl, so the removal checks below read its rows.
-    for (const id of hydraIds()) {
-      try {
-        const release = holdHydra({
-          hydraId: id,
-          changed: () => {},
-        })
-        release()
-      } catch (error) {
-        log({
-          level: 'warn',
-          operation: 'hydra.import',
-          hydraId: id,
-          error,
-        })
-      }
-    }
-
     for (const id of hydraIds()) {
       try {
         if (removalPending({ id })) {
@@ -1135,7 +1137,19 @@ export async function startServer({
     }
 
     if (removedOrPending({ id: hydraId })) {
-      const [activeId] = hydraIds().filter(id => !removalPending({ id }))
+      const activeId = hydraIds().find(id => {
+        try {
+          return !removedOrPending({ id })
+        } catch (error) {
+          recordSkippedHydra({
+            id,
+            error,
+            before: skipped[id],
+          })
+
+          return false
+        }
+      })
 
       if (!activeId) {
         throw new HydraError({
@@ -1154,19 +1168,8 @@ export async function startServer({
     }
 
     for (const id of hydraIds()) {
-      if (removalPending({ id })) {
-        continue
-      }
-
-      try {
-        await mount({ id })
-      } catch (error) {
-        log({
-          level: 'warn',
-          operation: 'hydra.skipped',
-          hydraId: id,
-          error: error as Error,
-        })
+      if (!mounts.has(id)) {
+        await mountDiscoveredHydra({ id })
       }
     }
 

@@ -93,759 +93,776 @@ export async function mountOwnedHydra({
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Promise<MountedHydra> {
-  let permanentClose: Promise<void> | undefined
-  // Set by close(): work already scheduled then must not open new watchers or timers.
-  let closed = false
-  // Until recovery has stopped the previous server's agents, nothing may reopen a session.
-  let recovered = false
+  let failedRelease: (() => Promise<void>) | undefined
 
-  const dir = hydraDir({ hydraId })
-  privateDir({ dir: spoolDir({ dir }) })
-  const token = Buffer.from(localToken())
-  const identity = hydraIdentity({ hydraId })
-  // The server holds the Hydra in memory; its own writes call kick in the same step.
-  const releaseHold = holdHydra({
-    hydraId,
-    changed: () => kick(),
-  })
-  dropCopyLeases({ hydraId })
-  let { state } = loadHydra({ hydraId })
-  // The seq of the last event this server has handled.
-  let offset = state.seq
-  const catalogIndex = createCatalogIndex({ locations: catalogLocations })
-  const {
-    threadSubscriptions,
-    retainThreads,
-    subscriptionMap,
-    threadTimers,
-    liveThreadTimers,
-    retireThreadClient,
-    refreshLiveThread,
-    refreshThread,
-    threadPage,
-    bindThread,
-  } = createThreadSubscriptions({
-    hydraId,
-    state: () => state,
-    closed: () => closed,
-    send: ({
-      ws,
-      message,
-    }) => send({
-      ws,
-      message,
-    }),
-    agents: () => agents,
-  })
+  try {
+    let permanentClose: Promise<void> | undefined
+    let closed = false
+    let recovered = false
+    let notifyChange = (): void => {}
 
-  const tabs = createServerClients({
-    hydraId,
-    state: () => state,
-    agents: () => agents,
-    threadSubscriptions,
-    bindThread,
-    refreshThread,
-    feed: () => feed,
-  })
-  const {
-    clients,
-    send,
-    queue,
-    sendLatest,
-    broadcast,
-    spend,
-  } = tabs
+    const dir = hydraDir({ hydraId })
+    const releaseHold = await holdHydra({
+      hydraId,
+      changed: () => notifyChange(),
+    })
+    failedRelease = releaseHold
+    privateDir({ dir: spoolDir({ dir }) })
+    const token = Buffer.from(localToken())
+    const identity = hydraIdentity({ hydraId })
+    dropCopyLeases({ hydraId })
+    let { state } = loadHydra({ hydraId })
+    let handledThrough = state.seq
+    const catalogIndex = createCatalogIndex({ locations: catalogLocations })
+    const {
+      threadSubscriptions,
+      retainThreads,
+      subscriptionMap,
+      threadTimers,
+      liveThreadTimers,
+      retireThreadClient,
+      refreshLiveThread,
+      refreshThread,
+      threadPage,
+      bindThread,
+    } = createThreadSubscriptions({
+      hydraId,
+      state: () => loadHydra({ hydraId }).state,
+      closed: () => closed,
+      send: ({
+        ws,
+        message,
+      }) => send({
+        ws,
+        message,
+      }),
+      agents: () => agents,
+    })
 
-  const reload = () => {
-    ({ state } = loadHydra({ hydraId }))
-    offset = state.seq
+    const tabs = createServerClients({
+      hydraId,
+      state: () => state,
+      agents: () => agents,
+      threadSubscriptions,
+      bindThread,
+      refreshThread,
+      feed: () => feed,
+    })
+    const {
+      clients,
+      send,
+      queue,
+      sendLatest,
+      broadcast,
+      spend,
+    } = tabs
 
-    if (recovered) {
+    const reload = () => {
+      ({ state } = loadHydra({ hydraId }))
+      handledThrough = state.seq
+
+      if (recovered) {
+        background({
+          name: 'reconcile agents',
+          run: async () => await agents.reconcile({ state }),
+        })
+      }
+
       background({
-        name: 'reconcile agents',
-        run: async () => await agents.reconcile({ state }),
+        name: 'follow git refs',
+        run: () => gitFollow.reconcile({ state }),
       })
+      workerLogs.reconcile({ state })
+
+      for (const ws of clients) {
+        sendLatest({ ws })
+      }
+
+      touchLatest({ ids: Object.keys(state.cards) })
+      hydrasChanged()
     }
 
+    const feed = createLatestFeed({
+      state: () => state,
+      closed: () => closed,
+      clients,
+      send,
+      threadSubscriptions,
+      refreshThread,
+      refreshLiveThread,
+      agents: () => agents,
+      spend,
+    })
+    const {
+      folders,
+      transcripts,
+      transcriptPolls,
+      touchLatest,
+      streamed,
+    } = feed
+
+    const observedWork = new Map<string, boolean>(Object.entries(state.cards).map(([
+      task,
+      card,
+    ]) => [
+      task,
+      (card.sessionActivity ?? card.activity) === 'working',
+    ]))
+
+    const workChanged = ({ task }: { task: string }) => {
+      const card = state.cards[task]
+      const working = (card?.sessionActivity ?? card?.activity) === 'working'
+      const changed = observedWork.get(task) !== working
+      observedWork.set(
+        task,
+        working,
+      )
+
+      return changed
+    }
+
+    const pump = () => {
+      const read = readChanges({
+        hydraId,
+        after: handledThrough,
+      })
+
+      const live = heldHydra({ hydraId })
+
+      if (live) {
+        state = live.state
+      }
+
+      for (const event of read) {
+        if (live) {
+          if (event.seq > state.seq) {
+            return reload()
+          }
+        } else if (event.seq !== state.seq + 1) {
+          return reload()
+        } else {
+          state = reduce({
+            state,
+            event,
+          })
+        }
+
+        const discoveredLink = event.type === 'card.linked' && event.data.before === null
+        && event.data.after?.src === 'branch'
+        const linkedByOthers = event.type === 'card.linked' && (event.actor !== 'pnyx' || discoveredLink)
+        const changedTask = event.cardId
+        const activityChanged = workChanged({ task: changedTask })
+
+        const discoveryChanged = [
+          'task.copy',
+          'task.launched',
+          'task.session',
+          'task.worker-line',
+        ].includes(event.type)
+
+        if (linkedByOthers || activityChanged || discoveryChanged) {
+          tick.refreshLinks({ task: changedTask })
+        }
+
+        if (event.type === 'hydra.project') {
+          background({
+            name: 'catalog warmup',
+            context: { hydraId },
+            run: warmCatalog,
+          })
+        }
+
+        broadcast({ event })
+        touchLatest({ ids: [changedTask] })
+
+        const reasons = wakeReasons({
+          state,
+          events: [event],
+        })
+
+        if (reasons.length) {
+          agents.wake({
+            seq: event.seq,
+            card: event.cardId,
+            reasons,
+            event,
+          })
+        } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
+          agents.unread({ seq: event.seq })
+        }
+      }
+
+      handledThrough = read.at(-1)?.seq ?? handledThrough
+
+      if (live) {
+        live.pending = live.pending.filter(event => event.seq > handledThrough)
+      }
+
+      hydrasChanged()
+
+      if (recovered) {
+        background({
+          name: 'reconcile agents',
+          run: async () => await agents.reconcile({ state }),
+        })
+      }
+
+      background({
+        name: 'follow git refs',
+        run: () => gitFollow.reconcile({ state }),
+      })
+      workerLogs.reconcile({ state })
+    }
+
+    const {
+      startWorker,
+      runWorker,
+      joinWorkers,
+      triedResends,
+      resendReply,
+    } = createServerWorkers({
+      hydraId,
+      closed: () => closed,
+    })
+    const tick = createServerTick({
+      hydraId,
+      state: () => state,
+      closed: () => closed || !recovered,
+      pump,
+      followDelay,
+      queueDelay,
+      reminderScheduler,
+      runWorker,
+      triedResends,
+      resendReply,
+      agents: () => agents,
+      sources: () => sources,
+      review: () => review,
+      recover: async () => await recovery.reconcile(),
+    })
+    const workerLogs = followWorkerLogs({
+      hydraId,
+      changed: tick.kick,
+    })
+    const gitFollow = followGit({ changed: tick.refreshLinks })
     background({
       name: 'follow git refs',
       run: () => gitFollow.reconcile({ state }),
     })
+
+    const { kick } = tick
+    notifyChange = kick
     workerLogs.reconcile({ state })
 
-    for (const ws of clients) {
-      sendLatest({ ws })
-    }
-
-    touchLatest({ ids: Object.keys(state.cards) })
-    hydrasChanged()
-  }
-
-  const feed = createLatestFeed({
-    state: () => state,
-    closed: () => closed,
-    clients,
-    send,
-    threadSubscriptions,
-    refreshThread,
-    refreshLiveThread,
-    agents: () => agents,
-    spend,
-  })
-  const {
-    folders,
-    transcripts,
-    transcriptPolls,
-    touchLatest,
-    streamed,
-  } = feed
-
-  const observedWork = new Map<string, boolean>(Object.entries(state.cards).map(([
-    task,
-    card,
-  ]) => [
-    task,
-    (card.sessionActivity ?? card.activity) === 'working',
-  ]))
-
-  const workChanged = ({ task }: { task: string }) => {
-    const card = state.cards[task]
-    const working = (card?.sessionActivity ?? card?.activity) === 'working'
-    const changed = observedWork.get(task) !== working
-    observedWork.set(
-      task,
-      working,
-    )
-
-    return changed
-  }
-
-  // Only events that change what GitHub reports or how often it is read make a task's links due.
-  const pump = () => {
-    const read = readChanges({
+    const agents = createHost({
       hydraId,
-      after: offset,
+      query,
+      spawnCodex,
+      wakeDelay,
+      stallDelay,
+      busyDelay,
+      stallRepeatMax,
+      pauseDelay,
+      compactionDelay,
+      retryDelays,
+      upgradeRoot,
+      restart,
+      changed: () => kick(),
+      queued: kick,
+      streamed,
+      usageChanged: () => spend.count(),
     })
 
-    const live = heldHydra({ hydraId })
+    const recovery = createDiagnosticRecovery({
+      hydraId,
+      sessions: () => agents.diagnostics().sessions,
+      enabled: () => agents.diagnostics().helper.enabled === true,
+      changed: kick,
+      pause: recoveryPause,
+    })
 
-    // A write that failed reads the held Hydra back into a new state, with no event to carry it here.
-    if (live) {
-      state = live.state
-    }
+    const profileAbort = new AbortController()
+    const withdrawHost = offerHost({
+      hydraId,
+      ask: async ({ body }) => {
+        if (body.action === 'cpu-profile') {
+          if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
+            throw new HydraError({
+              code: 'VALIDATION_ERROR',
+              message: 'CPU profile needs seconds and output path',
+            })
+          }
 
-    for (const event of read) {
-      // A held Hydra's writer has already applied the event to the state this server reads.
-      if (live) {
-        state = live.state
-
-        if (event.seq > state.seq) {
-          return reload()
+          return captureCpuProfile({
+            seconds: body.seconds,
+            path: body.path,
+            signal: profileAbort.signal,
+          })
         }
-      } else if (event.seq !== state.seq + 1) {
-        return reload()
-      } else {
-        state = reduce({
-          state,
-          event,
+
+        if (body.action === 'refresh-links') {
+          if (typeof body.task !== 'string') {
+            throw new HydraError({
+              code: 'VALIDATION_ERROR',
+              message: 'task is required',
+            })
+          }
+
+          const card = findCard({
+            state,
+            ref: body.task,
+          })
+          const followed = followedLinks({ state })
+            .some(({ card: linked }) => linked.id === card.id)
+
+          const discovering = discoverableTasks({ state }).some(task => task.id === card.id)
+
+          if (!followed && !discovering) {
+            return {
+              refreshing: 'none: task has no open pull request links',
+              task: card.id,
+            }
+          }
+
+          tick.refreshLinks({
+            task: card.id,
+            restart: true,
+          })
+
+          return {
+            refreshing: 'pull requests',
+            task: card.id,
+            help: [`Read tasks/${card.id}/task.log for the links once read`],
+          }
+        }
+
+        if (body.action === 'debug-health') {
+          const limit = typeof body.limit === 'number' ? body.limit : DEBUG_LIMIT
+
+          if (!Number.isInteger(limit) || limit < 1 || limit > DEBUG_MAX) {
+            throw new HydraError({
+              code: 'VALIDATION_ERROR',
+              message: 'Invalid health limit',
+            })
+          }
+
+          return healthFacts({
+            blocked: recovery.blocked(),
+            state,
+            events: recovery.originals(),
+            dir,
+            now: Date.now(),
+            limit,
+            runtime: {
+              ...agents.diagnostics(),
+              scheduler: tick.health(),
+            },
+          })
+        }
+
+        return hostRequest({
+          host: agents,
+          body,
+          usage: {
+            spend: tabs.spendNow.spend,
+            readings: tabs.readingsNow,
+          },
         })
-      }
+      },
+    })
 
-      const discoveredLink = event.type === 'card.linked' && event.data.before === null
-        && event.data.after?.src === 'branch'
-      const linkedByOthers = event.type === 'card.linked' && (event.actor !== 'pnyx' || discoveredLink)
-      const changedTask = event.cardId
-      const activityChanged = workChanged({ task: changedTask })
+    const sources = createSourceRunner({
+      hydraId,
+      changed: kick,
+      state: () => state,
+    })
 
-      const discoveryChanged = [
-        'task.copy',
-        'task.launched',
-        'task.session',
-        'task.worker-line',
-      ].includes(event.type)
+    const review = startReviewTimer({
+      hydraId,
+      now: reviewClock?.now,
+      interval: reviewClock?.interval,
+      wake: kick,
+      busy: () => agents.queue().waiting.length > 0 || agents.queue().reading.length > 0,
+      state: () => state,
+    })
 
-      if (linkedByOthers || activityChanged || discoveryChanged) {
-        tick.refreshLinks({ task: changedTask })
-      }
+    const request = createServerRoutes({
+      hydraId,
+      dir,
+      url,
+      token,
+      identity,
+    })
 
-      if (event.type === 'hydra.project') {
+    const {
+      warmCatalog,
+      catalogReads,
+      catalogCommand,
+    } = createCatalog({
+      dir,
+      state: () => state,
+      catalogIndex,
+      agents,
+    })
+
+    setImmediate(() => {
+      if (!closed) {
         background({
           name: 'catalog warmup',
           context: { hydraId },
           run: warmCatalog,
         })
       }
-
-      broadcast({ event })
-      touchLatest({ ids: [changedTask] })
-
-      const reasons = wakeReasons({
-        state,
-        events: [event],
-      })
-
-      if (reasons.length) {
-        agents.wake({
-          seq: event.seq,
-          card: event.cardId,
-          reasons,
-          event,
-        })
-      } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
-        agents.unread({ seq: event.seq })
-      }
-    }
-
-    offset = (read.at(-1)?.seq ?? offset)
-
-    if (live) {
-      live.pending = live.pending.filter(event => event.seq > offset)
-    }
-
-    hydrasChanged()
-
-    if (recovered) {
-      background({
-        name: 'reconcile agents',
-        run: async () => await agents.reconcile({ state }),
-      })
-    }
-
-    background({
-      name: 'follow git refs',
-      run: () => gitFollow.reconcile({ state }),
     })
-    workerLogs.reconcile({ state })
-  }
 
-  const {
-    startWorker,
-    runWorker,
-    joinWorkers,
-    triedResends,
-    resendReply,
-  } = createServerWorkers({
-    hydraId,
-    closed: () => closed,
-  })
-  const tick = createServerTick({
-    hydraId,
-    state: () => state,
-    closed: () => closed || !recovered,
-    pump,
-    followDelay,
-    queueDelay,
-    reminderScheduler,
-    runWorker,
-    triedResends,
-    resendReply,
-    agents: () => agents,
-    sources: () => sources,
-    review: () => review,
-    recover: async () => await recovery.reconcile(),
-  })
-  const workerLogs = followWorkerLogs({
-    hydraId,
-    changed: tick.kick,
-  })
-  const gitFollow = followGit({ changed: tick.refreshLinks })
-  background({
-    name: 'follow git refs',
-    run: () => gitFollow.reconcile({ state }),
-  })
-
-  const { kick } = tick
-  workerLogs.reconcile({ state })
-
-  const agents = createHost({
-    hydraId,
-    query,
-    spawnCodex,
-    wakeDelay,
-    stallDelay,
-    busyDelay,
-    stallRepeatMax,
-    pauseDelay,
-    compactionDelay,
-    retryDelays,
-    upgradeRoot,
-    restart,
-    changed: () => kick(),
-    queued: kick,
-    streamed,
-    usageChanged: () => spend.count(),
-  })
-
-  const recovery = createDiagnosticRecovery({
-    hydraId,
-    sessions: () => agents.diagnostics().sessions,
-    enabled: () => agents.diagnostics().helper.enabled === true,
-    changed: kick,
-    pause: recoveryPause,
-  })
-
-  const profileAbort = new AbortController()
-  const withdrawHost = offerHost({
-    hydraId,
-    ask: async ({ body }) => {
-      if (body.action === 'cpu-profile') {
-        if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
-          throw new HydraError({
-            code: 'VALIDATION_ERROR',
-            message: 'CPU profile needs seconds and output path',
-          })
-        }
-
-        return captureCpuProfile({
-          seconds: body.seconds,
-          path: body.path,
-          signal: profileAbort.signal,
-        })
-      }
-
-      if (body.action === 'refresh-links') {
-        if (typeof body.task !== 'string') {
-          throw new HydraError({
-            code: 'VALIDATION_ERROR',
-            message: 'task is required',
-          })
-        }
-
-        const card = findCard({
-          state,
-          ref: body.task,
-        })
-        const followed = followedLinks({ state }).some(({ card: linked }) => linked.id === card.id)
-
-        const discovering = discoverableTasks({ state }).some(task => task.id === card.id)
-
-        if (!followed && !discovering) {
-          return {
-            refreshing: 'none: task has no open pull request links',
-            task: card.id,
-          }
-        }
-
-        tick.refreshLinks({
-          task: card.id,
-          restart: true,
-        })
-
-        return {
-          refreshing: 'pull requests',
-          task: card.id,
-          help: [`Run \`pnyx task show ${card.id} --hydra ${hydraId}\` for the links once read`],
-        }
-      }
-
-      if (body.action === 'debug-health') {
-        const limit = typeof body.limit === 'number' ? body.limit : DEBUG_LIMIT
-
-        if (!Number.isInteger(limit) || limit < 1 || limit > DEBUG_MAX) {
-          throw new HydraError({
-            code: 'VALIDATION_ERROR',
-            message: 'Invalid health limit',
-          })
-        }
-
-        return healthFacts({
-          blocked: recovery.blocked(),
-          state,
-          events: recovery.originals(),
-          dir,
-          now: Date.now(),
-          limit,
-          runtime: {
-            ...agents.diagnostics(),
-            scheduler: tick.health(),
-          },
-        })
-      }
-
-      return hostRequest({
-        host: agents,
-        body,
-        usage: {
-          spend: tabs.spendNow.spend,
-          readings: tabs.readingsNow,
-        },
-      })
-    },
-  })
-
-  const sources = createSourceRunner({
-    hydraId,
-    changed: kick,
-    state: () => state,
-  })
-
-  const review = startReviewTimer({
-    hydraId,
-    now: reviewClock?.now,
-    interval: reviewClock?.interval,
-    wake: kick,
-    busy: () => agents.queue().waiting.length > 0 || agents.queue().reading.length > 0,
-    state: () => state,
-  })
-
-  const request = createServerRoutes({
-    hydraId,
-    dir,
-    url,
-    token,
-    identity,
-  })
-
-  const {
-    warmCatalog,
-    catalogReads,
-    catalogCommand,
-  } = createCatalog({
-    dir,
-    state: () => state,
-    catalogIndex,
-    agents,
-  })
-
-  setImmediate(() => {
-    if (!closed) {
-      background({
-        name: 'catalog warmup',
-        context: { hydraId },
-        run: warmCatalog,
-      })
-    }
-  })
-
-  const {
-    runCommand,
-    closeClient: closeCommands,
-  } = createServerCommands({
-    hydraId,
-    url,
-    open,
-    state: () => state,
-    closed: () => closed,
-    send,
-    kick,
-    agents,
-    catalogCommand,
-    showPage: ({
-      ws,
-      interest,
-    }) => {
-      retainThreads({
-        ws,
-        cards: interest.cards,
-      })
-      tabs.show({
+    const {
+      runCommand,
+      closeClient: closeCommands,
+    } = createServerCommands({
+      hydraId,
+      url,
+      open,
+      state: () => state,
+      closed: () => closed,
+      send,
+      kick,
+      agents,
+      catalogCommand,
+      showPage: ({
         ws,
         interest,
-      })
-    },
-    subscriptionMap,
-    retainThreads,
-    bindThread,
-    threadPage,
-    startWorker,
-  })
+      }) => {
+        retainThreads({
+          ws,
+          cards: interest.cards,
+        })
+        tabs.show({
+          ws,
+          interest,
+        })
+      },
+      subscriptionMap,
+      retainThreads,
+      bindThread,
+      threadPage,
+      startWorker,
+    })
 
-  // The page sends its open cards again as a page command once connected, which reports bad arguments and
-  // missing cards; here they only scope the first latest batch, so arguments that do not parse keep the default.
-  const openPage = ({
-    ws,
-    page,
-  }: {
-    ws: HydraClient
-    page?: string[]
-  }) => {
-    if (!page) {
-      return
+    const openPageWithInitialInterest = ({
+      ws,
+      page,
+    }: {
+      ws: HydraClient
+      page?: string[]
+    }) => {
+      if (!page) {
+        return
+      }
+
+      try {
+        tabs.open({
+          ws,
+          interest: pageInterest({
+            state,
+            values: parsePage({ args: page }).values,
+          }).interest,
+        })
+      } catch (error) {
+        if (!(error instanceof HydraError)) {
+          throw error
+        }
+      }
+    }
+
+    const connect = ({
+      ws,
+      page,
+    }: {
+      ws: HydraClient
+      page?: string[]
+    }): HydraSubscription => {
+      clients.add(ws)
+      openPageWithInitialInterest({
+        ws,
+        page,
+      })
+      send({
+        ws,
+        message: {
+          type: 'hello',
+          stateSeq: state.seq,
+          build: buildId(),
+          hydraId: identity,
+          installation: hydraIdentity({ hydraId: '' }),
+        },
+      })
+      sendLatest({ ws })
+
+      return {
+        receive({ message }) {
+          if (message?.type === 'resync') {
+            sendLatest({ ws })
+            refreshThread({
+              ws,
+              resync: true,
+            })
+          } else if (message?.type === 'command') {
+            background({
+              name: 'page command',
+              context: {hydraId},
+              run: () => runCommand({
+                ws,
+                message,
+              }),
+            })
+          } else {
+            send({
+              ws,
+              message: {
+                type: 'error',
+                id: null,
+                error: 'unknown message',
+                code: 'VALIDATION_ERROR',
+                help: ['Send a command or resync message'],
+              },
+            })
+          }
+        },
+        close() {
+          closeCommands({ ws })
+          tabs.closeClient({ ws })
+          clients.delete(ws)
+          catalogReads.delete(ws)
+          clearTimeout(threadTimers.get(ws))
+          threadTimers.delete(ws)
+          retireThreadClient({ ws })
+
+          for (const map of threadSubscriptions()) {
+            const sub = map.get(ws)
+
+            if (sub) {
+              sub.watcher?.close()
+              clearTimeout(liveThreadTimers.get(sub))
+              liveThreadTimers.delete(sub)
+            }
+
+            map.delete(ws)
+          }
+        },
+      }
+    }
+
+    let ingest: Awaited<ReturnType<typeof listenIngest>> | undefined
+    const watchers: PathWatch[] = []
+
+    const stop = async () => {
+      closed = true
+      profileAbort.abort()
+      workerLogs.close()
+      gitFollow.close()
+      await recovery.close()
+      withdrawHost()
+
+      await Promise.all([
+        tick.queueRun,
+        tick.replyRun,
+        tick.followRun,
+        tick.discoveryRun,
+        tick.settling,
+        joinWorkers(),
+      ])
+      await sources.close()
+      review.close()
+      catalogIndex.close()
+      agents.close()
+      await spend.close()
+
+      await releaseHold()
+      failedRelease = undefined
+
+      const threads = threadSubscriptions().flatMap(map =>
+        [...map.values()].flatMap(sub => sub.watcher ?? []))
+
+      for (const w of [
+        ...watchers,
+        ...folders.values(),
+        ...transcripts.values(),
+        ...transcriptPolls.values(),
+        ...threads,
+      ]) {
+        w.close()
+      }
+
+      folders.clear()
+      transcripts.clear()
+      transcriptPolls.clear()
+      tabs.close()
+      threadSubscriptions().forEach(map => map.clear())
+      clearTimeout(feed.latestTimer)
+      clearTimeout(tick.expiryTimer)
+      tick.cancelReminder()
+
+      for (const timer of threadTimers.values()) {
+        clearTimeout(timer)
+      }
+
+      threadTimers.clear()
+
+      for (const timer of liveThreadTimers.values()) {
+        clearTimeout(timer)
+      }
+
+      liveThreadTimers.clear()
+
+      for (const ws of clients) {
+        closeCommands({ ws })
+        ws.terminate()
+      }
+
+      clients.clear()
+      const listener = ingest
+
+      if (listener) {
+        await new Promise(resolve => listener.close(resolve))
+        rmSync(
+          socketPath({ hydraId }),
+          { force: true },
+        )
+      }
     }
 
     try {
-      tabs.open({
-        ws,
-        interest: pageInterest({
-          state,
-          values: parsePage({ args: page }).values,
-        }).interest,
-      })
-    } catch (error) {
-      if (!(error instanceof HydraError)) {
-        throw error
-      }
-    }
-  }
+      ingest = await listenIngest({
+        hydraId,
+        onLine: ({ line }) => {
+          let entry: unknown
 
-  const connect = ({
-    ws,
-    page,
-  }: {
-    ws: HydraClient
-    page?: string[]
-  }): HydraSubscription => {
-    clients.add(ws)
-    openPage({
-      ws,
-      page,
-    })
-    send({
-      ws,
-      message: {
-        type: 'hello',
-        stateSeq: state.seq,
-        build: buildId(),
-        hydraId: identity,
-        installation: hydraIdentity({ hydraId: '' }),
-      },
-    })
-    sendLatest({ ws })
+          try {
+            entry = JSON.parse(line)
+          } catch (error) {
+            if (error instanceof SyntaxError) {
+              return
+            }
 
-    return {
-      receive({ message }) {
-        if (message?.type === 'resync') {
-          sendLatest({ ws })
-          refreshThread({
-            ws,
-            resync: true,
-          })
-        } else if (message?.type === 'command') {
-          background({
-            name: 'page command',
-            context: {hydraId},
-            run: () => runCommand({
-              ws,
-              message,
-            }),
-          })
-        } else {
-          send({
-            ws,
-            message: {
-              type: 'error',
-              id: null,
-              error: 'unknown message',
-              code: 'VALIDATION_ERROR',
-              help: ['Send a command or resync message'],
-            },
-          })
-        }
-      },
-      close() {
-        closeCommands({ ws })
-        tabs.closeClient({ ws })
-        clients.delete(ws)
-        catalogReads.delete(ws)
-        clearTimeout(threadTimers.get(ws))
-        threadTimers.delete(ws)
-        retireThreadClient({ ws })
-
-        for (const map of threadSubscriptions()) {
-          const sub = map.get(ws)
-
-          if (sub) {
-            sub.watcher?.close()
-            clearTimeout(liveThreadTimers.get(sub))
-            liveThreadTimers.delete(sub)
+            throw error
           }
 
-          map.delete(ws)
-        }
-      },
-    }
-  }
+          if (typeof entry !== 'object' || entry === null || !('id' in entry) || typeof entry.id !== 'string') {
+            return
+          }
 
-  const ingest = await listenIngest({
-    hydraId,
-    onLine: ({ line }) => {
-      try {
-        const entry = JSON.parse(line) as { id?: unknown }
-
-        if (typeof entry === 'object' && entry !== null && typeof entry.id === 'string') {
-          spoolWrite({
-            hydraId,
-            entry: entry as { id: string },
-          })
-          // The server knows it just spooled a file, so the drain need not wait for the folder watcher.
-          tick.spooled()
-        }
-      } catch {
-      // Not JSON: dropped, as a hook never waits for an answer.
-      }
-    },
-  })
-
-  const watchers: PathWatch[] = []
-
-  const stop = async () => {
-    closed = true
-    profileAbort.abort()
-    workerLogs.close()
-    gitFollow.close()
-    await recovery.close()
-    withdrawHost()
-
-    await Promise.all([
-      tick.queueRun,
-      tick.replyRun,
-      tick.followRun,
-      tick.discoveryRun,
-      tick.settling,
-      joinWorkers(),
-    ])
-    await sources.close()
-    review.close()
-    catalogIndex.close()
-    agents.close()
-    await spend.close()
-
-    releaseHold()
-
-    const threads = threadSubscriptions().flatMap(map =>
-      [...map.values()].flatMap(sub => sub.watcher ?? []))
-
-    for (const w of [
-      ...watchers,
-      ...folders.values(),
-      ...transcripts.values(),
-      ...transcriptPolls.values(),
-      ...threads,
-    ]) {
-      w.close()
-    }
-
-    folders.clear()
-    transcripts.clear()
-    transcriptPolls.clear()
-    tabs.close()
-    threadSubscriptions().forEach(map => map.clear())
-    clearTimeout(feed.latestTimer)
-    clearTimeout(tick.expiryTimer)
-    tick.cancelReminder()
-
-    for (const timer of threadTimers.values()) {
-      clearTimeout(timer)
-    }
-
-    threadTimers.clear()
-
-    for (const timer of liveThreadTimers.values()) {
-      clearTimeout(timer)
-    }
-
-    liveThreadTimers.clear()
-
-    for (const ws of clients) {
-      closeCommands({ ws })
-      ws.terminate()
-    }
-
-    clients.clear()
-    await (ingest && new Promise(r => ingest.close(r)))
-
-    if (ingest) {
-      rmSync(
-        socketPath({ hydraId }),
-        { force: true },
-      )
-    }
-  }
-
-  // A mount that fails partway stops what it started.
-  try {
-    watchers.push(
-      watchPath({
+          try {
+            spoolWrite({
+              hydraId,
+              entry: {
+                ...entry,
+                id: entry.id,
+              },
+            })
+            tick.spooled()
+          } catch (error) {
+            log({
+              level: 'error',
+              operation: 'ingest.spool',
+              hydraId,
+              error,
+            })
+          }
+        },
+      })
+      watchers.push(watchPath({
         path: dir,
         changed: kick,
-      }),
-      watchPath({
+      }))
+      watchers.push(watchPath({
         path: spoolDir({ dir }),
         changed: tick.spooled,
+      }))
+      workerLogs.reconcile({ state })
+    } catch (error) {
+      await stop()
+      throw error
+    }
+
+    try {
+      await agents.recover()
+    } catch (error) {
+      log({
+        level: 'error',
+        operation: 'recover',
+        hydraId,
+        error,
+      })
+    } finally {
+      recovered = true
+    }
+
+    kick()
+    touchLatest({ ids: Object.keys(state.cards) })
+
+    return {
+      url,
+      socket: ingest && socketPath({ hydraId }),
+      view: () => ({
+        state: pageState({
+          state,
+          interest: {
+            cards: [],
+            hidden: true,
+          },
+        }),
+        queue: queue(),
       }),
-    )
-    workerLogs.reconcile({ state })
-  } catch (error) {
-    await stop()
-    throw error
-  }
-
-  try {
-    await agents.recover()
-  } catch (error) {
-    log({
-      level: 'error',
-      operation: 'recover',
-      hydraId,
-      error,
-    })
-  } finally {
-    recovered = true
-  }
-
-  kick()
-  touchLatest({ ids: Object.keys(state.cards) })
-
-  return {
-    url,
-    socket: ingest && socketPath({ hydraId }),
-    view: () => ({
-      state: pageState({
-        state,
-        interest: {
-          cards: [],
-          hidden: true,
-        },
-      }),
-      queue: queue(),
-    }),
-    request,
-    connect,
-    settings() {
-      for (const ws of clients) {
+      request,
+      connect,
+      settings() {
+        for (const ws of clients) {
         // Focus mode and the detail switches decide what a thread page shows.
-        for (const map of threadSubscriptions()) {
-          if (map.has(ws)) {
-            refreshThread({ ws })
-          }
-        }
-      }
-
-      // The Done deadline follows the shared hours.
-      kick()
-    },
-    async close({ permanent = false } = {}) {
-      if (permanentClose) {
-        return permanentClose
-      }
-
-      if (permanent) {
-        permanentClose = (async () => {
-          try {
-            agents.close()
-            await agents.stopTools()
-          } finally {
-            if (!closed) {
-              await stop()
+          for (const map of threadSubscriptions()) {
+            if (map.has(ws)) {
+              refreshThread({ ws })
             }
           }
-        })()
-
-        try {
-          await permanentClose
-        } finally {
-          permanentClose = undefined
         }
 
-        return
-      }
+        kick()
+      },
+      async close({ permanent = false } = {}) {
+        if (permanentClose) {
+          return permanentClose
+        }
 
-      if (closed) {
-        return
-      }
+        if (permanent) {
+          permanentClose = (async () => {
+            try {
+              agents.close()
+              await agents.stopTools()
+            } finally {
+              if (!closed) {
+                await stop()
+              }
+            }
+          })()
 
-      await stop()
-    },
+          try {
+            await permanentClose
+          } finally {
+            permanentClose = undefined
+          }
+
+          return
+        }
+
+        if (closed) {
+          return
+        }
+
+        await stop()
+      },
+    }
+  } catch (error) {
+    await failedRelease?.()
+    throw error
   }
 }
 

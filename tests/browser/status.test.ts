@@ -1,7 +1,8 @@
+import { readEvents } from '#app/event-log.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { chrome } from './chrome.ts'
 import { workerLine } from '../setup/worker-log.ts'
-import { rows, startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
 
 let pnyx: Pnyx
 const EXITED_PROCESS_PID = '2147483647'
@@ -173,15 +174,19 @@ test(
       label: 'Idle',
     })
     await observe({ activity: 'finished' })
-    const noise = rows({
-      text: "select type from events where hydra_id = $1 and type in ('card.pushed', 'session.observed', 'card.observed')",
-      values: [hydra.id],
-    })
+    const noise = readEvents({
+      hydraId: hydra.id,
+      types: [
+        'card.pushed',
+        'session.observed',
+        'card.observed',
+      ],
+    }).map(event => ({ type: event.type }))
     expect(noise).toEqual([])
-    expect(rows({
-      text: "select type from events where hydra_id = $1 and type = 'task.created'",
-      values: [hydra.id],
-    })).toEqual([{ type: 'task.created' }])
+    expect(readEvents({
+      hydraId: hydra.id,
+      types: ['task.created'],
+    }).map(event => ({ type: event.type }))).toEqual([{ type: 'task.created' }])
   },
 )
 

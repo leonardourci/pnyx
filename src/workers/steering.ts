@@ -129,7 +129,8 @@ export function applySteering({
     message.recovery = recovery
   } else {
     const message = card.steering?.find(message =>
-      message.id === event.data.message && !message.ack && !message.stopped)
+      message.id === event.data.message && !message.stopped
+      && (!message.ack || (message.ackDerived && !event.derived)))
 
     if (!message || !sameClaim({
       current: steeringClaim({ card }),
@@ -139,6 +140,12 @@ export function applySteering({
     }
 
     message.ack = structuredClone(event.data.ack)
+
+    if (event.derived) {
+      message.ackDerived = true
+    } else {
+      delete message.ackDerived
+    }
 
     if (card.compaction) {
       card.compaction.inputs = card.compaction.inputs.filter(input => input.id !== message.id)

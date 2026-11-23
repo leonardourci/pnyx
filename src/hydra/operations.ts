@@ -14,7 +14,7 @@ import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
 import { ownerActor } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
-import { failHydraInput, hydraInputDispatched } from './received.ts'
+import { failHydraInput, hydraDeliveryId, hydraInputDispatched } from './received.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -117,23 +117,45 @@ export function createHydraOperations({
   hydraId: string
   queuedHydra: Set<string>
   at(): string
-  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): void
+  note({ fn }: { fn: ({ writer }: { writer: Writer }) => void }): Promise<void>
   armWake(): void
-  host(): Host
+  host(): Pick<Host, 'hydra'>
 }) {
   // One machinery for whatever stops Hydra for a while: it records the start and the end, holds nothing of its own,
   // and when it ends Hydra's first turn is the recap of what arrived meanwhile.
   // The first of back-to-back operations: the recap after the last one covers everything since it began.
   let stoppedSince: NonNullable<HydraState['hydraOperation']> | undefined
+  let recapId: string | undefined
   // The owner's Stop ended the running stop and cancelled what waited behind it, so no recap follows.
   let stoppedByOwner = false
 
-  const stoppedFor = ({ id }: { id: string }) => {
-    const running = loadHydra({ hydraId }).state.hydraOperation
+  const stoppedFor = ({
+    id,
+    actor,
+  }: {
+    id: string
+    actor?: string
+  }) => {
+    const state = loadHydra({ hydraId }).state
+    const recap = id.startsWith('operation:')
+    const active = state.hydraOperation
 
-    const change = loadHydra({ hydraId }).state.hydraAgentChange
+    if (actor === 'pnyx' && active?.kind === 'compaction' && recapId === `operation:${active.id}`) {
+      const childId = `${active.id}:inscribe`
+      const child = state.historyMilestones?.find(pass => pass.id === childId)
 
-    return (Boolean(running) || Boolean(change)) && !id.startsWith('operation:')
+      if (id === `operation:${childId}` && child?.kind === 'inscribe'
+        && child.state === 'started' && child.parent === active.id) {
+        return false
+      }
+    }
+
+    if (recap && recapId && id !== recapId) {
+      return true
+    }
+
+    return Boolean(state.hydraOperation) || (recap
+      ? state.hydraAgentChange?.state === 'running' : Boolean(state.hydraAgentChange))
   }
 
   const startOperation = ({
@@ -152,6 +174,15 @@ export function createHydraOperations({
       if (writer.state.hydraOperation && !independent) {
         return
       }
+
+      if (recapId && Object.hasOwn(
+        writer.state.eventIds,
+        hydraDeliveryId({ message: { id: recapId } }),
+      )) {
+        stoppedSince = undefined
+      }
+
+      recapId = `operation:${id}`
 
       // Messages already waiting for a Hydra turn when the stop begins are part of what it recaps.
       const waiting = [...queuedHydra].flatMap(queuedId => writer.state.eventIds[queuedId] ?? [])
@@ -233,20 +264,7 @@ export function createHydraOperations({
       ended.error = error
     }
 
-    note({
-      fn: ({ writer }) => applyDecision({
-        writer,
-        decision: operationEvent({
-          state: writer.state,
-          operation: ended,
-          meta: {
-            at: at(),
-            actor: 'pnyx',
-          },
-        }),
-      }),
-    })
-    background({
+    const recap = () => background({
       name: 'Hydra back after a stop',
       run: async () => {
         const state = loadHydra({ hydraId }).state
@@ -257,11 +275,11 @@ export function createHydraOperations({
         }
 
         const since = stoppedSince ?? running
-        stoppedSince = undefined
 
         // Hydra waits for the owner's next message instead of a recap; a Stop from before the operation leaves what waited to deliver.
         if (stoppedByOwner) {
           stoppedByOwner = false
+          stoppedSince = undefined
 
           return
         }
@@ -289,14 +307,34 @@ export function createHydraOperations({
               error,
               now: Date.now(),
             })
+          recapId = `operation:${id}`
           await host().hydra({
-            id: `operation:${id}`,
+            id: recapId,
             actor: 'pnyx',
             ...recap,
           })
+        } else {
+          stoppedSince = undefined
         }
 
         armWake()
+      },
+    })
+
+    note({
+      fn: ({ writer }) => {
+        applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            operation: ended,
+            meta: {
+              at: at(),
+              actor: 'pnyx',
+            },
+          }),
+        })
+        writer.afterCommit({ run: recap })
       },
     })
   }
@@ -307,6 +345,7 @@ export function createHydraOperations({
     endOperation,
     stoppedByOwner: () => {
       stoppedByOwner = true
+      stoppedSince = undefined
     },
   }
 }

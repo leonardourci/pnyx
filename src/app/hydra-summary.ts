@@ -4,7 +4,7 @@ import type { HydraSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { readEvents } from './event-log.ts'
-import { homeScoped } from '#store/postgres.ts'
+import { homeScoped } from '#store/paths.ts'
 import { projectsFor } from '#projects/read.ts'
 import { ownerQuestionGroups } from '#tasks/question-groups.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -14,20 +14,6 @@ export const CREATION_PREFIX = 'hydra-create:'
 
 // A Hydra's first event never changes, so each is read once it exists.
 const firstEvents = new Map<string, HydraEvent>()
-
-// A Hydra's first write names its first event before it commits, so its summary row has it from the start.
-export function rememberFirstEvent({
-  hydraId,
-  event,
-}: {
-  hydraId: string
-  event: HydraEvent
-}): void {
-  firstEvents.set(
-    homeScoped({ hydraId }),
-    event,
-  )
-}
 
 function firstEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
   const key = homeScoped({ hydraId })

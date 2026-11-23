@@ -151,6 +151,7 @@ export interface SteeringMessage {
   recovery?: SteeringRecovery[]
   stopped?: boolean
   ack?: SteeringAck
+  ackDerived?: true
 }
 
 export type SteeringEvent = EventBase & (

@@ -4,6 +4,7 @@ import { activeCompaction } from '#workers/compaction/state.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from './steering.ts'
 import { steeringNotice } from './inbox-notice.ts'
 import { createHash, randomUUID } from 'node:crypto'
+import { HydraError } from '#store/errors.ts'
 import { join } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Card } from '#tasks/model.ts'
@@ -66,6 +67,15 @@ export function createSteeringDelivery({
     card: Card
     ids: string[]
   }) => {
+    const claim = steeringClaim({ card })
+
+    if (!claim) {
+      throw new HydraError({
+        code: 'STALE_CLAIM',
+        message: 'The task no longer has an active inbox assignment',
+      })
+    }
+
     const messages = (card.steering ?? []).filter(message => ids.includes(message.id))
     const images = messages.flatMap(message => attachedImages({
       text: message.text,
@@ -80,6 +90,7 @@ export function createSteeringDelivery({
         task: card.id,
         hydraId,
         ids,
+        claim,
       }),
       ...new Set(images.map(path => `[image: ${path}]`)),
     ].join('\n')
@@ -140,6 +151,7 @@ export function createSteeringDelivery({
 
       for (const message of pendingSteering({ card }).filter(message => ids.includes(message.id))) {
         acknowledgeSteering({
+          derived: true,
           writer,
           ref: card.id,
           id: message.id,

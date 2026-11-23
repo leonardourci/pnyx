@@ -174,7 +174,7 @@ function present(
     }
   }
 
-  const help = card ? [`Run \`pnyx history --card ${card}\` for its events`] : [hits[0]!.kind === 'hydra' ? 'Open Hydra on the Hydra to read this conversation' : `Run \`pnyx card ${hits[0]!.card}\` to open the top match`]
+  const help = ['Open the matched Hydra or task in the UI to read its conversation']
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {

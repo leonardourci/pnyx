@@ -8,7 +8,7 @@ set -f
 
 harness=$1
 event=$2
-cli=${3:-}
+context=${3:-}
 case $harness in claude | codex) ;; *) exit 0 ;; esac
 case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 
@@ -98,11 +98,10 @@ fi
 
 # A worker gets its context from Pnyx itself; other sessions get the summary when the
 # folder belongs to an attached project. The harness's hook timeout bounds the call.
-if [ "$event" = SessionStart ] && [ -z "$task" ] && [ -f "$cli" ]; then
-  # A CLI installed from source needs the source condition for its # imports.
-  conditions=
-  case $cli in *.ts) conditions=--conditions=source ;; esac
-  summary=$(PNYX_HOME=$home node $conditions "$cli" context --hydra "$hydra_name" --cwd "$PWD" 2>/dev/null) || summary=
+if [ "$event" = SessionStart ] && [ -z "$task" ] && [ -f "$context" ]; then
+  set --
+  case $context in *.ts) set -- --conditions=source ;; esac
+  summary=$(PNYX_HOME=$home node "$@" "$context" "$hydra_name" 2>/dev/null) || summary=
   [ -z "$summary" ] || printf '%s\n' "$summary" >&3
 fi
 exit 0

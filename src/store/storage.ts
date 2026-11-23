@@ -1,17 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { HydraError } from './errors.ts'
 import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
-
-const LOCK_TIMEOUT_MS = 5000
-export const nonblockingLocks = new AsyncLocalStorage<true>()
-const STALE_EMPTY_LOCK_MS = 10_000
-const LOCK_POLL_MS = 25
 
 // A Hydra's folder holds its spool, caches and agent files, which can quote transcripts and are as private.
 export function privateDir({
@@ -49,10 +42,6 @@ export function privateDir({
   }
 }
 
-export const logPath = ({ dir }: { dir: string }) => join(
-  dir,
-  'events.jsonl',
-)
 export const spoolDir = ({ dir }: { dir: string }) => join(
   dir,
   'spool',
@@ -178,212 +167,22 @@ export function syncDirectory({ dir }: { dir: string }): void {
   }
 }
 
-function lockIsStale({ path }: { path: string }): boolean {
-  try {
-    const pid = Number(readFileSync(
-      path,
-      'utf8',
-    ))
-
-    if (!Number.isInteger(pid) || pid <= 0) {
-      return Date.now() - statSync(path).mtimeMs > STALE_EMPTY_LOCK_MS
-    }
-
-    process.kill(
-      pid,
-      0,
-    )
-
-    return false
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ESRCH'
-  }
-}
-
-// Re-checks staleness under an O_EXCL takeover file so only one writer can remove a dead lock.
-// ponytail: a writer killed inside the takeover leaves the takeover file behind, and every later dead lock then needs the manual removal the LOCKED help names.
-function takeOver({
-  path,
-  takeover,
-}: {
-  path: string
-  takeover: string
-}): boolean {
-  try {
-    closeSync(openSync(
-      takeover,
-      'wx',
-    ))
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      return false
-    }
-
-    throw error
-  }
-
-  try {
-    if (lockIsStale({ path })) {
-      rmSync(
-        path,
-        { force: true },
-      )
-    }
-  } finally {
-    rmSync(
-      takeover,
-      { force: true },
-    )
-  }
-
-  return true
-}
-
-// O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
-export function acquireLock({
-  dir,
-  timeout = nonblockingLocks.getStore() ? 0 : LOCK_TIMEOUT_MS,
-}: {
-  dir: string
-  timeout?: number
-}): () => void {
-  const path = join(
-    dir,
-    'writer.lock',
-  )
-  const takeover = `${path}.takeover`
-  let deadline = Date.now() + timeout
-  const emptyLockDeadline = deadline + STALE_EMPTY_LOCK_MS
-  let retrying = false
-
-  const createLock = (): (() => void) | undefined => {
-    try {
-      const fd = openSync(
-        path,
-        'wx',
-      )
-      writeSync(
-        fd,
-        String(process.pid),
-      )
-      closeSync(fd)
-
-      return () => rmSync(
-        path,
-        { force: true },
-      )
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-        throw error
-      }
-
-      return undefined
-    }
-  }
-
-  do {
-    if (retrying) {
-      Atomics.wait(
-        new Int32Array(new SharedArrayBuffer(4)),
-        0,
-        0,
-        Math.min(
-          LOCK_POLL_MS,
-          Math.max(
-            0,
-            deadline - Date.now(),
-          ),
-        ),
-      )
-    }
-
-    const release = createLock()
-
-    if (release) {
-      return release
-    }
-
-    if (timeout > 0) {
-      try {
-        const owner = Number(readFileSync(
-          path,
-          'utf8',
-        ))
-
-        if (!Number.isInteger(owner) || owner <= 0) {
-          deadline = Math.max(
-            deadline,
-            Math.min(
-              emptyLockDeadline,
-              statSync(path).mtimeMs + STALE_EMPTY_LOCK_MS + timeout,
-            ),
-          )
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-          throw error
-        }
-      }
-    }
-
-    if (lockIsStale({ path }) && takeOver({
-      path,
-      takeover,
-    })) {
-      const reclaimed = createLock()
-
-      if (reclaimed) {
-        return reclaimed
-      }
-    }
-
-    retrying = true
-  } while (Date.now() < deadline)
-
-  let owner: string
-
-  try {
-    owner = readFileSync(
-      path,
-      'utf8',
-    ).trim()
-  } catch {
-    owner = 'unreadable'
-  }
-
-  throw new HydraError({
-    message: `Hydra is locked by another pnyx writer after ${timeout}ms: ${path} (owner: ${owner})`,
-    code: 'LOCKED',
-    help: [`Retry, or remove ${path} and ${takeover} if no pnyx process is running`],
-  })
-}
-
 interface RegistryOwner {
   dir: string
   active: boolean
   pending: Set<Promise<unknown>>
 }
 const registryContext = new AsyncLocalStorage<RegistryOwner>()
-const registryOwners = new Set<string>()
 const registryQueue = new Map<string, Promise<void>>()
 
-function ownsRegistry({ dir }: {dir: string}): boolean {
-  const owner = registryContext.getStore()
-
-  return owner?.active === true && owner.dir === dir
-}
-
-export async function withAsyncRegistryLock<T>({
-  fn,
-  timeout = nonblockingLocks.getStore() ? 0 : LOCK_TIMEOUT_MS,
-}: {
+export async function withAsyncRegistryLock<T>({ fn }: {
   fn(): T | Promise<T>
   timeout?: number
 }): Promise<T> {
-  const dir = pnyxHome()
+  const dir = resolve(pnyxHome())
+  const owner = registryContext.getStore()
 
-  if (ownsRegistry({dir})) {
-    const owner = registryContext.getStore()!
+  if (owner?.active && owner.dir === dir) {
     const decision = Promise.resolve().then(fn)
     owner.pending.add(decision)
     const settled = () => owner.pending.delete(decision)
@@ -392,7 +191,7 @@ export async function withAsyncRegistryLock<T>({
       settled,
     )
 
-    return await decision
+    return decision
   }
 
   const previous = registryQueue.get(dir)
@@ -404,51 +203,23 @@ export async function withAsyncRegistryLock<T>({
 
   try {
     await previous
-    privateDir({dir})
-    const deadline = Date.now() + timeout
-    let release: (() => void) | undefined
-
-    while (!release) {
-      try {
-        release = acquireLock({
-          dir,
-          timeout: 0,
-        })
-      } catch (error) {
-        if (!(error instanceof HydraError) || error.code !== 'LOCKED' || Date.now() >= deadline) {
-          throw error
-        }
-
-        await sleep(Math.min(
-          LOCK_POLL_MS,
-          Math.max(
-            0,
-            deadline - Date.now(),
-          ),
-        ))
-      }
-    }
-
-    const owner: RegistryOwner = {
+    const active: RegistryOwner = {
       dir,
       active: true,
       pending: new Set(),
     }
-    registryOwners.add(dir)
 
     try {
       return await registryContext.run(
-        owner,
+        active,
         fn,
       )
     } finally {
-      while (owner.pending.size) {
-        await Promise.allSettled(owner.pending)
+      while (active.pending.size) {
+        await Promise.allSettled(active.pending)
       }
 
-      owner.active = false
-      registryOwners.delete(dir)
-      release()
+      active.active = false
     }
   } finally {
     done.resolve()
@@ -459,32 +230,10 @@ export async function withAsyncRegistryLock<T>({
   }
 }
 
-export function withRegistryLock<T>({
-  fn,
-  timeout,
-}: {
+export const withRegistryLock = <T>({ fn }: {
   fn(): T
   timeout?: number
-}): T {
-  const dir = pnyxHome()
-
-  if (ownsRegistry({dir})) {
-    return fn()
-  }
-
-  privateDir({ dir })
-  const heldInThisProcess = registryOwners.has(dir)
-  const release = acquireLock({
-    dir,
-    timeout: heldInThisProcess ? 0 : timeout,
-  })
-
-  try {
-    return fn()
-  } finally {
-    release()
-  }
-}
+}): T => fn()
 
 export function spoolFiles({ dir }: { dir: string }): string[] {
   const spool = spoolDir({ dir })

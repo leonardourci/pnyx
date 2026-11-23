@@ -111,7 +111,7 @@ function short({ value }: { value: string | undefined }): string | undefined {
   })
 }
 
-export function commandText({ input }: { input: unknown }): string | undefined {
+function commandText({ input }: { input: unknown }): string | undefined {
   const command = (input as { command?: unknown } | null)?.command
 
   if (!Array.isArray(command)) {

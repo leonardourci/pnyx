@@ -94,11 +94,9 @@ export function createWakeQueue({
 
   const updatesText = ({
     state,
-    after,
     seqs,
   }: {
     state: HydraState
-    after: number
     seqs: number[]
   }) => {
     const chosen = new Set(seqs)
@@ -110,10 +108,10 @@ export function createWakeQueue({
       hydraId,
       state,
       now: Date.now(),
-      after,
       reasons: [...new Set(seqs.flatMap(seq => wakeReasonsAt.get(seq) ?? []))],
       reports,
       check: reports.length < chosen.size,
+      reportSeqs: seqs,
       pick: {
         tasks: updates.filter(update => chosen.has(update.seq)).map(update => update.card),
         asks: reports.flatMap(message => message.ask ?? []),
@@ -196,7 +194,6 @@ export function createWakeQueue({
       }).items,
       prompt: ({ seqs }) => updatesText({
         state,
-        after,
         seqs,
       }),
     })
@@ -319,11 +316,14 @@ export function createWakeQueue({
       hydraId,
       state,
       now: Date.now(),
-      after,
       reasons: [...new Set(batch.flatMap(update => wakeReasonsAt.get(update.seq) ?? []))],
       reports,
       check: batch.some(update => !reportSeqs.has(update.seq)) || !reports.length,
       review: reviewText,
+      reviewId: reviewText && review ? readChanges({
+        hydraId,
+        seqs: [review.seq],
+      })[0]?.id : undefined,
     })
 
     return wakeMain({

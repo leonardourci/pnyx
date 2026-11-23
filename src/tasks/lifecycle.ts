@@ -10,7 +10,6 @@ type Stage = 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done'
 
 const MOVE = ':lifecycle'
 
-// hydra check skips these moves by id; it already lists their cause.
 export const lifecycleMoveId = ({
   event,
   cardId,
@@ -18,7 +17,6 @@ export const lifecycleMoveId = ({
   event: string
   cardId: string
 }) => `${event}:${cardId}${MOVE}`
-export const lifecycleMove = ({ id }: { id: string }) => id.endsWith(MOVE)
 
 // A question still waiting on Hydra does not count as waiting on the owner.
 function asksOwner({ card }: { card: Card }): boolean {

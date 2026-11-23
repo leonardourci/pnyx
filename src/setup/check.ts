@@ -4,7 +4,6 @@ import { SET_UP_SKILL } from './skill-names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
-import type { HydraState } from '#app/model.ts'
 import type { HydraProject } from '#projects/model.ts'
 import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
@@ -13,9 +12,7 @@ import { readableProjectMemory } from '#memory/project-memory.ts'
 import { sharingHydras } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
-import { HydraError } from '#store/errors.ts'
 import { recordExitCode } from '#app/request-context.ts'
-import { postgresIssue } from './postgres.ts'
 
 export interface SetupItem {
   name: string
@@ -36,7 +33,6 @@ const SIGN_IN: Record<Harness, string> = {
   codex: 'sign in to Codex (`codex login`)',
 }
 
-// Reads files, PATH, each attached project's git sources and one Postgres query: cheap enough for every session open.
 export async function setupCheck({
   hydraId,
   readable,
@@ -45,11 +41,6 @@ export async function setupCheck({
   readable: HydraProject[]
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
-  const database = postgresIssue()
-
-  if (database) {
-    items.push(database)
-  }
 
   if (onTemplate()) {
     items.push({
@@ -216,29 +207,9 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
   ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
-// Setup runs without the server, which alone imports a Hydra still in its events.jsonl; until then it is the only item.
-function hydraIssue({ hydraId }: { hydraId: string }): SetupItem | HydraState {
-  try {
-    return loadHydra({ hydraId }).state
-  } catch (error) {
-    if (!(error instanceof HydraError && error.code === 'NOT_IMPORTED')) {
-      throw error
-    }
-
-    return {
-      name: 'import',
-      missing: error.message,
-      by: 'owner',
-      fix: 'restart the server, then run `pnyx setup check`',
-    }
-  }
-}
-
 export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  // A Hydra loads only through Postgres, so while Postgres is not ready that is the one item listed.
-  const database = postgresIssue()
-  const loaded = database ?? hydraIssue({ hydraId })
-  const items = 'missing' in loaded ? [loaded] : await setupCheck({
+  const loaded = loadHydra({ hydraId }).state
+  const items = await setupCheck({
     hydraId,
     readable: projectsFor({state: loaded}),
   })

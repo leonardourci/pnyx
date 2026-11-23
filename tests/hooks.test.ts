@@ -24,12 +24,12 @@ const HOOK = join(
   'hooks',
   'pnyx-hook.sh',
 )
-const CLI = join(
+const CONTEXT = join(
   import.meta.dirname,
   '..',
   'dist',
-  'cli',
-  'pnyx.js',
+  'setup',
+  'hook-context.js',
 )
 // A hook that has not ended by itself after this long is stuck; the test then stops it and fails. It is no speed target.
 const HOOK_STUCK_MS = 30_000
@@ -66,7 +66,7 @@ const hook = ({
       HOOK,
       'claude',
       event,
-      CLI,
+      CONTEXT,
     ],
     {
       cwd: payload.cwd,
@@ -214,6 +214,16 @@ test(
       herdrSession: 'hook-session',
       herdrPane: 'hook-pane',
     })
+    const sourceLog = join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'default',
+      'hydra.log',
+    )
+    const firstBinding = readFileSync(
+      sourceLog,
+      'utf8',
+    )
     runs.push(await hook({
       event: 'UserPromptSubmit',
       env: {
@@ -234,6 +244,10 @@ test(
         return facts?.terminal?.tmuxPane === '%8' && facts?.terminal?.herdrPane === 'prompt-pane' && facts
       },
     })
+    expect(readFileSync(
+      sourceLog,
+      'utf8',
+    )).toBe(firstBinding)
     expect(working).toMatchObject({
       title: 'Fix the flaky login test',
       activity: 'working',
@@ -787,6 +801,24 @@ test(
       })).status).toBe(0)
     }
 
+    mkdirSync(join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'default',
+      'tasks',
+      '.pending-task-XXXXXX',
+    ))
+    mkdirSync(
+      join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        'default',
+        'tasks',
+        'unpublished-task',
+        'task.log',
+      ),
+      { recursive: true },
+    )
     const inProject = await hook({
       event: 'SessionStart',
       payload: {
@@ -1178,18 +1210,6 @@ test(
       }),
     })
     expect((await hydra.task({ key: 'attached' })).status).toBe('needs you')
-    const changes = await hydra.owner({
-      args: [
-        'hydra',
-        'check',
-        '--after',
-        '0',
-      ],
-    })
-    expect.soft(changes.changes).toContainEqual(expect.objectContaining({
-      type: 'session.observed',
-      summary: expect.stringContaining('inspect-package'),
-    }))
     const stateAfterQuestion = loadHydra({ hydraId: hydra.id }).state
     const settingsEvent = readChanges({
       hydraId: hydra.id,

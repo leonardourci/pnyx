@@ -16,24 +16,22 @@ Recorded on the current app in dark mode, with made-up projects, tasks and agent
 
 ## Install
 
-You need Node 22.13 or newer, pnpm at the version pinned in `package.json`, and PostgreSQL 15 or newer for Pnyx's data (`brew install postgresql@17`, then `pnyx setup postgres` starts and configures it).
+You need Node 22.13 or newer and pnpm at the version pinned in `package.json`. Pnyx saves its state in local files; no database service is required.
 
 Install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both to run agents.
 
 ```sh
-brew install postgresql@17
 git clone https://github.com/leonardourci/pnyx.git
 cd pnyx
 pnpm install
 pnpm run build
 pnpm add -g "$PWD"
 pnyx --version
-pnyx setup postgres
 ```
 
 If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx.js` directly from the clone.
 
-The global install links this clone. Send `/upgrade` in Hydra's chat to pull `main`, install dependencies, build, check the data and restart the server. If your current executable is `pnyx-axi`, follow the [migration steps](docs/pnyx.md#migrate-from-pnyx-axi).
+The global install links this clone. If your installation uses Postgres, follow the [migration steps](docs/pnyx.md#migrate-from-a-postgres-installation). For an installation already using native files, send `/upgrade` in Hydra's chat to pull `main`, install dependencies, build and restart the server.
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
@@ -126,12 +124,13 @@ The **Oracle** searches tasks, their events and notes by keyword, matching word 
 
 ## CLI reference
 
-Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for details. Workers append reports to worker.log. Transitional read commands remain available while the app moves to its file store.
+Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for details. Workers append reports to their assigned `worker.log`. Hydra and workers read `hydra.log`, `task.log`, `worker.log` and the optional snapshot directly.
 
 | Command | Description |
 | --- | --- |
 | `pnyx board` | Show the current Hydra. |
 | `pnyx task create` | Create a task and start its worker. |
+| `pnyx task ack` | Acknowledge one instruction read by its assigned worker. |
 | `pnyx send --text <message>` | Send to Hydra, or add `--task <id>` for a worker. |
 | `pnyx answer <task> <question> --text <answer>` | Answer a saved question. |
 | `pnyx serve` | Run the app server. |
@@ -151,7 +150,7 @@ Use `pnyx --help` for syntax and the [plain CLI reference](docs/pnyx.md) for det
 
 ## Documentation
 
-- [pnyx reference](docs/pnyx.md): immediate actions and transitional reads.
+- [pnyx reference](docs/pnyx.md): immediate actions and native records.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
 - [Development](docs/development.md): build, tests and verification.

@@ -86,37 +86,6 @@ describe(
           task: expect.any(String),
         })
         expect(receipt).not.toHaveProperty('help')
-        await hydra.owner({
-          args: [
-            'push',
-            '--key',
-            'plain-cli-public',
-            '--file',
-            '-',
-          ],
-          input: JSON.stringify({ settings: { help: 'Keep this user setting' } }),
-        })
-        const stored = await pnyx({
-          env: env(),
-          args: [
-            'task',
-            '--hydra',
-            hydra.id,
-            'show',
-            receipt.task,
-            '--full',
-            '--json',
-          ],
-        })
-        expect(parsed(stored).task.settings.help).toBe('Keep this user setting')
-        expect((await run({
-          args: [
-            'task',
-            'show',
-            receipt.task,
-            '--full',
-          ],
-        })).stdout).toContain('Keep this user setting')
         const worker = await hydra.agent({ cwd: folder })
         expect(parsed(await pnyx({
           args,
@@ -279,22 +248,295 @@ describe(
           ],
         })).hydraId).toBe(hydra.id)
 
-        const historyArgs = [
-          'history',
-          '--limit',
-          '1',
+        for (const args of [
+          ['history'],
+          ['context'],
+          [
+            'oracle',
+            'export',
+          ],
+          [
+            'hydra',
+            'check',
+          ],
+          [
+            'hydra',
+            'digest',
+          ],
+          [
+            'hydra',
+            'history',
+          ],
+          [
+            'task',
+            'show',
+            receipt.task,
+          ],
+          [
+            'task',
+            'history',
+            receipt.task,
+          ],
+          [
+            'task',
+            'inbox',
+            'read',
+            receipt.task,
+          ],
+          [
+            'settings',
+            'show',
+          ],
+        ]) {
+          const removed = await run({
+            args: [
+              ...args,
+              '--json',
+            ],
+          })
+
+          expect(
+            removed.status,
+            args.join(' '),
+          ).toBe(2)
+          expect(JSON.parse(removed.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        }
+      },
+    )
+
+    it(
+      'acknowledges exact file-read instruction IDs once across a lost receipt and restart, without crossing assignments',
+      async () => {
+        const scope = await app.hydra()
+        const created = await scope.owner({
+          args: [
+            'task',
+            'create',
+            '--no-start',
+            '--title',
+            'Read and acknowledge',
+            '--key',
+            'ack-file',
+          ],
+        })
+        const id = created.card.id as string
+        const transcript = join(
+          scope.folder({ name: 'ack-file-session' }),
+          'worker.jsonl',
+        )
+        writeFileSync(
+          transcript,
+          '',
+        )
+        await scope.owner({
+          args: [
+            'push',
+            '--key',
+            'ack-file',
+            '--file',
+            '-',
+          ],
+          input: JSON.stringify({
+            agent: {
+              provider: 'claude',
+              sessionId: 'ack-outside',
+              transcriptPath: transcript,
+            },
+            activity: 'finished',
+          }),
+        })
+        await scope.owner({
+          args: [
+            'task',
+            'inbox',
+            'enqueue',
+            id,
+            'read-one',
+            '--text',
+            'Read this instruction without replaying its effect',
+          ],
+        })
+        await scope.owner({
+          args: [
+            'task',
+            'inbox',
+            'enqueue',
+            id,
+            'leave-pending',
+            '--text',
+            'Another instruction stays unread',
+          ],
+        })
+        const active = await scope.owner({
+          args: [
+            'task',
+            'inbox',
+            'read',
+            id,
+          ],
+        })
+        await scope.owner({
+          args: [
+            'task',
+            'inbox',
+            'notify',
+            id,
+            'read-one',
+            '--session',
+            active.claim.session,
+            '--generation',
+            String(active.claim.generation),
+            '--attempt',
+            'unconfirmed-injection',
+            '--result',
+            'unknown',
+          ],
+        })
+        expect((await scope.owner({
+          args: [
+            'task',
+            'inbox',
+            'read',
+            id,
+          ],
+        })).messages)
+          .toContainEqual(expect.objectContaining({
+            id: 'read-one',
+            attempts: [expect.objectContaining({ result: 'unknown' })],
+          }))
+        const log = join(
+          process.env.PNYX_HOME!,
+          'hydras',
+          scope.id,
+          'tasks',
+          id,
+          'task.log',
+        )
+        const records = () => readFileSync(
+          log,
+          'utf8',
+        ).trimEnd()
+          .split('\n')
+          .map(line => JSON.parse(line))
+        const queued = records().find(record => record.event?.type === 'task.steering.queued' && record.event.data.message.id === 'read-one')
+        expect(queued.event.data.message.text).toBe('Read this instruction without replaying its effect')
+        const claim = queued.event.data.message.queuedFor
+        const args = [
+          'task',
+          'ack',
+          id,
+          'read-one',
+          '--session',
+          claim.session,
+          '--generation',
+          JSON.stringify(claim.generation),
+          '--hydra',
+          scope.id,
           '--json',
         ]
-        const latest = parsed(await run({ args: historyArgs }))
-        expect(latest.next).toBe(latest.events[0].seq)
-        const older = parsed(await run({
+        const workerEnv = {
+          ...env(),
+          PNYX_ACTOR: `worker:${id}`,
+          PNYX_TASK: id,
+        }
+        const acknowledgements = () => records().filter(record => record.event?.type === 'task.steering.handled')
+        expect(acknowledgements()).toHaveLength(0)
+        const wrongActor = await pnyx({
+          args,
+          env: env(),
+        })
+        expect(wrongActor.status).not.toBe(0)
+        expect(JSON.parse(wrongActor.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        const actorOverride = await pnyx({
           args: [
-            ...historyArgs,
-            '--before',
-            String(latest.next),
+            ...args,
+            '--actor',
+            `worker:${id}`,
           ],
-        }))
-        expect(older.events[0].seq).toBeLessThan(latest.next)
+          env: env(),
+        })
+        expect(actorOverride.status).toBe(2)
+        expect(JSON.parse(actorOverride.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        const otherWorker = await pnyx({
+          args,
+          env: {
+            ...workerEnv,
+            PNYX_ACTOR: 'worker:another-task',
+            PNYX_TASK: 'another-task',
+          },
+        })
+        expect(otherWorker.status).not.toBe(0)
+        expect(JSON.parse(otherWorker.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        const permissionAttempt = await pnyx({
+          args: [
+            ...args,
+            '--choice',
+            'allow',
+          ],
+          env: workerEnv,
+        })
+        expect(permissionAttempt.status).toBe(2)
+        expect(JSON.parse(permissionAttempt.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+        const staleSession = args.map(value => value === claim.session ? 'claude:another-session' : value)
+        const refusedSession = await pnyx({
+          args: staleSession,
+          env: workerEnv,
+        })
+        expect(refusedSession.status).not.toBe(0)
+        expect(JSON.parse(refusedSession.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
+        const staleGeneration = args.map(value => value === JSON.stringify(claim.generation)
+          ? JSON.stringify({ native: `${id}\u0000${queued.id}` }) : value)
+        const staleAssignment = await pnyx({
+          args: staleGeneration,
+          env: workerEnv,
+        })
+        expect(staleAssignment.status).not.toBe(0)
+        expect(JSON.parse(staleAssignment.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
+        expect(acknowledgements()).toHaveLength(0)
+        const accepted = await pnyx({
+          args,
+          env: workerEnv,
+        })
+        expect(
+          accepted.status,
+          accepted.stderr,
+        ).toBe(0)
+        expect(parsed(accepted)).toMatchObject({
+          instruction: 'read-one',
+          acknowledged: 'read',
+        })
+        const saved = acknowledgements()
+        expect(saved).toHaveLength(1)
+        expect((await pnyx({
+          args,
+          env: workerEnv,
+        })).status).toBe(0)
+        expect(acknowledgements()).toEqual(saved)
+        await app.restart()
+        const retry = await pnyx({
+          args,
+          env: workerEnv,
+        })
+        expect(
+          retry.status,
+          retry.stderr,
+        ).toBe(0)
+        expect(acknowledgements()).toEqual(saved)
+        expect(acknowledgements().some(record => record.event.data.message === 'leave-pending')).toBe(false)
+        await scope.owner({
+          args: [
+            'task',
+            'detach',
+            id,
+          ],
+        })
+        const detached = await pnyx({
+          args,
+          env: workerEnv,
+        })
+        expect(detached.status).not.toBe(0)
+        expect(JSON.parse(detached.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
+        expect(acknowledgements()).toEqual(saved)
       },
     )
 
@@ -311,10 +553,10 @@ describe(
         })
         expect(sent.status).toBe(0)
         expect(parsed(sent).message).toEqual(expect.any(String))
-        const session = await hydra.agent({ hydra: true })
         await until({
           what: 'Hydra to receive the CLI message',
-          check: () => session.received.some(text => text.includes('Review these tasks')),
+          check: () => app.claude.sessions.some(session => session.env.PNYX_HYDRA === hydra.id
+            && session.received.some(text => text.includes('Review these tasks'))),
         })
         const { worker } = await hydra.startTask({ key: 'plain-question' })
         const question = await hydra.as({ session: worker }).run({

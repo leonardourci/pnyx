@@ -6,7 +6,7 @@ import { touch } from './touch.ts'
 import { taskDone } from './select.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderInterval } from './time.ts'
-import { cloneValue } from '#app/preimage.ts'
+import { cloneValue } from '#app/json-copy.ts'
 import { cardFacts } from './columns.ts'
 import { deferredQuestions } from './ask-state.ts'
 
