@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import type { Hydra } from './pnyx.ts'
 import { git } from './upgrade.ts'
 
-// A git project with one commit on main, attached with this landing rule; without a remote it gets a local bare origin.
 export const createProject = async ({
   hydra,
   landing,

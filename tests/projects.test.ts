@@ -574,7 +574,6 @@ test(
       landing: 'pr',
       remote: 'https://github.com/o/shop.git',
     })
-    // Merges wake only a Hydra that Pnyx runs.
     await hydra.chat({ text: 'Watch the shop' })
     await hydra.owner({
       args: [
@@ -663,13 +662,12 @@ test(
         ],
       })).task.links[0]?.state === 'merged',
     })
-    // The cart pull request below must still be followed once this merge is recorded.
     pullRequest({
       number: 7,
       state: 'merged',
     })
     const done = await until({
-      what: 'the merge to finish the task',
+      what: 'the cart merge to finish its task after the notes merge',
       check: async () => {
         const { task } = await hydra.owner({
           args: [
@@ -705,7 +703,6 @@ test(
   },
 )
 
-// The merge requests the fake GitHub received for a pull request.
 const merges = ({ number }: { number: number }) => readFileSync(
   join(
     github,
