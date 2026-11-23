@@ -1303,7 +1303,10 @@ export function HydraView({
                                           ? repositoryOptions.filter(option =>
                                             c.repositories.includes(option.value))
                                           : repositoryOptions}
-                                        before={items[0]?.id}
+                                        before={items[0] && {
+                                          task: items[0].id,
+                                          repositories: c.repositories,
+                                        }}
                                         command={command}
                                         connected={connected}
                                         notify={notify}
