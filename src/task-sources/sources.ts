@@ -491,22 +491,19 @@ export function resultText({
   source: ExternalSource
   result: SourceResult
 }): string {
-  const acknowledge = `Read inbox message ${result.message} in task.log. Use the matching acknowledgement command from the notice to record that you read it.`
-  const handle = `After resolving the result, run task source handled <task> ${source.id} ${result.sequence} --session <session> --generation <generation>. Report the outcome in worker.log.`
-
   if (source.lavish) {
     const handling = !lavishCanRearm({ result })
-      ? `${handle} Do not re-arm or reopen this session.`
-      : `Apply every item once. Send owner choices to Hydra and retain their IDs for the report inventory. Report the outcome in worker.log. For an authorized next round, run task source lavish <task> <new-source-id> --page ${JSON.stringify(source.lavish.page)} --executable ${JSON.stringify(source.command.executable)} --after ${source.id} --sequence ${result.sequence} --agent-reply-file <path> --session <session> --generation <generation>. This action handles the old round and stages the reply before the next poll.`
+      ? 'Read its inbox message in task.log and use the supplied exact-ID acknowledgement command. Conclude this round and report the outcome in worker.log. Do not re-arm or reopen this session.'
+      : `Read inbox message ${result.message} in task.log and use the supplied exact-ID acknowledgement command. Apply every item once. Send genuine owner choices to Hydra and retain their IDs for the report inventory. Report the outcome in worker.log. A read acknowledgement does not handle this source result or authorize another round; retain the source and result IDs for an explicit re-arm decision.`
     const recovery = result.outcome === 'completed' ? ''
       : ' Listening stopped. Inspect the retained uncertainty and verify prior effects and reply acceptance before any explicit recovery; never blindly repeat a post or destructive poll.'
 
     return `Lavish source ${source.id}, round ${result.sequence}: ${result.outcome}. ${result.detail}\n`
       + `Captured output (read completely):\n${result.stdout}\nstderr:\n${result.stderr}\n`
-      + `${acknowledge} ${handling}${recovery}`
+      + `Read the full saved source result in task.log. ${handling}${recovery}`
   }
 
   return `External source ${source.id}, result ${result.sequence}: ${result.outcome}. ${result.detail}\n`
     + `stdout:\n${result.stdout}\nstderr:\n${result.stderr}\n`
-    + `${acknowledge} ${handle}`
+    + `Read inbox message ${result.message} in task.log, then use its supplied exact-ID acknowledgement command. A read acknowledgement does not mark this source result handled. Resolve the result and report the outcome in worker.log; retain the source and result IDs.`
 }
