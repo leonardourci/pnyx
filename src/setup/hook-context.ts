@@ -35,7 +35,10 @@ if (project) {
     ...open.slice(
       0,
       CONTEXT_TASKS,
-    ).map(({ card, status }) => `${card.id}: ${card.title} (${status.text})`),
+    ).map(({
+      card,
+      status,
+    }) => `${card.id}: ${card.title} (${status.text})`),
     recordContext({ hydraId }),
   ].join('\n'))
 }
