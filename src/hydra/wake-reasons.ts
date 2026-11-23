@@ -10,7 +10,7 @@ import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card, PushedEvent } from '#tasks/model.ts'
 import { cardLanding, failedChecks, pendingChecks, ranChecks, type Link } from '#tasks/delivery/model.ts'
-import { rankOf } from '#tasks/select.ts'
+import { rankOf, taskDone } from '#tasks/select.ts'
 import { taskMention } from './mentions.ts'
 
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
@@ -74,7 +74,12 @@ export function readyBacklog({ state }: { state: HydraState }): Card[] {
     .filter(card => {
       const started = card.agent || card.sessionIds?.length || card.queue
 
-      return card.id !== HYDRA_CARD && !started && card.workerLog?.status?.code !== 'done' && taskReadiness({
+      const finished = card.workerLog?.status?.code === 'done' || taskDone({
+        state,
+        card,
+      })
+
+      return card.id !== HYDRA_CARD && !started && !finished && taskReadiness({
         state,
         card,
       }).ready

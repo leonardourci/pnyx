@@ -1126,8 +1126,7 @@ test(
   },
 )
 
-// git as a worker runs it, which can fail: whether it passed is the result.
-const attempt = ({
+const gitSucceeded = ({
   cwd,
   args,
   env = {},
@@ -1284,7 +1283,7 @@ test(
         'work',
       ],
     })
-    expect(attempt({
+    expect(gitSucceeded({
       cwd: first.path,
       args: ['push'],
     })).toBe(false)
@@ -1337,7 +1336,7 @@ test(
         'origin/main',
       ],
     ]) {
-      expect(attempt({
+      expect(gitSucceeded({
         cwd: first.path,
         args,
         env: worker.env,
@@ -1348,7 +1347,7 @@ test(
       })).toBe('')
     }
 
-    expect(attempt({
+    expect(gitSucceeded({
       cwd: first.path,
       args: ['push'],
       env: worker.env,
@@ -1460,7 +1459,7 @@ test(
       branch: 'pnyx/custom-refspec-1',
     })).toBe('')
     await start({ key: 'fourth' })
-    expect(attempt({
+    expect(gitSucceeded({
       cwd: project,
       args: [
         'config',
