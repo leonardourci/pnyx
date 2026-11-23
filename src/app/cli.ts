@@ -212,6 +212,7 @@ const undo = guard({
           type: target.type,
           card: target.cardId,
           undoes: target.id,
+          arrangement: target.type === 'task.edited' && 'rank' in target.data,
         },
         decide: ({
           state,

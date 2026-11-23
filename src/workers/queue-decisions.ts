@@ -3,6 +3,7 @@ import { inform } from '#app/command-notices.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
+import { completedOutcome } from '#tasks/dependencies.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
@@ -19,7 +20,7 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
     }
   }
 
-  if (card.workerLog?.status?.code === 'done' || card.outcome) {
+  if (card.workerLog?.status?.code === 'done' || completedOutcome({ outcome: card.outcome })) {
     return {
       reason: `${card.id} is finished`,
       clear: 'File a follow-up with `pnyx task create`',

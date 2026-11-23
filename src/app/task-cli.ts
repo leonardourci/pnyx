@@ -1074,6 +1074,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       intent: {
         type: 'task.edited',
         card: ref,
+        arrangement: true,
       },
       decide: ({ state }) => reorderTask({
         state,

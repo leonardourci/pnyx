@@ -1029,6 +1029,17 @@ test(
         'later',
       ],
     })
+    expect((await hydra.ownerRefused({
+      args: [
+        'task',
+        'rename',
+        first.card.id,
+        '--title',
+        'Renamed',
+        '--event-id',
+        arranged.event.id,
+      ],
+    })).code).toBe('IDEMPOTENCY_CONFLICT')
     const { task: placed } = await hydra.owner({
       args: [
         'task',

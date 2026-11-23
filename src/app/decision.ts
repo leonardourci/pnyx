@@ -100,7 +100,7 @@ export function decided({
   const cache = reportCache({ state })
   const key = repeated ? observationKey({
     cardId: event.cardId,
-    source: event.data.source!,
+    source: repeated,
   }) : undefined
   const report = event.type === 'task.edited' ? reportOf({ event }) : undefined
   const last = key ? cache.get(key) : undefined
