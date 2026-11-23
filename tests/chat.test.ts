@@ -1,7 +1,9 @@
+import * as eventLog from '#app/event-log.ts'
 import * as dispatch from '#workers/dispatch.ts'
 import { randomUUID } from 'node:crypto'
 import { loadHydra } from '#app/store.ts'
 import { applyDecision } from '#app/decision.ts'
+import { findHydraTurnToResume } from '#hydra/wakes.ts'
 import { hydraSend } from '#hydra/send-cli.ts'
 import { failHydraInput } from '#hydra/received.ts'
 import { createHydraOperations, operationEvent } from '#hydra/operations.ts'
@@ -1358,6 +1360,28 @@ test(
   'owner messages sent while Hydra works survive a restart that cuts its turn: Hydra resumes once, is pointed at what it did not answer, and the messages stay in order',
   async () => {
     const hydra = await pnyx.hydra()
+    const answered = await hydra.chat({ text: 'Check the completed inventory' })
+    await until({
+      what: 'the inventory reply to finish',
+      check: () => answered.answered === 1 && queue({ hydraId: hydra.id })?.working === false,
+    })
+    const inventoryAgent = loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]!.agent
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        HYDRA_CARD,
+        '--actor',
+        'pnyx',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: inventoryAgent,
+        activity: 'finished',
+        title: 'Inventory checked',
+      }),
+    })
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'plan the migration',
@@ -1412,6 +1436,39 @@ test(
       ],
     })
 
+    const withoutCache = structuredClone(loadHydra({ hydraId: hydra.id }).state)
+    const activeSession = withoutCache.sessions![withoutCache.config!.hydra.session!]!
+    delete activeSession.hydraTurn
+    const scan = eventLog.scanChanges
+    const evicted = vi.spyOn(
+      eventLog,
+      'scanChanges',
+    ).mockImplementation(function* ({ ...selection }) {
+      yield* [...scan(selection)].filter(event => event.type !== 'session.observed')
+    })
+    let recovery: ReturnType<typeof findHydraTurnToResume>
+
+    try {
+      recovery = findHydraTurnToResume({
+        hydraId: hydra.id,
+        state: withoutCache,
+        agent: activeSession.agent,
+      })
+    } finally {
+      evicted.mockRestore()
+    }
+
+    const savedMessages = (await hydra.owner({
+      args: [
+        'hydra',
+        'messages',
+      ],
+    })).messages
+    const inventory = savedMessages.find((message: { text: string }) => message.text === 'Check the completed inventory')!
+    expect(inventory.id).toBeTypeOf('string')
+    expect(recovery).toBeDefined()
+    expect(recovery!.resumeMessage).not.toContain(`Read owner message ${JSON.stringify(inventory.id)}`)
+
     await pnyx.restart()
     const resumed = await until({
       what: 'Hydra to resume its session after the restart',
@@ -1457,6 +1514,7 @@ test(
       ],
     })
     expect(messages.map((message: { text: string }) => message.text)).toEqual([
+      'Check the completed inventory',
       'plan the migration',
       'also check the indexes',
       'and the backups',

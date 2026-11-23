@@ -430,6 +430,8 @@ function changesReadiness({
   event: HydraEvent
 }): boolean {
   switch (event.type) {
+    case 'task.worker-line':
+      return event.data.code === 'done'
     case 'card.linked':
       return Boolean(event.data.before) !== Boolean(event.data.after)
         || event.data.before?.state !== event.data.after?.state

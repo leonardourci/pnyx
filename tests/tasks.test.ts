@@ -3,7 +3,8 @@ import { loadHydra } from '#app/store.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
-import { readEvents } from '#app/event-log.ts'
+import { readChanges, readEvents } from '#app/event-log.ts'
+import { eventReasons } from '#hydra/wake-reasons.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
@@ -150,6 +151,25 @@ test(
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
+
+    await workerLine({
+      hydra,
+      key: 'build',
+      line: 'done: export written',
+    })
+    const completedState = loadHydra({ hydraId: hydra.id }).state
+    const completedEvent = readChanges({
+      hydraId: hydra.id,
+      types: ['task.worker-line'],
+    }).at(-1)!
+    expect(eventReasons({
+      state: completedState,
+      event: completedEvent,
+    })).toContainEqual({
+      kind: 'prerequisite',
+      card: (await hydra.task({ key: 'ship' })).id,
+      detail: 'prerequisites cleared; ready for dispatch',
+    })
 
     await hydra.owner({
       args: [

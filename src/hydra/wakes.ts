@@ -408,7 +408,10 @@ export function findHydraTurnToResume({
   const lastFinishedTurn = finishedThrough ? undefined : scanChanges({
     hydraId,
     cardId: HYDRA_CARD,
-    types: ['session.observed'],
+    types: [
+      'session.observed',
+      'task.edited',
+    ],
     before: cutHydraTurn.seq,
     descending: true,
   }).find(event => {
