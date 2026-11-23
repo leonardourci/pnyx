@@ -3728,7 +3728,6 @@ if (branch === 'iris/target') {
         'done',
       ],
     })
-    // The scratch server checks its queue again every 100 ms; the shared one waits 30 seconds after its check on start.
     await pnyx.stop()
     child = launch({ afterCommit: false })
     await until({
