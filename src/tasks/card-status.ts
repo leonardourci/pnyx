@@ -126,7 +126,7 @@ export function cardStatus({
     }
   }
 
-  if (activity === 'finished' && !card.doneAt && !complete) {
+  if (activity === 'finished' && !card.doneAt && !completedOutcome) {
     return {
       kind: 'finished',
       text: 'idle',

@@ -3500,7 +3500,7 @@ test(
       line: 'blocked: bad\0input',
     })
     expect(await hydra.task({ key: 'facts' })).toMatchObject({
-      status: 'done',
+      status: 'idle',
       latest: 'Invalid worker.log line: blocked: bad\\0input',
     })
     await workerLine({
@@ -3517,7 +3517,7 @@ test(
       ],
     })).task.links).toHaveLength(1)
 
-    expect((await hydra.task({ key: 'facts' })).status).toBe('done')
+    expect((await hydra.task({ key: 'facts' })).status).toBe('idle')
     expect((await hydra.ownerRefused({
       args: [
         'task',
