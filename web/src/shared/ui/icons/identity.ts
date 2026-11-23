@@ -1,4 +1,4 @@
-// Identity icons: game-icons.net silhouettes (CC BY 3.0), plus a few drawn for Pnyx, for Hydras, the default columns
+// Identity icons: game-icons.net silhouettes (CC BY 3.0), plus a few drawn for Othrys, for Titans, the default columns
 // and some composer controls.
 // Plain data, so Node tests can read it; icon.tsx loads the files. Settings › About credits every author listed here.
 type IdentityKind = 'hydra' | 'column' | 'control'
@@ -18,13 +18,49 @@ export interface IdentityIcon {
 }
 
 const GAME_ICONS_LICENSE = 'CC BY 3.0'
-// Icons drawn for Pnyx are under the repository's own license and need no credit line.
-export const PNYX_AUTHOR = 'Pnyx'
+// Icons drawn for Othrys are under the repository's own license and need no credit line.
+export const OTHRYS_AUTHOR = 'Othrys'
 
 export const IDENTITY_ICONS: IdentityIcon[] = [
   {
+    id: 'cronus',
+    label: 'Cronus',
+    file: 'cronus.svg',
+    author: OTHRYS_AUTHOR,
+    license: 'Apache-2.0',
+    source: '',
+    kind: 'hydra',
+  },
+  {
+    id: 'rhea',
+    label: 'Rhea',
+    file: 'rhea.svg',
+    author: OTHRYS_AUTHOR,
+    license: 'Apache-2.0',
+    source: '',
+    kind: 'hydra',
+  },
+  {
+    id: 'hyperion',
+    label: 'Hyperion',
+    file: 'hyperion.svg',
+    author: OTHRYS_AUTHOR,
+    license: 'Apache-2.0',
+    source: '',
+    kind: 'hydra',
+  },
+  {
+    id: 'mnemosyne',
+    label: 'Mnemosyne',
+    file: 'mnemosyne.svg',
+    author: OTHRYS_AUTHOR,
+    license: 'Apache-2.0',
+    source: '',
+    kind: 'hydra',
+  },
+  {
     id: 'hydra',
-    label: 'Hydra',
+    label: 'Titan',
     file: 'hydra.svg',
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
@@ -345,9 +381,9 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     id: 'oracle',
     label: 'Oracle',
     file: 'oracle.svg',
-    author: PNYX_AUTHOR,
+    author: OTHRYS_AUTHOR,
     license: 'Apache-2.0',
-    source: 'https://github.com/leonardourci/pnyx/blob/main/web/src/shared/ui/icons/identity/oracle.svg',
+    source: 'https://github.com/leonardourci/othrys/blob/main/web/src/shared/ui/icons/identity/oracle.svg',
     kind: 'control',
   },
   {
