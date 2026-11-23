@@ -3,6 +3,7 @@ import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { mergeThreadPages } from '#hydra/thread-history.ts'
+import { createHydraThreadView } from '#hydra/thread-view.ts'
 import { recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
@@ -71,7 +72,7 @@ test(
     const first = await page.send({
       name: 'thread',
       args: ['$hydra'],
-    }) as unknown as ThreadReceipt
+    }) as unknown as ThreadReceipt & { thread: ThreadPage }
     expect(first.thread.conversation.entries.map(entry => entry.text)).toEqual([
       'question 21',
       'answer 21',
@@ -95,6 +96,38 @@ test(
       'answer 30',
     ])
     expect(first.thread.older).toBeTruthy()
+
+    const savedReply = first.thread.entries.find(entry => entry.text === 'answer 29')
+
+    if (!savedReply) {
+      throw new Error('The newest page has no saved reply')
+    }
+
+    const project = createHydraThreadView({
+      state: loadHydra({ hydraId: hydra.id }).state,
+      page: first.thread,
+      tools: false,
+      thinking: false,
+    })
+
+    for (const text of [
+      'ans',
+      'answer',
+    ]) {
+      const projected = project({
+        page: {
+          ...first.thread,
+          entries: [
+            {
+              ...savedReply,
+              text,
+              streaming: true,
+            },
+          ],
+        },
+      })
+      expect(projected.conversation.entries.find(entry => entry.id === savedReply.id)?.text).toBe('answer 29')
+    }
 
     // A message that arrives while the owner reads back must neither be lost nor shift what was already read.
     pnyx.claude.plan({

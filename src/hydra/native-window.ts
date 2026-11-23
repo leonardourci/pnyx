@@ -18,7 +18,6 @@ export interface NativeSource {
   boundaries: boolean
 }
 
-// Lookup follows the same session history as chat, oldest session first.
 export function nativeSources({
   hydraId,
   state,
@@ -34,21 +33,22 @@ export function nativeSources({
     return []
   }
 
-  return threadSources({
+  const oldestFirst = threadSources({
     hydraId,
     state,
     card: threadCard,
   }).reverse()
-    .flatMap(({
+
+  return oldestFirst.flatMap(({
+    path,
+    session,
+  }) => path && session ? [
+    {
       path,
       session,
-    }) => path && session ? [
-      {
-        path,
-        session,
-        boundaries: card === HYDRA_CARD,
-      },
-    ] : [])
+      boundaries: card === HYDRA_CARD,
+    },
+  ] : [])
 }
 
 function entriesOf({

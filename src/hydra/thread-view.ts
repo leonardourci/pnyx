@@ -81,8 +81,12 @@ export function createHydraThreadView({
   let identity: string | undefined
 
   return ({ page }: { page: ThreadPage }): ReturnType<typeof hydraThreadView> => {
+    const merged = mergeThreadPages({
+      before: base,
+      latest: page,
+    })
     const live = joinMessageParts({
-      entries: page.entries.filter(entry => entry.streaming !== undefined),
+      entries: merged.entries.filter(entry => entry.streaming !== undefined),
     })
     const nextIdentity = JSON.stringify({
       currentTurn: page.currentTurn,
@@ -93,11 +97,6 @@ export function createHydraThreadView({
         spoken: entry.text.trim() !== '',
       })),
     })
-    const merged = mergeThreadPages({
-      before: base,
-      latest: page,
-    })
-
     if (!previous || nextIdentity !== identity) {
       identity = nextIdentity
       previous = hydraThreadView({
