@@ -9,7 +9,7 @@ import { isAbsolute } from 'node:path'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig, AgentRef, ReplyState } from '#workers/model.ts'
-import { redact } from '#oracle/text.ts'
+import { redact, redactFragments } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
@@ -29,9 +29,9 @@ import { deliveredInputs, replyEchoes } from './task-messages.ts'
 import { hydraConfig } from './config.ts'
 import type { HydraMessage } from './model.ts'
 
-// messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
   targetAgent?: AgentConfig
+  offset?: number
   final?: boolean
   block?: number
   reference?: string
@@ -84,6 +84,7 @@ export interface ThreadEntry {
 export interface ThreadPage {
   card: string
   session?: string
+  epoch?: string
   stream?: string
   version?: number
   entries: ThreadEntry[]
@@ -151,8 +152,8 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
     parts.push({
       ...entry,
       id: `${entry.id}.${start}`,
-      messageId: entry.id,
-      part: start,
+      messageId: entry.messageId ?? entry.id,
+      part: (entry.part ?? 0) + start,
       text: text.slice(
         start,
         end,
@@ -170,10 +171,12 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
 }
 
 interface EntryOptions {
+  path?: string
   offset: number
   tools?: boolean
   thinking?: boolean
   boundaries?: boolean
+  session?: string
 }
 
 export function recordEntries({
@@ -181,7 +184,13 @@ export function recordEntries({
   ...options
 }: EntryOptions & { record: unknown }): ThreadEntry[] {
   return transcriptEntries({
-    parsed: readTranscriptRecord({ record }),
+    parsed: readTranscriptRecord({
+      record,
+      source: options.path ? {
+        path: options.path,
+        offset: options.offset,
+      } : undefined,
+    }),
     ...options,
   })
 }
@@ -207,22 +216,32 @@ function transcriptEntries({
   tools = true,
   thinking = true,
   boundaries = false,
+  session,
 }: EntryOptions & { parsed: TranscriptRecord }): ThreadEntry[] {
   const messages = parsed.messages.filter(message => boundaries || !message.internal)
+  const fragments = messages.some(message => message.messageId !== undefined)
+    ? redactFragments({ fragments: messages.map(message => message.text) })
+    : messages.map(message => message.text)
+  let part = 0
   const entries: ThreadEntry[] = messages.map((
     message,
     index,
   ) => {
     const entry: ThreadEntry = {
-      id: `${offset}:m${index}`,
+      id: message.id ?? `${offset}:m${index}`,
+      offset,
       kind: 'message',
       role: parsed.role,
-      text: message.text,
+      text: fragments[index],
+      messageId: message.messageId,
+      part: message.messageId ? part : undefined,
       at: message.at,
       hidden: message.internal,
       final: parsed.final,
       block: message.block,
     }
+
+    part += entry.text.length
 
     if (message.pnyx) {
       entry.pnyx = true
@@ -245,7 +264,8 @@ function transcriptEntries({
     }
 
     const entry: ThreadEntry = {
-      id: `${offset}:t${trace.index}`,
+      id: trace.id ?? `${offset}:t${trace.index}`,
+      offset,
       block: trace.index,
       kind: trace.kind,
       role: trace.role,
@@ -263,7 +283,14 @@ function transcriptEntries({
   return entries.sort((
     a,
     b,
-  ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
+  ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({
+    entry: {
+      ...entry,
+      id: session ? `${session}:${entry.id}` : entry.id,
+      messageId: entry.messageId && session ? `${session}:${entry.messageId}` : entry.messageId,
+      session,
+    },
+  }))
 }
 
 export function threadPath({ card }: { card: Pick<Card, 'agent'> }): string | undefined {
@@ -280,14 +307,14 @@ export type SessionEntry = ThreadEntry & {
   reference: string
   session: string
 }
-export interface HydraSession {
+interface HydraSession {
   session: string
   agent: AgentRef
 }
 
 // Every session Hydra has been configured with, oldest first; the card holds the current
 // session's latest agent.
-export function hydraSessions({ state }: { state: HydraState }): HydraSession[] {
+function hydraSessions({ state }: { state: HydraState }): HydraSession[] {
   const hydra = state.cards[HYDRA_CARD]
   const current = hydra && cardSessionId({ card: hydra })
   const ids = [...state.hydraSessions ?? []]
@@ -536,7 +563,7 @@ type ThreadSource = {
   agent?: Card['agent']
 }
 
-function threadSources({
+export function threadSources({
   hydraId,
   state,
   card,
@@ -549,7 +576,7 @@ function threadSources({
 }): ThreadSource[] {
   const session = cardSessionId({ card })
   const hydra = state.cards[HYDRA_CARD]
-  const current = card.id === HYDRA_CARD && session !== undefined
+  const current = card.id === HYDRA_CARD
     && session === (hydra && cardSessionId({ card: hydra }))
 
   const task = card.id !== HYDRA_CARD && !selectedSession
@@ -616,7 +643,6 @@ function readNative({
   thinking,
   boundaries,
   excludedAt,
-  renamed,
 }: {
   path: string
   session?: string
@@ -626,7 +652,6 @@ function readNative({
   thinking: boolean
   boundaries: boolean
   excludedAt: string[]
-  renamed: boolean
 }): {
   found: Candidate[]
   start: number
@@ -714,7 +739,13 @@ function readNative({
             newline,
           ).toString())
 
-          const decoded = readTranscriptRecord({ record })
+          const decoded = readTranscriptRecord({
+            record,
+            source: {
+              path,
+              offset,
+            },
+          })
 
           if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
             excludedAt.push(decoded.at)
@@ -727,6 +758,7 @@ function readNative({
             tools,
             thinking,
             boundaries,
+            session,
           }).forEach((
             item,
             index,
@@ -743,15 +775,6 @@ function readNative({
                   id: item.id,
                   messageId: item.messageId,
                 }) : undefined,
-                ...(session ? { session } : {}),
-              }
-
-              if (renamed && session) {
-                entry.id = `${session}:${item.id}`
-
-                if (item.messageId) {
-                  entry.messageId = `${session}:${item.messageId}`
-                }
               }
 
               window.push({
@@ -904,8 +927,6 @@ function readThreadPage(
         thinking,
         boundaries: card.id === HYDRA_CARD,
         excludedAt,
-        // Offsets repeat across transcripts, so an earlier session's entries carry its id.
-        renamed: !current,
       })
     } catch {
       if (current) {
@@ -1072,7 +1093,18 @@ function readThreadPage(
     second: b.item,
   }))
   const limit = card.id === HYDRA_CARD ? HYDRA_PAGE_SIZE : THREAD_PAGE_LIMIT
-  const page = candidates.slice(-limit)
+  let pageStart = Math.max(
+    0,
+    candidates.length - limit,
+  )
+  const firstMessageId = candidates[pageStart]?.item.messageId
+
+  while (pageStart > 0 && firstMessageId !== undefined
+    && candidates[pageStart - 1]?.item.messageId === firstMessageId) {
+    pageStart--
+  }
+
+  const page = candidates.slice(pageStart)
   const firstMessage = page.find(candidate => candidate.message)?.message
   const shownMessages = new Set(page.flatMap(candidate =>
     candidate.message ? [candidate.message] : []))
@@ -1083,13 +1115,6 @@ function readThreadPage(
 
   const firstNative = page.find(candidate => candidate.native)?.native
   const firstReply = page.find(candidate => candidate.reply)?.reply
-  page.sort((
-    a,
-    b,
-  ) => threadEntryOrder({
-    first: a.item,
-    second: b.item,
-  }))
   result.entries = page.filter(candidate => !candidate.message).map(candidate => candidate.item)
 
   if (card.id === HYDRA_CARD) {

@@ -370,6 +370,8 @@ export interface Provider {
 }
 
 export interface TranscriptMessage {
+  messageId?: string
+  id?: string
   block?: number
   internal?: boolean
   // Pnyx wrote this input: it carried a worker header, as a worker's start prompt does.
@@ -379,6 +381,7 @@ export interface TranscriptMessage {
 }
 
 export interface TranscriptTrace {
+  id?: string
   // Original block positions keep thread entry IDs stable.
   index: number
   kind: 'tool' | 'thinking'
@@ -422,4 +425,8 @@ export type TranscriptReader = ({
 }: {
   record: unknown
   subagent?: boolean
+  source?: {
+    path: string
+    offset: number
+  }
 }) => TranscriptRecord | undefined

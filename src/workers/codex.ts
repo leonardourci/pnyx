@@ -2159,6 +2159,8 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
 
     const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
     parsed.messages = transcriptText({
+      id: transcriptString({ value: payload.id }),
+      messageId: payload.role === 'assistant' ? transcriptString({ value: payload.id }) : undefined,
       at,
       texts: blocks.map((
         raw,
@@ -2190,6 +2192,8 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
 
   if (tool || thinking) {
     parsed.traces.push(transcriptTrace({
+      id: transcriptString({ value: payload.id })
+        ?? (typeof payload.call_id === 'string' ? `${payload.call_id}:${payload.type}` : undefined),
       index: 0,
       kind: tool ? 'tool' : 'thinking',
       ...scriptedTrace({ payload }),

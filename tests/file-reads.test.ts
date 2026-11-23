@@ -2,10 +2,11 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
-import { emptyHydra } from '#app/reducer.ts'
+import { emptyHydra, replayOwned } from '#app/reducer.ts'
 import { compactionFiles, compactionPermission, readCommand } from '#hydra/compaction-files.ts'
 import { recordContext } from '#hydra/file-context.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraConfig } from '#hydra/config.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
 
 test(
@@ -77,6 +78,24 @@ test(
       ),
     )
     const state = emptyHydra()
+    replayOwned({
+      state,
+      events: [
+        {
+          v: 1,
+          seq: 1,
+          id: 'configured',
+          at: '2026-11-22T00:00:00Z',
+          actor: 'owner',
+          cardId: HYDRA_CARD,
+          type: 'board.configured',
+          data: hydraConfig({
+            state,
+            id: 'file-reads',
+          }),
+        },
+      ],
+    })
     state.hydraSessions = ['claude:recorded-agent']
     state.sessions = {
       'claude:recorded-agent': {

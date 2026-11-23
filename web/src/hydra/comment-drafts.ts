@@ -2,7 +2,6 @@ import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#hydra/images.ts'
 import { isEditing } from '#web-shared/ui/focus.ts'
 import {
-  useEffect,
   type ClipboardEvent as PasteEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
@@ -13,7 +12,6 @@ import { commentUpdates,sendableComment } from './chat.ts'
 import { pendingImage,settleImage } from './draft.ts'
 import { checkImages,pastedImages,uploadImage } from './image-upload.ts'
 import {
-  blockPassage,
   samePassage,selectedPassage,
   type CommentPassage,
 } from './message-selection.ts'
@@ -25,13 +23,11 @@ export function useCommentDrafts({
   drafts,
   notify,
   clearSelection,
-  blocks,
 }: {
   drafts: ChatDrafts
   root: RefObject<HTMLDivElement | null>
   notify({ text }: { text: string }): void
   clearSelection(): void
-  blocks(): HTMLElement[]
 }) {
   const read = () => drafts.read().comments
 
@@ -188,36 +184,6 @@ export function useCommentDrafts({
       })
     }
   }
-
-  // A streamed reply settles into the transcript under a new id; its comments follow the passage there.
-  useEffect(() => {
-    const rendered = blocks(), present = new Set(rendered.map(b => b.dataset.messageId))
-    let moved = false
-    const items = read().map(comment => {
-      const settled = !comment.messageId.startsWith('live:') || present.has(comment.messageId)
-      const block = settled ? undefined : rendered
-        .filter(b => Number(b.dataset.blockOffset) === comment.offset
-          && !!comment.paragraph && !!b.dataset.quote?.startsWith(comment.paragraph))
-        .at(-1)
-
-      if (!block) {
-        return comment
-      }
-
-      moved = true
-
-      return {
-        ...comment,
-        ...blockPassage({ block }),
-        quote: comment.quote,
-        start: comment.start,
-      }
-    })
-
-    if (moved) {
-      drafts.setComments({ items })
-    }
-  })
 
   return {
     addComment,

@@ -78,7 +78,13 @@ export function createHydraThreadView({
   let identity: string | undefined
 
   return ({ page }: { page: ThreadPage }): ReturnType<typeof hydraThreadView> => {
-    const live = joinMessageParts({ entries: page.entries.filter(entry => entry.id.startsWith('live:')) })
+    const merged = mergeThreadPages({
+      before: base,
+      latest: page,
+    })
+    const live = joinMessageParts({
+      entries: merged.entries.filter(entry => entry.streaming !== undefined),
+    })
     const nextIdentity = JSON.stringify({
       currentTurn: page.currentTurn,
       live: live.map(entry => ({
@@ -87,10 +93,6 @@ export function createHydraThreadView({
         quiet: quietReply({ entry }),
         spoken: entry.text.trim() !== '',
       })),
-    })
-    const merged = mergeThreadPages({
-      before: base,
-      latest: page,
     })
 
     if (!previous || nextIdentity !== identity) {
@@ -119,7 +121,8 @@ export function createHydraThreadView({
       }
     }
 
-    const saved = new Map(previous.entries.filter(entry => !entry.id.startsWith('live:')).map(entry => [
+    const savedEntries = previous.entries.filter(entry => entry.streaming === undefined)
+    const saved = new Map(savedEntries.map(entry => [
       entry.id,
       entry,
     ]))

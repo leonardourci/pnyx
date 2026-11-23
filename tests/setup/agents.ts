@@ -69,6 +69,7 @@ interface TurnPlan {
   text?: string
   match?({ text }: { text: string }): boolean
   reply?: string
+  splitReply?: boolean
   partial?: string
   hold?: boolean
   acknowledgeStartAfter?: Promise<void>
@@ -233,10 +234,12 @@ export function fakeClaude() {
       role,
       text,
       uuid,
+      nativeId,
     }: {
       role: string
       text: string
       uuid?: string
+      nativeId?: string
     }) => appendFileSync(
       transcript,
       `${JSON.stringify({
@@ -245,8 +248,13 @@ export function fakeClaude() {
         timestamp: new Date().toISOString(),
         message: {
           role,
-          content: text,
-          id: role === 'assistant' ? `msg_${randomUUID()}` : undefined,
+          content: role === 'assistant' ? [
+            {
+              type: 'text',
+              text,
+            },
+          ] : text,
+          id: nativeId,
           stop_reason: role === 'assistant' ? 'end_turn' : undefined,
         },
       })}\n`,
@@ -336,6 +344,7 @@ export function fakeClaude() {
           continue
         }
 
+        const nativeId = `msg_${randomUUID()}`
         const text = textOf({ message })
         session.received.push(text)
         session.uuids.push(message.uuid)
@@ -460,7 +469,12 @@ export function fakeClaude() {
           continue
         }
 
-        for (const recorded of claudeRecording.turn) {
+        for (const template of claudeRecording.turn) {
+          const recorded = JSON.parse(JSON.stringify(template).replaceAll(
+            recordedAssistant.message.id,
+            nativeId,
+          )) as typeof template
+
           if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
             && recorded.event.delta.type === 'text_delta') {
             const partial = plan?.partial ?? ''
@@ -534,6 +548,50 @@ export function fakeClaude() {
                 ],
               },
             }
+
+            if (plan?.splitReply) {
+              const delta = claudeRecording.turn.find(event => event.type === 'stream_event'
+                && event.event.type === 'content_block_delta')!
+              yield {
+                ...delta,
+                session_id: id,
+                event: {
+                  type: 'content_block_start',
+                  index: 1,
+                  content_block: {
+                    type: 'text',
+                    text: '',
+                  },
+                },
+              } as SDKMessage
+              yield {
+                ...delta,
+                session_id: id,
+                event: {
+                  type: 'content_block_delta',
+                  index: 1,
+                  delta: {
+                    type: 'text_delta',
+                    text: answer,
+                  },
+                },
+              } as SDKMessage
+              yield {
+                ...recorded,
+                uuid: randomUUID(),
+                session_id: id,
+                message: {
+                  ...recorded.message,
+                  content: [
+                    {
+                      type: 'text',
+                      text: answer,
+                      citations: null,
+                    },
+                  ],
+                },
+              } as SDKMessage
+            }
           } else if (recorded.type === 'result') {
             yield {
               ...recorded,
@@ -568,8 +626,17 @@ export function fakeClaude() {
         } else {
           record({
             role: 'assistant',
+            nativeId,
             text: answer,
           })
+
+          if (plan?.splitReply) {
+            record({
+              role: 'assistant',
+              nativeId,
+              text: answer,
+            })
+          }
         }
 
         // Resumed past the last yield only when Pnyx asks for more, so Pnyx has read the whole turn.
@@ -651,6 +718,8 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
     .map(item => String(item.text))
     .join('')
   const started = codexRecording.session.find(entry => 'method' in entry && entry.method === 'thread/start') as { result: Message }
+  const recordedMessageParams = notifications.find(n => n.method === 'item/agentMessage/delta')!.params as Message
+  const recordedMessage = recordedMessageParams.itemId as string
   const recordedThread = (started.result.thread as Message).id as string
   const turnStart = codexRecording.session.find(entry => 'method' in entry && entry.method === 'turn/start') as { result: Message }
   const recordedTurn = (turnStart.result.turn as Message).id as string
@@ -766,6 +835,9 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         const turnMessage = turn ? threadMessage.replaceAll(
           recordedTurn,
           turn,
+        ).replaceAll(
+          recordedMessage,
+          `${turn}:message`,
         ) : threadMessage
         stdout.write(`${turnMessage}\n`)
       }
@@ -1027,12 +1099,68 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           turn: replay?.id,
         })
 
-        for (const notification of found.notifications) {
+        const answer = plan?.reply ?? reply
+        let sentText = false
+
+        for (const recordedNotification of found.notifications) {
+          const notificationParams = recordedNotification.params as Message
+          const notificationItem = notificationParams.item as Message | undefined
+          const notification = notificationItem?.type === 'agentMessage' ? {
+            ...recordedNotification,
+            params: {
+              ...notificationParams,
+              item: {
+                ...notificationItem,
+                text: answer,
+              },
+            },
+          } : recordedNotification
+
           if (replay?.cancelled) {
             return
           }
 
-          if (notification.method === 'item/agentMessage/delta' || notification.method === 'turn/completed') {
+          if (notification.method === 'item/agentMessage/delta') {
+            if (sentText) {
+              continue
+            }
+
+            sentText = true
+            const partial = plan?.partial ?? ''
+
+            if (partial) {
+              send({
+                message: {
+                  ...notification,
+                  params: {
+                    ...notificationParams,
+                    delta: partial,
+                  },
+                },
+                turn: replay?.id,
+              })
+            }
+
+            await plan?.wait
+
+            if (replay?.cancelled) {
+              return
+            }
+
+            send({
+              message: {
+                ...notification,
+                params: {
+                  ...notificationParams,
+                  delta: answer.slice(partial.length),
+                },
+              },
+              turn: replay?.id,
+            })
+            continue
+          }
+
+          if (notification.method === 'turn/completed') {
             await plan?.wait
           }
 
@@ -1050,11 +1178,32 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
               payload: {
                 type: 'message',
                 role: 'assistant',
+                id: `${replay?.id}:message`,
                 phase: 'final_answer',
-                content: [
+                content: plan?.splitReply ? [
+                  {
+                    type: 'input_image',
+                    image_url: 'fixture-image',
+                  },
                   {
                     type: 'output_text',
-                    text: reply,
+                    text: answer.slice(
+                      0,
+                      Math.floor(answer.length / 2),
+                    ),
+                  },
+                  {
+                    type: 'input_image',
+                    image_url: 'fixture-image',
+                  },
+                  {
+                    type: 'output_text',
+                    text: answer.slice(Math.floor(answer.length / 2)),
+                  },
+                ] : [
+                  {
+                    type: 'output_text',
+                    text: answer,
                   },
                 ],
               },
