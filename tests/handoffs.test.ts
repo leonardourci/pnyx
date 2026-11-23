@@ -766,6 +766,37 @@ test.each([
         'done',
       ],
     })
+    let child: ReturnType<typeof spawn> | undefined
+    let hooksConfigured = false
+    let ready = false
+    let ended = false
+    let errors = ''
+    onTestFinished(async () => {
+      try {
+        if (child && !ended) {
+          child.kill('SIGKILL')
+          await until({
+            what: 'child server exits',
+            check: () => ended,
+          })
+        }
+      } finally {
+        try {
+          if (hooksConfigured) {
+            git({
+              cwd: project,
+              args: [
+                'config',
+                '--unset',
+                'core.hooksPath',
+              ],
+            })
+          }
+        } finally {
+          await pnyx.restart()
+        }
+      }
+    })
     await pnyx.stop()
     const hooks = join(
       project,
@@ -809,9 +840,7 @@ if (branch === 'iris/target') {
         hooks,
       ],
     })
-    let ready = false
-    let ended = false
-    let errors = ''
+    hooksConfigured = true
 
     const launch = ({ afterCommit }: { afterCommit: boolean }) => {
       ready = false
@@ -870,30 +899,7 @@ if (branch === 'iris/target') {
       return ready
     }
 
-    let child = launch({ afterCommit: false })
-    onTestFinished(async () => {
-      if (!ended) {
-        child.kill('SIGKILL')
-      }
-
-      git({
-        cwd: project,
-        args: [
-          'config',
-          '--unset',
-          'core.hooksPath',
-        ],
-      })
-
-      if (!ended) {
-        await until({
-          what: 'child server exits',
-          check: () => ended,
-        })
-      }
-
-      await pnyx.restart()
-    })
+    child = launch({ afterCommit: false })
 
     await until({
       what: 'scratch child server ready',
@@ -1042,14 +1048,6 @@ if (branch === 'iris/target') {
       'keep committed-checkout work',
     )
     await pnyx.start()
-    const blockedTarget = (await hydra.owner({
-      args: [
-        'task',
-        'show',
-        targetId,
-        '--full',
-      ],
-    })).task
     expect((await hydra.ownerRefused({
       args: [
         'reply',
@@ -1058,6 +1056,14 @@ if (branch === 'iris/target') {
         'Hold the dirty target',
       ],
     })).code).toBe('CONFLICT')
+    const blockedTarget = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        targetId,
+        '--full',
+      ],
+    })).task
     expect(blockedTarget.replies ?? []).toEqual([])
     const pendingSession = blockedTarget.sessionIds?.[0] ?? source.sessionIds[0]
     expect(await hydra.ownerRefused({
