@@ -24,7 +24,7 @@ function fullMemory({
   const projectLog = JSON.stringify(projectMemoryLogPath({ id }))
   const movedEvents = owners.length ? ` Read these owner memory logs too: ${JSON.stringify(owners)}. Include projectMove.event records whose project event identity is ${JSON.stringify(identity)}, including those inside nested polisMove.entry records.` : ''
 
-  return `Read the project memory log at ${projectLog} if it exists.${movedEvents} Replay the project events by seq. Set each document to its after value and remove it when after is null.`
+  return `Read the project memory log at ${projectLog} if it exists.${movedEvents} Merge the project log events and matching moved events in ascending project event seq order. Set the document named by each event's key to its after value, or remove it when after is null.`
 }
 
 export async function projectDigest({
