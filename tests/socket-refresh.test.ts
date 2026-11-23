@@ -9,6 +9,7 @@ const pressure = vi.hoisted(() => ({
   active: false,
   paused: false,
   latest: 0,
+  answerQueued: false,
   disconnects: 0,
   cards: [] as string[],
 }))
@@ -65,6 +66,10 @@ vi.mock(
             message,
             snapshot,
           }: Parameters<typeof outbox.send>[0]) {
+            if (message.type === 'receipt' || message.type === 'error') {
+              pressure.answerQueued = true
+            }
+
             if (message.type === 'latest' && pressure.cards.every(id => Object.hasOwn(
               message.messages,
               id,
@@ -150,16 +155,17 @@ test(
     try {
       await until({
         what: 'the snapshot activity to wait behind the home snapshot',
-        check: () => pressure.latest === 1 && frames.some(frame => frame.type === 'home.snapshot'),
+        check: () => pressure.latest >= 1 && frames.some(frame => frame.type === 'home.snapshot'),
       })
+      pressure.answerQueued = false
       const answer = page.send({
         name: 'page',
         args: ['--hidden'],
       })
       void answer.catch(() => undefined)
       await until({
-        what: 'the full interest refresh to reach the paused socket',
-        check: () => pressure.latest >= 2,
+        what: 'the command answer to reach the paused socket',
+        check: () => pressure.answerQueued,
       })
       pressure.paused = false
       expect(pressure.disconnects).toBe(0)
