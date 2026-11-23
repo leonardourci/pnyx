@@ -18,7 +18,7 @@ export interface NativeSource {
   boundaries: boolean
 }
 
-// The transcripts a thread's messages come from, oldest session first: every session Hydra has had, or a task's current one.
+// Lookup follows the same session history as chat, oldest session first.
 export function nativeSources({
   hydraId,
   state,
