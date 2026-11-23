@@ -32,7 +32,7 @@ export default {
           node: open,
           messageId: 'expectedAfter',
           data: { delimiter: open.value },
-          // eslint-disable-next-line pnyx/object-params -- ESLint supplies its fixer.
+          // eslint-disable-next-line othrys/object-params -- ESLint supplies its fixer.
           fix: fixer => fixer.insertTextAfter(
             open,
             '\n',
@@ -45,7 +45,7 @@ export default {
           node: close,
           messageId: 'expectedBefore',
           data: { delimiter: close.value },
-          // eslint-disable-next-line pnyx/object-params -- ESLint supplies its fixer.
+          // eslint-disable-next-line othrys/object-params -- ESLint supplies its fixer.
           fix: fixer => fixer.insertTextBefore(
             close,
             '\n',
@@ -54,7 +54,7 @@ export default {
       }
     }
 
-    // eslint-disable-next-line pnyx/object-params -- ESLint calls each visitor with the node.
+    // eslint-disable-next-line othrys/object-params -- ESLint calls each visitor with the node.
     const params = node => {
       argument.CallExpression({ arguments: node.params })
 
@@ -72,7 +72,7 @@ export default {
 
     return {
       // The argument fixer preserves comments between members that object-property-newline cannot fix.
-      // eslint-disable-next-line pnyx/object-params -- ESLint calls each visitor with the node.
+      // eslint-disable-next-line othrys/object-params -- ESLint calls each visitor with the node.
       'ObjectExpression, ObjectPattern, TSTypeLiteral, TSInterfaceBody': node => {
         const items = node.properties ?? node.members ?? node.body
         argument.CallExpression({ arguments: items })
@@ -94,7 +94,7 @@ export default {
             || (items.length > 0 && first.loc.start.line !== last.loc.end.line),
         })
       },
-      // eslint-disable-next-line pnyx/object-params -- ESLint calls each visitor with the node.
+      // eslint-disable-next-line othrys/object-params -- ESLint calls each visitor with the node.
       'ArrayExpression, ArrayPattern': node => {
         argument.CallExpression({ arguments: node.elements.filter(Boolean) })
       },

@@ -39,7 +39,7 @@ test(
       expect(results).toHaveLength(1)
       expect(results[0]!.fatalErrorCount).toBe(0)
       const rejected = results.flatMap(result => result.messages)
-        .filter(message => message.ruleId === 'pnyx/object-params')
+        .filter(message => message.ruleId === 'othrys/object-params')
       expect(rejected).toHaveLength(errors)
     }
   },
