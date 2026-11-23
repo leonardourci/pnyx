@@ -97,6 +97,7 @@ export function createHydraThreadView({
         spoken: entry.text.trim() !== '',
       })),
     })
+
     if (!previous || nextIdentity !== identity) {
       identity = nextIdentity
       previous = hydraThreadView({
