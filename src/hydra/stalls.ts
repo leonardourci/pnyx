@@ -342,7 +342,6 @@ export function createStallChecks({
     // Alarms the helper can take stay undelivered, so they fire again for its next batch.
     const rest = fired.filter(item => !offered.includes(item)
       && (mainOnly.has(item.card) || !helperOpen({ state })))
-    // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
     const [first] = [
       ...unconfirmed,
       ...stalls,

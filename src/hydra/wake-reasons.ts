@@ -267,7 +267,6 @@ function ordinaryReasons({
     return slotFree({ state })
   }
 
-  // A worker's report starts a Hydra Pnyx has not run yet, whatever card it names.
   if (event.type === 'hydra.message') {
     const {
       task,

@@ -186,7 +186,6 @@ const TASK_FIELDS = [
 
 export type TaskField = (typeof TASK_FIELDS)[number]
 
-// `task list --fields status,worker` adds those fields to the default id, title and project.
 export function taskFields({ value }: { value?: string }): TaskField[] {
   const fields = (value ?? '').split(',').map(field => field.trim())
     .filter(Boolean)

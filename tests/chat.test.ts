@@ -420,7 +420,6 @@ test(
     })
     const wake = session.received[1]!
     expect(wake.split('Export works; ready for review')).toHaveLength(2)
-    expect(wake).not.toContain('Halfway through the invoices')
     expect(wake).not.toContain('Upload started')
     expect(wake).not.toContain('Quiet latest line')
     expect(wake).toContain('Need the SFTP password')

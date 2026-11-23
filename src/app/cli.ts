@@ -61,7 +61,7 @@ const history = guard({
       throw new HydraError({
         message: `unknown kind: ${kind}`,
         code: 'VALIDATION_ERROR',
-        help: ['Use one of task.edited, pushed, moved, linked, outcome, replied, noted'],
+        help: ['Use one of task.edited, linked, outcome, replied, noted'],
       })
     }
 

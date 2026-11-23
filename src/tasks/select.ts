@@ -45,7 +45,6 @@ export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true
 }
 
-// Parents complete after their children; leaf tasks use the shared factual status.
 export function taskDone({
   state,
   card,

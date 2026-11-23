@@ -196,11 +196,12 @@ export function boardReview({
         })
       }
 
-      const note = card.workerLog?.latest.text ?? ''
+      const workerStatus = card.workerLog?.status
+      const note = workerStatus?.text ?? ''
       const infrastructure = /\b(cancelled run|canceled run|base (?:is )?out[ -]of[ -]date)\b/i.test(note)
       const suite = /\bfull[ -]suite\b/i.test(note)
       const unrelated = /\b(unrelated|pre[ -]existing|outside (?:this|the) task)\b/i.test(note)
-      const reportedOutside = card.workerLog?.status?.code === 'blocked' && (infrastructure || (suite && unrelated))
+      const reportedOutside = workerStatus?.code === 'blocked' && (infrastructure || (suite && unrelated))
 
       if (reportedOutside) {
         flags.push({

@@ -15,7 +15,7 @@ import { sessionTaskFields } from '#workers/session-facts.ts'
 function editBefore({ target }: { target: Extract<HydraEvent, { type: 'task.edited' }> }): PushFields {
   const fields = target.data.before ?? {}
 
-  return target.type === 'task.edited' && !target.undoes && target.data.agent
+  return !target.undoes && target.data.agent
     ? sessionTaskFields({ fields }) : fields
 }
 
@@ -50,7 +50,7 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
     return null
   }
 
-  if ((target.type !== 'task.edited') && 'after' in target.data) {
+  if (target.type !== 'task.edited' && 'after' in target.data) {
     return target.data.after
   }
 
@@ -235,11 +235,11 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} records a note harvested from ${target.data.source} and cannot be undone` })
   }
 
-  if (((target.type === 'task.edited') && target.data.source) || target.type === 'card.observed') {
+  if ((target.type === 'task.edited' && target.data.source) || target.type === 'card.observed') {
     throw notUndoable({ message: `${target.id} records a source observation and cannot be undone` })
   }
 
-  if ((target.type === 'task.edited') && !target.data.before) {
+  if (target.type === 'task.edited' && !target.data.before) {
     throw notUndoable({ message: `${target.id} created card ${target.cardId} and cannot be undone` })
   }
 

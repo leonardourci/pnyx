@@ -219,8 +219,9 @@ export function reconcileAsks({
   }
 
   const changes: HydraEvent[] = []
-  const ended = (event.type === 'task.worker-line' && event.data.code === 'done')
-    || (event.type === 'card.outcome' && event.data.after?.closed === true)
+  const outcome = event.type === 'card.outcome' ? event.data.after : undefined
+  const completed = outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled'
+  const ended = completed || (event.type === 'task.worker-line' && event.data.code === 'done')
 
   for (const ask of openAsks({
     card,

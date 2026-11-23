@@ -220,7 +220,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             before,
             after,
           }) => {
-            if (event.type === 'session.observed') {
+            if (event.type === 'session.observed' || (event.type === 'task.edited' && event.data.source)) {
               const agent = sessionFields({
                 event,
                 state: after,

@@ -1,4 +1,5 @@
 import { taskRank } from '#tasks/order.ts'
+import { HydraError } from '#store/errors.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card, TaskReminder } from '#tasks/model.ts'
 import { reminderRepeat } from '#tasks/reminders.ts'
@@ -111,11 +112,19 @@ export function optimisticState({
     const before = option({ flag: '--before' })
 
     if (before) {
-      pending.rank = taskRank({
-        state,
-        card: pending,
-        before,
-      })
+      try {
+        pending.rank = taskRank({
+          state,
+          card: pending,
+          before,
+        })
+      } catch (error) {
+        if (error instanceof HydraError) {
+          return state
+        }
+
+        throw error
+      }
     }
 
     return {
