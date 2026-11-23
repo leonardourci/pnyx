@@ -121,6 +121,8 @@ test(
       '{"theme":"purple"}',
       '{"logDays":0}',
       '{"keyboard":{"bindings":{}}}',
+      '{"defaultColumnWidth":460}',
+      '{"defaultColumnWidths":{"ideas":460}}',
     ]) {
       expect((await hydra.ownerRefused({
         args: [
@@ -350,6 +352,14 @@ test(
           cardHeights: { [task.card.id]: 640 },
         }),
       ],
+    })
+    expect(await hydra.owner({
+      args: [
+        'layout',
+        'show',
+      ],
+    })).toMatchObject({
+      widths: { projects: { ideas: 944 } },
     })
     const reset = await hydra.owner({
       args: [

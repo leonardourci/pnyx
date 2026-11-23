@@ -448,7 +448,12 @@ test(
       what: 'the source notification to reach its assigned worker',
       check: () => sourceWorker.received.some(text => text.includes(notice)),
     })
-    const command = notice.match(/^pnyx task ack .+$/m)![0]
+    const command = notice.match(/^pnyx task ack .+$/m)?.[0]
+
+    if (!command) {
+      throw new Error(`The source notice has no acknowledgement command: ${notice}`)
+    }
+
     const acknowledge = () => promisify(execFile)(
       '/bin/sh',
       [

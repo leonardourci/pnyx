@@ -181,17 +181,19 @@ export const statusLabel = ({ status }: { status: CardStatus }) => {
   return status.count ? `${text} · ${status.count}` : text
 }
 
+interface CardUpdate {
+  text: string
+  at: string
+  source: 'note' | 'reminder' | 'review'
+}
+
 export function currentState({
   card,
   workerOnly = false,
 }: {
   card: Card
   workerOnly?: boolean
-}): {
-  text: string
-  at: string
-  source: 'note' | 'reminder' | 'review'
-} | undefined {
+}): CardUpdate | undefined {
   const line = card.workerLog?.latest
   const workerUpdate = line ? {
     text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
@@ -199,11 +201,11 @@ export function currentState({
     source: 'note' as const,
   } : undefined
 
-  if (workerUpdate && !workerOnly) {
+  if (workerUpdate || workerOnly) {
     return workerUpdate
   }
 
-  const reviewUpdates = workerOnly ? [] : card.links.flatMap(link => {
+  const reviewUpdates = card.links.flatMap<CardUpdate>(link => {
     const at = link.checkedAt
     const openDecision = (card.asks ?? []).some(ask =>
       ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
@@ -221,22 +223,21 @@ export function currentState({
       {
         text: `[${title}](${link.url}) is ready for review.`,
         at,
-        source: 'review' as const,
+        source: 'review',
       },
     ]
   })
-  const reminder = workerOnly ? undefined : card.reminder
-  const said = [
-    ...reviewUpdates,
-    workerUpdate,
-    reminder?.dueAt ? {
+  const reminder = card.reminder
+
+  if (reminder?.dueAt) {
+    reviewUpdates.push({
       text: 'Reminder due',
       at: reminder.dueAt,
-      source: 'reminder' as const,
-    } : undefined,
-  ].filter(entry => entry !== undefined)
+      source: 'reminder',
+    })
+  }
 
-  return said.sort((
+  return reviewUpdates.sort((
     a,
     b,
   ) => a.at.localeCompare(b.at)).at(-1)

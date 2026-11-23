@@ -12,11 +12,19 @@ import { projectMemoryLogPath, PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, 
 
 const WORKER_DOCUMENT_LIMIT = 400
 
-function fullMemory({ id }: { id: string }): string {
+function fullMemory({
+  id,
+  identity,
+}: {
+  id: string
+  identity: string
+}): string {
   const paths = [...readOwnerLogs().keys()].map(polis => ownerMemoryLogPath({ polis }))
   const owners = paths.filter(existsSync)
+  const projectLog = JSON.stringify(projectMemoryLogPath({ id }))
+  const movedEvents = owners.length ? ` Read these owner memory logs too: ${JSON.stringify(owners)}. Include projectMove.event records whose project event identity is ${JSON.stringify(identity)}, including those inside nested polisMove.entry records.` : ''
 
-  return `Read ${JSON.stringify(projectMemoryLogPath({ id }))} and these owner memory logs: ${JSON.stringify(owners)}. Include projectMove.event records for project ${JSON.stringify(id)}, also within nested polisMove.entry records. Combine them with the project log and replay by the project event's seq, applying after values and removals in order.`
+  return `Read the project memory log at ${projectLog} if it exists.${movedEvents} Merge the project log events and matching moved events in ascending project event seq order. Set the document named by each event's key to its after value, or remove it when after is null.`
 }
 
 export async function projectDigest({
@@ -50,7 +58,7 @@ export async function projectDigest({
     })
     const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-    return [`- ${project.name} (${project.path}) · full memory: ${fullMemory({ id: view.id })} · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
+    return [`- ${project.name} (${project.path}) · full memory: ${fullMemory(view)} · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`]
   }))
 
   const summaries = lines.flat()
@@ -130,7 +138,7 @@ export async function projectWorkerContext({
         ] : []
       }),
       'Read the project conventions in your current copy before starting; the shared profile may need refreshing.',
-      `Full memory: ${fullMemory({ id: view.id })}`,
+      `Full memory: ${fullMemory(view)}`,
     ].join('\n'),
   }
 }
