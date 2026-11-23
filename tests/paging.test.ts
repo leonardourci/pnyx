@@ -25,11 +25,8 @@ interface Entry {
 }
 
 interface ThreadReceipt {
-  thread: {
-    card: string
-    session?: string
-    older?: string
-    conversation: { entries: Entry[] }
+  thread: ThreadPage & {
+    conversation: NonNullable<ThreadPage['conversation']>
   }
 }
 
@@ -72,7 +69,7 @@ test(
     const first = await page.send({
       name: 'thread',
       args: ['$hydra'],
-    }) as unknown as ThreadReceipt & { thread: ThreadPage }
+    }) as unknown as ThreadReceipt
     expect(first.thread.conversation.entries.map(entry => entry.text)).toEqual([
       'question 21',
       'answer 21',
