@@ -1,6 +1,6 @@
 #!/bin/sh
 # Hooks always exit 0 so reporting never blocks the agent. Only SessionStart prints: the
-# Hydra's summary for this folder, on the saved stdout (fd 3). Everything else stays silent.
+# Titan's summary for this folder, on the saved stdout (fd 3). Everything else stays silent.
 exec 3>&1 >/dev/null 2>&1
 # Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
 export LC_ALL=C
@@ -14,11 +14,13 @@ case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 
 home=${0%/*}
 home=${home%/hooks}
-case ${PNYX_HOME:-} in /*) home=$PNYX_HOME ;; esac
-hydra_name=${PNYX_HYDRA:-default}
+selected_home=${OTHRYS_HOME:-${PNYX_HOME:-}}
+case $selected_home in /*) home=$selected_home ;; esac
+hydra_name=${OTHRYS_TITAN:-${PNYX_HYDRA:-default}}
 case $hydra_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
 task=
-case ${PNYX_TASK:-} in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$PNYX_TASK\"," ;; esac
+worker_task=${OTHRYS_TASK:-${PNYX_TASK:-}}
+case $worker_task in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$worker_task\"," ;; esac
 
 terminal=
 fact() {
@@ -61,8 +63,8 @@ $hook_clock
 EOF
 id="hook-$hook_seconds$hook_milliseconds-$$"
 hydra_dir=$home/hydras/$hydra_name
-# A Hydra is a folder in hydras/, or in boards/ until an older one moves. An unknown id is dropped
-# instead of starting a new Hydra; only the default one is made on first use.
+# A Titan is a folder in hydras/, or in boards/ until an older one moves. An unknown id is dropped
+# instead of starting a new Titan; only the default one is made on first use.
 if [ ! -d "$hydra_dir" ] && [ -d "$home/boards/$hydra_name" ]; then
   hydra_dir=$home/boards/$hydra_name
 fi
@@ -86,7 +88,7 @@ if ! grep -q '"payload": *[^ }]' "$tmp"; then
   printf '{"v":1,"id":"%s","at":"%s","harness":"%s","event":"%s",%s%s"payload":null}\n' "$id" "$hook_at" "$harness" "$event" "$terminal" "$task" >"$tmp" || exit 0
 fi
 
-# The Hydra's server handles each line as soon as its newline arrives and
+# The Titan's server handles each line as soon as its newline arrives and
 # replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
 # for an nc that keeps the connection open. Without a running server there is no
 # socket file, so the common path never starts nc.
@@ -96,12 +98,12 @@ else
   mv "$tmp" "$spool/$name" || rm -f "$tmp"
 fi
 
-# A worker gets its context from Pnyx itself; other sessions get the summary when the
+# A worker gets its context from Othrys itself; other sessions get the summary when the
 # folder belongs to an attached project. The harness's hook timeout bounds the call.
 if [ "$event" = SessionStart ] && [ -z "$task" ] && [ -f "$context" ]; then
   set --
   case $context in *.ts) set -- --conditions=source ;; esac
-  summary=$(PNYX_HOME=$home node "$@" "$context" "$hydra_name" 2>/dev/null) || summary=
+  summary=$(OTHRYS_HOME=$home node "$@" "$context" "$hydra_name" 2>/dev/null) || summary=
   [ -z "$summary" ] || printf '%s\n' "$summary" >&3
 fi
 exit 0

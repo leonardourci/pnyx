@@ -1,14 +1,14 @@
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { inform } from '#app/command-notices.ts'
-import { canonical, pnyxHome } from '#store/paths.ts'
+import { canonical, othrysHome } from '#store/paths.ts'
 
 export function requireSetupHome({ allowCustomHome }: { allowCustomHome: boolean }) {
-  const home = canonical({ path: resolve(pnyxHome()) })
+  const home = canonical({ path: resolve(othrysHome()) })
   const defaultHome = canonical({
     path: join(
       homedir(),
-      '.pnyx',
+      '.othrys',
     ),
   })
 
@@ -18,6 +18,6 @@ export function requireSetupHome({ allowCustomHome }: { allowCustomHome: boolean
 
   inform({
     reason: `Setup changes user-wide configuration for custom home ${home}`,
-    clear: 'Use pnyx setup --preview to inspect the installation or pnyx setup --remove to remove it',
+    clear: 'Use othrys setup --preview to inspect the installation or othrys setup --remove to remove it',
   })
 }

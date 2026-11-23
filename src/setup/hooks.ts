@@ -1,11 +1,11 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { HydraError } from '#store/errors.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { TitanError } from '#store/errors.ts'
+import { othrysHome } from '#store/storage.ts'
 import type { Harness } from '#integrations/hooks/observe.ts'
 
-const SCRIPT = 'pnyx-hook.sh'
+const SCRIPT = 'othrys-hook.sh'
 const SCRIPT_SOURCE = join(
   import.meta.dirname,
   '..',
@@ -14,7 +14,7 @@ const SCRIPT_SOURCE = join(
   'hooks',
   SCRIPT,
 )
-// The events Pnyx reads, for every tool: turn starts and ends, open requests, session
+// The events Othrys reads, for every tool: turn starts and ends, open requests, session
 // start and end, compaction for harvesting, and model switches. Claude Code worktree
 // events are left out because a command hook there replaces its own worktree handling.
 const EVENTS: Record<Harness, string[]> = {
@@ -96,7 +96,7 @@ const CONTEXT_ENTRY = join(
 
 function scriptPath(): string {
   return join(
-    pnyxHome(),
+    othrysHome(),
     'hooks',
     SCRIPT,
   )
@@ -109,8 +109,8 @@ function quote({ value }: { value: string }): string {
   )}'`
 }
 
-function isPnyx({ handler }: { handler: Handler }): boolean {
-  return typeof handler.command === 'string' && handler.command.includes(`/${SCRIPT}`)
+function isOthrys({ handler }: { handler: Handler }): boolean {
+  return typeof handler.command === 'string' && /\/(?:othrys|pnyx)-hook\.sh(?:['"\s]|$)/.test(handler.command)
 }
 
 function readConfig({ path }: { path: string }): Config {
@@ -126,7 +126,7 @@ function readConfig({ path }: { path: string }): Config {
       'utf8',
     ))
   } catch (error) {
-    throw new HydraError({
+    throw new TitanError({
       message: `cannot read ${path}: ${(error as Error).message}`,
       code: 'VALIDATION_ERROR',
       help: ['Fix the JSON by hand, then rerun'],
@@ -137,7 +137,7 @@ function readConfig({ path }: { path: string }): Config {
   const isObject = ({ value: v }: { value: unknown }) => typeof v === 'object' && v !== null && !Array.isArray(v)
 
   if (!isObject({ value: config }) || (hooks !== undefined && !isObject({ value: hooks }))) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${path} is not a hook config object`,
       code: 'VALIDATION_ERROR',
       help: ['Fix it by hand, then rerun'],
@@ -147,8 +147,8 @@ function readConfig({ path }: { path: string }): Config {
   return config as Config
 }
 
-// The config with each event's first Pnyx handler updated in place and any other Pnyx
-// handler taken out; Pnyx entries still missing are appended. Removing takes them all out.
+// The config with each event's first Othrys handler updated in place and any other Othrys
+// handler taken out; Othrys entries still missing are appended. Removing takes them all out.
 function merged({
   config,
   harness,
@@ -182,18 +182,18 @@ function merged({
     }
 
     const kept = groups.flatMap(group => {
-      if (!Array.isArray(group?.hooks) || !group.hooks.some(handler => isPnyx({ handler }))) {
+      if (!Array.isArray(group?.hooks) || !group.hooks.some(handler => isOthrys({ handler }))) {
         return [group]
       }
 
       const handlers = group.hooks.flatMap(h => {
-        if (!isPnyx({ handler: h })) {
+        if (!isOthrys({ handler: h })) {
           return [h]
         }
 
         const want = wanted.get(event)
 
-        // Pnyx groups match every tool, so one left from a version with a matcher is replaced.
+        // Othrys groups match every tool, so one left from a version with a matcher is replaced.
         if (!want || group.matcher !== undefined) {
           return []
         }
@@ -299,7 +299,7 @@ export function setupHooks(
       { recursive: true },
     )
     const target = existsSync(path) ? realpathSync(path) : path
-    const tmp = `${target}.pnyx-${process.pid}`
+    const tmp = `${target}.othrys-${process.pid}`
     writeFileSync(
       tmp,
       `${JSON.stringify(
