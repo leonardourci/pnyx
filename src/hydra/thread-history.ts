@@ -106,7 +106,8 @@ export function joinLatest({
     })
   }
 
-  const known = new Set(held.map(entry => entry.id))
+  const native = held.filter(entry => entry.offset !== undefined)
+  const known = new Set((native.length ? native : held).map(entry => entry.id))
   const seen = new Set<string>()
   let joined = latest
 

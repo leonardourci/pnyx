@@ -2,7 +2,7 @@ import { beforeAll, expect, test } from 'vitest'
 import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import { mergeThreadPages } from '#hydra/thread-history.ts'
+import { joinLatest, mergeThreadPages } from '#hydra/thread-history.ts'
 import { createHydraThreadView } from '#hydra/thread-view.ts'
 import { readThread, recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
@@ -828,5 +828,63 @@ test(
       })
       expect(retained.entries).toEqual(restored.entries)
     }
+  },
+)
+
+test(
+  'refresh fills the transcript gap even when a retained owner receipt is on the newest page',
+  () => {
+    const saved = ({ id, offset }: { id: string; offset: number }) => ({
+      id,
+      offset,
+      kind: 'message' as const,
+      role: 'assistant',
+      text: id,
+      at: new Date(offset).toISOString(),
+    })
+    const first = saved({ id: 'first', offset: 1 })
+    const missed = saved({ id: 'missed', offset: 2 })
+    const newest = saved({ id: 'newest', offset: 3 })
+    const receipt = {
+      id: 'reply:owner',
+      kind: 'message' as const,
+      role: 'You',
+      text: 'Owner request',
+      at: new Date(4).toISOString(),
+    }
+    const history: ThreadPage = {
+      card: 'task',
+      entries: [
+        first,
+        receipt,
+      ],
+      route: false,
+      watching: 'unknown',
+    }
+    const refreshed = joinLatest({
+      history,
+      latest: {
+        ...history,
+        entries: [
+          newest,
+          receipt,
+        ],
+        older: 'n3:0;r',
+      },
+      read: () => ({
+        ...history,
+        entries: [
+          first,
+          missed,
+        ],
+      }),
+    })
+
+    expect(refreshed.entries.map(entry => entry.id)).toEqual([
+      first.id,
+      missed.id,
+      newest.id,
+      receipt.id,
+    ])
   },
 )
