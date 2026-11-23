@@ -6,7 +6,7 @@ import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { ownerActor } from '#app/actors.ts'
 import { EVENT_VERSION } from '#store/events.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { SteeringClaim } from '#workers/model.ts'
 import type { Writer } from '#app/writer.ts'
@@ -30,7 +30,7 @@ export function invalidSource({
   message: string
   code?: string
 }): never {
-  throw new HydraError({
+  throw new TitanError({
     message,
     code,
   })
@@ -494,7 +494,7 @@ export function resultText({
   if (source.lavish) {
     const handling = !lavishCanRearm({ result })
       ? 'Read its inbox message in task.log and use the supplied exact-ID acknowledgement command. Conclude this round and report the outcome in worker.log. Do not re-arm or reopen this session.'
-      : `Read inbox message ${result.message} in task.log and use the supplied exact-ID acknowledgement command. Apply every item once. Send genuine owner choices to Hydra and retain their IDs for the report inventory. Report the outcome in worker.log. A read acknowledgement does not handle this source result or authorize another round; retain the source and result IDs for an explicit re-arm decision.`
+      : `Read inbox message ${result.message} in task.log and use the supplied exact-ID acknowledgement command. Apply every item once. Send genuine owner choices to Titan and retain their IDs for the report inventory. Report the outcome in worker.log. A read acknowledgement does not handle this source result or authorize another round; retain the source and result IDs for an explicit re-arm decision.`
     const recovery = result.outcome === 'completed' ? ''
       : ' Listening stopped. Inspect the retained uncertainty and verify prior effects and reply acceptance before any explicit recovery; never blindly repeat a post or destructive poll.'
 
