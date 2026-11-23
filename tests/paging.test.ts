@@ -831,9 +831,12 @@ test(
   },
 )
 
-test(
-  'refresh fills the transcript gap even when a retained owner receipt is on the newest page',
-  () => {
+test.each([
+  { retainedNative: true },
+  { retainedNative: false },
+])(
+  'refresh fills a transcript gap despite an overlapping owner receipt with retained native rows: $retainedNative',
+  ({ retainedNative }) => {
     const saved = ({
       id,
       offset,
@@ -869,10 +872,10 @@ test(
     }
     const history: ThreadPage = {
       card: 'task',
-      entries: [
+      entries: retainedNative ? [
         first,
         receipt,
-      ],
+      ] : [receipt],
       route: false,
       watching: 'unknown',
     }

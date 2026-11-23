@@ -107,7 +107,9 @@ export function joinLatest({
   }
 
   const native = held.filter(entry => entry.offset !== undefined)
-  const known = new Set((native.length ? native : held).map(entry => entry.id))
+  const newestHasNative = latest.entries.some(entry => entry.offset !== undefined)
+  const overlap = native.length || newestHasNative ? native : held
+  const known = new Set(overlap.map(entry => entry.id))
   const seen = new Set<string>()
   let joined = latest
 
