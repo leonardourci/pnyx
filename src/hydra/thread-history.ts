@@ -32,15 +32,21 @@ export function mergeThreadPages({
     .map(entry => entry.messageId ?? entry.id))
   const entries = new Map<string, ThreadPage['entries'][number]>()
 
-  for (const entry of combined) {
-    if (entry.streaming !== undefined && savedMessages.has(entry.messageId ?? entry.id)) {
-      continue
-    }
+  for (const page of orderedPages) {
+    for (const entry of page) {
+      if (entry.streaming !== undefined && savedMessages.has(entry.messageId ?? entry.id)) {
+        continue
+      }
 
-    entries.set(
-      entry.id,
-      entry,
-    )
+      if (olderPage && page === retained && entries.has(entry.id)) {
+        continue
+      }
+
+      entries.set(
+        entry.id,
+        entry,
+      )
+    }
   }
 
   const actions = new Map((before.actions ?? []).map(event => [
