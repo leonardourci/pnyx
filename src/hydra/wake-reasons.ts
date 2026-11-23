@@ -88,7 +88,7 @@ export function readyBacklog({ state }: { state: HydraState }): Card[] {
     .sort((
       a,
       b,
-    ) => rankOf({ card: a }) - rankOf({ card: b }))
+    ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
 function slotFree({ state }: { state: HydraState }): WakeReason[] {

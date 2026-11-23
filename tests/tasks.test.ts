@@ -1062,6 +1062,28 @@ test(
     })
     expect(restored.rank ?? restored.createdSeq).toBeGreaterThan(later.rank ?? later.createdSeq)
 
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'created-before',
+        '--title',
+        'Created before Later',
+        '--before',
+        'later',
+      ],
+    })
+    const { task: createdBefore } = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'created-before',
+        '--full',
+      ],
+    })
+    expect(createdBefore.rank).toBeLessThan(later.rank ?? later.createdSeq)
+
     const seq = () => loadHydra({ hydraId: hydra.id }).state.seq
     const before = seq()
     const preview = await hydra.owner({

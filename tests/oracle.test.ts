@@ -259,8 +259,9 @@ test(
       hydraId: hydra.id,
       cardId: notes.card.id,
       types: ['card.noted'],
-    }).filter(event => event.actor === 'harvest')
-      .map(event => ({ kind: event.type === 'card.noted' ? event.data.kind : undefined }))).toEqual([{ kind: 'decision' }])
+    }).filter(event => event.actor === 'harvest').map(event => event.data)).toEqual([
+      expect.objectContaining({ kind: 'decision' }),
+    ])
     expect(await search({
       hydra,
       args: ['cobalt'],
