@@ -172,14 +172,43 @@ export function wakeText({
       : 'Act on these pending reports when they need you.'
     lines.push(`Read native records under ${JSON.stringify(dirname(recordFiles({ hydraId }).hydra))}. ${scope}`)
 
-    lines.push(`Pending reports: ${JSON.stringify(pending.map(note => ({
-      id: note.id,
-      file: note.task && note.task !== HYDRA_CARD ? `tasks/${note.task}/task.log` : 'hydra.log',
-      status: contextReportStatus({
-        state,
-        note,
-      }),
-    })))}`)
+    const pendingEvents = new Map<string, string>()
+
+    if (pending.length) {
+      const first = Math.min(...pending.map(note => note.seq))
+      const last = Math.max(...pending.map(note => note.seq))
+      const ids = new Set(pending.map(note => note.id))
+
+      for (const event of scanChanges({ hydraId, after: first - 1 })) {
+        if (event.seq > last) {
+          break
+        }
+
+        if (ids.has(event.id)) {
+          const file = event.type === 'hydra.message' || event.cardId === HYDRA_CARD
+            ? 'hydra.log' : `tasks/${event.cardId}/task.log`
+          pendingEvents.set(event.id, file)
+        }
+      }
+    }
+
+    const savedReports = pending.flatMap(note => {
+      const file = pendingEvents.get(note.id)
+
+      if (!file) {
+        return []
+      }
+
+      return [{
+        id: note.id,
+        file,
+        status: contextReportStatus({
+          state,
+          note,
+        }),
+      }]
+    })
+    lines.push(`Pending reports: ${JSON.stringify(savedReports)}`)
 
     if (reviewOverflow) {
       lines.push(`Read the full hydra.review record ${JSON.stringify(reviewId)} in hydra.log.`)
