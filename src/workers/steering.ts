@@ -1,5 +1,5 @@
 import { activeCompaction } from '#workers/compaction/state.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { SteeringClaim } from './model.ts'
 import { cardSessionId } from './session-attachments.ts'
@@ -37,7 +37,7 @@ export function steeringWorkerIdentity({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): string | undefined {
   const session = cardSessionId({ card })
@@ -71,8 +71,8 @@ export function applySteering({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'task.steering.stopped' && event.type !== 'task.steering.queued' && event.type !== 'task.steering.notified' && event.type !== 'task.steering.handled' && event.type !== 'task.steering.recovery') {
     return false

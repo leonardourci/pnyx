@@ -6,15 +6,15 @@ import { permissionAnswer, permissionEvent } from './permission-rules.ts'
 import type { PermissionRequest } from './model.ts'
 import type { PermissionDecision } from './provider.ts'
 import { sessionId } from './session-attachments.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { helperPermission } from '#routine-helper/route.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { explained } from '#app/cli-support.ts'
-import type { HydraState } from '#app/model.ts'
-import { loadHydra } from '#app/store.ts'
+import type { TitanState } from '#app/model.ts'
+import { loadTitan } from '#app/store.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -140,7 +140,7 @@ export function createPermissionBridge({
       promise,
       resolve,
     } = Promise.withResolvers<PermissionDecision>()
-    const cards = Object.values(loadHydra({ hydraId }).state.cards)
+    const cards = Object.values(loadTitan({ hydraId }).state.cards)
     const previous = cards.flatMap(card => card.permissions ?? [])
       .find(request => {
         const same = request.session === key && request.nativeId === nativeId
@@ -182,7 +182,7 @@ export function createPermissionBridge({
       await write({
         fn: ({ writer }) => {
           if (closing() || signal.aborted) {
-            throw new HydraError({
+            throw new TitanError({
               message: 'This permission request expired.',
               code: 'NO_ROUTE',
             })
@@ -190,11 +190,11 @@ export function createPermissionBridge({
 
           const session = writer.state.sessions?.[key]
           const current = session?.id === writer.state.config?.hydra.session
-            ? writer.state.cards[HYDRA_CARD]
+            ? writer.state.cards[TITAN_CARD]
             : session?.taskId ? writer.state.cards[session.taskId] : undefined
 
           if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
-            throw new HydraError({
+            throw new TitanError({
               message: 'the agent is no longer attached to this task',
               code: 'NO_ROUTE',
             })
@@ -267,14 +267,14 @@ export function createPermissionBridge({
         const request = card.permissions?.find(p => p.id === id)
 
         if (!request) {
-          throw new HydraError({
+          throw new TitanError({
             message: `permission request not found: ${id}`,
             code: 'NOT_FOUND',
           })
         }
 
         if (request.status !== 'pending' && request.delivery !== 'needs_reentry') {
-          throw new HydraError({
+          throw new TitanError({
             message: `permission request is already ${request.status}`,
             code: 'PERMISSION_CLOSED',
           })
@@ -312,7 +312,7 @@ export function createPermissionBridge({
         }
 
         if (request.delivery === 'needs_reentry' && choice !== request.status) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'PERMISSION_CLOSED',
             message: 'Re-entry supplies missing secret values for the original decision',
           })
@@ -334,7 +334,7 @@ export function createPermissionBridge({
             const sameAnswer = JSON.stringify(previous) === JSON.stringify(nextAnswer)
 
             if (!request.questions?.[index]?.secret && !sameAnswer) {
-              throw new HydraError({
+              throw new TitanError({
                 code: 'PERMISSION_CLOSED',
                 message: 'Only the missing secret answer can change on re-entry',
               })
@@ -389,7 +389,7 @@ export function createPermissionBridge({
           message: 'This permission request expired.',
         },
       })
-      throw new HydraError({
+      throw new TitanError({
         message: 'the agent no longer waits for this request',
         code: 'PERMISSION_CLOSED',
       })
@@ -401,7 +401,7 @@ export function createPermissionBridge({
         ...result.answered,
       } : {
         behavior: 'deny',
-        message: why || 'Permission denied from Pnyx.',
+        message: why || 'Permission denied from Othrys.',
       },
     })
 
@@ -409,7 +409,7 @@ export function createPermissionBridge({
   }
 
   // A waiter whose request was answered elsewhere or whose card moved to another session expires.
-  const reconcilePermissions = ({ state }: { state: HydraState }) => {
+  const reconcilePermissions = ({ state }: { state: TitanState }) => {
     for (const [
       id,
       waiting,
@@ -450,7 +450,7 @@ export function createPermissionBridge({
     task: string
     actor: string
   }) => {
-    const card = loadHydra({ hydraId }).state.cards[task]
+    const card = loadTitan({ hydraId }).state.cards[task]
 
     for (const request of card?.permissions ?? []) {
       if (request.status === 'pending' && pending.has(request.id)) {

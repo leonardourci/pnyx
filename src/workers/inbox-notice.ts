@@ -1,8 +1,8 @@
 import { STEERING_NOTICE } from './steering-text.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { nativeHome } from '#app/native-home.ts'
 import type { SteeringClaim } from './model.ts'
-import { recordContext } from '#hydra/file-context.ts'
+import { recordContext } from '#titan/file-context.ts'
 import type { ReplyState } from './model.ts'
 
 export interface NotificationResult {
@@ -42,9 +42,9 @@ export function steeringMessages({
   }[]
 }): string {
   return [
-    `New instructions for task ${task}, in order (Pnyx inbox IDs ${JSON.stringify(messages.map(message => message.id))}):`,
+    `New instructions for task ${task}, in order (Othrys inbox IDs ${JSON.stringify(messages.map(message => message.id))}):`,
     messages.map(message => message.text).join('\n\n---\n\n'),
-    `Pnyx marks them read once you receive this. ${recordContext({
+    `Othrys marks them read once you receive this. ${recordContext({
       hydraId,
       task,
     })} Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
@@ -67,7 +67,7 @@ export function steeringNotice({
   ]) => position === claim.generation)?.[0]
 
   if (assignment === undefined) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'STALE_CLAIM',
       message: 'The inbox assignment has no durable record reference',
     })
@@ -78,14 +78,14 @@ export function steeringNotice({
     "'\\''",
   )}'`
   const acknowledgement = ids.map(id => [
-    'pnyx task ack',
+    'othrys task ack',
     quote({ value: task }),
     quote({ value: id }),
     '--session',
     quote({ value: claim.session }),
     '--generation',
     quote({ value: JSON.stringify({ native: assignment }) }),
-    '--hydra',
+    '--titan',
     quote({ value: hydraId }),
   ].join(' ')).join('\n')
 
@@ -102,7 +102,7 @@ export function readSteeringMessages({
   text: string
   task: string
 }): string[] {
-  const prefix = `New instructions for task ${task}, in order (Pnyx inbox IDs `
+  const prefix = `New instructions for task ${task}, in order (Othrys inbox IDs `
   const end = text.indexOf('):\n')
 
   if (!text.startsWith(prefix) || end < prefix.length) {

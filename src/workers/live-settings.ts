@@ -3,9 +3,9 @@ import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { hydraActor } from '#app/request-context.ts'
 import type { Writer } from '#app/writer.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { harnessControls } from './controls.ts'
 import type { AgentRef } from './model.ts'
@@ -70,7 +70,7 @@ export function createLiveSettings({
         const control = controls?.controls.find(c => c.setting === setting)
 
         if (!control || !control.options.some(o => o.value === value)) {
-          throw new HydraError({
+          throw new TitanError({
             message: `${setting} cannot be ${value}`,
             code: 'VALIDATION_ERROR',
           })
@@ -96,12 +96,12 @@ export function createLiveSettings({
         const usedAgent = writer.state.hydraAgent
 
         // Wakes retain this agent, so permission controls must update its saved mode too.
-        if (card.id === HYDRA_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
+        if (card.id === TITAN_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
           applyDecision({
             writer,
             decision: hydraEvent({
               state: writer.state,
-              cardId: HYDRA_CARD,
+              cardId: TITAN_CARD,
               meta: {
                 at: at(),
                 actor,

@@ -1,15 +1,15 @@
-import { attachedImages } from '#hydra/images.ts'
+import { attachedImages } from '#titan/images.ts'
 import { acknowledgeSteering, recordSteeringAttempt } from './inbox.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from './steering.ts'
 import { steeringNotice } from './inbox-notice.ts'
 import { createHash, randomUUID } from 'node:crypto'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { join } from 'node:path'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import type { Card } from '#tasks/model.ts'
 import { sessionId } from './session-attachments.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import type { Live } from '#app/host-types.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -70,7 +70,7 @@ export function createSteeringDelivery({
     const claim = steeringClaim({ card })
 
     if (!claim) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'STALE_CLAIM',
         message: 'The task no longer has an active inbox assignment',
       })
@@ -80,7 +80,7 @@ export function createSteeringDelivery({
     const images = messages.flatMap(message => attachedImages({
       text: message.text,
       hydras: join(
-        pnyxHome(),
+        othrysHome(),
         'hydras',
       ),
     }))
@@ -185,7 +185,7 @@ export function createSteeringDelivery({
     message?: string
     attempt?: string
   }) => {
-    if (card.id === HYDRA_CARD
+    if (card.id === TITAN_CARD
       || steeringHeld({ card }) || activeCompaction({ card })) {
       return
     }

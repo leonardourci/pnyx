@@ -1,4 +1,4 @@
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { log } from '#app/diagnostics.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -11,13 +11,13 @@ import { readSteeringMessages } from './inbox-notice.ts'
 import { steeringClaim, steeringWorkerIdentity } from './steering.ts'
 import { cardSessionId } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { compactCommand } from './compact-command.ts'
 
 const ACTIVITY_READ_BYTES = 1024 * 1024
 
 export async function restoreSessionActivity({ hydraId }: { hydraId: string }): Promise<void> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   for (const session of Object.values(state.sessions ?? {})) {
     const path = session.agent.transcriptPath
@@ -80,7 +80,7 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
               }
 
               const resumed = parsed.messages.some(message => message.text.trim() === WORKER_RESUME
-                || message.text.startsWith('<pnyx-wake>A Pnyx server restart cut your last turn'))
+                || /^<(?:othrys|pnyx)-wake>A (?:Othrys|Pnyx) server restart cut your last turn/.test(message.text))
 
               if (resumed) {
                 readInstructions.clear()
@@ -233,7 +233,7 @@ function restoreInstructionReceipts({
 }): void {
   const card = writer.state.cards[session.taskId ?? '']
 
-  if (!card || card.id === HYDRA_CARD || cardSessionId({ card }) !== session.id) {
+  if (!card || card.id === TITAN_CARD || cardSessionId({ card }) !== session.id) {
     return
   }
 

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession, SteeringClaim, SteeringMessage, SteeringRecovery } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import type { NotificationResult } from './inbox-notice.ts'
 import { pendingSteering, sameClaim, steeringClaim } from './steering.ts'
@@ -19,14 +19,14 @@ const STEERING_RING_LIMIT = 3
 const STEERING_DEFERRAL_LIMIT = 2
 
 function oldestUnread({ card }: { card: Card }): SteeringMessage | undefined {
-  if (!liveTask({ card }) || card.id === HYDRA_CARD) {
+  if (!liveTask({ card }) || card.id === TITAN_CARD) {
     return undefined
   }
 
   return pendingSteering({ card })[0]
 }
 
-export function steeringToFollow({ state }: { state: HydraState }): boolean {
+export function steeringToFollow({ state }: { state: TitanState }): boolean {
   return Object.values(state.cards).some(card => {
     const message = oldestUnread({ card })
 
@@ -73,7 +73,7 @@ export async function followUpSteering({
   notify?: typeof notifySteering
   probe?({ session }: { session: AgentSession }): Presence
 }): Promise<void> {
-  const observed = loadHydra({ hydraId }).state
+  const observed = loadTitan({ hydraId }).state
 
   for (const previous of Object.values(observed.cards)) {
     const cardId = previous.id

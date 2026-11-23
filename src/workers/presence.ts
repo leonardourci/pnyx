@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { uptime } from 'node:os'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { AgentSession } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
 
@@ -118,7 +118,7 @@ export async function checkAttachments({
   state,
   probe = terminalPresence,
 }: {
-  state: HydraState
+  state: TitanState
   probe?({ session }: { session: AgentSession }): Presence | Promise<Presence>
 }) {
   const sessions = Object.values(state.sessions ?? {})
@@ -131,7 +131,7 @@ export async function checkAttachments({
     if (session.agent.host === 'pnyx') {
       presence = {
         state: 'present',
-        detail: 'Pnyx runs this agent; its next message resumes the session.',
+        detail: 'Othrys runs this agent; its next message resumes the session.',
       }
     } else {
       presence = await probe({ session })

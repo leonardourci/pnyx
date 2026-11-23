@@ -1,9 +1,9 @@
 import { readInput } from '#app/request-context.ts'
-import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
+import { TEMPLATE_NUDGE } from '#titan/digest.ts'
 import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-support.ts'
 import { ApplyError } from '#app/apply/schema.ts'
 import { parseApplyJson } from '#app/apply/json.ts'
-import { loadHydra, requireHydra } from '#app/store.ts'
+import { loadTitan, requireTitan } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { applyDispatch, DISPATCH_HELP_LINE, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
 import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from './dispatch-check.ts'
@@ -233,7 +233,7 @@ function parsedDocument({ json }: { json?: string }): unknown {
   try {
     return JSON.parse(json) as unknown
   } catch {
-    return invalid({ message: '--json must be a heads dispatch document; run `pnyx rule schema`' })
+    return invalid({ message: '--json must be a heads dispatch document; run `othrys rule schema`' })
   }
 }
 
@@ -272,10 +272,10 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'list') {
-    const { state } = loadHydra({ hydraId })
+    const { state } = loadTitan({ hydraId })
     const help = [
-      'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
-      'Run `pnyx rule show` for the editable document and its revision',
+      'Titan chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
+      'Run `othrys rule show` for the editable document and its revision',
     ]
 
     if (onTemplate()) {
@@ -365,11 +365,11 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   if (action === 'init') {
     return {
       ...initConfig({ meta: meta({ values }) }),
-      help: ['Fix login folders and remove unused accounts in Settings before starting workers; Pnyx stores no credentials'],
+      help: ['Fix login folders and remove unused accounts in Settings before starting workers; Othrys stores no credentials'],
     }
   }
 
-  requireHydra({ hydraId })
+  requireTitan({ hydraId })
   const document = savedDocument()
 
   if (action === 'accounts') {
@@ -503,7 +503,7 @@ async function accountCommand({ args }: { args: string[] }): Promise<Output> {
     }
   }
 
-  requireHydra({ hydraId })
+  requireTitan({ hydraId })
   const key = checkedName({
     value: required({
       value: positionals[1],

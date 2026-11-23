@@ -1,4 +1,4 @@
-// Each harness Pnyx runs: its provider id in agent records, the name people see, how its skills are invoked
+// Each harness Othrys runs: its provider id in agent records, the name people see, how its skills are invoked
 // and the ask mode it runs in when none is set.
 export const PROVIDERS = {
   claude: {

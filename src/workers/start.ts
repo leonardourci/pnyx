@@ -9,17 +9,17 @@ import { dispatchTask, ruleCandidates, startCandidates, type DispatchChoice, typ
 import { modelIds, type ModelOption } from './provider.ts'
 import { effectiveDispatch } from './dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { checkRevision, findCard } from '#tasks/push-rules.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { HydraError } from '#store/errors.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { taskFolder } from '#projects/copy-create.ts'
 import type { Harness } from '#workers/providers.ts'
 import { canonical } from '#store/paths.ts'
 import { askHost } from '#app/server-state.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import type { Output } from '#app/cli-support.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -51,7 +51,7 @@ export function startRoute({
   const chosen = via ?? 'pnyx'
 
   if (!(VIAS as readonly string[]).includes(chosen)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unknown start route: ${chosen}`,
       code: 'VALIDATION_ERROR',
       help: [`Use --via ${VIAS.join('|')}`],
@@ -61,30 +61,30 @@ export function startRoute({
   const how = chosen as Via
 
   if (commandName && how !== 'command') {
-    throw new HydraError({
+    throw new TitanError({
       message: '--command needs --via command',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (replacement && how !== 'pnyx') {
-    throw new HydraError({
-      message: 'starting fresh from an outside session uses Pnyx',
+    throw new TitanError({
+      message: 'starting fresh from an outside session uses Othrys',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (override && how === 'command') {
-    throw new HydraError({
-      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx starts',
+    throw new TitanError({
+      message: '--account, --model, --effort, --mode and --fast apply to an agent Othrys starts',
       code: 'VALIDATION_ERROR',
-      help: ['Use --via pnyx'],
+      help: ['Use --via othrys'],
     })
   }
 
   if (tools?.length && how !== 'pnyx') {
-    throw new HydraError({
-      message: 'Tool grants require the pnyx launch route',
+    throw new TitanError({
+      message: 'Tool grants require the othrys launch route',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -96,7 +96,7 @@ export function startRecorded({
   state,
   id,
 }: {
-  state: HydraState
+  state: TitanState
   id: string
 }): boolean {
   return [
@@ -115,7 +115,7 @@ function queuedRefusal({
   task: string
   session: string
 }) {
-  return new HydraError({
+  return new TitanError({
     message: `task ${task} is queued behind worker ${session}`,
     code: 'CONFLICT',
     help: [`Remove ${task} from the queue in the UI before giving it its own worker.`],
@@ -129,11 +129,11 @@ function requireLiveTask({
   card: Card
   ref: string
 }): void {
-  if (card.id === HYDRA_CARD) {
-    throw new HydraError({
+  if (card.id === TITAN_CARD) {
+    throw new TitanError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Use pnyx board'],
+      help: ['Use othrys board'],
     })
   }
 
@@ -150,7 +150,7 @@ export function freeTask({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): Card {
   const card = findCard({
@@ -171,17 +171,17 @@ export function freeTask({
   }
 
   if (card.sessionIds?.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: `task ${card.id} already has an attached agent: ${card.sessionIds.join(', ')}`,
       code: 'SESSION_CONFLICT',
-      help: [`Detach the worker in the UI or reply with \`pnyx send --task ${card.id} --text "<message>"\``],
+      help: [`Detach the worker in the UI or reply with \`othrys send --task ${card.id} --text "<message>"\``],
     })
   }
 
   return card
 }
 
-// The harness catalogs the Hydra's server reads; one it cannot read is left out, so its models are not checked.
+// The harness catalogs the Titan's server reads; one it cannot read is left out, so its models are not checked.
 async function hostedOffers({
   hydraId,
   harnesses,
@@ -202,7 +202,7 @@ async function hostedOffers({
       }) as { models: ModelOption[] }
       offers[harness] = modelIds({ models })
     } catch (error) {
-      if (error instanceof HydraError && error.code === 'NOT_RUNNING') {
+      if (error instanceof TitanError && error.code === 'NOT_RUNNING') {
         throw error
       }
     }
@@ -256,7 +256,7 @@ async function steerAttached({
     } : {}),
   }
   const help = [
-    `Reply with \`pnyx send --task ${card.id} --text "<message>"\``,
+    `Reply with \`othrys send --task ${card.id} --text "<message>"\``,
     'Detach the worker in the UI before starting a new one',
   ]
 
@@ -288,7 +288,7 @@ async function steerAttached({
       help,
     }
   } catch (error) {
-    if (!(error instanceof HydraError) || error.code !== 'NO_ROUTE') {
+    if (!(error instanceof TitanError) || error.code !== 'NO_ROUTE') {
       throw error
     }
 
@@ -321,7 +321,7 @@ function leaseOrWait({
       }),
     }
   } catch (error) {
-    const otherTurn = error instanceof HydraError && error.code === 'TASK_LEASED' && !copySettling({
+    const otherTurn = error instanceof TitanError && error.code === 'TASK_LEASED' && !copySettling({
       hydraId,
       task,
     })
@@ -397,7 +397,7 @@ async function noteOpen({
   await noteOnce({
     hydraId,
     task,
-    source: 'pnyx:start',
+    source: 'othrys:start',
     text: [
       'Started with these still open:',
       ...open.map(item => `- ${item.reason}. ${item.clear}`),
@@ -444,7 +444,7 @@ export async function startTask({
     override,
     tools,
   })
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = findCard({
     state,
     ref: task,
@@ -523,7 +523,7 @@ export async function startTask({
       started: Output
       unqueued?: string
     }): Promise<Output> => {
-      const current = loadHydra({ hydraId }).state
+      const current = loadTitan({ hydraId }).state
       const open = startBlockers({
         state: current,
         card: findCard({
@@ -663,7 +663,7 @@ export async function startTask({
       unqueued,
     })
   } catch (error) {
-    if (error instanceof HydraError && error.code === 'TASK_STARTING') {
+    if (error instanceof TitanError && error.code === 'TASK_STARTING') {
       return {
         task: card.id,
         launch: 'pending',

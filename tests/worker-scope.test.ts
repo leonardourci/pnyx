@@ -6,12 +6,12 @@ import { join } from 'node:path'
 import { WAIT_MS } from './setup/until.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { CLI, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, operation, startOthrys, until, type AgentSession, type Titan, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
-let hydra: Hydra
+let othrys: Othrys
+let hydra: Titan
 let worker: AgentSession
-let asWorker: ReturnType<Hydra['as']>
+let asWorker: ReturnType<Titan['as']>
 let mine: { id: string }
 
 const settingsOf = async () => (await hydra.owner({
@@ -24,8 +24,8 @@ const settingsOf = async () => (await hydra.owner({
 const statusOfOther = async () => (await hydra.task({ key: 'other' })).status as string
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
-  hydra = await pnyx.hydra()
+  othrys = await startOthrys()
+  hydra = await othrys.hydra()
   ;({ worker } = await hydra.startTask({ key: 'mine' }))
   await hydra.owner({
     args: [
@@ -48,11 +48,11 @@ beforeAll(async () => {
 const commandWorkerEnv = (): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = {
     ...worker.env,
-    PNYX_TASK: mine.id,
-    PNYX_ROLE: 'worker',
+    OTHRYS_TASK: mine.id,
+    OTHRYS_ROLE: 'worker',
   }
-  delete env.PNYX_ACTOR
-  delete env.PNYX_STEERING_WORKER
+  delete env.OTHRYS_ACTOR
+  delete env.OTHRYS_STEERING_WORKER
 
   return env
 }
@@ -60,7 +60,7 @@ const commandWorkerEnv = (): NodeJS.ProcessEnv => {
 test(
   'workers change other tasks and settings, with notices instead of scope refusals',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'writer' })
     await hydra.owner({
       args: [
@@ -135,7 +135,7 @@ test(
       ]))
 
       for (const notice of output.notices) {
-        expect(notice.clear).not.toMatch(/\bpnyx-axi\b/)
+        expect(notice.clear).not.toMatch(/\bothrys-axi\b/)
       }
     }
 
@@ -170,7 +170,9 @@ test(
         target.id,
       ],
     })
-    expect(history.events).toContainEqual(expect.objectContaining({ actor: worker.env.PNYX_ACTOR }))
+    expect(history.events).toContainEqual(expect.objectContaining({
+      actor: worker.env.OTHRYS_ACTOR,
+    }))
     const dispatchBefore = await hydra.owner({
       args: [
         'rule',
@@ -340,7 +342,7 @@ test(
         'manual-result',
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     const unread = await hydra.owner({
       args: [
         'task',
@@ -369,7 +371,7 @@ test(
     })
     expect(handledSource.result.handled).toBeDefined()
     expect(handledSource.notices).toContainEqual(expect.objectContaining({ reason: expect.stringContaining('before its steering message') }))
-    await pnyx.restart()
+    await othrys.restart()
     expect((await hydra.owner({
       args: [
         'task',
@@ -417,7 +419,7 @@ test(
       ],
     })
     const taskLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -441,14 +443,14 @@ test(
       check: () => records().find(record => record.event?.type === 'card.replied'
         && record.event.data.reply.startsWith(`source-notice:${result.message}:`))?.event.data.text,
     })
-    expect(notice).toContain('Pnyx steering inbox has pending instruction IDs ')
+    expect(notice).toContain('Othrys steering inbox has pending instruction IDs ')
     expect(notice).toContain(result.message)
     expect(notice).not.toContain('SOURCE-CALLER-PAYLOAD')
     await until({
       what: 'the source notification to reach its assigned worker',
       check: () => sourceWorker.received.some(text => text.includes(notice)),
     })
-    const command = notice.match(/^pnyx task ack .+$/m)?.[0]
+    const command = notice.match(/^othrys task ack .+$/m)?.[0]
 
     if (!command) {
       throw new Error(`The source notice has no acknowledgement command: ${notice}`)
@@ -458,13 +460,13 @@ test(
       '/bin/sh',
       [
         '-c',
-        `pnyx() { "$PNYX_TEST_NODE" "$PNYX_TEST_CLI" "$@"; }\n${command} --json`,
+        `othrys() { "$OTHRYS_TEST_NODE" "$OTHRYS_TEST_CLI" "$@"; }\n${command} --json`,
       ],
       {
         env: {
           ...sourceWorker.env,
-          PNYX_TEST_NODE: process.execPath,
-          PNYX_TEST_CLI: CLI,
+          OTHRYS_TEST_NODE: process.execPath,
+          OTHRYS_TEST_CLI: CLI,
         },
         timeout: WAIT_MS,
       },
@@ -518,7 +520,7 @@ test(
   'a worker without a task identity proceeds with a notice and can record an explicit worker actor',
   async () => {
     const env = { ...worker.env }
-    delete env.PNYX_ACTOR
+    delete env.OTHRYS_ACTOR
     const asUnnamed = hydra.as({
       session: worker,
       env,
@@ -586,13 +588,13 @@ test(
 )
 
 test(
-  'a worker can stop another worker or Hydra and receives the result with a notice',
+  'a worker can stop another worker or Titan and receives the result with a notice',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker: caller } = await hydra.startTask({ key: 'caller' })
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       partial: 'Working',
       hold: true,
     })
@@ -635,7 +637,7 @@ test(
     expect(stopped.stopped).toMatch(/^task-/)
     expect(stopped.notices).toBeDefined()
     expect((await hydra.task({ key: 'target' })).status).toBe('ended')
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       text: 'Look at the result',
       partial: 'Looking',
@@ -654,7 +656,7 @@ test(
 )
 
 test(
-  'a worker\'s own question, link, progress message and sources work, and it reads any task, Hydra and setting',
+  'a worker\'s own question, link, progress message and sources work, and it reads any task, Titan and setting',
   async () => {
     await workerLine({
       hydra,
@@ -746,7 +748,7 @@ test(
       const run = await operation({
         args: [
           ...args,
-          '--hydra',
+          '--titan',
           hydra.id,
         ],
         env: worker.env,
@@ -760,21 +762,21 @@ test(
 )
 
 test(
-  'Hydra and the owner keep their rights over other tasks and settings',
+  'Titan and the owner keep their rights over other tasks and settings',
   async () => {
     const session = await hydra.chat({ text: 'Pause the other task and make the text bigger.' })
-    const asHydra = hydra.as({ session })
-    await asHydra.run({
+    const asTitan = hydra.as({ session })
+    await asTitan.run({
       args: [
         'task',
         'hold',
         'other',
         '--reason',
-        'Hydra paused it',
+        'Titan paused it',
       ],
     })
     expect(await statusOfOther()).toBe('on hold')
-    await asHydra.run({
+    await asTitan.run({
       args: [
         'settings',
         'set',

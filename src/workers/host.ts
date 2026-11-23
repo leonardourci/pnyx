@@ -4,7 +4,7 @@ import { sessionId } from './session-attachments.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { taskDone } from '#tasks/select.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { readChanges, scanChanges } from '#app/event-log.ts'
 
 export const SETTINGS = [
@@ -19,26 +19,26 @@ export const IDLE_MS = 10 * 60 * 1000
 // A wake waits this long so a worker's declaration and finished turn share one check turn.
 export const WAKE_MS = 5000
 
-// A request left pending or a working worker quiet this long wakes Hydra again.
+// A request left pending or a working worker quiet this long wakes Titan again.
 export const STALL_MS = 240_000
 
 // A worker inside one tool call, such as a long test run, is busy rather than quiet for up to this long.
 export const BUSY_MS = 60 * 60 * 1000
 
-// A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
+// A stall still there after Titan's turn wakes it again, each time after twice the last wait, up to this.
 export const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
 
-// How much of a message Hydra's Not confirmed wake quotes.
+// How much of a message Titan's Not confirmed wake quotes.
 export const UNCONFIRMED_QUOTE_CHARS = 80
 
-export const HYDRA_TURN_POLL_MS = 20
+export const TITAN_TURN_POLL_MS = 20
 
-export const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
+export const WORKER_RESUME = 'Othrys restarted during your turn; continue from where you stopped.'
 
 export { WORKER_COMMANDS } from '#app/command-registry.ts'
 
 // The agent must not inherit the server's terminal, task or actor.
-export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
+export const INHERITED = /^(OTHRYS_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 // A branch a worker creates from a remote branch must not track it, or a plain push under `push.default=upstream` lands there.
 export function untrackedBranches({ env }: { env: NodeJS.ProcessEnv }): Record<string, string> {
@@ -52,7 +52,7 @@ export function untrackedBranches({ env }: { env: NodeJS.ProcessEnv }): Record<s
   }
 }
 
-// Hooks report settings of their own, such as the client version or the effort in use; only what Pnyx chooses calls for a new session.
+// Hooks report settings of their own, such as the client version or the effort in use; only what Othrys chooses calls for a new session.
 export function sameChosenSettings({
   current,
   chosen,
@@ -83,12 +83,12 @@ export function resumesInARow({
   turn,
   read,
 }: {
-  turn: HydraEvent
-  read({ seq }: { seq: number }): HydraEvent | undefined
+  turn: TitanEvent
+  read({ seq }: { seq: number }): TitanEvent | undefined
 }): number {
   let count = 0
 
-  for (let current: HydraEvent | undefined = turn; current?.id.startsWith('resume:');) {
+  for (let current: TitanEvent | undefined = turn; current?.id.startsWith('resume:');) {
     count++
     const resumed: number = Number(current.id.split(':')[1])
     current = read({ seq: resumed })
@@ -104,7 +104,7 @@ export function findWorkerTurnToResume({
   agent,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   agent: AgentRef
 }): string | undefined {
   const workerSession = sessionId({ agent })
@@ -141,7 +141,7 @@ export function findWorkerTurnToResume({
       return fields?.agent !== undefined
         && sessionId({ agent: fields.agent }) === sessionId({ agent })
     })
-  const currentTurn: HydraEvent[] = []
+  const currentTurn: TitanEvent[] = []
   let boundary: number | undefined
 
   for (const event of observations) {
@@ -193,9 +193,9 @@ export function findWorkerTurnToResume({
 
 export const closedByWorker = ({ card }: { card: Card }) => card.workerLog?.status?.code === 'done' && !card.hidden && card.copy?.state !== 'removed'
 
-// A saved tool change that may reach its pnyx-hosted agent now; Hydra's own card applies one even when closed.
+// A saved tool change that may reach its othrys-hosted agent now; Titan's own card applies one even when closed.
 export const toolApplicationReady = ({ card }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }) =>
   card.agent?.host === 'pnyx' && card.toolsRevision !== undefined
@@ -205,7 +205,7 @@ export function closedTask({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): boolean {
   return card.hidden === true || taskDone({

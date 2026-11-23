@@ -6,12 +6,12 @@ import { applyDecision } from '#app/decision.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Host, Live } from '#app/host-types.ts'
-import type { HydraState } from '#app/model.ts'
-import { loadHydra } from '#app/store.ts'
+import type { TitanState } from '#app/model.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { recordContext } from '#hydra/file-context.ts'
-import { HydraError } from '#store/errors.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { recordContext } from '#titan/file-context.ts'
+import { TitanError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { candidateIssues } from './dispatch-check.ts'
@@ -36,14 +36,14 @@ export function validateCardInput({
   if (!ownerActor({ actor })) {
     inform({
       reason: 'Message sent from a card by an agent',
-      clear: 'pnyx send --task <task> --text "<message>"',
+      clear: 'othrys send --task <task> --text "<message>"',
     })
   }
 
   const issues = candidateIssues({ value: [agent] })
 
   if (!text.trim() || issues.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: issues[0]?.problem ?? 'Message is empty',
       code: 'VALIDATION_ERROR',
     })
@@ -85,7 +85,7 @@ export async function queueCardInput({
           known.worker?.agent,
           agent,
         )) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'This message ID belongs to another send',
             code: 'CONFLICT',
           })
@@ -130,9 +130,9 @@ export async function queueCardInput({
 }
 
 function requireCardInputTarget({ card }: { card: Card }) {
-  if (card.id === HYDRA_CARD) {
-    throw new HydraError({
-      message: 'Choose a task rather than the Hydra',
+  if (card.id === TITAN_CARD) {
+    throw new TitanError({
+      message: 'Choose a task rather than the Titan',
       code: 'CONFLICT',
     })
   }
@@ -156,8 +156,8 @@ function requireCardInputTarget({ card }: { card: Card }) {
   const outside = !!card.sessionIds?.length && card.agent?.host !== 'pnyx'
 
   if (outside) {
-    throw new HydraError({
-      message: 'Continue this worker in Pnyx before changing its agent',
+    throw new TitanError({
+      message: 'Continue this worker in Othrys before changing its agent',
       code: 'NO_ROUTE',
     })
   }
@@ -374,7 +374,7 @@ export function createCardInputs({
     }
   }
 
-  const reconcile = ({ state }: { state: HydraState }) => {
+  const reconcile = ({ state }: { state: TitanState }) => {
     for (const card of Object.values(state.cards)) {
       const reply = card.replies?.find(saved => waitingCardInput({ reply: saved }))
 
@@ -385,7 +385,7 @@ export function createCardInputs({
       sending.add(card.id)
       // Reconcile can run while a writer is open; sends begin after that transaction commits.
       setImmediate(() => {
-        const current = loadHydra({ hydraId }).state.cards[card.id]
+        const current = loadTitan({ hydraId }).state.cards[card.id]
 
         if (!current || current.replies?.find(saved => saved.id === reply.id)?.state !== 'queued') {
           sending.delete(card.id)

@@ -57,7 +57,7 @@ export type ReplyRoute = { kind: 'pnyx' } | TerminalRoute
 export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'tmux': 'tmux',
   'herdr': 'Herdr',
-  'pnyx': 'Pnyx',
+  'pnyx': 'Othrys',
   'iterm2': 'iTerm2',
   'terminal-app': 'Terminal',
 }
@@ -110,13 +110,13 @@ export function replyRoute({ card }: { card: Card }): { route: ReplyRoute } | { 
   const t = card.terminal
 
   if (!t) {
-    return { reason: 'No terminal is recorded for this session yet. Re-run `pnyx setup hooks` to enable typing into sessions; a session then records its terminal when it starts or takes a prompt.' }
+    return { reason: 'No terminal is recorded for this session yet. Re-run `othrys setup hooks` to enable typing into sessions; a session then records its terminal when it starts or takes a prompt.' }
   }
 
   const found = host({ facts: t })
 
   if (!found) {
-    return { reason: `Pnyx cannot type into ${t.program ?? 'this terminal'}. Supported: tmux, Herdr, iTerm2 and Terminal.` }
+    return { reason: `Othrys cannot type into ${t.program ?? 'this terminal'}. Supported: tmux, Herdr, iTerm2 and Terminal.` }
   }
 
   if (!t.tty || !t.pid) {

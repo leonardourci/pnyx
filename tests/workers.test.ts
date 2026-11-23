@@ -1,4 +1,4 @@
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { taskChildren } from '#app/task-runtime.ts'
 import { localToken } from '#app/server-state.ts'
 import { foldWorkerLog } from '#workers/worker-log.ts'
@@ -14,12 +14,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { base } from '#app/command-meta.ts'
-import type { HydraState } from '#app/model.ts'
-import { emptyHydra, replayOwned } from '#app/reducer.ts'
+import type { TitanState } from '#app/model.ts'
+import { emptyTitan, replayOwned } from '#app/reducer.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applySessionMove } from '#workers/reduce.ts'
 import { applySessionFacts } from '#workers/session-facts.ts'
-import { inbox } from '#hydra/update-queue.ts'
+import { inbox } from '#titan/update-queue.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { WORKER_RESUME } from '#workers/host.ts'
 import { claudeProvider } from '#workers/claude.ts'
@@ -28,7 +28,7 @@ import { codexProcesses } from '#workers/codex-processes.ts'
 import { confirms, findOption, harnessControls } from '#workers/controls.ts'
 import type { HostedEvent, HostedSession } from '#workers/provider.ts'
 import { fakeClaude, fakeCodex } from './setup/agents.ts'
-import { CLI, pnyx as runPnyx, parsed, operation, startPnyx, until, type AgentSession, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, othrys as runOthrys, parsed, operation, startOthrys, until, type AgentSession, type Titan, type Othrys } from './setup/othrys.ts'
 
 const REPLY_ID = '0b9e6a52-3c1d-4c8f-9a51-2f7f1d3c6e10'
 
@@ -44,10 +44,10 @@ vi.mock(
   },
 )
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx({
+  othrys = await startOthrys({
     codexConfig: {
       features: {
         apps: true,
@@ -70,7 +70,7 @@ test(
   'replaying an attachment to a missing or occupied task preserves its sessions and undo state',
   () => {
     const session = 'codex:worker'
-    const state: HydraState = {
+    const state: TitanState = {
       v: EVENT_VERSION,
       seq: 0,
       cards: {},
@@ -198,9 +198,9 @@ test(
 )
 
 test(
-  'Hydra delivery remembers the latest finished boundary after a completed turn',
+  'Titan delivery remembers the latest finished boundary after a completed turn',
   () => {
-    const state = emptyHydra()
+    const state = emptyTitan()
     const agent = {
       provider: 'codex',
       sessionId: 'hydra',
@@ -268,7 +268,7 @@ test(
       host: 'pnyx',
     } as const
     const session = 'codex:cut'
-    const state: HydraState = {
+    const state: TitanState = {
       v: EVENT_VERSION,
       seq: 5,
       cards: {},
@@ -354,7 +354,7 @@ test(
 test(
   'replaying an undone task edit with an earlier session records its undo',
   () => {
-    const state: HydraState = {
+    const state: TitanState = {
       v: EVENT_VERSION,
       seq: 0,
       cards: {},
@@ -421,7 +421,7 @@ test(
 test(
   'a reused provider session keeps its current worker and a retry starts the requested task',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({
       key: 'original-worker',
       harness: 'codex',
@@ -448,7 +448,7 @@ test(
       '--event-id',
       'reused-provider',
     ]
-    pnyx.codex.reuseNextSession({ id: worker.id })
+    othrys.codex.reuseNextSession({ id: worker.id })
     const pending = await hydra.owner({ args })
     expect(pending).toMatchObject({
       task,
@@ -463,7 +463,7 @@ test(
     await hydra.owner({ args })
     const next = await until({
       what: 'the retry to start a fresh worker',
-      check: () => pnyx.codex.sessions.find(session =>
+      check: () => othrys.codex.sessions.find(session =>
         session.cwd === folder && !session.closed && session.answered === 1),
     })
     expect(next.id).not.toBe(worker.id)
@@ -488,7 +488,7 @@ test(
 test(
   'a detached hosted worker finishes without changing its old task and keeps its activity after restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'detached-worker' })
     await hydra.owner({
       args: [
@@ -503,7 +503,7 @@ test(
         folder,
       ],
     })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: hydra.id,
       partial: 'Still checking the export',
       hold: true,
@@ -518,7 +518,7 @@ test(
     })
     const worker = await hydra.agent({ cwd: folder })
     const session = `claude-code:${worker.id}`
-    const activity = () => (loadHydra({
+    const activity = () => (loadTitan({
       hydraId: hydra.id,
     }).state.sessions?.[session]?.sessionActivity)
     await until({
@@ -539,7 +539,7 @@ test(
       check: () => activity() === 'finished',
     })
     expect((await hydra.task({ key: 'detached-worker' })).worker).toMatch(/^none(?::|$)/)
-    await pnyx.restart()
+    await othrys.restart()
     expect(activity()).toBe('finished')
     expect((await hydra.task({ key: 'detached-worker' })).worker).toMatch(/^none(?::|$)/)
   },
@@ -552,7 +552,7 @@ test(
     onTestFinished(() => {
       delete process.env.PASEO_PASSWORD
     })
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker: codex } = await hydra.startTask({
       key: 'native-codex',
       harness: 'codex',
@@ -560,7 +560,7 @@ test(
     expect(codex.env.PASEO_PASSWORD).toBeUndefined()
     expect(codex.env.CODEX_HOME).toBe(join(
       process.env.TMPDIR!,
-      'pnyx-run',
+      'othrys-run',
       'codex-login',
     ))
     expect(codex.config).not.toHaveProperty('features.apps')
@@ -637,7 +637,7 @@ test(
     })
     const browser = await until({
       what: 'browser selection to reach the resumed worker',
-      check: () => pnyx.codex.sessions.find(session =>
+      check: () => othrys.codex.sessions.find(session =>
         session.resumed && session.cwd === codex.cwd && session.env.CHROME_DEVTOOLS_AXI_SESSION),
     })
     expect(browser.env.CHROME_DEVTOOLS_AXI_HEADED).toBe('0')
@@ -651,7 +651,7 @@ test(
 test(
   'Codex routine helpers still disable configured services, skills and web search',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'hydra',
@@ -664,7 +664,7 @@ test(
     })
     const main = await hydra.chat({ text: 'Watch native helper scope' })
     await until({
-      what: 'Hydra first turn',
+      what: 'Titan first turn',
       check: () => main.answered === 1,
     })
     const retiredSkills = [
@@ -701,8 +701,8 @@ test(
     })
     const helper = await until({
       what: 'server-started Codex routine helper',
-      check: () => pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === hydra.id
-        && session.env.PNYX_ACTOR?.startsWith('helper:') && session.answered > 0),
+      check: () => othrys.codex.sessions.find(session => session.env.OTHRYS_TITAN === hydra.id
+        && session.env.OTHRYS_ACTOR?.startsWith('helper:') && session.answered > 0),
     })
 
     for (const folder of retiredSkills) {
@@ -742,7 +742,7 @@ const times = ({
 test(
   'a started worker runs in its task\'s folder with its brief, and each owner reply reaches it once under the owner\'s id with a delivered receipt and shows once in the task\'s chat',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const {
       folder,
       worker,
@@ -751,10 +751,10 @@ test(
     })
     expect(worker.cwd).toBe(folder)
     expect(worker.env).toMatchObject({
-      PNYX_HYDRA: hydra.id,
-      PNYX_HOME: process.env.PNYX_HOME,
+      OTHRYS_TITAN: hydra.id,
+      OTHRYS_HOME: process.env.OTHRYS_HOME,
     })
-    expect(worker.received[0]).toContain(`<pnyx-worker task="${(await hydra.owner({
+    expect(worker.received[0]).toContain(`<othrys-worker task="${(await hydra.owner({
       args: [
         'task',
         'show',
@@ -815,8 +815,8 @@ test(
 test(
   'moving a native worker preserves its session, pending permission and later message delivery',
   async () => {
-    const target = await pnyx.hydra()
-    const source = await pnyx.hydra()
+    const target = await othrys.hydra()
+    const source = await othrys.hydra()
     const {
       worker,
       folder,
@@ -934,9 +934,9 @@ test(
         ],
       })
       await until({
-        what: 'the source Hydra unmounts without closing the moved worker',
+        what: 'the source Titan unmounts without closing the moved worker',
         check: async () => {
-          const response = await fetch(`http://127.0.0.1:${pnyx.port()}/health`)
+          const response = await fetch(`http://127.0.0.1:${othrys.port()}/health`)
           const health = await response.json() as { hydras: string[] }
 
           return !health.hydras.includes(source.id)
@@ -947,11 +947,11 @@ test(
       expect(child.signalCode).toBeNull()
 
       for (const actor of [
-        worker.env.PNYX_ACTOR,
+        worker.env.OTHRYS_ACTOR,
         'worker:',
       ]) {
         const response = await fetch(
-          `http://127.0.0.1:${pnyx.port()}/api/run`,
+          `http://127.0.0.1:${othrys.port()}/api/run`,
           {
             method: 'POST',
             headers: {
@@ -965,10 +965,10 @@ test(
               ],
               cwd: folder,
               env: {
-                PNYX_ACTOR: actor,
-                PNYX_TASK: task.id,
-                PNYX_HYDRA: source.id,
-                PNYX_STEERING_WORKER: worker.env.PNYX_STEERING_WORKER,
+                OTHRYS_ACTOR: actor,
+                OTHRYS_TASK: task.id,
+                OTHRYS_TITAN: source.id,
+                OTHRYS_STEERING_WORKER: worker.env.OTHRYS_STEERING_WORKER,
               },
             }),
           },
@@ -985,7 +985,7 @@ test(
 
       appendFileSync(
         join(
-          worker.env.PNYX_TASK_DIR!,
+          worker.env.OTHRYS_TASK_DIR!,
           'worker.log',
         ),
         'note: reported after the source was removed\n',
@@ -1027,14 +1027,14 @@ test(
           'reply',
           task.id,
           '--text',
-          'Continue on the destination Hydra',
+          'Continue on the destination Titan',
         ],
       })
       await until({
         what: 'the original worker receives the destination message',
-        check: () => worker.received.some(text => text.includes('Continue on the destination Hydra')),
+        check: () => worker.received.some(text => text.includes('Continue on the destination Titan')),
       })
-      expect(worker.received.filter(text => text.includes('Continue on the destination Hydra'))).toHaveLength(1)
+      expect(worker.received.filter(text => text.includes('Continue on the destination Titan'))).toHaveLength(1)
       await until({
         what: 'the destination records the moved worker acknowledgement',
         check: async () => (await target.owner({
@@ -1049,7 +1049,7 @@ test(
             text: string
             ack?: unknown
           }) =>
-            message.text === 'Continue on the destination Hydra' && message.ack !== undefined),
+            message.text === 'Continue on the destination Titan' && message.ack !== undefined),
       })
       expect(worker.closed).toBe(false)
       expect((await target.owner({
@@ -1095,11 +1095,11 @@ test(
 test(
   'moving a compacting worker keeps its held message until the original session finishes compaction',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const key = 'moving-compaction'
     const { worker } = await source.startTask({ key })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: source.id,
       text: '/compact',
       compacting: true,
@@ -1189,7 +1189,7 @@ test(
 test(
   'a worker\'s permission request waits on its card until the owner decides it once, and the worker gets that decision',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({
       key: 'cleanup',
     })
@@ -1228,9 +1228,9 @@ test(
       session: worker,
       env: {
         ...worker.env,
-        PNYX_ACTOR: `session:${request.session}`,
-        PNYX_TASK: undefined,
-        PNYX_STEERING_WORKER: undefined,
+        OTHRYS_ACTOR: `session:${request.session}`,
+        OTHRYS_TASK: undefined,
+        OTHRYS_STEERING_WORKER: undefined,
       },
     })
     expect((await asSession.refused({
@@ -1270,7 +1270,7 @@ test(
           cwd: hydra.folder({ name: 'outside-self-approval' }),
         },
         terminal: {
-          tmux: '/tmp/pnyx-outside-test',
+          tmux: '/tmp/othrys-outside-test',
           tmuxPane: '%9',
           tty: '/dev/ttys99999',
           pid: '999999',
@@ -1289,9 +1289,9 @@ test(
       session: worker,
       env: {
         ...worker.env,
-        PNYX_ACTOR: 'session:claude-code:outside-self-approval',
-        PNYX_TASK: undefined,
-        PNYX_STEERING_WORKER: undefined,
+        OTHRYS_ACTOR: 'session:claude-code:outside-self-approval',
+        OTHRYS_TASK: undefined,
+        OTHRYS_STEERING_WORKER: undefined,
       },
     })
     expect((await outsideActor.refused({
@@ -1515,7 +1515,7 @@ else {
 test(
   'a worker turn a restart cuts resumes in the same session, the owner\'s message interrupts and is delivered once, and the chat shows only that message as the owner\'s, with or without the session named',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'migration' })
     await hydra.owner({
       args: [
@@ -1530,9 +1530,9 @@ test(
         folder,
       ],
     })
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       reply: 'Migration finished.',
       partial: 'Migration',
       hold: true,
@@ -1545,7 +1545,7 @@ test(
       ],
     })
     const cut = await hydra.agent({ cwd: folder })
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Also migrate the archive'),
       partial: 'Archive migration',
@@ -1564,10 +1564,11 @@ test(
       what: 'the worker to take the owner input',
       check: () => cut.received.some(text => text.includes('Also migrate the archive')),
     })
-    await pnyx.restart()
+    await othrys.restart()
     const resumed = await until({
       what: 'the worker to resume after the restart',
-      check: () => pnyx.claude.sessions.find(session => session.cwd === folder && session.resumed),
+      check: () => othrys.claude.sessions.find(session =>
+        session.cwd === folder && session.resumed),
     })
     const inbox = await hydra.as({ session: resumed }).run({
       args: [
@@ -1588,7 +1589,7 @@ test(
     })).messages).toMatch(/^none:/)
 
     expect(resumed.id).toBe(cut.id)
-    expect(resumed.received[0]).toContain('Pnyx restarted')
+    expect(resumed.received[0]).toContain('Othrys restarted')
 
     for (const named of [
       [],
@@ -1612,7 +1613,7 @@ test(
         .map(entry => entry.text)).toEqual(['Also migrate the archive'])
     }
 
-    const sessions = pnyx.claude.sessions.filter(session => session.cwd === folder)
+    const sessions = othrys.claude.sessions.filter(session => session.cwd === folder)
     expect(sessions).toHaveLength(2)
     expect(times({
       sessions,
@@ -1620,7 +1621,7 @@ test(
     })).toBe(1)
     expect(times({
       sessions,
-      text: '<pnyx-worker',
+      text: '<othrys-worker',
     })).toBe(1)
   },
 )
@@ -1628,12 +1629,12 @@ test(
 test(
   'a completed resume and ID-only inbox notice leave an interrupted instruction unread across restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const {
       folder,
       worker,
     } = await hydra.startTask({ key: 'unread-notice' })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Keep this instruction unread'),
       partial: 'Starting',
@@ -1652,10 +1653,10 @@ test(
       what: 'the instruction to reach the interrupted turn',
       check: () => worker.received.some(text => text.includes('Keep this instruction unread')),
     })
-    const state = loadHydra({ hydraId: hydra.id }).state
+    const state = loadTitan({ hydraId: hydra.id }).state
     const task = state.cards[state.keys['unread-notice']!]!
     const path = task.agent!.transcriptPath!
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         const at = new Date().toISOString()
         appendFileSync(
@@ -1683,7 +1684,7 @@ test(
       },
     })
     const log = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -1700,11 +1701,11 @@ test(
       && record.event.data.message.text === 'Keep this instruction unread')
     expect(queued).toBeDefined()
     const message = queued.event.data.message
-    const notice = pnyx.claude.sessions.filter(session => session.cwd === folder)
+    const notice = othrys.claude.sessions.filter(session => session.cwd === folder)
       .flatMap(session => session.received)
-      .find(text => text.startsWith('Pnyx steering inbox has pending instruction IDs '))
+      .find(text => text.startsWith('Othrys steering inbox has pending instruction IDs '))
     expect(notice).toContain(message.id)
-    expect(notice).toContain('pnyx task ack')
+    expect(notice).toContain('othrys task ack')
     expect(notice).not.toContain('Keep this instruction unread')
     expect(records().filter(record => record.event?.type === 'task.steering.handled')).toEqual([])
     const args = [
@@ -1716,7 +1717,7 @@ test(
       message.queuedFor.session,
       '--generation',
       JSON.stringify(message.queuedFor.generation),
-      '--hydra',
+      '--titan',
       hydra.id,
       '--json',
     ]
@@ -1725,29 +1726,29 @@ test(
       '',
       'another-launch',
     ]) {
-      const refused = await runPnyx({
+      const refused = await runOthrys({
         args,
         env: {
           ...worker.env,
-          PNYX_STEERING_WORKER: identity,
+          OTHRYS_STEERING_WORKER: identity,
         },
       })
       expect(refused.status).not.toBe(0)
       expect(JSON.parse(refused.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
     }
 
-    const command = notice!.match(/^pnyx task ack .+$/m)![0]
+    const command = notice!.match(/^othrys task ack .+$/m)![0]
     const acknowledged = await promisify(execFile)(
       '/bin/sh',
       [
         '-c',
-        `pnyx() { "$PNYX_TEST_NODE" "$PNYX_TEST_CLI" "$@"; }\n${command} --json`,
+        `othrys() { "$OTHRYS_TEST_NODE" "$OTHRYS_TEST_CLI" "$@"; }\n${command} --json`,
       ],
       {
         env: {
           ...worker.env,
-          PNYX_TEST_NODE: process.execPath,
-          PNYX_TEST_CLI: CLI,
+          OTHRYS_TEST_NODE: process.execPath,
+          OTHRYS_TEST_CLI: CLI,
         },
         timeout: WAIT_MS,
       },
@@ -1756,14 +1757,14 @@ test(
       instruction: message.id,
       acknowledged: 'read',
     })
-    expect((await runPnyx({
+    expect((await runOthrys({
       args,
       env: worker.env,
     })).status).toBe(0)
     const saved = records().filter(record => record.event?.type === 'task.steering.handled')
     expect(saved).toHaveLength(1)
-    await pnyx.restart()
-    const retried = await runPnyx({
+    await othrys.restart()
+    const retried = await runOthrys({
       args,
       env: worker.env,
     })
@@ -1773,7 +1774,7 @@ test(
     ).toBe(0)
     expect(records().filter(record => record.event?.type === 'task.steering.handled')).toEqual(saved)
     expect(times({
-      sessions: pnyx.claude.sessions.filter(session => session.cwd === folder),
+      sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
       text: 'Keep this instruction unread',
     })).toBe(1)
   },
@@ -1782,7 +1783,7 @@ test(
 test(
   'an explicit read persists after native input confirmation and stays idempotent across restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'confirmed-read' })
     const task = await hydra.task({ key: 'confirmed-read' })
     await hydra.owner({
@@ -1811,7 +1812,7 @@ test(
           message.text === 'Read this through the native harness' && message.ack?.outcome === 'read'),
     })
     const path = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -1838,11 +1839,11 @@ test(
       queued.queuedFor.session,
       '--generation',
       JSON.stringify(queued.queuedFor.generation),
-      '--hydra',
+      '--titan',
       hydra.id,
       '--json',
     ]
-    const accepted = await runPnyx({
+    const accepted = await runOthrys({
       args,
       env: worker.env,
     })
@@ -1856,8 +1857,8 @@ test(
     })
     const saved = acknowledgements()
     expect(saved).toHaveLength(1)
-    await pnyx.restart()
-    const retry = await runPnyx({
+    await othrys.restart()
+    const retry = await runOthrys({
       args,
       env: worker.env,
     })
@@ -1872,7 +1873,7 @@ test(
 test(
   'a Codex worker gets each owner message once, shows it delivered in its task chat, and resumes the same thread after a restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const {
       folder,
       worker,
@@ -1907,7 +1908,7 @@ test(
       }),
     ])
 
-    await pnyx.restart()
+    await othrys.restart()
     await hydra.owner({
       args: [
         'reply',
@@ -1918,11 +1919,11 @@ test(
     })
     const resumed = await until({
       what: 'Codex to resume its thread',
-      check: () => pnyx.codex.sessions.find(session => session.cwd === folder && session.resumed
+      check: () => othrys.codex.sessions.find(session => session.cwd === folder && session.resumed
       && session.received.some(message => message.includes('Now update the docs'))),
     })
     expect(resumed.id).toBe(worker.id)
-    const sessions = pnyx.codex.sessions.filter(session => session.cwd === folder)
+    const sessions = othrys.codex.sessions.filter(session => session.cwd === folder)
     expect(times({
       sessions,
       text: 'Add a test for empty input',
@@ -1937,7 +1938,7 @@ test(
 test(
   'an answer the agent refuses shows as failed in the task chat, reached nobody, and stays failed after a restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({
       key: 'refused',
       harness: 'codex',
@@ -1951,7 +1952,7 @@ test(
         'Which export format?',
       ],
     })
-    pnyx.codex.plan({
+    othrys.codex.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Use TSV'),
       refuse: true,
@@ -1981,7 +1982,7 @@ test(
     })).toBe('failed')
     expect(worker.answered).toBe(1)
 
-    await pnyx.restart()
+    await othrys.restart()
     expect(await receipt()).toBe('failed')
   },
 )
@@ -1989,10 +1990,10 @@ test(
 test(
   'a worker starts on the first account that is neither signed out nor out of quota, an explicit account is honoured, and no usable account refuses the start',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const root = join(
       process.env.TMPDIR!,
-      'pnyx-run',
+      'othrys-run',
     )
     const usable = join(
       root,
@@ -2117,7 +2118,7 @@ test(
       })
       const signedOut = await start({ key: 'signedout' })
       expect((await hydra.ownerRefused({ args: signedOut.args })).code).toBe('ACCOUNT_SIGNED_OUT')
-      expect(pnyx.claude.sessions.some(session => session.cwd === signedOut.folder)).toBe(false)
+      expect(othrys.claude.sessions.some(session => session.cwd === signedOut.folder)).toBe(false)
       await hydra.owner({
         args: [
           ...signedOut.args,
@@ -2131,7 +2132,7 @@ test(
       await order({ accounts: ['claude:spent'] })
       const none = await start({ key: 'none' })
       expect((await hydra.ownerRefused({ args: none.args })).code).toBe('DISPATCH_EXHAUSTED')
-      expect(pnyx.claude.sessions.some(session => session.cwd === none.folder)).toBe(false)
+      expect(othrys.claude.sessions.some(session => session.cwd === none.folder)).toBe(false)
     } finally {
       await order({ accounts: ['claude:test'] })
 
@@ -2152,9 +2153,9 @@ test(
 )
 
 test(
-  'Stop on a worker keeps delivered owner input and unread Hydra steering, marks the card stopped, and permits a worker asking to Stop with a notice',
+  'Stop on a worker keeps delivered owner input and unread Titan steering, marks the card stopped, and permits a worker asking to Stop with a notice',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'stoppable' })
     await hydra.owner({
       args: [
@@ -2171,9 +2172,9 @@ test(
         'Long job',
       ],
     })
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       partial: 'Working',
       hold: true,
     })
@@ -2191,7 +2192,7 @@ test(
     })
     const hydraSession = await hydra.chat({ text: 'look at the stoppable task' })
 
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('owner follow-up'),
       partial: 'Following up',
@@ -2285,7 +2286,7 @@ test(
     })
     const taskId = stopped.stopped as string
     const taskLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -2307,7 +2308,7 @@ test(
       }),
     }))
     const handled = records().filter(record => record.event?.type === 'task.steering.handled')
-    const delayed = await runPnyx({
+    const delayed = await runOthrys({
       args: [
         'task',
         'ack',
@@ -2317,7 +2318,7 @@ test(
         cancelled.queuedFor.session,
         '--generation',
         JSON.stringify(cancelled.queuedFor.generation),
-        '--hydra',
+        '--titan',
         hydra.id,
         '--json',
       ],
@@ -2332,7 +2333,7 @@ test(
 test(
   'a Fast setting an old harvest stored as on reads as true, and the agent command confirms it by the owner\'s words',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'push',
@@ -2442,7 +2443,7 @@ test(
     const session = await claudeProvider({ query: claude.query }).open({
       cwd: process.env.TMPDIR!,
       settings: {},
-      env: { PNYX_HOME: process.env.PNYX_HOME! },
+      env: { OTHRYS_HOME: process.env.OTHRYS_HOME! },
       signal: new AbortController().signal,
       context: async () => {
         renders++
@@ -2498,7 +2499,7 @@ test(
     const session = await claudeProvider({ query: claude.query }).open({
       cwd: process.env.TMPDIR!,
       settings: {},
-      env: { PNYX_HOME: process.env.PNYX_HOME! },
+      env: { OTHRYS_HOME: process.env.OTHRYS_HOME! },
       signal: new AbortController().signal,
     })
     const {
@@ -2562,7 +2563,7 @@ test(
     const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
       cwd: process.env.TMPDIR!,
       settings: {},
-      env: { PNYX_HYDRA: 'codex-carried' },
+      env: { OTHRYS_TITAN: 'codex-carried' },
       signal: new AbortController().signal,
     })
     const {
@@ -2601,7 +2602,7 @@ test(
   async ({ onTestFinished }) => {
     const root = mkdtempSync(join(
       tmpdir(),
-      'pnyx-codex-processes-',
+      'othrys-codex-processes-',
     ))
     onTestFinished(() => rmSync(
       root,
@@ -2787,7 +2788,7 @@ test(
     const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
       cwd: process.env.TMPDIR!,
       settings: {},
-      env: { PNYX_HYDRA: 'codex-now' },
+      env: { OTHRYS_TITAN: 'codex-now' },
       signal: new AbortController().signal,
     })
     const {
@@ -2840,7 +2841,7 @@ test(
     const session = await claudeProvider({ query: claude.query }).open({
       cwd: process.env.TMPDIR!,
       settings: {},
-      env: { PNYX_HOME: process.env.PNYX_HOME! },
+      env: { OTHRYS_HOME: process.env.OTHRYS_HOME! },
       signal: new AbortController().signal,
       context: async () => {
         throw new Error('Memory access kept changing; retry the command')
@@ -2891,7 +2892,7 @@ const contextReported = ({
   what,
   check,
 }: {
-  hydra: Hydra
+  hydra: Titan
   key: string
   what: string
   check({ context }: { context: ContextReading }): boolean
@@ -2916,7 +2917,7 @@ const reply = ({
   key,
   text,
 }: {
-  hydra: Hydra
+  hydra: Titan
   key: string
   text: string
 }) => hydra.owner({
@@ -2931,10 +2932,10 @@ const reply = ({
 test(
   'Claude\'s context reading takes the compacted size at once, keeps it across a restart, has its window while the resumed turn runs and follows a new window once a turn ends',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const key = 'claude-context'
     const { worker } = await hydra.startTask({ key })
-    const recorded = pnyx.claude.context
+    const recorded = othrys.claude.context
     await contextReported({
       hydra,
       key,
@@ -2942,7 +2943,7 @@ test(
       check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
     })
 
-    const compactionTurn = pnyx.claude.plan({
+    const compactionTurn = othrys.claude.plan({
       hydra: hydra.id,
       text: '/compact',
       compacting: true,
@@ -2969,7 +2970,7 @@ test(
       check: () => worker.answered === 2,
     })
 
-    await pnyx.restart()
+    await othrys.restart()
     await contextReported({
       hydra,
       key,
@@ -2977,7 +2978,7 @@ test(
       check: ({ context }) => context.used === 3_000,
     })
 
-    const resumedTurn = pnyx.claude.plan({
+    const resumedTurn = othrys.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('carry on'),
       hold: true,
@@ -2990,7 +2991,7 @@ test(
     })
     const resumedSession = await until({
       what: 'the session to resume',
-      check: () => pnyx.claude.sessions.find(({
+      check: () => othrys.claude.sessions.find(({
         id,
         resumed,
       }) => id === worker.id && resumed),
@@ -3016,13 +3017,13 @@ test(
 test(
   'Codex\'s context reading follows the count it reports after an auto-compaction and in a resumed thread',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const key = 'codex-context'
     const { worker } = await hydra.startTask({
       key,
       harness: 'codex',
     })
-    const recorded = pnyx.codex.context
+    const recorded = othrys.codex.context
     await contextReported({
       hydra,
       key,
@@ -3030,7 +3031,7 @@ test(
       check: ({ context }) => context.used === recorded.used && context.window === recorded.window,
     })
 
-    pnyx.codex.plan({
+    othrys.codex.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('keep going'),
       compactTo: 9_000,
@@ -3047,7 +3048,7 @@ test(
       check: ({ context }) => context.used === 9_000 && context.window === recorded.window,
     })
 
-    await pnyx.restart()
+    await othrys.restart()
     await reply({
       hydra,
       key,
@@ -3055,7 +3056,7 @@ test(
     })
     await until({
       what: 'the thread to resume',
-      check: () => pnyx.codex.sessions.find(({
+      check: () => othrys.codex.sessions.find(({
         id,
         resumed,
       }) => id === worker.id && resumed),
@@ -3072,11 +3073,11 @@ test(
 test(
   'worker log catch-up commits bounded batches and recovers after an oversized partial line across restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'bounded-log' })
     const task = await hydra.task({ key: 'bounded-log' })
     const path = join(
-      worker.env.PNYX_TASK_DIR!,
+      worker.env.OTHRYS_TASK_DIR!,
       'worker.log',
     )
     const burst = Array.from(
@@ -3157,7 +3158,7 @@ test(
         ],
       })).task.workerLog?.latest.off === readFileSync(path).length,
     })
-    await pnyx.restart()
+    await othrys.restart()
     appendFileSync(
       path,
       'note: this is still the discarded line\nnote: valid after the oversized line\n',
@@ -3181,10 +3182,10 @@ test(
 )
 
 test(
-  'an existing Hydra-local worker report is read after moving the task',
+  'an existing Titan-local worker report is read after moving the task',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const created = await source.owner({
       args: [
         'task',
@@ -3196,7 +3197,7 @@ test(
     })
     const task = created.card.id as string
     const directory = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       source.id,
       'tasks',
@@ -3225,7 +3226,7 @@ test(
     })
     appendFileSync(
       join(
-        process.env.PNYX_HOME!,
+        process.env.OTHRYS_HOME!,
         'hydras',
         target.id,
         'tasks',
@@ -3244,9 +3245,9 @@ test(
 test(
   'worker log status and complete lines survive restarts',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const taskRoot = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'runtime',
       'tasks',
     )
@@ -3257,7 +3258,7 @@ test(
       check: async () => (await hydra.task({ key: 'facts' })).status === 'idle',
     })
     const path = join(
-      worker.env.PNYX_TASK_DIR!,
+      worker.env.OTHRYS_TASK_DIR!,
       'worker.log',
     )
     writeFileSync(
@@ -3372,7 +3373,7 @@ test(
     )
     const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
     const taskLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -3380,7 +3381,7 @@ test(
       'task.log',
     )
     let attempts = 0
-    // eslint-disable-next-line pnyx/object-params -- Node owns openSync's positional signature.
+    // eslint-disable-next-line othrys/object-params -- Node owns openSync's positional signature.
     vi.mocked(openSync).mockImplementation((...args) => {
       const [
         file,
@@ -3403,7 +3404,7 @@ test(
     onTestFinished(() => {
       vi.mocked(openSync).mockImplementation(filesystem.openSync)
     })
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         rmSync(
           unavailableDir,
@@ -3549,13 +3550,13 @@ test(
     })
     const completed = await hydra.task({ key: 'completed-worker' })
     const hiddenLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'runtime',
       'tasks',
       completed.id,
       'worker.log',
     )
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => writeFileSync(
         hiddenLog,
         'note: recorded while hidden\n',
@@ -3599,7 +3600,7 @@ test(
         'hydra',
         'set',
         '--command',
-        'printenv PNYX_TASK > launch.txt; test -n "$PNYX_TASK_DIR" && printf "note: command update\\n" >> "$PNYX_TASK_DIR/worker.log"',
+        'printenv OTHRYS_TASK > launch.txt; test -n "$OTHRYS_TASK_DIR" && printf "note: command update\\n" >> "$OTHRYS_TASK_DIR/worker.log"',
       ],
     })
     const commandFolder = hydra.folder({ name: 'command-worker' })
@@ -3759,7 +3760,7 @@ test(
 test(
   'repeated working observations and child turns do not reset a cut worker’s resume limit',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'resume-limit' })
     await hydra.owner({
       args: [
@@ -3774,9 +3775,9 @@ test(
         folder,
       ],
     })
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       hold: true,
     })
     await hydra.owner({
@@ -3827,15 +3828,15 @@ test(
           activity: 'working',
         }),
       })
-      pnyx.claude.plan({
+      othrys.claude.plan({
         hydra: hydra.id,
-        match: ({ text }) => text.includes('Pnyx restarted'),
+        match: ({ text }) => text.includes('Othrys restarted'),
         hold: true,
       })
-      await pnyx.restart()
+      await othrys.restart()
       await until({
         what: 'the next cut turn to resume',
-        check: () => pnyx.claude.sessions.filter(session => session.cwd === folder)
+        check: () => othrys.claude.sessions.filter(session => session.cwd === folder)
           .length === attempt + 2,
       })
     }
@@ -3853,8 +3854,8 @@ test(
         activity: 'working',
       }),
     })
-    await pnyx.restart()
-    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(4)
+    await othrys.restart()
+    expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(4)
     expect((await hydra.owner({
       args: [
         'task',
@@ -3864,16 +3865,16 @@ test(
       ],
     })).task.activity).toBe('interrupted')
 
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('Pnyx restarted'),
+      match: ({ text }) => text.includes('Othrys restarted'),
       hold: true,
     })
-    const nativeSession = Object.values(loadHydra({
+    const nativeSession = Object.values(loadTitan({
       hydraId: hydra.id,
     }).state.sessions ?? {}).find(session =>
       session.agent.sessionId === agent.sessionId && !session.agent.agentId)!
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         const at = new Date().toISOString()
         const records = [
@@ -3906,7 +3907,7 @@ test(
     })
     await until({
       what: 'the new cut turn to resume independently after interruption',
-      check: () => pnyx.claude.sessions.filter(session => session.cwd === folder).length === 5,
+      check: () => othrys.claude.sessions.filter(session => session.cwd === folder).length === 5,
     })
   },
 )
@@ -3914,7 +3915,7 @@ test(
 test(
   'retired integration commands and launch routes are refused',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -4031,7 +4032,7 @@ test(
 test(
   'outside sessions attach by id and by the caller tmux or Herdr pane',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'outside-session' })
     await hydra.owner({
       args: [
@@ -4099,7 +4100,7 @@ test(
           task.id,
           '--session',
           'self',
-          '--hydra',
+          '--titan',
           hydra.id,
         ],
         env: {
@@ -4124,7 +4125,7 @@ test(
       args: [
         'task',
         'sessions',
-        '--hydra',
+        '--titan',
         hydra.id,
       ],
       env: process.env,
@@ -4134,9 +4135,9 @@ test(
 )
 
 test(
-  'Hydra command starts run in the selected folder and replay after it disappears',
+  'Titan command starts run in the selected folder and replay after it disappears',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'hydra-command' })
     const receipt = join(
       folder,
@@ -4147,7 +4148,7 @@ test(
         'hydra',
         'set',
         '--command',
-        'printenv PNYX_TASK > launch.txt',
+        'printenv OTHRYS_TASK > launch.txt',
       ],
     })
     expect(await hydra.owner({
@@ -4165,7 +4166,7 @@ test(
         folder,
       })
     await until({
-      what: 'the command to receive Hydra context in its launch folder',
+      what: 'the command to receive Titan context in its launch folder',
       check: () => existsSync(receipt) && readFileSync(
         receipt,
         'utf8',
@@ -4214,9 +4215,9 @@ test(
 )
 
 test(
-  'Hydra command starts reject stale revisions before spawning',
+  'Titan command starts reject stale revisions before spawning',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'hydra-command-revision' })
     const receipt = join(
       folder,
@@ -4227,7 +4228,7 @@ test(
         'hydra',
         'set',
         '--command',
-        'printenv PNYX_TASK > launch.txt',
+        'printenv OTHRYS_TASK > launch.txt',
       ],
     })
     expect(await hydra.ownerRefused({
@@ -4257,7 +4258,7 @@ test(
         folder,
       })
     await until({
-      what: 'the matching revision to launch Hydra',
+      what: 'the matching revision to launch Titan',
       check: () => existsSync(receipt) && readFileSync(
         receipt,
         'utf8',
@@ -4267,9 +4268,9 @@ test(
 )
 
 test(
-  'the retired Hydra setup command fails locally while the server is stopped',
+  'the retired Titan setup command fails locally while the server is stopped',
   async () => {
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: async () => {
         const retiredSetup = await operation({
           args: [
@@ -4386,29 +4387,29 @@ test.each([
 )
 
 test(
-  'usage stays scoped to its Hydra and follows a moving native worker',
+  'usage stays scoped to its Titan and follows a moving native worker',
   async () => {
-    const source = await pnyx.hydra()
-    const peer = await pnyx.hydra()
-    const destination = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const peer = await othrys.hydra()
+    const destination = await othrys.hydra()
     const { worker } = await source.startTask({
       key: 'usage-source',
       harness: 'codex',
     })
-    pnyx.codex.reuseNextSession({ id: worker.id })
+    othrys.codex.reuseNextSession({ id: worker.id })
     const { worker: other } = await peer.startTask({
       key: 'usage-peer',
       harness: 'codex',
     })
     expect(other.id).toBe(worker.id)
-    const recorded = pnyx.codex.context.used
+    const recorded = othrys.codex.context.used
     await contextReported({
       hydra: peer,
       key: 'usage-peer',
       what: 'the peer context before compaction',
       check: ({ context }) => context.used === recorded,
     })
-    pnyx.codex.plan({
+    othrys.codex.plan({
       hydra: source.id,
       match: ({ text }) => text.includes('isolated usage turn'),
       compactTo: 9000,
@@ -4487,15 +4488,15 @@ test(
 )
 
 test(
-  'a queued tool update follows a busy native worker across Hydra moves',
+  'a queued tool update follows a busy native worker across Titan moves',
   async () => {
-    const source = await pnyx.hydra()
-    const middle = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const middle = await othrys.hydra()
+    const target = await othrys.hydra()
     const key = 'moving-tools'
     const { worker } = await source.startTask({ key })
     const task = await source.task({ key })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: source.id,
       match: ({ text }) => text.includes('pending tools turn'),
       partial: 'Still working before tool refresh',
@@ -4563,7 +4564,7 @@ test(
     expect(worker.closed).toBe(false)
     held.release()
     await until({
-      what: 'the queued tools to apply on the final Hydra',
+      what: 'the queued tools to apply on the final Titan',
       check: async () => (await target.owner({
         args: [
           'task',
@@ -4574,8 +4575,8 @@ test(
     })
     const resumed = await until({
       what: 'the same native session to resume with the destination scope',
-      check: () => pnyx.claude.sessions.find(session => session.id === worker.id
-        && session.resumed && session.env.PNYX_HYDRA === target.id),
+      check: () => othrys.claude.sessions.find(session => session.id === worker.id
+        && session.resumed && session.env.OTHRYS_TITAN === target.id),
     })
     expect(resumed.closed).toBe(false)
     expect((await target.task({ key: task.id })).worker).toBe(`claude-code:${worker.id}`)
@@ -4585,11 +4586,11 @@ test(
 test(
   'restoring a truncated report keeps discarding its oversized unfinished line',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'truncated-discard' })
     const task = await hydra.task({ key: 'truncated-discard' })
     const path = join(
-      worker.env.PNYX_TASK_DIR!,
+      worker.env.OTHRYS_TASK_DIR!,
       'worker.log',
     )
     const partial = 'note: ' + 'x'.repeat(20 * 1024)
@@ -4640,8 +4641,8 @@ test(
 test(
   'a native worker settles provider startup before its task can move',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const created = await source.owner({
       args: [
         'task',
@@ -4654,7 +4655,7 @@ test(
       ],
     })
     const task = created.card.id as string
-    const held = pnyx.codex.holdStart({ task })
+    const held = othrys.codex.holdStart({ task })
     const pending = source.owner({
       args: [
         'task',

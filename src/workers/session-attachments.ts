@@ -1,9 +1,9 @@
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { cloneValue } from '#app/json-copy.ts'
 import type { AgentRef, AgentSession, Attention, TerminalFacts } from './model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { HydraState, HydraEvent } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState, TitanEvent } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import { touch } from '#tasks/touch.ts'
 
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
@@ -30,7 +30,7 @@ export function sessionByRef({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): AgentSession | undefined {
   const direct = state.sessions?.[ref]
@@ -44,7 +44,7 @@ export function findSession({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): AgentSession {
   const found = sessionByRef({
@@ -53,10 +53,10 @@ export function findSession({
   })
 
   if (!found) {
-    throw new HydraError({
+    throw new TitanError({
       message: `session not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Read hydra.log for Hydra sessions or the task’s task.log for worker sessions'],
+      help: ['Read hydra.log for Titan sessions or the task’s task.log for worker sessions'],
     })
   }
 
@@ -67,7 +67,7 @@ export function selfSession({
   state,
   here,
 }: {
-  state: HydraState
+  state: TitanState
   here: Pick<TerminalFacts, 'tmuxPane' | 'herdrPane'>
 }): AgentSession {
   const keys = ([
@@ -84,10 +84,10 @@ export function selfSession({
     ) => rank({ s: b }) - rank({ s: a }))[0]
 
   if (!found) {
-    throw new HydraError({
+    throw new TitanError({
       message: keys.length ? 'no recorded session runs in this terminal' : 'cannot tell this terminal: no tmux or Herdr pane in the environment',
       code: 'NOT_FOUND',
-      help: ['Read hydra.log for Hydra sessions or the task’s task.log for worker sessions, then select the session in the UI'],
+      help: ['Read hydra.log for Titan sessions or the task’s task.log for worker sessions, then select the session in the UI'],
     })
   }
 
@@ -118,7 +118,7 @@ export function sessionTask({
   state,
   agent,
 }: {
-  state: HydraState
+  state: TitanState
   agent: AgentRef
 }): Card | undefined {
   const id = sessionId({ agent })
@@ -135,7 +135,7 @@ export function sessionTask({
     return state.cards[task]
   }
 
-  return state.config?.hydra.session === parent ? state.cards[HYDRA_CARD] : undefined
+  return state.config?.hydra.session === parent ? state.cards[TITAN_CARD] : undefined
 }
 
 export function projectedAttention({
@@ -155,7 +155,7 @@ export function sessionAttention({
   state,
   session,
 }: {
-  state: HydraState
+  state: TitanState
   session: AgentSession
 }): Attention[] {
   const children = Object.values(state.sessions ?? {}).filter(child => child.agent.agentId
@@ -177,7 +177,7 @@ export function projectSession({
   state,
   session,
 }: {
-  state: HydraState
+  state: TitanState
   session: AgentSession
 }): void {
   if (session.agent.agentId) {
@@ -249,8 +249,8 @@ export function applyAttachment({
   state,
   event,
 }: {
-  state: HydraState
-  event: Extract<HydraEvent, { type: 'task.session'}>
+  state: TitanState
+  event: Extract<TitanEvent, { type: 'task.session'}>
 }): boolean {
   let session = state.sessions?.[event.data.session]
   const started = event.data.started
@@ -395,9 +395,9 @@ export function observeSession({
   card,
   event,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
-  event: HydraEvent
+  event: TitanEvent
 }): void {
   if (!card.agent || event.type === 'task.session') {
     return

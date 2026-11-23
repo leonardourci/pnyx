@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { ReplyRoute } from './reply-route.ts'
 import type { KeyStep } from '#integrations/hooks/answer.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
@@ -84,7 +84,7 @@ export async function deliver({
   })) {
     return {
       state: 'delivery_unknown',
-      detail: 'the command was sent, then the session opened a request, so Pnyx pressed nothing more; answer it and any confirmation in the session',
+      detail: 'the command was sent, then the session opened a request, so Othrys pressed nothing more; answer it and any confirmation in the session',
     }
   }
 
@@ -160,7 +160,7 @@ async function hostReply({
 
     return { state: 'delivered' }
   } catch (error) {
-    const known = error instanceof HydraError
+    const known = error instanceof TitanError
 
     return known
       ? {
@@ -169,7 +169,7 @@ async function hostReply({
       }
       : {
         state: 'delivery_unknown',
-        detail: 'the Pnyx server did not confirm the message; check the conversation before retrying',
+        detail: 'the Othrys server did not confirm the message; check the conversation before retrying',
       }
   }
 }

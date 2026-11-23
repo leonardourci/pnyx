@@ -3,18 +3,18 @@ import { requirePermissionApprover } from './worker-identity.ts'
 import { cardSessionId } from './session-attachments.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
-import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
+import { resolveSkillReferences } from '#titan/skill-invocation.ts'
 import { notificationReceipt } from './inbox-notice.ts'
 import { steeringHeld } from './steering.ts'
 import { notifySteering } from './inbox-delivery.ts'
 import { enqueueSteering } from './inbox.ts'
-import { mentionContext } from '#hydra/mentions.ts'
+import { mentionContext } from '#titan/mentions.ts'
 import { answerPrompt, answerText, checkAnswer, requestId } from './answers.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideReply } from './reply-rules.ts'
 import { deliver, routeName } from './reply-delivery.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { RepliedEvent } from '#tasks/model.ts'
 import type { ReplyState } from './model.ts'
 import { KEY_LABEL, inputReason, type Key } from './controls.ts'
@@ -47,7 +47,7 @@ export interface ReplyRequest {
     value: unknown
     seen?: string
   }
-  // A setting a Pnyx-hosted agent takes directly, in place of typed text.
+  // A setting an Othrys-hosted agent takes directly, in place of typed text.
   setting?: {
     name: string
     value: string
@@ -70,7 +70,7 @@ export interface ReplyReceipt {
   state: ReplyState
   sent: boolean
   detail?: string
-  // Set when the send ran but its outcome could not be written; the Hydra still
+  // Set when the send ran but its outcome could not be written; the Titan still
   // shows the reply as queued.
   recordError?: string
 }
@@ -81,8 +81,8 @@ export function invalid({
 }: {
   message: string
   help?: string[]
-}): HydraError {
-  return new HydraError({
+}): TitanError {
+  return new TitanError({
     message,
     code: 'VALIDATION_ERROR',
     help,
@@ -137,7 +137,7 @@ export async function sendReply({
       })
 
       if (request.expectedSession && card.sessionIds?.[0] !== request.expectedSession) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'the attached agent changed before the brief could be sent',
           code: 'SESSION_CONFLICT',
         })
@@ -152,7 +152,7 @@ export async function sendReply({
       const legacyOwnerAnswer = request.ask?.fromMessage !== undefined && !known?.accepted
 
       if (known && request.ask && (differentQuestion || differentSource || legacyOwnerAnswer)) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'this reply key belongs to a different question, owner message or answer attempt',
           code: 'CONFLICT',
         })
@@ -166,7 +166,7 @@ export async function sendReply({
         && ask.answered === known?.id)
 
       if (known?.accepted && !currentAnswer) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'the recorded answer was undone or replaced; do not resend it',
           code: 'ASK_CLOSED',
         })
@@ -204,7 +204,7 @@ export async function sendReply({
       const found = replyRoute({ card })
 
       if ('reason' in found && !accepted && !retained) {
-        throw new HydraError({
+        throw new TitanError({
           message: `card ${card.id} has no reply route: ${found.reason}`,
           code: 'NO_ROUTE',
         })
@@ -220,14 +220,14 @@ export async function sendReply({
       })
 
       if (unpressable) {
-        throw new HydraError({
+        throw new TitanError({
           message: `card ${card.id} cannot take ${KEY_LABEL[key!]}: ${unpressable}`,
           code: 'NO_ROUTE',
         })
       }
 
       if (request.control && waitsOnHook({ attention: card.attention })) {
-        throw new HydraError({
+        throw new TitanError({
           message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`,
           code: 'SESSION_WAITING',
         })
@@ -266,24 +266,24 @@ export async function sendReply({
         if (!open || !prompt) {
           throw invalid({
             message: `card ${card.id} has no open request with key ${answer.request} that can be answered here`,
-            help: [`Run \`pnyx card ${card.id}\` to see its requests, or answer in the session itself`],
+            help: [`Run \`othrys card ${card.id}\` to see its requests, or answer in the session itself`],
           })
         }
 
         answers = requestId({ request: open })
 
         if (answer.seen !== undefined && answer.seen !== answers) {
-          throw new HydraError({
+          throw new TitanError({
             message: `the request ${answer.request} changed since it was shown; nothing was typed`,
             code: 'REVISION_CONFLICT',
-            help: [`Run \`pnyx card ${card.id}\` and answer the current request`],
+            help: [`Run \`othrys card ${card.id}\` and answer the current request`],
           })
         }
 
         // Keys typed after the prompt closed would land on the next one, so an answer
         // still being typed, or one that may have landed, holds the request.
         if (card.replies?.some(r => r.answers === answers && (r.state === 'queued' || r.state === 'delivery_unknown'))) {
-          throw new HydraError({
+          throw new TitanError({
             message: `an answer to ${answer.request} is already being typed or may have landed; nothing was typed`,
             code: 'SESSION_WAITING',
             help: ['Check the session, and answer there if its prompt is still open'],

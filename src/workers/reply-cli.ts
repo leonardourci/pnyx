@@ -1,6 +1,6 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { readInput } from '#app/request-context.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
 import { invalid, sendReply, type ReplyRequest } from './reply.ts'
 
@@ -58,7 +58,7 @@ export const reply = guard({
 
     if (request !== undefined) {
       if (values.text !== undefined || file !== undefined || values.json === undefined) {
-        throw new HydraError({
+        throw new TitanError({
           message: '--answer takes --json with the answer, not --text or --file',
           code: 'VALIDATION_ERROR',
         })
@@ -73,19 +73,19 @@ export const reply = guard({
           ...(seen !== undefined ? { seen } : {}),
         }
       } catch {
-        throw new HydraError({
+        throw new TitanError({
           message: '--json is not valid JSON',
           code: 'VALIDATION_ERROR',
           help: ['Example: --json \'{"choice":"allow"}\''],
         })
       }
     } else if (values.json !== undefined || values.seen !== undefined) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--json and --seen go with --answer',
         code: 'VALIDATION_ERROR',
       })
     } else if ((values.text === undefined) === (file === undefined)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'give either --text or --file',
         code: 'VALIDATION_ERROR',
       })
@@ -97,7 +97,7 @@ export const reply = guard({
       try {
         text = readInput({ file: file })
       } catch (error) {
-        throw new HydraError({
+        throw new TitanError({
           message: `cannot read reply text from ${file}: ${(error as Error).message}`,
           code: 'VALIDATION_ERROR',
         })
@@ -122,7 +122,7 @@ export const reply = guard({
       },
     })
     const out: Output = { reply: receipt }
-    const current = loadHydra({ hydraId }).state.cards[receipt.card]
+    const current = loadTitan({ hydraId }).state.cards[receipt.card]
     const savedAnswer = current?.replies?.find(saved => saved.id === receipt.reply
       && saved.accepted)
     const source = savedAnswer?.decision?.fromMessage
@@ -134,7 +134,7 @@ export const reply = guard({
       if (receipt.state === 'failed' && !recordError) {
         help.push(`Retry with reply ${receipt.card} --text "Resend saved answer" --idempotency-key ${receipt.reply}`)
       } else if (receipt.state !== 'delivered' || recordError) {
-        help.push(`Check the worker's session. Only if it never arrived, run task answer ${receipt.card} ${savedAnswer.answers} --from-message ${source.id} --event-id ${receipt.reply} --undelivered --reason "Retry saved delivery" --hydra ${hydraId}`)
+        help.push(`Check the worker's session. Only if it never arrived, run task answer ${receipt.card} ${savedAnswer.answers} --from-message ${source.id} --event-id ${receipt.reply} --undelivered --reason "Retry saved delivery" --titan ${hydraId}`)
       }
 
       out.help = help
@@ -145,7 +145,7 @@ export const reply = guard({
     if ('recordError' in receipt && receipt.recordError && receipt.state === 'failed') {
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
     } else if ('recordError' in receipt && receipt.recordError) {
-      out.help = [`The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`]
+      out.help = [`The send ended ${receipt.state} but was not recorded, so the Titan still shows it queued; check the task's inbox or the session before sending again`]
     } else if (current?.steering
       ?.some(message => message.reply === receipt.reply)
       && receipt.state !== 'delivered') {
@@ -153,11 +153,11 @@ export const reply = guard({
     } else if (receipt.state === 'failed') {
       out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
     } else if (receipt.state === 'delivery_unknown') {
-      out.help = ['The message may have landed; a retry with the same key does not resend. When its session has a transcript, Pnyx checks it once the session is idle and resends a missing message up to twice itself']
+      out.help = ['The message may have landed; a retry with the same key does not resend. When its session has a transcript, Othrys checks it once the session is idle and resends a missing message up to twice itself']
     } else if (receipt.state === 'queued') {
-      out.help = [`Read tasks/${receipt.card}/task.log in Hydra ${hydraId} or inspect the session before sending again. A retry with the same key does not resend.`]
+      out.help = [`Read tasks/${receipt.card}/task.log in Titan ${hydraId} or inspect the session before sending again. A retry with the same key does not resend.`]
     } else {
-      out.help = [`Read tasks/${receipt.card}/task.log in Hydra ${hydraId} for its receipts`]
+      out.help = [`Read tasks/${receipt.card}/task.log in Titan ${hydraId} for its receipts`]
     }
 
     return out

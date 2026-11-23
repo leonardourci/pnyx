@@ -1,8 +1,8 @@
 import { inform } from '#app/command-notices.ts'
 import type { Harness } from './providers.ts'
 import type { Card } from '#tasks/model.ts'
-import type { HydraState } from '#app/model.ts'
-import { hydraMode } from '#hydra/hydra.ts'
+import type { TitanState } from '#app/model.ts'
+import { hydraMode } from '#titan/titan.ts'
 import { findOption } from './controls.ts'
 import { PROVIDERS, harnessOf, providerIdOf } from './providers.ts'
 import { hydraActor } from '#app/request-context.ts'
@@ -28,7 +28,7 @@ export function workerMode({
   harness,
   mode,
 }: {
-  state: HydraState
+  state: TitanState
   harness: Harness
   mode?: string
 }): string | undefined {
@@ -57,7 +57,7 @@ export function noticePermissionIncrease({
   before,
   after,
 }: {
-  state: HydraState
+  state: TitanState
   actor?: string
   harness: Harness
   before?: string

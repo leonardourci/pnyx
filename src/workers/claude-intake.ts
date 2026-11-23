@@ -21,7 +21,7 @@ function fileSize({ path }: { path: string }) {
   }
 }
 
-// The intake only times a receipt and the SDK still confirms the message, so a transcript Pnyx cannot read is logged,
+// The intake only times a receipt and the SDK still confirms the message, so a transcript Othrys cannot read is logged,
 // never thrown into the agent's turn.
 const unreadable = ({ error }: { error: unknown }) => log({
   level: 'warn',

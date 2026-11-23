@@ -1,12 +1,12 @@
-import type { Account, Harness, HeadsDispatch } from './dispatch-config.ts'
+import type { Account, Harness, TitanDispatch } from './dispatch-config.ts'
 import { HARNESSES, providerIdOf } from './providers.ts'
 import { asRecord } from '#app/command-validation.ts'
 import { harnessControls } from './controls.ts'
 import { AGENT_FLAG } from './model.ts'
 import { ACCOUNT_LABEL_MAX, homeFolderValid, LINE_BREAK } from './account-choice.ts'
 
-// The one document Settings, the CLI and Hydra read and change: heads dispatch and its accounts.
-export interface DispatchDocument extends HeadsDispatch {
+// The one document Settings, the CLI and Titan read and change: heads dispatch and its accounts.
+export interface DispatchDocument extends TitanDispatch {
   accounts: Record<string, Account>
 }
 
@@ -64,7 +64,7 @@ const ACCOUNT_FIELDS = [
   'label',
 ]
 
-// The harness's own login, which Hydra and workers run on while no account is registered.
+// The harness's own login, which Titan and workers run on while no account is registered.
 export const fallbackAccount = ({ provider }: { provider: Harness }) => `${provider}:default`
 
 const FALLBACK_ACCOUNTS: Fields = Object.fromEntries(HARNESSES.map(provider => [

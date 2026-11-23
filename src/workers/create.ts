@@ -1,10 +1,10 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { applyDecision } from '#app/decision.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { decideDependencies, prerequisiteCards } from '#tasks/dependency-decisions.ts'
 import type { Card } from '#tasks/model.ts'
 import { noteOnce } from '#tasks/notes.ts'
@@ -31,7 +31,7 @@ function chooseWait({ values }: { values: Values }): Wait | undefined {
     .filter(wait => flagGiven({ value: values[WAIT_FLAGS[wait]] }))
 
   if (given.length > 1) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'choose one of --hold, --behind, --on or --no-start',
       code: 'VALIDATION_ERROR',
     })
@@ -41,7 +41,7 @@ function chooseWait({ values }: { values: Values }): Wait | undefined {
   const startFlag = START_FLAGS.find(name => values[name] !== undefined)
 
   if (wait && startFlag) {
-    throw new HydraError({
+    throw new TitanError({
       message: `--${startFlag} applies only when create starts a worker, and --${WAIT_FLAGS[wait]} leaves it unstarted`,
       code: 'VALIDATION_ERROR',
     })
@@ -55,7 +55,7 @@ function requireWaitTargets({
   wait,
   values,
 }: {
-  state: HydraState
+  state: TitanState
   wait?: Wait
   values: Values
 }): void {
@@ -92,7 +92,7 @@ const WAIT_RECEIPTS: Record<Wait, ({ card }: { card: Card }) => Output> = {
   queue: ({ card }) => ({
     launch: 'queued',
     behind: card.queue?.session ?? 'none',
-    help: ['Pnyx hands it to that worker once its current work lands'],
+    help: ['Othrys hands it to that worker once its current work lands'],
   }),
   depend: ({ card }) => ({
     launch: 'waiting',
@@ -121,7 +121,7 @@ async function recordWait({
   meta: Meta
   operation: string
 }): Promise<void> {
-  const decide = ({ state }: { state: HydraState }) => {
+  const decide = ({ state }: { state: TitanState }) => {
     if (wait === 'queue') {
       return decideQueue({
         state,
@@ -171,7 +171,7 @@ async function startCreated({
   operation: string
 }): Promise<Output> {
   const startId = `${operation}:start`
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   if (startRecorded({
     state,
@@ -198,18 +198,18 @@ async function startCreated({
 
     return {
       launch: 'started',
-      worker: loadHydra({ hydraId }).state.cards[task]?.sessionIds?.[0] ?? 'none',
+      worker: loadTitan({ hydraId }).state.cards[task]?.sessionIds?.[0] ?? 'none',
       ...started,
     }
   } catch (error) {
-    if (!(error instanceof HydraError)) {
+    if (!(error instanceof TitanError)) {
       throw error
     }
 
     await noteOnce({
       hydraId,
       task,
-      source: 'pnyx:create',
+      source: 'othrys:create',
       text: [
         `Could not start a worker: ${error.message}`,
         ...error.help,
@@ -240,7 +240,7 @@ export async function createCommand({
   values: Values
   meta: Meta
 }): Promise<Output> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const chosen = chooseWait({ values })
   const flags = startFlags({ values })
   startRoute({
@@ -264,7 +264,7 @@ export async function createCommand({
   }))!
   const task = (created.card as { id: string }).id
   const operation = meta.id ?? task
-  const filed = loadHydra({ hydraId }).state
+  const filed = loadTitan({ hydraId }).state
   const queuedBefore = Object.hasOwn(
     filed.eventIds,
     `${operation}:queue`,
@@ -290,7 +290,7 @@ export async function createCommand({
   const receipt = wait
     ? WAIT_RECEIPTS[wait]({
       card: findCard({
-        state: loadHydra({ hydraId }).state,
+        state: loadTitan({ hydraId }).state,
         ref: task,
       }),
     })

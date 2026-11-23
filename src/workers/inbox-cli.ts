@@ -3,9 +3,9 @@ import { workerIdentity } from './worker-identity.ts'
 import { pendingSteering, steeringClaim } from './steering.ts'
 import { readInput } from '#app/request-context.ts'
 import { integer, meta, parse, required, COMMON, type Options, type Output } from '#app/cli-support.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { SteeringAck, SteeringAttempt, SteeringClaim } from './model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { acknowledgeSteering, enqueueSteering, inboxTask, recordSteeringAttempt, requireSteeringWorker } from './inbox.ts'
 import { requestEnv } from '#app/request-context.ts'
@@ -62,7 +62,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
     }
 
     if (!actor.actor.startsWith('worker:')) {
-      return read({ writer: { state: loadHydra({ hydraId }).state } })
+      return read({ writer: { state: loadTitan({ hydraId }).state } })
     }
 
     return await withWriter({
@@ -76,13 +76,13 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
           state: writer.state,
           card,
           actor: actor.actor,
-          worker: requestEnv().PNYX_STEERING_WORKER,
+          worker: requestEnv().OTHRYS_STEERING_WORKER,
         })
         const output = read({ writer })
         const claim = steeringClaim({ card })
 
         if (!claim) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'Reading as a worker requires an active inbox assignment',
             code: 'STALE_CLAIM',
           })
@@ -100,7 +100,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
               outcome: 'read',
             },
             meta: actor,
-            worker: requestEnv().PNYX_STEERING_WORKER,
+            worker: requestEnv().OTHRYS_STEERING_WORKER,
           })
         }
 
@@ -120,7 +120,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
     'ack',
     'notify',
   ].includes(action ?? '')) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use task inbox read|enqueue|ack|notify <task> [message]',
       code: 'VALIDATION_ERROR',
     })
@@ -135,7 +135,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
 
   if (action === 'enqueue') {
     if (values.text !== undefined && values.file !== undefined) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Pass --text or --file, not both',
         code: 'VALIDATION_ERROR',
       })
@@ -191,7 +191,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
         const outcome = values.outcome ?? 'read'
 
         if (outcome !== 'read' && outcome !== 'incorporated' && outcome !== 'blocked') {
-          throw new HydraError({
+          throw new TitanError({
             message: '--outcome takes read, incorporated or blocked',
             code: 'VALIDATION_ERROR',
           })
@@ -215,7 +215,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
             id,
             ack,
             meta: actor,
-            worker: requestEnv().PNYX_STEERING_WORKER,
+            worker: requestEnv().OTHRYS_STEERING_WORKER,
           }),
         }
       }
@@ -223,7 +223,7 @@ export async function inboxCommand({ args }: { args: string[] }): Promise<Output
       const result = values.result
 
       if (result !== 'delivered' && result !== 'unknown' && result !== 'failed' && result !== 'deferred') {
-        throw new HydraError({
+        throw new TitanError({
           message: '--result takes delivered, unknown, failed or deferred',
           code: 'VALIDATION_ERROR',
         })
@@ -299,7 +299,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
 
   if (!reference || typeof reference !== 'object' || !('native' in reference)
     || typeof reference.native !== 'string' || Object.keys(reference).length !== 1) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: '--generation needs the native assignment reference from the notice or task record',
     })
@@ -318,7 +318,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
       })
 
       if (identity?.task !== card.id || m.actor !== `worker:${card.id}`) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'VALIDATION_ERROR',
           message: 'Only the assigned worker may acknowledge its own instruction IDs',
         })
@@ -328,14 +328,14 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
         .get(assignment)
 
       if (generation === undefined) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'STALE_CLAIM',
           message: 'This assignment no longer belongs to the task’s inbox',
         })
       }
 
       if (card.steering?.find(message => message.id === id)?.stopped) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'STALE_CLAIM',
           message: 'This instruction was cancelled before it was read',
         })
@@ -355,7 +355,7 @@ export async function acknowledgeInstruction({ args }: { args: string[] }): Prom
           outcome: 'read',
         },
         meta: m,
-        worker: requestEnv().PNYX_STEERING_WORKER,
+        worker: requestEnv().OTHRYS_STEERING_WORKER,
       })
 
       return {

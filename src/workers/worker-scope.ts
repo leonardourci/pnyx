@@ -1,12 +1,13 @@
+import { canonicalCommandName } from '#app/command-aliases.ts'
 import { inform, withCommandNotices } from '#app/command-notices.ts'
-import { parseArgs } from 'node:util'
+import { parseCommandArgs as parseArgs } from '#app/command-aliases.ts'
 import { workerScope } from '#app/command-registry.ts'
-import { commandHydra, guard, type Options } from '#app/cli-support.ts'
+import { commandTitan, guard, type Options } from '#app/cli-support.ts'
 import { requestEnv, requestInvocation } from '#app/request-context.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
-import { HYDRA_OPTIONS } from '#hydra/cli.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { TITAN_OPTIONS } from '#titan/cli.ts'
+import { othrysHome } from '#store/storage.ts'
 import { SOURCE_OPTIONS } from '#task-sources/cli.ts'
 import { LINK_OPTIONS } from '#tasks/delivery/cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -32,7 +33,7 @@ const COMMAND_OPTIONS = new Map<string, Options>([
   ],
   [
     'hydra',
-    HYDRA_OPTIONS,
+    TITAN_OPTIONS,
   ],
 ])
 
@@ -110,14 +111,14 @@ function requireOwnTask({
   if (!ref) {
     inform({
       reason: `${what} has no worker task target`,
-      clear: 'Use pnyx board to find the task ID.',
+      clear: 'Use othrys board to find the task ID.',
     })
 
     return
   }
 
   const card = findCard({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     ref,
   })
 
@@ -148,17 +149,17 @@ function checkWorkerScope({
   })
   const declared = typeof values.actor === 'string' ? values.actor : undefined
   const identity = workerIdentity({ actor: declared })
-  const home = requestEnv().PNYX_WORKER_HOME
+  const home = requestEnv().OTHRYS_WORKER_HOME
 
   // A worker starting or stopping a server in a scratch home of its own is not working in the home that started it.
-  if (!identity || (home !== undefined && home !== pnyxHome())) {
+  if (!identity || (home !== undefined && home !== othrysHome())) {
     return
   }
 
   if (declared !== undefined && identity.task !== undefined && declared !== `worker:${identity.task}`) {
     inform({
       reason: `Worker ${identity.task} declared actor ${declared}`,
-      clear: `Use pnyx with --actor worker:${identity.task} to retain the worker identity`,
+      clear: `Use othrys with --actor worker:${identity.task} to retain the worker identity`,
     })
   }
 
@@ -178,7 +179,7 @@ function checkWorkerScope({
   }))) {
     inform({
       reason: `${command} is outside the worker’s default commands`,
-      clear: 'Use pnyx --help for supported actions and the task UI for management.',
+      clear: 'Use othrys --help for supported actions and the task UI for management.',
     })
 
     return
@@ -186,7 +187,7 @@ function checkWorkerScope({
 
   if (name === 'hydra' && values.action !== undefined) {
     inform({
-      reason: 'Worker requested a Hydra action',
+      reason: 'Worker requested a Titan action',
       clear: 'Append a note line to the assigned worker.log for a progress report.',
     })
   }
@@ -194,7 +195,7 @@ function checkWorkerScope({
   if (!identity.task) {
     inform({
       reason: 'Worker has no recorded task identity',
-      clear: 'Use pnyx with --actor worker:<task> to record the task identity',
+      clear: 'Use othrys with --actor worker:<task> to record the task identity',
     })
 
     return
@@ -207,7 +208,7 @@ function checkWorkerScope({
       words,
       values,
     }),
-    hydraId: commandHydra({ hydra: typeof values.hydra === 'string' ? values.hydra : undefined }),
+    hydraId: commandTitan({ hydra: typeof values.hydra === 'string' ? values.hydra : undefined }),
     what: command,
   })
 }
@@ -221,7 +222,7 @@ export function workerScoped<T extends Record<string, Command>>({ commands }: { 
   ]) => {
     const check = guard({
       handler: ({ args }) => checkWorkerScope({
-        name,
+        name: canonicalCommandName({ name }),
         args,
       }),
     })

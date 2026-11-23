@@ -2,14 +2,14 @@ import { copyFileSync, existsSync, readFileSync, renameSync, statSync } from 'no
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { AgentConfig } from './model.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import type { HydraEvent } from '#app/model.ts'
+import type { TitanEvent } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { eventsOrLegacy } from '#app/event-log.ts'
-import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+import { othrysHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { candidateIssues, checkDispatch, fallbackAccount, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
 
@@ -20,7 +20,7 @@ export interface Rule {
   candidates: Candidate[]
 }
 export type AccountOrder = Partial<Record<Harness, string[]>>
-export interface HeadsDispatch {
+export interface TitanDispatch {
   rules: Record<string, Rule>
   default: Candidate[]
   main?: string
@@ -33,7 +33,7 @@ export interface Account {
   label?: string
 }
 export interface EffectiveDispatch {
-  dispatch: HeadsDispatch
+  dispatch: TitanDispatch
   accounts: Record<string, Account>
   // Set when the accounts are the harnesses' default logins, whose folders follow each process's environment.
   fallback?: true
@@ -58,7 +58,7 @@ export interface ChangeEntry {
 
 function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
   return join(
-    pnyxHome(),
+    othrysHome(),
     'config',
     accounts ? 'hydra-accounts.json' : 'hydra-heads-dispatch.json',
   )
@@ -66,7 +66,7 @@ function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
 
 // The change log is the saved heads dispatch: one line per change, each carrying the whole document.
 const changesPath = () => join(
-  pnyxHome(),
+  othrysHome(),
   'config',
   'dispatch-changes.jsonl',
 )
@@ -95,8 +95,8 @@ function readTemplate({ accounts = false }: { accounts?: boolean } = {}): Fields
   )) as Fields
 }
 
-function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
-  const template = readTemplate() as Partial<HeadsDispatch>
+function templateRules(): Pick<TitanDispatch, 'rules' | 'default'> {
+  const template = readTemplate() as Partial<TitanDispatch>
 
   return {
     rules: template.rules ?? {},
@@ -123,7 +123,7 @@ export function onTemplate(): boolean {
 }
 
 export function invalid({ message }: { message: string }): never {
-  throw new HydraError({
+  throw new TitanError({
     message,
     code: 'VALIDATION_ERROR',
   })
@@ -152,7 +152,7 @@ function readConfig({ path }: { path: string }): Fields {
       return {}
     }
 
-    if (error instanceof HydraError) {
+    if (error instanceof TitanError) {
       throw error
     }
 
@@ -260,7 +260,7 @@ export function initConfig({ meta }: { meta: Meta }): {
 
   withRegistryLock({
     fn: () => {
-      mergeHydraFiles()
+      mergeTitanFiles()
 
       if (committedDocument()) {
         return
@@ -329,19 +329,19 @@ function checked({ document }: { document: unknown }): DispatchDocument {
   const errors = checkDispatch({ document }).filter(issue => issue.level === 'error' && !issue.readable)
 
   if (errors.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: `heads dispatch is invalid: ${errors.map(issue => `${issue.path} ${issue.problem}`).join('; ')}`,
       code: 'VALIDATION_ERROR',
-      help: ['Run `pnyx rule schema` for accepted values. Edit the dispatch rules in Settings.'],
+      help: ['Run `othrys rule schema` for accepted values. Edit the dispatch rules in Settings.'],
     })
   }
 
   return document as DispatchDocument
 }
 
-type AgentsEvent = HydraEvent & { type: 'board.agents' }
+type AgentsEvent = TitanEvent & { type: 'board.agents' }
 
-// A Hydra's old agents, as `rule migrate` used to turn them into rules.
+// A Titan's old agents, as `rule migrate` used to turn them into rules.
 function legacyAgents({ hydraId }: { hydraId: string }): Fields | undefined {
   const agents = eventsOrLegacy({
     hydraId,
@@ -388,14 +388,14 @@ function sections({ value }: { value: Fields }): Fields {
   ]) => nonempty({ value: section })))
 }
 
-interface HydraFiles {
+interface TitanFiles {
   dispatch?: string
   accounts?: string
   legacy?: Fields
   at: number
 }
 
-function hydraFiles(): HydraFiles[] {
+function hydraFiles(): TitanFiles[] {
   return hydraIds().flatMap(hydraId => {
     const dir = hydraDir({ hydraId })
     const dispatch = join(
@@ -406,7 +406,7 @@ function hydraFiles(): HydraFiles[] {
       dir,
       'accounts.json',
     )
-    const files: HydraFiles = {
+    const files: TitanFiles = {
       at: 0,
     }
 
@@ -444,8 +444,8 @@ function hydraFiles(): HydraFiles[] {
     ) => a.at - b.at)
 }
 
-// Each Hydra's own dispatch and accounts merge into the shared ones once, the newest last; the shared Hydra pin still wins.
-function mergeHydraFiles(): void {
+// Each Titan's own dispatch and accounts merge into the shared ones once, the newest last; the shared Titan pin still wins.
+function mergeTitanFiles(): void {
   if (existsSync(changesPath())) {
     return
   }
@@ -501,7 +501,7 @@ function mergeHydraFiles(): void {
       id: randomUUID(),
       at: new Date().toISOString(),
       actor: 'pnyx',
-      reason: 'Merged each Hydra’s own heads dispatch and accounts into the shared files',
+      reason: 'Merged each Titan’s own heads dispatch and accounts into the shared files',
       document: compose({
         dispatch: dispatch as Fields,
         accounts: accounts as Fields,
@@ -535,7 +535,7 @@ export function repairDispatchMirrors(): DispatchDocument | undefined {
 }
 
 export function lockedDocument(): DispatchDocument {
-  mergeHydraFiles()
+  mergeTitanFiles()
 
   return repairDispatchMirrors() ?? filesDocument()
 }
@@ -569,7 +569,7 @@ export function effectiveDispatch({
     }
   }
 
-  // With no registered accounts, Hydra and workers run on each harness's own login, as an unconfigured harness does.
+  // With no registered accounts, Titan and workers run on each harness's own login, as an unconfigured harness does.
   const accounts: Record<string, Account> = Object.fromEntries(HARNESSES
     .filter(provider => existsSync(defaultLogin({ provider })))
     .map(provider => [
@@ -585,7 +585,7 @@ export function effectiveDispatch({
     accounts[key]!.provider,
     [key],
   ]))
-  const fallback: HeadsDispatch = {
+  const fallback: TitanDispatch = {
     ...dispatch,
     workers: {
       ...workers,

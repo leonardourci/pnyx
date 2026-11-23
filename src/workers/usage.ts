@@ -58,7 +58,7 @@ export function usageFor({
       worker: spend?.worker,
       hydra: spend?.hydra,
       unavailable: spend?.unavailable ?? 0,
-      sharedHydra: spend?.sharedHydra ?? false,
+      sharedTitan: spend?.sharedTitan ?? false,
     },
     windows: mergeWindows({
       base: plan?.windows ?? [],

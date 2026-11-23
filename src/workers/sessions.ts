@@ -1,12 +1,12 @@
 import { inform } from '#app/command-notices.ts'
-import type { SourceRef, HydraState, Decision } from '#app/model.ts'
+import type { SourceRef, TitanState, Decision } from '#app/model.ts'
 import { asRecord, invalid, onlyKeys, text, optionalText } from '#app/command-validation.ts'
 import type { AgentRef, AgentSettings, TerminalFacts, SessionEvent } from './model.ts'
 import { TERMINAL_FIELDS } from './reply-route.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findSession, interactive } from './session-attachments.ts'
 import { findCard, checkRevision } from '#tasks/push-rules.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
 
 export function parseSource({ value: rawValue }: { value: unknown }): SourceRef {
@@ -126,7 +126,7 @@ export function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
 
   if (value.host !== undefined) {
     if (value.host !== 'pnyx') {
-      throw invalid({ message: 'agent.host must be pnyx' })
+      throw invalid({ message: 'agent.host must be othrys' })
     }
 
     agent.host = 'pnyx'
@@ -228,7 +228,7 @@ export function decideSession({
   fromQueue,
   working,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   task: string | null
   meta: Meta
@@ -276,14 +276,14 @@ export function decideSession({
   }
 
   if (target && state.config?.hydra.session === session.id) {
-    throw new HydraError({
-      message: 'Hydra cannot also be a task worker',
+    throw new TitanError({
+      message: 'Titan cannot also be a task worker',
       code: 'CONFLICT',
     })
   }
 
   if (target && !interactive({ session })) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'A background session has no interactive terminal and cannot be attached to a task',
       code: 'NO_TERMINAL',
     })

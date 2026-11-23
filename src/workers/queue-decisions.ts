@@ -1,12 +1,12 @@
 import { sameProjectPath } from '#projects/identity.ts'
 import { inform } from '#app/command-notices.ts'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { completedOutcome } from '#tasks/dependencies.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Blocker } from '#tasks/owner-gates.ts'
 import { findSession, sessionByRef } from './session-attachments.ts'
@@ -16,14 +16,14 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
   if (card.sessionIds?.length) {
     return {
       reason: `${card.id} already has worker ${card.sessionIds.join(', ')}`,
-      clear: `Reply with \`pnyx send --task ${card.id} --text "<message>"\` or detach the worker in the UI`,
+      clear: `Reply with \`othrys send --task ${card.id} --text "<message>"\` or detach the worker in the UI`,
     }
   }
 
   if (card.workerLog?.status?.code === 'done' || completedOutcome({ outcome: card.outcome })) {
     return {
       reason: `${card.id} is finished`,
-      clear: 'File a follow-up with `pnyx task create`',
+      clear: 'File a follow-up with `othrys task create`',
     }
   }
 
@@ -41,7 +41,7 @@ function visibleTask({
   state,
   task,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
 }): Card {
   const card = findCard({
@@ -49,8 +49,8 @@ function visibleTask({
     ref: task,
   })
 
-  if (card.id === HYDRA_CARD) {
-    throw new HydraError({
+  if (card.id === TITAN_CARD) {
+    throw new TitanError({
       message: 'choose a visible task',
       code: 'VALIDATION_ERROR',
     })
@@ -71,7 +71,7 @@ export function queueAnchor({
   state,
   behind,
 }: {
-  state: HydraState
+  state: TitanState
   behind: string
 }): Card | undefined {
   return state.cards[behind] ?? state.cards[state.keys[behind] ?? '']
@@ -82,7 +82,7 @@ export function queueGap({
   task,
   behind,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
   behind: string
 }): Blocker | undefined {
@@ -152,7 +152,7 @@ export function queueRequestGap({
   reorder,
   behind,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   reorder: boolean
   behind?: string
@@ -181,7 +181,7 @@ export function decideQueue({
   behind,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
   behind?: string
   meta: Meta
@@ -209,7 +209,7 @@ export function decideQueue({
     })
 
     if (gap) {
-      throw new HydraError({
+      throw new TitanError({
         message: gap.reason,
         code: 'CONFLICT',
         help: [gap.clear],

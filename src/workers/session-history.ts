@@ -1,7 +1,7 @@
 import { sessionId } from './session-attachments.ts'
 import { sessionFields } from './session-facts.ts'
 import { scanEvents } from '#app/event-log.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 
 export function taskSessions({
   hydraId,
@@ -12,7 +12,7 @@ export function taskSessions({
 }): Set<string> {
   const sessions = new Set<string>()
 
-  for (const session of Object.values(loadHydra({ hydraId }).state.sessions ?? {})) {
+  for (const session of Object.values(loadTitan({ hydraId }).state.sessions ?? {})) {
     if (ids.has(session.originCardId) || ids.has(session.taskId ?? '')) {
       sessions.add(session.id)
     }

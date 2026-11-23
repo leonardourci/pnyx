@@ -3,14 +3,14 @@ import { git, checkoutRoot, checkoutState, matchesCheckout, restoreCheckout, sav
 import { sameProjectPath } from '#projects/identity.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { createTaskBranch } from '#projects/git.ts'
-import { branchHydraName, recordedBranches } from '#projects/copy-pool.ts'
+import { branchTitanName, recordedBranches } from '#projects/copy-pool.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { statSync } from 'node:fs'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraEvent } from '#titan/titan.ts'
 import type { Card } from '#tasks/model.ts'
 import type { LinkState } from '#tasks/delivery/model.ts'
 import type { AgentSession } from './model.ts'
@@ -21,7 +21,7 @@ import { sendReply } from './reply.ts'
 import { pullRequestLanding, pullRequestState } from '#integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from './presence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { log } from '#app/diagnostics.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
@@ -132,7 +132,7 @@ function unsafeWorker({
   presence,
   now,
 }: {
-  state: HydraState
+  state: TitanState
   session?: AgentSession
   presence?: string
   now: number
@@ -174,7 +174,7 @@ async function workerRoots({
 
   for (const other of otherWorkers({
     hydraId,
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     session,
   })) {
     const cwd = other.agent.cwd
@@ -198,7 +198,7 @@ function assertUnshared({
   roots,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   session: AgentSession
   root: string
   roots: ReadonlyMap<string, string | undefined>
@@ -254,7 +254,7 @@ async function landedBranch({
 
   assertUnshared({
     hydraId,
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     session,
     root,
     roots: await workerRoots({
@@ -426,7 +426,7 @@ async function deliverHandoffs({
       continue
     }
 
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = state.cards[event.cardId]
     const id = `brief:${event.id}`
 
@@ -455,7 +455,7 @@ async function deliverHandoffs({
     })
   }
 
-  const current = loadHydra({ hydraId }).state
+  const current = loadTitan({ hydraId }).state
 
   return Boolean(scanEvents({
     hydraId,
@@ -487,8 +487,8 @@ export async function advanceQueues({
   readLanding?: typeof pullRequestLanding
   presence?: typeof checkAttachments
   active?(): boolean
-  // The Hydra the server already holds; each queued session is read again from disk.
-  state: HydraState
+  // The Titan the server already holds; each queued session is read again from disk.
+  state: TitanState
 }): Promise<boolean> {
   if (!active()) {
     return false
@@ -503,7 +503,7 @@ export async function advanceQueues({
       return false
     }
 
-    let state = loadHydra({ hydraId }).state
+    let state = loadTitan({ hydraId }).state
     const session = state.sessions?.[id]
     const reason = unsafeWorker({
       state,
@@ -542,7 +542,7 @@ export async function advanceQueues({
         readPR,
         readLanding,
       })
-      state = loadHydra({ hydraId }).state
+      state = loadTitan({ hydraId }).state
 
       const attached = state.sessions?.[id]
 
@@ -620,7 +620,7 @@ export async function advanceQueues({
           prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Append updates to this task's worker.log.`,
         })
 
-        const currentState = loadHydra({ hydraId }).state
+        const currentState = loadTitan({ hydraId }).state
         const currentSource = currentState.cards[card.id]
         const currentTarget = workerQueue({
           state: currentState,
@@ -637,7 +637,7 @@ export async function advanceQueues({
         start: prepared.tip,
         active,
         prepare,
-        hydraName: branchHydraName({
+        hydraName: branchTitanName({
           hydraId,
           state,
         }),
@@ -675,7 +675,7 @@ export async function advanceQueues({
 
       assertUnshared({
         hydraId,
-        state: loadHydra({ hydraId }).state,
+        state: loadTitan({ hydraId }).state,
         session: attached,
         root: prepared.root,
         roots,
@@ -849,7 +849,7 @@ export async function advanceQueues({
           })
           assertUnshared({
             hydraId,
-            state: loadHydra({ hydraId }).state,
+            state: loadTitan({ hydraId }).state,
             session: attached,
             root: prepared.root,
             roots: rollbackRoots,

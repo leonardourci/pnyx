@@ -1,9 +1,9 @@
 import { inform } from '#app/command-notices.ts'
 import { steeringHeld } from './steering.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { taskDone } from '#tasks/select.ts'
-import { HydraError } from '#store/errors.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
+import { TitanError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { workerIdentity } from './worker-identity.ts'
@@ -14,7 +14,7 @@ export const BROWSER_TOOL = 'browser'
 export function toolNames({ names }: { names: string[] }): string[] {
   for (const name of names) {
     if (name !== BROWSER_TOOL) {
-      throw new HydraError({
+      throw new TitanError({
         message: `Invalid tool capability: ${name}`,
         code: 'VALIDATION_ERROR',
         help: ['Use browser; native MCP servers, plugins and apps need no grant'],
@@ -71,7 +71,7 @@ export function writeTools({
     ref: task,
   })
 
-  if (card.id !== HYDRA_CARD && (card.hidden || taskDone({
+  if (card.id !== TITAN_CARD && (card.hidden || taskDone({
     state: writer.state,
     card,
   }))) {
@@ -141,7 +141,7 @@ export function writeTools({
   }
 }
 
-// Only a task's worker asks Hydra for another tool; Hydra reads its own grants.
+// Only a task's worker asks Titan for another tool; Titan reads its own grants.
 export function toolInstructions({
   tools,
   worker,
@@ -152,7 +152,7 @@ export function toolInstructions({
   return [
     'Use the harness’s native tools, MCP servers, plugins and apps as configured by the owner.',
     tools.includes(BROWSER_TOOL) ? 'Use chrome-devtools-axi with your own isolated headless browser. Run chrome-devtools-axi stop when finished. Do not control the owner’s browser.' : undefined,
-    worker && !tools.includes(BROWSER_TOOL) ? 'For an isolated browser, append needs-you: <request> to worker.log; Hydra manages tool grants through the UI.' : undefined,
+    worker && !tools.includes(BROWSER_TOOL) ? 'For an isolated browser, append needs-you: <request> to worker.log; Titan manages tool grants through the UI.' : undefined,
   ].filter(Boolean).join(' ')
 }
 
@@ -174,7 +174,7 @@ export function toolEnvironment({
 
   return {
     ...env,
-    CHROME_DEVTOOLS_AXI_SESSION: `pnyx-${hydraId}-${task === HYDRA_CARD ? 'hydra' : task}`,
+    CHROME_DEVTOOLS_AXI_SESSION: `othrys-${hydraId}-${task === TITAN_CARD ? 'hydra' : task}`,
     CHROME_DEVTOOLS_AXI_HEADED: '0',
     CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
     CHROME_DEVTOOLS_AXI_BROWSER_URL: '',

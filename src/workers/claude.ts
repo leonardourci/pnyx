@@ -36,7 +36,7 @@ function startQuery({
   const emitWarning = process.emitWarning
 
   // The SDK warns synchronously at query creation; keep its callback for later permission-mode changes.
-  // eslint-disable-next-line pnyx/object-params -- Node owns emitWarning's overloaded signature.
+  // eslint-disable-next-line othrys/object-params -- Node owns emitWarning's overloaded signature.
   process.emitWarning = (...args: unknown[]) => {
     const options = object({ value: args[1] })
 
@@ -521,7 +521,7 @@ export function claudeProvider({
                 },
               } : {}),
               permissionPrompts: 'host',
-              // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
+              // eslint-disable-next-line othrys/object-params -- The SDK owns this callback signature.
               canUseTool: async (
                 tool,
                 input,

@@ -1,21 +1,21 @@
 import { workerTaskDir } from './worker-log.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { applyDecision } from '#app/decision.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { runCommand } from '#integrations/command/run.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { findProject } from '#projects/read.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import type { Card } from '#tasks/model.ts'
 import { decideNote } from '#tasks/notes.ts'
 import { freeTask } from './start.ts'
@@ -27,7 +27,7 @@ export function namedProjectCommand({
   card,
   name,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   name: string
 }) {
@@ -40,7 +40,7 @@ export function namedProjectCommand({
   const selected = project?.startCommand
 
   if (!selected || selected.name !== name) {
-    throw new HydraError({
+    throw new TitanError({
       message: `project command not found: ${name}; assign the task to its project and read project list`,
       code: 'NOT_FOUND',
     })
@@ -76,7 +76,7 @@ export async function startCommand({
       const target = role === 'worker' ? findCard({
         state: writer.state,
         ref: task!,
-      }).id : HYDRA_CARD
+      }).id : TITAN_CARD
 
       if (`${id}:started` in writer.state.eventIds) {
         return {
@@ -95,10 +95,10 @@ export async function startCommand({
       })
 
       if (!commandName && !config.command) {
-        throw new HydraError({
-          message: `Hydra ${hydraId} has no start command`,
+        throw new TitanError({
+          message: `Titan ${hydraId} has no start command`,
           code: 'NO_COMMAND',
-          help: ['Configure the Hydra start command in Settings.'],
+          help: ['Configure the Titan start command in Settings.'],
         })
       }
 
@@ -116,17 +116,17 @@ export async function startCommand({
       const command = commandName ? selected?.command : config.command
 
       if (!command) {
-        throw new HydraError({
-          message: `Hydra ${hydraId} has no start command`,
+        throw new TitanError({
+          message: `Titan ${hydraId} has no start command`,
           code: 'NO_COMMAND',
-          help: ['Configure the Hydra start command in Settings.'],
+          help: ['Configure the Titan start command in Settings.'],
         })
       }
 
       const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? requestCwd() : undefined)
 
       if (!cwd || !existsSync(cwd)) {
-        throw new HydraError({
+        throw new TitanError({
           message: cwd ? `folder not found: ${cwd}` : 'choose the folder the agent works in',
           code: 'VALIDATION_ERROR',
           help: ['Pass --folder <absolute path>'],
@@ -175,27 +175,27 @@ export async function startCommand({
     command: claimed.command,
     cwd: claimed.cwd,
     env: {
-      PNYX_HOME: pnyxHome(),
-      PNYX_HYDRA: hydraId,
-      PNYX_WORKER_HOME: pnyxHome(),
-      PNYX_TASK: target,
-      PNYX_TASK_DIR: workerTaskDir({
+      OTHRYS_HOME: othrysHome(),
+      OTHRYS_TITAN: hydraId,
+      OTHRYS_WORKER_HOME: othrysHome(),
+      OTHRYS_TASK: target,
+      OTHRYS_TASK_DIR: workerTaskDir({
         hydraId,
         task: target,
       }),
-      PNYX_ROLE: role,
-      PNYX_TASK_TITLE: claimed.card?.title ?? 'Hydra',
-      PNYX_PROMPT: claimed.card
+      OTHRYS_ROLE: role,
+      OTHRYS_TASK_TITLE: claimed.card?.title ?? 'Titan',
+      OTHRYS_PROMPT: claimed.card
         ? await taskPrompt({
           hydraId,
           card: claimed.card,
           prompt,
         }) : prompt ?? hydraPrompt({ hydraId }),
-      PNYX_HARNESS: harness ?? '',
-      PNYX_FOLDER: claimed.cwd,
+      OTHRYS_HARNESS: harness ?? '',
+      OTHRYS_FOLDER: claimed.cwd,
     },
   })
-  const text = `Started ${role === 'hydra' ? 'Hydra' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Hydra command'} in ${claimed.cwd}`
+  const text = `Started ${role === 'hydra' ? 'Titan' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Titan command'} in ${claimed.cwd}`
   await withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -229,7 +229,7 @@ export async function startCommand({
           ref: target,
           note: {
             kind: 'context',
-            source: 'pnyx:start',
+            source: 'othrys:start',
             text,
           },
           meta: {
@@ -249,8 +249,8 @@ export async function startCommand({
     folder: claimed.cwd,
     help: [
       role === 'hydra'
-        ? `Its first session becomes the Hydra; read hydra.log in Hydra ${hydraId}`
-        : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Hydra ${hydraId}`,
+        ? `Its first session becomes the Titan; read hydra.log in Titan ${hydraId}`
+        : `Its session attaches to ${target} when its hooks first report; read tasks/${target}/task.log in Titan ${hydraId}`,
     ],
   }
 }

@@ -11,14 +11,14 @@ import type { createSteeringDelivery } from './steering-delivery.ts'
 import type { createPermissionBridge } from './permission-bridge.ts'
 import { ownerActor } from '#app/actors.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { deliveringMessage } from '#routine-helper/leases.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Live } from '#app/host-types.ts'
 import type { Writer } from '#app/writer.ts'
@@ -206,7 +206,7 @@ export function createHostedDelivery({
     inputId?: string
   }) => {
     if (attempt !== undefined && (!attempt.trim() || !steering)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'A notification attempt needs a persisted steering ID',
         code: 'VALIDATION_ERROR',
       })
@@ -215,7 +215,7 @@ export function createHostedDelivery({
     if (ownerActor({ actor })) {
       await denyForMessage({
         task: findCard({
-          state: loadHydra({ hydraId }).state,
+          state: loadTitan({ hydraId }).state,
           ref,
         }).id,
         actor,
@@ -250,10 +250,10 @@ export function createHostedDelivery({
             })
           }
 
-          if (!direct && card.id !== HYDRA_CARD) {
+          if (!direct && card.id !== TITAN_CARD) {
             if (steering) {
               if (!card.steering?.some(message => message.id === steering)) {
-                throw new HydraError({
+                throw new TitanError({
                   message: 'Steering message was not persisted',
                   code: 'VALIDATION_ERROR',
                 })
@@ -362,7 +362,7 @@ export function createHostedDelivery({
     entry.activity = 'working'
     entry.sentAt = Date.now()
 
-    if (direct || card.id === HYDRA_CARD) {
+    if (direct || card.id === TITAN_CARD) {
       entry.input.push({
         text,
         original,
@@ -370,7 +370,7 @@ export function createHostedDelivery({
       })
 
       // Its reply stays queued until the provider confirms the agent got it.
-      if (inputId && card.id !== HYDRA_CARD) {
+      if (inputId && card.id !== TITAN_CARD) {
         entry.pendingDirect.set(
           inputId,
           {

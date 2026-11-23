@@ -1,5 +1,5 @@
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { randomUUID } from 'node:crypto'
 import type { Writer } from '#app/writer.ts'
 import type { CompactionChange } from './model.ts'
@@ -15,7 +15,7 @@ export function recordCompaction({
   change: CompactionChange
   at: string
 }) {
-  if (card === HYDRA_CARD && change.kind === 'status' && change.operation.state === 'running') {
+  if (card === TITAN_CARD && change.kind === 'status' && change.operation.state === 'running') {
     harvestTranscripts({
       writer,
       cardIds: [card],

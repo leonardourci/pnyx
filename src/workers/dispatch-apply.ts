@@ -1,25 +1,25 @@
 import { commandNotices, inform } from '#app/command-notices.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { ApplyError, type ApplyIssue } from '#app/apply/schema.ts'
 import { asRecord } from '#app/command-validation.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { settingsNotice } from '#hydra/settings-notice.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { settingsNotice } from '#titan/settings-notice.ts'
+import { TitanError } from '#store/errors.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
 import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
 import { raisesPermission, workerMode } from './permission-level.ts'
-import { hydraCandidate } from '#hydra/agent-choice.ts'
+import { hydraCandidate } from '#titan/agent-choice.ts'
 import { hydraActor, requestEnv } from '#app/request-context.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { isDeepStrictEqual } from 'node:util'
 
 type Fields = Record<string, unknown>
@@ -30,7 +30,7 @@ export interface DispatchEnvelope {
   patch: Fields
 }
 
-export const DISPATCH_HELP_LINE = ['Run `pnyx rule schema` for every field and allowed value']
+export const DISPATCH_HELP_LINE = ['Run `othrys rule schema` for every field and allowed value']
 
 const ENVELOPE_FIELDS = [
   'version',
@@ -135,7 +135,7 @@ export function dispatchIssues({ document }: { document: DispatchDocument }) {
   })
 }
 
-// --if-revision names the dispatch revision, so the Hydra event that records a proposal never checks it.
+// --if-revision names the dispatch revision, so the Titan event that records a proposal never checks it.
 function eventMeta({ meta }: { meta: Meta }): Meta {
   const event = structuredClone(meta)
   delete event.ifRevision
@@ -152,23 +152,23 @@ function raisesCandidatePermission({
   before: DispatchDocument
   after: DispatchDocument
 }): boolean {
-  const callerHydraId = requestEnv().PNYX_HYDRA || hydraId
-  const state = loadHydra({ hydraId: callerHydraId }).state
-  // The running harness is the fallback Hydra keeps; its own configured agent would hide what the rules change.
-  const previousHydra = hydraCandidate({
+  const callerTitanId = requestEnv().OTHRYS_TITAN || hydraId
+  const state = loadTitan({ hydraId: callerTitanId }).state
+  // The running harness is the fallback Titan keeps; its own configured agent would hide what the rules change.
+  const previousTitan = hydraCandidate({
     state: { cards: state.cards },
     dispatch: before,
   })
-  const nextHydra = hydraCandidate({
+  const nextTitan = hydraCandidate({
     state: { cards: state.cards },
     dispatch: after,
   })
 
   if (raisesPermission({
-    beforeHarness: previousHydra.harness,
-    harness: nextHydra.harness,
-    before: previousHydra.mode,
-    after: nextHydra.mode,
+    beforeHarness: previousTitan.harness,
+    harness: nextTitan.harness,
+    before: previousTitan.mode,
+    after: nextTitan.mode,
   })) {
     return true
   }
@@ -317,7 +317,7 @@ export async function applyDispatch({
 
       if (seen) {
         if (seen.digest !== digest) {
-          throw new HydraError({
+          throw new TitanError({
             message: `event id ${meta.id} was already used with different contents or actor`,
             code: 'IDEMPOTENCY_CONFLICT',
           })
@@ -338,7 +338,7 @@ export async function applyDispatch({
       const expected = envelope.expected?.revision ?? meta.ifRevision
 
       if (expected !== undefined && expected !== revision) {
-        throw new HydraError({
+        throw new TitanError({
           message: `heads dispatch is at revision ${revision}, not ${expected}; run rule show and patch again`,
           code: 'REVISION_CONFLICT',
         })
@@ -407,7 +407,7 @@ export async function applyDispatch({
       if (proposeIt) {
         inform({
           reason: 'Dispatch settings applied directly; confirmation is no longer needed',
-          clear: 'Use pnyx rule show to inspect dispatch settings',
+          clear: 'Use othrys rule show to inspect dispatch settings',
         })
       }
 
@@ -477,7 +477,7 @@ function proposalProblem({
     document,
     changes: JSON.parse(proposal.before) as DispatchChange[],
   })) {
-    return 'This proposal is out of date: heads dispatch changed since Hydra proposed it'
+    return 'This proposal is out of date: heads dispatch changed since Titan proposed it'
   }
 
   const errors = newErrors({
@@ -491,7 +491,7 @@ function proposalProblem({
   return errors.length ? `This proposal no longer checks: ${errors.map(found => `${found.path} ${found.problem}`).join('; ')}` : undefined
 }
 
-export function proposalStatus({ state }: { state: HydraState }): ProposalStatus[] {
+export function proposalStatus({ state }: { state: TitanState }): ProposalStatus[] {
   const document = savedDocument()
 
   return (state.dispatchProposals ?? []).filter(proposal => proposal.kind !== 'command')
@@ -533,10 +533,10 @@ function saveProposal({
   })
 
   if (problem) {
-    throw new HydraError({
+    throw new TitanError({
       message: problem,
       code: 'CONFLICT',
-      help: ['Dismiss it and ask Hydra to propose the change again'],
+      help: ['Dismiss it and ask Titan to propose the change again'],
     })
   }
 
@@ -570,7 +570,7 @@ export async function resolveProposal({
   if (hydraActor({ actor: meta.actor })) {
     inform({
       reason: 'Dispatch proposal answered by an agent',
-      clear: 'pnyx rule show',
+      clear: 'othrys rule show',
     })
   }
 
@@ -587,7 +587,7 @@ export async function resolveProposal({
       }
 
       if (proposal.kind === 'command') {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Answer this question with approval confirm|dismiss',
           code: 'VALIDATION_ERROR',
         })
@@ -615,7 +615,7 @@ export async function resolveProposal({
           const decision = hydraEvent({
             state: writer.state,
             meta: eventMeta({ meta }),
-            cardId: HYDRA_CARD,
+            cardId: TITAN_CARD,
             change: {
               type: 'hydra.dispatch-resolved',
               data: {

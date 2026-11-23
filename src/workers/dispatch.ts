@@ -4,10 +4,10 @@ import { isDeepStrictEqual } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
 import type { PlanWindow } from './provider.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { StartOverride } from './model.ts'
 import { offered, ONE_MILLION } from './dispatch-check.ts'
-import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './dispatch-config.ts'
+import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type TitanDispatch } from './dispatch-config.ts'
 
 interface EffectiveQuota {
   status?: string
@@ -166,7 +166,7 @@ interface PlanUsage {
 
 const USAGE_CACHE_MS = 5 * 60_000
 // The composer's plan windows: one quota-axi read per login every USAGE_CACHE_MS, shared by every
-// tab and Hydra, so a hover never waits on the vendor. A failed read is not kept.
+// tab and Titan, so a hover never waits on the vendor. A failed read is not kept.
 const usageCache = new Map<string, {
   at: number
   result: Promise<PlanUsage | undefined>
@@ -274,7 +274,7 @@ export const ruleCandidates = ({
   dispatch,
   rule = 'default',
 }: {
-  dispatch: HeadsDispatch
+  dispatch: TitanDispatch
   rule?: string
 }) =>
   rule === 'default' ? dispatch.default
@@ -290,7 +290,7 @@ export function startCandidates({
   override,
   offers,
 }: {
-  dispatch: HeadsDispatch
+  dispatch: TitanDispatch
   rule?: string
   harness?: string
   override?: Override
@@ -311,7 +311,7 @@ export function startCandidates({
   ]
 
   if (harness && !harnesses.includes(harness as Harness)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unknown harness: ${harness}`,
       code: 'VALIDATION_ERROR',
     })
@@ -484,7 +484,7 @@ async function chooseCandidate({
   const requested = override?.account ? accounts[override.account] : undefined
 
   if (override?.account && (!requested || (harness && requested.provider !== harness))) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'NO_ACCOUNTS',
       message: `account ${override.account} is not registered for the requested harness`,
     })
@@ -500,15 +500,15 @@ async function chooseCandidate({
   })
 
   if (!candidates) {
-    throw new HydraError({
+    throw new TitanError({
       message: `no heads dispatch rule ${rule}`,
       code: 'NOT_FOUND',
-      help: ['Run `pnyx rule list`; Hydra must choose a rule for the task'],
+      help: ['Run `othrys rule list`; Titan must choose a rule for the task'],
     })
   }
 
   if (harness && !knownHarness({ name: harness })) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unknown harness: ${harness}`,
       code: 'VALIDATION_ERROR',
     })
@@ -518,7 +518,7 @@ async function chooseCandidate({
     accounts,
     dispatch.main,
   ))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'heads dispatch needs a registered main account',
       code: 'NO_ACCOUNTS',
       help: ['Add a main account and set the account order in Settings.'],
@@ -526,7 +526,7 @@ async function chooseCandidate({
   }
 
   if (!candidates.length && override?.model) {
-    throw new HydraError({
+    throw new TitanError({
       message: `model ${override.model}: not offered by the harness catalogs`,
       code: 'VALIDATION_ERROR',
     })
@@ -584,7 +584,7 @@ async function chooseCandidate({
       ) ? logins[key] : undefined
 
       if (!account || account.provider !== candidate.harness) {
-        throw new HydraError({
+        throw new TitanError({
           message: `account ${key} is not registered for ${candidate.harness}`,
           code: 'NO_ACCOUNTS',
         })
@@ -602,7 +602,7 @@ async function chooseCandidate({
       }
 
       if (reading.auth === 'signed-out') {
-        throw new HydraError({
+        throw new TitanError({
           message: `account ${key} is signed out; start stopped`,
           code: 'ACCOUNT_SIGNED_OUT',
           help: [`Sign in to ${loginFolder({ account })}, then retry; tell the owner if sign-in is needed`],
@@ -664,10 +664,10 @@ async function chooseCandidate({
   const tied = best ? ranked.filter(c => c.priority === best.priority) : choices
 
   if (!choices.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: `no usable candidates for rule ${rule}; start stopped: ${[...evidence].join('; ')}`,
       code: 'DISPATCH_EXHAUSTED',
-      help: ['Tell the owner; Pnyx never switches to a weaker rule or an unlisted account'],
+      help: ['Tell the owner; Othrys never switches to a weaker rule or an unlisted account'],
     })
   }
 
@@ -774,7 +774,7 @@ export async function startsNow({
         reason: choice.reason,
       }
     } catch (error) {
-      if (!(error instanceof HydraError)) {
+      if (!(error instanceof TitanError)) {
         throw error
       }
 
@@ -786,7 +786,7 @@ export async function startsNow({
   }))
 }
 
-// A Pnyx-hosted agent takes only the values its own setting pickers offer.
+// An Othrys-hosted agent takes only the values its own setting pickers offer.
 function hostedOverride({
   harness,
   override,
@@ -808,7 +808,7 @@ function hostedOverride({
       .map(o => o.value) ?? []
 
     if (value !== undefined && !options.includes(value)) {
-      throw new HydraError({
+      throw new TitanError({
         message: `${harness} has no ${setting} ${value}`,
         code: 'VALIDATION_ERROR',
         help: [`Use one of: ${options.join(', ')}`],
@@ -825,7 +825,7 @@ export function overrideOf({ value }: { value: unknown }): Override | undefined 
   const given = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 
   if (!given || Object.keys(given).some(key => !OVERRIDE_FIELDS.includes(key as keyof Override))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'an override may only set account, model, effort, mode and fast',
       code: 'VALIDATION_ERROR',
     })
@@ -894,7 +894,7 @@ export function validateChoice({
       candidate,
       choice.candidate,
     )))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'heads dispatch changed or the choice is invalid; retry task start',
       code: 'VALIDATION_ERROR',
     })
