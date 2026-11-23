@@ -72,7 +72,6 @@ export const view = guard({
 
     const m = meta({ values })
     const entries = Object.entries(resizeViewPatch({
-      state: loadHydra({ hydraId }).state,
       patch: patch as Record<string, unknown>,
     }))
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))

@@ -508,7 +508,6 @@ export function SettingsPage({
       ...settings,
     },
     input: resizeViewPatch({
-      state,
       patch: Object.fromEntries(Object.entries(live).filter(([key]) => key in DEFAULT_VIEW)),
     }),
   })

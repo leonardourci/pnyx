@@ -16,7 +16,7 @@ const project = projectsFor({ state }).find(project => !project.detached
 if (project) {
   const open = Object.values(state.cards)
     .filter(card => liveTask({ card }) && card.project === project.path
-      && !hasCompletedOutcome({ card }) && !hasMergedDelivery({ card }))
+      && !card.doneAt && !hasCompletedOutcome({ card }) && !hasMergedDelivery({ card }))
     .map(card => ({
       card,
       status: cardStatus({

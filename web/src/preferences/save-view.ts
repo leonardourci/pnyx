@@ -18,7 +18,6 @@ export function useSaveView({
     async ({ patch }: { patch: Record<string, unknown> }) => {
       const resize = 'defaultHydraWidth' in patch
       const applied = resize ? resizeViewPatch({
-        state,
         patch,
       }) : patch
       const entries = Object.entries(applied)

@@ -20,6 +20,9 @@ const inFlight = ({ question }: { question: OwnerQuestion }) =>
 export const hasCompletedOutcome = ({ card }: { card: Card }): boolean =>
   card.outcome?.closed === true || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
 
+export const hasBlockedWork = ({ card }: { card: Card }): boolean =>
+  card.workerLog?.status?.code === 'blocked' || (card.outcome?.state === 'failed' && !card.outcome.closed)
+
 export function hasMergedDelivery({ card }: { card: Card }): boolean {
   const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
 
@@ -68,12 +71,12 @@ export function cardStatus({
     }
   }
 
-  if (worker?.code === 'blocked' || (card.outcome?.state === 'failed' && !card.outcome.closed)) {
+  if (hasBlockedWork({ card })) {
     return {
       kind: 'blocked',
       state: 'blocked',
       text: 'blocked',
-      at: worker?.at,
+      at: worker?.code === 'blocked' ? worker.at : undefined,
     }
   }
 
@@ -145,7 +148,7 @@ export function cardStatus({
       kind: 'done',
       state: 'done',
       text: 'done',
-      at: worker?.at ?? card.doneAt,
+      at: worker?.code === 'done' ? worker.at : card.doneAt,
     }
   }
 
