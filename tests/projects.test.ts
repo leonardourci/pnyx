@@ -782,18 +782,24 @@ test(
       key: 'gate',
       line: 'done: Implementation ready for review',
     })
-    const reviewedTask = await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'gate',
-        '--full',
-      ],
+    const reviewedTask = await until({
+      what: 'the done report to appear on the task',
+      check: async () => {
+        const { task } = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'gate',
+            '--full',
+          ],
+        })
+
+        return task.workerLog?.status?.code === 'done' && task
+      },
     })
-    expect(reviewedTask.task.asks).toContainEqual(expect.objectContaining({
-      id: ask.id,
-      closed: undefined,
-    }))
+    const questionAfterReport = reviewedTask.asks?.find((candidate: { id: string }) => candidate.id === ask.id)
+    expect(questionAfterReport).toBeDefined()
+    expect(questionAfterReport?.closed).toBeUndefined()
     const session = await hydra.chat({ text: 'Review the open pull requests.' })
     const asHydra = hydra.as({ session })
     const merge = [
