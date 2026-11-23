@@ -60,7 +60,7 @@ const projectMemorySize = ({ documents }: Pick<ProjectMemory, 'documents'>) => O
   0,
 )
 
-export function projectMemoryLogPath({ id }: { id: string }) {
+function projectMemoryLogPath({ id }: { id: string }) {
   return join(
     pnyxHome(),
     'projects',
