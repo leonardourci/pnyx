@@ -292,14 +292,14 @@ export type SessionEntry = ThreadEntry & {
   reference: string
   session: string
 }
-export interface HydraSession {
+interface HydraSession {
   session: string
   agent: AgentRef
 }
 
 // Every session Hydra has been configured with, oldest first; the card holds the current
 // session's latest agent.
-export function hydraSessions({ state }: { state: HydraState }): HydraSession[] {
+function hydraSessions({ state }: { state: HydraState }): HydraSession[] {
   const hydra = state.cards[HYDRA_CARD]
   const current = hydra && cardSessionId({ card: hydra })
   const ids = [...state.hydraSessions ?? []]
