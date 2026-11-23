@@ -1,3 +1,4 @@
+import { TitanError } from '#store/errors.ts'
 import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { MAX_BODY } from '#app/server-protocol.ts'
 import { request as httpRequest } from 'node:http'
@@ -194,16 +195,28 @@ const failure = ({
   argv,
   message,
   code,
+  help,
 }: {
   argv: string[]
   message: string
   code: string
+  help?: string[]
 }) => {
   const { json } = cliArguments({ argv })
-  process.stderr.write(json ? `${JSON.stringify({
+  const output: {
+    error: string
+    code: string
+    help?: string[]
+  } = {
     error: message,
     code,
-  })}\n` : `${code}: ${message}\n`)
+  }
+
+  if (help?.length) {
+    output.help = help
+  }
+
+  process.stderr.write(json ? `${JSON.stringify(output)}\n` : `${code}: ${message}\n`)
   process.exitCode = code === 'VALIDATION_ERROR' ? 2 : 1
 }
 
@@ -213,11 +226,13 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
 
   try {
     input = await commandInput({ argv })
+    othrysHome()
   } catch (error) {
     failure({
       argv,
       message: (error as Error).message,
-      code: 'VALIDATION_ERROR',
+      code: error instanceof TitanError ? error.code : 'VALIDATION_ERROR',
+      help: error instanceof TitanError ? error.help : undefined,
     })
 
     return
