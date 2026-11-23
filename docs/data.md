@@ -32,13 +32,12 @@ Agents use the harness and provider you configure, so their prompts and tool res
 
 ## Uninstall
 
-Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`. Deleting `~/.pnyx` also deletes the task copies under `~/.pnyx/copies/`, so settle them first:
+Select the installation's home before removing its login service or hooks. For a custom home, export its `PNYX_HOME` and add `--allow-custom-home` to the setup commands. Stop the server and settle any task copies before deleting the selected home. The default home is `~/.pnyx` and may hold your previous installation.
 
 ```sh
 pnyx setup --remove  # if the login service was installed
 # Stop a foreground server with Ctrl+C.
 pnyx setup hooks --remove
 pnyx setup skills --remove
-rm -rf ~/.pnyx
 pnpm remove -g pnyx
 ```

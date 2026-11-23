@@ -138,6 +138,16 @@ test.each([
     const recovered = readNativeHydra({ hydraId: hydra.id }).state
     const restoredThrough = recovered.eventIds[boundary]
     expect(recovered.hydraOperation).toBeUndefined()
+    expect(readEvents({
+      hydraId: hydra.id,
+      types: ['hydra.operation'],
+    })).toContainEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        id: 'cutoff-compaction',
+        state: 'started',
+        after: restoredThrough,
+      }),
+    }))
 
     for (const id of [
       'cutoff-compaction',
