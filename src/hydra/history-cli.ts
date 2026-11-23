@@ -33,6 +33,7 @@ function hydraHistoryWindow({
   state: HydraState
 }): HistoryWindow {
   const sources = nativeSources({
+    hydraId,
     state,
     card: HYDRA_CARD,
   })
