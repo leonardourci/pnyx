@@ -924,18 +924,28 @@ export async function startServer({
     for (const id of hydraIds()) {
       const before = skipped[id]
 
-      if (!closed && !mounts.has(id) && !removalPending({ id })) {
-        mount({ id }).catch((error: Error) => {
-          if (error.message !== before) {
-            log({
-              level: 'warn',
-              operation: 'hydra.skipped',
-              hydraId: id,
-              error,
-            })
-          }
-        })
+      if (closed || mounts.has(id)) {
+        continue
       }
+
+      const openDiscoveredHydra = async () => {
+        if (!removalPending({ id })) {
+          await mount({ id })
+        }
+      }
+
+      openDiscoveredHydra().catch((error: Error) => {
+        skipped[id] = error.message
+
+        if (error.message !== before) {
+          log({
+            level: 'warn',
+            operation: 'hydra.skipped',
+            hydraId: id,
+            error,
+          })
+        }
+      })
     }
   }
 
