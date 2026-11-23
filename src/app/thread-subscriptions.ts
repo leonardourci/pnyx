@@ -633,6 +633,13 @@ export function createThreadSubscriptions({
 
     const version = sub.readVersion
 
+    if (before) {
+      currentThread({
+        sub,
+        card,
+      })
+    }
+
     if (before === undefined && !retain) {
       const prepared = versionThread({
         sub,
