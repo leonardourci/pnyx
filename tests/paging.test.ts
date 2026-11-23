@@ -181,7 +181,7 @@ test(
 )
 
 test(
-  'a task\'s chat keeps the older page it read back, in order, when its worker writes more, and its tool calls follow Focus mode',
+  'a task\'s older chat stays ordered through new replies and session changes, and Focus mode controls tool calls',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'notes' })
@@ -327,6 +327,29 @@ test(
         JSON.stringify(restored.thread),
       ).toEqual(everyNote)
       expect(unknownOption.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
+
+      const reference = loaded().find(entry => entry.text === 'note after reading back')?.reference
+      expect(reference).toBeDefined()
+      await hydra.owner({
+        args: [
+          'task',
+          'detach',
+          'notes',
+        ],
+      })
+      const lookedUp = await hydra.owner({
+        args: [
+          'task',
+          'messages',
+          'notes',
+          '--id',
+          reference!,
+        ],
+      })
+      expect(lookedUp.messages).toContainEqual(expect.objectContaining({
+        id: reference,
+        text: 'note after reading back',
+      }))
     } finally {
       await focusMode({ on: true })
     }
