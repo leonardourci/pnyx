@@ -2,7 +2,8 @@ import { COMMON, guard, parse, type Options } from './cli-support.ts'
 import type { HydraState } from './model.ts'
 import { loadHydra } from './store.ts'
 import { pageState, type PageInterest } from './page-state.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { projectGroups } from '#projects/groups.ts'
+import { taskProjectGroup } from '#tasks/order.ts'
 import { liveTask } from '#tasks/select.ts'
 
 const PAGE_OPTIONS: Options = {
@@ -102,9 +103,12 @@ function pageOutput({
 
   return {
     seq: page.seq,
-    columns: hydraConfig({ state }).columns.map(column => ({
+    columns: projectGroups({ state }).map(column => ({
       column: column.id,
-      cards: cards.filter(card => liveTask({ card }) && card.column === column.id).length,
+      cards: cards.filter(card => liveTask({ card }) && taskProjectGroup({
+        state,
+        card,
+      }) === column.id).length,
     })),
     opened: opened.length ? opened : 'none: no --card given',
     hidden: interest.hidden ? cards.filter(card => !liveTask({ card })).length : 'not included; pass --hidden',

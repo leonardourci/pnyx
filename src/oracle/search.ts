@@ -1,3 +1,4 @@
+import { taskProjectGroup } from '#tasks/order.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -309,7 +310,10 @@ export function search({
         continue
       }
 
-      if (query.columns?.length && !query.columns.includes(card.column)) {
+      if (query.columns?.length && !query.columns.includes(taskProjectGroup({
+        state,
+        card,
+      }))) {
         continue
       }
 
