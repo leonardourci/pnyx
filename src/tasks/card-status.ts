@@ -67,7 +67,7 @@ export function cardStatus({
       state: 'needs_you',
       text: 'needs you',
       count: waiting.length > 1 ? waiting.length : undefined,
-      at: worker?.at,
+      at: worker?.code === 'needs-you' ? worker.at : undefined,
     }
   }
 
