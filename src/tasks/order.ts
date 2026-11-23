@@ -2,7 +2,7 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import { projectGroup } from '#projects/groups.ts'
 import { HydraError } from '#store/errors.ts'
-import { rankOf, rankWithin } from './select.ts'
+import { knownCards, rankOf, rankWithin } from './select.ts'
 
 export function taskProjectGroup({
   state,
@@ -13,9 +13,10 @@ export function taskProjectGroup({
 }) {
   let root = card
   const visited = new Set([card.id])
+  const cards = knownCards({ state })
 
   while (root.parentId) {
-    const parent = state.cards[root.parentId]
+    const parent = cards[root.parentId]
 
     if (!parent || visited.has(parent.id)) {
       break

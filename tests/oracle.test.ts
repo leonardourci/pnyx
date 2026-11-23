@@ -11,6 +11,7 @@ import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import type { WorkerOptions } from 'node:worker_threads'
 import { parsed, operation, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 import { git } from './setup/upgrade.ts'
+import { createProject } from './setup/projects.ts'
 
 let pnyx: Pnyx
 
@@ -674,9 +675,14 @@ test(
 )
 
 test(
-  'Oracle result metadata and family previews include a child’s live native work',
+  'Oracle result metadata and family previews include a child’s live native work and its hidden parent’s project',
   async () => {
     const hydra = await pnyx.hydra()
+    const project = await createProject({
+      hydra,
+      landing: 'branch',
+      name: 'preview-project',
+    })
     const parent = await hydra.owner({
       args: [
         'task',
@@ -686,6 +692,8 @@ test(
         'Family preview',
         '--key',
         'preview-family',
+        '--project',
+        project,
       ],
     })
     const child = await hydra.owner({
@@ -705,6 +713,7 @@ test(
       reply: 'Child turn complete',
       hold: true,
     })
+    onTestFinished(held.release)
     await hydra.owner({
       args: [
         'task',
@@ -830,6 +839,44 @@ test(
       text: 'working',
       actions,
     })).not.toContain(`task:${child.card.id}`)
+    await hydra.owner({
+      args: [
+        'task',
+        'hide',
+        parent.card.id,
+      ],
+    })
+    const { page } = await hydra.owner({
+      args: [
+        'page',
+        '--full',
+      ],
+    })
+    expect(page.cards[parent.card.id]).toBeUndefined()
+    expect(page.references[parent.card.id].project).toBe(project)
+    const hiddenParentResults = oracleResults({
+      state: page,
+      hits: [],
+      projects: [],
+      actions: [],
+      cardActions: actions,
+      hydra: {
+        id: hydra.id,
+        name: 'Status search',
+      },
+      text: 'Live child',
+      badges: [],
+      now: Date.now(),
+    }).flatMap((group: {
+      results: {
+        id: string
+        column?: string
+      }[]
+    }) => group.results)
+    expect(hiddenParentResults).toContainEqual(expect.objectContaining({
+      id: `task:${child.card.id}`,
+      column: project,
+    }))
     held.release()
   },
 )
