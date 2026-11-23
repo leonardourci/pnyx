@@ -1,16 +1,17 @@
+import { selectHome } from './home.ts'
 import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
-export function pnyxHome(): string {
-  return process.env.PNYX_HOME || join(
-    homedir(),
-    '.pnyx',
-  )
+export function othrysHome(): string {
+  return selectHome({
+    env: process.env,
+    userHome: homedir(),
+  })
 }
 
 export const taskRuntimeDir = ({ task }: { task: string }) => resolve(
-  pnyxHome(),
+  othrysHome(),
   'runtime',
   'tasks',
   task,
@@ -44,7 +45,7 @@ export function canonical({ path }: { path: unknown }): string | undefined {
 }
 
 export const homeScoped = ({ hydraId }: { hydraId: string }) => {
-  const home = resolve(pnyxHome())
+  const home = resolve(othrysHome())
 
   return `${canonical({ path: home }) ?? home}\u0000${hydraId}`
 }

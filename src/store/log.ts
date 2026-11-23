@@ -1,7 +1,7 @@
 import { closeSync, constants, fdatasyncSync, fstatSync, fsyncSync, ftruncateSync, lstatSync, openSync, readSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { HydraError } from './errors.ts'
+import { TitanError } from './errors.ts'
 import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
 
 const READ_BYTES = 64 * 1024
@@ -52,7 +52,7 @@ export function plainJson<Value>({ value }: { value: Value }): Value {
 
     return decoded
   } catch (cause) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'INVALID_EVENT',
       message: 'file-store values must be plain JSON',
       cause,
@@ -65,8 +65,8 @@ const EMPTY: LogPosition = {
   n: 0,
 }
 
-function positionError({ path }: { path: string }): HydraError {
-  return new HydraError({
+function positionError({ path }: { path: string }): TitanError {
+  return new TitanError({
     message: `log position does not match ${path}`,
     code: 'LOG_POSITION',
   })
@@ -78,8 +78,8 @@ function corrupt({
 }: {
   path: string
   offset: number
-}): HydraError {
-  return new HydraError({
+}): TitanError {
+  return new TitanError({
     message: `${path} is corrupt at byte ${offset}`,
     code: 'LOG_CORRUPT',
   })
@@ -116,7 +116,7 @@ function entryOf({
     || typeof entry.t !== 'string' || !entry.t
     || typeof entry.id !== 'string' || !entry.id) {
     if (writing) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_EVENT',
         message: 'invalid native fact header',
       })
@@ -224,7 +224,7 @@ export function readLog({
     const size = through?.bytes ?? opened.size
 
     if (size > opened.size) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'LOG_CHANGED',
         message: `${path} is shorter than its acknowledged position`,
       })
@@ -279,7 +279,7 @@ export function readLog({
       )
 
       if (!bytes) {
-        throw new HydraError({
+        throw new TitanError({
           message: `${path} changed while reading`,
           code: 'LOG_CHANGED',
         })
@@ -437,7 +437,7 @@ export function prepareLog({
       fields,
       'n',
     )) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'the log assigns its own line numbers',
         code: 'INVALID_EVENT',
       })
@@ -507,7 +507,7 @@ export function appendLog({
   }
 
   if ((existing?.size ?? 0) !== after.bytes) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${path} changed before append`,
       code: 'LOG_CHANGED',
     })
@@ -535,7 +535,7 @@ export function appendLog({
     }
 
     if (opened.size !== after.bytes) {
-      throw new HydraError({
+      throw new TitanError({
         message: `${path} changed before append`,
         code: 'LOG_CHANGED',
       })

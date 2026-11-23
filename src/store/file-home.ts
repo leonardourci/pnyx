@@ -1,10 +1,10 @@
 import { existsSync, lstatSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, type Dirent } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { HydraError } from './errors.ts'
+import { TitanError } from './errors.ts'
 import { appendLog, readLog, type LogEntry, type LogFact, type LogPosition } from './log.ts'
 import { readSnapshot, type FileSnapshot } from './snapshot.ts'
 import { privateDir, syncDirectory } from './storage.ts'
-import { HYDRA_ID } from '#hydra/identity.ts'
+import { TITAN_ID } from '#titan/identity.ts'
 
 export const COMPONENT = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const EMPTY: LogPosition = {
@@ -12,12 +12,12 @@ const EMPTY: LogPosition = {
   n: 0,
 }
 
-interface HydraLocation {
+interface TitanLocation {
   home: string
   hydra: string
 }
 
-interface TaskLocation extends HydraLocation {
+interface TaskLocation extends TitanLocation {
   task: string
 }
 
@@ -32,7 +32,7 @@ type MoveCheck = ({
   log: FileLog
   path: string
   snapshot?: FileSnapshot
-}) => HydraError | undefined
+}) => TitanError | undefined
 
 interface RecoveryChecks {
   checkSnapshot?: SnapshotCheck
@@ -43,10 +43,10 @@ export interface FileLog {
   entries: LogEntry[]
   position: LogPosition
   fromStart: boolean
-  issue?: HydraError
+  issue?: TitanError
 }
 
-export interface HydraFiles {
+export interface TitanFiles {
   dir: string
   snapshot?: FileSnapshot
   hydra: FileLog
@@ -62,7 +62,7 @@ function component({
   rule?: RegExp
 }): string {
   if (!rule.test(id)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `invalid file-store id: ${id}`,
       code: 'INVALID_ID',
     })
@@ -74,12 +74,12 @@ function component({
 export const hydraFiles = ({
   home,
   hydra,
-}: HydraLocation) => join(
+}: TitanLocation) => join(
   resolve(home),
   'hydras',
   component({
     id: hydra,
-    rule: HYDRA_ID,
+    rule: TITAN_ID,
   }),
 )
 
@@ -113,7 +113,7 @@ function requireDirectory({
   }
 
   if (!found?.isDirectory()) {
-    throw new HydraError({
+    throw new TitanError({
       message: `not a file-store directory: ${dir}`,
       code: 'LOG_CORRUPT',
     })
@@ -152,7 +152,7 @@ function publishFolder({
     destination,
     { throwIfNoEntry: false },
   )) {
-    throw new HydraError({
+    throw new TitanError({
       message: `file-store folder already exists: ${destination}`,
       code: 'CONFLICT',
     })
@@ -193,16 +193,16 @@ function publishFolder({
   }
 }
 
-export function createHydraFiles({
+export function createTitanFiles({
   home,
   hydra,
   entries,
-}: HydraLocation & {
+}: TitanLocation & {
   entries: readonly LogFact[]
 }): LogPosition {
   if (entries[0]?.t !== 'config') {
-    throw new HydraError({
-      message: 'a Hydra starts with its config fact',
+    throw new TitanError({
+      message: 'a Titan starts with its config fact',
       code: 'INVALID_EVENT',
     })
   }
@@ -227,7 +227,7 @@ export function createTaskFiles({
   entries: readonly LogFact[]
 }): LogPosition {
   if (entries[0]?.t !== 'created') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'a task starts with its created fact',
       code: 'INVALID_EVENT',
     })
@@ -252,7 +252,7 @@ export function createTaskFiles({
   })
 }
 
-function failedLog({ issue }: { issue: HydraError }): FileLog {
+function failedLog({ issue }: { issue: TitanError }): FileLog {
   return {
     entries: [],
     position: EMPTY,
@@ -285,7 +285,7 @@ function readFileLog({
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EACCES') {
       return failedLog({
-        issue: new HydraError({
+        issue: new TitanError({
           code: 'LOG_UNREADABLE',
           message: `cannot open canonical log for recovery: ${path}`,
           cause: error,
@@ -293,14 +293,14 @@ function readFileLog({
       })
     }
 
-    if (error instanceof HydraError && error.code === 'LOG_POSITION' && after.bytes) {
+    if (error instanceof TitanError && error.code === 'LOG_POSITION' && after.bytes) {
       return readFileLog({ path })
     }
 
-    if (!(error instanceof HydraError) || error.code !== 'LOG_CORRUPT') {
+    if (!(error instanceof TitanError) || error.code !== 'LOG_CORRUPT') {
       if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
         return failedLog({
-          issue: new HydraError({
+          issue: new TitanError({
             message: `canonical log must be a regular file: ${path}`,
             code: 'LOG_CORRUPT',
             cause: error,
@@ -340,22 +340,22 @@ function prepareMove({
     task,
   })
   requireDirectory({ dir: source })
-  const targetHydra = hydraFiles({
+  const targetTitan = hydraFiles({
     home,
     hydra: to,
   })
-  requireDirectory({ dir: targetHydra })
+  requireDirectory({ dir: targetTitan })
   const targetLog = lstatSync(
     join(
-      targetHydra,
+      targetTitan,
       'hydra.log',
     ),
     { throwIfNoEntry: false },
   )
 
   if (!targetLog?.isFile()) {
-    throw new HydraError({
-      message: `destination Hydra has no regular native log: ${targetHydra}`,
+    throw new TitanError({
+      message: `destination Titan has no regular native log: ${targetTitan}`,
       code: 'INVALID_MOVE',
     })
   }
@@ -371,7 +371,7 @@ function prepareMove({
     destination,
     { throwIfNoEntry: false },
   )) {
-    throw new HydraError({
+    throw new TitanError({
       message: `task folder already exists: ${destination}`,
       code: 'CONFLICT',
     })
@@ -380,7 +380,7 @@ function prepareMove({
   privateNativeDirectory({ dir: dirname(destination) })
 
   if (statSync(source).dev !== statSync(dirname(destination)).dev) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'task folders must share one filesystem',
       code: 'INVALID_MOVE',
     })
@@ -446,12 +446,12 @@ export function moveTaskFiles({
   return position
 }
 
-export function readHydraFiles({
+export function readTitanFiles({
   home,
   hydra,
   checkSnapshot,
   checkMove,
-}: HydraLocation & RecoveryChecks): HydraFiles {
+}: TitanLocation & RecoveryChecks): TitanFiles {
   const dir = hydraFiles({
     home,
     hydra,
@@ -500,7 +500,7 @@ export function readHydraFiles({
       tasks.push([
         entry.name,
         failedLog({
-          issue: new HydraError({
+          issue: new TitanError({
             message: `invalid task folder: ${join(
               tasksDir,
               entry.name,
@@ -532,7 +532,7 @@ export function readHydraFiles({
 
     if (!task.issue && task.fromStart && task.entries[0]?.t !== 'created') {
       task = failedLog({
-        issue: new HydraError({
+        issue: new TitanError({
           message: `task log has no created fact: ${path}`,
           code: 'LOG_CORRUPT',
         }),
@@ -561,7 +561,7 @@ export function readHydraFiles({
           task: entry.name,
         }))
       } catch (error) {
-        if (!(error instanceof HydraError)) {
+        if (!(error instanceof TitanError)) {
           throw error
         }
 
@@ -600,8 +600,8 @@ export function readHydraFiles({
 
   if (!hydraLog.issue && hydraLog.fromStart && hydraLog.entries[0]?.t !== 'config') {
     hydraLog = failedLog({
-      issue: new HydraError({
-        message: `Hydra log has no config fact: ${hydraLogPath}`,
+      issue: new TitanError({
+        message: `Titan log has no config fact: ${hydraLogPath}`,
         code: 'LOG_CORRUPT',
       }),
     })
@@ -616,21 +616,21 @@ export function readHydraFiles({
   }
 }
 
-function readKnownHydra({
+function readKnownTitan({
   home,
   hydra,
   checkSnapshot,
   checkMove,
-}: HydraLocation & RecoveryChecks): HydraFiles {
+}: TitanLocation & RecoveryChecks): TitanFiles {
   try {
-    return readHydraFiles({
+    return readTitanFiles({
       home,
       hydra,
       checkSnapshot,
       checkMove,
     })
   } catch (error) {
-    if (!(error instanceof HydraError)) {
+    if (!(error instanceof TitanError)) {
       throw error
     }
 
@@ -653,7 +653,7 @@ export function readHomeFiles({
   checkMove,
 }: {
   home: string
-} & RecoveryChecks): Map<string, HydraFiles> {
+} & RecoveryChecks): Map<string, TitanFiles> {
   if (existsSync(home)) {
     syncDirectory({ dir: dirname(resolve(home)) })
     syncDirectory({ dir: resolve(home) })
@@ -677,7 +677,7 @@ export function readHomeFiles({
     parent,
     { withFileTypes: true },
   )
-  const ids = entries.filter(entry => entry.isDirectory() && HYDRA_ID.test(entry.name)
+  const ids = entries.filter(entry => entry.isDirectory() && TITAN_ID.test(entry.name)
     && existsSync(join(
       parent,
       entry.name,
@@ -686,7 +686,7 @@ export function readHomeFiles({
     .sort()
   const hydras = new Map(ids.map(hydra => [
     hydra,
-    readKnownHydra({
+    readKnownTitan({
       home,
       hydra,
       checkSnapshot,
@@ -698,7 +698,7 @@ export function readHomeFiles({
   for (const hydra of relocated) {
     hydras.set(
       hydra,
-      readKnownHydra({
+      readKnownTitan({
         home,
         hydra,
         checkSnapshot,

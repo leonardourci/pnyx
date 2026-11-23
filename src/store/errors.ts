@@ -1,4 +1,4 @@
-export class HydraError extends Error {
+export class TitanError extends Error {
   code: string
   help: string[]
   field?: string
@@ -35,7 +35,7 @@ export function inField<T>({
   try {
     return read()
   } catch (error) {
-    if (error instanceof HydraError && error.field === undefined) {
+    if (error instanceof TitanError && error.field === undefined) {
       error.field = field
     }
 

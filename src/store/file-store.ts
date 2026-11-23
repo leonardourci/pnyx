@@ -1,11 +1,11 @@
 import { lstatSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { HydraError } from './errors.ts'
-import { createHydraFiles, createTaskFiles, hydraFiles, moveTaskFiles, taskFiles } from './file-home.ts'
+import { TitanError } from './errors.ts'
+import { createTitanFiles, createTaskFiles, hydraFiles, moveTaskFiles, taskFiles } from './file-home.ts'
 import { appendLog, plainJson, type LogFact, type LogPosition } from './log.ts'
 import { writeSnapshot } from './snapshot.ts'
 import { privateDir } from './storage.ts'
-import { applyFileFacts, emptyFileSegment, fileMemorySnapshot, loadFileMemory, type AcceptedFact, type FileReducers, type FileSegment, type HydraMemory } from './file-memory.ts'
+import { applyFileFacts, emptyFileSegment, fileMemorySnapshot, loadFileMemory, type AcceptedFact, type FileReducers, type FileSegment, type TitanMemory } from './file-memory.ts'
 
 const GROUP_COMMIT_MS = 5
 const openHomes = new Set<string>()
@@ -19,29 +19,29 @@ interface Receipt {
   at: string
   duplicate: boolean
 }
-interface View<Hydra, Task> {
-  state?: Hydra
+interface View<Titan, Task> {
+  state?: Titan
   position: LogPosition
   accepted: Map<string, AcceptedFact>
   worker: number
-  issue?: HydraError
+  issue?: TitanError
   tasks: Map<string, {
     state?: Task
     position: LogPosition
     accepted: Map<string, AcceptedFact>
     worker: number
-    issue?: HydraError
+    issue?: TitanError
   }>
 }
-type Read<Hydra, Task> = ({ hydra }: { hydra: string }) => View<Hydra, Task> | undefined
-type Decide<Value, Hydra, Task> = ({
+type Read<Titan, Task> = ({ hydra }: { hydra: string }) => View<Titan, Task> | undefined
+type Decide<Value, Titan, Task> = ({
   state,
   read,
 }: {
   state: Value
-  read: Read<Hydra, Task>
+  read: Read<Titan, Task>
 }) => readonly LogFact[]
-interface Write<Hydra, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'resolve' | 'reject'> {
+interface Write<Titan, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'resolve' | 'reject'> {
   kind: 'write'
   scope: Scope
   create: boolean
@@ -50,7 +50,7 @@ interface Write<Hydra, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'reso
     read,
   }: {
     state: unknown
-    read: Read<Hydra, Task>
+    read: Read<Titan, Task>
   }): readonly LogFact[]
 }
 interface ScopeChange {
@@ -59,9 +59,9 @@ interface ScopeChange {
   create?: boolean
   facts: readonly LogFact[]
 }
-interface Batch<Hydra, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'resolve' | 'reject'> {
+interface Batch<Titan, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'resolve' | 'reject'> {
   kind: 'batch'
-  decide({ read }: { read: Read<Hydra, Task> }): readonly ScopeChange[]
+  decide({ read }: { read: Read<Titan, Task> }): readonly ScopeChange[]
 }
 interface Control extends Pick<PromiseWithResolvers<void>, 'reject'> {
   kind: 'control'
@@ -102,13 +102,13 @@ function copyAccepted({ accepted }: {
   ]))
 }
 
-export function openFileStore<Hydra, Task>({
+export function openFileStore<Titan, Task>({
   home: requestedHome,
-  reduceHydra,
+  reduceTitan,
   reduceTask,
 }: {
   home: string
-} & FileReducers<Hydra, Task>) {
+} & FileReducers<Titan, Task>) {
   const requestedPath = resolve(requestedHome)
   const parent = statSync(
     dirname(requestedPath),
@@ -116,7 +116,7 @@ export function openFileStore<Hydra, Task>({
   )
 
   if (!parent?.isDirectory()) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'INVALID_HOME',
       message: 'the native home parent must already be a directory',
     })
@@ -137,14 +137,14 @@ export function openFileStore<Hydra, Task>({
   const home = realpathSync(requestedPath)
 
   if (openHomes.has(home)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'STORE_OPEN',
       message: `native home is already open: ${home}`,
     })
   }
 
   if (!lstatSync(home).isDirectory()) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'INVALID_HOME',
       message: `native home must be a directory: ${home}`,
     })
@@ -152,10 +152,10 @@ export function openFileStore<Hydra, Task>({
 
   openHomes.add(home)
   const reducers = {
-    reduceHydra,
+    reduceTitan,
     reduceTask,
   }
-  let memory: Map<string, HydraMemory<Hydra, Task>>
+  let memory: Map<string, TitanMemory<Titan, Task>>
 
   try {
     privateDir({ dir: home })
@@ -169,17 +169,17 @@ export function openFileStore<Hydra, Task>({
   }
 
   let closing: Promise<void> | undefined
-  let unavailable: HydraError | undefined
+  let unavailable: TitanError | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
-  const queue: (Write<Hydra, Task> | Batch<Hydra, Task> | Control)[] = []
+  const queue: (Write<Titan, Task> | Batch<Titan, Task> | Control)[] = []
 
   function view({
     source,
     hydra,
   }: {
-    source: Map<string, HydraMemory<Hydra, Task>>
+    source: Map<string, TitanMemory<Titan, Task>>
     hydra: string
-  }): View<Hydra, Task> | undefined {
+  }): View<Titan, Task> | undefined {
     const current = source.get(hydra)
 
     if (!current) {
@@ -208,7 +208,7 @@ export function openFileStore<Hydra, Task>({
     }
   }
 
-  const read: Read<Hydra, Task> = ({ hydra }) => view({
+  const read: Read<Titan, Task> = ({ hydra }) => view({
     source: memory,
     hydra,
   })
@@ -233,7 +233,7 @@ export function openFileStore<Hydra, Task>({
     source,
     task,
   }: {
-    source: Map<string, HydraMemory<Hydra, Task>>
+    source: Map<string, TitanMemory<Titan, Task>>
     task: string
   }) {
     return [...source].find(([
@@ -270,7 +270,7 @@ export function openFileStore<Hydra, Task>({
         reducers,
       })
     } catch (cause) {
-      unavailable = new HydraError({
+      unavailable = new TitanError({
         code: 'STORE_UNAVAILABLE',
         message: 'file-store recovery failed',
         cause,
@@ -283,12 +283,12 @@ export function openFileStore<Hydra, Task>({
     let working = new Map(memory)
     let pending = new Map<string, Pending>()
     let waiting: {
-      job: Write<Hydra, Task> | Batch<Hydra, Task>
+      job: Write<Titan, Task> | Batch<Titan, Task>
       receipts: Receipt[]
     }[] = []
 
-    function commit(): HydraError | undefined {
-      let failure: HydraError | undefined
+    function commit(): TitanError | undefined {
+      let failure: TitanError | undefined
 
       try {
         for (const write of pending.values()) {
@@ -298,7 +298,7 @@ export function openFileStore<Hydra, Task>({
           } = write
 
           if (write.create && scope.task === undefined) {
-            createHydraFiles({
+            createTitanFiles({
               home,
               hydra: scope.hydra,
               entries: facts,
@@ -328,7 +328,7 @@ export function openFileStore<Hydra, Task>({
           job.resolve(receipts)
         }
       } catch (cause) {
-        const error = new HydraError({
+        const error = new TitanError({
           code: 'WRITE_FAILED',
           message: 'file write was not acknowledged; retry with the same native ids',
           cause,
@@ -349,14 +349,14 @@ export function openFileStore<Hydra, Task>({
       return failure
     }
 
-    function stageWrite({ job }: { job: Pick<Write<Hydra, Task>, 'scope' | 'create' | 'decide'> }): Receipt[] {
+    function stageWrite({ job }: { job: Pick<Write<Titan, Task>, 'scope' | 'create' | 'decide'> }): Receipt[] {
       const { scope } = job
       const parent = working.get(scope.hydra)
 
       if (!parent && (scope.task !== undefined || !job.create)) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'NOT_FOUND',
-          message: `Hydra not found: ${scope.hydra}`,
+          message: `Titan not found: ${scope.hydra}`,
         })
       }
 
@@ -371,7 +371,7 @@ export function openFileStore<Hydra, Task>({
       }
 
       if (!current && !job.create) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'NOT_FOUND',
           message: `task not found: ${scope.task}`,
         })
@@ -381,13 +381,13 @@ export function openFileStore<Hydra, Task>({
         source: working,
         task: scope.task,
       })) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'CONFLICT',
           message: `task already exists: ${scope.task}`,
         })
       }
 
-      let dependencyFailure: HydraError | undefined
+      let dependencyFailure: TitanError | undefined
       const decision = job.decide({
         state: structuredClone(current?.value),
         read: ({ hydra }) => {
@@ -417,14 +417,14 @@ export function openFileStore<Hydra, Task>({
       const facts = plainJson({ value: decision })
 
       if (facts.some(fact => fact.t === 'moved')) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'INVALID_EVENT',
           message: 'folder moves must use moveTask',
         })
       }
 
       if (job.create && !current && facts[0]?.t !== (scope.task === undefined ? 'config' : 'created')) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'INVALID_EVENT',
           message: 'a new scope must start with its creation fact',
         })
@@ -433,9 +433,9 @@ export function openFileStore<Hydra, Task>({
       const before = current ?? emptyFileSegment()
       const applied = scope.task === undefined
         ? applyFileFacts({
-          segment: before as FileSegment<Hydra>,
+          segment: before as FileSegment<Titan>,
           facts,
-          reduce: reduceHydra,
+          reduce: reduceTitan,
           path: pathOf({ scope }),
           id: scope.hydra,
         })
@@ -448,7 +448,7 @@ export function openFileStore<Hydra, Task>({
         })
 
       if (job.create && current && applied.appended.length) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'CONFLICT',
           message: 'the file-store scope already exists',
         })
@@ -458,7 +458,7 @@ export function openFileStore<Hydra, Task>({
         working.set(
           scope.hydra,
           {
-            hydra: applied.segment as FileSegment<Hydra>,
+            hydra: applied.segment as FileSegment<Titan>,
             tasks: parent?.tasks ?? new Map(),
           },
         )
@@ -590,11 +590,11 @@ export function openFileStore<Hydra, Task>({
     job,
     stopping = false,
   }: {
-    job: Write<Hydra, Task> | Batch<Hydra, Task> | Control
+    job: Write<Titan, Task> | Batch<Titan, Task> | Control
     stopping?: boolean
   }): void {
     if (closing && !stopping) {
-      job.reject(new HydraError({
+      job.reject(new TitanError({
         code: 'STORE_CLOSED',
         message: 'the file store is closing or closed',
       }))
@@ -619,7 +619,7 @@ export function openFileStore<Hydra, Task>({
   }: {
     scope: Scope
     create?: boolean
-    decide: Write<Hydra, Task>['decide']
+    decide: Write<Titan, Task>['decide']
   }): Promise<Receipt[]> => new Promise((
     resolve,
     reject,
@@ -723,7 +723,7 @@ export function openFileStore<Hydra, Task>({
         }),
       } : undefined
     },
-    createHydra: async ({
+    createTitan: async ({
       hydra,
       facts,
     }: {
@@ -758,12 +758,12 @@ export function openFileStore<Hydra, Task>({
         decide: () => submitted,
       })
     },
-    changeHydra: ({
+    changeTitan: ({
       hydra,
       decide,
     }: {
       hydra: string
-      decide: Decide<Hydra, Hydra, Task>
+      decide: Decide<Titan, Titan, Task>
     }) =>
       change({
         scope: { hydra },
@@ -771,7 +771,7 @@ export function openFileStore<Hydra, Task>({
           state,
           read,
         }) => decide({
-          state: state as Hydra,
+          state: state as Titan,
           read,
         }),
       }),
@@ -782,7 +782,7 @@ export function openFileStore<Hydra, Task>({
     }: {
       hydra: string
       task: string
-      decide: Decide<Task, Hydra, Task>
+      decide: Decide<Task, Titan, Task>
     }) =>
       change({
         scope: {
@@ -797,7 +797,7 @@ export function openFileStore<Hydra, Task>({
           read,
         }),
       }),
-    change: ({ decide }: { decide: Batch<Hydra, Task>['decide'] }): Promise<Receipt[]> =>
+    change: ({ decide }: { decide: Batch<Titan, Task>['decide'] }): Promise<Receipt[]> =>
       new Promise((
         resolve,
         reject,
@@ -834,9 +834,9 @@ export function openFileStore<Hydra, Task>({
         const destination = memory.get(to)
 
         if (!located || !destination) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'NOT_FOUND',
-            message: 'task or destination Hydra not found',
+            message: 'task or destination Titan not found',
           })
         }
 
@@ -872,9 +872,9 @@ export function openFileStore<Hydra, Task>({
         }
 
         if (holder !== from || from === to) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'CONFLICT',
-            message: `task is held by Hydra ${holder}`,
+            message: `task is held by Titan ${holder}`,
           })
         }
 
@@ -894,11 +894,11 @@ export function openFileStore<Hydra, Task>({
         } catch (error) {
           recover()
 
-          if (error instanceof HydraError) {
+          if (error instanceof TitanError) {
             throw error
           }
 
-          throw new HydraError({
+          throw new TitanError({
             code: 'WRITE_FAILED',
             message: 'task move was not acknowledged; retry with the same native id',
             cause: error,

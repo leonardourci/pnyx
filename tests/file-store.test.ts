@@ -107,12 +107,12 @@ const homeFolder = () => mkdtempSync(join(
 ))
 const store = ({ home }: { home: string }) => openFileStore({
   home,
-  reduceHydra: conversation,
+  reduceTitan: conversation,
   reduceTask: conversation,
 })
 
 const create = async ({ home }: { home: ReturnType<typeof store> }) => {
-  await home.createHydra({
+  await home.createTitan({
     hydra: 'a',
     facts: [
       fact({
@@ -203,7 +203,7 @@ test(
               facts: [
                 fact({
                   id: 'second',
-                  text: 'Hydra decision',
+                  text: 'Titan decision',
                 }),
               ],
             },
@@ -242,7 +242,7 @@ test(
         .toEqual([
           {
             id: 'second',
-            text: 'Hydra decision',
+            text: 'Titan decision',
           },
         ])
     } finally {
@@ -288,7 +288,7 @@ test(
               facts: [
                 fact({
                   id: 'hydra',
-                  text: 'Hydra decision',
+                  text: 'Titan decision',
                 }),
               ],
             },
@@ -336,7 +336,7 @@ test(
         name: 'Submitted',
       }),
     ]
-    const creatingHydra = home.createHydra({
+    const creatingTitan = home.createTitan({
       hydra: 'a',
       facts: hydraFacts,
     })
@@ -345,7 +345,7 @@ test(
       id: 'extra',
       text: 'Not submitted',
     }))
-    await creatingHydra
+    await creatingTitan
     expect(home.read({ hydra: 'a' })?.state).toEqual({
       title: 'Submitted',
       words: [],
@@ -400,7 +400,7 @@ test(
       otherHome,
       alias,
     )
-    await reopened.createHydra({
+    await reopened.createTitan({
       hydra: 'pinned',
       facts: [
         fact({
@@ -530,10 +530,10 @@ test(
     const count = ({ state = 0 }: { state?: number }) => state + 1
     let home = openFileStore({
       home: dir,
-      reduceHydra: count,
+      reduceTitan: count,
       reduceTask: count,
     })
-    await home.createHydra({
+    await home.createTitan({
       hydra: 'a',
       facts: [
         fact({
@@ -596,7 +596,7 @@ test(
     await home.close()
     home = openFileStore({
       home: dir,
-      reduceHydra: count,
+      reduceTitan: count,
       reduceTask: count,
     })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.state).toBe(150_002)
@@ -610,7 +610,7 @@ test(
     const dir = homeFolder()
     const home = store({ home: dir })
     await create({ home })
-    const context = home.changeHydra({
+    const context = home.changeTitan({
       hydra: 'a',
       decide: () => [
         fact({
@@ -719,7 +719,7 @@ test(
       ),
       'utf8',
     )).tasks.task.task.n).toBe(2)
-    const queued = home.changeHydra({
+    const queued = home.changeTitan({
       hydra: 'a',
       decide: () => [
         fact({
@@ -761,7 +761,7 @@ test(
     const replay = vi.fn(conversation)
     home = openFileStore({
       home: dir,
-      reduceHydra: conversation,
+      reduceTitan: conversation,
       reduceTask: replay,
     })
     expect(replay.mock.calls.map(([call]) => call.entry.id)).toEqual(['m_after-snapshot'])
@@ -849,7 +849,7 @@ test(
     const dir = homeFolder()
     const home = store({ home: dir })
     await create({ home })
-    await home.createHydra({
+    await home.createTitan({
       hydra: 'b',
       facts: [
         fact({
@@ -995,7 +995,7 @@ test(
       throw new Error('injected sync failure')
     })
 
-    // eslint-disable-next-line pnyx/object-params -- Node's sync replacement receives a file descriptor.
+    // eslint-disable-next-line othrys/object-params -- Node's sync replacement receives a file descriptor.
     const syncFile: typeof filesystem.fdatasyncSync = fd => {
       filesystem.fdatasyncSync(fd)
 
@@ -1188,7 +1188,7 @@ test(
       id: 'saved-message',
       text: 'Keep this receipt',
     })
-    const hydraReceipt = await home.changeHydra({
+    const hydraReceipt = await home.changeTitan({
       hydra: 'a',
       decide: () => [message],
     })
@@ -1213,7 +1213,7 @@ test(
       }
     }
 
-    expect(await home.changeHydra({
+    expect(await home.changeTitan({
       hydra: 'a',
       decide: () => [message],
     })).toEqual([
@@ -1507,20 +1507,20 @@ test(
       t: 'worker',
       by: 'worker',
       off: 100,
-      text: 'Hydra report',
+      text: 'Titan report',
     })
-    const olderHydraWorker = {
+    const olderTitanWorker = {
       ...hydraWorker,
       id: 'hydra-worker:50',
       off: 50,
     }
-    await home.changeHydra({
+    await home.changeTitan({
       hydra: 'a',
       decide: () => [hydraWorker],
     })
-    await expect(home.changeHydra({
+    await expect(home.changeTitan({
       hydra: 'a',
-      decide: () => [olderHydraWorker],
+      decide: () => [olderTitanWorker],
     }))
       .rejects.toMatchObject({ code: 'INVALID_EVENT' })
     await expect(home.changeTask({
@@ -1547,16 +1547,16 @@ test(
     const hydraReplay = vi.fn(conversation)
     home = openFileStore({
       home: dir,
-      reduceHydra: hydraReplay,
+      reduceTitan: hydraReplay,
       reduceTask: replay,
     })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')?.worker).toBe(37)
     expect(home.read({ hydra: 'a' })?.worker).toBe(100)
     expect(replay).not.toHaveBeenCalled()
     expect(hydraReplay).not.toHaveBeenCalled()
-    await expect(home.changeHydra({
+    await expect(home.changeTitan({
       hydra: 'a',
-      decide: () => [olderHydraWorker],
+      decide: () => [olderTitanWorker],
     }))
       .rejects.toMatchObject({ code: 'INVALID_EVENT' })
     expect(await home.changeTask({
@@ -1576,9 +1576,9 @@ test(
     ))
     home = store({ home: dir })
     expect(home.read({ hydra: 'a' })?.worker).toBe(100)
-    await expect(home.changeHydra({
+    await expect(home.changeTitan({
       hydra: 'a',
-      decide: () => [olderHydraWorker],
+      decide: () => [olderTitanWorker],
     }))
       .rejects.toMatchObject({ code: 'INVALID_EVENT' })
     expect(home.read({ hydra: 'a' })?.tasks.get('task')).toMatchObject({
@@ -1606,7 +1606,7 @@ test(
     const dir = homeFolder()
     const home = store({ home: dir })
     await create({ home })
-    await home.createHydra({
+    await home.createTitan({
       hydra: 'b',
       facts: [
         fact({
@@ -1663,7 +1663,7 @@ test(
     const dir = homeFolder()
     const home = store({ home: dir })
     await create({ home })
-    await home.createHydra({
+    await home.createTitan({
       hydra: 'b',
       facts: [
         fact({
@@ -1749,11 +1749,11 @@ test(
 )
 
 test(
-  'existing dotted Hydra ids remain valid in native folders and discovery',
+  'existing dotted Titan ids remain valid in native folders and discovery',
   async () => {
     const dir = homeFolder()
     const home = store({ home: dir })
-    await home.createHydra({
+    await home.createTitan({
       hydra: 'dot.name',
       facts: [
         fact({
@@ -1959,7 +1959,7 @@ test.each([
     operation: 'hydra',
     target: 'hydras/b',
     parents: ['hydras'],
-    request: ({ home }: { home: ReturnType<typeof store> }) => home.createHydra({
+    request: ({ home }: { home: ReturnType<typeof store> }) => home.createTitan({
       hydra: 'b',
       facts: [
         fact({
@@ -2015,7 +2015,7 @@ test.each([
     await create({ home })
 
     if (operation === 'move') {
-      await home.createHydra({
+      await home.createTitan({
         hydra: 'b',
         facts: [
           fact({
@@ -2041,7 +2041,7 @@ test.each([
     const synced = new Set<string>()
     let outage = true
 
-    // eslint-disable-next-line pnyx/object-params -- Node's fsync replacement receives a file descriptor.
+    // eslint-disable-next-line othrys/object-params -- Node's fsync replacement receives a file descriptor.
     const directorySync: typeof filesystem.fsyncSync = fd => {
       const metadata = filesystem.fstatSync(fd)
       const parent = existsSync(target) && metadata.isDirectory() ? parents.find(path =>

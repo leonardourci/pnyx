@@ -2,11 +2,11 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, closeSync, existsSync, fchmodSync, fdatasyncSync, fsyncSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { pnyxHome } from './paths.ts'
+import { othrysHome } from './paths.ts'
 
-export { pnyxHome } from './paths.ts'
+export { othrysHome } from './paths.ts'
 
-// A Hydra's folder holds its spool, caches and agent files, which can quote transcripts and are as private.
+// A Titan's folder holds its spool, caches and agent files, which can quote transcripts and are as private.
 export function privateDir({
   dir,
   durable = false,
@@ -23,7 +23,7 @@ export function privateDir({
   )
 
   // On Linux, chmod notifies watchers of the parent folder even when the mode is unchanged.
-  // The server's Hydras-folder watcher retries Hydras that failed to load, which calls this again.
+  // The server's Titans-folder watcher retries Titans that failed to load, which calls this again.
   if ((statSync(dir).mode & 0o777) !== 0o700) {
     chmodSync(
       dir,
@@ -179,7 +179,7 @@ export async function withAsyncRegistryLock<T>({ fn }: {
   fn(): T | Promise<T>
   timeout?: number
 }): Promise<T> {
-  const dir = resolve(pnyxHome())
+  const dir = resolve(othrysHome())
   const owner = registryContext.getStore()
 
   if (owner?.active && owner.dir === dir) {

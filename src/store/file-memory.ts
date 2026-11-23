@@ -1,7 +1,7 @@
 import { hash } from 'node:crypto'
 import { join } from 'node:path'
-import { HydraError } from './errors.ts'
-import { readHomeFiles, type FileLog, type HydraFiles } from './file-home.ts'
+import { TitanError } from './errors.ts'
+import { readHomeFiles, type FileLog, type TitanFiles } from './file-home.ts'
 import { plainJson, prepareLog, type LogEntry, type LogFact, type LogPosition } from './log.ts'
 import type { FileSnapshot } from './snapshot.ts'
 
@@ -18,11 +18,11 @@ export interface FileSegment<Value> {
   accepted: Map<string, AcceptedFact>
   worker: number
   workerIdentity?: string
-  issue?: HydraError
+  issue?: TitanError
 }
 
-export interface HydraMemory<Hydra, Task> {
-  hydra: FileSegment<Hydra>
+export interface TitanMemory<Titan, Task> {
+  hydra: FileSegment<Titan>
   tasks: Map<string, FileSegment<Task>>
 }
 
@@ -36,8 +36,8 @@ export type FileFold<Value> = ({
   id: string
 }) => Value
 
-export interface FileReducers<Hydra, Task> {
-  reduceHydra: FileFold<Hydra>
+export interface FileReducers<Titan, Task> {
+  reduceTitan: FileFold<Titan>
   reduceTask: FileFold<Task>
 }
 
@@ -47,10 +47,10 @@ interface CachedSegment<Value> {
   workerIdentity?: string
 }
 
-interface CachedMemory<Hydra, Task> {
+interface CachedMemory<Titan, Task> {
   v: 1
   content: {
-    hydra: CachedSegment<Hydra> & { worker: number }
+    hydra: CachedSegment<Titan> & { worker: number }
     tasks: Record<string, CachedSegment<Task>>
   }
   digest: string
@@ -117,7 +117,7 @@ function workerOffset({
 
   if (!Number.isSafeInteger(entry.off) || Number(entry.off) < 0
     || (!replaced && !truncated && Number(entry.off) <= segment.worker)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'INVALID_EVENT',
       message: 'worker offsets must advance within the same file',
     })
@@ -171,7 +171,7 @@ export function applyFileFacts<Value>({
 
     if (known) {
       if (known.digest !== fingerprint) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'IDEMPOTENCY_CONFLICT',
           message: `native id ${fact.id} was used for different contents`,
         })
@@ -254,12 +254,12 @@ function cachedSegment({ value }: { value: unknown }): boolean {
       && typeof receipt.digest === 'string'))
 }
 
-function cachedMemory<Hydra, Task>({
+function cachedMemory<Titan, Task>({
   snapshot,
 }: {
   snapshot: FileSnapshot
-}): CachedMemory<Hydra, Task> | undefined {
-  const cache = snapshot.state as Partial<CachedMemory<Hydra, Task>> | null
+}): CachedMemory<Titan, Task> | undefined {
+  const cache = snapshot.state as Partial<CachedMemory<Titan, Task>> | null
 
   if (!cache || cache.v !== 1 || !cache.content || !cachedSegment({ value: cache.content.hydra })
     || !Number.isSafeInteger(cache.content.hydra.worker) || cache.content.hydra.worker < 0
@@ -272,7 +272,7 @@ function cachedMemory<Hydra, Task>({
     return undefined
   }
 
-  return cache as CachedMemory<Hydra, Task>
+  return cache as CachedMemory<Titan, Task>
 }
 
 function replayFile<Value>({
@@ -346,7 +346,7 @@ function replayFile<Value>({
   } catch (cause) {
     return {
       ...emptyFileSegment<Value>(),
-      issue: new HydraError({
+      issue: new TitanError({
         code: 'LOG_CORRUPT',
         message: `cannot replay ${path}`,
         cause,
@@ -355,23 +355,23 @@ function replayFile<Value>({
   }
 }
 
-function loadHydraMemory<Hydra, Task>({
+function loadTitanMemory<Titan, Task>({
   hydra,
   files,
   reducers,
   cache,
 }: {
   hydra: string
-  files: HydraFiles
-  reducers: FileReducers<Hydra, Task>
-  cache?: CachedMemory<Hydra, Task>
-}): HydraMemory<Hydra, Task> {
+  files: TitanFiles
+  reducers: FileReducers<Titan, Task>
+  cache?: CachedMemory<Titan, Task>
+}): TitanMemory<Titan, Task> {
   return {
     hydra: replayFile({
       log: files.hydra,
       cached: cache?.content.hydra,
       worker: cache?.content.hydra.worker,
-      reduce: reducers.reduceHydra,
+      reduce: reducers.reduceTitan,
       id: hydra,
       path: join(
         files.dir,
@@ -400,18 +400,18 @@ function loadHydraMemory<Hydra, Task>({
   }
 }
 
-export function loadFileMemory<Hydra, Task>({
+export function loadFileMemory<Titan, Task>({
   home,
   reducers,
 }: {
   home: string
-  reducers: FileReducers<Hydra, Task>
-}): Map<string, HydraMemory<Hydra, Task>> {
-  const caches = new WeakMap<FileSnapshot, CachedMemory<Hydra, Task>>()
+  reducers: FileReducers<Titan, Task>
+}): Map<string, TitanMemory<Titan, Task>> {
+  const caches = new WeakMap<FileSnapshot, CachedMemory<Titan, Task>>()
   const files = readHomeFiles({
     home,
     checkSnapshot: ({ snapshot }) => {
-      const cache = cachedMemory<Hydra, Task>({ snapshot })
+      const cache = cachedMemory<Titan, Task>({ snapshot })
 
       if (!cache) {
         return false
@@ -444,7 +444,7 @@ export function loadFileMemory<Hydra, Task>({
     files,
   ]) => [
     hydra,
-    loadHydraMemory({
+    loadTitanMemory({
       hydra,
       files,
       reducers,
@@ -453,11 +453,11 @@ export function loadFileMemory<Hydra, Task>({
   ]))
 }
 
-export function fileMemorySnapshot<Hydra, Task>({
+export function fileMemorySnapshot<Titan, Task>({
   memory,
   at,
 }: {
-  memory: HydraMemory<Hydra, Task>
+  memory: TitanMemory<Titan, Task>
   at: string
 }): FileSnapshot {
   const cached = <Value>({ segment }: { segment: FileSegment<Value> }): CachedSegment<Value> => ({
