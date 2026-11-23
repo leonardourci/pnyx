@@ -18,11 +18,11 @@ import { runProcess } from '#app/run-process.ts'
 import { join } from 'node:path'
 import { performanceReport } from '#diagnostics/performance.ts'
 import { startProcessLines } from '#diagnostics/process-line.ts'
-import { pnyx as pnyxCommand, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { othrys as othrysCommand, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 function lines() {
@@ -38,7 +38,7 @@ function lines() {
 test(
   'commands, HTTP, history and resource samples leave bounded measurements without message text',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'settings',
@@ -53,10 +53,10 @@ test(
     })
     await flushLogs()
     const onStart = lines().length
-    expect((await pnyxCommand({
+    expect((await othrysCommand({
       args: [
         'board',
-        '--hydra',
+        '--titan',
         hydra.id,
         '--json',
       ],
@@ -95,7 +95,7 @@ test(
       }),
     )
     expect((await ingestSpool({ hydraId: hydra.id })).ingested).toBe(2)
-    await fetch(`http://127.0.0.1:${pnyx.port()}/health`)
+    await fetch(`http://127.0.0.1:${othrys.port()}/health`)
     await flushLogs()
     const onLines = lines().slice(onStart)
     expect(onLines.some(line => line.operation === 'http.request' && line.status === '200')).toBe(false)
@@ -115,10 +115,10 @@ test(
       what: 'the server applies Detailed logging',
       check: () => logMode() === 'detailed',
     })
-    expect((await pnyxCommand({
+    expect((await othrysCommand({
       args: [
         'board',
-        '--hydra',
+        '--titan',
         hydra.id,
         '--json',
       ],
@@ -127,7 +127,7 @@ test(
     await hydra.owner({
       args: ['history'],
     })
-    await fetch(`http://127.0.0.1:${pnyx.port()}/health?token=private-request-value`)
+    await fetch(`http://127.0.0.1:${othrys.port()}/health?token=private-request-value`)
     await flushLogs()
     const sampleStart = lines().length
     const cache = spawn(
@@ -379,7 +379,7 @@ test(
       correlationId: 'message-id',
     }))
     expect(lines().find(line => line.operation === 'request.later').requestId).toBeUndefined()
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'settings',
@@ -388,7 +388,7 @@ test(
         '{"logs":"detailed"}',
       ],
     })
-    const created = await pnyxCommand({
+    const created = await othrysCommand({
       args: [
         'task',
         'create',
@@ -402,7 +402,7 @@ test(
         hydra.folder({ name: 'request-scope' }),
         '--harness',
         'claude',
-        '--hydra',
+        '--titan',
         hydra.id,
         '--json',
       ],
@@ -435,7 +435,7 @@ test(
 test(
   'On mode suppresses successful git lookups and counts repeated failures per interval',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'settings',
@@ -583,7 +583,7 @@ test(
 test(
   'resource sampling preserves unopened logs and ignores an in-flight listing after stop',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const home = hydra.folder({ name: 'stopped-sampler' })
     const result = await runProcess({
       command: process.execPath,
@@ -615,7 +615,7 @@ test(
       // Import after installing the external process gate, before promisify captures execFile.
       const { startProcessLines } = await import('#diagnostics/process-line.ts');
       const { watchAgent } = await import('#workers/agent-memory.ts');
-      const unserved = join(process.env.PNYX_HOME, 'hydras', 'unserved');
+      const unserved = join(process.env.OTHRYS_HOME, 'hydras', 'unserved');
       mkdirSync(unserved, { recursive: true });
       writeFileSync(join(unserved, 'hydra.log'), '{"n":1');
       openLogs();
@@ -639,7 +639,7 @@ test(
       ],
       env: {
         ...process.env,
-        PNYX_HOME: home,
+        OTHRYS_HOME: home,
       },
     })
     expect(
@@ -671,7 +671,7 @@ test(
 test(
   'a UTC rollover charges buffered earlier files before the next cleanup',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const home = hydra.folder({ name: 'rollover-logs' })
     const module = new URL(
       '../src/app/diagnostics.ts',
@@ -701,7 +701,7 @@ test(
       ],
       env: {
         ...process.env,
-        PNYX_HOME: home,
+        OTHRYS_HOME: home,
       },
     })
     expect(result.status).toBe(0)

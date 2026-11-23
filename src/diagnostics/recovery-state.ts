@@ -1,5 +1,5 @@
 import type { EventBase } from '#store/events.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { liveTask, taskDone } from '#tasks/select.ts'
 import { steeringHeld } from '#workers/steering.ts'
@@ -45,8 +45,8 @@ export function applyRecovery({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent | RecoveryEvent
+  state: TitanState
+  event: TitanEvent | RecoveryEvent
 }): boolean {
   if (event.type !== 'diagnostic.retry') {
     return false
@@ -78,7 +78,7 @@ export function applyRecovery({
   return true
 }
 
-export function recoverySubjects({ state }: { state: HydraState }) {
+export function recoverySubjects({ state }: { state: TitanState }) {
   return Object.values(state.cards).flatMap(card => (card.replies ?? []).map(reply => ({
     card,
     reply,
@@ -97,13 +97,13 @@ export function recoveryCandidates({
   enabled,
   now,
 }: {
-  state: HydraState
+  state: TitanState
   sessions: NativeHealth[]
-  events: HydraEvent[]
+  events: TitanEvent[]
   enabled: boolean
   now: number
 }) {
-  const originals = new Map<string, Extract<HydraEvent, { type: 'card.replied' }>>()
+  const originals = new Map<string, Extract<TitanEvent, { type: 'card.replied' }>>()
 
   for (const event of events) {
     if (event.type === 'card.replied') {

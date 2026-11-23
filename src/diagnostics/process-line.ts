@@ -26,7 +26,7 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
     ms: 0,
     maxMs: 0,
   }
-  // eslint-disable-next-line pnyx/object-params -- PerformanceObserver owns its callback signature.
+  // eslint-disable-next-line othrys/object-params -- PerformanceObserver owns its callback signature.
   const observer = new PerformanceObserver(list => {
     for (const entry of list.getEntries()) {
       gc.count += 1

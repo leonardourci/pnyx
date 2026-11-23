@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { emptyHydra } from '#app/reducer.ts'
+import { emptyTitan } from '#app/reducer.ts'
 import type { Writer } from '#app/writer.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 
@@ -9,11 +9,11 @@ const gate = vi.hoisted(() => ({
   now: Date.parse('2026-01-01T00:00:00.000Z'),
   receiptState: 'failed' as 'failed' | 'delivered',
 }))
-const state = emptyHydra()
+const state = emptyTitan()
 
 vi.mock(
   '#app/store.ts',
-  () => ({ loadHydra: () => ({ state }) }),
+  () => ({ loadTitan: () => ({ state }) }),
 )
 vi.mock(
   '#app/event-log.ts',

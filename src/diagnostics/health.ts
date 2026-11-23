@@ -5,7 +5,7 @@ import { nativeIdle } from '#workers/native-work.ts'
 import { activeHelperBatches } from '#routine-helper/state.ts'
 import { spoolFiles } from '#store/storage.ts'
 import { recoveryCandidates } from './recovery-state.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 
 export interface NativeHealth {
   sessionId: string
@@ -158,8 +158,8 @@ export function healthFacts({
   events = [],
   blocked = [],
 }: {
-  state: HydraState
-  events?: HydraEvent[]
+  state: TitanState
+  events?: TitanEvent[]
   blocked?: {
     taskId: string
     messageId: string

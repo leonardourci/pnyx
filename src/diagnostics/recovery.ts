@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { scanEvents } from '#app/event-log.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
-import { loadHydra } from '#app/store.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { sendReply } from '#workers/reply.ts'
 import type { NativeHealth } from './health.ts'
@@ -35,7 +35,7 @@ const systemClock: RecoveryClock = {
   },
 }
 
-const replyKeys = ({ event }: { event: HydraEvent }) => event.type === 'card.replied'
+const replyKeys = ({ event }: { event: TitanEvent }) => event.type === 'card.replied'
   ? [
     recoveryKey({
       task: event.cardId,
@@ -79,7 +79,7 @@ export function createDiagnosticRecovery({
     messageId: string
     reason: string
   }>()
-  const state = (): HydraState => loadHydra({ hydraId }).state
+  const state = (): TitanState => loadTitan({ hydraId }).state
   const remainingPause = ({
     attempt,
     at = clock.now(),
@@ -114,7 +114,7 @@ export function createDiagnosticRecovery({
     }))
 
     const originals = subjects.map(originalFor)
-      .filter((event): event is HydraEvent => event !== undefined)
+      .filter((event): event is TitanEvent => event !== undefined)
 
     return {
       state: current,
@@ -229,7 +229,7 @@ export function createDiagnosticRecovery({
                 action: 'send',
                 hydra: writer.state.config?.hydra.id ?? 'hydra',
                 task,
-                text: '- Automatic message recovery stopped. Inspect `pnyx debug health` for delivery, ownership and persistence details before acting.',
+                text: '- Automatic message recovery stopped. Inspect `othrys debug health` for delivery, ownership and persistence details before acting.',
               },
             },
           })

@@ -1,9 +1,9 @@
 import { closeSync, existsSync, fstatSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { asRecord } from '#app/command-validation.ts'
-import type { HydraEvent } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
-import { pnyxHome } from '#store/paths.ts'
+import type { TitanEvent } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
+import { othrysHome } from '#store/paths.ts'
 import { logFiles } from './log-files.ts'
 
 export const DEBUG_LIMIT = 50
@@ -55,7 +55,7 @@ export interface TimelineFilter {
 
 const string = ({ value }: { value: unknown }) => typeof value === 'string' ? value : undefined
 
-function eventRow({ event }: { event: HydraEvent }): TimelineRow {
+function eventRow({ event }: { event: TitanEvent }): TimelineRow {
   const data = asRecord({ value: event.data })
   const origin = asRecord({ value: data?.source })
   const actualSession = event.type === 'diagnostic.retry' ? event.data.sessionId : event.sessionId
@@ -95,7 +95,7 @@ function eventRow({ event }: { event: HydraEvent }): TimelineRow {
   }
 }
 
-// One file's last `bytes`: its structured warnings and errors for the Hydra, and whether older lines were left out.
+// One file's last `bytes`: its structured warnings and errors for the Titan, and whether older lines were left out.
 function tailRows({
   path,
   hydraId,
@@ -168,10 +168,10 @@ function tailRows({
       const record = asRecord({ value })
       const failure = record?.level === 'error' || record?.level === 'warn'
 
-      // A warning or error about no Hydra in particular, such as a full log folder, belongs to every Hydra.
-      const otherHydra = record?.hydraId !== undefined && record.hydraId !== hydraId
+      // A warning or error about no Titan in particular, such as a full log folder, belongs to every Titan.
+      const otherTitan = record?.hydraId !== undefined && record.hydraId !== hydraId
 
-      if (record?.v !== 1 || !failure || otherHydra || typeof record.operationId !== 'string'
+      if (record?.v !== 1 || !failure || otherTitan || typeof record.operationId !== 'string'
         || typeof record.at !== 'string' || !Number.isFinite(Date.parse(record.at))
         || typeof record.operation !== 'string') {
         continue
@@ -209,7 +209,7 @@ export function serviceRows({ hydraId }: { hydraId: string }): {
     ...logFiles().toReversed()
       .map(file => file.path),
     join(
-      pnyxHome(),
+      othrysHome(),
       'service.log',
     ),
   ].filter(path => existsSync(path))
@@ -293,7 +293,7 @@ function readCursor({ cursor }: { cursor?: string }): TimelineRow | undefined {
       offset: row.offset === undefined ? undefined : Number(row.offset),
     }
   } catch {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Invalid timeline cursor',
     })
@@ -305,7 +305,7 @@ export function timeline({
   service = [],
   filter,
 }: {
-  events: Iterable<HydraEvent>
+  events: Iterable<TitanEvent>
   service?: TimelineRow[]
   filter: TimelineFilter
 }) {
@@ -327,7 +327,7 @@ export function timeline({
     event,
   }: {
     row: TimelineRow
-    event?: HydraEvent
+    event?: TitanEvent
   }) => {
     const at = Date.parse(row.at)
     const acknowledged = event?.type === 'hydra.helper-acknowledged' ? event.data.batches : []

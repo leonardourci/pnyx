@@ -3,7 +3,7 @@ import { COMMON, guard, integer, parse, required } from '#app/cli-support.ts'
 import { logsDir } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
 import { scanEvents } from '#app/event-log.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { askHost } from '#app/server-state.ts'
 import { resolve } from 'node:path'
 import { PROFILE_SECONDS } from './cpu-profile.ts'
@@ -11,7 +11,7 @@ import { requestCwd, requestEnv } from '#app/request-context.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { readSettings } from '#settings/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { clearLogs, logFiles, MB } from './log-files.ts'
 import { PERFORMANCE_WINDOW_MS, SLOWEST_LIMIT, SLOWEST_MAX, performanceReport } from './performance.ts'
 import { DEBUG_LIMIT, DEBUG_MAX, serviceRows, timeline } from './timeline.ts'
@@ -31,7 +31,7 @@ function instant({
   }
 
   if (typeof value !== 'string' || !/T.*(?:Z|[+-]\d\d:\d\d)$/.test(value) || !Number.isFinite(Date.parse(value))) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: `${flag} expects an ISO timestamp with timezone`,
     })
@@ -55,7 +55,7 @@ function readLimit({
   }) ?? fallback
 
   if (limit < 1 || limit > max) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: `--limit must be between 1 and ${max}`,
     })
@@ -74,7 +74,7 @@ function onlyFlags({
   usage: string
 }): void {
   if (Object.keys(values).some(key => !allowed.includes(key))) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: usage,
     })
@@ -99,7 +99,7 @@ async function performanceView({
       'operation',
       'limit',
     ],
-    usage: 'debug performance accepts only --hydra, --since, --until, --operation and --limit',
+    usage: 'debug performance accepts only --titan, --since, --until, --operation and --limit',
   })
   const until = instant({
     value: values.until,
@@ -111,7 +111,7 @@ async function performanceView({
   }) ?? until - PERFORMANCE_WINDOW_MS
 
   if (since > until) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: '--since must not follow --until',
     })
@@ -136,7 +136,7 @@ async function performanceView({
     slowest: report.slowest.length ? report.slowest : 'none: no timed actions in this window',
     help: [
       'Pass --since and --until (ISO timestamps with timezone) for another window; the default is the last hour',
-      'Pass --operation <prefix> to keep one kind of action, or --hydra <id> for one Hydra and the server-wide lines',
+      'Pass --operation <prefix> to keep one kind of action, or --titan <id> for one Titan and the server-wide lines',
     ],
   }
 }
@@ -174,7 +174,7 @@ export const debug = guard({
           'seconds',
           'out',
         ],
-        usage: 'debug cpu-profile accepts only --hydra, --seconds and --out',
+        usage: 'debug cpu-profile accepts only --titan, --seconds and --out',
       })
       // The server checks the range, so every caller gets the same rule.
       const seconds = integer({
@@ -204,8 +204,8 @@ export const debug = guard({
 
       return performanceView({
         values,
-        // The routine helper reads only its own Hydra, as for every command; anyone else reads every Hydra unless they name one.
-        hydraId: isHelper({ actor: env.PNYX_ACTOR ?? 'cli' }) ? env.PNYX_HYDRA : values.hydra as string | undefined,
+        // The routine helper reads only its own Titan, as for every command; anyone else reads every Titan unless they name one.
+        hydraId: isHelper({ actor: env.OTHRYS_ACTOR ?? 'cli' }) ? env.OTHRYS_TITAN : values.hydra as string | undefined,
       })
     }
 
@@ -222,7 +222,7 @@ export const debug = guard({
           'hydra',
           'limit',
         ],
-        usage: 'debug health accepts only --hydra and --limit',
+        usage: 'debug health accepts only --titan and --limit',
       })
 
       return askHost({
@@ -235,7 +235,7 @@ export const debug = guard({
     }
 
     if (positionals[0] !== 'timeline') {
-      throw new HydraError({
+      throw new TitanError({
         code: 'VALIDATION_ERROR',
         message: 'Use debug timeline, debug health, debug performance or debug cpu-profile',
       })
@@ -254,7 +254,7 @@ export const debug = guard({
         'limit',
         'cursor',
       ],
-      usage: 'debug timeline accepts only --hydra, --task, --message, --batch, --session, --since, --until, --limit and --cursor',
+      usage: 'debug timeline accepts only --titan, --task, --message, --batch, --session, --since, --until, --limit and --cursor',
     })
 
     const since = instant({
@@ -267,13 +267,13 @@ export const debug = guard({
     })
 
     if (since !== undefined && until !== undefined && since > until) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'VALIDATION_ERROR',
         message: '--since must not follow --until',
       })
     }
 
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const ref = values.task
     const task = typeof ref === 'string' ? findCard({
       state,
@@ -308,7 +308,7 @@ export const debug = guard({
       ...page,
       entries: entries.length ? entries : 'none: no matching timeline records',
       serviceTailTruncated: service.truncated,
-      help: ['Run `pnyx debug timeline --help` for filters; pass the cursor with the same filters for older matches'],
+      help: ['Run `othrys debug timeline --help` for filters; pass the cursor with the same filters for older matches'],
     }
   },
 })
@@ -336,8 +336,8 @@ export const logs = guard({
     if (positionals[0] === 'clean') {
       if (workerIdentity()) {
         inform({
-          reason: 'Worker cleared diagnostic logs shared by every Hydra',
-          clear: 'pnyx logs',
+          reason: 'Worker cleared diagnostic logs shared by every Titan',
+          clear: 'othrys logs',
         })
       }
 
@@ -350,7 +350,7 @@ export const logs = guard({
     }
 
     if (positionals[0] !== undefined) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'VALIDATION_ERROR',
         message: 'Use logs or logs clean',
       })
@@ -368,7 +368,7 @@ export const logs = guard({
         day: file.day,
         size: fileSize({ bytes: file.bytes }),
       })) : 'none: no log files yet',
-      help: ['Run `pnyx debug performance` for durations and memory from these lines'],
+      help: ['Run `othrys debug performance` for durations and memory from these lines'],
     }
   },
 })
