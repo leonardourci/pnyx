@@ -181,10 +181,10 @@ export interface Card {
   key: string
   title: string
   ask?: OwnerAsk[]
-  // Derived transcript totals sent to the browser; never used as Hydra state.
+  // Derived transcript totals sent to the browser; never used as Titan state.
   spend?: TaskSpend
   usage?: import('#workers/provider.ts').AgentUsage
-  // Facts that read other cards, which the server derives for the page; never used as Hydra state.
+  // Facts that read other cards, which the server derives for the page; never used as Titan state.
   facts?: CardFacts
   brief?: string
   // The card's Intent: what the owner wants from the task, newest version.
@@ -315,7 +315,7 @@ export type RepliedEvent = EventBase & {
     control?: boolean
     taskMessage?: boolean
     resumes?: boolean
-    // When the agent's harness took the message, not only when Pnyx handed it over.
+    // When the agent's harness took the message, not only when Othrys handed it over.
     received?: string
   }
 }

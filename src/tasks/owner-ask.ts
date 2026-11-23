@@ -1,7 +1,7 @@
 import { inform } from '#app/command-notices.ts'
 import { ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card, OwnerAsk } from './model.ts'
 
 export function ownerAsk({
@@ -12,7 +12,7 @@ export function ownerAsk({
   actor,
   at,
 }: {
-  state: HydraState
+  state: TitanState
   task?: string
   text: string
   message?: string
@@ -20,7 +20,7 @@ export function ownerAsk({
   at: string
 }): OwnerAsk {
   if (!text.trim() || text.length > 24000) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'The owner ask needs 1 to 24000 characters',
       field: 'text',
       code: 'VALIDATION_ERROR',
@@ -32,7 +32,7 @@ export function ownerAsk({
       && ownerActor({ actor: entry.actor }))
 
     if (!source || !source.text.includes(text)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Quote the saved owner message exactly',
         field: 'message',
         code: 'ASK_SOURCE_MISMATCH',
@@ -78,7 +78,7 @@ export function taskInstructions({ card }: { card: Card }): string {
 
   if (card.brief?.trim()) {
     parts.push(
-      "Hydra's build instructions:",
+      "Titan's build instructions:",
       card.brief,
     )
   }

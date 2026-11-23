@@ -1,14 +1,14 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import { projectGroup } from '#projects/groups.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { knownCards, rankOf, rankWithin } from './select.ts'
 
 export function taskProjectGroup({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Pick<Card, 'id' | 'parentId' | 'project'>
 }) {
   let root = card
@@ -38,7 +38,7 @@ export function taskRank({
   card,
   before,
 }: {
-  state: HydraState
+  state: TitanState
   card: Pick<Card, 'id' | 'parentId' | 'project' | 'rank' | 'createdSeq'>
   before?: string
 }): number {
@@ -59,7 +59,7 @@ export function taskRank({
   const at = before ? beforeIndex : others.length
 
   if (at < 0) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Reorder tasks within their project and parent',
       code: 'CONFLICT',
     })

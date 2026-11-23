@@ -1,6 +1,6 @@
 import { matchesProject } from '#projects/identity.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { LANDINGS, MERGERS, cardLanding, type Landing, type LandingRule, type Merger } from './model.ts'
 import { projectsFor } from '#projects/read.ts'
@@ -20,7 +20,7 @@ export function taskLanding({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): LandingRule | undefined {
   const projects = projectsFor({ state })
@@ -40,7 +40,7 @@ export function taskLanding({
 
 export function parseLanding({ value }: { value: string }): Landing {
   if (!(LANDINGS as readonly string[]).includes(value)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `--landing must be ${LANDINGS.join(' or ')}`,
       code: 'VALIDATION_ERROR',
     })
@@ -51,7 +51,7 @@ export function parseLanding({ value }: { value: string }): Landing {
 
 export function parseMerger({ value }: { value: string }): Merger {
   if (!(MERGERS as readonly string[]).includes(value)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `--merge must be ${MERGERS.join(' or ')}`,
       code: 'VALIDATION_ERROR',
     })
@@ -71,17 +71,17 @@ function landingLine({
   }
 
   const merger = rule.merge === 'hydra'
-    ? 'Hydra merges it once every check is green'
+    ? 'Titan merges it once every check is green'
     : 'the owner merges it'
 
-  return `Landing: commit on your branch, push with \`git push -u origin HEAD:refs/heads/<your-branch>\` to track its own remote branch, open a pull request as a draft if the readiness requirements above are not yet met, and mark it ready after meeting those requirements. Pnyx discovers it from this task's branch; ${merger}. Never merge it yourself. Pnyx sends you failed checks and new review comments to fix.`
+  return `Landing: commit on your branch, push with \`git push -u origin HEAD:refs/heads/<your-branch>\` to track its own remote branch, open a pull request as a draft if the readiness requirements above are not yet met, and mark it ready after meeting those requirements. Othrys discovers it from this task's branch; ${merger}. Never merge it yourself. Othrys sends you failed checks and new review comments to fix.`
 }
 
 export function taskStops({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): string[] {
   const stops: string[] = []

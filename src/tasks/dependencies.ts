@@ -1,7 +1,7 @@
 import { openAsks } from './ask-state.ts'
 import { holdBlocker, ownerGates, questionBlockers, type Blocker } from './owner-gates.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from './model.ts'
 import { cardLanding } from '#tasks/delivery/model.ts'
 import { knownCards } from '#tasks/select.ts'
@@ -13,7 +13,7 @@ export function requireNoDependencyCycle({
   task,
   targets,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
   targets: string[]
 }): void {
@@ -40,7 +40,7 @@ export function requireNoDependencyCycle({
   }
 
   if (targets.some(id => reaches({ id }))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'a task cannot depend on itself or create a dependency cycle',
       code: 'DEPENDENCY_CYCLE',
     })
@@ -51,8 +51,8 @@ export function applyDependencies({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'task.dependencies') {
     return false
@@ -80,7 +80,7 @@ export function completionGaps({
   card,
   visiting,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   visiting: Set<string>
 }): string[] {
@@ -129,7 +129,7 @@ export function unmetPrerequisites({
   card,
   visiting = new Set<string>(),
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   visiting?: Set<string>
 }): {
@@ -158,7 +158,7 @@ export function unmetPrerequisites({
         {
           id,
           title: id,
-          reason: 'prerequisite missing from this Hydra',
+          reason: 'prerequisite missing from this Titan',
         },
       ]
     }
@@ -184,7 +184,7 @@ function readinessBlockers({
   card,
   unmet,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   unmet: ReturnType<typeof unmetPrerequisites>
 }): Blocker[] {
@@ -223,7 +223,7 @@ export function taskReadiness({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }) {
   const unmet = unmetPrerequisites({
@@ -247,7 +247,7 @@ export function startBlockers({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): Blocker[] {
   return readinessBlockers({

@@ -1,8 +1,8 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { askWording, openAsks } from './ask-state.ts'
 import type { Ask, Card } from './model.ts'
 import { liveTask } from './select.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
 const QUESTION_REMINDER_MS = 4 * 60 * 60_000
@@ -14,13 +14,13 @@ export function questionReminder({
   now,
   forReview = false,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   ask: Ask
   now: number
   forReview?: boolean
 }) {
-  const visible = card.id === HYDRA_CARD || liveTask({ card })
+  const visible = card.id === TITAN_CARD || liveTask({ card })
 
   if (ask.audience !== 'owner' || ask.answered || ask.closed || ask.deferredUntil || !visible) {
     return undefined
@@ -65,7 +65,7 @@ export function dueQuestionReminders({
   state,
   now,
 }: {
-  state: HydraState
+  state: TitanState
   now: number
 }) {
   return Object.values(state.cards).flatMap(card => openAsks({ card }).flatMap(ask => {

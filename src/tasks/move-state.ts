@@ -1,6 +1,6 @@
 import { touch } from './touch.ts'
 import type { EventBase } from '#store/events.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import type { Card } from './model.ts'
 import { refreshTasks } from './refresh.ts'
@@ -15,7 +15,7 @@ export interface MovedCard {
   sessions: AgentSession[]
 }
 
-export type HydraMoveEvent = EventBase & (
+export type TitanMoveEvent = EventBase & (
   | {
     type: 'task.moved-out'
     data: MovedCard & { to: string }
@@ -30,7 +30,7 @@ export type HydraMoveEvent = EventBase & (
   }
 )
 
-// What the source keeps of a card it handed on, so a lookup there names the Hydra it went to.
+// What the source keeps of a card it handed on, so a lookup there names the Titan it went to.
 export interface MovedOut {
   to: string
   at: string
@@ -43,7 +43,7 @@ export function movedAway({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): (MovedOut & { id: string }) | undefined {
   const found = Object.entries(state.movedOut ?? {}).find(([
@@ -61,8 +61,8 @@ function moveOut({
   state,
   event,
 }: {
-  state: HydraState
-  event: Extract<HydraMoveEvent, { type: 'task.moved-out' }>
+  state: TitanState
+  event: Extract<TitanMoveEvent, { type: 'task.moved-out' }>
 }): void {
   const card = state.cards[event.cardId]
 
@@ -104,8 +104,8 @@ function moveOut({
 
     related.notices = affected.map(item => ({
       task: related.id,
-      reason: `Local relationship to ${item.id} cleared when it moved to Hydra ${event.data.to}`,
-      clear: `Review task ${item.id} in the destination Hydra and its previous relationships in task history.`,
+      reason: `Local relationship to ${item.id} cleared when it moved to Titan ${event.data.to}`,
+      clear: `Review task ${item.id} in the destination Titan and its previous relationships in task history.`,
     }))
     touch({
       card: related,
@@ -139,13 +139,13 @@ function moveOut({
   }
 }
 
-// The card starts a new attachment here: its session's next turn resumes under this Hydra.
+// The card starts a new attachment here: its session's next turn resumes under this Titan.
 function moveIn({
   state,
   event,
 }: {
-  state: HydraState
-  event: Extract<HydraMoveEvent, { type: 'task.moved-in' }>
+  state: TitanState
+  event: Extract<TitanMoveEvent, { type: 'task.moved-in' }>
 }): void {
   const card = structuredClone(event.data.card)
   Reflect.deleteProperty(
@@ -229,12 +229,12 @@ function moveIn({
   })
 }
 
-export function applyHydraMove({
+export function applyTitanMove({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type === 'task.moved-out') {
     moveOut({

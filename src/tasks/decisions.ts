@@ -1,13 +1,13 @@
 import { waitingQuestions } from './card-status.ts'
 import { waitingPrompt } from './questions.ts'
 import { askWording, openAsks, activeAsks } from './ask-state.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import { failedChecks, pendingChecks, type Link } from '#tasks/delivery/model.ts'
 import { liveTask } from './select.ts'
-import { mergeApproved, quote } from '#hydra/wake-reasons.ts'
-import { taskMention } from '#hydra/mentions.ts'
+import { mergeApproved, quote } from '#titan/wake-reasons.ts'
+import { taskMention } from '#titan/mentions.ts'
 import { pendingPermissions } from '#workers/permission-rules.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 
@@ -46,7 +46,7 @@ function cardDecisions({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): OpenDecision[] {
   const waiting = new Set(waitingQuestions({
@@ -81,7 +81,7 @@ function cardDecisions({
       }
     })
 
-  if (card.id === HYDRA_CARD) {
+  if (card.id === TITAN_CARD) {
     return asks.filter(ask => ask.kind === 'owner question')
   }
 
@@ -136,7 +136,7 @@ function cardDecisions({
 }
 
 // Owner questions remain owed even when an older client hid their task.
-export function openDecisions({ state }: { state: HydraState }): OpenDecision[] {
+export function openDecisions({ state }: { state: TitanState }): OpenDecision[] {
   const items = Object.values(state.cards)
     .filter(card => liveTask({ card }) || openAsks({
       card,
@@ -181,7 +181,7 @@ export function decisionsBlock({
   now,
   pick,
 }: {
-  state: HydraState
+  state: TitanState
   now: number
   // The helper's batch: its tasks' decisions, the questions it was given first.
   pick?: {
@@ -214,8 +214,8 @@ export function decisionsBlock({
         now,
       })} old` : ''
 
-      const subject = item.card.id === HYDRA_CARD
-        ? `Hydra-wide (card '${HYDRA_CARD}')`
+      const subject = item.card.id === TITAN_CARD
+        ? `Titan-wide (card '${TITAN_CARD}')`
         : taskMention({
           id: item.card.id,
           title: item.card.title,

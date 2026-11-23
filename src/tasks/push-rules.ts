@@ -1,9 +1,9 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { AUTO_TITLE_SOURCES, type Card, type AutoTitle } from './model.ts'
 import { FORM_FIELD_TYPES, type Attention, type FormField, type Question, type TerminalFacts } from '#workers/model.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { invalid, asRecord, onlyKeys, optionalText, text } from '#app/command-validation.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { liveTask } from './select.ts'
 import { movedAway } from './move-state.ts'
 
@@ -11,7 +11,7 @@ export function findCard({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): Card {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
@@ -22,18 +22,18 @@ export function findCard({
   })
 
   if (!card && moved) {
-    throw new HydraError({
-      message: `${ref} moved to Hydra ${moved.to}`,
+    throw new TitanError({
+      message: `${ref} moved to Titan ${moved.to}`,
       code: 'NOT_FOUND',
-      help: [`Repeat the command with --hydra ${moved.to}`],
+      help: [`Repeat the command with --titan ${moved.to}`],
     })
   }
 
   if (!card) {
-    throw new HydraError({
+    throw new TitanError({
       message: `card not found: ${ref}`,
       code: 'NOT_FOUND',
-      help: ['Use pnyx board to list tasks'],
+      help: ['Use othrys board to list tasks'],
     })
   }
 
@@ -63,10 +63,10 @@ export function checkRevision({
   const revision = card?.revision ?? 0
 
   if (ifRevision !== undefined && revision !== ifRevision) {
-    throw new HydraError({
+    throw new TitanError({
       message: `card ${card?.id ?? '(new)'} is at revision ${revision}, not ${ifRevision}`,
       code: 'REVISION_CONFLICT',
-      help: [card ? `Run \`pnyx card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card'],
+      help: [card ? `Run \`othrys card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card'],
     })
   }
 }
@@ -316,8 +316,8 @@ export function parseAutoTitle({ value: rawValue }: { value: unknown }): AutoTit
   }
 }
 
-// task is the PNYX_TASK a session was started with: the task it works on, or
-// Hydra's own marker; it outranks the folder join for a session not seen yet.
+// task is the OTHRYS_TASK a session was started with: the task it works on, or
+// Titan's own marker; it outranks the folder join for a session not seen yet.
 export function joinedKey({
   state,
   key,
@@ -326,7 +326,7 @@ export function joinedKey({
   probed = false,
   task,
 }: {
-  state: HydraState
+  state: TitanState
   key: string
   folder: string | undefined
   terminal?: TerminalFacts
@@ -356,7 +356,7 @@ export function joinedKey({
 
   const hinted = task ? state.cards[task] : undefined
 
-  if (!joined && task === HYDRA_CARD) {
+  if (!joined && task === TITAN_CARD) {
     return key
   }
 

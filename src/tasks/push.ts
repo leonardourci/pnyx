@@ -2,7 +2,7 @@ import { decideSessionFacts, isSessionSource } from '#workers/session-facts.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState, Decision } from '#app/model.ts'
+import type { TitanState, Decision } from '#app/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { text, asRecord, invalid, onlyKeys, optionalText } from '#app/command-validation.ts'
 import type { PushFields } from './model.ts'
@@ -32,7 +32,7 @@ export function decidePush({
   newCardId = `task-${randomUUID()}`,
 }: {
   newCardId?: string
-  state: HydraState
+  state: TitanState
   key: string
   input: unknown
   meta: Meta

@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { randomUUID } from 'node:crypto'
 import type { EventType } from '#app/model.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
@@ -76,14 +76,14 @@ export function validateLocalTaskFlags({
   ].find(flag => values[flag] !== undefined)
 
   if (action !== 'tools' && toolsOnly) {
-    throw new HydraError({
+    throw new TitanError({
       message: `--${toolsOnly} is only valid for task tools`,
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (action !== 'start' && action !== 'create' && Array.isArray(values.tool) && values.tool.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: '--tool is only valid for task start and task create',
       code: 'VALIDATION_ERROR',
     })
@@ -107,7 +107,7 @@ export function validateLocalTaskFlags({
   ].find(flag => values[flag])
 
   if (action === 'create' && values.start && unstarted) {
-    throw new HydraError({
+    throw new TitanError({
       message: `--start sends the ask to a worker, and --${unstarted} leaves the task unstarted; choose one`,
       code: 'VALIDATION_ERROR',
     })
@@ -134,7 +134,7 @@ export function validateLocalTaskFlags({
   const extra = Object.keys(values).find(name => !allowed.includes(name))
 
   if (extra) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unknown flag --${extra} for task ${action}`,
       code: 'VALIDATION_ERROR',
       help: [`Valid flags: ${allowed.map(name => `--${name}`).join(', ')}`],
@@ -144,7 +144,7 @@ export function validateLocalTaskFlags({
   const count = action === 'create' ? 1 : action === 'parent' ? 3 : 2
 
   if (positionals.length > count) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unexpected argument: ${positionals[count]}`,
       code: 'VALIDATION_ERROR',
     })
@@ -202,7 +202,7 @@ export async function localTaskCommand({
     }
 
     const reasons = error.errors.map(issue => `--${issue.path.split('/').at(-1)}: ${issue.reason}`)
-    throw new HydraError({
+    throw new TitanError({
       message: reasons.join('; '),
       code: 'VALIDATION_ERROR',
     })

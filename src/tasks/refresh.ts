@@ -1,5 +1,5 @@
-import type { HydraState } from '#app/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { TitanState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { assignDefined, sessionAttention } from '#workers/session-attachments.ts'
 import { permissionAttention } from '#workers/permission-rules.ts'
 
@@ -7,7 +7,7 @@ export function refreshTasks({
   state,
   ids,
 }: {
-  state: HydraState
+  state: TitanState
   ids?: (string | null | undefined)[]
 }): void {
   const cards = ids
@@ -18,7 +18,7 @@ export function refreshTasks({
     permissionAttention({ card })
   }
 
-  const hydra = state.cards[HYDRA_CARD]
+  const hydra = state.cards[TITAN_CARD]
   const ref = state.config?.hydra.session
   const session = ref ? state.sessions?.[ref] : undefined
 

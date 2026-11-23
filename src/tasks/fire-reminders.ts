@@ -1,31 +1,31 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { HydraState } from '#app/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent, pnyxRunsHydra } from '#hydra/hydra.ts'
-import type { HydraMessage } from '#hydra/model.ts'
-import { loadHydra } from '#app/store.ts'
+import type { TitanState } from '#app/model.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraEvent, othrysRunsTitan } from '#titan/titan.ts'
+import type { TitanMessage } from '#titan/model.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
 import { readSettings } from '#settings/store.ts'
 import { dueQuestionReminders } from './question-reminders.ts'
 import { deferredQuestions } from './ask-state.ts'
 import { reminderDeadline, reminderMessage, reminderTaskMention } from './reminders.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 
 export async function fireReminders({
   hydraId,
   at = new Date().toISOString(),
-  state = loadHydra({ hydraId }).state,
+  state = loadTitan({ hydraId }).state,
 }: {
   hydraId: string
   at?: string
-  state?: HydraState
+  state?: TitanState
 }): Promise<number> {
   const time = Date.parse(at)
   const questionsEnabled = readSettings().settings.reviewMinutes > 0
 
-  const questions = ({ state }: { state: HydraState }) => {
-    if (!questionsEnabled || !pnyxRunsHydra({ state })) {
+  const questions = ({ state }: { state: TitanState }) => {
+    if (!questionsEnabled || !othrysRunsTitan({ state })) {
       return []
     }
 
@@ -169,7 +169,7 @@ export async function fireReminders({
 
       if (pendingQuestions.length) {
         const tasks = [...new Set(pendingQuestions.map(question => question.task))]
-        const cards = tasks.map(id => id === HYDRA_CARD ? 'Hydra' : reminderTaskMention({ card: writer.state.cards[id] }))
+        const cards = tasks.map(id => id === TITAN_CARD ? 'Titan' : reminderTaskMention({ card: writer.state.cards[id] }))
         const label = pendingQuestions.length === 1 ? 'question' : 'questions'
         lines.push(`${pendingQuestions.length} ${label} waiting on you: ${cards.join(' · ')}`)
       }
@@ -178,7 +178,7 @@ export async function fireReminders({
         return recordReceipt({ fired: 0 })
       }
 
-      const message: Omit<HydraMessage, 'id' | 'at' | 'actor'> = {
+      const message: Omit<TitanMessage, 'id' | 'at' | 'actor'> = {
         action: 'send',
         text: lines.join('\n'),
         hydra: hydraConfig({ state: writer.state }).hydra.id,

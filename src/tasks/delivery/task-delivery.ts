@@ -2,10 +2,10 @@ import { inform } from '#app/command-notices.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { hydraEvent, reportActor } from '#hydra/hydra.ts'
-import type { HydraState } from '#app/model.ts'
+import { hydraEvent, reportActor } from '#titan/titan.ts'
+import type { TitanState } from '#app/model.ts'
 import type { LandingRule } from './model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { parseLanding, parseMerger, taskLanding } from './rule.ts'
 
 function decideTaskLanding({
@@ -16,7 +16,7 @@ function decideTaskLanding({
   clear,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   landing?: string
   merge?: string
@@ -99,7 +99,7 @@ export async function taskLandingCommand({
   })
 
   if (landing === undefined && merge === undefined && !clear) {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = findCard({
       state,
       ref: task,

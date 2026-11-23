@@ -1,4 +1,4 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import { openDecisions, type OpenDecision } from './decisions.ts'
 
@@ -18,7 +18,7 @@ export function questionGroupCard({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): Card {
   const parent = card.parentId ? state.cards[card.parentId] : undefined
@@ -26,7 +26,7 @@ export function questionGroupCard({
   return parent ?? card
 }
 
-export function ownerQuestionGroups({ state }: { state: HydraState }): QuestionGroup[] {
+export function ownerQuestionGroups({ state }: { state: TitanState }): QuestionGroup[] {
   const groups = new Map<string, QuestionGroup>()
 
   for (const decision of openDecisions({ state })) {

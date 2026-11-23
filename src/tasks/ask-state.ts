@@ -1,5 +1,5 @@
 import type { Ask, AskAudience, Card } from './model.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 
 const currentAnswerReplies = ({
   card,
@@ -48,7 +48,7 @@ export const activeAsks = ({
     audience,
   }).filter(ask => !ask.deferredUntil)
 
-export const deferredQuestions = ({ state }: { state: HydraState }) =>
+export const deferredQuestions = ({ state }: { state: TitanState }) =>
   Object.values(state.cards).flatMap(card => openAsks({
     card,
     audience: 'owner',

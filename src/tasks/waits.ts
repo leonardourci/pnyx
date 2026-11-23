@@ -1,4 +1,4 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { completionGaps } from './dependencies.ts'
 import type { TaskWait } from './model.ts'
 
@@ -6,7 +6,7 @@ export function waitReadiness({
   state,
   wait,
 }: {
-  state: HydraState
+  state: TitanState
   wait: TaskWait
 }): {
   ready: boolean

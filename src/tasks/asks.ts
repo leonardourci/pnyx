@@ -1,18 +1,18 @@
 import { inform } from '#app/command-notices.ts'
 import { decisionKey, ownerQuestionGroups, questionGroupCard } from './question-groups.ts'
 import { readFileSync } from 'node:fs'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
 import { clarificationText, decideQuestionAction } from './question-actions.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Ask, AskAudience, Card } from './model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { askAnswer, askReport, decideAsk, decideAskClosure, decideEscalation } from './ask-decide.ts'
 import { askWording, pendingAnswer } from './ask-state.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraDelivery, hydraEvent, reportActor } from '#hydra/hydra.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraDelivery, hydraEvent, reportActor } from '#titan/titan.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { askHost, readServer } from '#app/server-state.ts'
 import { browserCommand } from '#app/server-browser.ts'
@@ -35,7 +35,7 @@ const one = ({
   const all = strings({ value })
 
   if (all.length > 1) {
-    throw new HydraError({
+    throw new TitanError({
       message: `pass ${flag} once`,
       code: 'VALIDATION_ERROR',
     })
@@ -110,7 +110,7 @@ export const askRows = ({ card }: { card: Card }) => (card.asks ?? []).map((ask:
   }),
 }))
 
-async function handToHydra({
+async function handToTitan({
   hydraId,
   id,
   actor,
@@ -119,7 +119,7 @@ async function handToHydra({
   id: string
   actor: string
 }): Promise<Output> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const message = state.hydraMessages?.find(m => m.id === id)
 
   if (!message || !await readServer({ hydraId })) {
@@ -137,8 +137,8 @@ async function handToHydra({
   })
 }
 
-// Recorded before Hydra hears it, so the answer resolves the question even while Hydra is down.
-async function answerHydra({
+// Recorded before Titan hears it, so the answer resolves the question even while Titan is down.
+async function answerTitan({
   hydraId,
   ref,
   id,
@@ -193,7 +193,7 @@ async function answerHydra({
           data: {
             task: card.id,
             action: 'send',
-            // Only the owner's words go in text, which the chat shows as theirs; Pnyx's framing is context.
+            // Only the owner's words go in text, which the chat shows as theirs; Othrys's framing is context.
             text: answer,
             context: [
               `Answers question ${id}: ${question}`,
@@ -225,7 +225,7 @@ async function answerHydra({
     return result
   }
 
-  const hosted = await handToHydra({
+  const hosted = await handToTitan({
     hydraId,
     id: event.id,
     actor: meta.actor,
@@ -240,8 +240,8 @@ async function answerHydra({
 
 // An agent session's own actor beats --actor; commands the server runs for its page keep the server's.
 const sessionActor = ({ meta }: { meta: Meta }): Meta => {
-  const session = requestEnv().PNYX_ACTOR
-  const agentSession = !!session && (session === HYDRA_ACTOR || reportActor({ actor: session }))
+  const session = requestEnv().OTHRYS_ACTOR
+  const agentSession = !!session && (session === TITAN_ACTOR || reportActor({ actor: session }))
   const agent = agentSession && !browserCommand.getStore()
 
   return agent ? {
@@ -283,7 +283,7 @@ async function answerCommand({
     flag: '--from-message',
   })
   const undelivered = values.undelivered === true
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = findCard({
     state,
     ref,
@@ -319,8 +319,8 @@ async function answerCommand({
   const question = card.asks?.find(a => a.id === id)
   const acceptedReply = card.replies?.find(reply => reply.id === m.id && reply.accepted)
 
-  if ((question?.actor === HYDRA_ACTOR || question?.kind === 'merge') && !acceptedReply) {
-    return answerHydra({
+  if ((question?.actor === TITAN_ACTOR || question?.kind === 'merge') && !acceptedReply) {
+    return answerTitan({
       hydraId,
       ref,
       id,
@@ -382,7 +382,7 @@ async function askOne({
   const file = text({ value: values['details-file'] })
 
   if (inline !== undefined && file !== undefined) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'pass --details or --details-file, not both',
       code: 'VALIDATION_ERROR',
     })
@@ -397,7 +397,7 @@ async function askOne({
         'utf8',
       )
     } catch (error) {
-      throw new HydraError({
+      throw new TitanError({
         message: `--details-file cannot be read: ${(error as Error).message}`,
         code: 'VALIDATION_ERROR',
       })
@@ -408,16 +408,16 @@ async function askOne({
     value: values.recommend,
     flag: '--recommend',
   })
-  const to = values.to ?? (m.actor === HYDRA_ACTOR ? 'owner' : 'hydra')
+  const to = values.to ?? (m.actor === TITAN_ACTOR ? 'owner' : 'hydra')
 
   if (to !== 'hydra' && to !== 'owner') {
-    throw new HydraError({
+    throw new TitanError({
       message: '--to takes hydra or owner',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  // One lock, so Hydra never hears a question that was not recorded.
+  // One lock, so Titan never hears a question that was not recorded.
   const written = await withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -451,7 +451,7 @@ async function askOne({
 
       // hydraEvent skips only an event id it knows, which returned above.
       if (!('event' in decision)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `question already recorded: ${decision.skipped}`,
           code: 'CONFLICT',
         })
@@ -502,13 +502,13 @@ async function askOne({
     },
   })
   const id = `ask-${written.seq}`
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const ask = Object.values(state.cards).flatMap(c => c.asks ?? [])
     .find(a => a.id === id)
   const message = state.hydraMessages?.find(msg => msg.ask === id)
   const help = ask?.audience === 'owner'
     ? 'The owner answers it in the task; wait for that answer before work that depends on it'
-    : 'Hydra answers or escalates it; keep working on what does not depend on the answer, which arrives as a message'
+    : 'Titan answers or escalates it; keep working on what does not depend on the answer, which arrives as a message'
   const asked = {
     event: written.repeat ? 'none: duplicate' : written.event,
     ask: ask?.id ?? 'none',
@@ -523,7 +523,7 @@ async function askOne({
 
   return {
     ...asked,
-    ...await handToHydra({
+    ...await handToTitan({
       hydraId,
       id: message.id,
       actor: m.actor,
@@ -568,7 +568,7 @@ async function questionActionCommand({
   const event = written.event as { id?: string } | undefined
 
   if (until === undefined && event?.id) {
-    await handToHydra({
+    await handToTitan({
       hydraId,
       id: event.id,
       actor: meta.actor,
@@ -579,7 +579,7 @@ async function questionActionCommand({
     return {
       ...written,
       clarification: id,
-      help: ['Clarification sent to Hydra; the question remains open'],
+      help: ['Clarification sent to Titan; the question remains open'],
     }
   }
 
@@ -600,7 +600,7 @@ async function answerGroup({
   if (!ownerActor({ actor: meta.actor })) {
     inform({
       reason: 'Question group answered by an agent',
-      clear: 'pnyx task questions',
+      clear: 'othrys task questions',
     })
   }
 
@@ -624,7 +624,7 @@ async function answerGroup({
   try {
     members = JSON.parse(snapshot)
   } catch {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: '--questions must be a JSON array of question keys',
     })
@@ -639,13 +639,13 @@ async function answerGroup({
 
     return parts.length === 3 && !!parts[0] && !!parts[1]
   }) || new Set(members).size !== members.length) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: '--questions must contain unique question keys',
     })
   }
 
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = findCard({
     state,
     ref,
@@ -668,7 +668,7 @@ async function answerGroup({
     })
 
     if (!target || !ask || root?.id !== card.id) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'CONFLICT',
         message: 'The question group changed; read task questions again',
       })
@@ -681,7 +681,7 @@ async function answerGroup({
     const priorChoice = priorReply ? priorReply.decision?.choice : ask.choice
 
     if (recorded && priorChoice !== choice) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'CONFLICT',
         message: 'This group attempt already recorded a different choice',
       })
@@ -707,14 +707,14 @@ async function answerGroup({
     || pending.some(member => !current.includes(member.key))
 
   if (pending.length && groupChanged) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'CONFLICT',
       message: 'The question group changed; read task questions again',
     })
   }
 
   if (pending.length && !group?.choices.includes(choice)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Use a shared choice label; answer different decisions individually',
     })
@@ -724,7 +724,7 @@ async function answerGroup({
     const index = member.ask.options?.findIndex(option => option.label === choice)
 
     if (index === undefined || index < 0) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'VALIDATION_ERROR',
         message: 'Use a shared choice label; answer different decisions individually',
       })
@@ -754,7 +754,7 @@ async function answerGroup({
     }
 
     // Sending an earlier answer can yield while the owner or a worker changes the group.
-    const latest = loadHydra({ hydraId }).state
+    const latest = loadTitan({ hydraId }).state
     const latestGroup = ownerQuestionGroups({ state: latest })
       .find(group => group.card.id === card.id)
     const latestKeys = latestGroup?.decisions.map(decision => decisionKey({ decision }))
@@ -765,7 +765,7 @@ async function answerGroup({
       || latestKeys.some(key => !remaining.has(key))
 
     if (changed || !latestGroup?.choices.includes(choice) || index === undefined || index < 0) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'CONFLICT',
         message: 'The question group changed during delivery. Earlier answers may have been sent. Read task questions again.',
       })
@@ -787,7 +787,7 @@ async function answerGroup({
         id: member.event,
       },
     }))
-    const after = ownerQuestionGroups({ state: loadHydra({ hydraId }).state })
+    const after = ownerQuestionGroups({ state: loadTitan({ hydraId }).state })
       .find(group => group.card.id === card.id)
     const stillWaiting = after?.decisions.some(decision => decisionKey({ decision }) === member.key)
 
@@ -799,7 +799,7 @@ async function answerGroup({
   return {
     group: card.id,
     answers,
-    stateSeq: loadHydra({ hydraId }).state.seq,
+    stateSeq: loadTitan({ hydraId }).state.seq,
   }
 }
 

@@ -1,7 +1,7 @@
 import { readEvents } from '#app/event-log.ts'
-import type { HydraEvent } from '#app/model.ts'
-import { loadHydra } from '#app/store.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanEvent } from '#app/model.ts'
+import { loadTitan } from '#app/store.ts'
+import { TitanError } from '#store/errors.ts'
 import { capItem } from '#store/size-cap.ts'
 import { findCard } from './push-rules.ts'
 import { UPDATES_MAX_PAGE, UPDATES_PAGE, updateTasks, type UpdatesPage } from './updates.ts'
@@ -18,21 +18,21 @@ export function taskUpdates({
   limit?: number
 }): UpdatesPage {
   if (!Number.isInteger(limit) || limit < 1 || limit > UPDATES_MAX_PAGE) {
-    throw new HydraError({
+    throw new TitanError({
       message: `limit must be 1–${UPDATES_MAX_PAGE}`,
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (before !== undefined && (!Number.isInteger(before) || before < 1)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'before must be an event seq',
       code: 'VALIDATION_ERROR',
     })
   }
 
   const task = findCard({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     ref,
   })
   const read = readUpdateEvents({
@@ -74,7 +74,7 @@ export function readUpdateEvents({
   cardId?: string
   before?: number
   limit: number
-}): HydraEvent[] {
+}): TitanEvent[] {
   return readEvents({
     hydraId,
     before,

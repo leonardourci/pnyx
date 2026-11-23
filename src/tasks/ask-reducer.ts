@@ -1,6 +1,6 @@
 import { cloneValue } from '#app/json-copy.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import type { AnswerMessage, Ask } from './model.ts'
 import { touch } from './touch.ts'
 
@@ -24,8 +24,8 @@ export function applyAsk({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   let acceptance: {
     card: string
@@ -83,8 +83,8 @@ export function applyAsk({
           fromMessage: accepted.source,
         }
 
-        // The owner already said it in chat, and a Hydra-wide question has no task to finish, so it closes here.
-        if (accepted.card === HYDRA_CARD && accepted.source) {
+        // The owner already said it in chat, and a Titan-wide question has no task to finish, so it closes here.
+        if (accepted.card === TITAN_CARD && accepted.source) {
           answered.closed = {
             id: accepted.id,
             at: event.at,

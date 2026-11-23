@@ -1,12 +1,12 @@
-import type { HydraEvent } from '#app/model.ts'
+import type { TitanEvent } from '#app/model.ts'
 import { scanEvents } from '#app/event-log.ts'
 
 export interface HistoryEntry {
   hydra: string
-  event: HydraEvent
+  event: TitanEvent
 }
 
-// Newest first, following the id both sides of a move share back through each Hydra the card left.
+// Newest first, following the id both sides of a move share back through each Titan the card left.
 export function movedHistory({
   hydraId,
   task,
@@ -18,7 +18,7 @@ export function movedHistory({
   task: string
   cards?: string[]
   types?: string[]
-  matches({ event }: { event: HydraEvent }): boolean
+  matches({ event }: { event: TitanEvent }): boolean
 }): HistoryEntry[] {
   return [
     ...scanEvents({

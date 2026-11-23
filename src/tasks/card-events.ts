@@ -1,6 +1,6 @@
 import { applySessionFacts, isSessionSource } from '#workers/session-facts.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { observeSession, sessionByRef, sessionId } from '#workers/session-attachments.ts'
 import { applyReplyReceipt } from '#workers/reduce.ts'
 import { currentSettings } from '#workers/sessions.ts'
@@ -13,8 +13,8 @@ export function applyCardEvent({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   let card = state.cards[event.cardId]
 
@@ -50,7 +50,7 @@ export function applyCardEvent({
         return false
       }
 
-      if (event.cardId !== HYDRA_CARD && isSessionSource({ source })) {
+      if (event.cardId !== TITAN_CARD && isSessionSource({ source })) {
         const agent = fields.agent ?? sessionByRef({
           state,
           ref: key,
@@ -269,7 +269,7 @@ export function applyCardEvent({
         text,
       } = event.data
 
-      // A note a moved card already holds, under the id its old Hydra gave it, is not listed twice.
+      // A note a moved card already holds, under the id its old Titan gave it, is not listed twice.
       if (card.notes?.some(note => note.id === event.id)) {
         return false
       }

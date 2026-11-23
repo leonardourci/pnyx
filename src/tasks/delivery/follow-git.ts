@@ -2,7 +2,7 @@ import { readFileSync, watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
 import { git } from '#projects/git.ts'
 import { log } from '#app/diagnostics.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { workingTask } from './follow-schedule.ts'
 import { followedLinks } from './follow.ts'
 
@@ -170,7 +170,7 @@ export function followGit({ changed }: { changed({ task }: { task: string }): vo
     }
   }
 
-  const reconcile = async ({ state }: { state: HydraState }) => {
+  const reconcile = async ({ state }: { state: TitanState }) => {
     const pending: Promise<void>[] = []
     const wanted = new Map(followedLinks({ state }).flatMap(({ card }) => {
       const working = workingTask({ card })

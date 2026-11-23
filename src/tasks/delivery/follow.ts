@@ -3,15 +3,15 @@ import { log } from '#app/diagnostics.ts'
 import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '#workers/reply.ts'
 import { decideLink } from './links.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { failedChecks, type Link } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '#integrations/github/pull-request.ts'
 import { pullRequestMergeOutcome, type MergeOutcome } from '#integrations/github/merge-evidence.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { UNRESOLVED_RETRIES, type followSchedule } from './follow-schedule.ts'
 import { withWriter } from '#app/writer.ts'
 
@@ -19,12 +19,12 @@ import { withWriter } from '#app/writer.ts'
 export const FOLLOW_POLL_MS = 60_000
 
 // Every open pull request linked to a live task, until it merges or closes.
-export function followedLinks({ state }: { state: HydraState }): {
+export function followedLinks({ state }: { state: TitanState }): {
   card: Card
   link: Link
 }[] {
   return Object.values(state.cards)
-    .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
+    .filter(card => card.id !== TITAN_CARD && liveTask({ card }))
     .flatMap(card => card.links
       .filter(link => link.kind === 'github_pr' && link.state !== 'merged' && link.state !== 'closed')
       .map(link => ({
@@ -33,7 +33,7 @@ export function followedLinks({ state }: { state: HydraState }): {
       })))
 }
 
-export function needsPullRequestFollow({ state }: { state: HydraState }): boolean {
+export function needsPullRequestFollow({ state }: { state: TitanState }): boolean {
   if (followedLinks({ state }).length > 0) {
     return true
   }
@@ -70,7 +70,7 @@ function workerNews({
 
   if (link.comments !== undefined && status.comments > link.comments) {
     const count = status.comments - link.comments
-    news.push(`${count} new review ${count === 1 ? 'comment' : 'comments'} on ${link.url}. Read them with \`gh-axi pr view ${number}${repo} --comments --reviews\`, address each one on your branch and push. Do not reply on the pull request: your replies would come back to you as new comments. For a comment that asks for something outside this task, append \`needs-you: <question>\` to \`$PNYX_TASK_DIR/worker.log\`.`)
+    news.push(`${count} new review ${count === 1 ? 'comment' : 'comments'} on ${link.url}. Read them with \`gh-axi pr view ${number}${repo} --comments --reviews\`, address each one on your branch and push. Do not reply on the pull request: your replies would come back to you as new comments. For a comment that asks for something outside this task, append \`needs-you: <question>\` to \`$OTHRYS_TASK_DIR/worker.log\`.`)
   }
 
   const finished = link.checks !== undefined && link.checks !== status.checks.summary
@@ -112,7 +112,7 @@ async function tellWorker({
       },
     })
   } catch (error) {
-    // A worker that cannot take it leaves the change on the card, where Hydra reads it.
+    // A worker that cannot take it leaves the change on the card, where Titan reads it.
     log({
       level: 'warn',
       operation: 'follow.notify',
@@ -139,7 +139,7 @@ export async function followPullRequests({
   schedule?: ReturnType<typeof followSchedule>
   readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<void> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   if (!active()) {
     return
@@ -177,7 +177,7 @@ export async function followPullRequests({
   for (const {
     card,
     link,
-  } of followedLinks({ state: loadHydra({ hydraId }).state })) {
+  } of followedLinks({ state: loadTitan({ hydraId }).state })) {
     if (!active()) {
       return
     }

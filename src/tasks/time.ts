@@ -1,5 +1,5 @@
 import { inform } from '#app/command-notices.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 // RegExp captures are strings, though both parsers only accept these unit keys.
 type IntervalUnit = 'minute' | 'hour' | 'day'
@@ -31,7 +31,7 @@ export function reminderInterval({ text }: { text: string }): number {
   const milliseconds = match && unit ? Number(match[1]) * INTERVAL_UNITS[unit] : NaN
 
   if (!Number.isSafeInteger(milliseconds) || milliseconds <= 0) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Choose a positive interval such as "30 minutes", "4 hours" or "1 day"',
     })
@@ -78,7 +78,7 @@ export function reminderTime({
   }
 
   if (!Number.isFinite(time) || time > 8_640_000_000_000_000) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Choose a future reminder time',
       code: 'VALIDATION_ERROR',
       help: ['Use an ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours"; use clear to remove a reminder'],

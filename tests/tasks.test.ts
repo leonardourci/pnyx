@@ -1,26 +1,26 @@
 import { withWriter } from '#app/writer.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
-import { emptyHydra, reduce, replay } from '#app/reducer.ts'
+import { emptyTitan, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { operation, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test(
-  'a task uses factual state as its worker and Hydra report, a second start steers its worker unless a start flag is invalid, and its dependent becomes ready once it is done',
+  'a task uses factual state as its worker and Titan report, a second start steers its worker unless a start flag is invalid, and its dependent becomes ready once it is done',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'export' })
     await hydra.owner({
       args: [
@@ -110,7 +110,7 @@ test(
       check: () => worker.received.some(text => text.includes('Also export the refunds')),
     })
     expect(worker.received.some(text => text.includes('Export the archive too'))).toBe(false)
-    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
+    expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
     const session = await hydra.chat({ text: 'what does the export need?' })
     const asked = await hydra.as({ session }).run({
@@ -123,7 +123,7 @@ test(
         '--question',
         'Include archived invoices?',
         '--context',
-        `Archived invoices change the export totals. After your choice I will implement the filter. [Export](pnyx-task:${(await hydra.task({ key: 'build' })).id})`,
+        `Archived invoices change the export totals. After your choice I will implement the filter. [Export](othrys-task:${(await hydra.task({ key: 'build' })).id})`,
         '--choice',
         'Only open',
         '--choice',
@@ -146,7 +146,7 @@ test(
       ],
     })
     await until({
-      what: 'the answer to reach Hydra, who asked',
+      what: 'the answer to reach Titan, who asked',
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
@@ -158,8 +158,8 @@ test(
     })
     const dependent = await hydra.task({ key: 'ship' })
     await until({
-      what: 'Hydra to hear that the dependent task is ready',
-      check: () => session.received.some(message => message.includes(`pnyx-task:${dependent.id}`)
+      what: 'Titan to hear that the dependent task is ready',
+      check: () => session.received.some(message => message.includes(`othrys-task:${dependent.id}`)
         && message.includes('prerequisites cleared; ready for dispatch')),
     })
 
@@ -186,7 +186,7 @@ test(
 test(
   'dependencies refuse a cycle or an unknown task and leave independent work ready',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
 
     for (const key of [
       'first',
@@ -253,7 +253,7 @@ test(
 test(
   'a start on a held task goes ahead and lists the hold, with the command that releases it, once on the card, and a failed or retried start adds nothing',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'held' })
     await hydra.owner({
       args: [
@@ -310,14 +310,14 @@ test(
 
     expect(await hydra.owner({ args: start })).toMatchObject({ event: 'none: duplicate' })
     expect(worker.received).toHaveLength(1)
-    expect(await notes()).toEqual([expect.objectContaining({ source: 'pnyx:start' })])
+    expect(await notes()).toEqual([expect.objectContaining({ source: 'othrys:start' })])
   },
 )
 
 test(
   'a hold releases with an older or agent message, with a notice, and an owner go message releases it without a notice',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const before = await hydra.owner({
       args: [
         'hydra',
@@ -337,7 +337,7 @@ test(
         '--hold',
       ],
     })
-    const byHydra = await hydra.owner({
+    const byTitan = await hydra.owner({
       args: [
         'hydra',
         'send',
@@ -346,13 +346,13 @@ test(
         '--actor',
         'hydra',
         '--reason',
-        'Hydra decides to go',
+        'Titan decides to go',
       ],
     })
 
     for (const message of [
       before.message,
-      byHydra.message,
+      byTitan.message,
       undefined,
     ]) {
       const source = message ?? (await hydra.owner({
@@ -444,9 +444,9 @@ test(
 )
 
 test(
-  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, one set to wait on Hydra itself files nothing, and a start cannot steer Hydra itself',
+  'a create files the owner ask and brief and starts its worker in one call, a replay starts nothing more, a task left unstarted shows why or that no reason was given, one set to wait on Titan itself files nothing, and a start cannot steer Titan itself',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'ring' })
     const sent = await hydra.owner({
       args: [
@@ -563,7 +563,7 @@ test(
       launch: 'started',
       worker: first.worker,
     })
-    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
+    expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toEqual([worker])
 
     const later = await hydra.owner({
       args: [
@@ -601,7 +601,7 @@ test(
         'apply',
         '--file',
         '-',
-        '--hydra',
+        '--titan',
         hydra.id,
       ],
       env: session.env,
@@ -624,7 +624,7 @@ test(
         'task',
         'create',
         '--title',
-        'Wait for Hydra',
+        'Wait for Titan',
         '--on',
         '$hydra',
       ],
@@ -634,7 +634,7 @@ test(
         'task',
         'list',
       ],
-    })).tasks.some((task: { title: string }) => task.title === 'Wait for Hydra')).toBe(false)
+    })).tasks.some((task: { title: string }) => task.title === 'Wait for Titan')).toBe(false)
 
     expect((await hydra.ownerRefused({
       args: [
@@ -649,9 +649,9 @@ test(
 )
 
 test(
-  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, a queue or reorder that cannot happen explains instead of refusing, and the Hydra card cannot queue',
+  'a create behind a worker it cannot share starts its own worker and says why it was not queued, one with an unknown target, an unknown start route or both --start and --no-start files nothing, a queue or reorder that cannot happen explains instead of refusing, and the Titan card cannot queue',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { folder } = await hydra.startTask({ key: 'export' })
     const importFolder = hydra.folder({ name: 'import' })
     const behind = await hydra.owner({
@@ -674,7 +674,7 @@ test(
     })
     expect(behind.help.join('\n')).toContain('task.log session records')
     expect((await hydra.agent({ cwd: importFolder })).received[0]).toContain('Read the exported CSV back')
-    expect(pnyx.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
+    expect(othrys.claude.sessions.filter(session => session.cwd === folder)).toHaveLength(1)
 
     const refusals = [
       {
@@ -802,9 +802,9 @@ test(
 )
 
 test(
-  'Hydra holds work for the owner, a held or dependent create stays unstarted with its reason, and a start on the dependent goes ahead and lists the dependency',
+  'Titan holds work for the owner, a held or dependent create stays unstarted with its reason, and a start on the dependent goes ahead and lists the dependency',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'talk-first' })
     const docsFolder = hydra.folder({ name: 'rename-docs' })
     const sent = await hydra.owner({
@@ -842,7 +842,7 @@ test(
       launch: 'held',
       hold: 'The owner wants to talk first',
     })
-    expect(pnyx.claude.sessions.some(session => session.cwd === folder)).toBe(false)
+    expect(othrys.claude.sessions.some(session => session.cwd === folder)).toBe(false)
     const questionPage = await hydra.page()
     const goQuestion = await questionPage.send({
       name: 'task',
@@ -856,7 +856,7 @@ test(
         '--question',
         'Rename the API now?',
         '--context',
-        `Go starts the rename. [Card](pnyx-task:${encodeURIComponent(held.card.id)})`,
+        `Go starts the rename. [Card](othrys-task:${encodeURIComponent(held.card.id)})`,
         '--actor',
         'hydra',
         '--reason',
@@ -894,7 +894,7 @@ test(
       launch: 'waiting',
       on: [held.card.id],
     })
-    expect(pnyx.claude.sessions.some(session => session.cwd === docsFolder)).toBe(false)
+    expect(othrys.claude.sessions.some(session => session.cwd === docsFolder)).toBe(false)
 
     const docs = await hydra.owner({
       args: [
@@ -915,7 +915,7 @@ test(
 test(
   'a start with an open question goes ahead and lists it with the command that answers it, and a create that cannot start notes why once however often it is retried',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'archive' })
     await hydra.owner({
       args: [
@@ -943,7 +943,7 @@ test(
         '--question',
         'Archive paid invoices too?',
         '--context',
-        `Paid invoices leave the totals. After your choice I will start the archive. [Archive](pnyx-task:${card.id})`,
+        `Paid invoices leave the totals. After your choice I will start the archive. [Archive](othrys-task:${card.id})`,
         '--choice',
         'Only unpaid',
         '--choice',
@@ -967,7 +967,7 @@ test(
     expect(started.open).toEqual([
       expect.objectContaining({
         reason: expect.stringContaining(asked.ask),
-        clear: expect.stringContaining(`pnyx answer ${card.id} ${asked.ask}`),
+        clear: expect.stringContaining(`othrys answer ${card.id} ${asked.ask}`),
       }),
     ])
     expect((await hydra.agent({ cwd: folder })).received[0]).toContain('Archive the old invoices')
@@ -1002,14 +1002,14 @@ test(
         sketch.id,
         '--full',
       ],
-    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:create' })])
+    })).task.notes).toEqual([expect.objectContaining({ source: 'othrys:create' })])
   },
 )
 
 test(
   'arrangement can be undone and apply --check previews task creation without writing',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -1130,7 +1130,7 @@ test(
     })
     expect(createdBefore.rank).toBeLessThan(later.rank ?? later.createdSeq)
 
-    const seq = () => loadHydra({ hydraId: hydra.id }).state.seq
+    const seq = () => loadTitan({ hydraId: hydra.id }).state.seq
     const before = seq()
     const preview = await hydra.owner({
       args: [
@@ -1173,7 +1173,7 @@ test(
 test(
   'tasks can be nested, moved between parents and detached with one level enforced',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const parent = await hydra.owner({
       args: [
         'task',
@@ -1275,7 +1275,7 @@ test(
 test(
   'parent retention waits for every child and reopens when a child resumes',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
 
     const retention = async () => {
       const { task } = await hydra.owner({
@@ -1377,7 +1377,7 @@ test(
       doneAt: null,
       hidden: false,
     })
-    await pnyx.restart()
+    await othrys.restart()
     expect(await retention()).toEqual({
       doneAt: null,
       hidden: false,
@@ -1486,10 +1486,10 @@ test(
 )
 
 test(
-  'a retried rename answers for its own operation from the task as it is now, and with the task id alone once the task moved to another Hydra',
+  'a retried rename answers for its own operation from the task as it is now, and with the task id alone once the task moved to another Titan',
   async () => {
-    const hydra = await pnyx.hydra()
-    const other = await pnyx.hydra()
+    const hydra = await othrys.hydra()
+    const other = await othrys.hydra()
     const created = await hydra.owner({
       args: [
         'task',
@@ -1547,7 +1547,7 @@ test(
 test(
   'arrange retries remain duplicates after their peer changes family',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -1668,7 +1668,7 @@ test(
         }
       },
     })
-    const hydra = await pnyx.hydra({
+    const hydra = await othrys.hydra({
       id,
       create: false,
     })
@@ -1725,7 +1725,7 @@ test(
 )
 
 test(
-  'a reminder-only task stays out of project and Hydra waiting counts',
+  'a reminder-only task stays out of project and Titan waiting counts',
   async () => {
     const id = 'reminder-summary'
 
@@ -1805,7 +1805,7 @@ test(
         }
       },
     })
-    const hydra = await pnyx.hydra({
+    const hydra = await othrys.hydra({
       id,
       create: false,
     })
@@ -1817,9 +1817,9 @@ test(
       ],
     })
     expect(await until({
-      what: 'the reminder-only Hydra summary',
+      what: 'the reminder-only Titan summary',
       check: () => {
-        const summary = pnyx.home().hydras.find(summary => summary.id === id)
+        const summary = othrys.home().hydras.find(summary => summary.id === id)
 
         if (summary?.projects.length === 1) {
           return summary
@@ -1833,13 +1833,13 @@ test(
 )
 
 test(
-  'predicting prototype-named events leaves the previous Hydra untouched',
+  'predicting prototype-named events leaves the previous Titan untouched',
   () => {
     for (const id of [
       'constructor',
       '__proto__',
     ]) {
-      const before = emptyHydra()
+      const before = emptyTitan()
       const event = {
         v: 1 as const,
         seq: 1,
@@ -1871,7 +1871,7 @@ test(
 )
 
 async function placementFamily() {
-  const hydra = await pnyx.hydra()
+  const hydra = await othrys.hydra()
   const entries = [
     { key: 'first' },
     { key: 'parent' },
@@ -1909,7 +1909,7 @@ async function placementFamily() {
 
   const parent = (await hydra.task({ key: 'parent' })).id
   const child = (await hydra.task({ key: 'child' })).id
-  const order = ({ parent }: { parent?: string } = {}) => Object.values(loadHydra({
+  const order = ({ parent }: { parent?: string } = {}) => Object.values(loadTitan({
     hydraId: hydra.id,
   }).state.cards).filter(card => {
     const inParent = (card.parentId ?? null) === (parent ?? null)
@@ -2000,7 +2000,7 @@ test(
     delete legacy.data.rank
     delete legacy.data.before.rank
     const state = replay({
-      state: emptyHydra(),
+      state: emptyTitan(),
       events: events.slice(
         0,
         -1,
@@ -2070,7 +2070,7 @@ test(
         repository,
       ],
     })
-    const snapshot = () => Object.values(loadHydra({
+    const snapshot = () => Object.values(loadTitan({
       hydraId: hydra.id,
     }).state.cards).filter(card => card.id === child)
       .map(card => ({
@@ -2121,32 +2121,32 @@ test(
       hydra: 'Poseidon',
       page: 'settings',
       taskTitle: 'Add the cart',
-    })).toBe('Settings · Poseidon · Pnyx')
+    })).toBe('Settings · Poseidon · Othrys')
     expect(pageTitle({
       hydra: 'Poseidon',
       taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 123456 extra',
-    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789… · Poseidon · Pnyx')
+    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789… · Poseidon · Othrys')
     expect(pageTitle({
       hydra: 'Poseidon',
       taskTitle: '01234567890123456789012345678901234567890123456789012345678🚀extra',
-    })).toBe('01234567890123456789012345678901234567890123456789012345678🚀… · Poseidon · Pnyx')
+    })).toBe('01234567890123456789012345678901234567890123456789012345678🚀… · Poseidon · Othrys')
   },
 )
 
 test(
   'owner question presentation defaults carry notices, invalid choices stay invalid, and updates never ask for a decision',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({
       key: 'questions',
       harness: 'codex',
     })
     const session = await hydra.chat({ text: 'Decide export scope' })
-    const asHydra = hydra.as({ session })
+    const asTitan = hydra.as({ session })
     const card = await hydra.task({ key: 'questions' })
-    const context = `Archived invoices change totals. After the answer I will build the export. [Export \\[scope\\]](pnyx-task:${card.id})`
+    const context = `Archived invoices change totals. After the answer I will build the export. [Export \\[scope\\]](othrys-task:${card.id})`
     const asWorker = hydra.as({ session: worker })
-    const managed = await asHydra.run({
+    const managed = await asTitan.run({
       args: [
         'task',
         'ask',
@@ -2222,7 +2222,7 @@ test(
         '--full',
       ],
     })).task.asks.find((ask: { id: string }) => ask.id === managed.ask).answered).toBeUndefined()
-    await asHydra.run({
+    await asTitan.run({
       args: [
         'task',
         'close-question',
@@ -2252,10 +2252,10 @@ test(
     ]
 
     const accepted = async ({ args }: { args: string[] }) => {
-      const result = await asHydra.run({ args })
+      const result = await asTitan.run({ args })
       expect(result.notices).toBeDefined()
       expect((await hydra.task({ key: 'questions' })).notices).toBeDefined()
-      await asHydra.run({
+      await asTitan.run({
         args: [
           'task',
           'close-question',
@@ -2285,7 +2285,7 @@ test(
       ]
 
       if (omitted === 0 || omitted === 2) {
-        expect((await asHydra.refused({ args })).code).toBe('VALIDATION_ERROR')
+        expect((await asTitan.refused({ args })).code).toBe('VALIDATION_ERROR')
       } else {
         await accepted({ args })
       }
@@ -2332,9 +2332,9 @@ test(
 
     for (const badContext of [
       'Totals change after the answer.',
-      `[Export](pnyx-task:${card.id})`,
-      '[Wrong](pnyx-task:another-card)',
-      `Totals change after the answer. ](pnyx-task:${card.id})`,
+      `[Export](othrys-task:${card.id})`,
+      '[Wrong](othrys-task:another-card)',
+      `Totals change after the answer. ](othrys-task:${card.id})`,
     ]) {
       await accepted({
         args: [
@@ -2399,7 +2399,7 @@ test(
       ],
     })
     expect(JSON.stringify(updates)).toContain('task.reminder-due')
-    const asked = await asHydra.run({
+    const asked = await asTitan.run({
       args: [
         'task',
         'ask',
@@ -2443,11 +2443,11 @@ test(
       ],
     })).count).toBe(0)
     await until({
-      what: 'the Hydra summary to reflect no owner questions',
-      check: () => (pnyx.home().hydras.find(summary => summary.id === hydra.id))?.asks === 0,
+      what: 'the Titan summary to reflect no owner questions',
+      check: () => (othrys.home().hydras.find(summary => summary.id === hydra.id))?.asks === 0,
     })
-    expect((pnyx.home().hydras.find(summary => summary.id === hydra.id))?.asks).toBe(0)
-    expect((await asHydra.run({
+    expect((othrys.home().hydras.find(summary => summary.id === hydra.id))?.asks).toBe(0)
+    expect((await asTitan.run({
       args: [
         'task',
         'escalate',
@@ -2457,7 +2457,7 @@ test(
         'Accounting decision',
       ],
     })).notices).toBeDefined()
-    expect((await asHydra.run({
+    expect((await asTitan.run({
       args: [
         'task',
         'escalate',
@@ -2471,7 +2471,7 @@ test(
         'Accounting decision',
       ],
     })).notices).toBeDefined()
-    await asHydra.run({
+    await asTitan.run({
       args: [
         'task',
         'escalate',
@@ -2502,7 +2502,7 @@ test(
 test(
   'related owner questions form one group, share choices safely and answer once',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = hydra.folder({ name: 'exports' })
     await hydra.owner({
       args: [
@@ -2543,7 +2543,7 @@ test(
     }
 
     const session = await hydra.chat({ text: 'Review the batch scope' })
-    const asHydra = hydra.as({ session })
+    const asTitan = hydra.as({ session })
 
     const ask = async ({
       key,
@@ -2557,7 +2557,7 @@ test(
     }) => {
       const card = await hydra.task({ key })
 
-      return asHydra.run({
+      return asTitan.run({
         args: [
           'task',
           'ask',
@@ -2567,7 +2567,7 @@ test(
           '--question',
           `Include archived ${key}?`,
           '--context',
-          `Archived records change totals. I will build this export after your answer. [${key}](pnyx-task:${card.id})`,
+          `Archived records change totals. I will build this export after your answer. [${key}](othrys-task:${card.id})`,
           ...options.flatMap(choice => [
             '--choice',
             choice,
@@ -2600,7 +2600,7 @@ test(
     const summary = await until({
       what: 'the grouped owner decision in the project summary',
       check: () => {
-        const summary = pnyx.home().hydras.find(summary => summary.id === hydra.id)
+        const summary = othrys.home().hydras.find(summary => summary.id === hydra.id)
 
         if (summary?.projects.some(project => project.name === 'exports' && project.asks === 1)) {
           return summary
@@ -2640,9 +2640,9 @@ test(
       index,
     ) => answer[index - 1] === '--choice' ? '1' : value)
     expect((await hydra.ownerRefused({ args: numericChoice })).code).toBe('VALIDATION_ERROR')
-    const answered = await asHydra.run({ args: answer })
+    const answered = await asTitan.run({ args: answer })
     expect(answered.notices).toBeDefined()
-    const repeated = await asHydra.run({ args: answer })
+    const repeated = await asTitan.run({ args: answer })
     expect(repeated.answers.every((receipt: { repeat?: boolean }) => receipt.repeat)).toBe(true)
     const differentRetry = answer.map((
       value,
@@ -2694,7 +2694,7 @@ test(
         'Everything',
       ],
     })
-    const recovered = await asHydra.run({ args: answer })
+    const recovered = await asTitan.run({ args: answer })
     expect(recovered.answers).toMatchObject([
       { repeat: true },
       { repeat: true },
@@ -2754,7 +2754,7 @@ test(
 test(
   'group delivery stops when a new question arrives between worker sends',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const parent = await hydra.owner({
       args: [
         'task',
@@ -2765,7 +2765,7 @@ test(
       ],
     })
     const session = await hydra.chat({ text: 'Coordinate worker decisions' })
-    const asHydra = hydra.as({ session })
+    const asTitan = hydra.as({ session })
     const gate = hydra.folder({ name: 'delivery-gate' })
     const bin = hydra.folder({ name: 'delivery-bin' })
     const originalPath = process.env.PATH
@@ -2847,7 +2847,7 @@ test(
           '--question',
           'Include archived records?',
           '--context',
-          `Archived records change totals. I will build after your choice. [Export](pnyx-task:${card.id})`,
+          `Archived records change totals. I will build after your choice. [Export](othrys-task:${card.id})`,
           '--choice',
           'Open only',
           '--choice',
@@ -2860,7 +2860,7 @@ test(
         key,
         asked.ask,
       )
-      await asHydra.run({
+      await asTitan.run({
         args: [
           'task',
           'escalate',
@@ -2907,7 +2907,7 @@ test(
           'received',
         )),
       })
-      const added = await asHydra.run({
+      const added = await asTitan.run({
         args: [
           'task',
           'ask',
@@ -2917,7 +2917,7 @@ test(
           '--question',
           'Include draft records?',
           '--context',
-          `Drafts change totals. I will build after your choice. [Batch](pnyx-task:${parent.card.id})`,
+          `Drafts change totals. I will build after your choice. [Batch](othrys-task:${parent.card.id})`,
           '--choice',
           'Open only',
           '--choice',
@@ -3085,7 +3085,7 @@ test(
 test(
   'a push updates task fields while observing an attached session',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -3370,7 +3370,7 @@ test(
 test(
   'workers can manage task policies and receipts retain their notices on the card',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -3458,7 +3458,7 @@ test(
       ]))
 
       for (const notice of receipt.notices) {
-        expect(notice.clear).not.toMatch(/\bpnyx-axi\b/)
+        expect(notice.clear).not.toMatch(/\bothrys-axi\b/)
       }
 
       expect((await hydra.task({ key: 'policies' })).notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: expect.any(String) })]))
@@ -3505,13 +3505,13 @@ test(
         'apply',
         '--file',
         '-',
-        '--hydra',
+        '--titan',
         hydra.id,
       ],
       env: {
         ...process.env,
-        PNYX_ACTOR: 'worker:policies',
-        PNYX_HYDRA: hydra.id,
+        OTHRYS_ACTOR: 'worker:policies',
+        OTHRYS_TITAN: hydra.id,
       },
       input: JSON.stringify({
         version: 1,

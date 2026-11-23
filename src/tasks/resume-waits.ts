@@ -1,12 +1,12 @@
-import type { HydraState } from '#app/model.ts'
-import { clip } from '#hydra/digest.ts'
+import type { TitanState } from '#app/model.ts'
+import { clip } from '#titan/digest.ts'
 import { base } from '#app/command-meta.ts'
 import { withWriter } from '#app/writer.ts'
 import { activeHelperBatches } from '#routine-helper/state.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { steeringClaim, steeringHeld } from '#workers/steering.ts'
 import { notifySteering } from '#workers/inbox-delivery.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { openAsks } from './ask-state.ts'
 import { ownerGates } from './owner-gates.ts'
 import { liveTask } from './select.ts'
@@ -21,7 +21,7 @@ function unnotifiedResumes({
   retryAfter,
   now,
 }: {
-  state: HydraState
+  state: TitanState
   retryAfter: Map<string, number>
   now: number
 }) {
@@ -53,7 +53,7 @@ export function waitResumesPending({
   retryAfter,
   now = Date.now(),
 }: {
-  state: HydraState
+  state: TitanState
   retryAfter: Map<string, number>
   now?: number
 }): boolean {
@@ -76,7 +76,7 @@ export async function notifyWaitResumes({
   now?: number
 }): Promise<void> {
   const pending = unnotifiedResumes({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     retryAfter,
     now,
   })
@@ -99,7 +99,7 @@ function resumable({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): boolean {
   if (!card.wait || !liveTask({ card })
@@ -124,7 +124,7 @@ export async function resumeWaits({
   at = new Date().toISOString(),
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   at?: string
 }): Promise<number> {
   if (!Object.values(state.cards).some(card => resumable({

@@ -6,22 +6,22 @@ import { decideSession } from '#workers/sessions.ts'
 import { captureResult } from '#task-sources/sources.ts'
 import { foldWorkerLog, workerTaskDir } from '#workers/worker-log.ts'
 import { randomUUID } from 'node:crypto'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { base } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { askHost } from '#app/server-state.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { carryCursors, harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { projectsFor } from '#projects/read.ts'
 import { matchesProject, sameProjectPath } from '#projects/identity.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import { workerQueue } from '#workers/queue.ts'
 import type { Card } from './model.ts'
-import { movedAway, type HydraMoveEvent, type MovedCard } from './move-state.ts'
+import { movedAway, type TitanMoveEvent, type MovedCard } from './move-state.ts'
 import { isManagedTask } from './select.ts'
 import { activeHelperBatches } from '#routine-helper/state.ts'
 
@@ -38,7 +38,7 @@ const refuse = ({
   message: string
   help: string
   code?: string
-}) => new HydraError({
+}) => new TitanError({
   message,
   code,
   help: [help],
@@ -52,7 +52,7 @@ const missing = ({
   ref: string
 }) => refuse({
   message: `card not found: ${ref}`,
-  help: `Use pnyx board --hydra ${hydraId}`,
+  help: `Use othrys board --titan ${hydraId}`,
   code: 'NOT_FOUND',
 })
 
@@ -61,8 +61,8 @@ function projectOnTarget({
   target,
   label,
 }: {
-  source: HydraState
-  target: HydraState
+  source: TitanState
+  target: TitanState
   label: string
 }): {
   path: string
@@ -104,13 +104,13 @@ export function moveRefusal({
 }: {
   hydraId: string
   to: string
-  source: HydraState
-  target: HydraState
+  source: TitanState
+  target: TitanState
   card: Card
   moving?: string[]
-}): HydraError | undefined {
+}): TitanError | undefined {
   const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
-  const restoreRelationships = `After moving from Hydra ${hydraId} to ${to}, review the previous relationships in the destination's tasks/${card.id}/task.log`
+  const restoreRelationships = `After moving from Titan ${hydraId} to ${to}, review the previous relationships in the destination's tasks/${card.id}/task.log`
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
@@ -130,7 +130,7 @@ export function moveRefusal({
   if (project && !project.attached && !moving.includes(card.id)) {
     inform({
       task: card.id,
-      reason: `Moved with: Hydra ${to} has no project ${project.path} attached`,
+      reason: `Moved with: Titan ${to} has no project ${project.path} attached`,
       clear: restoreRelationships,
     })
   }
@@ -139,15 +139,15 @@ export function moveRefusal({
 
   if (conflictingTask) {
     return refuse({
-      message: `Hydra ${to} already has a task with id or key ${card.id}`,
-      help: `Read tasks/${conflictingTask}/task.log in Hydra ${to}`,
+      message: `Titan ${to} already has a task with id or key ${card.id}`,
+      help: `Read tasks/${conflictingTask}/task.log in Titan ${to}`,
     })
   }
 
   if (session && card.agent?.host !== 'pnyx') {
     inform({
       task: card.id,
-      reason: `Detached ${card.id}'s outside worker; its hooks retain Hydra ${hydraId}`,
+      reason: `Detached ${card.id}'s outside worker; its hooks retain Titan ${hydraId}`,
       clear: restoreRelationships,
     })
   }
@@ -186,7 +186,7 @@ export function moveRefusal({
   if (prerequisite) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} depends on ${prerequisite}, which stays on Hydra ${hydraId}`,
+      reason: `Moved with: ${card.id} depends on ${prerequisite}, which stays on Titan ${hydraId}`,
       clear: restoreRelationships,
     })
   }
@@ -204,7 +204,7 @@ export function moveRefusal({
   if (card.wait && !moving.includes(card.wait.task)) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} waits for ${card.wait.task}, which stays on Hydra ${hydraId}`,
+      reason: `Moved with: ${card.id} waits for ${card.wait.task}, which stays on Titan ${hydraId}`,
       clear: restoreRelationships,
     })
   }
@@ -222,7 +222,7 @@ export function moveRefusal({
   if (card.parentId && !moving.includes(card.parentId)) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} is a subtask of ${card.parentId}, which stays on Hydra ${hydraId}`,
+      reason: `Moved with: ${card.id} is a subtask of ${card.parentId}, which stays on Titan ${hydraId}`,
       clear: restoreRelationships,
     })
   }
@@ -232,7 +232,7 @@ export function moveRefusal({
   if (child) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} has subtask ${child.id}, which would stay on Hydra ${hydraId}`,
+      reason: `Moved with: ${card.id} has subtask ${child.id}, which would stay on Titan ${hydraId}`,
       clear: restoreRelationships,
     })
   }
@@ -242,7 +242,7 @@ export function moveRefusal({
   if (liveSource) {
     inform({
       task: card.id,
-      reason: `Moved with: external source ${liveSource.id} still runs for ${card.id} on Hydra ${hydraId}`,
+      reason: `Moved with: external source ${liveSource.id} still runs for ${card.id} on Titan ${hydraId}`,
       clear: restoreRelationships,
     })
   }
@@ -257,14 +257,14 @@ function checkTarget({
 }): void {
   if (!hydraIds().includes(to)) {
     throw refuse({
-      message: `Hydra not found: ${to}`,
-      help: 'Choose a destination Hydra in the UI',
+      message: `Titan not found: ${to}`,
+      help: 'Choose a destination Titan in the UI',
       code: 'NOT_FOUND',
     })
   }
 }
 
-// Ends the source's idle live session, so only the target resumes it. A server not running this Hydra holds none.
+// Ends the source's idle live session, so only the target resumes it. A server not running this Titan holds none.
 export async function releaseWorker({
   hydraId,
   card,
@@ -291,7 +291,7 @@ export async function releaseWorker({
       },
     })
   } catch (error) {
-    if (error instanceof HydraError && error.code === 'NOT_RUNNING') {
+    if (error instanceof TitanError && error.code === 'NOT_RUNNING') {
       return
     }
 
@@ -301,12 +301,12 @@ export async function releaseWorker({
   if (typeof released.busy === 'string') {
     throw refuse({
       message: `${card.id}'s worker is ${released.busy}`,
-      help: `Check worker activity for task ${card.id} in Hydra ${hydraId} in the UI. Retry the move when the worker is idle.`,
+      help: `Check worker activity for task ${card.id} in Titan ${hydraId} in the UI. Retry the move when the worker is idle.`,
     })
   }
 }
 
-// A move cut between its two lines leaves the card on both Hydras. Running it again replaces the target's
+// A move cut between its two lines leaves the card on both Titans. Running it again replaces the target's
 // untouched copy with the source's current card; a copy edited on both sides since is left for the owner.
 // Every session the card has had, and when its owner questions were last reminded, as the source holds them.
 function carried({
@@ -315,7 +315,7 @@ function carried({
   card,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   card: Card
 }) {
   const members = taskSessions({
@@ -353,7 +353,7 @@ function depart({
   meta: Meta
   moving?: MovedCard['moving']
 }): void {
-  const data: Extract<HydraMoveEvent, { type: 'task.moved-out' }>['data'] = {
+  const data: Extract<TitanMoveEvent, { type: 'task.moved-out' }>['data'] = {
     to,
     card: structuredClone(card),
     sessions: carried({
@@ -403,7 +403,7 @@ function receipt({
     event: move,
     copy: card.copy?.state === 'removed' ? 'none' : card.copy?.path ?? 'none',
     worker: card.sessionIds?.[0] ?? 'none',
-    help: [`Read tasks/${card.id}/task.log in Hydra ${to}`],
+    help: [`Read tasks/${card.id}/task.log in Titan ${to}`],
   }
 }
 
@@ -425,7 +425,7 @@ export function stageTaskMove({
   move: string
   meta: Meta
   moving?: MovedCard['moving']
-}): HydraMoveEvent & { type: 'task.moved-in' } {
+}): TitanMoveEvent & { type: 'task.moved-in' } {
   // The source records the transcript's notes up to now, so the target reads on from the same place.
   harvestTranscripts({
     writer: source,
@@ -473,7 +473,7 @@ export function stageTaskMove({
         source: external,
         run: external.run?.id ?? external.registration,
         outcome: 'stopped',
-        detail: 'Stopped for a Hydra move; unread results remain recorded',
+        detail: 'Stopped for a Titan move; unread results remain recorded',
         meta,
       })
     }
@@ -505,7 +505,7 @@ export function stageTaskMove({
     card: current,
     state: target.state,
   })
-  const event: Extract<HydraMoveEvent, { type: 'task.moved-in' }> = {
+  const event: Extract<TitanMoveEvent, { type: 'task.moved-in' }> = {
     ...base({
       state: target.state,
       meta: {
@@ -566,7 +566,7 @@ export function stageTaskMove({
   return event
 }
 
-// Both Hydra sequence claims, events and rows commit together; a refusal leaves the task on its source.
+// Both Titan sequence claims, events and rows commit together; a refusal leaves the task on its source.
 export async function moveTask({
   hydraId,
   ref,
@@ -581,7 +581,7 @@ export async function moveTask({
   checkTarget({
     to,
   })
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
   const gone = movedAway({
     state,
@@ -599,8 +599,8 @@ export async function moveTask({
 
   if (!card && gone) {
     throw refuse({
-      message: `${ref} moved to Hydra ${gone.to}`,
-      help: `Review task ${gone.id} on Hydra ${gone.to} in the UI`,
+      message: `${ref} moved to Titan ${gone.to}`,
+      help: `Review task ${gone.id} on Titan ${gone.to} in the UI`,
       code: 'NOT_FOUND',
     })
   }
@@ -615,8 +615,8 @@ export async function moveTask({
   if (to === hydraId) {
     inform({
       task: card.id,
-      reason: `Task is already on Hydra ${to}`,
-      clear: `Review the Hydra of task ${card.id} in the UI.`,
+      reason: `Task is already on Titan ${to}`,
+      clear: `Review the Titan of task ${card.id} in the UI.`,
     })
 
     return {
@@ -627,7 +627,7 @@ export async function moveTask({
     }
   }
 
-  const target = loadHydra({ hydraId: to }).state
+  const target = loadTitan({ hydraId: to }).state
   const move = meta.id ?? `move:${randomUUID()}`
 
   if (Object.hasOwn(
@@ -697,14 +697,14 @@ export async function moveTask({
   })
 }
 
-// Follows a moved task from Hydra to Hydra to the one that holds it now; undefined once the trail ends.
+// Follows a moved task from Titan to Titan to the one that holds it now; undefined once the trail ends.
 export function currentHolder({
   hydraId,
   state,
   card,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   card: string
 }): string | undefined {
   const seen = new Set<string>()
@@ -724,7 +724,7 @@ export function currentHolder({
     }
 
     if (at) {
-      current = loadHydra({ hydraId: at }).state
+      current = loadTitan({ hydraId: at }).state
     }
   }
 

@@ -1,10 +1,10 @@
 import { inform } from '#app/command-notices.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from './model.ts'
 import { askAnswer } from './ask-decide.ts'
 import { openAsks } from './ask-state.ts'
@@ -33,7 +33,7 @@ export function decideHold({
   release,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   message?: string
   release: boolean
@@ -45,13 +45,13 @@ export function decideHold({
   })
 
   if (isManagedTask({ card })) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'hold a task card',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
+  if (!ownerActor({ actor: meta.actor }) && meta.actor !== TITAN_ACTOR) {
     inform({
       reason: 'Discussion hold changed by an agent',
       clear: 'Review the discussion hold for this task in the UI.',
@@ -84,7 +84,7 @@ export function decideHold({
   const source = state.hydraMessages?.find(entry => entry.id === message)
 
   if (message && !source) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Owner message not found',
       code: 'NOT_FOUND',
     })
@@ -124,7 +124,7 @@ export function decideHold({
       state,
       card,
       id: question.id,
-      actor: HYDRA_ACTOR,
+      actor: TITAN_ACTOR,
       choice: 'Go',
       ...(ownerGo ? { fromMessage: source.id } : {}),
     })

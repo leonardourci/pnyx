@@ -1,6 +1,6 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { OUTCOME_STATES, type Outcome } from './model.ts'
 import { parseLink, decideLink } from './links.ts'
 import { decideOutcome } from './outcome.ts'
@@ -31,7 +31,7 @@ export function planDeliveryChange({
   operation,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   operation: DeliveryOperation
   meta: Meta
 }) {
@@ -44,7 +44,7 @@ export function planDeliveryChange({
     ]
 
     if (operation.remove && metadata.some(value => value !== undefined)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'remove cannot also set link fields',
         field: 'remove',
         code: 'VALIDATION_ERROR',
@@ -72,14 +72,14 @@ export function planDeliveryChange({
   }
 
   if (Boolean(operation.clear) === (operation.state !== undefined)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'give either an outcome or clear',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (operation.clear && operation.note !== undefined) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'clear cannot also set an outcome note',
       field: 'note',
       code: 'VALIDATION_ERROR',
@@ -90,7 +90,7 @@ export function planDeliveryChange({
     || (OUTCOME_STATES as readonly string[]).includes(operation.state)
 
   if (!validState) {
-    throw new HydraError({
+    throw new TitanError({
       message: `state must be one of ${OUTCOME_STATES.join(', ')}`,
       code: 'VALIDATION_ERROR',
     })
