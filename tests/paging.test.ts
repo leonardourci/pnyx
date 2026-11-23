@@ -834,7 +834,13 @@ test(
 test(
   'refresh fills the transcript gap even when a retained owner receipt is on the newest page',
   () => {
-    const saved = ({ id, offset }: { id: string; offset: number }) => ({
+    const saved = ({
+      id,
+      offset,
+    }: {
+      id: string
+      offset: number
+    }) => ({
       id,
       offset,
       kind: 'message' as const,
@@ -842,9 +848,18 @@ test(
       text: id,
       at: new Date(offset).toISOString(),
     })
-    const first = saved({ id: 'first', offset: 1 })
-    const missed = saved({ id: 'missed', offset: 2 })
-    const newest = saved({ id: 'newest', offset: 3 })
+    const first = saved({
+      id: 'first',
+      offset: 1,
+    })
+    const missed = saved({
+      id: 'missed',
+      offset: 2,
+    })
+    const newest = saved({
+      id: 'newest',
+      offset: 3,
+    })
     const receipt = {
       id: 'reply:owner',
       kind: 'message' as const,
