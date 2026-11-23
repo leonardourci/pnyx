@@ -3100,14 +3100,6 @@ test(
     })
     expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
     let now = Date.now()
-    await hydra.owner({
-      args: [
-        'task',
-        'remind',
-        'heartbeat-worker',
-        new Date(now + 30 * 60_000).toISOString(),
-      ],
-    })
     let wakes = 0
     const timer = startReviewTimer({
       hydraId: hydra.id,
