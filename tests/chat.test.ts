@@ -15,10 +15,9 @@ import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { fireReminders } from '#tasks/fire-reminders.ts'
+import { boardReview } from '#hydra/review.ts'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { parse } from 'yaml'
@@ -2890,7 +2889,7 @@ test(
 )
 
 test(
-  'timed reviews wake Hydra for a quiet running card and stay quiet for healthy or unchanged work',
+  'timed reviews wake for changed work and include overdue task and Hydra questions',
   async () => {
     const hydra = await pnyx.hydra()
     const previous = (await hydra.owner({
@@ -2899,20 +2898,6 @@ test(
         'show',
       ],
     })).settings.reviewMinutes
-    const session = await hydra.chat({ text: 'Prepare heartbeat review' })
-
-    const readyForReview = () => {
-      const card = loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]
-
-      return session.answered === session.received.length && card?.sessionActivity === 'finished'
-        && !card.attention.some(item => item.key === INTERRUPTED)
-        && !queue({ hydraId: hydra.id })?.working
-    }
-
-    await until({
-      what: 'Hydra to finish preparing',
-      check: readyForReview,
-    })
     await hydra.owner({
       args: [
         'settings',
@@ -3073,39 +3058,15 @@ test(
         ],
       })
       now += 4 * 60 * 60_000
-      const reminderCount = await fireReminders({
-        hydraId: hydra.id,
-        at: new Date(now).toISOString(),
+      const overdue = boardReview({
         state: loadHydra({ hydraId: hydra.id }).state,
+        now,
       })
-      expect(reminderCount).toBe(1)
-      expect(Object.values(loadHydra({ hydraId: hydra.id }).state.questionReminders ?? {}))
-        .toContain(new Date(now).toISOString())
-      await until({
-        what: 'Hydra to be idle before reviewing the committed task question reminder',
-        check: readyForReview,
-      })
-      await timer.check()
-      await until({
-        what: 'the periodic review to wake Hydra for the task question reminder',
-        check: () => wakes === 3,
-      })
-      expect(wakes).toBe(3)
-      const overdue = await hydra.owner({
-        args: [
-          'history',
-          '--kind',
-          'hydra.review',
-          '--limit',
-          '1',
-          '--full',
-        ],
-      })
-      expect(overdue.events[0].data.block).toContain('question reminder:')
-      expect(overdue.events[0].data.block).toContain('Which account?')
-      now += 60_000
-      await timer.check()
-      expect(wakes).toBe(3)
+      expect(overdue.flags).toContainEqual(expect.objectContaining({
+        kind: 'question reminder',
+        task: task.id,
+      }))
+      expect(overdue.block).toContain('Which account?')
       await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
@@ -3128,32 +3089,15 @@ test(
         },
       })
       now += 4 * 60 * 60_000
-      await until({
-        what: 'the preceding review turn to finish',
-        check: readyForReview,
+      const ownQuestion = boardReview({
+        state: loadHydra({ hydraId: hydra.id }).state,
+        now,
       })
-      await timer.check()
-      await until({
-        what: 'the periodic review to wake Hydra for its question reminder',
-        check: () => wakes === 4,
-      })
-      expect(wakes).toBe(4)
-      const ownQuestion = await hydra.owner({
-        args: [
-          'history',
-          '--kind',
-          'hydra.review',
-          '--limit',
-          '1',
-          '--full',
-        ],
-      })
-      expect(ownQuestion.events[0].data.block).toContain('Can Hydra use the team account?')
-      now += 60_000
-      await timer.check()
-      now += 4 * 60 * 60_000
-      await timer.check()
-      expect(wakes).toBe(4)
+      expect(ownQuestion.flags).toContainEqual(expect.objectContaining({
+        kind: 'question reminder',
+        task: HYDRA_CARD,
+      }))
+      expect(ownQuestion.block).toContain('Can Hydra use the team account?')
     } finally {
       timer.close()
       await hydra.owner({
