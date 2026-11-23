@@ -903,12 +903,10 @@ export async function startServer({
 
     const activeIds = hydraIds()
 
-    if (hydraId === removedId) {
-      const primaryUnavailable = !activeIds.includes(removedId) || removedOrPending({ id: removedId })
+    const primaryUnavailable = !activeIds.includes(removedId) || removalPending({ id: removedId })
 
-      if (primaryUnavailable) {
-        hydraId = findActiveHydra({ ids: activeIds }) ?? hydraId
-      }
+    if (hydraId === removedId && primaryUnavailable) {
+      hydraId = activeIds.find(id => !removalPending({ id })) ?? hydraId
     }
 
     mountAll()
@@ -954,30 +952,6 @@ export async function startServer({
       })
     }
   }
-
-  const removedOrPending = ({ id }: { id: string }) => {
-    if (!hydraExists({ hydraId: id })) {
-      return false
-    }
-
-    const config = loadHydra({ hydraId: id }).state.config
-
-    return config?.removed === true || config?.removing === true
-  }
-
-  const findActiveHydra = ({ ids }: { ids: string[] }) => ids.find(id => {
-    try {
-      return !removedOrPending({ id })
-    } catch (error) {
-      recordSkippedHydra({
-        id,
-        error,
-        before: skipped[id],
-      })
-
-      return false
-    }
-  })
 
   const mountAll = () => {
     if (importing) {
@@ -1152,8 +1126,30 @@ export async function startServer({
       }
     }
 
+    const removedOrPending = ({ id }: { id: string }) => {
+      if (!hydraExists({ hydraId: id })) {
+        return false
+      }
+
+      const config = loadHydra({ hydraId: id }).state.config
+
+      return config?.removed === true || config?.removing === true
+    }
+
     if (removedOrPending({ id: hydraId })) {
-      const activeId = findActiveHydra({ ids: hydraIds() })
+      const activeId = hydraIds().find(id => {
+        try {
+          return !removedOrPending({ id })
+        } catch (error) {
+          recordSkippedHydra({
+            id,
+            error,
+            before: skipped[id],
+          })
+
+          return false
+        }
+      })
 
       if (!activeId) {
         throw new HydraError({
