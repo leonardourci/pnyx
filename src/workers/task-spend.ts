@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readUsage, usageReader, type RecordedUsage, type UsageReader } from '#integrations/hooks/usage.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { UsageReading } from './provider.ts'
@@ -88,14 +89,14 @@ function transcriptUsage({ agent }: { agent: SpendInputs['sessions'][number]['ag
   }
 }
 
-const declaredTasks = ({ state }: { state: HydraState }) => Object.values(state.cards)
-  .filter(card => card.tracking === 'declared')
+const taskIds = ({ state }: { state: HydraState }) => Object.values(state.cards)
+  .filter(card => card.id !== HYDRA_CARD)
   .map(card => card.id)
 
 export function spendInputs({
   state,
   events,
-  tasks = declaredTasks({ state }),
+  tasks = taskIds({ state }),
 }: {
   state: HydraState
   events: Iterable<HydraEvent>

@@ -10,8 +10,6 @@ import { statSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
-import { roleColumn } from '#tasks/column-rules.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import type { Card } from '#tasks/model.ts'
 import type { LinkState } from '#tasks/delivery/model.ts'
@@ -99,10 +97,6 @@ async function releaseQueue({
 
       const previous = current && writer.state.cards[current]
       const note = `Continue after ${previous ? `"${previous.title}" (${previous.id})` : session}. ${reason}. Read its task.log and worker.log before starting a fresh worker.`
-      const column = roleColumn({
-        columns: hydraConfig({ state: writer.state }).columns,
-        role: 'queued',
-      }) ?? 'queued'
 
       for (const card of workerQueue({
         state: writer.state,
@@ -122,7 +116,6 @@ async function releaseQueue({
               data: {
                 before: card.queue!,
                 after: null,
-                column,
                 note,
               },
             },
@@ -159,8 +152,8 @@ function unsafeWorker({
   }
 
   const stalled = session.activity === 'working'
-    || card.workerLog?.status?.code === 'blocked' || card.status?.state === 'blocked'
-    || card.status?.state === 'paused' || session.attention.some(a => a.blocking && !a.answered)
+    || card.workerLog?.status?.code === 'blocked'
+     || session.attention.some(a => a.blocking && !a.answered)
 
   if (stalled && now - seenAt({ session }) >= QUEUE_STALL_MS) {
     return `The worker stalled for ${QUEUE_STALL_MS / 60_000} minutes`
@@ -567,7 +560,7 @@ export async function advanceQueues({
       const prs = card.links.filter(l => l.kind === 'github_pr')
 
       const landed = prs.length ? prs.every(l => l.state === 'merged')
-        : card.status?.state === 'done' || Boolean(card.doneAt)
+        : card.workerLog?.status?.code === 'done' || Boolean(card.doneAt)
 
       if (!landed) {
         continue
@@ -794,10 +787,6 @@ export async function advanceQueues({
             if ('event' in decision && decision.event.type === 'task.session') {
               decision.event.data.handoff = {
                 folder: prepared.cwd,
-                column: roleColumn({
-                  columns: hydraConfig({ state: writer.state }).columns,
-                  role: 'in_progress',
-                }) ?? next.column,
               }
 
               if (source.copy) {

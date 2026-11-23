@@ -75,7 +75,6 @@ test(
     })
     const target = await hydra.task({ key: 'target' })
     const asWorker = hydra.as({ session: worker })
-    const done = await hydra.column({ role: 'done' })
 
     for (const args of [
       [
@@ -99,9 +98,9 @@ test(
         'Keep this visible',
       ],
       [
-        'move',
+        'task',
+        'arrange',
         'target',
-        done,
       ],
       [
         'settings',
@@ -687,8 +686,6 @@ test(
         'send',
         '--task',
         'mine',
-        '--kind',
-        'progress',
         '--text',
         'Halfway',
       ],

@@ -24,7 +24,6 @@ export function taskSessions({
     types: [
       'task.session',
       'task.moved-in',
-      'card.pushed',
       'task.edited',
       'session.observed',
     ],

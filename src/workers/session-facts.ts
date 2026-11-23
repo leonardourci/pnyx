@@ -3,7 +3,7 @@ import type { Decision, HydraEvent, HydraState, SourceRef } from '#app/model.ts'
 import type { Card, PushFields } from '#tasks/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
-import { refreshTasks } from '#tasks/columns.ts'
+import { refreshTasks } from '#tasks/refresh.ts'
 import { touch } from '#tasks/touch.ts'
 import { checkRevision } from '#tasks/push-rules.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
@@ -473,5 +473,5 @@ export function sessionFields({
     }
   }
 
-  return (event.type === 'card.pushed' || event.type === 'task.edited') ? event.data : undefined
+  return event.type === 'task.edited' ? event.data : undefined
 }

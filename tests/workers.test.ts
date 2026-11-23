@@ -1193,7 +1193,6 @@ test(
     const { worker } = await hydra.startTask({
       key: 'cleanup',
     })
-    const needsYou = await hydra.column({ role: 'needs_you' })
 
     const denied = worker.useTool!({
       tool: 'Bash',
@@ -1223,7 +1222,6 @@ test(
       ],
     })).task).toMatchObject({
       attention: 'permission',
-      column: needsYou,
     })
 
     const asSession = hydra.as({
@@ -1357,7 +1355,7 @@ test(
         'show',
         'cleanup',
       ],
-    })).task.column).not.toBe(needsYou)
+    })).task.attention).toBe('none')
 
     const allowed = worker.useTool!({
       tool: 'Bash',
@@ -3270,7 +3268,6 @@ test(
       what: 'worker log block',
       check: async () => (await hydra.task({ key: 'facts' })).status === 'blocked',
     })
-    expect((await hydra.task({ key: 'facts' })).column).toBe(await hydra.column({ role: 'in_progress' }))
     writeFileSync(
       path,
       'note: reviewed café\u2028failure\nneeds-you: choose an account',

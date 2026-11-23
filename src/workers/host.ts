@@ -26,7 +26,6 @@ export const STALL_MS = 240_000
 export const BUSY_MS = 60 * 60 * 1000
 
 // A paused worker that named no end for its wait is checked on after this long.
-export const PAUSE_MS = 4 * 60 * 60 * 1000
 
 // A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
 export const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
@@ -132,10 +131,7 @@ export function findWorkerTurnToResume({
   const observations = scanChanges({
     hydraId,
     cardId: session?.launchId ? undefined : cardId,
-    types: [
-      'card.pushed',
-      'session.observed',
-    ],
+    types: ['session.observed'],
     descending: true,
   })
     .filter(event => {
@@ -198,8 +194,7 @@ export function findWorkerTurnToResume({
 }
 
 // Done as declared by the task's own worker, whose turn ends before Pnyx stops it.
-export const closedByWorker = ({ card }: { card: Card }) => card.status?.state === 'done'
-  && card.status.actor === `worker:${card.id}` && !card.hidden && card.copy?.state !== 'removed'
+export const closedByWorker = ({ card }: { card: Card }) => card.workerLog?.status?.code === 'done' && !card.hidden && card.copy?.state !== 'removed'
 
 // A saved tool change that may reach its pnyx-hosted agent now; Hydra's own card applies one even when closed.
 export const toolApplicationReady = ({ card }: {

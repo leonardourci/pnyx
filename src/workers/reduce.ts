@@ -1,6 +1,6 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { refreshTasks } from '#tasks/columns.ts'
+import { refreshTasks } from '#tasks/refresh.ts'
 import { touch } from '#tasks/touch.ts'
 import { applyAskChoice } from '#tasks/ask-reducer.ts'
 import { applyAttachment, cardSessionId } from './session-attachments.ts'

@@ -3,8 +3,6 @@ import { inform } from '#app/command-notices.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { roleColumn } from '#tasks/column-rules.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
@@ -21,7 +19,7 @@ function startedGap({ card }: { card: Card }): Blocker | undefined {
     }
   }
 
-  if (card.status?.state === 'done' || card.outcome) {
+  if (card.workerLog?.status?.code === 'done' || card.outcome) {
     return {
       reason: `${card.id} is finished`,
       clear: 'File a follow-up with `pnyx task create`',
@@ -144,16 +142,6 @@ export function queueGap({
     }
   }
 
-  if (!roleColumn({
-    columns: hydraConfig({ state }).columns,
-    role: 'queued',
-  })) {
-    return {
-      reason: 'the Hydra has no Queued column',
-      clear: 'Restore a Queued column before queueing work',
-    }
-  }
-
   return undefined
 }
 
@@ -256,18 +244,6 @@ export function decideQueue({
     return { skipped: 'unchanged' }
   }
 
-  const column = roleColumn({
-    columns: hydraConfig({ state }).columns,
-    role: 'queued',
-  })
-
-  if (!column) {
-    throw new HydraError({
-      message: 'restore a Queued column before queueing work',
-      code: 'CONFLICT',
-    })
-  }
-
   return hydraEvent({
     state,
     meta,
@@ -278,7 +254,6 @@ export function decideQueue({
         before: card.queue ?? null,
         after,
         ...(order ? { order } : {}),
-        column,
       },
     },
   })
