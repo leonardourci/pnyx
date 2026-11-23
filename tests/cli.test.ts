@@ -670,7 +670,7 @@ describe(
           ],
           ['report'],
           [
-            'tasks',
+            'column',
             'resize',
             'queued',
             '--width',
@@ -732,7 +732,7 @@ describe(
           const refusal = JSON.parse(refused.stderr)
           expect(refusal).toMatchObject({ code: 'VALIDATION_ERROR' })
 
-          if (args[0] === 'tasks') {
+          if (args[0] === 'column') {
             expect(refusal.error).toContain('unknown command')
           }
 

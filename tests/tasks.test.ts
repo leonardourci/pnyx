@@ -3,8 +3,7 @@ import { loadHydra } from '#app/store.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
-import { readChanges, readEvents } from '#app/event-log.ts'
-import { eventReasons } from '#hydra/wake-reasons.ts'
+import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
@@ -157,18 +156,11 @@ test(
       key: 'build',
       line: 'done: export written',
     })
-    const completedState = loadHydra({ hydraId: hydra.id }).state
-    const completedEvent = readChanges({
-      hydraId: hydra.id,
-      types: ['task.worker-line'],
-    }).at(-1)!
-    expect(eventReasons({
-      state: completedState,
-      event: completedEvent,
-    })).toContainEqual({
-      kind: 'prerequisite',
-      card: (await hydra.task({ key: 'ship' })).id,
-      detail: 'prerequisites cleared; ready for dispatch',
+    const dependent = await hydra.task({ key: 'ship' })
+    await until({
+      what: 'Hydra to hear that the dependent task is ready',
+      check: () => session.received.some(message => message.includes(`pnyx-task:${dependent.id}`)
+        && message.includes('prerequisites cleared; ready for dispatch')),
     })
 
     await hydra.owner({

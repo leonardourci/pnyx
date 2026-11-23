@@ -93,7 +93,10 @@ export function refreshDone({
       const completed = parts.flatMap(part => part.doneAt ? [part.doneAt] : [])
       completed.push(parent.doneAt ?? at)
 
-      parent.doneAt = completed.sort().at(-1)
+      parent.doneAt = completed.sort((
+        a,
+        b,
+      ) => Date.parse(a) - Date.parse(b)).at(-1)
     } else {
       delete parent.doneAt
       delete parent.keepDone

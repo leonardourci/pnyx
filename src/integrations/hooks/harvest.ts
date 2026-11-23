@@ -260,11 +260,11 @@ export function harvestTranscripts({
       })
 
       for (const note of parsed.notes) {
-        if (id !== '$hydra' && note.kind === 'summary') {
+        if (note.kind === 'summary' && id !== '$hydra') {
           continue
         }
 
-        if (id === '$hydra' && note.kind === 'summary' && /^(compact:|compacted:)/.test(note.ref)) {
+        if (note.kind === 'summary' && /^(compact:|compacted:)/.test(note.ref)) {
           const timestamp = note.at ?? at
           note.operation = writer.state.cards[id]?.compaction?.operations.findLast(operation =>
             operation.session === session
