@@ -2,8 +2,8 @@ import type { HydraState } from '#app/model.ts'
 import { knownCards } from '#tasks/select.ts'
 import { firstLine, obj } from '#hydra/calls.ts'
 import { commandOf } from '#workers/tool-input.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
+import { projectGroups } from '#projects/groups.ts'
+import type { ProjectGroup } from '#projects/groups.ts'
 import { PROVIDERS } from '#workers/providers.ts'
 
 // A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
@@ -11,7 +11,7 @@ export type Segment = string | {
   task: string
   label: string
 } | {
-  column: Pick<HydraColumn, 'id' | 'role'>
+  column: Pick<ProjectGroup, 'id'>
   label: string
 }
 
@@ -23,7 +23,7 @@ export interface PnyxLookup {
     id: string
     title: string
   } | undefined
-  column({ ref }: { ref: string }): HydraColumn | undefined
+  column({ ref }: { ref: string }): ProjectGroup | undefined
 }
 
 export function pnyxLookup({ state }: { state(): HydraState }): PnyxLookup {
@@ -39,9 +39,9 @@ export function pnyxLookup({ state }: { state(): HydraState }): PnyxLookup {
       } : undefined
     },
     column: ({ ref }) => {
-      const columns = hydraConfig({ state: state() }).columns
+      const columns = projectGroups({ state: state() })
 
-      return columns.find(column => column.id === ref || column.role === ref
+      return columns.find(column => column.id === ref
         || column.title.toLowerCase() === ref.toLowerCase())
     },
   }
@@ -179,24 +179,6 @@ export function pnyxSentence({
   const because = flags.reason ? `: ${flags.reason}` : ''
 
   switch (area) {
-    case 'move': {
-      const found = lookup.column({ ref: positionals[2] ?? '' })
-      const column: Segment = found ? {
-        column: {
-          id: found.id,
-          role: found.role,
-        },
-        label: found.title,
-      } : positionals[2] ?? 'a column'
-
-      return [
-        'Moved ',
-        task({ ref: positionals[1] ?? '' }),
-        ' to ',
-        column,
-        because,
-      ].filter(Boolean)
-    }
     case 'send': {
       const message = firstLine({ text: flags.text ?? '' })
       const excerpt = message ? `: ${message}` : ''

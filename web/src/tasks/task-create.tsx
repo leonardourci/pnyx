@@ -24,7 +24,6 @@ export function TaskCreate({
   storageIdentity,
   identity,
   version,
-  column,
   project,
   repositories = [],
   parent,
@@ -41,7 +40,6 @@ export function TaskCreate({
   version: number
   storageIdentity: string
   identity: string
-  column: string
   project?: string
   repositories?: RepositoryOption[]
   parent?: string
@@ -148,8 +146,6 @@ export function TaskCreate({
       'create',
       '--title',
       title.trim(),
-      '--column',
-      column,
     ]
 
     const savedDescription = taskDescription({ text })

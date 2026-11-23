@@ -94,7 +94,7 @@ export function SentencePart({ part }: { part: Segment }) {
   }
 
   if ('column' in part) {
-    return <ColumnChip {...columnLook({ column: part.column })} label={part.label} />
+    return <ColumnChip {...columnLook()} label={part.label} />
   }
 
   return (

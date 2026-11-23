@@ -69,8 +69,8 @@ export function mentionCandidates({
       kind: 'column' as const,
       title: column.title,
       detail: 'Column',
-      icons: [columnLook({ column }).icon],
-      tone: columnLook({ column }).tone,
+      icons: [columnLook().icon],
+      tone: columnLook().tone,
       insert: reference({
         kind: 'column',
         value: column.id,

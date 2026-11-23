@@ -1383,7 +1383,6 @@ test(
       },
     })
     expect(done.status).toBe('PR merged')
-    expect(done.column).toBe(await hydra.column({ role: 'done' }))
     expect(merges({ number: 7 })).toBe(0)
 
     const reviewed = await until({
@@ -1401,7 +1400,6 @@ test(
       },
     })
     expect(reviewed.status).toBe('PR merged')
-    expect(reviewed.column).toBe(await hydra.column({ role: 'done' }))
   },
 )
 
@@ -4520,9 +4518,7 @@ test(
       type: 'task.landing',
       at: retired?.closed?.at,
     })
-    expect(landingReceipt.card.column).toBe(current.task.column)
     expect(landingReceipt.card.revision).toBe(current.task.revision)
-    expect(current.task.column).not.toBe(await hydra.column({ role: 'needs_you' }))
     const updates = await hydra.owner({
       args: [
         'task',
@@ -4663,7 +4659,6 @@ test(
       closed: expect.any(Object),
     }))
     expect(projectReceipt.event.type).toBe('task.project')
-    expect(projectReceipt.card.column).toBe(moved.task.column)
     expect(projectReceipt.card.revision).toBe(moved.task.revision)
     await hydra.owner({
       args: [
@@ -4750,7 +4745,6 @@ test(
       id: pendingBeforePush[0].id,
       closed: expect.any(Object),
     }))
-    expect(pushed.card.column).toBe(afterPush.task.column)
     expect(pushed.card.revision).toBe(afterPush.task.revision)
   },
 )

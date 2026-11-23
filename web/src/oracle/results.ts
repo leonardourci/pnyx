@@ -1,3 +1,4 @@
+import { taskProjectGroup } from '#tasks/order.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import { taskRollup } from '#web-tasks/project-view.ts'
 import { tokens } from '#oracle/query.ts'
@@ -55,10 +56,12 @@ interface Hydra {
 }
 
 const taskResult = ({
+  state,
   card,
   hit,
   hydra,
 }: {
+  state: HydraState
   card: Card
   hit?: Hit
   hydra: Hydra
@@ -68,7 +71,10 @@ const taskResult = ({
   title: card.title,
   hydra: hydra.id,
   hydraName: hydra.name,
-  column: card.column,
+  column: taskProjectGroup({
+    state,
+    card,
+  }),
   project: card.project,
   at: card.updatedAt,
   card,
@@ -233,6 +239,7 @@ export function oracleResults({
     actions: cardActions,
   }).filter(card => card.id !== HYDRA_CARD && !found.has(card.id))
     .map(card => taskResult({
+      state,
       card,
       hydra,
     })) : []
@@ -242,6 +249,7 @@ export function oracleResults({
         hit,
         card,
       }) => taskResult({
+        state,
         card,
         hit,
         hydra,
@@ -249,6 +257,7 @@ export function oracleResults({
       ...cardMatches,
     ]
     : recentCards({ state }).map(card => taskResult({
+      state,
       card,
       hydra,
     }))

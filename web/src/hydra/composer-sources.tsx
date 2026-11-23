@@ -3,7 +3,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { HydraProject } from '#projects/model.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
+import { projectGroups, type ProjectGroup } from '#projects/groups.ts'
 import type { Card,SavedLabelColor } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
@@ -14,7 +14,7 @@ import { useSkillsCatalog } from './skills-catalog.ts'
 export interface ComposerSources {
   cards: Card[]
   projects: HydraProject[]
-  columns: HydraColumn[]
+  columns: ProjectGroup[]
   taskReferences: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   catalog: Catalog | null
@@ -110,7 +110,7 @@ export function HydraComposerSources({
       sources={{
         cards,
         projects: state.projects ?? [],
-        columns: config.columns,
+        columns: projectGroups({ state }),
         taskReferences: references,
         openTask,
         catalog,
