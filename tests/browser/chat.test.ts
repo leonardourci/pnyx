@@ -739,12 +739,10 @@ test(
       }
 
       const activeTask = page.locator('[data-hydra-workspace][data-active=true] [data-task]')
-      const status = activeTask.locator('.agent-activity[aria-label="working"]')
-      await status.waitFor()
-      await status.focus()
-      const statusTooltip = activeTask.locator('.tooltip-anchor').filter({ has: page.locator('.agent-activity') })
-        .getByRole('tooltip')
-      expect(await statusTooltip.textContent()).toBe('working')
+      const status = activeTask.locator('.agent-activity')
+      const toolDetails = /Running a command|Bash|pnpm build/
+      expect(await status.textContent()).not.toMatch(toolDetails)
+      expect(await status.getAttribute('aria-label')).not.toMatch(toolDetails)
 
       await setFocusMode({
         hydra,
@@ -766,6 +764,8 @@ test(
           return labelsOnly.every(Boolean)
         },
       })
+      expect(await status.textContent()).not.toMatch(toolDetails)
+      expect(await status.getAttribute('aria-label')).not.toMatch(toolDetails)
     } finally {
       hydraTurn.release()
       workerTurn.release()

@@ -9,7 +9,7 @@ import { readEvents } from '#app/event-log.ts'
 import { spawn, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, test, vi } from 'vitest'
+import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { parsed, operation, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const PAGE_COMMAND = join(
@@ -3434,288 +3434,7 @@ if (branch === 'iris/target') {
     }
 
     let child = launch({ afterCommit: false })
-
-    try {
-      await until({
-        what: 'scratch child server ready',
-        check: childReady,
-      })
-      await hydra.owner({
-        args: [
-          'task',
-          'undepend',
-          targetId,
-          '--on',
-          'gate',
-        ],
-      })
-      await until({
-        what: 'checkout hook kills the server before handoff commit',
-        check: () => ended,
-      })
-      expect(readFileSync(
-        marker,
-        'utf8',
-      )).toBe('iris/target')
-      expect(git({
-        cwd,
-        args: [
-          'branch',
-          '--show-current',
-        ],
-      })).toBe('iris/target')
-      const kept = join(
-        cwd,
-        'keep.txt',
-      )
-      writeFileSync(
-        kept,
-        'unfinished work',
-      )
-      git({
-        cwd: project,
-        args: [
-          'config',
-          'status.showUntrackedFiles',
-          'no',
-        ],
-      })
-      await pnyx.start()
-      await hydra.task({ key: sourceId })
-      expect(readFileSync(
-        kept,
-        'utf8',
-      )).toBe('unfinished work')
-      expect(git({
-        cwd,
-        args: [
-          'branch',
-          '--show-current',
-        ],
-      })).toBe('iris/target')
-      rmSync(kept)
-      expect(await hydra.ownerRefused({
-        args: [
-          'task',
-          'copy',
-          sourceId,
-          'remove',
-          '--safe',
-        ],
-      })).toMatchObject({
-        code: 'CONFLICT',
-        error: expect.stringContaining('unresolved handoff'),
-      })
-      expect(await hydra.ownerRefused({
-        args: [
-          'task',
-          'start',
-          targetId,
-        ],
-      })).toMatchObject({
-        code: 'CONFLICT',
-        error: expect.stringContaining('unresolved handoff'),
-      })
-      expect(existsSync(cwd)).toBe(true)
-      await pnyx.restart()
-      const source = (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          sourceId,
-          '--full',
-        ],
-      })).task
-      const target = (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          targetId,
-          '--full',
-        ],
-      })).task
-      expect(source.sessionIds).toHaveLength(1)
-      expect(target.sessionIds ?? []).toEqual([])
-      expect(git({
-        cwd,
-        args: [
-          'branch',
-          '--show-current',
-        ],
-      })).toBe('iris/source')
-      expect(git({
-        cwd,
-        args: [
-          'branch',
-          '--list',
-          'iris/target',
-        ],
-      })).toContain('iris/target')
-      await pnyx.stop()
-      child = launch({ afterCommit: true })
-      await until({
-        what: 'second scratch server ready',
-        check: childReady,
-      })
-      await hydra.owner({
-        args: [
-          'task',
-          'undepend',
-          targetId,
-          '--on',
-          'gate',
-        ],
-      })
-      await until({
-        what: 'server killed after durable handoff commit',
-        check: () => ended,
-      })
-      expect(readFileSync(
-        syncProof,
-        'utf8',
-      )).toBe(first)
-      const committedWork = join(
-        cwd,
-        'committed-work.txt',
-      )
-      writeFileSync(
-        committedWork,
-        'keep committed-checkout work',
-      )
-      await pnyx.start()
-      const blockedTarget = (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          targetId,
-          '--full',
-        ],
-      })).task
-      expect((await hydra.ownerRefused({
-        args: [
-          'reply',
-          targetId,
-          '--text',
-          'Hold the dirty target',
-        ],
-      })).code).toBe('CONFLICT')
-      expect(blockedTarget.replies ?? []).toEqual([])
-      const pendingSession = blockedTarget.sessionIds?.[0] ?? source.sessionIds[0]
-      expect(await hydra.ownerRefused({
-        args: [
-          'task',
-          'attach',
-          'gate',
-          '--session',
-          pendingSession,
-        ],
-      })).toMatchObject({
-        code: 'CONFLICT',
-        error: expect.stringContaining('unresolved handoff'),
-      })
-      const currentHolder = (await hydra.owner({
-        args: [
-          'task',
-          'sessions',
-          '--full',
-        ],
-      })).sessions
-        .find((session: { id: string }) => session.id === pendingSession).taskId
-      expect(await hydra.ownerRefused({
-        args: [
-          'task',
-          'detach',
-          currentHolder,
-        ],
-      }))
-        .toMatchObject({
-          code: 'CONFLICT',
-          error: expect.stringContaining('unresolved handoff'),
-        })
-      expect(readFileSync(
-        committedWork,
-        'utf8',
-      )).toBe('keep committed-checkout work')
-      rmSync(committedWork)
-      await pnyx.restart({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
-      const committedTarget = (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          targetId,
-          '--full',
-        ],
-      })).task
-      const committedSource = (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          sourceId,
-          '--full',
-        ],
-      })).task
-      expect(committedTarget.sessionIds).toEqual(source.sessionIds)
-      expect(committedSource.sessionIds ?? []).toEqual([])
-      expect(git({
-        cwd,
-        args: [
-          'branch',
-          '--show-current',
-        ],
-      })).toBe('iris/target-2')
-      await until({
-        what: 'recovered target receives its committed brief',
-        check: async () => (await hydra.agent({ cwd })).received.some(text => text.includes('on fresh branch iris/target-2')),
-      })
-      await hydra.owner({
-        args: [
-          'task',
-          'create',
-          '--no-start',
-          '--title',
-          'Final',
-          '--key',
-          'final',
-          '--project',
-          'shop',
-        ],
-      })
-      await hydra.owner({
-        args: [
-          'task',
-          'brief',
-          'final',
-          '--brief',
-          'Continue after recovery',
-        ],
-      })
-      await hydra.owner({
-        args: [
-          'task',
-          'queue',
-          'final',
-          '--behind',
-          targetId,
-        ],
-      })
-      await hydra.owner({
-        args: [
-          'outcome',
-          targetId,
-          'done',
-        ],
-      })
-      await until({
-        what: 'worker advances again after committed intent recovery',
-        check: async () => (await hydra.owner({
-          args: [
-            'task',
-            'copy',
-            'final',
-          ],
-        })).copy?.branch === 'iris/final',
-      })
-    } finally {
+    onTestFinished(async () => {
       if (!ended) {
         child.kill('SIGKILL')
       }
@@ -3737,7 +3456,287 @@ if (branch === 'iris/target') {
       }
 
       await pnyx.restart()
-    }
+    })
+
+    await until({
+      what: 'scratch child server ready',
+      check: childReady,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'undepend',
+        targetId,
+        '--on',
+        'gate',
+      ],
+    })
+    await until({
+      what: 'checkout hook kills the server before handoff commit',
+      check: () => ended,
+    })
+    expect(readFileSync(
+      marker,
+      'utf8',
+    )).toBe('iris/target')
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('iris/target')
+    const kept = join(
+      cwd,
+      'keep.txt',
+    )
+    writeFileSync(
+      kept,
+      'unfinished work',
+    )
+    git({
+      cwd: project,
+      args: [
+        'config',
+        'status.showUntrackedFiles',
+        'no',
+      ],
+    })
+    await pnyx.start()
+    await hydra.task({ key: sourceId })
+    expect(readFileSync(
+      kept,
+      'utf8',
+    )).toBe('unfinished work')
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('iris/target')
+    rmSync(kept)
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'copy',
+        sourceId,
+        'remove',
+        '--safe',
+      ],
+    })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('unresolved handoff'),
+    })
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'start',
+        targetId,
+      ],
+    })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('unresolved handoff'),
+    })
+    expect(existsSync(cwd)).toBe(true)
+    await pnyx.restart()
+    const source = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        sourceId,
+        '--full',
+      ],
+    })).task
+    const target = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        targetId,
+        '--full',
+      ],
+    })).task
+    expect(source.sessionIds).toHaveLength(1)
+    expect(target.sessionIds ?? []).toEqual([])
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('iris/source')
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--list',
+        'iris/target',
+      ],
+    })).toContain('iris/target')
+    await pnyx.stop()
+    child = launch({ afterCommit: true })
+    await until({
+      what: 'second scratch server ready',
+      check: childReady,
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'undepend',
+        targetId,
+        '--on',
+        'gate',
+      ],
+    })
+    await until({
+      what: 'server killed after durable handoff commit',
+      check: () => ended,
+    })
+    expect(readFileSync(
+      syncProof,
+      'utf8',
+    )).toBe(first)
+    const committedWork = join(
+      cwd,
+      'committed-work.txt',
+    )
+    writeFileSync(
+      committedWork,
+      'keep committed-checkout work',
+    )
+    await pnyx.start()
+    const blockedTarget = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        targetId,
+        '--full',
+      ],
+    })).task
+    expect((await hydra.ownerRefused({
+      args: [
+        'reply',
+        targetId,
+        '--text',
+        'Hold the dirty target',
+      ],
+    })).code).toBe('CONFLICT')
+    expect(blockedTarget.replies ?? []).toEqual([])
+    const pendingSession = blockedTarget.sessionIds?.[0] ?? source.sessionIds[0]
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'attach',
+        'gate',
+        '--session',
+        pendingSession,
+      ],
+    })).toMatchObject({
+      code: 'CONFLICT',
+      error: expect.stringContaining('unresolved handoff'),
+    })
+    const currentHolder = (await hydra.owner({
+      args: [
+        'task',
+        'sessions',
+        '--full',
+      ],
+    })).sessions
+      .find((session: { id: string }) => session.id === pendingSession).taskId
+    expect(await hydra.ownerRefused({
+      args: [
+        'task',
+        'detach',
+        currentHolder,
+      ],
+    }))
+      .toMatchObject({
+        code: 'CONFLICT',
+        error: expect.stringContaining('unresolved handoff'),
+      })
+    expect(readFileSync(
+      committedWork,
+      'utf8',
+    )).toBe('keep committed-checkout work')
+    rmSync(committedWork)
+    await pnyx.restart({ queueDelay: HANDOFF_QUEUE_DELAY_MS })
+    const committedTarget = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        targetId,
+        '--full',
+      ],
+    })).task
+    const committedSource = (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        sourceId,
+        '--full',
+      ],
+    })).task
+    expect(committedTarget.sessionIds).toEqual(source.sessionIds)
+    expect(committedSource.sessionIds ?? []).toEqual([])
+    expect(git({
+      cwd,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })).toBe('iris/target-2')
+    await until({
+      what: 'recovered target receives its committed brief',
+      check: async () => (await hydra.agent({ cwd })).received.some(text => text.includes('on fresh branch iris/target-2')),
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Final',
+        '--key',
+        'final',
+        '--project',
+        'shop',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'brief',
+        'final',
+        '--brief',
+        'Continue after recovery',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'queue',
+        'final',
+        '--behind',
+        targetId,
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'outcome',
+        targetId,
+        'done',
+      ],
+    })
+    await until({
+      what: 'worker advances again after committed intent recovery',
+      check: async () => (await hydra.owner({
+        args: [
+          'task',
+          'copy',
+          'final',
+        ],
+      })).copy?.branch === 'iris/final',
+    })
   },
   RESTART_FLOW_TIMEOUT_MS,
 )

@@ -1095,8 +1095,8 @@ test(
         '--count',
       ],
     })
-    // The role-prefixed fixture has 60,473 UTF-8 bytes, including separators between messages.
-    expect(count.totalTokens).toBe(15_119)
+    const formattedConversationBytes = 60_473
+    expect(count.totalTokens).toBe(Math.ceil(formattedConversationBytes / 4))
   },
   120_000,
 )

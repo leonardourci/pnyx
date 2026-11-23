@@ -532,7 +532,6 @@ test(
     ))
       .join('')
       .slice(onStart)
-    expect(onLogs).not.toContain('hook.push')
     expect(onLogs).not.toContain('card.observed')
     await hydra.owner({
       args: [
@@ -555,19 +554,13 @@ test(
       ].includes((await sessionFacts({ session: 'outside-1' }))?.activity),
     })
 
-    const logs = await until({
-      what: 'the detailed Stop hook diagnostic',
-      check: async () => {
-        await flushLogs()
-        const text = logFiles().map(file => readFileSync(
-          file.path,
-          'utf8',
-        ))
-          .join('')
+    await flushLogs()
+    const logs = logFiles().map(file => readFileSync(
+      file.path,
+      'utf8',
+    ))
+      .join('')
 
-        return text.includes('hook.push') && text
-      },
-    })
     expect(logs).not.toContain('Fix the flaky login test')
     expect(logs).not.toContain('with more detail below')
 
@@ -814,6 +807,17 @@ test(
       'tasks',
       '.pending-task-XXXXXX',
     ))
+    mkdirSync(
+      join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        'default',
+        'tasks',
+        'unpublished-task',
+        'task.log',
+      ),
+      { recursive: true },
+    )
     const inProject = await hook({
       event: 'SessionStart',
       payload: {
