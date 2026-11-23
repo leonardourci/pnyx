@@ -143,7 +143,7 @@ export const viewFor = ({
   state,
   settings,
 }: {
-  state: Pick<HydraState, 'view' | 'config' | 'projects'>
+  state: Pick<HydraState, 'view' | 'config'>
   settings?: Partial<ViewPreferences>
 }): ViewPreferences => {
   const own = structuredClone(knownViewFields({ view: state.view }))

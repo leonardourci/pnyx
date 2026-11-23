@@ -310,11 +310,15 @@ export function search({
         continue
       }
 
-      if (query.columns?.length && !query.columns.includes(taskProjectGroup({
-        state,
-        card,
-      }))) {
-        continue
+      if (query.columns?.length) {
+        const group = card.id === '$board' ? undefined : taskProjectGroup({
+          state,
+          card,
+        })
+
+        if (group === undefined || !query.columns.includes(group)) {
+          continue
+        }
       }
 
       if (query.projects?.length && card.id !== '$board' && !query.projects.includes(card.project ?? '')) {
