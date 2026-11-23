@@ -625,27 +625,24 @@ test(
         'https://github.com/o/shop/pull/7',
       ],
     })
-    const cart = await hydra.owner({
-      args: [
-        'task',
-        'show',
-        'cart',
-        '--full',
-      ],
-    })
-    expect(cart.task.doneAt).toBeUndefined()
-    expect(cart.task.outcome?.closed).not.toBe(true)
-    await until({
+    const checkedCart = await until({
       what: 'the card to read the open pull request',
-      check: async () => (await hydra.owner({
-        args: [
-          'task',
-          'show',
-          'cart',
-          '--full',
-        ],
-      })).task.links[0]?.checkedAt,
+      check: async () => {
+        const { task } = await hydra.owner({
+          args: [
+            'task',
+            'show',
+            'cart',
+            '--full',
+          ],
+        })
+
+        return task.links[0]?.checkedAt && task
+      },
     })
+    expect(checkedCart.links[0].state).toBe('open')
+    expect(checkedCart.doneAt).toBeUndefined()
+    expect(checkedCart.outcome?.closed).not.toBe(true)
 
     pullRequest({
       number: 8,
@@ -1071,8 +1068,10 @@ test(
           url,
         ],
       })
+      const submittedBefore = merges({ number: 22 })
       const result = await asHydra.run({ args: merge })
       expect(result.merge).toBe('queued')
+      expect(merges({ number: 22 }) - submittedBefore).toBe(1)
       const reason = expect.stringContaining(sample.reason)
       const expectedNotice = expect.objectContaining({ reason })
       expect(result.notices).toEqual(expect.arrayContaining([expectedNotice]))
@@ -1849,6 +1848,7 @@ test(
       ],
     })
     await pnyx.restart()
+    expect((await owner.task({ key: task.card.id })).title).toBe('Work after the move')
     const sourceHistory = readEvents({
       hydraId: legacy.id,
       cardId: task.card.id,
@@ -2310,6 +2310,13 @@ test(
         failingHooks,
       ],
     })
+    const keptHead = git({
+      cwd,
+      args: [
+        'rev-parse',
+        'refs/heads/poseidon-2/chart-2',
+      ],
+    })
     expect(await hydra.ownerRefused({
       args: [
         'task',
@@ -2320,6 +2327,13 @@ test(
       code: 'COPY_FAILED',
       error: expect.stringContaining('fixture copy hook failure'),
     })
+    expect(git({
+      cwd,
+      args: [
+        'rev-parse',
+        'refs/heads/poseidon-2/chart-2',
+      ],
+    })).toBe(keptHead)
     expect(git({
       cwd,
       args: [
