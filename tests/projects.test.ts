@@ -1102,7 +1102,6 @@ test(
   },
 )
 
-// git as a worker runs it, which can fail: whether it passed is the result.
 const attempt = ({
   cwd,
   args,
@@ -1155,7 +1154,6 @@ test(
       landing: 'pr',
     })
     const origin = `${project}.git`
-    // With this setting a plain push goes to the branch's upstream, which is how a task once pushed onto main.
     git({
       cwd: project,
       args: [
@@ -1227,7 +1225,6 @@ test(
       }
     }
 
-    // A fresh copy has no upstream, and only the push that names the task branch publishes it.
     const first = await start({ key: 'first' })
     writeFileSync(
       join(
@@ -1296,7 +1293,6 @@ test(
       branch: first.branch,
     })).toBe(`refs/remotes/origin/${first.branch}`)
 
-    // A branch the worker makes itself is untracked too: Pnyx starts its agent with that git setting.
     const worker = await hydra.agent({ cwd: first.path })
     expect(worker.env.GIT_CONFIG_COUNT).toBe('1')
 
@@ -1342,7 +1338,6 @@ test(
       ],
     })
 
-    // A Codex worker's shell gets the same setting.
     const codexed = await start({
       key: 'codexed',
       harness: 'codex',
@@ -1352,8 +1347,6 @@ test(
       'shell_environment_policy.set.GIT_CONFIG_KEY_0': 'branch.autoSetupMerge',
     })
 
-    // Task branches made before the fix still track main: a recorded copy's and another task's are repaired on the next
-    // start, while a branch that is not a task's, or a task branch tracking its own remote branch, is left alone.
     git({
       cwd: first.path,
       args: [
@@ -1405,7 +1398,6 @@ test(
       branch: first.branch,
     })).toBe(`refs/remotes/origin/${first.branch}`)
 
-    // What push reads is branch.<name>.merge, even where the fetch refspec maps no tracking branch for it.
     git({
       cwd: project,
       args: [
@@ -1459,7 +1451,6 @@ test(
       ],
     })
 
-    // A task whose branch exists but whose copy is gone starts again on that branch, without an upstream.
     const gone = await start({ key: 'gone' })
     await hydra.owner({
       args: [
@@ -1528,8 +1519,6 @@ test(
       branch: gone.branch,
     })).toBe('')
 
-    // Once the first task's work is on main, its removed copy's folder is reused by the next task, keeping its ignored
-    // files and without an upstream.
     git({
       cwd: first.path,
       args: [
