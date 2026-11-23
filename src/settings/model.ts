@@ -11,7 +11,7 @@ export const SHARED_VIEW_KEYS = [
   'lastMessageOnCards',
   'toolDetails',
   'thinkingDetails',
-  'defaultTitanWidth',
+  'defaultHydraWidth',
 ] as const
 
 export type SharedViewKey = (typeof SHARED_VIEW_KEYS)[number]
@@ -40,7 +40,7 @@ export interface Settings extends SharedView {
   oracleRememberFilters: boolean
   // The Titan list's order as Titan ids; the Titan list decides where ids it does not name go.
   hydraOrder: string[]
-  hiddenTitans: string[]
+  hiddenHydras: string[]
   logs: LogMode
   logDays: number
   logMaxMB: number
@@ -55,7 +55,7 @@ export const SETTING_KEYS = [
   'helper',
   'oracleRememberFilters',
   'hydraOrder',
-  'hiddenTitans',
+  'hiddenHydras',
   'logs',
   'logDays',
   'logMaxMB',

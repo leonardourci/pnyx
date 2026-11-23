@@ -44,7 +44,7 @@ export const settings = guard({
         help: [
           'Every key applies to every Titan; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
-          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Titan ids, each once; hiddenTitans takes the Titan ids hidden from the page list and switcher',
+          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Titan ids, each once; hiddenHydras takes the Titan ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
         ],
       }

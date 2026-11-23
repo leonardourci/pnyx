@@ -1,4 +1,6 @@
-import { readSettings, saveSettings } from '#settings/store.ts'
+import { readSettings, saveSettings, settingsLogPath } from '#settings/store.ts'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 
@@ -248,20 +250,20 @@ test(
         'set',
         '--json',
         JSON.stringify({
-          hiddenTitans: [
+          hiddenHydras: [
             first.id,
             second.id,
           ],
         }),
       ],
     })
-    expect((await settings({ hydra: second })).hiddenTitans).toEqual([
+    expect((await settings({ hydra: second })).hiddenHydras).toEqual([
       first.id,
       second.id,
     ])
     await until({
       what: 'hidden Titan ids on the page',
-      check: () => JSON.stringify(pageSettings()?.hiddenTitans) === JSON.stringify([
+      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([
         first.id,
         second.id,
       ]),
@@ -287,7 +289,7 @@ test(
       check: () => worker.received.some(text => text.includes('Continue while hidden')),
     })
 
-    for (const hiddenTitans of [
+    for (const hiddenHydras of [
       true,
       ['bad id'],
       [
@@ -300,19 +302,19 @@ test(
           'settings',
           'set',
           '--json',
-          JSON.stringify({ hiddenTitans }),
+          JSON.stringify({ hiddenHydras }),
         ],
       })).code).toBe('VALIDATION_ERROR')
     }
 
     await othrys.restart()
-    expect((await settings({ hydra: first })).hiddenTitans).toEqual([
+    expect((await settings({ hydra: first })).hiddenHydras).toEqual([
       first.id,
       second.id,
     ])
     await until({
       what: 'the restarted server to give the page\'s row the hidden Titan ids again',
-      check: () => JSON.stringify(pageSettings()?.hiddenTitans) === JSON.stringify([
+      check: () => JSON.stringify(pageSettings()?.hiddenHydras) === JSON.stringify([
         first.id,
         second.id,
       ]),
@@ -322,10 +324,10 @@ test(
         'settings',
         'set',
         '--json',
-        '{"hiddenTitans":[]}',
+        '{"hiddenHydras":[]}',
       ],
     })
-    expect((await settings({ hydra: second })).hiddenTitans).toEqual([])
+    expect((await settings({ hydra: second })).hiddenHydras).toEqual([])
   },
 )
 
@@ -438,6 +440,64 @@ test(
     } finally {
       gate.resolve()
       await Promise.allSettled([first])
+    }
+  },
+)
+
+test(
+  'existing serialized layout and hidden-Titan settings survive the rebrand without conversion',
+  async () => {
+    const hydra = await othrys.hydra()
+    const before = await settings({ hydra })
+    await othrys.restart({
+      whileStopped: () => {
+        const path = settingsLogPath()
+        mkdirSync(
+          dirname(path),
+          { recursive: true },
+        )
+        appendFileSync(
+          path,
+          `${JSON.stringify({
+            v: 1,
+            id: 'legacy-preference-keys',
+            at: new Date().toISOString(),
+            actor: 'cli',
+            before: {},
+            after: {
+              defaultHydraWidth: 612,
+              hiddenHydras: [hydra.id],
+            },
+          })}\n`,
+        )
+      },
+    })
+
+    try {
+      expect(await settings({ hydra })).toMatchObject({
+        defaultHydraWidth: 612,
+        hiddenHydras: [hydra.id],
+      })
+      await until({
+        what: 'the page to retain persisted legacy preference keys',
+        check: () => {
+          const saved = pageSettings()
+
+          return saved?.defaultHydraWidth === 612 && saved?.hiddenHydras.includes(hydra.id)
+        },
+      })
+    } finally {
+      await hydra.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({
+            defaultHydraWidth: before.defaultHydraWidth,
+            hiddenHydras: before.hiddenHydras,
+          }),
+        ],
+      })
     }
   },
 )

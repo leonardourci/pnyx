@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   helper: 'auto',
   oracleRememberFilters: false,
   hydraOrder: [],
-  hiddenTitans: [],
+  hiddenHydras: [],
   logs: 'on',
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
@@ -228,7 +228,7 @@ export function patchSettings({
 
   for (const key of [
     'hydraOrder',
-    'hiddenTitans',
+    'hiddenHydras',
   ] as const) {
     if (!(key in patch)) {
       continue
