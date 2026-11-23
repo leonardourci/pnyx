@@ -1025,12 +1025,23 @@ test(
         }
       }
 
-      // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluation callback.
-      const readingAnchor = await conversation.evaluateHandle(chat => {
+      const readingAnchor = await conversation.evaluateHandle(({ firstElementChild }) => {
+        const chat = firstElementChild?.parentElement
+
+        if (!chat) {
+          throw new Error('Conversation has no rows')
+        }
+
         const top = chat.getBoundingClientRect().top
 
-        return [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')]
-          .find(row => row.getBoundingClientRect().bottom > top)!
+        const row = [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')]
+          .find(row => row.getBoundingClientRect().bottom > top)
+
+        if (!row) {
+          throw new Error('Conversation has no visible reading anchor')
+        }
+
+        return row
       })
       const anchorBeforeRecovery = await readingAnchor.evaluate(row => {
         const chat = row.closest('.chat-messages')!
@@ -1622,8 +1633,7 @@ test.each([
         expect(id).toBeTruthy()
         expect(identities).not.toContain(id)
         identities.push(id!)
-        // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluation callback.
-        const mounted = await partial.evaluateHandle(row => row.closest('.message-row'))
+        const mounted = await partial.elementHandle()
         turn.release()
         const saved = conversation.locator(`[data-entry-id="${id}"]`)
         await saved.getByText(
@@ -1635,7 +1645,7 @@ test.each([
           what: 'the native reply to settle under its mounted key',
           check: async () => await saved.getAttribute('data-streaming') === null,
         })
-        expect(await mounted.evaluate(row => row?.isConnected)).toBe(true)
+        expect(await mounted.evaluate(({ isConnected }) => isConnected)).toBe(true)
         const copies = conversation.locator('[data-entry-id]').filter({ hasText: paragraph })
         expect(await copies.count()).toBe(text === 'First native request' ? 1 : 2)
         expect(await conversation.getByText(

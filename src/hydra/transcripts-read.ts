@@ -754,7 +754,6 @@ function readNative({
                   id: item.id,
                   messageId: item.messageId,
                 }) : undefined,
-                ...(session ? { session } : {}),
               }
 
               window.push({
@@ -1073,7 +1072,18 @@ function readThreadPage(
     second: b.item,
   }))
   const limit = card.id === HYDRA_CARD ? HYDRA_PAGE_SIZE : THREAD_PAGE_LIMIT
-  const page = candidates.slice(-limit)
+  let pageStart = Math.max(
+    0,
+    candidates.length - limit,
+  )
+  const firstMessageId = candidates[pageStart]?.item.messageId
+
+  while (pageStart > 0 && firstMessageId !== undefined
+    && candidates[pageStart - 1]?.item.messageId === firstMessageId) {
+    pageStart--
+  }
+
+  const page = candidates.slice(pageStart)
   const firstMessage = page.find(candidate => candidate.message)?.message
   const shownMessages = new Set(page.flatMap(candidate =>
     candidate.message ? [candidate.message] : []))

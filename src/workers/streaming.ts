@@ -1,5 +1,4 @@
 import { splitEntry, type ThreadEntry, type ThreadPage } from '#hydra/transcripts-read.ts'
-import { redact } from '#oracle/text.ts'
 import type { HostedText } from './provider.ts'
 
 // These are disposable transport entries; the harness transcript remains the history.
@@ -66,7 +65,7 @@ export function liveReplies() {
               ...entry,
               id,
               session: page.session,
-              text: redact({ text: entry.text }),
+                reference: page.session ? id : undefined,
               streaming: working,
             },
           }))

@@ -272,25 +272,36 @@ export function nativeRecord({
   source: NativeSource
   reference: string
 }): SessionEntry | undefined {
+  const size = statSync(
+    source.path,
+    { throwIfNoEntry: false },
+  )?.size ?? 0
   let position = 0
 
-  while (true) {
+  while (position < size) {
     const read = readTranscript({
       cursor: {
         source: source.path,
         identity: '',
         pos: position,
       },
-      maxBytes: CHUNK_BYTES,
+      maxBytes: Math.min(
+        CHUNK_BYTES,
+        size - position,
+      ),
     })
 
-    if (!read || read.end === position) {
-      return undefined
+    if (!read || read.end <= position) {
+      break
     }
 
     position = read.end
 
     for (const line of read.lines) {
+      if (line.pos >= size) {
+        break
+      }
+
       const entry = entriesOf({
         source,
         record: line.record,
@@ -303,4 +314,6 @@ export function nativeRecord({
       }
     }
   }
+
+  return undefined
 }

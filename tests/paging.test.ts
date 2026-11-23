@@ -99,13 +99,21 @@ test(
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'question 31',
-      reply: 'answer 31',
+      reply: LONG_REPLY,
     })
     const latest = await hydra.chat({ text: 'question 31' })
     await until({
       what: 'answer 31',
       check: () => latest.answered === EXCHANGES + 1,
     })
+
+    const newestTab = await hydra.page()
+    const newest = await newestTab.send({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    }) as unknown as ThreadReceipt
+    newestTab.close()
+    expect(newest.thread.conversation.entries.at(-1)?.text).toBe(LONG_REPLY)
 
     let loaded = first.thread
     const reads: number[] = []
@@ -134,7 +142,7 @@ test(
         index,
       ) => [
         `question ${index + 1}`,
-        index + 1 === 5 ? LONG_REPLY : `answer ${index + 1}`,
+        index + 1 === 5 || index + 1 === EXCHANGES + 1 ? LONG_REPLY : `answer ${index + 1}`,
       ],
     ).flat())
 
