@@ -734,13 +734,14 @@ test(
         id: 'native-message:1',
         text: LONG_REPLY,
       })
+      const overlay = live.page({
+        page: {
+          ...page,
+          entries: [],
+        },
+      })
       const restored = mergeThreadPages({
-        before: live.page({
-          page: {
-            ...page,
-            entries: [],
-          },
-        }),
+        before: overlay,
         latest: page,
         olderPage: true,
       })
@@ -748,6 +749,12 @@ test(
         'Same words',
         'Same words',
       ])
+      const retained = mergeThreadPages({
+        before: page,
+        latest: overlay,
+        olderPage: true,
+      })
+      expect(retained.entries).toEqual(restored.entries)
     }
   },
 )

@@ -19,18 +19,14 @@ export function mergeThreadPages({
     return latest
   }
 
-  const saved = before.entries.filter(entry => olderPage || entry.streaming === undefined)
-  // An older page goes first, so entries sharing a time, such as the parts of one long message, keep their order.
-  const first = olderPage ? latest.entries : saved
-  const then = olderPage ? saved : latest.entries
-  const savedMessages = new Set(first.filter(entry => entry.streaming === undefined)
+  const retained = before.entries.filter(entry => olderPage || entry.streaming === undefined)
+  const orderedPages = olderPage ? [latest.entries, retained] : [retained, latest.entries]
+  const combined = orderedPages.flat()
+  const savedMessages = new Set(combined.filter(entry => entry.streaming === undefined)
     .map(entry => entry.messageId ?? entry.id))
-  const entries = new Map(first.map(entry => [
-    entry.id,
-    entry,
-  ]))
+  const entries = new Map<string, ThreadPage['entries'][number]>()
 
-  for (const entry of then) {
+  for (const entry of combined) {
     if (entry.streaming !== undefined && savedMessages.has(entry.messageId ?? entry.id)) {
       continue
     }

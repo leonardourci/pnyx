@@ -1,7 +1,6 @@
 import { splitEntry, type ThreadEntry, type ThreadPage } from '#hydra/transcripts-read.ts'
 import type { HostedText } from './provider.ts'
 
-// These are disposable transport entries; the harness transcript remains the history.
 export function liveReplies() {
   const messages = new Map<string, ThreadEntry>()
   const recorded = new Set<string>()
@@ -49,7 +48,8 @@ export function liveReplies() {
       return [...messages.values()].map(entry => entry.text)
     },
     page({ page }: { page: ThreadPage }): ThreadPage {
-      const saved = new Set(page.entries.map(entry => entry.messageId ?? entry.id))
+      const saved = new Set(page.entries.filter(entry => entry.streaming === undefined)
+        .map(entry => entry.messageId ?? entry.id))
       const entries: ThreadEntry[] = []
 
       for (const entry of messages.values()) {
