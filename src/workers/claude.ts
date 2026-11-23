@@ -1397,6 +1397,7 @@ export const readClaudeTranscript: TranscriptReader = ({
   if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {
     const texts = typeof content === 'string' ? [content] : blocks
     parsed.messages = transcriptText({
+      id: transcriptString({ value: entry.type === 'assistant' ? message.id ?? entry.uuid : entry.uuid }),
       at,
       texts: texts.map((
         raw,
@@ -1417,7 +1418,18 @@ export const readClaudeTranscript: TranscriptReader = ({
     const thinking = block.type === 'thinking'
 
     if (tool || thinking) {
+      const call = transcriptString({ value: block.tool_use_id ?? block.id })
+      const native = transcriptString({ value: message.id ?? entry.uuid })
+      let id: string | undefined
+
+      if (tool && call) {
+        id = `${call}:${block.type}`
+      } else if (native) {
+        id = `${native}:${index}`
+      }
+
       parsed.traces.push(transcriptTrace({
+        id,
         index,
         kind: tool ? 'tool' : 'thinking',
         name: block.name,

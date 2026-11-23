@@ -47,12 +47,14 @@ function traceText({ detail }: { detail: unknown }) {
 }
 
 export function transcriptTrace({
+  id,
   index,
   kind,
   name,
   detail,
   call,
 }: {
+  id?: string
   index: number
   kind: TranscriptTrace['kind']
   name: unknown
@@ -60,6 +62,7 @@ export function transcriptTrace({
   call: unknown
 }): TranscriptTrace {
   const trace: TranscriptTrace = {
+    id,
     index,
     kind,
     role: typeof name === 'string' ? name : kind,
@@ -103,7 +106,9 @@ export function fastSetting({ fast }: { fast: boolean | undefined }) {
 export function transcriptText({
   texts,
   at,
+  id,
 }: {
+  id?: string
   texts: {
     text: string
     hidden?: boolean
@@ -122,7 +127,10 @@ export function transcriptText({
       return []
     }
 
-    const message: TranscriptMessage = { text: visible }
+    const message: TranscriptMessage = {
+      id: id === undefined ? undefined : `${id}:${block ?? 0}`,
+      text: visible,
+    }
 
     if (WORKER_HEADER.test(text)) {
       message.pnyx = true
@@ -142,6 +150,7 @@ export function transcriptText({
   if (messages.length === 0 && texts.some(({ text }) => wakeInput({ text }))) {
     return [
       {
+        id: id === undefined ? undefined : `${id}:0`,
         text: '',
         at,
         internal: true,

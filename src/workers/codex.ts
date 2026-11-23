@@ -813,7 +813,7 @@ function connection({
             if (typeof id === 'string' && typeof text === 'string') {
               yield {
                 type: 'text',
-                id,
+                id: `${id}:0`,
                 text,
                 append: event.method === 'item/agentMessage/delta',
               }
@@ -2159,6 +2159,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
 
     const blocks = typeof content === 'string' ? [content] : Array.isArray(content) ? content : []
     parsed.messages = transcriptText({
+      id: transcriptString({ value: payload.id }),
       at,
       texts: blocks.map((
         raw,
@@ -2190,6 +2191,8 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
 
   if (tool || thinking) {
     parsed.traces.push(transcriptTrace({
+      id: transcriptString({ value: payload.id })
+        ?? (typeof payload.call_id === 'string' ? `${payload.call_id}:${payload.type}` : undefined),
       index: 0,
       kind: tool ? 'tool' : 'thinking',
       ...scriptedTrace({ payload }),
