@@ -3683,7 +3683,8 @@ test.each([
     await hydra.chat({ text: 'Compact task context' })
     await until({
       what: 'the compacted turn to finish',
-      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working,
+      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working
+        && queue({ hydraId: hydra.id })?.holding === false,
     })
     await hydra.chat({ text: 'Read the full snapshot after compaction' })
     const afterCompact = session.received.find(text => text.endsWith('Read the full snapshot after compaction'))!
