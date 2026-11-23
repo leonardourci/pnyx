@@ -304,6 +304,10 @@ interface Intent {
   arrangement?: boolean
 }
 
+export function isArrangement({ event }: { event: HydraEvent }): boolean {
+  return event.type === 'task.edited' && 'rank' in event.data && !('parentId' in event.data)
+}
+
 // A retried event id's receipt, from its event and the current state, since rebuilding the state at append time would replay the log. An id already used for another card or event type is a conflict, not a retry.
 function originalReceipt(
   {
@@ -329,7 +333,7 @@ function originalReceipt(
   const sameType = original.type === intent.type
     || intent.accepts?.includes(original.type)
 
-  const arrangement = original.type === 'task.edited' && 'rank' in original.data
+  const arrangement = isArrangement({ event: original })
 
   if (!sameType || arrangement !== Boolean(intent.arrangement)
     || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {

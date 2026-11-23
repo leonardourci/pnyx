@@ -2,7 +2,7 @@ import { HydraError } from '#store/errors.ts'
 import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
-import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize } from './cli-support.ts'
+import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize, isArrangement } from './cli-support.ts'
 import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
@@ -212,7 +212,7 @@ const undo = guard({
           type: target.type,
           card: target.cardId,
           undoes: target.id,
-          arrangement: target.type === 'task.edited' && 'rank' in target.data,
+          arrangement: isArrangement({ event: target }),
         },
         decide: ({
           state,
