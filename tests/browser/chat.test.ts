@@ -738,8 +738,13 @@ test(
         await line.getByText('Running a command').waitFor()
       }
 
-      await page.locator('[data-hydra-workspace][data-active=true] [data-task] .agent-activity').focus()
-      expect(await page.getByRole('tooltip').textContent()).toBe('working')
+      const activeTask = page.locator('[data-hydra-workspace][data-active=true] [data-task]')
+      const status = activeTask.locator('.agent-activity[aria-label="working"]')
+      await status.waitFor()
+      await status.focus()
+      const statusTooltip = activeTask.locator('.tooltip-anchor').filter({ has: page.locator('.agent-activity') })
+        .getByRole('tooltip')
+      expect(await statusTooltip.textContent()).toBe('working')
 
       await setFocusMode({
         hydra,
