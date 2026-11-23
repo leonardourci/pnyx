@@ -797,7 +797,9 @@ test(
         return task.workerLog?.status?.code === 'done' && task
       },
     })
-    const questionAfterReport = reviewedTask.asks?.find((candidate: { id: string }) => candidate.id === ask.id)
+    const questionAfterReport = reviewedTask.asks?.find(
+      (candidate: { id: string }) => candidate.id === ask.id,
+    )
     expect(questionAfterReport).toBeDefined()
     expect(questionAfterReport?.closed).toBeUndefined()
     const session = await hydra.chat({ text: 'Review the open pull requests.' })
