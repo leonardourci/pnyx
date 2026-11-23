@@ -304,7 +304,7 @@ test(
 )
 
 test(
-  'worker reports coalesce progress, wait for one wake and survive an interrupted turn',
+  'worker reports wait for one wake and survive an interrupted turn while note lines stay quiet',
   async () => {
     const hydra = await pnyx.hydra()
     const folder = hydra.folder({ name: 'export' })
@@ -342,7 +342,7 @@ test(
       check: () => worker.answered === 1,
     })
 
-    await hydra.as({ session: worker }).run({
+    expect((await hydra.as({ session: worker }).refused({
       args: [
         'hydra',
         'send',
@@ -351,21 +351,10 @@ test(
         '--kind',
         'progress',
         '--text',
-        'Halfway through the invoices',
+        'Removed progress writer',
       ],
-    })
-    await hydra.as({ session: worker }).run({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        'export',
-        '--kind',
-        'progress',
-        '--text',
-        'Invoices ready to upload',
-      ],
-    })
+    })).code).toBe('VALIDATION_ERROR')
+
     await workerLine({
       hydra,
       key: 'export',
@@ -432,14 +421,6 @@ test(
     const wake = session.received[1]!
     expect(wake.split('Export works; ready for review')).toHaveLength(2)
     expect(wake).not.toContain('Halfway through the invoices')
-    expect(wake).toContain('Invoices ready to upload')
-    expect(wake).toContain('2 progress reports')
-    const progressId = wake.match(/record ("[^"\n]+") \S+ \[unhandled\] \(2 progress reports, latest\): Invoices ready to upload/)?.[1]
-
-    if (progressId === undefined) {
-      throw new Error('The wake did not identify the collapsed progress report')
-    }
-
     expect(wake).not.toContain('Upload started')
     expect(wake).not.toContain('Quiet latest line')
     expect(wake).toContain('Need the SFTP password')
@@ -469,9 +450,7 @@ test(
       ).trimEnd()
         .split('\n')
         .map(line => JSON.parse(line)))
-    const progress = facts.find(fact => fact.id === JSON.parse(progressId!))
     const blocked = facts.find(fact => fact.id === JSON.parse(blockedId!))
-    expect(progress?.event?.data.text).toBe('Invoices ready to upload')
     expect(blocked?.event?.data).toMatchObject({
       code: 'blocked',
       text: 'Need the SFTP password',
@@ -509,6 +488,8 @@ test(
   '300 queued worker reports stay bounded, preserve owner messages and remain readable in files after interruption',
   async () => {
     const hydra = await pnyx.hydra()
+    const reportIds = ({ text }: { text: string }) => [...text.matchAll(/^- record ("[^"\n]+").*\[unhandled\]/gm)]
+      .map(match => JSON.parse(match[1]!))
     const turn = pnyx.claude.plan({
       hydra: hydra.id,
       text: 'Hold the report burst',
@@ -621,23 +602,19 @@ test(
       turn.release()
       await until({
         what: 'owner and bounded wake delivered',
-        check: () => session.received.some(text => text.includes('more worker reports'))
+        check: () => session.received.some(text => text.includes('Why you are woken') && text.includes('more worker reports'))
           && queue({ hydraId: hydra.id })?.working === true,
       })
       expect(session.received.some(text => text.endsWith('Keep the owner message intact under the report cap'))).toBe(true)
       const wake = session.received.find(text => text.includes('Why you are woken') && text.includes('more worker reports'))!
       expect(wake).toContain('- report: from worker:burst-0,')
       expect(wake).not.toContain('- report: from worker:burst-299,')
-      expect(wake).toContain('Some wake details were shortened or omitted.')
       const updates = wake.replace(
         /<pnyx-digest[\s\S]*?<\/pnyx-digest>\s*/,
         '',
       )
       expect(updates.length).toBeLessThan(12_000)
-      expect(wake).toMatch(/\[unhandled\]: Report 0: [^\n]{1,390}\n/)
       expect(wake).not.toContain('Long report body '.repeat(30))
-      expect(wake).toContain('Open decisions (1):')
-      expect(wake).toContain('Which export format?')
 
       expect(wake).toContain('hydra.log')
       expect(wake).toContain('task.log')
@@ -682,20 +659,28 @@ test(
         check: () => session.received.some(text => text.endsWith('Resume after the interrupted read')),
       })
       const recovered = session.received.find(text => text.endsWith('Resume after the interrupted read'))!
-      expect(recovered).toContain('Report 0:')
+      const interrupted = reportIds({ text: wake })
+      const presented = reportIds({ text: recovered })
+      expect(interrupted.length).toBeGreaterThan(0)
+      expect(presented).toEqual(expect.arrayContaining(interrupted))
       replacementTurn.release()
       await until({
         what: 'the replacement report turn to finish',
         check: () => queue({ hydraId: hydra.id })?.working === false,
       })
-      const reportIds = ({ text }: { text: string }) => [...text.matchAll(/^- record ("[^"\n]+").*\[unhandled\]/gm)]
-        .map(match => JSON.parse(match[1]!))
-      const presented = reportIds({ text: recovered })
-      const expected = reports.map(report => report.id).filter(id => !presented.includes(id))
-      expect(presented.length).toBeGreaterThan(0)
-      expect(expected.length).toBeGreaterThan(0)
-      const delivered: string[] = []
-      let remaining = [...expected]
+      const submitted = reports.map(report => report.id)
+      const wakeIndex = session.received.indexOf(wake)
+      const earlier = session.received.slice(
+        0,
+        wakeIndex,
+      ).flatMap(text => reportIds({ text }))
+      expect(presented.every(id => !earlier.includes(id))).toBe(true)
+      const delivered: string[] = [
+        ...earlier,
+        ...presented,
+      ]
+      let remaining = submitted.filter(id => !delivered.includes(id))
+      expect(remaining.length).toBeGreaterThan(0)
 
       for (let pass = 0; pass < 300 && remaining.length; pass++) {
         const text = pass === 0 ? 'Read the remaining reports' : `Continue reading remaining reports ${pass}`
@@ -713,7 +698,7 @@ test(
         })
       }
 
-      expect(delivered.sort()).toEqual(expected.sort())
+      expect(delivered.sort()).toEqual(submitted.sort())
       expect(remaining).toEqual([])
       expect(readFileSync(
         path,
@@ -1231,19 +1216,10 @@ test(
       check: () => pnyx.claude.sessions.some(session => session.env.PNYX_ACTOR?.startsWith('helper:')
         && session.received.some(text => text.includes('End of invoice evidence'))),
     })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        'invoices',
-        '--actor',
-        `worker:${id}`,
-        '--kind',
-        'progress',
-        '--text',
-        'New invoice progress during the helper lease',
-      ],
+    await workerLine({
+      hydra,
+      key: 'invoices',
+      line: 'note: New invoice progress during the helper lease',
     })
     await hydra.chat({ text: 'Check the invoice report while the helper works' })
     await until({
@@ -1252,7 +1228,7 @@ test(
         && queue({ hydraId: hydra.id })?.working === false,
     })
     expect(main.received.find(text => text.includes('Check the invoice report while the helper works')))
-      .toMatch(/\[helper handling\] \(progress\): New invoice progress during the helper lease/)
+      .toContain('latest: New invoice progress during the helper lease')
     reportHelperTurn.release()
     await until({
       what: 'helper to finish the worker report',
@@ -1275,10 +1251,6 @@ test(
     expect(pendingNotes).toContainEqual(expect.objectContaining({
       text: expect.stringContaining('Invoice checks rerun under existing instructions'),
       handled: true,
-    }))
-    expect(pendingNotes).toContainEqual(expect.objectContaining({
-      text: 'New invoice progress during the helper lease',
-      progress: 1,
     }))
     const scopeTurn = pnyx.claude.plan({
       hydra: hydra.id,
@@ -3084,19 +3056,10 @@ test(
       }),
     })
     const task = await hydra.task({ key: 'heartbeat-worker' })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        task.id,
-        '--actor',
-        `worker:${task.id}`,
-        '--kind',
-        'progress',
-        '--text',
-        'Worker started preparing the change',
-      ],
+    await workerLine({
+      hydra,
+      key: 'heartbeat-worker',
+      line: 'note: Worker started preparing the change',
     })
     expect((await hydra.task({ key: 'heartbeat-worker' })).status).toBe('running')
     let now = Date.now()
@@ -3331,20 +3294,10 @@ test.each([
       key: 'review-page',
       line: 'note: Review page is in progress',
     })
-    const reviewTask = await hydra.task({ key: 'review-page' })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        reviewTask.id,
-        '--actor',
-        `worker:${reviewTask.id}`,
-        '--kind',
-        'progress',
-        '--text',
-        'Review page is ready',
-      ],
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'note: Review page is ready',
     })
     await hydra.chat({ text: 'Read the changed cards' })
     const changed = session.received.find(text => text.endsWith('Read the changed cards'))!
@@ -4106,7 +4059,6 @@ test(
       ],
       held: new Set(['held']),
       actions: [],
-      columns: [],
       working: false,
       tools: true,
       thinking: false,

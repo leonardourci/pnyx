@@ -1,5 +1,4 @@
 import type { AgentConfig } from '#workers/model.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { AnswerMessage } from '#tasks/model.ts'
 import type { EventBase } from '#store/events.ts'
 
@@ -23,7 +22,6 @@ export interface HydraConfig {
   // Sort key in the Hydra list, in the same scale as creation time in ms; unset sorts by creation time.
   position?: number
   hydra: HydraIdentity
-  columns: HydraColumn[]
   // Retained so pre-dispatch event logs still replay.
   agents?: Record<string, AgentConfig>
   command?: string
@@ -38,9 +36,8 @@ export interface HydraMessage {
   id: string
   task?: string
   action: 'send' | 'worker'
-  // A worker's progress report: it stays on the card and reaches Hydra with its next wake, never waking it alone.
   // divider: Pnyx's milestone line in the conversation.
-  kind?: 'progress' | 'divider' | 'routine'
+  kind?: 'divider' | 'routine'
   text: string
   reminderQuestions?: string[]
   enteredText?: string

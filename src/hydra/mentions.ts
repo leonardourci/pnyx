@@ -238,7 +238,7 @@ export function mentionContext({
         return `Task ${mention.id}: ${mention.title}\nUnavailable in this Hydra.`
       }
 
-      const update = card.statusLog?.findLast(status => status.note.trim())?.note ?? 'No update yet.'
+      const update = card.workerLog?.latest.text ?? 'No update yet.'
 
       return `Task ${card.id}: ${card.title}\nMentioned as: ${mention.title}\nInitial prompt: ${card.initialPrompt ?? card.brief ?? 'No initial prompt.'}\nLatest update: ${update}`
     }),

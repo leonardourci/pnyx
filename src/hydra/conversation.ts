@@ -1,5 +1,4 @@
 import type { HydraEvent } from '#app/model.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraMessage } from './model.ts'
 import type { ThreadEntry, ThreadPage } from './transcripts-read.ts'
 import { hydraMessages, leadingTask, ownMessage, quietReply, type TurnTiming } from './chat-messages.ts'
@@ -150,7 +149,6 @@ export function hydraConversation({
   transcript,
   provider,
   actions,
-  columns,
   working,
   tools,
   thinking,
@@ -167,7 +165,6 @@ export function hydraConversation({
   // Only a Hydra Pnyx runs reports when it took a message.
   receipts?: boolean
   actions: HydraEvent[]
-  columns: HydraColumn[]
   working: boolean
   tools: boolean
   thinking: boolean
@@ -382,7 +379,6 @@ export function hydraConversation({
           details: event.details,
           data: { ...event.data },
         },
-        columns,
       })
 
       if (!row || row.kind === 'hydra' || row.kind === 'decision') {

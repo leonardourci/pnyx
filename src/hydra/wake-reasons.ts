@@ -3,16 +3,14 @@ import { projectedAttention, sessionTask } from '#workers/session-attachments.ts
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { mergeApproval } from '#tasks/delivery/merge-questions.ts'
 import { clip } from './digest.ts'
-import { roleColumn } from '#tasks/column-rules.ts'
 import { unwatchedPullRequests } from '#tasks/delivery/following.ts'
 import { agentActor, hostedHydra, pnyxRunsHydra, reportActor } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { hydraConfig } from './config.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import type { Card, PushedEvent, TaskStatus } from '#tasks/model.ts'
+import type { Card, PushedEvent } from '#tasks/model.ts'
 import { cardLanding, failedChecks, pendingChecks, ranChecks, type Link } from '#tasks/delivery/model.ts'
-import { columnCards } from '#tasks/select.ts'
+import { rankOf } from '#tasks/select.ts'
 import { taskMention } from './mentions.ts'
 
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
@@ -27,13 +25,6 @@ export interface WakeReason {
 }
 
 const QUOTE_CHARS = 200
-
-// Declarations that need Hydra's judgment; working and paused stay on the card until its next check.
-const WAKING_STATES: TaskStatus[] = [
-  'needs_you',
-  'blocked',
-  'done',
-]
 
 // One line: "- [@Title](pnyx-task:id) kind: detail", the task left out when the fact names none.
 export function reasonLine({
@@ -75,26 +66,19 @@ function checksSettled({
 
 // Backlog cards a free worker could take: no worker yet, not queued behind one, not held, and nothing waiting on the owner.
 export function readyBacklog({ state }: { state: HydraState }): Card[] {
-  const column = roleColumn({
-    columns: hydraConfig({ state }).columns,
-    role: 'queued',
-  })
+  return Object.values(state.cards).filter(card => !card.hidden)
+    .sort((
+      a,
+      b,
+    ) => rankOf({ card: a }) - rankOf({ card: b }))
+    .filter(card => {
+      const started = card.agent || card.sessionIds?.length || card.queue
 
-  if (!column) {
-    return []
-  }
-
-  return columnCards({
-    state,
-    column,
-  }).filter(card => {
-    const started = card.agent || card.sessionIds?.length || card.queue
-
-    return card.id !== HYDRA_CARD && !started && card.status?.state !== 'done' && taskReadiness({
-      state,
-      card,
-    }).ready
-  })
+      return card.id !== HYDRA_CARD && !started && card.workerLog?.status?.code !== 'done' && taskReadiness({
+        state,
+        card,
+      }).ready
+    })
 }
 
 function slotFree({ state }: { state: HydraState }): WakeReason[] {
@@ -283,13 +267,12 @@ function ordinaryReasons({
     return slotFree({ state })
   }
 
-  // A worker's report starts a Hydra Pnyx has not run yet, whatever card it names; a progress report only joins the next wake.
+  // A worker's report starts a Hydra Pnyx has not run yet, whatever card it names.
   if (event.type === 'hydra.message') {
     const {
       task,
       ask,
       text,
-      kind,
     } = event.data
 
     const card = task ? state.cards[task] : undefined
@@ -314,7 +297,7 @@ function ordinaryReasons({
       ]
     }
 
-    if (!reportActor({ actor: event.actor }) || kind === 'progress' || !pnyxRunsHydra({ state })) {
+    if (!reportActor({ actor: event.actor }) || !pnyxRunsHydra({ state })) {
       return []
     }
 
@@ -377,30 +360,6 @@ function ordinaryReasons({
           },
         ] : []
     }
-    case 'task.declared': {
-      const {
-        state: declared,
-        note,
-      } = event.data
-
-      if (!WAKING_STATES.includes(declared)) {
-        return []
-      }
-
-      const reasons: WakeReason[] = [
-        {
-          kind: 'declared',
-          card: card.id,
-          detail: note ? `${declared}, ${quote({ text: note })}` : declared,
-        },
-      ]
-
-      if (declared === 'done') {
-        reasons.push(...slotFree({ state }))
-      }
-
-      return reasons
-    }
     case 'task.permission':
       return event.data.status === 'pending' ? [
         {
@@ -447,8 +406,7 @@ function ordinaryReasons({
         after: event.data.after,
       })
     case 'task.edited':
-    case 'card.pushed':
-      return card.tracking === 'declared' && agentActor({ actor: event.actor }) ? pushReasons({
+      return agentActor({ actor: event.actor }) ? pushReasons({
         card,
         event,
       }) : []
@@ -458,28 +416,18 @@ function ordinaryReasons({
 }
 
 function changesReadiness({
-  state,
   event,
 }: {
-  state: HydraState
   event: HydraEvent
 }): boolean {
   switch (event.type) {
-    case 'task.declared': {
-      const history = state.cards[event.cardId]?.statusLog ?? []
-      const index = history.findIndex(declaration => declaration.id === event.id)
-      const previous = history[index - 1]
-
-      return previous?.state !== event.data.state || previous?.hold !== event.data.hold
-    }
     case 'card.linked':
       return Boolean(event.data.before) !== Boolean(event.data.after)
         || event.data.before?.state !== event.data.after?.state
     case 'card.outcome':
       return Boolean(event.undoes) || event.data.before?.state !== event.data.after?.state
         || event.data.before?.closed !== event.data.after?.closed
-    case 'task.edited':
-    case 'card.pushed': {
+    case 'task.edited': {
       if (!event.data.attention) {
         return false
       }
@@ -543,7 +491,7 @@ export function eventReasons({
       state,
       event: {
         ...event,
-        type: 'card.pushed',
+        type: 'task.edited',
         data: {
           ...event.data.fields,
           key: card.key,
@@ -580,7 +528,6 @@ export function eventReasons({
   })
 
   if (!hostedHydra({ state }) || !changesReadiness({
-    state,
     event,
   })) {
     return reasons
@@ -633,10 +580,10 @@ export function eventReasons({
     if (!readiness.ready) {
       detail = readiness.reasons.join('; ')
 
-      if (assigned && card.status?.state !== 'done') {
+      if (assigned && card.workerLog?.status?.code !== 'done') {
         detail += '; worker already assigned, Hydra must review'
       }
-    } else if (assigned || card.status?.state === 'done') {
+    } else if (assigned || card.workerLog?.status?.code === 'done') {
       continue
     }
 

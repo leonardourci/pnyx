@@ -1,9 +1,7 @@
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { askWording, openAsks } from '#tasks/ask-state.ts'
 import { openDecisions } from '#tasks/decisions.ts'
-import { roleColumn } from '#tasks/column-rules.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { hydraConfig } from './config.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { failedChecks, pendingChecks, ranChecks } from '#tasks/delivery/model.ts'
@@ -14,7 +12,6 @@ import { taskMention, taskMentions } from './mentions.ts'
 import { questionReminder } from '#tasks/question-reminders.ts'
 import { cardStatus, currentState } from '#tasks/card-status.ts'
 import { BUSY_MS } from '#workers/host.ts'
-import { pausedDeclaration } from '#tasks/lifecycle.ts'
 
 export const MINUTE_MS = 60_000
 
@@ -87,11 +84,6 @@ export function boardReview({
 }) {
   const decisions = openDecisions({ state })
   const ready = readyBacklog({ state })
-  const columns = hydraConfig({ state }).columns
-  const progress = roleColumn({
-    columns,
-    role: 'in_progress',
-  })
   const tasks = Object.values(state.cards)
     .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
   const openPr = ({ card }: { card: Card }) =>
@@ -99,10 +91,10 @@ export function boardReview({
   const active = ({ card }: { card: Card }) => workerAttached({ card }) || openPr({ card })
   const live = tasks.filter(card => active({ card })
     || decisions.some(item => item.card.id === card.id) || ready.some(item => item.id === card.id)
-    || card.column === progress || taskReadiness({
-    state,
-    card,
-  }).unmet.length > 0)
+    || taskReadiness({
+      state,
+      card,
+    }).unmet.length > 0)
   const flags: ReviewFlag[] = []
   const lines = [
     'Timed review:',
@@ -115,8 +107,6 @@ export function boardReview({
       state,
       card,
     })
-    const column = columns.find(column => column.id === card.column)?.title ?? card.column
-    const declaration = card.status
     const session = cardSessionId({ card }) ?? ''
     const recorded = state.sessions?.[session]?.lastSeen
     const observed = workerSeenAt[session] ?? 0
@@ -145,7 +135,7 @@ export function boardReview({
       sessions: state.sessions,
     })
 
-    if (status.kind === 'working' && !pausedDeclaration({ card }) && now - seen >= BUSY_MS) {
+    if (status.kind === 'working' && now - seen >= BUSY_MS) {
       flags.push({
         kind: 'quiet worker',
         task: card.id,
@@ -153,10 +143,7 @@ export function boardReview({
       })
     }
 
-    lines.push(`- ${ref} column: ${column}; declaration: ${declaration?.state ?? 'none'} (${elapsed({
-      at: declaration?.at,
-      now,
-    })})${declaration?.note ? `: ${declaration.note}` : ''}; worker: ${watching ? activity : 'none live'}, quiet ${elapsed({
+    lines.push(`- ${ref} status: ${status.text}; worker: ${watching ? activity : 'none live'}, quiet ${elapsed({
       at: quietAt,
       now,
     })}`)
@@ -170,21 +157,13 @@ export function boardReview({
       const detail = `waiting for ${item.title} (${item.id}): ${item.reason}`
       lines.push(`  Prerequisite: ${detail}`)
 
-      if (workerAttached({ card }) && card.status?.state !== 'done') {
+      if (workerAttached({ card }) && card.workerLog?.status?.code !== 'done') {
         flags.push({
           kind: 'prerequisite unmet',
           task: card.id,
           detail: `${detail}; worker already assigned, Hydra must review`,
         })
       }
-    }
-
-    if (card.column === progress && !watching) {
-      flags.push({
-        kind: 'no live worker',
-        task: card.id,
-        detail: 'In progress with no live worker',
-      })
     }
 
     for (const link of card.links.filter(link => link.kind === 'github_pr')) {
@@ -217,17 +196,17 @@ export function boardReview({
         })
       }
 
-      const note = declaration?.note ?? ''
+      const note = card.workerLog?.latest.text ?? ''
       const infrastructure = /\b(cancelled run|canceled run|base (?:is )?out[ -]of[ -]date)\b/i.test(note)
       const suite = /\bfull[ -]suite\b/i.test(note)
       const unrelated = /\b(unrelated|pre[ -]existing|outside (?:this|the) task)\b/i.test(note)
-      const reportedOutside = declaration?.state === 'blocked' && (infrastructure || (suite && unrelated))
+      const reportedOutside = card.workerLog?.status?.code === 'blocked' && (infrastructure || (suite && unrelated))
 
       if (reportedOutside) {
         flags.push({
           kind: 'external blocker',
           task: card.id,
-          detail: `${link.url}: worker reports ${declaration.note}; put the decision to the owner`,
+          detail: `${link.url}: worker reports ${note}; put the decision to the owner`,
         })
       }
     }

@@ -4,7 +4,6 @@ import { inform } from '#app/command-notices.ts'
 import { removeHydraCommand } from './remove.ts'
 import { projectRows } from '#projects/read.ts'
 import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from './message-lookup-cli.ts'
-import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { parse, WRITE, required, meta, commit, guard, type Options, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
@@ -222,13 +221,6 @@ async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output>
         id,
       })
 
-      if (action === 'create' && !state.config && !Object.keys(state.cards).length) {
-        current.columns = current.columns.map(c => ({
-          ...c,
-          id: `custom:${randomUUID()}`,
-        }))
-      }
-
       const identity = String(values.identity ?? current.hydra.id)
       required({
         value: identity.trim(),
@@ -398,7 +390,6 @@ export const HYDRA_OPTIONS: Options = {
   task: { type: 'string' },
   force: { type: 'boolean' },
   action: { type: 'string' },
-  kind: { type: 'string' },
   key: { type: 'string' },
   width: { type: 'string' },
   text: { type: 'string' },
@@ -558,7 +549,7 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (positionals[0] !== 'send') {
     throw new HydraError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra send --task <id> --kind progress --text <message>, hydra stop, hydra usage, hydra messages or hydra message',
+      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop, hydra usage, hydra messages or hydra message',
       code: 'VALIDATION_ERROR',
     })
   }

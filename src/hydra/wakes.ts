@@ -249,7 +249,7 @@ export function recapText({
 
     return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
   })
-  const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
+  const reports = sent.filter(message => reportActor({ actor: message.actor })).length
 
   const text = `<pnyx-wake>${[
     why ?? `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
@@ -371,10 +371,7 @@ export function findHydraTurnToResume({
   const lastFinishedTurn = finishedThrough ? undefined : scanChanges({
     hydraId,
     cardId: HYDRA_CARD,
-    types: [
-      'card.pushed',
-      'session.observed',
-    ],
+    types: ['session.observed'],
     before: cutHydraTurn.seq,
     descending: true,
   }).find(event => {

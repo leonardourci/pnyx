@@ -2,7 +2,7 @@ import { cloneValue } from '#app/json-copy.ts'
 import { recordHydraTurn } from '#workers/session-facts.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { refreshTasks } from '#tasks/columns.ts'
+import { refreshTasks } from '#tasks/refresh.ts'
 import { touch } from '#tasks/touch.ts'
 import { operationLabel } from './operation-label.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -212,7 +212,6 @@ export function applyHydra({
       links: [],
       sourceRefs: [],
       hidden: true,
-      column: 'parked',
       revision: 0,
       createdSeq: event.seq,
       updatedSeq: event.seq,
@@ -237,40 +236,6 @@ export function applyHydra({
     })
     state.config.agents = structuredClone(event.data.agents)
     state.configRevision = (state.configRevision ?? 0) + 1
-
-    return true
-  }
-
-  if (event.type === 'board.columns') {
-    state.config = cloneValue({
-      value: hydraConfig({
-        state,
-        id: event.boardId,
-      }),
-    })
-    state.config.columns = structuredClone(event.data.columns)
-    state.configRevision = (state.configRevision ?? 0) + 1
-
-    for (const card of Object.values(state.cards)) {
-      const placement = event.data.placements?.[card.id]
-
-      if (placement?.after) {
-        card.column = placement.after
-      }
-
-      if (!event.data.columns.some(c => c.id === card.column)) {
-        card.column = event.data.fallback ?? event.data.columns[0]!.id
-      }
-
-      if (placement) {
-        touch({
-          card,
-          event,
-        })
-      }
-    }
-
-    refreshTasks({ state })
 
     return true
   }
@@ -309,12 +274,6 @@ export function applyHydra({
             message: event.id,
           },
         ]
-      } else if (event.data.kind === 'progress') {
-        card.progress = {
-          text: event.data.text,
-          at: event.at,
-          actor: event.actor,
-        }
       }
 
       touch({

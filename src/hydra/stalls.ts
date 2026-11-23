@@ -3,16 +3,13 @@ import { log } from '#app/diagnostics.ts'
 import type { AgentRef } from '#workers/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState } from '#app/model.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { INTERRUPTED, sessionId } from '#workers/session-attachments.ts'
 import { QUIET_REPLY, hostedHydra } from './hydra.ts'
 import { REPLY_RULES, sealed, decisionsText, wakeCursor } from './wakes.ts'
 import { background } from '#app/background.ts'
 import { helperBatch, helperReason } from '#routine-helper/route.ts'
-import { liveTask } from '#tasks/select.ts'
 import { loadHydra } from '#app/store.ts'
-import { pausedDeclaration } from '#tasks/lifecycle.ts'
 import { ownerGates } from '#tasks/owner-gates.ts'
 import { reasonLine } from './wake-reasons.ts'
 import { seenAt } from '#workers/presence.ts'
@@ -34,7 +31,6 @@ export function createStallChecks({
   stallDelay,
   busyDelay,
   stallRepeatMax,
-  pauseDelay,
   live,
   queuedHydra,
   closing,
@@ -48,7 +44,6 @@ export function createStallChecks({
   stallDelay: number
   busyDelay: number
   stallRepeatMax: number
-  pauseDelay: number
   live: Map<string, Live>
   queuedHydra: Set<string>
   closing(): boolean
@@ -84,38 +79,6 @@ export function createStallChecks({
         error,
       })
     }
-  }
-
-  // When a paused task's wait ends: its --until, never for a hold, or pauseDelay after a worker's pause with neither.
-  const waitEnd = ({ card }: { card: Card }): number | undefined => {
-    const declaration = pausedDeclaration({ card })
-
-    if (card.wait) {
-      return Infinity
-    }
-
-    if (!declaration) {
-      return undefined
-    }
-
-    if (declaration.until) {
-      return Date.parse(declaration.until)
-    }
-
-    // A hold keeps its worker out of stall checks too, until the owner or Hydra resumes it.
-    if (declaration.hold) {
-      return Infinity
-    }
-
-    // Hydra or the owner parking a task, or a task with no worker, is not a wait.
-    const parked = declaration.actor === HYDRA_ACTOR || ownerActor({ actor: declaration.actor })
-      || !card.sessionIds?.length
-
-    if (parked) {
-      return undefined
-    }
-
-    return Date.parse(declaration.at) + pauseDelay
   }
 
   // A stall fired before is due again after the stall delay doubled per earlier alarm, up to stallRepeatMax.
@@ -170,7 +133,7 @@ export function createStallChecks({
       })
     }
 
-    if (pausedDeclaration({ card }) && ownerGates({ card }).length > 0) {
+    if (card.hold || card.wait || ownerGates({ card }).length > 0) {
       return []
     }
 
@@ -178,12 +141,6 @@ export function createStallChecks({
     const entry = live.get(key)
 
     if (entry?.activity !== 'working') {
-      return []
-    }
-
-    const declaredWaitEnd = waitEnd({ card })
-
-    if (declaredWaitEnd !== undefined && now < declaredWaitEnd) {
       return []
     }
 
@@ -226,46 +183,6 @@ export function createStallChecks({
       },
     ]
   }
-
-  // A paused worker's wait that ended wakes Hydra once, whoever runs the worker.
-  const endedWaits = ({
-    state,
-    now,
-  }: {
-    state: HydraState
-    now: number
-  }): StallItem[] => Object.values(state.cards).flatMap(card => {
-    const declaredWaitEnd = waitEnd({ card })
-    const declaration = pausedDeclaration({ card })
-
-    const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
-      || ownerGates({ card }).length > 0
-
-    if (card.id === HYDRA_CARD || !liveTask({ card }) || waiting || !declaration) {
-      return []
-    }
-
-    const id = `wait:${declaration.id}`
-
-    if (wakeHandled({
-      state,
-      id,
-    })) {
-      return []
-    }
-
-    const named = declaration.until ? `until ${declaration.until}` : `since ${declaration.at}`
-    const note = declaration.note ? `: ${declaration.note}` : ''
-
-    return [
-      {
-        id,
-        card: card.id,
-        kind: 'wait ended',
-        detail: `the worker paused ${named}${note}`,
-      },
-    ]
-  })
 
   // A message the worker never confirmed after its resends wakes Hydra once; the server reports it each check.
   const unconfirmedReplies = new Map<string, Omit<StallItem, 'id'>>()
@@ -325,14 +242,9 @@ export function createStallChecks({
         id: stall.id,
         now,
       }))
-    const waits = endedWaits({
-      state,
-      now,
-    }).filter(wait => !stalled.has(wait.id))
     const unconfirmed = missingReplies({ state }).filter(reply => !stalled.has(reply.id))
     const fired = [
       ...stalls,
-      ...waits,
       ...unconfirmed,
     ]
 
@@ -432,7 +344,6 @@ export function createStallChecks({
       && (mainOnly.has(item.card) || !helperOpen({ state })))
     // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
     const [first] = [
-      ...waits,
       ...unconfirmed,
       ...stalls,
     ].filter(item => rest.includes(item))

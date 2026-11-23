@@ -11,7 +11,7 @@ export function sourceDeadline({ state }: { state: HydraState }): number | undef
 }
 
 export function sourceHeld({ card }: { card: Card }): boolean {
-  return Boolean(card.hold || (card.status?.state === 'paused' && card.status.hold))
+  return Boolean(card.hold)
 }
 
 export function applyExternalSource({
