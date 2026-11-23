@@ -1011,23 +1011,54 @@ test(
     })
 
     const first = await hydra.owner({
-      args: ['task', 'create', '--key', 'first-in-ideas', '--title', 'First in Ideas'],
+      args: [
+        'task',
+        'create',
+        '--key',
+        'first-in-ideas',
+        '--title',
+        'First in Ideas',
+      ],
     })
     const arranged = await hydra.owner({
-      args: ['task', 'arrange', first.card.id, '--before', 'later'],
+      args: [
+        'task',
+        'arrange',
+        first.card.id,
+        '--before',
+        'later',
+      ],
     })
     const { task: placed } = await hydra.owner({
-      args: ['task', 'show', first.card.id, '--full'],
+      args: [
+        'task',
+        'show',
+        first.card.id,
+        '--full',
+      ],
     })
     const { task: later } = await hydra.owner({
-      args: ['task', 'show', 'later', '--full'],
+      args: [
+        'task',
+        'show',
+        'later',
+        '--full',
+      ],
     })
     expect(placed.rank).toBeLessThan(later.rank ?? later.createdSeq)
     await hydra.owner({
-      args: ['undo', arranged.event.id],
+      args: [
+        'undo',
+        arranged.event.id,
+      ],
     })
     const { task: restored } = await hydra.owner({
-      args: ['task', 'show', first.card.id, '--full'],
+      args: [
+        'task',
+        'show',
+        first.card.id,
+        '--full',
+      ],
     })
     expect(restored.rank ?? restored.createdSeq).toBeGreaterThan(later.rank ?? later.createdSeq)
 
