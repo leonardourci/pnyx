@@ -3478,11 +3478,19 @@ test.each([
       compactTo: 500,
     })
     const answers = session.answered
+    const previousCompactions = new Set(queue({ hydraId: hydra.id })?.compactOperations
+      .map(operation => operation.id))
     await hydra.chat({ text: 'Compact task context' })
     await until({
       what: 'the compacted turn to finish',
-      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working
-        && queue({ hydraId: hydra.id })?.holding === false,
+      check: () => {
+        const current = queue({ hydraId: hydra.id })
+        const completed = current?.compactOperations.some(operation =>
+          !previousCompactions.has(operation.id) && operation.state === 'done')
+
+        return session.answered > answers && completed && !current?.working
+          && current?.holding === false
+      },
     })
     await hydra.chat({ text: 'Read the full snapshot after compaction' })
     const afterCompact = session.received.find(text => text.endsWith('Read the full snapshot after compaction'))!
