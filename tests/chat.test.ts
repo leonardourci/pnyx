@@ -221,6 +221,24 @@ test(
       ],
     })
     expect(idle.stopped).toMatch(/^none:/)
+    const configured = structuredClone(loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]!)
+    await hydra.owner({
+      args: [
+        'hydra',
+        'set',
+        '--identity',
+        'replacement-hydra',
+      ],
+    })
+    const detached = loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]!
+    expect(detached.agent).toBeUndefined()
+    expect(detached.terminal).toBeUndefined()
+    expect(detached.activity).toBeUndefined()
+    expect(detached.sessionActivity).toBeUndefined()
+    expect(detached.workingSince).toBeUndefined()
+    expect(detached.turnStartedAt).toBeUndefined()
+    expect(detached.turnEndedSeq).toBeUndefined()
+    expect(detached.settings).toEqual(configured.settings)
   },
 )
 

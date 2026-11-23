@@ -36,14 +36,12 @@ export function refreshTasks({
       values: {
         agent: session && { ...session.agent },
         terminal: session?.terminal && { ...session.terminal },
-        ...(session ? {
-          settings: session.settings && { ...session.settings },
-          activity: session.activity,
-          sessionActivity: session.sessionActivity ?? session.activity,
-          workingSince: session.workingSince,
-          turnStartedAt: session.turnStartedAt,
-          turnEndedSeq: session.turnEndedSeq,
-        } : {}),
+        ...(session ? { settings: session.settings && { ...session.settings } } : {}),
+        activity: session?.activity,
+        sessionActivity: session?.sessionActivity ?? session?.activity,
+        workingSince: session?.workingSince,
+        turnStartedAt: session?.turnStartedAt,
+        turnEndedSeq: session?.turnEndedSeq,
       },
     })
     hydra.attention = session?.agent.host === 'pnyx'
