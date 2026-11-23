@@ -20,6 +20,12 @@ const inFlight = ({ question }: { question: OwnerQuestion }) =>
 export const hasCompletedOutcome = ({ card }: { card: Card }): boolean =>
   card.outcome?.closed === true || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
 
+export function hasMergedDelivery({ card }: { card: Card }): boolean {
+  const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
+
+  return requests.length > 0 && requests.every(link => link.state === 'merged')
+}
+
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
 export const waitingQuestions = ({
   card,
@@ -113,16 +119,14 @@ export function cardStatus({
     }
   }
 
-  const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
-
-  if (requests.length && requests.every(link => link.state === 'merged')) {
+  if (hasMergedDelivery({ card })) {
     return {
       kind: 'merged',
       text: 'PR merged',
     }
   }
 
-  if (requests.some(link => link.state === 'open')) {
+  if (card.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
     return {
       kind: 'review',
       text: 'PR open',

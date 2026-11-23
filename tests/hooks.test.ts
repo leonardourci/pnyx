@@ -809,6 +809,11 @@ test(
         'merged',
       ],
       [
+        'outcome',
+        'merged-checkout',
+        'failed',
+      ],
+      [
         'task',
         'create',
         '--no-start',

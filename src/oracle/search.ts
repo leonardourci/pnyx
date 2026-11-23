@@ -291,7 +291,6 @@ export function search({
         title: 'Hydra',
         workspace: '',
         project: undefined,
-        column: '',
         updatedAt: '',
         links: [],
       },

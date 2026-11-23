@@ -667,7 +667,7 @@ test(
       state: 'merged',
     })
     const done = await until({
-      what: 'the merge to finish the task',
+      what: 'the cart merge to finish its task after the notes merge',
       check: async () => {
         const { task } = await hydra.owner({
           args: [
