@@ -232,7 +232,6 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
 export function resizeViewPatch({
   patch,
 }: {
-  state?: HydraState
   patch: Record<string, unknown>
 }): Record<string, unknown> {
   const resized = { ...patch }
