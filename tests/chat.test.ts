@@ -614,6 +614,7 @@ test(
       )
       expect(updates.length).toBeLessThan(12_000)
       expect(wake).not.toContain('Long report body '.repeat(30))
+      expect(wake).toContain('Which export format?')
 
       expect(wake).toContain('hydra.log')
       expect(wake).toContain('task.log')

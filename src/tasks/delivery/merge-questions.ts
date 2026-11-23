@@ -119,10 +119,6 @@ export function isCanonicalQuestion({
   return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
-function reviewComplete({ outcome }: { outcome?: Card['outcome'] | null }): boolean {
-  return Boolean(outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled')
-}
-
 function ownerReviewsPullRequests({
   state,
   card,
@@ -130,7 +126,7 @@ function ownerReviewsPullRequests({
   state: HydraState
   card: Card
 }): boolean {
-  if (isManagedTask({ card }) || reviewComplete({ outcome: card.outcome })) {
+  if (isManagedTask({ card }) || completedOutcome({ outcome: card.outcome })) {
     return false
   }
 
@@ -223,7 +219,7 @@ export function reconcileAsks({
   }
 
   const changes: HydraEvent[] = []
-  const ended = event.type === 'card.outcome' && reviewComplete({ outcome: event.data.after })
+  const ended = event.type === 'card.outcome' && completedOutcome({ outcome: event.data.after })
 
   for (const ask of openAsks({
     card,
@@ -378,3 +374,4 @@ function ownerContext({ text }: { text: string }): string {
     '[internal reference]',
   )
 }
+import { completedOutcome } from '#tasks/dependencies.ts'

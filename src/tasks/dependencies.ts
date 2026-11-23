@@ -71,6 +71,10 @@ export function applyDependencies({
   return true
 }
 
+export function completedOutcome({ outcome }: { outcome?: Card['outcome'] | null }): boolean {
+  return Boolean(outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled')
+}
+
 export function completionGaps({
   state,
   card,
@@ -96,7 +100,7 @@ export function completionGaps({
 
   const pullRequests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
   const merged = pullRequests.length > 0 && pullRequests.every(link => link.state === 'merged')
-  const completed = card.workerLog?.status?.code === 'done' || Boolean(card.outcome?.closed || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled') || merged
+  const completed = card.workerLog?.status?.code === 'done' || completedOutcome({ outcome: card.outcome }) || merged
 
   if (!completed) {
     gaps.push('not completed')
