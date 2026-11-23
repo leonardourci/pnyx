@@ -625,7 +625,9 @@ export function nativeReferences({
     const fields = record({ value })
     const sequence = SEQUENCE_FIELDS.has(key) || (key === 'generation' && GENERATION_PARENTS.has(parent))
       || (key === 'through' && THROUGH_PARENTS.has(parent))
-      || (key === 'after' && AFTER_PARENTS.has(parent))
+      || (key === 'after' && (AFTER_PARENTS.has(parent)
+        || (kind === 'event' && path.length === 2 && parent === 'data'
+          && owner?.kind === 'compaction' && typeof owner.id === 'string')))
 
     if (restore && internal && (sequence || key === 'through' || key === 'after')
       && typeof fields?.native === 'string' && Object.keys(fields).length === 1) {
