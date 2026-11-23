@@ -33,6 +33,7 @@ function lookupThread({
   card: string
 }): LookupThread {
   const sources = nativeSources({
+    hydraId,
     state,
     card,
   })

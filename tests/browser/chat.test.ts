@@ -1099,15 +1099,37 @@ test(
         .toBeLessThanOrEqual(1)
       const recoveringCard = label === 'Hydra conversation' ? HYDRA_CARD : card.id
       const beforeEpoch = epochs.get(recoveringCard)
+      expect(beforeEpoch).toBeDefined()
       await pnyx.restart()
+      await appendRecords({
+        session,
+        records: [
+          {
+            type: 'assistant',
+            content: 'Reply written after daemon restart',
+          },
+        ],
+      })
       await until({
         what: 'the retained chat range after a new daemon epoch',
-        check: async () => epochs.get(recoveringCard) !== beforeEpoch
-          && await conversation.getByText(
+        check: async () => {
+          const epoch = epochs.get(recoveringCard)
+
+          if (epoch === undefined || epoch === beforeEpoch) {
+            return false
+          }
+
+          return await conversation.getByText(
+            'Reply written after daemon restart',
+            { exact: true },
+          ).count() === 1 && await conversation.getByText(
+            'Reply in a dropped patch',
+            { exact: true },
+          ).count() === 1 && await conversation.getByText(
             'Reply after the dropped patch',
             { exact: true },
-          ).count() === 1
-          && await conversation.locator('[data-entry-id]').count() >= loadedRows,
+          ).count() === 1 && await conversation.locator('[data-entry-id]').count() >= loadedRows
+        },
       })
       expect(await readingAnchor.evaluate(row => row.isConnected)).toBe(true)
       expect(Math.abs(

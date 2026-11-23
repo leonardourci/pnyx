@@ -548,7 +548,7 @@ type ThreadSource = {
   agent?: Card['agent']
 }
 
-function threadSources({
+export function threadSources({
   hydraId,
   state,
   card,

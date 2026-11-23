@@ -2,10 +2,9 @@ import { statSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
-import { cardSessionId } from '#workers/session-attachments.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { messageReference } from './message-reference.ts'
-import { hydraSessions, recordEntries, threadPath, type SessionEntry } from './transcripts-read.ts'
+import { recordEntries, threadSources, type SessionEntry } from './transcripts-read.ts'
 
 // Each read holds at most this much of a transcript, whatever the file's size.
 const CHUNK_BYTES = 256 * 1024
@@ -21,40 +20,31 @@ export interface NativeSource {
 
 // The transcripts a thread's messages come from, oldest session first: every session Hydra has had, or a task's current one.
 export function nativeSources({
+  hydraId,
   state,
   card,
 }: {
+  hydraId: string
   state: HydraState
   card: string
 }): NativeSource[] {
-  if (card === HYDRA_CARD) {
-    return hydraSessions({ state }).flatMap(({
-      session,
-      agent,
-    }) => {
-      const path = threadPath({ card: { agent } })
+  const threadCard = state.cards[card]
 
-      return path ? [
-        {
-          path,
-          session,
-          boundaries: true,
-        },
-      ] : []
-    })
+  if (!threadCard) {
+    return []
   }
 
-  const task = state.cards[card]
-  const path = task && threadPath({ card: task })
-  const session = task && cardSessionId({ card: task })
-
-  return path && session ? [
+  return threadSources({
+    hydraId,
+    state,
+    card: threadCard,
+  }).reverse().flatMap(({ path, session }) => path && session ? [
     {
       path,
       session,
-      boundaries: false,
+      boundaries: card === HYDRA_CARD,
     },
-  ] : []
+  ] : [])
 }
 
 function entriesOf({
