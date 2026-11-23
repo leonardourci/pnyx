@@ -370,6 +370,7 @@ export interface Provider {
 }
 
 export interface TranscriptMessage {
+  messageId?: string
   id?: string
   block?: number
   internal?: boolean
@@ -424,4 +425,8 @@ export type TranscriptReader = ({
 }: {
   record: unknown
   subagent?: boolean
+  source?: {
+    path: string
+    offset: number
+  }
 }) => TranscriptRecord | undefined

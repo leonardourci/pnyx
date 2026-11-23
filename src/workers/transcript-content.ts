@@ -107,8 +107,10 @@ export function transcriptText({
   texts,
   at,
   id,
+  messageId,
 }: {
   id?: string
+  messageId?: string
   texts: {
     text: string
     hidden?: boolean
@@ -121,7 +123,10 @@ export function transcriptText({
     hidden,
     block,
   }) => {
-    const visible = hidden ? '' : visibleText({ text })
+    const visible = hidden ? '' : visibleText({
+      text,
+      trim: messageId === undefined,
+    })
 
     if (!visible) {
       return []
@@ -129,6 +134,7 @@ export function transcriptText({
 
     const message: TranscriptMessage = {
       id: id === undefined ? undefined : `${id}:${block ?? 0}`,
+      messageId,
       text: visible,
     }
 
