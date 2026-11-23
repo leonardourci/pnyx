@@ -2,6 +2,7 @@ import { beforeAll, expect, test } from 'vitest'
 import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
+import { mergeThreadPages } from '#hydra/thread-history.ts'
 import { recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
@@ -725,6 +726,27 @@ test(
         'native-message:1',
         'native-message:3',
         'other-message:0',
+      ])
+
+      const live = liveReplies()
+      live.start({})
+      live.update({
+        id: 'native-message:1',
+        text: LONG_REPLY,
+      })
+      const restored = mergeThreadPages({
+        before: live.page({
+          page: {
+            ...page,
+            entries: [],
+          },
+        }),
+        latest: page,
+        olderPage: true,
+      })
+      expect(restored.entries.map(entry => entry.text)).toEqual([
+        'Same words',
+        'Same words',
       ])
     }
   },

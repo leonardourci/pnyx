@@ -1094,13 +1094,6 @@ function readThreadPage(
 
   const firstNative = page.find(candidate => candidate.native)?.native
   const firstReply = page.find(candidate => candidate.reply)?.reply
-  page.sort((
-    a,
-    b,
-  ) => threadEntryOrder({
-    first: a.item,
-    second: b.item,
-  }))
   result.entries = page.filter(candidate => !candidate.message).map(candidate => candidate.item)
 
   if (card.id === HYDRA_CARD) {

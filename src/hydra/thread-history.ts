@@ -23,12 +23,18 @@ export function mergeThreadPages({
   // An older page goes first, so entries sharing a time, such as the parts of one long message, keep their order.
   const first = olderPage ? latest.entries : saved
   const then = olderPage ? saved : latest.entries
+  const savedMessages = new Set(first.filter(entry => entry.streaming === undefined)
+    .map(entry => entry.messageId ?? entry.id))
   const entries = new Map(first.map(entry => [
     entry.id,
     entry,
   ]))
 
   for (const entry of then) {
+    if (entry.streaming !== undefined && savedMessages.has(entry.messageId ?? entry.id)) {
+      continue
+    }
+
     entries.set(
       entry.id,
       entry,
