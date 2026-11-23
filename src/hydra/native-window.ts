@@ -27,7 +27,7 @@ export function nativeSources({
   state: HydraState
   card: string
 }): NativeSource[] {
-  const threadCard = state.cards[card] ?? (card === HYDRA_CARD ? { id: card } : undefined)
+  const threadCard = state.cards[card]
 
   if (!threadCard) {
     return []

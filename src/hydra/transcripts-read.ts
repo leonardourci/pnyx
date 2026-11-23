@@ -556,7 +556,7 @@ export function threadSources({
 }: {
   hydraId: string
   state: HydraState
-  card: Pick<Card, 'id' | 'agent' | 'sessionIds'>
+  card: Card
   selectedSession?: boolean
 }): ThreadSource[] {
   const session = cardSessionId({ card })
