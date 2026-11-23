@@ -1,12 +1,12 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
 import { readSettings, saveSettings, settingsReceipt, shownSettings } from './store.ts'
 import { DEFAULT_SETTINGS, MAX_LOG_DAYS, MAX_LOG_MB } from './settings.ts'
 import { HELPER_MODELS, type Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { loadHydra } from '#app/store.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { loadTitan } from '#app/store.ts'
 
 const USE = 'use settings show, schema or set'
 
@@ -42,16 +42,16 @@ export const settings = guard({
       return {
         defaults: DEFAULT_SETTINGS,
         help: [
-          'Every key applies to every Hydra; a patch names only what changes',
+          'Every key applies to every Titan; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
-          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Hydra ids, each once; hiddenHydras takes the Hydra ids hidden from the page list and switcher',
+          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Titan ids, each once; hiddenTitans takes the Titan ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
         ],
       }
     }
 
     if (sub !== 'set') {
-      throw new HydraError({
+      throw new TitanError({
         message: USE,
         code: 'VALIDATION_ERROR',
       })
@@ -65,7 +65,7 @@ export const settings = guard({
         what: '--json',
       }))
     } catch {
-      throw new HydraError({
+      throw new TitanError({
         message: '--json must contain a settings object',
         code: 'VALIDATION_ERROR',
       })
@@ -93,7 +93,7 @@ const HELPER_FLAGS = [
   'helper-fast',
 ]
 
-// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
+// The hydra set flags that write shared settings; any other flag changes this Titan, so the Titan event is committed too.
 export const SETTING_FLAGS = [
   'done-after-hours',
   'review-minutes',
@@ -119,7 +119,7 @@ export function sharedSettingFlags({
     const raw = String(values['review-minutes']).trim()
 
     if (!raw) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--review-minutes takes a number of minutes (0 turns reviews off)',
         code: 'VALIDATION_ERROR',
       })
@@ -131,7 +131,7 @@ export function sharedSettingFlags({
   if (HELPER_FLAGS.some(flag => values[flag] !== undefined)) {
     const current = readSettings().settings.helper
     const agent = typeof current === 'object' ? current : undefined
-    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
+    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadTitan({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
     const helperHarness = knownHarness({ name: harness })
 
     if (harness === 'off' || harness === 'auto') {
@@ -157,7 +157,7 @@ export function sharedSettingFlags({
       const fast = values['helper-fast']
 
       if (fast !== undefined && fast !== 'on' && fast !== 'off') {
-        throw new HydraError({
+        throw new TitanError({
           message: '--helper-fast takes on or off',
           code: 'VALIDATION_ERROR',
         })
@@ -171,7 +171,7 @@ export function sharedSettingFlags({
 
       patch.helper = helper
     } else {
-      throw new HydraError({
+      throw new TitanError({
         message: '--helper takes auto, off, claude or codex',
         code: 'VALIDATION_ERROR',
       })

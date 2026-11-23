@@ -1,12 +1,12 @@
 import { LOG_MODES } from '#app/log-line.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
 import { NAME, NAME_RULE } from '#workers/dispatch-check.ts'
-import { HydraError } from '#store/errors.ts'
-import { HYDRA_ID } from '#hydra/identity.ts'
+import { TitanError } from '#store/errors.ts'
+import { TITAN_ID } from '#titan/identity.ts'
 import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type SharedView } from './model.ts'
 
 export const DEFAULT_REVIEW_MINUTES = 30
@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   helper: 'auto',
   oracleRememberFilters: false,
   hydraOrder: [],
-  hiddenHydras: [],
+  hiddenTitans: [],
   logs: 'on',
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
@@ -48,7 +48,7 @@ export function pickView({ view }: { view: SharedView }): SharedView {
 }
 
 const invalid = ({ detail }: { detail: string }): never => {
-  throw new HydraError({
+  throw new TitanError({
     message: `invalid setting: ${detail}`,
     code: 'VALIDATION_ERROR',
   })
@@ -65,7 +65,7 @@ function patchSharedView({
   const state = {
     view: {},
     cards: {},
-  } as unknown as HydraState
+  } as unknown as TitanState
   const next = pickView({
     view: patchView({
       state,
@@ -228,18 +228,18 @@ export function patchSettings({
 
   for (const key of [
     'hydraOrder',
-    'hiddenHydras',
+    'hiddenTitans',
   ] as const) {
     if (!(key in patch)) {
       continue
     }
 
     const list = patch[key]
-    const ids = Array.isArray(list) && list.every(id => typeof id === 'string' && HYDRA_ID.test(id))
+    const ids = Array.isArray(list) && list.every(id => typeof id === 'string' && TITAN_ID.test(id))
     const once = Array.isArray(list) && new Set(list).size === list.length
 
     if (!ids || !once) {
-      return invalid({ detail: `${key} takes a list of Hydra ids, each once` })
+      return invalid({ detail: `${key} takes a list of Titan ids, each once` })
     }
 
     next[key] = [...list] as string[]
