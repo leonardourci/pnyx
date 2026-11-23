@@ -65,7 +65,7 @@ export function liveReplies() {
               ...entry,
               id,
               session: page.session,
-                reference: page.session ? id : undefined,
+              reference: page.session ? id : undefined,
               streaming: working,
             },
           }))
