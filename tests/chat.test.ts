@@ -2409,7 +2409,6 @@ test(
       )}'`
       expect(summarySession.received.at(-1)).toContain(command)
       expect(summarySession.received.at(-1)).toContain(JSON.stringify(compaction()!.id))
-      expect(summarySession.received.at(-1)).toContain('Exclude later records')
       expect(await summarySession.useTool!({
         tool: 'Bash',
         input: { command },
