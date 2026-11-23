@@ -28,7 +28,7 @@ export const isMessageBlockKey = ({
 export const messageBlock = ({ node }: { node?: Node | null }) =>
   (node instanceof Element ? node : node?.parentElement)?.closest<HTMLElement>('[data-message-block]')
 
-export const blockPassage = ({ block }: { block: HTMLElement }): CommentPassage => ({
+const blockPassage = ({ block }: { block: HTMLElement }): CommentPassage => ({
   messageId: block.dataset.messageId!,
   block: Number(block.dataset.blockIndex),
   offset: Number(block.dataset.blockOffset),

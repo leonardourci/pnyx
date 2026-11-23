@@ -520,7 +520,6 @@ export function Messages({
     drafts,
     notify,
     clearSelection: () => setSelection(null),
-    blocks,
   })
 
   const handlers: MessageActions = {

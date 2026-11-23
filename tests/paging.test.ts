@@ -1,8 +1,13 @@
 import { beforeAll, expect, test } from 'vitest'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import { joinLatest, mergeThreadPages } from '#hydra/thread-history.ts'
+import { createHydraThreadView } from '#hydra/thread-view.ts'
+import { readThread, recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { liveReplies } from '#workers/streaming.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
 import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
 import { openPage, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
@@ -22,11 +27,8 @@ interface Entry {
 }
 
 interface ThreadReceipt {
-  thread: {
-    card: string
-    session?: string
-    older?: string
-    conversation: { entries: Entry[] }
+  thread: ThreadPage & {
+    conversation: NonNullable<ThreadPage['conversation']>
   }
 }
 
@@ -94,17 +96,76 @@ test(
     ])
     expect(first.thread.older).toBeTruthy()
 
+    const savedReply = first.thread.entries.find(entry => entry.text === 'answer 29')
+
+    if (!savedReply) {
+      throw new Error('The newest page has no saved reply')
+    }
+
+    const state = loadHydra({ hydraId: hydra.id }).state
+    const detachedCard = {
+      ...state.cards[HYDRA_CARD],
+      agent: undefined,
+      sessionIds: [],
+    }
+    const detachedHistory = readThread({
+      hydraId: hydra.id,
+      card: detachedCard,
+      state: {
+        ...state,
+        cards: {
+          ...state.cards,
+          [HYDRA_CARD]: detachedCard,
+        },
+      },
+    })
+    expect(detachedHistory.entries.find(entry => entry.id === savedReply.id)?.text).toBe('answer 29')
+
+    const project = createHydraThreadView({
+      state,
+      page: first.thread,
+      tools: false,
+      thinking: false,
+    })
+
+    for (const text of [
+      'ans',
+      'answer',
+    ]) {
+      const projected = project({
+        page: {
+          ...first.thread,
+          entries: [
+            {
+              ...savedReply,
+              text,
+              streaming: true,
+            },
+          ],
+        },
+      })
+      expect(projected.conversation.entries.find(entry => entry.id === savedReply.id)?.text).toBe('answer 29')
+    }
+
     // A message that arrives while the owner reads back must neither be lost nor shift what was already read.
     pnyx.claude.plan({
       hydra: hydra.id,
       text: 'question 31',
-      reply: 'answer 31',
+      reply: LONG_REPLY,
     })
     const latest = await hydra.chat({ text: 'question 31' })
     await until({
       what: 'answer 31',
       check: () => latest.answered === EXCHANGES + 1,
     })
+
+    const newestTab = await hydra.page()
+    const newest = await newestTab.send({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    }) as unknown as ThreadReceipt
+    newestTab.close()
+    expect(newest.thread.conversation.entries.at(-1)?.text).toBe(LONG_REPLY)
 
     let loaded = first.thread
     const reads: number[] = []
@@ -133,7 +194,7 @@ test(
         index,
       ) => [
         `question ${index + 1}`,
-        index + 1 === 5 ? LONG_REPLY : `answer ${index + 1}`,
+        index + 1 === 5 || index + 1 === EXCHANGES + 1 ? LONG_REPLY : `answer ${index + 1}`,
       ],
     ).flat())
 
@@ -171,7 +232,7 @@ test(
 )
 
 test(
-  'a task\'s chat keeps the older page it read back, in order, when its worker writes more, and its tool calls follow Focus mode',
+  'a task\'s older chat stays ordered through new replies and session changes, and Focus mode controls tool calls',
   async () => {
     const hydra = await pnyx.hydra()
     const { worker } = await hydra.startTask({ key: 'notes' })
@@ -312,8 +373,34 @@ test(
         ],
       }) as unknown as { thread?: { entries: Entry[] } }
       reconnected.close()
-      expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+      expect(
+        restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note ')),
+        JSON.stringify(restored.thread),
+      ).toEqual(everyNote)
       expect(unknownOption.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
+
+      const reference = loaded().find(entry => entry.text === 'note after reading back')?.reference
+      expect(reference).toBeDefined()
+      await hydra.owner({
+        args: [
+          'task',
+          'detach',
+          'notes',
+        ],
+      })
+      const lookedUp = await hydra.owner({
+        args: [
+          'task',
+          'messages',
+          'notes',
+          '--id',
+          reference!,
+        ],
+      })
+      expect(lookedUp.messages).toContainEqual(expect.objectContaining({
+        id: reference,
+        text: 'note after reading back',
+      }))
     } finally {
       await focusMode({ on: true })
     }
@@ -592,5 +679,337 @@ test(
       operations: everything,
       rows: loaded.slice(-2),
     }).map(run => run.length)).toEqual([3])
+  },
+)
+
+test.each([
+  { provider: 'claude' },
+  { provider: 'codex' },
+] as const)(
+  '$provider native text blocks keep their identity through filtering and streamed settlement',
+  ({ provider }) => {
+    const record = provider === 'claude' ? {
+      type: 'assistant',
+      uuid: 'record-uuid',
+      message: {
+        id: 'native-message',
+        content: [
+          {
+            type: 'thinking',
+            thinking: 'Consider the request',
+          },
+          {
+            type: 'text',
+            text: 'Same words',
+          },
+          {
+            type: 'tool_use',
+            id: 'native-call',
+            name: 'Read',
+            input: {},
+          },
+          {
+            type: 'text',
+            text: 'Same words',
+          },
+        ],
+      },
+    } : {
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        id: 'native-message',
+        role: 'assistant',
+        content: [
+          { type: 'input_image' },
+          {
+            type: 'output_text',
+            text: 'Same words',
+          },
+          { type: 'input_image' },
+          {
+            type: 'output_text',
+            text: 'Same words',
+          },
+        ],
+      },
+    }
+    const entries = recordEntries({
+      record,
+      offset: 200,
+      tools: false,
+      thinking: false,
+    })
+    expect(entries.map(entry => entry.id)).toEqual([
+      'native-message:1',
+      'native-message:3',
+    ])
+
+    if (record.payload) {
+      const splitSecret = recordEntries({
+        record: {
+          ...record,
+          payload: {
+            ...record.payload,
+            content: [
+              {
+                type: 'output_text',
+                text: 'Before sk-01234567',
+              },
+              {
+                type: 'output_text',
+                text: '89abcdef after',
+              },
+            ],
+          },
+        },
+        offset: 200,
+      })
+      expect(splitSecret.map(entry => entry.text).join('')).toBe('Before [redacted] after')
+    }
+
+    expect(recordEntries({
+      record,
+      offset: 900,
+      tools: false,
+      thinking: false,
+    }).map(entry => entry.id))
+      .toEqual(entries.map(entry => entry.id))
+    expect(recordEntries({
+      record,
+      offset: 200,
+      session: 'session-one',
+      tools: false,
+      thinking: false,
+    })
+      .map(entry => entry.id)).toEqual([
+      'session-one:native-message:1',
+      'session-one:native-message:3',
+    ])
+    expect(recordEntries({
+      record,
+      offset: 900,
+      session: 'session-two',
+      tools: false,
+      thinking: false,
+    })
+      .map(entry => entry.id)).toEqual([
+      'session-two:native-message:1',
+      'session-two:native-message:3',
+    ])
+    const replies = liveReplies()
+    replies.start({})
+    replies.update({
+      id: provider === 'codex' ? 'native-message' : 'native-message:1',
+      text: 'Same',
+    })
+    replies.update({
+      id: 'other-message:0',
+      text: 'Same words',
+    })
+    const page: ThreadPage = {
+      card: 'task',
+      entries,
+      route: false,
+      watching: 'unknown',
+    }
+    const combined = replies.page({ page })
+    expect(combined.entries.map(entry => entry.text)).toEqual([
+      'Same words',
+      'Same words',
+      'Same words',
+    ])
+    expect(combined.entries.map(entry => entry.id)).toEqual([
+      'native-message:1',
+      'native-message:3',
+      'other-message:0',
+    ])
+
+    const live = liveReplies()
+    live.start({})
+    live.update({
+      id: provider === 'codex' ? 'native-message' : 'native-message:1',
+      text: LONG_REPLY,
+    })
+    const overlay = live.page({
+      page: {
+        ...page,
+        entries: [],
+      },
+    })
+    const restored = mergeThreadPages({
+      before: overlay,
+      latest: page,
+      olderPage: true,
+    })
+    expect(restored.entries.map(entry => entry.text)).toEqual([
+      'Same words',
+      'Same words',
+    ])
+    const retained = mergeThreadPages({
+      before: page,
+      latest: overlay,
+      olderPage: true,
+    })
+    expect(retained.entries).toEqual(restored.entries)
+    const refreshed = mergeThreadPages({
+      before: page,
+      latest: {
+        ...page,
+        entries: page.entries.map(entry => ({
+          ...entry,
+          text: 'Fresh saved words',
+        })),
+      },
+      olderPage: true,
+    })
+    expect(refreshed.entries.map(entry => entry.text)).toEqual([
+      'Fresh saved words',
+      'Fresh saved words',
+    ])
+  },
+)
+
+test.each([
+  { retainedNative: true },
+  { retainedNative: false },
+])(
+  'refresh fills a transcript gap despite an overlapping owner receipt with retained native rows: $retainedNative',
+  ({ retainedNative }) => {
+    const saved = ({
+      id,
+      offset,
+    }: {
+      id: string
+      offset: number
+    }) => ({
+      id,
+      offset,
+      kind: 'message' as const,
+      role: 'assistant',
+      text: id,
+      at: new Date(offset).toISOString(),
+    })
+    const first = saved({
+      id: 'first',
+      offset: 1,
+    })
+    const missed = saved({
+      id: 'missed',
+      offset: 2,
+    })
+    const newest = saved({
+      id: 'newest',
+      offset: 3,
+    })
+    const receipt = {
+      id: 'reply:owner',
+      kind: 'message' as const,
+      role: 'You',
+      text: 'Owner request',
+      at: new Date(4).toISOString(),
+    }
+    const history: ThreadPage = {
+      card: 'task',
+      entries: retainedNative ? [
+        first,
+        receipt,
+      ] : [receipt],
+      route: false,
+      watching: 'unknown',
+    }
+    const refreshed = joinLatest({
+      history,
+      latest: {
+        ...history,
+        entries: [
+          newest,
+          receipt,
+        ],
+        older: 'n3:0;r',
+      },
+      read: () => ({
+        ...history,
+        entries: [
+          first,
+          missed,
+        ],
+      }),
+    })
+
+    expect(refreshed.entries.map(entry => entry.id)).toEqual([
+      first.id,
+      missed.id,
+      newest.id,
+      receipt.id,
+    ])
+  },
+)
+
+test(
+  'split Claude records preserve global native block positions when read from an older-page boundary',
+  () => {
+    const path = join(
+      process.env.TMPDIR!,
+      'split-native-blocks.jsonl',
+    )
+    const content = [
+      {
+        type: 'text',
+        text: 'Same words',
+      },
+      {
+        type: 'thinking',
+        thinking: 'Hidden thought',
+      },
+      {
+        type: 'tool_use',
+        id: 'split-call',
+        name: 'Read',
+        input: {},
+      },
+      {
+        type: 'text',
+        text: 'Same words',
+      },
+    ]
+    const records = content.map((
+      block,
+      index,
+    ) => ({
+      type: 'assistant',
+      uuid: `split-record-${index}`,
+      message: {
+        id: 'split-message',
+        content: [block],
+      },
+    }))
+    const lines = records.map(record => JSON.stringify(record) + '\n')
+    writeFileSync(
+      path,
+      lines.join(''),
+    )
+    const entries = records.flatMap((
+      record,
+      index,
+    ) => recordEntries({
+      path,
+      record,
+      offset: Buffer.byteLength(lines.slice(
+        0,
+        index,
+      ).join('')),
+      tools: false,
+      thinking: false,
+      session: 'split-session',
+    }))
+    expect(entries.map(entry => entry.id)).toEqual([
+      'split-session:split-message:0',
+      'split-session:split-message:3',
+    ])
+    expect(entries.map(entry => entry.text)).toEqual([
+      'Same words',
+      'Same words',
+    ])
   },
 )

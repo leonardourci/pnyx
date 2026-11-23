@@ -1,4 +1,5 @@
 import { appendFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { transcriptPath } from '#workers/claude.ts'
 import type { AgentSession } from './agents.ts'
 
@@ -23,8 +24,10 @@ export async function appendRecords({
     index,
   ) => JSON.stringify({
     type: record.type,
+    uuid: randomUUID(),
     timestamp: new Date(start + index + 1).toISOString(),
     message: {
+      id: `msg_${randomUUID()}`,
       role: record.type,
       content: record.content,
     },

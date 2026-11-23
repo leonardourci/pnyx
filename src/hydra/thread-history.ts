@@ -19,20 +19,34 @@ export function mergeThreadPages({
     return latest
   }
 
-  const saved = before.entries.filter(entry => olderPage || !entry.id.startsWith('live:'))
-  // An older page goes first, so entries sharing a time, such as the parts of one long message, keep their order.
-  const first = olderPage ? latest.entries : saved
-  const then = olderPage ? saved : latest.entries
-  const entries = new Map(first.map(entry => [
-    entry.id,
-    entry,
-  ]))
+  const retained = before.entries.filter(entry => olderPage || entry.streaming === undefined)
+  const orderedPages = olderPage ? [
+    latest.entries,
+    retained,
+  ] : [
+    retained,
+    latest.entries,
+  ]
+  const combined = orderedPages.flat()
+  const savedMessages = new Set(combined.filter(entry => entry.streaming === undefined)
+    .map(entry => entry.messageId ?? entry.id))
+  const entries = new Map<string, ThreadPage['entries'][number]>()
 
-  for (const entry of then) {
-    entries.set(
-      entry.id,
-      entry,
-    )
+  for (const page of orderedPages) {
+    for (const entry of page) {
+      if (entry.streaming !== undefined && savedMessages.has(entry.messageId ?? entry.id)) {
+        continue
+      }
+
+      if (olderPage && page === retained && entries.has(entry.id)) {
+        continue
+      }
+
+      entries.set(
+        entry.id,
+        entry,
+      )
+    }
   }
 
   const actions = new Map((before.actions ?? []).map(event => [
@@ -89,7 +103,7 @@ export function joinLatest({
   read({ before }: { before: string }): ThreadPage
 }): ThreadPage {
   const sameSession = history !== undefined && history.session === latest.session
-  const held = sameSession ? history.entries.filter(entry => !entry.id.startsWith('live:')) : []
+  const held = sameSession ? history.entries.filter(entry => entry.streaming === undefined) : []
 
   if (!history || !held.length) {
     return mergeThreadPages({
@@ -98,7 +112,10 @@ export function joinLatest({
     })
   }
 
-  const known = new Set(held.map(entry => entry.id))
+  const native = held.filter(entry => entry.offset !== undefined)
+  const newestHasNative = latest.entries.some(entry => entry.offset !== undefined)
+  const overlap = native.length || newestHasNative ? native : held
+  const known = new Set(overlap.map(entry => entry.id))
   const seen = new Set<string>()
   let joined = latest
 

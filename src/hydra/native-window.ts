@@ -2,10 +2,9 @@ import { statSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
-import { cardSessionId } from '#workers/session-attachments.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { messageReference } from './message-reference.ts'
-import { hydraSessions, recordEntries, threadPath, type SessionEntry } from './transcripts-read.ts'
+import { recordEntries, threadSources, type SessionEntry } from './transcripts-read.ts'
 
 // Each read holds at most this much of a transcript, whatever the file's size.
 const CHUNK_BYTES = 256 * 1024
@@ -19,42 +18,37 @@ export interface NativeSource {
   boundaries: boolean
 }
 
-// The transcripts a thread's messages come from, oldest session first: every session Hydra has had, or a task's current one.
 export function nativeSources({
+  hydraId,
   state,
   card,
 }: {
+  hydraId: string
   state: HydraState
   card: string
 }): NativeSource[] {
-  if (card === HYDRA_CARD) {
-    return hydraSessions({ state }).flatMap(({
-      session,
-      agent,
-    }) => {
-      const path = threadPath({ card: { agent } })
+  const threadCard = state.cards[card]
 
-      return path ? [
-        {
-          path,
-          session,
-          boundaries: true,
-        },
-      ] : []
-    })
+  if (!threadCard) {
+    return []
   }
 
-  const task = state.cards[card]
-  const path = task && threadPath({ card: task })
-  const session = task && cardSessionId({ card: task })
+  const oldestFirst = threadSources({
+    hydraId,
+    state,
+    card: threadCard,
+  }).reverse()
 
-  return path && session ? [
+  return oldestFirst.flatMap(({
+    path,
+    session,
+  }) => path && session ? [
     {
       path,
       session,
-      boundaries: false,
+      boundaries: card === HYDRA_CARD,
     },
-  ] : []
+  ] : [])
 }
 
 function entriesOf({
@@ -69,6 +63,8 @@ function entriesOf({
   return recordEntries({
     record,
     offset,
+    path: source.path,
+    session: source.session,
     tools: false,
     thinking: false,
     boundaries: source.boundaries,
@@ -266,24 +262,53 @@ export function nativeWindow({
 
 export function nativeRecord({
   source,
-  offset,
+  reference,
 }: {
   source: NativeSource
-  offset: number
-}): SessionEntry[] {
-  const read = readTranscript({
-    cursor: {
-      source: source.path,
-      identity: '',
-      pos: offset,
-    },
-    maxBytes: CHUNK_BYTES,
-  })
-  const line = read?.lines.find(candidate => candidate.pos === offset)
+  reference: string
+}): SessionEntry | undefined {
+  const size = statSync(
+    source.path,
+    { throwIfNoEntry: false },
+  )?.size ?? 0
+  let position = 0
 
-  return line ? entriesOf({
-    source,
-    record: line.record,
-    offset,
-  }) : []
+  while (position < size) {
+    const read = readTranscript({
+      cursor: {
+        source: source.path,
+        identity: '',
+        pos: position,
+      },
+      maxBytes: Math.min(
+        CHUNK_BYTES,
+        size - position,
+      ),
+    })
+
+    if (!read || read.end <= position) {
+      break
+    }
+
+    position = read.end
+
+    for (const line of read.lines) {
+      if (line.pos >= size) {
+        break
+      }
+
+      const entry = entriesOf({
+        source,
+        record: line.record,
+        offset: line.pos,
+      })
+        .find(candidate => candidate.reference === reference)
+
+      if (entry) {
+        return entry
+      }
+    }
+  }
+
+  return undefined
 }

@@ -8,7 +8,7 @@ interface ItemChanges<Value> {
 
 type Conversation = NonNullable<ThreadPage['conversation']>
 type RecordChanges<Value> = Record<string, Value | null>
-type ThreadIdentity = Pick<ThreadPage, 'card' | 'session' | 'stream'>
+type ThreadIdentity = Pick<ThreadPage, 'card' | 'session' | 'epoch' | 'stream'>
 
 export interface ThreadDelta {
   base: number
@@ -155,7 +155,7 @@ function sameThread({
   page: ThreadIdentity
 }) {
   return before.card === page.card && before.session === page.session
-    && before.stream === page.stream
+    && before.epoch === page.epoch && before.stream === page.stream
 }
 
 export function threadDelta({

@@ -71,6 +71,7 @@ export function compactionFiles({
         ]
       }),
       ...nativeSources({
+        hydraId,
         state,
         card: HYDRA_CARD,
       }).map(source => source.path),

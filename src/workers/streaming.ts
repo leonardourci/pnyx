@@ -1,23 +1,20 @@
 import { splitEntry, type ThreadEntry, type ThreadPage } from '#hydra/transcripts-read.ts'
-import { redact } from '#oracle/text.ts'
 import type { HostedText } from './provider.ts'
 
-// These are disposable transport entries; the harness transcript remains the history.
 export function liveReplies() {
   const messages = new Map<string, ThreadEntry>()
-  let offset = 0, working = false
+  const recorded = new Set<string>()
+  let working = false
   let currentTurn: ThreadPage['currentTurn']
 
   return {
     start({
-      offset: start,
       ownerStarted,
     }: {
-      offset: number
       ownerStarted?: boolean
     }) {
       messages.clear()
-      offset = start
+      recorded.clear()
       working = true
 
       if (ownerStarted !== undefined) {
@@ -36,7 +33,7 @@ export function liveReplies() {
       messages.set(
         id,
         {
-          id: `live:${id}`,
+          id,
           kind: 'message',
           role: 'assistant',
           text: (append ? prior?.text ?? '' : '') + text,
@@ -51,39 +48,24 @@ export function liveReplies() {
       return [...messages.values()].map(entry => entry.text)
     },
     page({ page }: { page: ThreadPage }): ThreadPage {
-      const saved = new Map<string, string>()
-
-      for (const entry of page.entries) {
-        const id = entry.messageId ?? entry.id
-
-        if (entry.kind === 'message' && entry.role.startsWith('assistant') && Number.parseInt(id) >= offset) {
-          saved.set(
-            id,
-            (saved.get(id) ?? '') + entry.text,
-          )
-        }
-      }
-
+      const saved = new Set(page.entries.filter(entry => entry.streaming === undefined)
+        .map(entry => entry.messageId ?? entry.id))
       const entries: ThreadEntry[] = []
 
       for (const entry of messages.values()) {
-        const text = redact({ text: entry.text })
-        const liveText = text.trim()
-        const match = [...saved].find(([
-          , value,
-        ]) => {
-          const savedText = value.trim()
+        const id = page.session ? `${page.session}:${entry.id}` : entry.id
 
-          return savedText === liveText
-            || (working && text.length > 0 && value.startsWith(text))
-        })
+        if (saved.has(id)) {
+          recorded.add(entry.id)
+        }
 
-        if (match) {
-          saved.delete(match[0])
-        } else if (text) {
+        if (!recorded.has(entry.id) && entry.text) {
           entries.push(...splitEntry({
             entry: {
               ...entry,
+              id,
+              session: page.session,
+              reference: page.session ? id : undefined,
               streaming: working,
             },
           }))

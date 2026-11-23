@@ -10,11 +10,13 @@ const readers: TranscriptReader[] = [
 export function readTranscriptRecord({
   record,
   subagent = false,
+  source,
 }: Parameters<TranscriptReader>[0]): TranscriptRecord {
   for (const read of readers) {
     const parsed = read({
       record,
       subagent,
+      source,
     })
 
     if (parsed) {

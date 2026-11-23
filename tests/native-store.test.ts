@@ -13,6 +13,8 @@ import { operationEvent } from '#hydra/operations.ts'
 import { base } from '#app/command-meta.ts'
 import { askHost, infoPath } from '#app/server-state.ts'
 import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
+import { appendRecords } from './setup/transcripts.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { pnyx as runPnyx, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
 
 let pnyx: Pnyx
@@ -1214,6 +1216,23 @@ test(
       ],
     })
     const worker = await source.agent({ cwd: folder })
+    await appendRecords({
+      session: worker,
+      records: [
+        {
+          type: 'assistant',
+          content: 'Saved before moving',
+        },
+      ],
+    })
+    const sourcePage = await source.page()
+    const beforeMove = await sourcePage.send({
+      name: 'thread',
+      args: [task],
+    }) as unknown as { thread: ThreadPage }
+    const saved = beforeMove.thread.entries.find(entry => entry.text === 'Saved before moving')!
+    expect(saved).toBeDefined()
+    sourcePage.close()
     await source.owner({
       args: [
         'task',
@@ -1223,6 +1242,13 @@ test(
         destination.id,
       ],
     })
+    const destinationPage = await destination.page()
+    const afterMove = await destinationPage.send({
+      name: 'thread',
+      args: [task],
+    }) as unknown as { thread: ThreadPage }
+    expect(afterMove.thread.entries.find(entry => entry.id === saved.id)?.text).toBe('Saved before moving')
+    destinationPage.close()
     await pnyx.restart()
     const resumed = await until({
       what: 'the moved worker resumes its saved turn in the destination',
