@@ -179,7 +179,10 @@ export function wakeText({
       const last = Math.max(...pending.map(note => note.seq))
       const ids = new Set(pending.map(note => note.id))
 
-      for (const event of scanChanges({ hydraId, after: first - 1 })) {
+      for (const event of scanChanges({
+        hydraId,
+        after: first - 1,
+      })) {
         if (event.seq > last) {
           break
         }
@@ -187,7 +190,10 @@ export function wakeText({
         if (ids.has(event.id)) {
           const file = event.type === 'hydra.message' || event.cardId === HYDRA_CARD
             ? 'hydra.log' : `tasks/${event.cardId}/task.log`
-          pendingEvents.set(event.id, file)
+          pendingEvents.set(
+            event.id,
+            file,
+          )
         }
       }
     }
@@ -199,14 +205,16 @@ export function wakeText({
         return []
       }
 
-      return [{
-        id: note.id,
-        file,
-        status: contextReportStatus({
-          state,
-          note,
-        }),
-      }]
+      return [
+        {
+          id: note.id,
+          file,
+          status: contextReportStatus({
+            state,
+            note,
+          }),
+        },
+      ]
     })
     lines.push(`Pending reports: ${JSON.stringify(savedReports)}`)
 
