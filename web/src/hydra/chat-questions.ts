@@ -1,6 +1,7 @@
 import type { HydraState } from '#app/model.ts'
 import type { Ask, Card } from '#tasks/model.ts'
 import { activeAsks, openAsks } from '#tasks/ask-state.ts'
+import { hasBlockedWork } from '#tasks/card-status.ts'
 import { isCanonicalQuestion } from '#tasks/delivery/merge-questions.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { taskMentions } from '#hydra/mentions.ts'
@@ -54,11 +55,12 @@ export function chatDecisions({
 
       if (ask.kind === 'merge' && ask.url) {
         const linked = cards.filter(task => task.links.some(link => link.url === ask.url))
-        relatedTask = linked.find(task => task.status?.state === 'blocked')
+        relatedTask = linked.find(task => hasBlockedWork({ card: task }))
           ?? linked.find(task => context.has(task.id))
       }
 
-      const blocker = card.status?.state === 'blocked' || relatedTask?.status?.state === 'blocked'
+      const relatedBlocker = relatedTask !== undefined && hasBlockedWork({ card: relatedTask })
+      const blocker = hasBlockedWork({ card }) || relatedBlocker
       const visible = card.id === HYDRA_CARD || blocker || context.has(card.id) || !!relatedTask
 
       if (!visible) {

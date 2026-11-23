@@ -1,6 +1,5 @@
 import type { Card, TaskStatus } from './model.ts'
 import { ownerQuestions, type OwnerQuestion } from './questions.ts'
-import { reportActor } from '#hydra/hydra.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
 import { readyForReview } from '#tasks/delivery/model.ts'
@@ -17,6 +16,18 @@ export interface CardStatus {
 // An answer on its way leaves its question with the worker; a failed one comes back to the owner.
 const inFlight = ({ question }: { question: OwnerQuestion }) =>
   question.delivery?.state === 'queued' || question.delivery?.state === 'delivery_unknown'
+
+export const hasCompletedOutcome = ({ card }: { card: Card }): boolean =>
+  card.outcome?.closed === true || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
+
+export const hasBlockedWork = ({ card }: { card: Card }): boolean =>
+  card.workerLog?.status?.code === 'blocked' || (card.outcome?.state === 'failed' && !card.outcome.closed)
+
+export function hasMergedDelivery({ card }: { card: Card }): boolean {
+  const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
+
+  return requests.length > 0 && requests.every(link => link.state === 'merged')
+}
 
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
 export const waitingQuestions = ({
@@ -47,6 +58,8 @@ export function cardStatus({
     cards,
   })
   const worker = card.workerLog?.status
+  const completedOutcome = hasCompletedOutcome({ card })
+  const complete = worker?.code === 'done' || completedOutcome
 
   if (waiting.length || worker?.code === 'needs-you') {
     return {
@@ -54,16 +67,16 @@ export function cardStatus({
       state: 'needs_you',
       text: 'needs you',
       count: waiting.length > 1 ? waiting.length : undefined,
-      at: worker?.at,
+      at: worker?.code === 'needs-you' ? worker.at : undefined,
     }
   }
 
-  if (worker?.code === 'blocked') {
+  if (hasBlockedWork({ card })) {
     return {
       kind: 'blocked',
       state: 'blocked',
       text: 'blocked',
-      at: worker.at,
+      at: worker?.code === 'blocked' ? worker.at : undefined,
     }
   }
 
@@ -109,35 +122,33 @@ export function cardStatus({
     }
   }
 
-  const requests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
-
-  if (requests.length && requests.every(link => link.state === 'merged')) {
+  if (hasMergedDelivery({ card })) {
     return {
       kind: 'merged',
       text: 'PR merged',
     }
   }
 
-  if (requests.some(link => link.state === 'open')) {
+  if (card.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
     return {
       kind: 'review',
       text: 'PR open',
     }
   }
 
-  if (activity === 'finished' && !card.doneAt && !card.outcome?.closed) {
+  if (activity === 'finished' && !card.doneAt && !completedOutcome) {
     return {
       kind: 'finished',
       text: 'idle',
     }
   }
 
-  if (worker?.code === 'done' || card.doneAt || card.outcome?.closed) {
+  if (complete || card.doneAt) {
     return {
       kind: 'done',
       state: 'done',
       text: 'done',
-      at: worker?.at ?? card.doneAt,
+      at: worker?.code === 'done' ? worker.at : card.doneAt,
     }
   }
 
@@ -180,17 +191,19 @@ export const statusLabel = ({ status }: { status: CardStatus }) => {
   return status.count ? `${text} · ${status.count}` : text
 }
 
+interface CardUpdate {
+  text: string
+  at: string
+  source: 'note' | 'reminder' | 'review'
+}
+
 export function currentState({
   card,
   workerOnly = false,
 }: {
   card: Card
   workerOnly?: boolean
-}): {
-  text: string
-  at: string
-  source: 'note' | 'progress' | 'reminder' | 'review'
-} | undefined {
+}): CardUpdate | undefined {
   const line = card.workerLog?.latest
   const workerUpdate = line ? {
     text: line.code === 'invalid' ? `Invalid worker.log line: ${line.text}` : line.text,
@@ -198,14 +211,11 @@ export function currentState({
     source: 'note' as const,
   } : undefined
 
-  if (workerUpdate && !workerOnly) {
+  if (workerUpdate || workerOnly) {
     return workerUpdate
   }
 
-  const note = (card.statusLog ?? [])
-    .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
-    .at(-1)
-  const reviewUpdates = workerOnly ? [] : card.links.flatMap(link => {
+  const reviewUpdates = card.links.flatMap<CardUpdate>(link => {
     const at = link.checkedAt
     const openDecision = (card.asks ?? []).some(ask =>
       ask.kind === 'merge' && ask.url === link.url && !ask.closed && !ask.answered)
@@ -223,34 +233,21 @@ export function currentState({
       {
         text: `[${title}](${link.url}) is ready for review.`,
         at,
-        source: 'review' as const,
+        source: 'review',
       },
     ]
   })
-  const reminder = workerOnly ? undefined : card.reminder
-  const progress = card.progress
-  const includeProgress = progress && (!workerOnly || reportActor({ actor: progress.actor }))
-  const said = [
-    ...reviewUpdates,
-    workerUpdate,
-    reminder?.dueAt ? {
+  const reminder = card.reminder
+
+  if (reminder?.dueAt) {
+    reviewUpdates.push({
       text: 'Reminder due',
       at: reminder.dueAt,
-      source: 'reminder' as const,
-    } : undefined,
-    note ? {
-      text: note.note,
-      at: note.at,
-      source: 'note' as const,
-    } : undefined,
-    includeProgress ? {
-      text: progress.text,
-      at: progress.at,
-      source: 'progress' as const,
-    } : undefined,
-  ].filter(entry => entry !== undefined)
+      source: 'reminder',
+    })
+  }
 
-  return said.sort((
+  return reviewUpdates.sort((
     a,
     b,
   ) => a.at.localeCompare(b.at)).at(-1)

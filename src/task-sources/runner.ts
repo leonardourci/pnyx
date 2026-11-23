@@ -291,7 +291,8 @@ export function createSourceRunner({
       current: steeringClaim({ card }),
       claim: source.owner,
     })
-    const inactiveTask = card.hidden || card.expired || card.status?.state === 'done'
+    const inactiveTask = card.hidden || card.expired || completedOutcome({ outcome: card.outcome })
+      || card.workerLog?.status?.code === 'done'
 
     return currentOwner && !inactiveTask ? undefined : 'stale'
   }
@@ -826,3 +827,5 @@ export function createSourceRunner({
     },
   }
 }
+
+import { completedOutcome } from '#tasks/dependencies.ts'

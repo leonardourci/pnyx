@@ -1,8 +1,5 @@
 import { AUTO_TITLE_SOURCES, type Card, type AutoTitle } from './model.ts'
-import type { SourceRef, HydraState } from '#app/model.ts'
-import { LEGACY_IN_PROGRESS, type Column } from './columns-model.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { roleColumn, fallbackColumn } from './column-rules.ts'
+import type { SourceRef } from '#app/model.ts'
 
 // Keeps the best auto title seen: a better source replaces a worse one, a later
 // session title or folder replaces an earlier one, and the first prompt stays. It
@@ -98,13 +95,4 @@ export function wouldCycle({
   }
 
   return false
-}
-
-export function newCardColumn({ state }: { state: HydraState }): Column {
-  const columns = hydraConfig({ state }).columns
-
-  return columns.some(c => c.id === LEGACY_IN_PROGRESS) ? LEGACY_IN_PROGRESS : roleColumn({
-    columns,
-    role: 'in_progress',
-  }) ?? fallbackColumn({ columns })
 }

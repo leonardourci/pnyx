@@ -1,21 +1,17 @@
 import { useId, useState } from 'react'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card } from '#tasks/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
-import { hasTaskQuestion } from './task-question.ts'
 import { UpdateRow } from './update-rows.tsx'
 import { useCardUpdates } from './use-card-updates.ts'
 
 export function TaskUpdates({
   card,
-  columns,
   command,
   connected,
 }: {
   card: Card
-  columns: HydraColumn[]
   command: Command
   connected: boolean
 }) {
@@ -38,15 +34,9 @@ export function TaskUpdates({
   const timeline = taskTimeline({
     card,
     events,
-    columns,
-  })
-  const questionPending = hasTaskQuestion({
-    card,
   })
   // An open question to the owner shows on the card's Context tab, not here too.
-  const history = timeline.filter(update => (!questionPending || update.id !== card.status?.id
-    || update.state !== 'needs_you' || !!update.decision)
-    && !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered && !ask.closed))
+  const history = timeline.filter(update => !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered && !ask.closed))
   const groups = groupUpdates({ updates: history.toReversed() })
   const shown = oldestFirst ? groups : groups.toReversed()
   const rows = shown.flatMap(group => group.updates.map((

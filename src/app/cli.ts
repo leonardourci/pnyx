@@ -2,7 +2,7 @@ import { HydraError } from '#store/errors.ts'
 import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
-import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize } from './cli-support.ts'
+import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize, isArrangement } from './cli-support.ts'
 import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
@@ -16,7 +16,7 @@ import { owner } from '#memory/cli.ts'
 import { settings } from '#settings/cli.ts'
 import { harvest } from '#integrations/cli.ts'
 import { link, outcome } from '#tasks/delivery/cli.ts'
-import { columnCommandHandler, push, card, move } from '#tasks/cli.ts'
+import { push, card } from '#tasks/cli.ts'
 import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
@@ -61,7 +61,7 @@ const history = guard({
       throw new HydraError({
         message: `unknown kind: ${kind}`,
         code: 'VALIDATION_ERROR',
-        help: ['Use one of task.edited, pushed, moved, linked, outcome, replied, noted'],
+        help: ['Use one of task.edited, linked, outcome, replied, noted'],
       })
     }
 
@@ -74,7 +74,6 @@ const history = guard({
       hydraId,
       cardId: ref,
       types: [
-        'card.pushed',
         'task.edited',
         'task.created',
         'task.moved-in',
@@ -210,10 +209,10 @@ const undo = guard({
         hydraId,
         meta: m,
         intent: {
-          type: target.type === 'card.pushed' ? 'task.edited' : target.type,
-          accepts: target.type === 'card.pushed' ? ['card.pushed'] : undefined,
+          type: target.type,
           card: target.cardId,
           undoes: target.id,
+          arrangement: isArrangement({ event: target }),
         },
         decide: ({
           state,
@@ -235,7 +234,6 @@ export const commands = supervisedCommands({
     logs,
     apply,
     layout,
-    column: columnCommandHandler,
     hydra: hydraCommandHandler,
     owner,
     settings,
@@ -244,7 +242,6 @@ export const commands = supervisedCommands({
     push,
     card,
     harvest,
-    move,
     link,
     outcome,
     history,

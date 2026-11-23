@@ -3,8 +3,6 @@ import type { Card } from '#tasks/model.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
 import { reviewRequests } from './review-requests.ts'
 
-export const hasTaskQuestion = ({ card }: { card: Card }) => ownerQuestions({ card }).length > 0
-
 export function taskQuestions({
   state,
   card,

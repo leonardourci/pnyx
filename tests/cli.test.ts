@@ -653,6 +653,13 @@ describe(
     it(
       'rejects removed commands and unknown flags without hint output',
       async () => {
+        const beforeView = await hydra.owner({
+          args: [
+            'view',
+            'show',
+          ],
+        })
+
         for (const args of [
           [
             'task',
@@ -662,6 +669,13 @@ describe(
             'Changed',
           ],
           ['report'],
+          [
+            'column',
+            'resize',
+            'queued',
+            '--width',
+            '600',
+          ],
           [
             'serve',
             '--port',
@@ -715,10 +729,23 @@ describe(
             ],
           })
           expect(refused.status).toBe(2)
-          expect(JSON.parse(refused.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
+          const refusal = JSON.parse(refused.stderr)
+          expect(refusal).toMatchObject({ code: 'VALIDATION_ERROR' })
+
+          if (args[0] === 'column') {
+            expect(refusal.error).toContain('unknown command')
+          }
+
           expect(refused.stdout).toBe('')
           expect(refused.stderr).not.toContain('help[')
         }
+
+        expect(await hydra.owner({
+          args: [
+            'view',
+            'show',
+          ],
+        })).toEqual(beforeView)
 
         const literal = await run({
           args: [

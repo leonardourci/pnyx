@@ -1,7 +1,5 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { refreshTasks } from './columns.ts'
-import { createdColumn } from './column-rules.ts'
+import { refreshTasks } from './refresh.ts'
 import { touch } from './touch.ts'
 import { applySteering } from '#workers/steering.ts'
 
@@ -197,11 +195,8 @@ export function applyTask({
       project,
       brief,
       parentId,
-      column,
       folder,
     } = event.data
-    const columns = hydraConfig({ state }).columns
-    const held = Boolean(event.data.hold)
 
     state.cards[event.cardId] = {
       id: event.cardId,
@@ -228,18 +223,12 @@ export function applyTask({
       links: [],
       sourceRefs: [],
       sessionIds: [],
-      tracking: 'declared',
-      statusLog: [],
       ...(parentId ? { parentId } : {}),
       ...(folder ? { folder } : {}),
       ...(event.data.workerLogDir ? { workerLogDir: event.data.workerLogDir } : {}),
-      column: createdColumn({
-        columns,
-        column,
-        held,
-      }),
       revision: 1,
       createdSeq: event.seq,
+      createdAt: event.at,
       updatedSeq: event.seq,
       updatedAt: event.at,
     }
@@ -279,10 +268,6 @@ export function applyTask({
         if (card.workerLog?.status?.code === 'done') {
           delete card.workerLog.status
         }
-
-        if (card.status?.state === 'done') {
-          delete card.status
-        }
       }
     }
 
@@ -298,54 +283,6 @@ export function applyTask({
       card,
       event,
     })
-
-    return true
-  }
-
-  if (event.type === 'task.declared') {
-    const card = state.cards[event.cardId]
-
-    if (card) {
-      card.tracking = 'declared'
-
-      const restored = card.statusLog?.find(entry => entry.id === event.data.restores)
-      const wait = event.data.wait ?? restored?.wait
-      const declaration = {
-        ...event.data,
-        id: event.id,
-        at: event.at,
-        actor: event.actor,
-      }
-
-      if (wait) {
-        declaration.wait = { ...wait }
-      }
-
-      card.statusLog = [
-        ...(card.statusLog ?? []),
-        declaration,
-      ]
-      card.status = declaration
-
-      if (wait) {
-        card.wait = {
-          ...wait,
-          id: event.id,
-          at: event.at,
-        }
-      } else if (!event.data.waitingFor?.length) {
-        delete card.wait
-      }
-
-      touch({
-        card,
-        event,
-      })
-      refreshTasks({
-        state,
-        ids: [card.id],
-      })
-    }
 
     return true
   }

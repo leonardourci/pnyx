@@ -8,6 +8,7 @@ import { keptDays } from '#diagnostics/retention.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { projectWidth } from '#web-tasks/project-layout.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 
 // The board preview draws a 1440 px screen this many times smaller.
@@ -240,11 +241,15 @@ function boardWidths({
   return {
     chat: dragged ? view.hydraWidth : view.defaultHydraWidth,
     columns: columnsFor({ state }).map(column => {
-      const own = dragged ? view.columnWidths[column.id] : undefined
+      const own = dragged ? view.workspace.projectWidths[column.id] : undefined
 
       return {
         id: column.id,
-        width: own ?? view.defaultColumnWidths[column.id] ?? view.defaultColumnWidth,
+        width: projectWidth({
+          id: column.id,
+          widths: dragged ? view.workspace.projectWidths : {},
+          viewport: SCREEN,
+        }).width,
         dragged: own !== undefined,
       }
     }),

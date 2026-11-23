@@ -574,8 +574,16 @@ export function useTaskNavigation({
     keepRevealed({ id })
 
     const remaining = expandedIds.filter(item => item !== id)
+    const project = closing ? taskProjectGroup({
+      state,
+      card: closing,
+    }) : 'ideas'
+    const nextInProject = closing && filteredCards.find(card => taskProjectGroup({
+      state,
+      card,
+    }) === project)
     const target = closing && liveTask({ card: closing }) ? closing
-      : filteredCards.find(c => c.column === closing?.column) ?? filteredCards[0]
+      : nextInProject ?? filteredCards[0]
     // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
     setView(current => ({
       ...current,
@@ -583,7 +591,9 @@ export function useTaskNavigation({
       selected: selected === id ? remaining.at(-1) ?? null : current.selected,
     }))
 
-    requestAnimationFrame(() => focusElement({ selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(closing?.column ?? 'needs_you')}"]` }))
+    requestAnimationFrame(() => focusElement({
+      selector: target ? `[data-card="${CSS.escape(target.id)}"]` : `[data-column-heading="${CSS.escape(project)}"]`,
+    }))
   }
 
   return {

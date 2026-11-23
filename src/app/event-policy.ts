@@ -2,7 +2,8 @@ import type { HydraEvent } from './model.ts'
 
 export function durableEvent({ event }: { event: HydraEvent }): boolean {
   switch (event.type) {
-    case 'card.pushed':
+    case 'task.edited':
+      return !event.data.source
     case 'card.observed':
     case 'session.observed':
     case 'hydra.received':
@@ -21,7 +22,6 @@ export function durableEvent({ event }: { event: HydraEvent }): boolean {
     case 'hydra.operation':
       return event.data.kind === 'compaction'
     case 'task.steering.handled':
-    case 'card.moved':
       return !event.derived
     case 'card.noted':
       return event.actor !== 'harvest' || event.data.kind !== 'context'

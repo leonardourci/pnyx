@@ -1,7 +1,6 @@
 import type { CurrentAction } from '#hydra/calls.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { cardState } from './view.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
@@ -21,12 +20,9 @@ export function taskReferences({
   connected?: boolean
   now: number
 }) {
-  const config = hydraConfig({ state })
-
   return Object.fromEntries(Object.values(knownCards({ state }))
     .filter(c => !isManagedTask({ card: c }))
     .map(c => {
-      const column = config.columns.find(column => column.id === c.column)
       const status = cardState({
         card: c,
         hours,
@@ -42,7 +38,6 @@ export function taskReferences({
           title: c.title,
           state: statusLabel({ status }),
           kind: status.kind,
-          column: column?.role ?? column?.id ?? 'custom',
         },
       ]
     }))

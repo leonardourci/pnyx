@@ -41,7 +41,6 @@ export async function settingsNotice({
               state: writer.state,
               id: hydraId,
             }).hydra.id,
-            kind: 'progress',
             text: text.replaceAll(
               /\s+/g,
               ' ',

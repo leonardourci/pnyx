@@ -57,7 +57,7 @@ test('a reply reaches the worker once', async () => {
 })
 ```
 
-- `hydra.column({ role })` is a board column's id, `hydra.task({ key })` a task as `task show` prints it, and `hydra.startTask({ key, harness })` creates a task, starts its worker and waits for the worker's first turn.
+- `hydra.task({ key })` reads a task as `task show` prints it, and `hydra.startTask({ key, harness })` creates a task, starts its worker and waits for the worker's first turn.
 - `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Pnyx gave that agent.
 - `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
@@ -91,9 +91,10 @@ Rules:
 - `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity and exclusion of private steering.
 - `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
-- `oracle.test.ts`: search, its column, project and date filters and what it never reads.
+- `oracle.test.ts`: search, its project and date filters and what it never reads.
 - `paging.test.ts`: chat pages and a card's Activity pages.
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
+- `handoffs.test.ts`: queued worker handoffs, checkout refusals and crash recovery in a separate scratch home.
 - `settings.test.ts`: the settings every Hydra shares.
 - `native-store.test.ts`: durable receipts, task folder moves, corrupt logs, permission recovery and read-only setup.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.

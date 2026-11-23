@@ -18,7 +18,6 @@ export interface ContextNote {
   ownerAnswer?: boolean
   report?: boolean
   handled?: boolean
-  progress?: number
 }
 
 // Older snapshots recorded owner answers without metadata.
@@ -65,14 +64,12 @@ export function applyContextNotes({
     task = event.type === 'hydra.message' ? event.data.task : event.cardId,
     ownerAnswer = false,
     report = false,
-    progress = false,
   }: {
     id?: string
     text: string
     task?: string
     ownerAnswer?: boolean
     report?: boolean
-    progress?: boolean
   }) => {
     const notes = state.contextNotes ?? []
 
@@ -80,14 +77,7 @@ export function applyContextNotes({
       return
     }
 
-    let progressCount = 1
     const retained = notes.filter(note => {
-      if (progress && task && note.task === task && note.progress) {
-        progressCount += note.progress
-
-        return false
-      }
-
       return report || ownerAnswer || note.report || isOwnerAnswer({ note }) || note.task !== task
     })
     const next: ContextNote = {
@@ -105,10 +95,6 @@ export function applyContextNotes({
       next.report = true
     }
 
-    if (progress) {
-      next.progress = progressCount
-    }
-
     const pending = [
       ...retained,
       next,
@@ -124,18 +110,12 @@ export function applyContextNotes({
       add({
         text: event.data.text,
         report: true,
-        progress: event.data.kind === 'progress',
       })
     } else if (event.type === 'task.worker-line' && (
       event.data.code === 'needs-you' || event.data.code === 'blocked' || event.data.code === 'done'
     )) {
       add({
         text: `${event.data.code}: ${event.data.text}`,
-        report: true,
-      })
-    } else if (event.type === 'task.declared') {
-      add({
-        text: event.data.note ? `declared ${event.data.state}: ${event.data.note}` : `declared ${event.data.state}`,
         report: true,
       })
     }
@@ -334,17 +314,7 @@ export function contextNoteBlock({
       state,
     })
 
-    let count = ''
-
-    if (note.progress) {
-      count = ' (progress)'
-
-      if (note.progress > 1) {
-        count = ` (${note.progress} progress reports, latest)`
-      }
-    }
-
-    return `- record ${JSON.stringify(note.id)} ${note.task ?? 'no task'} [${status}]${count}: ${text}`
+    return `- record ${JSON.stringify(note.id)} ${note.task ?? 'no task'} [${status}]: ${text}`
   })
   const omitted = notes.slice(shown.length)
 

@@ -4,7 +4,6 @@ import type { EventBase } from '#store/events.ts'
 import type { Outcome } from '#tasks/delivery/model.ts'
 import type { SourceRef } from '#app/model.ts'
 import type { TaskCopy } from '#projects/model.ts'
-import type { Column } from '#tasks/columns-model.ts'
 
 // The characters a harness's model, effort or mode flag can take.
 export const AGENT_FLAG = /^[\w.:/[\]-]{1,100}$/
@@ -312,7 +311,6 @@ export type SessionEvent = EventBase & {
     handoff?: {
       folder: string
       copy?: TaskCopy
-      column: Column
     }
   }
 }

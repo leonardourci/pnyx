@@ -177,7 +177,6 @@ test(
     const noise = readEvents({
       hydraId: hydra.id,
       types: [
-        'card.pushed',
         'session.observed',
         'card.observed',
       ],
@@ -658,7 +657,7 @@ test(
 )
 
 test(
-  'Oracle preserves worker status when a task has a retention deadline',
+  'Oracle preserves worker status with a retention deadline and failed outcomes keep owner questions visible in Hydra chat',
   async () => {
     const hydra = await pnyx.hydra()
     await hydra.startTask({ key: 'blocked-in-done' })
@@ -672,7 +671,6 @@ test(
       line: 'blocked: Waiting for a missing fixture',
     })
     const task = await hydra.task({ key: 'blocked-in-done' })
-    const done = await hydra.column({ role: 'done' })
     await hydra.owner({
       args: [
         'outcome',
@@ -684,7 +682,6 @@ test(
     })
     expect(await hydra.task({ key: 'blocked-in-done' })).toMatchObject({
       status: 'blocked',
-      column: done,
     })
     const selector = await openChat({
       hydraId: hydra.id,
@@ -704,5 +701,54 @@ test(
     `,
     })
     expect(preview).toBe('Blocked')
+
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'failed-question',
+        '--title',
+        'Recover the export',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'outcome',
+        'failed-question',
+        'failed',
+      ],
+    })
+    const session = await hydra.chat({ text: 'Watch for work that needs my answer' })
+    await hydra.as({ session }).run({
+      args: [
+        'task',
+        'ask',
+        'failed-question',
+        '--to',
+        'owner',
+        '--question',
+        'Retry the failed export?',
+        '--choice',
+        'Retry',
+        '--choice',
+        'Stop',
+      ],
+    })
+    await chrome({
+      args: [
+        'open',
+        `http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`,
+      ],
+    })
+    const question = await chrome({
+      script: `
+      await page.wait('.hydra-chat .chat-decision .ask', 5000);
+      console.log(await page.eval(() => document.querySelector('.hydra-chat .chat-decision')?.textContent));
+    `,
+    })
+    expect(question).toContain('Blocker')
+    expect(question).toContain('Retry the failed export?')
   },
 )

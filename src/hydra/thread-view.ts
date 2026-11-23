@@ -2,7 +2,6 @@ import { mergeThreadPages } from './thread-history.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { hydraConfig } from './config.ts'
 import { joinMessageParts } from './history.ts'
 import { hydraConversation } from './conversation.ts'
 import { injectedInstructions, quietReply } from './chat-messages.ts'
@@ -20,7 +19,6 @@ export function hydraThreadView({
   tools: boolean
   thinking: boolean
 }): ThreadPage & { conversation: NonNullable<ThreadPage['conversation']> } {
-  const config = hydraConfig({ state })
   const card = state.cards[HYDRA_CARD]
   // An earlier session's entries may come from another provider.
   const provider = ({ session }: { session?: string }) => (session === undefined
@@ -45,7 +43,6 @@ export function hydraThreadView({
     transcript,
     provider: card?.agent?.provider,
     actions: page.actions ?? [],
-    columns: config.columns,
     working,
     held: new Set(held),
     tools,

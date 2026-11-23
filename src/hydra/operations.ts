@@ -73,7 +73,7 @@ const arrivedSince = ({
     state,
     message,
   }) && !message.stopped && !message.failure
-  && message.actor !== HYDRA_ACTOR && message.kind !== 'progress' && message.kind !== 'divider'
+  && message.actor !== HYDRA_ACTOR && message.kind !== 'divider'
   && !isRoutineMessage({ message }))
 
 // Hydra's first turn after an operation stopped it: what it was, how it ended and what the owner wrote meanwhile.

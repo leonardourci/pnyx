@@ -71,6 +71,10 @@ export function applyDependencies({
   return true
 }
 
+export function completedOutcome({ outcome }: { outcome?: Card['outcome'] | null }): boolean {
+  return Boolean(outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled')
+}
+
 export function completionGaps({
   state,
   card,
@@ -96,11 +100,10 @@ export function completionGaps({
 
   const pullRequests = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
   const merged = pullRequests.length > 0 && pullRequests.every(link => link.state === 'merged')
-  const declared = card.status?.state
-  const completed = declared === 'done' || (!declared && merged)
+  const completed = card.workerLog?.status?.code === 'done' || completedOutcome({ outcome: card.outcome }) || merged
 
   if (!completed) {
-    gaps.push(declared ?? 'not completed')
+    gaps.push('not completed')
   }
 
   const branchLanding = cardLanding({
@@ -209,15 +212,6 @@ function readinessBlockers({
       task: card.id,
       reason: card.hold.reason,
     }))
-  }
-
-  if (card.status?.state === 'paused' && card.status.hold) {
-    const detail = card.status.note ? `: ${card.status.note}` : ''
-
-    blockers.push({
-      reason: `its worker declared a paused hold${detail}`,
-      clear: `Once the owner gives the go, start the worker from task ${card.id} in the UI.`,
-    })
   }
 
   blockers.push(...questionBlockers({ card }))

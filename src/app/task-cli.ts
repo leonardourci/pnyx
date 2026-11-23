@@ -81,7 +81,6 @@ export const TASK_OPTIONS: Options = {
   session: { type: 'string' },
   'replace-session': { type: 'string' },
   parent: { type: 'string' },
-  column: { type: 'string' },
   note: { type: 'string' },
   limit: { type: 'string' },
   before: { type: 'string' },
@@ -808,7 +807,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
             card: c,
           }),
         })) : [],
-        declarations: task.statusLog?.length ?? 0,
         ...(task.hold ? { hold: task.hold } : {}),
       },
       help: [`Read tasks/${task.id}/task.log in Hydra ${hydraId} for its record`],
@@ -1074,8 +1072,9 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       hydraId,
       meta: m,
       intent: {
-        type: 'card.moved',
+        type: 'task.edited',
         card: ref,
+        arrangement: true,
       },
       decide: ({ state }) => reorderTask({
         state,
@@ -1101,7 +1100,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       meta: m,
       intent: {
         type: 'task.edited',
-        accepts: ['card.pushed'],
         card: ref,
       },
       decide: ({ state }) => {
@@ -1167,7 +1165,6 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       meta: m,
       intent: {
         type: 'task.edited',
-        accepts: ['card.pushed'],
         card: ref,
       },
       decide: ({ state }) => decidePush({

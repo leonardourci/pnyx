@@ -126,7 +126,7 @@ function ownerReviewsPullRequests({
   state: HydraState
   card: Card
 }): boolean {
-  if (isManagedTask({ card }) || card.status?.state === 'done' || card.outcome?.closed) {
+  if (isManagedTask({ card }) || completedOutcome({ outcome: card.outcome })) {
     return false
   }
 
@@ -219,13 +219,7 @@ export function reconcileAsks({
   }
 
   const changes: HydraEvent[] = []
-  const declaredDone = event.type === 'task.declared' && event.data.state === 'done'
-    && card.status?.actor !== 'pnyx'
-  const cancelled = event.type === 'card.outcome' && event.data.after?.closed === true
-  const movedDone = event.type === 'card.moved' && event.actor !== 'pnyx'
-    && event.data.before !== event.data.after && state.config?.columns
-    .some(column => column.id === card.column && column.role === 'done')
-  const ended = declaredDone || cancelled || movedDone
+  const ended = event.type === 'card.outcome' && completedOutcome({ outcome: event.data.after })
 
   for (const ask of openAsks({
     card,
@@ -339,20 +333,10 @@ function mergeQuestion({
   const number = link.url.split('/').at(-1)
   const report = state.hydraMessages?.findLast(message => message.task === card.id
     && reportActor({ actor: message.actor }) && !message.ask)
-  let note = card.statusLog?.findLast(status => reportActor({ actor: status.actor }))
-
-  if (!note && card.status && reportActor({ actor: card.status.actor })) {
-    note = card.status
-  }
-
-  let workerText = note?.note
-  let workerLabel = 'Worker status note'
-
-  if (report && (!note || Date.parse(report.at) >= Date.parse(note.at))) {
-    workerText = report.text
-    workerLabel = 'Worker report'
-  }
-
+  const line = card.workerLog?.latest
+  const useReport = report && (!line || Date.parse(report.at) >= Date.parse(line.at))
+  const workerText = useReport ? report.text : line?.text
+  const workerLabel = useReport ? 'Worker report' : 'Worker status line'
   const context = [
     ownerContext({ text: link.title ?? card.title }),
     link.url,
@@ -390,3 +374,5 @@ function ownerContext({ text }: { text: string }): string {
     '[internal reference]',
   )
 }
+
+import { completedOutcome } from '#tasks/dependencies.ts'

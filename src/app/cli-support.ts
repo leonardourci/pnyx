@@ -6,7 +6,6 @@ import { DEFAULT_HYDRA } from './home-migration.ts'
 import type { Meta } from './command-meta.ts'
 import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
-import { declaredState } from '#tasks/declarations.ts'
 import { briefChange } from '#tasks/updates.ts'
 import { readChanges } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
@@ -25,7 +24,6 @@ export const HOME_LIMIT = 50
 export const TEXT_CUT = 1000
 
 const EXPLAINED: readonly EventType[] = [
-  'card.moved',
   'task.created',
   'task.brief',
   'task.owner-ask',
@@ -231,7 +229,7 @@ function receipt({
     }
   }
 
-  if (event.type === 'board.configured' || event.type === 'board.columns' || event.type === 'board.agents') {
+  if (event.type === 'board.configured' || event.type === 'board.agents') {
     return {
       event: {
         seq: event.seq,
@@ -285,32 +283,6 @@ function receipt({
 
   const card = state.cards[event.cardId]!
 
-  if (event.type === 'task.declared') {
-    // The card's log keeps every declaration, and a retried one may no longer be the card's status.
-    const declaration = card.statusLog!.find(entry => entry.id === event.id)!
-    const phase = declaredState({ declaration })
-
-    return {
-      event: {
-        seq: event.seq,
-        id: event.id,
-        type: event.type,
-      },
-      card: {
-        id: card.id,
-        column: card.column,
-        revision: card.revision,
-      },
-      state: 'recorded',
-      notification: [
-        'needs_you',
-        'blocked',
-        'done',
-      ].includes(phase) ? 'Hydra wake eligible; owner delivery not confirmed' : 'No Hydra wake from this lifecycle declaration',
-      help: ['Append the result and its links to the assigned worker.log. A worker report does not confirm owner delivery.'],
-    }
-  }
-
   return {
     event: {
       seq: event.seq,
@@ -319,7 +291,6 @@ function receipt({
     },
     card: {
       id: card.id,
-      column: card.column,
       revision: card.revision,
     },
   }
@@ -330,6 +301,11 @@ interface Intent {
   accepts?: EventType[]
   card: string
   undoes?: string
+  arrangement?: boolean
+}
+
+export function isArrangement({ event }: { event: HydraEvent }): boolean {
+  return event.type === 'task.edited' && 'rank' in event.data && !('parentId' in event.data)
 }
 
 // A retried event id's receipt, from its event and the current state, since rebuilding the state at append time would replay the log. An id already used for another card or event type is a conflict, not a retry.
@@ -357,7 +333,10 @@ function originalReceipt(
   const sameType = original.type === intent.type
     || intent.accepts?.includes(original.type)
 
-  if (!sameType || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {
+  const arrangement = isArrangement({ event: original })
+
+  if (!sameType || arrangement !== Boolean(intent.arrangement)
+    || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {
     throw new HydraError({
       message: `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       code: 'IDEMPOTENCY_CONFLICT',
@@ -564,7 +543,6 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return 'Conversation copy from an older Pnyx'
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
-    case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`
@@ -594,7 +572,6 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.tools-applied': return 'Tool grants applied to the hosted session'
     case 'task.tools': return `Tools: ${event.data.after.join(', ') || 'none'}`
-    case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
     case 'task.ask.closed': return `Closed ${event.data.ask}: ${event.data.reason} (${event.data.evidence})`
     case 'task.ask.deferred': return event.data.until
@@ -610,7 +587,7 @@ function summary({ event }: { event: HydraEvent }): string {
         return `Hydra lifted Hold on ${event.data.answers}: ${event.data.text}`
       }
 
-      return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+      return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'hydra.agent-used': return `Agent ${event.data.model ?? event.data.harness}`
     case 'hydra.delivered': return `Hydra turn in ${event.data.session}`
     case 'hydra.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
@@ -625,13 +602,10 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
     case 'task.edited':
-    case 'card.pushed':
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
         .join(' ') || 'no fields'}`
     case 'card.observed':
       return `observed again, as ${event.data.of}`
-    case 'card.moved':
-      return `${undo}${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'card.linked': {
       const l = event.data.after ?? event.data.before
       const label = l ? `${l.kind}${l.number ? ` #${l.number}` : ''}` : event.data.url

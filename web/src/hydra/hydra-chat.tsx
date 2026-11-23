@@ -512,7 +512,7 @@ export function HydraChat({
     () => pnyxLookup({ state: () => lookupState.current }),
     [
       state.config,
-      state.view?.customColumns,
+      state.projects,
     ],
   )
   const since = running ? card?.workingSince ?? inFlight.at(-1)?.at ?? null : null

@@ -127,7 +127,6 @@ export function HydraView({
     hydraThread,
     hydraQueue,
     upgrade,
-    latest,
     actions,
     navigation,
     navigate,
@@ -219,7 +218,6 @@ export function HydraView({
     setCreatingTask,
   ] = useSessionView<{
     identity: string
-    column: string
     project?: string
     group?: string
     parent?: string
@@ -336,7 +334,6 @@ export function HydraView({
     selected,
     expandedIds,
     cards,
-    columns: statusColumns,
     cancelOpen,
     clearSelection,
     open,
@@ -430,12 +427,10 @@ export function HydraView({
   })
 
   const createTask = ({
-    column,
     project,
     group = IDEAS_COLUMN,
     parent,
   }: {
-    column: string
     project?: string
     group?: string
     parent?: string
@@ -453,12 +448,8 @@ export function HydraView({
       }) ?? intent.id
       const matchesForm = argument({
         args,
-        flag: '--column',
-      }) === column
-        && argument({
-          args,
-          flag: '--parent',
-        }) === parent
+        flag: '--parent',
+      }) === parent
       const refusedProject = argument({
         args,
         flag: '--project',
@@ -496,7 +487,6 @@ export function HydraView({
     }
     setCreatingTask({
       identity: crypto.randomUUID(),
-      column,
       project,
       group,
       version: taskFormVersion.current,
@@ -656,8 +646,6 @@ export function HydraView({
       revealPadding,
     ],
   )
-
-  const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
   const requestProject = () => {
     if (view.workspace.collapsed || view.workspace.chatCollapsed) {
@@ -950,8 +938,8 @@ export function HydraView({
   })
 
   const renderCard = ({
-    card: item,
     column,
+    card: item,
     ...family
   }: FamilyCard & { column: ProjectColumnData }) => {
     const openInline = expandedIds.includes(item.id)
@@ -995,7 +983,6 @@ export function HydraView({
         labelColors={state.labelColors}
         doneAfterHours={shared?.doneAfterHours}
         notify={cardActions.notify}
-        latest={latest[item.id]}
         action={actions[item.id]}
         answer={cardActions.answer}
         selected={opened}
@@ -1107,7 +1094,6 @@ export function HydraView({
                   const projectColumn = columns.find(column => column.id === group)
                   const singleRepository = projectColumn?.repositories.length === 1
                   createTask({
-                    column: queuedColumn,
                     group,
                     project: singleRepository ? projectColumn.repositories[0] : undefined,
                   })
@@ -1301,7 +1287,6 @@ export function HydraView({
                                 save={save}
                                 expandedWidth={expandedWidth}
                                 create={() => createTask({
-                                  column: queuedColumn,
                                   project: c.repositories.length === 1
                                     ? c.repositories[0] : undefined,
                                   group: c.id,
@@ -1318,8 +1303,10 @@ export function HydraView({
                                           ? repositoryOptions.filter(option =>
                                             c.repositories.includes(option.value))
                                           : repositoryOptions}
-                                        before={items.find(item =>
-                                          item.column === queuedColumn)?.id}
+                                        before={items[0] && {
+                                          task: items[0].id,
+                                          repositories: c.repositories,
+                                        }}
                                         command={command}
                                         connected={connected}
                                         notify={notify}

@@ -1,11 +1,9 @@
-import { createBeforeRank } from './create-placement.ts'
+import { taskRank } from './order.ts'
 import { randomUUID } from 'node:crypto'
-import { createdColumn, taskColumn } from './column-rules.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { explained } from '#app/cli-support.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { HydraError, inField } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
@@ -29,7 +27,6 @@ export type TaskOperation = { reason?: string } & (
     hold?: boolean
     noStart?: boolean
     parent?: string
-    column?: string
     before?: string
     ask?: string
     message?: string
@@ -72,7 +69,6 @@ export function planTaskChange({
   state,
   operation,
   meta,
-  hydraId,
   cardId,
 }: {
   state: HydraState
@@ -149,23 +145,6 @@ export function planTaskChange({
       })
     }
 
-    const columns = hydraConfig({
-      state,
-      id: hydraId,
-    }).columns
-    const selected = operation.column ? taskColumn({
-      columns,
-      ref: operation.column,
-    }) : undefined
-
-    if (operation.column && !selected) {
-      throw new HydraError({
-        message: 'unknown Hydra column',
-        field: 'column',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
     const createdId = cardId ?? `task-${randomUUID()}`
     const created: TaskCreated['data'] = {
       key,
@@ -173,13 +152,14 @@ export function planTaskChange({
     }
 
     if (operation.before) {
-      created.rank = createBeforeRank({
+      created.rank = taskRank({
         state,
-        column: createdColumn({
-          columns,
-          column: selected?.id,
-          held: Boolean(operation.hold),
-        }),
+        card: {
+          id: createdId,
+          project,
+          parentId: parent?.id,
+          createdSeq: state.seq + 1,
+        },
         before: operation.before,
       })
     }
@@ -212,10 +192,6 @@ export function planTaskChange({
 
     if (parent) {
       created.parentId = parent.id
-    }
-
-    if (selected) {
-      created.column = selected.id
     }
 
     if (folder) {

@@ -72,7 +72,6 @@ export const view = guard({
 
     const m = meta({ values })
     const entries = Object.entries(resizeViewPatch({
-      state: loadHydra({ hydraId }).state,
       patch: patch as Record<string, unknown>,
     }))
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
@@ -145,12 +144,10 @@ export const layout = guard({
       return {
         widths: {
           hydra: view.hydraWidth,
-          columns: view.columnWidths,
+          projects: view.workspace.projectWidths,
         },
         defaults: {
-          column: view.defaultColumnWidth,
           hydra: view.defaultHydraWidth,
-          columns: view.defaultColumnWidths,
         },
       }
     }

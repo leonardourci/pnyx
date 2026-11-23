@@ -5,13 +5,11 @@ const LIST_LIMIT = 100
 const UNREFERENCED = [
   'steering',
   'externalSources',
-  'statusLog',
   'notes',
   'replies',
   'brief',
   'initialPrompt',
   'intent',
-  'progress',
   'projectRefresh',
   'launch',
   'settings',

@@ -5,7 +5,6 @@ import type { TaskSpend } from '#workers/task-spend.ts'
 import type { TaskCopy } from '#projects/model.ts'
 import type { SourceRef } from '#app/model.ts'
 import type { ExternalSource } from '#task-sources/model.ts'
-import type { Column } from './columns-model.ts'
 import type { EventBase } from '#store/events.ts'
 
 export const MAX_BRIEF_LENGTH = 24000
@@ -108,8 +107,6 @@ export interface TaskReminder {
   dueAt?: string
   repeat?: ReminderRepeat
   dueEvent?: string
-  declaration?: string
-  resume?: TaskDeclaration
 }
 
 export interface ReminderRepeat {
@@ -123,12 +120,6 @@ export interface OwnerAsk {
   at: string
   actor: string
   message?: string
-}
-
-interface TaskProgress {
-  text: string
-  at: string
-  actor: string
 }
 
 interface TaskHold {
@@ -198,8 +189,6 @@ export interface Card {
   brief?: string
   // The card's Intent: what the owner wants from the task, newest version.
   intent?: string
-  // The worker's newest progress report; the newer of it and the newest status note is the card's Current state.
-  progress?: TaskProgress
   initialPrompt?: string
   project?: string
   // A rule the owner chose for this task only, over its project's.
@@ -232,9 +221,6 @@ export interface Card {
   queue?: TaskQueue
   queueNote?: string
   hidden?: boolean
-  tracking?: 'declared'
-  status?: TaskDeclaration
-  statusLog?: TaskDeclaration[]
   settings?: AgentSettings
   terminal?: TerminalFacts
   copy?: TaskCopy
@@ -250,9 +236,7 @@ export interface Card {
   steeringGeneration?: number
   externalSources?: ExternalSource[]
   notes?: NoteRef[]
-  // The column and the position in it are set only by creation and explicit moves.
   // A lower rank sorts first; a card never moved ranks by its createdSeq.
-  column: Column
   rank?: number
   revision: number
   createdSeq: number
@@ -285,27 +269,10 @@ export interface TaskWait {
   condition: 'task-done' | 'pr-opened' | 'pr-merged'
 }
 
-export interface TaskDeclaration {
-  wait?: TaskWait
-  id: string
-  at: string
-  actor: string
-  state: TaskStatus
-  note: string
-  // A paused worker's declared end of its wait, as an ISO time.
-  until?: string
-  // A pause the owner or Hydra asked for: it waits for their word, never for a timer.
-  hold?: boolean
-  source?: string
-  raw?: string
-  waitingFor?: string[]
-  restores?: string
-}
-
 // before holds the earlier value of each field the push changed (null when it was
 // absent), so a manual edit can be undone. A push that created the card has none.
 export type PushedEvent = EventBase & {
-  type: 'card.pushed' | 'task.edited'
+  type: 'task.edited'
   data: PushFields & {
     key: string
     source?: SourceRef
@@ -319,18 +286,6 @@ export type ObservedEvent = EventBase & {
   data: {
     source: SourceRef
     of: string
-  }
-}
-
-// rank places the card in its new column; beforeRank keeps the old one for undo.
-// A null column comes only from older logs and leaves the column as it is.
-export type MovedEvent = EventBase & {
-  type: 'card.moved'
-  data: {
-    before: Column | null
-    after: Column | null
-    rank?: number
-    beforeRank?: number
   }
 }
 

@@ -248,8 +248,6 @@ export function decidePush({
     ) as PushFields
   }
 
-  const edited = !source && (!card || hasTaskEdits)
-
   return decided({
     state,
     meta,
@@ -259,7 +257,7 @@ export function decidePush({
         meta,
         cardId,
       }),
-      type: edited ? 'task.edited' : 'card.pushed',
+      type: 'task.edited',
       data: {
         key,
         ...fields,

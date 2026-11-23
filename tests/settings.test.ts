@@ -17,16 +17,15 @@ const settings = async ({ hydra }: { hydra: Hydra }) => (await hydra.owner({
 
 const pageSettings = () => pnyx.home().settings.settings
 
-const queuedWidth = async ({ hydra }: { hydra: Hydra }) => {
+const projectWidth = async ({ hydra }: { hydra: Hydra }) => {
   const { view } = await hydra.owner({
     args: [
       'view',
       'show',
     ],
   })
-  const queued = await hydra.column({ role: 'queued' })
 
-  return view.columnWidths?.[queued] ?? view.defaultColumnWidths[queued]
+  return view.workspace.projectWidths.ideas ?? null
 }
 
 test(
@@ -70,19 +69,17 @@ test(
     })
     page.close()
 
-    const queued = await first.column({ role: 'queued' })
-    const defaultWidth = await queuedWidth({ hydra: second })
+    const defaultWidth = await projectWidth({ hydra: second })
     await first.owner({
       args: [
-        'column',
-        'resize',
-        queued,
-        '--width',
-        '600',
+        'view',
+        'set',
+        '--json',
+        '{"workspace":{"projectWidths":{"ideas":600}}}',
       ],
     })
-    expect(await queuedWidth({ hydra: first })).toBe(600)
-    expect(await queuedWidth({ hydra: second })).toBe(defaultWidth)
+    expect(await projectWidth({ hydra: first })).toBe(600)
+    expect(await projectWidth({ hydra: second })).toBe(defaultWidth)
 
     await first.owner({
       args: [
@@ -101,7 +98,7 @@ test(
       what: 'the page settings to show 24-hour retention after restart',
       check: () => pageSettings()?.doneAfterHours === 24,
     })
-    expect(await queuedWidth({ hydra: first })).toBe(600)
+    expect(await projectWidth({ hydra: first })).toBe(600)
   },
 )
 
@@ -124,6 +121,8 @@ test(
       '{"theme":"purple"}',
       '{"logDays":0}',
       '{"keyboard":{"bindings":{}}}',
+      '{"defaultColumnWidth":460}',
+      '{"defaultColumnWidths":{"ideas":460}}',
     ]) {
       expect((await hydra.ownerRefused({
         args: [
@@ -353,6 +352,14 @@ test(
           cardHeights: { [task.card.id]: 640 },
         }),
       ],
+    })
+    expect(await hydra.owner({
+      args: [
+        'layout',
+        'show',
+      ],
+    })).toMatchObject({
+      widths: { projects: { ideas: 944 } },
     })
     const reset = await hydra.owner({
       args: [

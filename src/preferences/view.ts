@@ -2,17 +2,12 @@ import { DEFAULT_WORKSPACE, patchWorkspace, workspaceLayout } from './workspace.
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
-import { COLUMNS } from '#tasks/columns-model.ts'
-import { hydraConfig } from '#hydra/config.ts'
 
 const DEFAULT_WIDTHS = {
-  column: 460,
   hydra: 520,
 } as const
-export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
 // Views saved before the defaults widened carry these as stored defaults; they count as unset.
 const LEGACY_DEFAULT_WIDTHS = {
-  column: 290,
   hydra: 360,
 } as const
 
@@ -23,8 +18,6 @@ export const DEFAULT_VIEW: ViewPreferences = {
   lastMessageOnCards: true,
   hydraWidth: DEFAULT_WIDTHS.hydra,
   defaultHydraWidth: DEFAULT_WIDTHS.hydra,
-  defaultColumnWidth: DEFAULT_COLUMN_WIDTH,
-  defaultColumnWidths: {},
   fontSize: 14,
   chatFontSize: 16,
   codeFontSize: 13,
@@ -34,11 +27,9 @@ export const DEFAULT_VIEW: ViewPreferences = {
   cardColors: true,
   toolDetails: false,
   thinkingDetails: false,
-  columnWidths: {},
   cardHeights: {},
   closedCardHeights: {},
   cardTraceOverrides: {},
-  customColumns: [],
 }
 
 export const VIEW_SIZE_LIMITS = {
@@ -161,48 +152,20 @@ export const viewFor = ({
     delete own.defaultHydraWidth
   }
 
-  if (own.defaultColumnWidths) {
-    own.defaultColumnWidths = Object.fromEntries(Object.entries(own.defaultColumnWidths)
-      .filter(([
-        , width,
-      ]) => width !== LEGACY_DEFAULT_WIDTHS.column))
-  }
-
   const view = {
     ...structuredClone(DEFAULT_VIEW),
     ...own,
     ...structuredClone(knownViewFields({ view: settings })),
   }
-  const columnIds = new Set<string>([
-    ...COLUMNS,
-    ...(state.config?.columns ?? view.customColumns).map(column => column.id),
-  ])
-
-  const defaultColumnWidth = persistedSize({
-    value: view.defaultColumnWidth,
-    fallback: DEFAULT_COLUMN_WIDTH,
-    ...VIEW_SIZE_LIMITS.columnWidth,
-  })
 
   return {
     ...view,
     workspace: workspaceLayout({ input: view.workspace }),
-    defaultColumnWidth,
     defaultHydraWidth: persistedSize({
       value: view.defaultHydraWidth,
       fallback: DEFAULT_VIEW.defaultHydraWidth,
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
-    defaultColumnWidths: {
-      ...Object.fromEntries([...columnIds].map(id => [
-        id,
-        defaultColumnWidth,
-      ])),
-      ...Object.fromEntries(Object.entries(persistedMap({
-        values: view.defaultColumnWidths ?? {},
-        ...VIEW_SIZE_LIMITS.columnWidth,
-      })).filter(([id]) => columnIds.has(id))),
-    },
     fontSize: persistedSize(
       {
         value: view.fontSize,
@@ -244,12 +207,6 @@ export const viewFor = ({
       fallback: DEFAULT_VIEW.cardHeight,
       ...VIEW_SIZE_LIMITS.cardHeight,
     }),
-    columnWidths: persistedMap(
-      {
-        values: view.columnWidths,
-        min: VIEW_SIZE_LIMITS.columnWidth.min,
-      },
-    ),
     cardHeights: persistedMap({
       values: view.cardHeights,
       ...VIEW_SIZE_LIMITS.cardHeight,
@@ -269,61 +226,17 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
       null,
     ])),
   },
-  columnWidths: {
-    ...Object.fromEntries(Object.keys(view.columnWidths).map(id => [
-      id,
-      null,
-    ])),
-  },
 })
 
-// Saved widths also resize the named Hydra; settings set deliberately does not use this patch.
 export function resizeViewPatch({
-  state,
   patch,
 }: {
-  state: HydraState
   patch: Record<string, unknown>
 }): Record<string, unknown> {
-  const columns = hydraConfig({ state }).columns.map(column => column.id)
-  const defaults = record({ value: patch.defaultColumnWidths })
-
-  const malformed = (patch.defaultColumnWidths !== undefined && !defaults)
-    || (patch.columnWidths !== undefined && !record({ value: patch.columnWidths }))
-
-  // A malformed width map passes through unchanged so view validation reports it.
-  if (malformed) {
-    return patch
-  }
-
-  const widths = Object.fromEntries(columns
-    .filter(id => patch.defaultColumnWidth !== undefined || (defaults && id in defaults))
-    .map(id => [
-      id,
-      defaults?.[id] ?? patch.defaultColumnWidth ?? null,
-    ]))
-
   const resized = { ...patch }
 
   if (patch.defaultHydraWidth !== undefined) {
     resized.hydraWidth = patch.hydraWidth === undefined ? patch.defaultHydraWidth : patch.hydraWidth
-  }
-
-  if (patch.defaultColumnWidth !== undefined) {
-    resized.defaultColumnWidths = {
-      ...Object.fromEntries(columns.map(id => [
-        id,
-        null,
-      ])),
-      ...defaults,
-    }
-  }
-
-  if (Object.keys(widths).length) {
-    resized.columnWidths = {
-      ...widths,
-      ...record({ value: patch.columnWidths }),
-    }
   }
 
   return resized
@@ -386,7 +299,6 @@ export function patchView({
     state,
     settings,
   }))
-  const hydraColumnIds = state.config?.columns.map(c => c.id) ?? []
 
   for (const [
     key,
@@ -394,7 +306,7 @@ export function patchView({
   ] of Object.entries(input).sort((
       [a],
       [b],
-    ) => a === 'customColumns' ? -1 : b === 'customColumns' ? 1 : a.localeCompare(b))) {
+    ) => a.localeCompare(b))) {
     switch (key) {
       case 'workspace':
         next.workspace = patchWorkspace({
@@ -414,11 +326,6 @@ export function patchView({
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
-      case 'defaultColumnWidth': next.defaultColumnWidth = size({
-        value,
-        ...VIEW_SIZE_LIMITS.columnWidth,
-        key,
-      }); break
       case 'defaultHydraWidth': next.defaultHydraWidth = size({
         value,
         ...VIEW_SIZE_LIMITS.hydraWidth,
@@ -451,7 +358,7 @@ export function patchView({
         }
 
         next[key] = value; break
-      case 'columnWidths': case 'cardHeights': case 'closedCardHeights': case 'defaultColumnWidths': {
+      case 'cardHeights': case 'closedCardHeights': {
         const map = record({ value })
 
         if (!map) {
@@ -466,24 +373,14 @@ export function patchView({
             return invalid({ detail: key })
           }
 
-          const cardMap = key === 'cardHeights' || key === 'closedCardHeights'
-
-          if (cardMap && !state.cards[id]) {
-            return invalid({ detail: id })
-          }
-
-          if (key === 'columnWidths' && n !== null && ![
-            ...COLUMNS,
-            ...hydraColumnIds,
-            ...next.customColumns.map(c => c.id),
-          ].includes(id as never)) {
+          if (!state.cards[id]) {
             return invalid({ detail: id })
           }
 
           if (n === null) {
             delete next[key][id]
           } else {
-            const limits = cardMap ? VIEW_SIZE_LIMITS.cardHeight : VIEW_SIZE_LIMITS.columnWidth
+            const limits = VIEW_SIZE_LIMITS.cardHeight
             next[key][id] = size({
               value: n,
               ...limits,
@@ -528,37 +425,6 @@ export function patchView({
           next.cardTraceOverrides[id] = {
             ...next.cardTraceOverrides[id],
             ...override,
-          }
-        }
-
-        break
-      }
-      case 'customColumns': {
-        if (!Array.isArray(value) || value.length > 20) {
-          return invalid({ detail: key })
-        }
-
-        const ids = new Set<string>()
-        next.customColumns = value.map(rawColumn => {
-          const c = record({ value: rawColumn })
-
-          if (!c || typeof c.id !== 'string' || !/^custom:[a-z0-9-]{1,60}$/.test(c.id) || ids.has(c.id)
-            || typeof c.title !== 'string' || !c.title.trim() || c.title.length > 60 || Object.keys(c).some(k => k !== 'id' && k !== 'title')) {
-            return invalid({ detail: key })
-          }
-
-          ids.add(c.id)
-
-          return {
-            id: c.id as `custom:${string}`,
-            title: c.title.trim(),
-          }
-        })
-
-        // Legacy view edits leave hydra-owned column widths intact.
-        for (const id of Object.keys(next.columnWidths)) {
-          if (id.startsWith('custom:') && !ids.has(id) && !hydraColumnIds.includes(id as `custom:${string}`)) {
-            delete next.columnWidths[id]
           }
         }
 

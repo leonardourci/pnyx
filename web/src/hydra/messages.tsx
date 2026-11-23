@@ -6,7 +6,6 @@ import { skillIcon } from './skill-icons.ts'
 import type { TurnActions } from '#hydra/conversation.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import { isEditing } from '#web-shared/ui/focus.ts'
 import { Button,InlineButton } from '#web-shared/ui/controls.tsx'
@@ -488,12 +487,7 @@ export function Messages({
     },
     [ordered],
   )
-  const lookColumn = useCallback(
-    ({ id }: { id: string }) => columnLook({
-      column: lookup.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
-    }),
-    [lookup],
-  )
+  const lookColumn = columnLook
   const currentOpen = useRef(openTask)
   currentOpen.current = openTask
   const open = useCallback(

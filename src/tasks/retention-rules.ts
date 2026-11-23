@@ -4,6 +4,7 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 import { isManagedTask } from './select.ts'
+import { cardStatus } from './card-status.ts'
 
 export const DEFAULT_DONE_HOURS = 1
 export const MAX_DONE_HOURS = 876000
@@ -49,8 +50,15 @@ export function refreshDone({
       continue
     }
 
-    const done = state.config?.columns.find(c => c.id === card.column)?.role === 'done'
-      || (!state.config && card.column === 'done')
+    const status = cardStatus({
+      card: {
+        ...card,
+        doneAt: card.workerLog?.status?.code === 'done' ? card.doneAt : undefined,
+      },
+      cards: state.cards,
+      sessions: state.sessions,
+    }).kind
+    const done = status === 'done' || status === 'merged'
 
     if (done && !isManagedTask({ card })) {
       card.doneAt ??= at
@@ -85,11 +93,10 @@ export function refreshDone({
       const completed = parts.flatMap(part => part.doneAt ? [part.doneAt] : [])
       completed.push(parent.doneAt ?? at)
 
-      if (parent.status?.state === 'done') {
-        completed.push(parent.status.at)
-      }
-
-      parent.doneAt = completed.sort().at(-1)
+      parent.doneAt = completed.sort((
+        a,
+        b,
+      ) => Date.parse(a) - Date.parse(b)).at(-1)
     } else {
       delete parent.doneAt
       delete parent.keepDone

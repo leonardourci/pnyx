@@ -301,13 +301,6 @@ export function eventText({ event }: { event: HydraEvent }): string {
         event.data.text,
       )
       break
-    case 'task.declared':
-      parts.push(
-        event.data.state,
-        event.data.note,
-        event.data.raw,
-      )
-      break
     case 'task.asked':
       parts.push(
         event.data.question,
@@ -345,11 +338,7 @@ export function eventText({ event }: { event: HydraEvent }): string {
         event.data.hydra.name,
       )
       break
-    case 'board.columns':
-      parts.push(...event.data.columns.map(c => c.title))
-      break
-    case 'task.edited':
-    case 'card.pushed': {
+    case 'task.edited': {
       const { data } = event
       const changed = ({ field }: { field: string }) => !data.before || field in data.before
 
@@ -393,7 +382,6 @@ export function eventText({ event }: { event: HydraEvent }): string {
     case 'card.noted':
       parts.push(event.data.text)
       break
-    case 'card.moved':
       break
   }
 

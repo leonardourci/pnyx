@@ -1,6 +1,6 @@
 import type { Card } from './model.ts'
 import type { HydraState } from '#app/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { cardStatus } from './card-status.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const known = new WeakMap<Record<string, Card>, {
@@ -45,7 +45,6 @@ export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true
 }
 
-// Declared done by its worker, or moved into a done column.
 export function taskDone({
   state,
   card,
@@ -59,13 +58,16 @@ export function taskDone({
     return card.doneAt !== undefined
   }
 
-  const doneColumns = hydraConfig({ state }).columns.filter(column => column.role === 'done')
-    .map(column => column.id as string)
+  const status = cardStatus({
+    card,
+    cards: state.cards,
+    sessions: state.sessions,
+  }).kind
 
-  return card.doneAt !== undefined || card.status?.state === 'done' || doneColumns.includes(card.column)
+  return status === 'done' || status === 'merged'
 }
 
-export function rankOf({ card }: { card: Card }): number {
+export function rankOf({ card }: { card: Pick<Card, 'rank' | 'createdSeq'> }): number {
   return card.rank ?? card.createdSeq
 }
 
@@ -75,7 +77,7 @@ export function rankWithin({
   others,
   at,
 }: {
-  card: Card
+  card: Pick<Card, 'rank' | 'createdSeq'>
   others: Card[]
   at: number
 }): number {
@@ -85,19 +87,4 @@ export function rankWithin({
   return next && previous ? (rankOf({ card: previous }) + rankOf({ card: next })) / 2
     : next ? rankOf({ card: next }) - 1
       : previous ? rankOf({ card: previous }) + 1 : rankOf({ card })
-}
-
-export function columnCards({
-  state,
-  column,
-}: {
-  state: HydraState
-  column: string
-}): Card[] {
-  return Object.values(state.cards)
-    .filter(c => liveTask({ card: c }) && c.column === column)
-    .sort((
-      a,
-      b,
-    ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }

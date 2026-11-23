@@ -148,11 +148,6 @@ export function helperEvent({
     return undefined
   }
 
-  if (event.type === 'task.declared' && event.data.state !== 'blocked'
-    && event.data.state !== 'needs_you' && event.data.state !== 'done') {
-    return undefined
-  }
-
   const kinds = eventReasons({
     state,
     event,

@@ -1414,6 +1414,44 @@ test(
     console.log(await page.eval(() => document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Description"].card-section')?.textContent));
   `,
     })).toContain('Explain the empty state and its next action.')
+    const repositories = await addRevealProjects({ hydra })
+    await hydra.owner({
+      args: [
+        'project',
+        'group',
+        'Export',
+        ...repositories,
+      ],
+    })
+    const existing = await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--title',
+        'Existing export',
+        '--project',
+        repositories[0]!,
+      ],
+    })
+    const group = loadHydra({ hydraId: hydra.id }).state.projects![0]!.group!.id
+    await chrome({
+      script: `
+    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Export"]');
+    await page.fill('.task-create [aria-label="Task title"]', 'An idea without a repository');
+    await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
+    await page.wait('[data-column="ideas"] [data-task]:not([data-task="${saved.id}"]) .card-open');
+    await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Export"]');
+    await page.fill('.task-create [aria-label="Task title"]', 'First grouped export');
+    await page.click('.task-create [aria-label="Repository"]');
+    await page.click('.task-create [role="option"][aria-label="Reveal-1"]');
+    await page.eval(() => [...document.querySelectorAll('.task-create button')].find(button => button.textContent === 'Save task').click());
+    await page.wait('[data-column="${group}"] [data-task]:not([data-task="${existing.card.id}"]) .card-open');
+    console.log(await page.eval(() => JSON.stringify([...document.querySelectorAll('[data-column="${group}"] [data-task]')].map(card => card.dataset.task))));
+  `,
+    }).then(ordered => {
+      expect(JSON.parse(ordered).at(-1)).toBe(existing.card.id)
+    })
   },
 )
 

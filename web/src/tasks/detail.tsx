@@ -3,7 +3,6 @@ import { Prerequisites } from './prerequisites.tsx'
 import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { columnsFor } from './view.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export function Detail({
@@ -28,7 +27,6 @@ export function Detail({
       <Prerequisites card={card} state={state} />
       <TaskUpdates
         card={card}
-        columns={columnsFor({ state })}
         command={command}
         connected={connected}
       />

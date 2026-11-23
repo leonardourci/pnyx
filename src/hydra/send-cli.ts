@@ -9,7 +9,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { hydraConfig } from './config.ts'
 import { hydraCandidate } from './agent-choice.ts'
-import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
+import { hydraEvent, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 import { withWriter } from '#app/writer.ts'
@@ -34,25 +34,6 @@ export async function hydraSend({
   if (!ref && values.action !== undefined) {
     throw new HydraError({
       message: '--action needs --task',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  if (values.kind !== undefined && values.kind !== 'progress') {
-    throw new HydraError({
-      message: '--kind must be progress',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  const progress = values.kind === 'progress'
-
-  const misused = !ref || !reportActor({ actor: m.actor }) || values.action !== undefined
-    || values.text === undefined
-
-  if (progress && misused) {
-    throw new HydraError({
-      message: '--kind progress is an agent\'s report: pass --task and --text, no --action, and --actor worker:<task> when PNYX_ACTOR is unset',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -115,7 +96,6 @@ export async function hydraSend({
           data: {
             ...(task ? { task: task.id } : {}),
             action,
-            ...(progress ? { kind: 'progress' as const } : {}),
             text,
             ...(text !== entered ? { enteredText: entered } : {}),
             ...(m.details ? { details: m.details } : {}),
@@ -135,13 +115,6 @@ export async function hydraSend({
       return decision
     },
   })
-
-  if (progress && !result.duplicate) {
-    return {
-      ...result,
-      help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use worker.log'],
-    }
-  }
 
   if (m.actor === HYDRA_ACTOR || typeof result.message !== 'string') {
     return result

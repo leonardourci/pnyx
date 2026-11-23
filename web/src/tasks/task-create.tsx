@@ -24,7 +24,6 @@ export function TaskCreate({
   storageIdentity,
   identity,
   version,
-  column,
   project,
   repositories = [],
   parent,
@@ -41,11 +40,13 @@ export function TaskCreate({
   version: number
   storageIdentity: string
   identity: string
-  column: string
   project?: string
   repositories?: RepositoryOption[]
   parent?: string
-  before?: string
+  before?: {
+    task: string
+    repositories: string[]
+  }
   command: Command
   connected: boolean
   submitted(): void
@@ -127,6 +128,10 @@ export function TaskCreate({
   const imagesLoading = hasPendingImage({ text: description })
   const descriptionTooLong = descriptionExceedsLimit({ text: description })
   const needsRepository = repositories.length > 1 && !repository
+  const sameGroup = before && (repository
+    ? before.repositories.includes(repository) : !before.repositories.length)
+  const beforeTask = sameGroup
+    ? before.task : undefined
   const disabled = !connected || busy || !title.trim() || imagesLoading || descriptionTooLong
 
   const save = async ({
@@ -148,8 +153,6 @@ export function TaskCreate({
       'create',
       '--title',
       title.trim(),
-      '--column',
-      column,
     ]
 
     const savedDescription = taskDescription({ text })
@@ -165,10 +168,10 @@ export function TaskCreate({
       )
     }
 
-    if (before) {
+    if (beforeTask) {
       args.push(
         '--before',
-        before,
+        beforeTask,
       )
     }
 

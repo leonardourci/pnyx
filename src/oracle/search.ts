@@ -1,3 +1,4 @@
+import { taskProjectGroup } from '#tasks/order.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -290,7 +291,6 @@ export function search({
         title: 'Hydra',
         workspace: '',
         project: undefined,
-        column: '',
         updatedAt: '',
         links: [],
       },
@@ -309,8 +309,15 @@ export function search({
         continue
       }
 
-      if (query.columns?.length && !query.columns.includes(card.column)) {
-        continue
+      if (query.columns?.length) {
+        const group = card.id === '$board' ? undefined : taskProjectGroup({
+          state,
+          card,
+        })
+
+        if (group === undefined || !query.columns.includes(group)) {
+          continue
+        }
       }
 
       if (query.projects?.length && card.id !== '$board' && !query.projects.includes(card.project ?? '')) {

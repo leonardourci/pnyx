@@ -49,13 +49,13 @@ Remaining: integrate the parallel Tailwind commits, then run one deslop pass and
 
 | Existing behavior | Deliberate destination | Implementation |
 | --- | --- | --- |
-| Lifecycle placement in role columns | Keep role columns as compatibility facts; render by project and factual state | Preserved. No history rewrite |
-| Custom status columns and rules | Continue applying their rules internally; no visible status columns | Preserved. The column CLI remains a lifecycle control |
+| Task state | Derive one shared status from turns, hooks, worker lines, links and explicit owner decisions | Hidden lifecycle columns and declarations are removed |
+| Project grouping | Render attached project groups and Ideas | No status-column configuration or rules |
 | Done timestamps and hide overrides | Keep existing retention; parents finish only after their children | Implemented. Default is 1 hour |
-| Queued-role column and worker queues | Keep queue placement and handoff guards | Preserved. `task reorder --behind` stays a queue operation |
-| Manual placement overrides | Keep lifecycle override events; project edits choose visible position | Preserved. `task arrange` changes visual rank |
-| Column widths/order and CLI | Preserve old values for old clients; workspace view fields own project layout | Implemented through `view set`, not legacy `column resize` |
-| Column skills and digest | Describe project arrangement and per-project state counts; explain legacy controls | Updated |
+| Worker queues | Keep queue assignment and handoff guards | Queueing does not change project grouping or visual rank |
+| Task order | Project edits choose the visible group; explicit arrangement changes rank | Owner edits remain undoable |
+| Project widths and order | Workspace view fields own project layout | Preserved |
+| Column skills and digest | Describe project arrangement and per-project state counts | No hidden lifecycle controls |
 | Parent specified only at creation | `task parent` sets/clears it, rejecting cycles and deeper nesting | Implemented; prior integration cases passed |
 | One folder is one project | Repo attaches alone; folder of direct child repos creates a group; `project group` groups attachments | Implemented atomically |
 | Repo attached to several Hydras | Keep legacy duplicates flagged; owner chooses keeper; refuse new duplicates | Implemented in Setup, Settings and CLI; prior integration cases passed |

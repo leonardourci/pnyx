@@ -360,7 +360,6 @@ export function applyAttachment({
     delete target.queue
     delete target.queueNote
     target.folder = handoff.folder
-    target.column = handoff.column
     session.queueCompleted = (session.queueCompleted ?? 0) + 1
 
     if (handoff.copy) {
@@ -416,8 +415,8 @@ export function observeSession({
     sourceRefs: [],
   }
 
-  if (event.type === 'card.pushed' || event.type === 'task.edited' || event.type === 'card.observed') {
-    const pushedAgent = (event.type === 'card.pushed' || event.type === 'task.edited') ? event.data.agent : undefined
+  if (event.type === 'task.edited' || event.type === 'card.observed') {
+    const pushedAgent = event.type === 'task.edited' ? event.data.agent : undefined
 
     if (pushedAgent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
       session.launch = {
@@ -445,7 +444,7 @@ export function observeSession({
       session.lastSeen = event.at
     }
 
-    if ((event.type === 'card.pushed' || event.type === 'task.edited') && typeof event.data.activity === 'string') {
+    if (event.type === 'task.edited' && typeof event.data.activity === 'string') {
       session.activityObservedAt = event.data.source?.observedAt ?? event.at
     }
 

@@ -273,7 +273,7 @@ test(
                 id: 'legacy-outside-observation',
               },
             }),
-            type: 'card.pushed',
+            type: 'task.edited',
             data: {
               key: 'claude:outside-1',
               agent: working.agent,
@@ -310,7 +310,7 @@ test(
                 id: 'legacy-outside-settings',
               },
             }),
-            type: 'card.pushed',
+            type: 'task.edited',
             data: {
               key: 'claude:outside-1',
               settings: {
@@ -532,7 +532,6 @@ test(
     ))
       .join('')
       .slice(onStart)
-    expect(onLogs).not.toContain('hook.push')
     expect(onLogs).not.toContain('card.observed')
     await hydra.owner({
       args: [
@@ -561,7 +560,7 @@ test(
       'utf8',
     ))
       .join('')
-    expect(logs).toContain('hook.push')
+
     expect(logs).not.toContain('Fix the flaky login test')
     expect(logs).not.toContain('with more detail below')
 
@@ -790,6 +789,54 @@ test(
         '--project',
         'checkout',
       ],
+      [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'merged-checkout',
+        '--title',
+        'Completed checkout',
+        '--project',
+        'checkout',
+      ],
+      [
+        'link',
+        'merged-checkout',
+        '--url',
+        'https://github.com/example/checkout/pull/1',
+        '--state',
+        'merged',
+      ],
+      [
+        'outcome',
+        'merged-checkout',
+        'failed',
+      ],
+      [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'finished-checkout',
+        '--title',
+        'Finished checkout with a PR still open',
+        '--project',
+        'checkout',
+      ],
+      [
+        'link',
+        'finished-checkout',
+        '--url',
+        'https://github.com/example/checkout/pull/2',
+        '--state',
+        'open',
+      ],
+      [
+        'outcome',
+        'finished-checkout',
+        'done',
+      ],
     ]) {
       expect((await operation({
         args: [
@@ -829,6 +876,8 @@ test(
     })
     expect(inProject.status).toBe(0)
     expect(inProject.stdout).toContain('Speed up checkout')
+    expect(inProject.stdout).not.toContain('Completed checkout')
+    expect(inProject.stdout).not.toContain('Finished checkout with a PR still open')
 
     const elsewhere = await hook({
       event: 'SessionStart',

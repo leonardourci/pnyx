@@ -1,11 +1,10 @@
 import { HydraRemoval } from './hydra-removal.tsx'
-import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS, patchView, resizeViewPatch } from '#preferences/view.ts'
+import { DEFAULT_VIEW, VIEW_SIZE_LIMITS, patchView, resizeViewPatch } from '#preferences/view.ts'
 import type { Settings } from '#settings/model.ts'
 import { DEFAULT_LOG_DAYS, DEFAULT_LOG_MAX_MB, DEFAULT_SETTINGS, MAX_LOG_DAYS, MAX_LOG_MB } from '#settings/settings.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -21,7 +20,6 @@ import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SettingRow, SettingStack, SettingsRows } from '#web-shared/ui/setting-row.tsx'
 import { useSharedSettings } from './shared-settings.ts'
-import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { AccountSettings } from '#web-workers/account-settings.tsx'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
@@ -45,7 +43,6 @@ export const SETTING_PREVIEWS = new Set([
   'fontSize',
   'chatFontSize',
   'codeFontSize',
-  'defaultColumnWidths',
   'defaultHydraWidth',
   'resetWidths',
   'lastMessageOnCards',
@@ -161,8 +158,6 @@ export function SettingPreview({
       return <ChatTextPreview view={view} />
     case 'codeFontSize':
       return <CodeTextPreview view={view} />
-    case 'defaultColumnWidths':
-      return <BoardPreview state={state} view={view} mark="columns" />
     case 'defaultHydraWidth':
       return <BoardPreview state={state} view={view} mark="chat" />
     case 'resetWidths':
@@ -225,67 +220,6 @@ function TextSize({
   )
 }
 
-function ColumnWidths({
-  state,
-  view,
-  save,
-  slide,
-}: Saving & {
-  state: HydraState
-  slide: Slide
-}) {
-  const columns = columnsFor({ state })
-  const widthOf = ({ id }: { id: string }) =>
-    view.columnWidths[id] ?? view.defaultColumnWidths[id] ?? view.defaultColumnWidth
-  const slider = {
-    max: WIDTH_SLIDER_MAX,
-    initial: DEFAULT_COLUMN_WIDTH,
-    unit: 'px',
-  }
-
-  return (
-    <SettingStack >
-      <NumberField
-        label="Column width"
-        value={view.defaultColumnWidth}
-        min={VIEW_SIZE_LIMITS.columnWidth.min}
-        max={WIDTH_MAX}
-        step={1}
-        slider={slider}
-        onChange={({ value }) => save({ patch: { defaultColumnWidth: value } })}
-        onSlide={({ value }) => slide({
-          key: 'defaultColumnWidth',
-          value,
-        })}
-      />
-      <Disclosure className="setting-more mt-2.5 [&_summary]:cursor-pointer [&_summary]:text-meta [&_summary]:text-gold" title="Per column" leading>
-        <div className="setting-per-column mt-2 grid gap-2">
-          {columns.map(column => (
-            <div className="setting-labeled grid grid-cols-setting-label items-center gap-x-(--settings-column-gap) gap-y-2 text-meta" key={column.id}>
-              <span>{column.title}</span>
-              <NumberField
-                label={`${column.title} width`}
-                value={widthOf({ id: column.id })}
-                min={VIEW_SIZE_LIMITS.columnWidth.min}
-                max={WIDTH_MAX}
-                step={1}
-                slider={slider}
-                onChange={({ value }) => save({
-                  patch: { defaultColumnWidths: { [column.id]: value } },
-                })}
-                onSlide={({ value }) => slide({
-                  key: 'defaultColumnWidths',
-                  value: value === undefined ? undefined : { [column.id]: value },
-                })}
-              />
-            </div>
-          ))}
-        </div>
-      </Disclosure>
-    </SettingStack>
-  )
-}
-
 function ResetWidths({
   command,
   notify,
@@ -320,7 +254,6 @@ function ResetWidths({
 
 export function SettingControl({
   entry,
-  state,
   view,
   save,
   slide,
@@ -385,15 +318,6 @@ export function SettingControl({
         <TextSize
           id={entry.id}
           label={entry.label}
-          view={view}
-          save={save}
-          slide={slide}
-        />
-      )
-    case 'defaultColumnWidths':
-      return (
-        <ColumnWidths
-          state={state}
           view={view}
           save={save}
           slide={slide}
@@ -584,7 +508,6 @@ export function SettingsPage({
       ...settings,
     },
     input: resizeViewPatch({
-      state,
       patch: Object.fromEntries(Object.entries(live).filter(([key]) => key in DEFAULT_VIEW)),
     }),
   })

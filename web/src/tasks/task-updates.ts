@@ -1,5 +1,5 @@
 import type { Card } from '#tasks/model.ts'
-import { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateColumns, type UpdateDecision } from '#tasks/updates.ts'
+import { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateDecision } from '#tasks/updates.ts'
 import { mentionId, TASK_MENTION } from '#hydra/mentions.ts'
 
 const OWN_CHIP = new RegExp(`^${TASK_MENTION.source}\\s*`)
@@ -42,11 +42,9 @@ const mergeDecisions = ({
 export function taskTimeline({
   card,
   events,
-  columns,
 }: {
   card: Card
   events: TaskEvent[]
-  columns: UpdateColumns
 }): TaskUpdate[] {
   const updates = new Map<string, TaskUpdate>()
   const reasked = new Set<string>()
@@ -62,7 +60,6 @@ export function taskTimeline({
 
     const row = relevantUpdate({
       event,
-      columns,
     })
 
     if (!row) {
@@ -123,29 +120,6 @@ export function taskTimeline({
         update,
       )
     }
-  }
-
-  for (const declaration of card.statusLog ?? []) {
-    const recorded = updates.get(declaration.id)
-
-    if (recorded?.decision) {
-      continue
-    }
-
-    updates.set(
-      declaration.id,
-      {
-        kind: declaration.state === 'done' ? 'done' : 'status',
-        ...recorded,
-        ...declaration,
-        // A task's first declaration shares its id with the creation event and has no note.
-        ...(!declaration.note && recorded ? {
-          kind: recorded.kind,
-          state: recorded.state,
-        } : {}),
-        note: declaration.note || recorded?.note || '',
-      },
-    )
   }
 
   return closings({ updates: [...updates.values()] }).sort((

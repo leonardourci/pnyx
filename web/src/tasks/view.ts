@@ -1,8 +1,7 @@
 import { taskProjectGroup } from '#tasks/order.ts'
 import { tokens } from '#oracle/query.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraState } from '#app/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { projectGroups } from '#projects/groups.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
@@ -13,15 +12,12 @@ import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
-// A column's icon and color come from its role; a custom column has its own icon.
-export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
-  icon: column.role ?? (column.id.startsWith('custom:') ? 'custom' : column.id),
-  tone: `column-${column.role ?? column.id}`,
+export const columnLook = () => ({
+  icon: 'project',
+  tone: 'column-custom',
 })
 
-export const columnsFor = ({ state }: { state: HydraState }) => {
-  return hydraConfig({ state }).columns
-}
+export { projectGroups as columnsFor }
 
 export function filterCards({
   state,
@@ -127,7 +123,7 @@ export function expandedByColumn({
       })
     }
 
-    return card?.column ?? id
+    return card ? card.project ?? 'ideas' : id
   }
 
   const open = new Set<string>(), kept: string[] = []

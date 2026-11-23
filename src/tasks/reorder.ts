@@ -39,12 +39,11 @@ export function reorderTask({
         meta,
         cardId: card.id,
       }),
-      type: 'card.moved',
+      type: 'task.edited',
       data: {
-        before: card.column,
-        after: card.column,
+        key: card.key,
         rank,
-        beforeRank: rankOf({ card }),
+        before: { rank: card.rank ?? null },
       },
     },
   })

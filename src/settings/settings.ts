@@ -1,6 +1,6 @@
 import { LOG_MODES } from '#app/log-line.ts'
 import type { HydraState } from '#app/model.ts'
-import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import { DEFAULT_VIEW, patchView } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
@@ -62,10 +62,6 @@ function patchSharedView({
   current: SharedView
   input: Record<string, unknown>
 }): SharedView {
-  const {
-    defaultColumnWidths,
-    ...rest
-  } = input
   const state = {
     view: {},
     cards: {},
@@ -73,37 +69,10 @@ function patchSharedView({
   const next = pickView({
     view: patchView({
       state,
-      input: rest,
+      input,
       settings: current,
     }),
   })
-  next.defaultColumnWidths = structuredClone(current.defaultColumnWidths)
-
-  if (defaultColumnWidths === undefined) {
-    return next
-  }
-
-  // Custom columns belong to one Hydra each, so any column id may carry its own default.
-  if (typeof defaultColumnWidths !== 'object' || defaultColumnWidths === null || Array.isArray(defaultColumnWidths)) {
-    return invalid({ detail: 'defaultColumnWidths' })
-  }
-
-  for (const [
-    id,
-    width,
-  ] of Object.entries(defaultColumnWidths)) {
-    if (!/^(?:[a-z_]{1,40}|custom:[a-z0-9-]{1,60})$/.test(id)) {
-      return invalid({ detail: `defaultColumnWidths.${id}` })
-    }
-
-    if (width === null) {
-      delete next.defaultColumnWidths[id]
-    } else if (!Number.isInteger(width) || (width as number) < VIEW_SIZE_LIMITS.columnWidth.min) {
-      return invalid({ detail: `defaultColumnWidths.${id}` })
-    } else {
-      next.defaultColumnWidths[id] = width as number
-    }
-  }
 
   return next
 }

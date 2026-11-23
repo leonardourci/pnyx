@@ -98,7 +98,6 @@ export function applyQueue({
       }
     }
 
-    card.column = event.data.column
     touch({
       card,
       event,

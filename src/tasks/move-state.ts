@@ -3,8 +3,7 @@ import type { EventBase } from '#store/events.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import type { Card } from './model.ts'
-import type { Column } from './columns-model.ts'
-import { refreshTasks } from './columns.ts'
+import { refreshTasks } from './refresh.ts'
 
 // Both sides carry the whole card and its sessions so either log replays alone; they share the event id.
 export interface MovedCard {
@@ -25,7 +24,6 @@ export type HydraMoveEvent = EventBase & (
     type: 'task.moved-in'
     data: MovedCard & {
       from: string
-      column: Column
       // When each of the card's owner questions was last reminded, so the target does not remind them again at once.
       reminders?: Record<string, string>
     }
@@ -187,7 +185,6 @@ function moveIn({
     delete card.queue
   }
 
-  card.column = event.data.column
   delete card.rank
   card.createdSeq = event.seq
   card.steeringGeneration = event.seq

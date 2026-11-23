@@ -76,7 +76,7 @@ function workerNews({
   const finished = link.checks !== undefined && link.checks !== status.checks.summary
     && status.checks.pending === 0 && status.checks.failed === 0
 
-  if (finished && card.status?.state === 'paused') {
+  if (finished && (card.sessionActivity ?? card.activity) !== 'working') {
     news.push(`Checks finished on ${link.url}: ${status.checks.summary}.`)
   }
 

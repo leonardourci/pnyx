@@ -145,7 +145,7 @@ export function recoveryCandidates({
       state,
       card,
     })
-        || card.status?.state === 'paused' || steeringHeld({ card })) {
+        || steeringHeld({ card })) {
       reason = 'task is held or no longer active'
     } else if (card.agent?.host !== 'pnyx' || !session?.attached || !session.work) {
       reason = 'native ownership is unknown'

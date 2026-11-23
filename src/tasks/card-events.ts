@@ -4,9 +4,9 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import { observeSession, sessionByRef, sessionId } from '#workers/session-attachments.ts'
 import { applyReplyReceipt } from '#workers/reduce.ts'
 import { currentSettings } from '#workers/sessions.ts'
-import { refreshTasks } from './columns.ts'
+import { refreshTasks } from './refresh.ts'
 import { SESSION_TITLE } from './model.ts'
-import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from './events.ts'
+import { isStaleSource, sameSource, offerTitle, wouldCycle } from './events.ts'
 import { isStaleLink } from '#tasks/delivery/events.ts'
 
 export function applyCardEvent({
@@ -37,7 +37,7 @@ export function applyCardEvent({
     return true
   }
 
-  if (event.type === 'card.pushed' || event.type === 'task.edited') {
+  if (event.type === 'task.edited') {
     const {
       key,
       source,
@@ -90,7 +90,6 @@ export function applyCardEvent({
         attention: [],
         links: [],
         sourceRefs: [],
-        column: newCardColumn({ state }),
         revision: 0,
         createdSeq: event.seq,
         createdAt: event.at,
@@ -230,14 +229,6 @@ export function applyCardEvent({
         })),
         source,
       ]
-    } else if (event.type === 'card.moved') {
-      if (event.data.after) {
-        card.column = event.data.after
-      }
-
-      if (event.data.rank !== undefined) {
-        card.rank = event.data.rank
-      }
     } else if (event.type === 'card.linked') {
       const {
         url,
@@ -311,40 +302,6 @@ export function applyCardEvent({
         }
       } else {
         delete card.outcome
-      }
-
-      const before = event.data.before, after = event.data.after
-      const changed = before?.state !== after?.state || before?.note !== after?.note
-        || before?.closed !== after?.closed || before?.source !== after?.source
-      const manual = !after?.source && !(!after && before?.source === 'hooks')
-
-      const undone = event.undoes ? card.statusLog?.findIndex(d => d.id === event.undoes) ?? -1 : -1
-
-      if (undone >= 0) {
-        if (card.status?.id === event.undoes) {
-          const previous = card.statusLog![undone - 1]
-
-          if (previous) {
-            card.status = previous
-          } else {
-            delete card.status
-          }
-        }
-      } else if (card.tracking && changed && manual) {
-        const declaration = {
-          id: event.id,
-          at: event.at,
-          actor: event.actor,
-          state: !event.data.after ? 'paused' as const
-            : event.data.after.state === 'failed' && !event.data.after.closed
-              ? 'blocked' as const : 'done' as const,
-          note: event.data.after?.note ?? 'Task outcome updated',
-        }
-        card.status = declaration
-        card.statusLog = [
-          ...(card.statusLog ?? []),
-          declaration,
-        ]
       }
     }
   }

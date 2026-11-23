@@ -108,10 +108,6 @@ const COMMAND_REGISTRY = {
         name: '--discard',
       })),
   },
-  column: {
-    page: true,
-    scope: { reads: ['list'] },
-  },
   hydra: {
     page: true,
     scope: {
@@ -163,7 +159,6 @@ const COMMAND_REGISTRY = {
     page: true,
     scope: { reads: ['list'] },
   },
-  move: { page: true },
   link: {
     page: true,
     scope: { own: [''] },

@@ -2,24 +2,20 @@ import { isDeepStrictEqual } from 'node:util'
 import type { HydraEvent, HydraState, Decision } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card, PushFields } from '#tasks/model.ts'
-import { removedColumnPlacements, checkColumn } from '#tasks/columns-decisions.ts'
 import { pushedValue, checkRevision, findCard } from '#tasks/push-rules.ts'
 import { decideSession } from '#workers/sessions.ts'
-import { rankOf } from '#tasks/select.ts'
 import { findSession } from '#workers/session-attachments.ts'
 import { base, type Meta } from './command-meta.ts'
 import { notUndoable } from './command-validation.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
 import { viewFor } from '#preferences/view.ts'
 import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
 import { sessionTaskFields } from '#workers/session-facts.ts'
 
-function editBefore({ target }: { target: Extract<HydraEvent, { type: 'card.pushed' | 'task.edited' }> }): PushFields {
+function editBefore({ target }: { target: Extract<HydraEvent, { type: 'task.edited' }> }): PushFields {
   const fields = target.data.before ?? {}
 
-  return target.type === 'task.edited' && !target.undoes && target.data.agent
+  return !target.undoes && target.data.agent
     ? sessionTaskFields({ fields }) : fields
 }
 
@@ -30,7 +26,7 @@ function currentValue({
   card: Card
   target: Exclude<HydraEvent, { type: 'board.view' }>
 }): unknown {
-  if (target.type === 'card.pushed' || target.type === 'task.edited') {
+  if (target.type === 'task.edited') {
     return Object.fromEntries(
       Object.keys(editBefore({ target })).map(field => [
         field,
@@ -40,13 +36,6 @@ function currentValue({
         }),
       ]),
     )
-  }
-
-  if (target.type === 'card.moved') {
-    return {
-      column: card.column,
-      rank: rankOf({ card }),
-    }
   }
 
   if (target.type === 'card.linked') {
@@ -61,18 +50,11 @@ function afterValue({ target }: { target: HydraEvent }): unknown {
     return null
   }
 
-  if (target.type === 'card.moved') {
-    return {
-      column: target.data.after,
-      rank: target.data.rank,
-    }
-  }
-
-  if ((target.type !== 'card.pushed' && target.type !== 'task.edited') && 'after' in target.data) {
+  if (target.type !== 'task.edited' && 'after' in target.data) {
     return target.data.after
   }
 
-  if (target.type !== 'card.pushed' && target.type !== 'task.edited') {
+  if (target.type !== 'task.edited') {
     return null
   }
 
@@ -125,67 +107,6 @@ export function decideUndo({
     throw notUndoable({ message: `Move task ${target.cardId} from Hydra ${holder} back to Hydra ${back} in the UI` })
   }
 
-  if (target.type === 'board.columns') {
-    if (target.actor === 'pnyx') {
-      throw notUndoable({ message: 'the move onto the default columns cannot be undone' })
-    }
-
-    const unchanged = isDeepStrictEqual(
-      hydraConfig({ state }).columns,
-      target.data.columns,
-    )
-
-    if (!target.data.before || state.undone[target.id] || !unchanged) {
-      throw new HydraError({
-        message: 'columns changed since this event',
-        code: 'CONFLICT',
-      })
-    }
-
-    const pins = Object.entries(target.data.placements ?? {})
-    const placements = Object.fromEntries(pins.map(([
-      id,
-      pin,
-    ]) => {
-      const card = state.cards[id]
-
-      if (!card || card.column !== pin.after) {
-        throw new HydraError({
-          message: `task ${id} moved after the column edit`,
-          code: 'CONFLICT',
-        })
-      }
-
-      return [
-        id,
-        {
-          before: pin.after,
-          after: pin.before,
-        },
-      ]
-    }))
-    const decision = hydraEvent({
-      state,
-      meta,
-      cardId: '$board',
-      change: {
-        type: 'board.columns',
-        data: {
-          columns: target.data.before,
-          before: target.data.columns,
-          placements,
-        },
-      },
-    })
-
-    return 'event' in decision ? {
-      event: {
-        ...decision.event,
-        undoes: target.id,
-      },
-    } : decision
-  }
-
   if ([
     'board.configured',
     'task.created',
@@ -193,7 +114,6 @@ export function decideUndo({
     'task.released',
     'task.owner-ask',
     'task.intent',
-    'task.declared',
     'task.tools',
     'task.tools-applied',
     'task.kind',
@@ -289,33 +209,6 @@ export function decideUndo({
         view: target.data.before,
       },
     })
-    const placements = removedColumnPlacements({
-      state,
-      after,
-    })
-
-    // Undoing a column deletion puts its cards back, unless one was placed since.
-    for (const p of target.data.placements ?? []) {
-      const card = state.cards[p.cardId]
-
-      if (!card || card.column !== p.after) {
-        throw new HydraError({
-          message: `card ${p.cardId} was moved since this event`,
-          code: 'CONFLICT',
-        })
-      }
-
-      if (placements.some(q => q.cardId === card.id)) {
-        continue
-      }
-
-      placements.push({
-        cardId: card.id,
-        before: p.after,
-        after: p.before,
-        revision: card.revision,
-      })
-    }
 
     return {
       event: {
@@ -329,7 +222,6 @@ export function decideUndo({
         data: {
           before: viewFor({ state }),
           after,
-          ...(placements.length ? { placements } : {}),
         },
       },
     }
@@ -343,11 +235,11 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} records a note harvested from ${target.data.source} and cannot be undone` })
   }
 
-  if (((target.type === 'card.pushed' || target.type === 'task.edited') && target.data.source) || target.type === 'card.observed') {
+  if ((target.type === 'task.edited' && target.data.source) || target.type === 'card.observed') {
     throw notUndoable({ message: `${target.id} records a source observation and cannot be undone` })
   }
 
-  if ((target.type === 'card.pushed' || target.type === 'task.edited') && !target.data.before) {
+  if (target.type === 'task.edited' && !target.data.before) {
     throw notUndoable({ message: `${target.id} created card ${target.cardId} and cannot be undone` })
   }
 
@@ -413,7 +305,7 @@ export function decideUndo({
     undoes: target.id,
   }
 
-  if (target.type === 'card.pushed' || target.type === 'task.edited') {
+  if (target.type === 'task.edited') {
     const before = editBefore({ target })
     const data = {
       key: card.key,
@@ -428,35 +320,6 @@ export function decideUndo({
         ...head,
         type: 'task.edited',
         data,
-      },
-    })
-  }
-
-  if (target.type === 'card.moved') {
-    checkColumn({
-      state,
-      column: target.data.before,
-    })
-
-    const {
-      before,
-      after,
-      rank,
-      beforeRank,
-    } = target.data
-
-    return decided({
-      state,
-      meta,
-      event: {
-        ...head,
-        type: 'card.moved',
-        data: {
-          before: after,
-          after: before,
-          rank: beforeRank,
-          beforeRank: rank,
-        },
       },
     })
   }
