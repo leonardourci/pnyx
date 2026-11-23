@@ -2592,7 +2592,11 @@ test(
       expect(lateIndex).toBeGreaterThan(cutoffIndex)
       expect(facts.indexOf(pass)).toBeGreaterThan(lateIndex)
       expect(text).toContain(JSON.stringify(pass.inscribe.key))
-      expect(text).toContain('inscribe.since and inscribe.throughSeq')
+      expect(text).toContain('inscribe.since')
+      expect(text).toContain('inscribe.throughSeq')
+      const compaction = facts.find(fact => fact.event?.type === 'hydra.operation'
+        && fact.event.data.id === pass.inscribe.parent && fact.event.data.state === 'started')
+      expect(compaction.event.data.through).toEqual(pass.inscribe.throughSeq)
       await hydra.owner({
         args: [
           'hydra',
@@ -2609,20 +2613,19 @@ test(
           && session.received.some(text => text.includes('Compact the recorded conversation'))),
       })
       const prompt = summarizer.received.find(text => text.includes('Compact the recorded conversation'))!
-      expect(prompt).toContain(JSON.stringify(pass.inscribe.key.replace(
-        /:inscribe$/,
-        '',
-      )))
-      expect(prompt).toContain('saved through boundary')
+      expect(prompt).toContain(JSON.stringify(pass.inscribe.parent))
       summary.release()
       const resumed = await heardFromSummary({
         hydra,
         text: late,
       })
-      expect(heard({
-        received: resumed.received,
-        text: late,
-      })).toBe(1)
+      await until({
+        what: 'the cutoff handoff to release the held inputs',
+        check: () => queue({ hydraId: hydra.id })?.holding === false,
+      })
+      await hydra.chat({ text: 'Continue after the cutoff handoff' })
+      const delivered = resumed.received.join('\n').split(late).length - 1
+      expect(delivered).toBe(1)
     } finally {
       quota.mockRestore()
       inscribe.release()
