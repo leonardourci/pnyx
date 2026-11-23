@@ -11,7 +11,7 @@ import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { operationEvent } from '#hydra/operations.ts'
 import { base } from '#app/command-meta.ts'
-import { askHost } from '#app/server-state.ts'
+import { askHost, infoPath } from '#app/server-state.ts'
 import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
 import { appendRecords } from './setup/transcripts.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -419,6 +419,31 @@ test(
         ],
       })
       expect((await healthy.task({ key: created.card.id })).title).toBe('Healthy after corruption')
+      const { url } = JSON.parse(readFileSync(
+        infoPath(),
+        'utf8',
+      ))
+      const response = await fetch(new URL(
+        '/health',
+        url,
+      ))
+      expect(await response.json()).toMatchObject({
+        skipped: { [broken.id]: expect.any(String) },
+      })
+      const discoveredId = `${broken.id}-healthy`
+      await healthy.owner({
+        args: [
+          'hydra',
+          'create',
+          discoveredId,
+          '--helper',
+          'off',
+        ],
+      })
+      await until({
+        what: 'a new healthy Hydra to mount after the corrupt Hydra in discovery',
+        check: () => pnyx.home().scopes[discoveredId]?.queue,
+      })
     } finally {
       await pnyx.restart({
         whileStopped: () => writeFileSync(

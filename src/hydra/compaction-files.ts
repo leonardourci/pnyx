@@ -50,11 +50,20 @@ export function compactionFiles({
           task: entry.name,
         })
 
+        const taskLog = join(
+          task,
+          'task.log',
+        )
+
+        if (!lstatSync(
+          taskLog,
+          { throwIfNoEntry: false },
+        )?.isFile()) {
+          return []
+        }
+
         return [
-          join(
-            task,
-            'task.log',
-          ),
+          taskLog,
           join(
             task,
             'worker.log',

@@ -915,27 +915,55 @@ export async function startServer({
 
   let named: MountedHydra
 
-  // An older server may let go of a skipped Hydra, so it is retried; its reason is logged once.
+  const recordSkippedHydra = ({
+    id,
+    error,
+    before,
+  }: {
+    id: string
+    error: unknown
+    before?: string
+  }) => {
+    const reason = error instanceof Error ? error.message : String(error)
+    skipped[id] = reason
+
+    if (reason !== before) {
+      log({
+        level: 'warn',
+        operation: 'hydra.skipped',
+        hydraId: id,
+        error,
+      })
+    }
+  }
+
+  const mountDiscoveredHydra = async ({ id }: { id: string }) => {
+    const before = skipped[id]
+
+    try {
+      if (!removalPending({ id })) {
+        await mount({ id })
+      }
+    } catch (error) {
+      recordSkippedHydra({
+        id,
+        error,
+        before,
+      })
+    }
+  }
+
   const mountAll = () => {
     if (importing) {
       return
     }
 
     for (const id of hydraIds()) {
-      const before = skipped[id]
-
-      if (!closed && !mounts.has(id) && !removalPending({ id })) {
-        mount({ id }).catch((error: Error) => {
-          if (error.message !== before) {
-            log({
-              level: 'warn',
-              operation: 'hydra.skipped',
-              hydraId: id,
-              error,
-            })
-          }
-        })
+      if (closed || mounts.has(id)) {
+        continue
       }
+
+      void mountDiscoveredHydra({ id })
     }
   }
 
@@ -1109,7 +1137,19 @@ export async function startServer({
     }
 
     if (removedOrPending({ id: hydraId })) {
-      const [activeId] = hydraIds().filter(id => !removalPending({ id }))
+      const activeId = hydraIds().find(id => {
+        try {
+          return !removedOrPending({ id })
+        } catch (error) {
+          recordSkippedHydra({
+            id,
+            error,
+            before: skipped[id],
+          })
+
+          return false
+        }
+      })
 
       if (!activeId) {
         throw new HydraError({
@@ -1128,19 +1168,8 @@ export async function startServer({
     }
 
     for (const id of hydraIds()) {
-      try {
-        if (removalPending({ id })) {
-          continue
-        }
-
-        await mount({ id })
-      } catch (error) {
-        log({
-          level: 'warn',
-          operation: 'hydra.skipped',
-          hydraId: id,
-          error: error as Error,
-        })
+      if (!mounts.has(id)) {
+        await mountDiscoveredHydra({ id })
       }
     }
 

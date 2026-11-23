@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { HYDRA_ID } from '#hydra/identity.ts'
 import { COMPONENT, hydraFiles, taskFiles } from '#store/file-home.ts'
@@ -73,6 +73,10 @@ export function readNativeHydra({ hydraId }: { hydraId: string }): {
         ),
       })),
   ]
+  const publishedScopes = scopes.filter(scope => lstatSync(
+    scope.path,
+    { throwIfNoEntry: false },
+  )?.isFile())
   const positions = new Map<string, number>()
   const projections = new Map<string, NativeState>()
   const entries: {
@@ -80,7 +84,7 @@ export function readNativeHydra({ hydraId }: { hydraId: string }): {
     entry: LogEntry
   }[] = []
 
-  for (const scope of scopes) {
+  for (const scope of publishedScopes) {
     let projection: NativeState = {}
     readLog({
       path: scope.path,
@@ -133,10 +137,11 @@ export function readNativeHydra({ hydraId }: { hydraId: string }): {
     state: assembleNative({
       positions,
       hydra: hydrated({ id: hydraId }),
-      tasks: scopes.slice(1).map(scope => [
-        scope.id,
-        hydrated({ id: scope.id }),
-      ]),
+      tasks: scopes.slice(1).filter(scope => projections.has(scope.id))
+        .map(scope => [
+          scope.id,
+          hydrated({ id: scope.id }),
+        ]),
     }),
   }
 }
