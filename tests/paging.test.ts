@@ -4,7 +4,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
 import { mergeThreadPages } from '#hydra/thread-history.ts'
 import { createHydraThreadView } from '#hydra/thread-view.ts'
-import { recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { readThread, recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
 import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
@@ -100,8 +100,26 @@ test(
       throw new Error('The newest page has no saved reply')
     }
 
+    const state = loadHydra({ hydraId: hydra.id }).state
+    const detachedCard = {
+      ...state.cards[HYDRA_CARD],
+      agent: undefined,
+    }
+    const detachedHistory = readThread({
+      hydraId: hydra.id,
+      card: detachedCard,
+      state: {
+        ...state,
+        cards: {
+          ...state.cards,
+          [HYDRA_CARD]: detachedCard,
+        },
+      },
+    })
+    expect(detachedHistory.entries.find(entry => entry.id === savedReply.id)?.text).toBe('answer 29')
+
     const project = createHydraThreadView({
-      state: loadHydra({ hydraId: hydra.id }).state,
+      state,
       page: first.thread,
       tools: false,
       thinking: false,

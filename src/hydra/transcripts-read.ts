@@ -561,7 +561,7 @@ export function threadSources({
 }): ThreadSource[] {
   const session = cardSessionId({ card })
   const hydra = state.cards[HYDRA_CARD]
-  const current = card.id === HYDRA_CARD && session !== undefined
+  const current = card.id === HYDRA_CARD
     && session === (hydra && cardSessionId({ card: hydra }))
 
   const task = card.id !== HYDRA_CARD && !selectedSession
