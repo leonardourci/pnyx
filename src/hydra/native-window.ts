@@ -38,13 +38,17 @@ export function nativeSources({
     hydraId,
     state,
     card: threadCard,
-  }).reverse().flatMap(({ path, session }) => path && session ? [
-    {
+  }).reverse()
+    .flatMap(({
       path,
       session,
-      boundaries: card === HYDRA_CARD,
-    },
-  ] : [])
+    }) => path && session ? [
+      {
+        path,
+        session,
+        boundaries: card === HYDRA_CARD,
+      },
+    ] : [])
 }
 
 function entriesOf({
