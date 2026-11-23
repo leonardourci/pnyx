@@ -32,7 +32,7 @@ import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
-import { compactionRuns,hydraDown,keepStreamedKeys,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
+import { compactionRuns,hydraDown,noticesInTimeline,quoteInto,withTimedRows } from './chat.ts'
 import { useChatScroll } from './chat-scroll.ts'
 import { useChatThread } from './chat-thread.ts'
 import { CHAT_FRAME, Chat } from './chat-view.tsx'
@@ -177,7 +177,7 @@ export function HydraChat({
     ...item,
     confirmed: false,
   })))
-  const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
+  const previousEntries = useRef<ChatEntry[]>([])
   const streamingAtSend = useRef(new Set<string>())
   const lastSend = useRef<string>(undefined), sendTurnWorked = useRef(false)
   const config = hydraConfig({ state }), card = state.cards[HYDRA_CARD]
@@ -451,11 +451,7 @@ export function HydraChat({
       })),
     ],
   })
-  const entries = keepStreamedKeys({
-    entries: listed,
-    previous: previousEntries.current,
-    keys: streamedKeys.current,
-  })
+  const entries = listed
   previousEntries.current = entries
   // The reply to the owner's last send is the first text that streams once the send's own turn started, and was not
   // already streaming when it was sent.

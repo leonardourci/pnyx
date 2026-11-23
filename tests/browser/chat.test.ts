@@ -2,6 +2,7 @@ import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import type { Page } from 'playwright-core'
 import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
 import { appendRecords } from '../setup/transcripts.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { openHydra } from './page.ts'
 
 let pnyx: Pnyx
@@ -782,7 +783,10 @@ test(
       tieLast: true,
       exchanges: 32,
     })
+    const hydraSession = pnyx.claude.sessions.findLast(session =>
+      session.env.PNYX_HYDRA === hydra.id)!
     const { worker } = await hydra.startTask({ key: 'older-notes' })
+    const card = await hydra.task({ key: 'older-notes' })
     await appendRecords({
       session: worker,
       records: workerNotes({
@@ -791,6 +795,10 @@ test(
       }),
     })
     let refusedFirstOlderRead = false
+    let dropCard: string | undefined
+    let dropped = false
+    let resyncs = 0
+    const epochs = new Map<string, string>()
     const olderReads = new Set<string>()
     const heldOlderAnswers: (() => void)[] = []
     const page = await openHydra({
@@ -805,11 +813,17 @@ test(
             const server = socket.connectToServer()
             socket.onMessage(message => {
               const sent = JSON.parse(String(message)) as {
+                type?: string
                 scope?: string
                 id: string
                 name?: string
                 args?: string[]
               }
+
+              if (sent.type === 'resync') {
+                resyncs++
+              }
+
               const cursor = sent.args?.length === 2 ? sent.args[1] : undefined
               const olderRead = sent.name === 'thread' && cursor !== undefined && !cursor.startsWith('--')
 
@@ -833,7 +847,35 @@ test(
               server.send(message)
             })
             server.onMessage(message => {
-              const answer = JSON.parse(String(message)) as { id?: string }
+              const answer = JSON.parse(String(message)) as {
+                id?: string
+                type?: string
+                thread?: {
+                  card: string
+                  epoch?: string
+                }
+                delta?: {
+                  page: {
+                    card: string
+                    epoch?: string
+                  }
+                }
+              }
+              const frame = answer.thread ?? answer.delta?.page
+
+              if (frame?.epoch) {
+                epochs.set(
+                  frame.card,
+                  frame.epoch,
+                )
+              }
+
+              if (answer.type === 'thread.delta' && answer.delta?.page.card === dropCard) {
+                dropCard = undefined
+                dropped = true
+
+                return
+              }
 
               if (answer.id !== undefined && olderReads.has(answer.id)) {
                 heldOlderAnswers.push(() => socket.send(message))
@@ -982,6 +1024,89 @@ test(
           })
         }
       }
+
+      // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluation callback.
+      const readingAnchor = await conversation.evaluateHandle(chat => {
+        const top = chat.getBoundingClientRect().top
+
+        return [...chat.querySelectorAll<HTMLElement>('[data-entry-id]')]
+          .find(row => row.getBoundingClientRect().bottom > top)!
+      })
+      const anchorBeforeRecovery = await readingAnchor.evaluate(row => {
+        const chat = row.closest('.chat-messages')!
+
+        return row.getBoundingClientRect().top - chat.getBoundingClientRect().top
+      })
+      const loadedRows = await conversation.locator('[data-entry-id]').count()
+      const session = label === 'Hydra conversation' ? hydraSession : worker
+      const priorResyncs = resyncs
+      dropped = false
+      dropCard = label === 'Hydra conversation' ? HYDRA_CARD : card.id
+      await appendRecords({
+        session,
+        records: [
+          {
+            type: 'assistant',
+            content: 'Reply in a dropped patch',
+          },
+        ],
+      })
+      await until({
+        what: 'the deliberately dropped chat delta',
+        check: () => dropped,
+      })
+      await appendRecords({
+        session,
+        records: [
+          {
+            type: 'assistant',
+            content: 'Reply after the dropped patch',
+          },
+        ],
+      })
+      await until({
+        what: 'the complete native reply recovered across the gap',
+        check: async () => resyncs > priorResyncs
+          && await conversation.getByText(
+            'Reply in a dropped patch',
+            { exact: true },
+          ).count() === 1
+          && await conversation.getByText(
+            'Reply after the dropped patch',
+            { exact: true },
+          ).count() === 1,
+      })
+      expect(await readingAnchor.evaluate(row => row.isConnected)).toBe(true)
+      expect(await conversation.locator('[data-entry-id]').count()).toBeGreaterThanOrEqual(loadedRows)
+      expect(Math.abs(
+        await readingAnchor.evaluate(row => {
+          const chat = row.closest('.chat-messages')!
+
+          return row.getBoundingClientRect().top - chat.getBoundingClientRect().top
+        }) - anchorBeforeRecovery,
+      ))
+        .toBeLessThanOrEqual(1)
+      const recoveringCard = label === 'Hydra conversation' ? HYDRA_CARD : card.id
+      const beforeEpoch = epochs.get(recoveringCard)
+      await pnyx.restart()
+      await until({
+        what: 'the retained chat range after a new daemon epoch',
+        check: async () => epochs.get(recoveringCard) !== beforeEpoch
+          && await conversation.getByText(
+            'Reply after the dropped patch',
+            { exact: true },
+          ).count() === 1
+          && await conversation.locator('[data-entry-id]').count() >= loadedRows,
+      })
+      expect(await readingAnchor.evaluate(row => row.isConnected)).toBe(true)
+      expect(Math.abs(
+        await readingAnchor.evaluate(row => {
+          const chat = row.closest('.chat-messages')!
+
+          return row.getBoundingClientRect().top - chat.getBoundingClientRect().top
+        }) - anchorBeforeRecovery,
+      ))
+        .toBeLessThanOrEqual(1)
 
       expect(await conversation.getByText('The transcript is unavailable').count()).toBe(0)
       await conversation.locator('..').getByRole(
@@ -1415,5 +1540,124 @@ test.each([
       .filter(input => input.includes(text))
     expect(attempts).toHaveLength(expectedAttempts)
     expect(await row.locator('time').count()).toBe(1)
+  },
+)
+
+test.each([
+  { harness: 'claude' },
+  { harness: 'codex' },
+] as const)(
+  '$harness native replies keep the same mounted row when saved, repeated and reloaded in either chat',
+  async ({ harness }) => {
+    const hydra = await pnyx.hydra()
+    await hydra.startTask({
+      key: 'native-replies',
+      harness,
+    })
+    const socket = await hydra.page()
+    await socket.send({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness })],
+    })
+    const page = await openHydra({
+      port: pnyx.port(),
+      hydraId: hydra.id,
+      reducedMotion: true,
+    })
+    await page.locator('[data-hydra-workspace][data-active=true] [data-task]').getByText(
+      'Task native-replies',
+      { exact: true },
+    )
+      .click()
+    const paragraph = `Native reply ${'all the recorded words survive. '.repeat(80)}`.trimEnd()
+    const reply = `${paragraph}\n\n\`\`\`text\nEND_NATIVE_REPLY\n\`\`\``
+    const identities: string[] = []
+
+    for (const scope of [
+      'Hydra conversation',
+      'Task native-replies conversation',
+    ]) {
+      const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
+        'region',
+        {
+          name: scope,
+          exact: true,
+        },
+      )
+
+      const send = async ({ text }: { text: string }) => {
+        if (scope === 'Hydra conversation') {
+          await hydra.chat({ text })
+        } else {
+          await hydra.owner({
+            args: [
+              'task',
+              'send',
+              'native-replies',
+              '--harness',
+              harness,
+              '--text',
+              text,
+            ],
+          })
+        }
+      }
+
+      for (const text of [
+        'First native request',
+        'Second native request',
+      ]) {
+        const turn = pnyx[harness].plan({
+          hydra: hydra.id,
+          match: ({ text: input }) => input.endsWith(text),
+          reply,
+          partial: 'Native reply',
+          hold: true,
+        })
+        onTestFinished(() => turn.release())
+        await send({ text })
+        const partial = conversation.locator('[data-entry-id][data-streaming]').filter({ hasText: 'Native reply' })
+        await partial.waitFor()
+        const id = await partial.getAttribute('data-entry-id')
+        expect(id).toBeTruthy()
+        expect(identities).not.toContain(id)
+        identities.push(id!)
+        // eslint-disable-next-line pnyx/object-params -- Playwright owns the evaluation callback.
+        const mounted = await partial.evaluateHandle(row => row.closest('.message-row'))
+        turn.release()
+        const saved = conversation.locator(`[data-entry-id="${id}"]`)
+        await saved.getByText(
+          paragraph,
+          { exact: true },
+        ).waitFor()
+        expect(await saved.locator('pre code').textContent()).toBe('END_NATIVE_REPLY\n')
+        await until({
+          what: 'the native reply to settle under its mounted key',
+          check: async () => await saved.getAttribute('data-streaming') === null,
+        })
+        expect(await mounted.evaluate(row => row?.isConnected)).toBe(true)
+        const copies = conversation.locator('[data-entry-id]').filter({ hasText: paragraph })
+        expect(await copies.count()).toBe(text === 'First native request' ? 1 : 2)
+        expect(await conversation.getByText(
+          text,
+          { exact: true },
+        ).count()).toBe(1)
+      }
+    }
+
+    await page.reload()
+
+    for (const id of identities) {
+      await page.locator(`[data-hydra-workspace][data-active=true] [data-entry-id="${id}"]`)
+        .getByText(
+          paragraph,
+          { exact: true },
+        )
+        .waitFor()
+      expect(await page.locator(`[data-hydra-workspace][data-active=true] [data-entry-id="${id}"] pre code`)
+        .textContent()).toBe('END_NATIVE_REPLY\n')
+    }
+
+    socket.close()
   },
 )

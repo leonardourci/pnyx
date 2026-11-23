@@ -1,3 +1,4 @@
+import { joinMessageParts } from '#hydra/history.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import { observedStatus } from './observed-status.ts'
 import type { PendingTurn } from '#web-workers/pending-turns.ts'
@@ -199,7 +200,9 @@ export function TaskChat({
   useEffect(
     () => {
       if (live) {
-        resource.confirm({ state: live.conversation?.entries ?? live.entries })
+        resource.confirm({
+          state: joinMessageParts({ entries: live.conversation?.entries ?? live.entries }),
+        })
       }
     },
     [
