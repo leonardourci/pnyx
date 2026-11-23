@@ -53,7 +53,7 @@ export function refreshDone({
     const status = cardStatus({
       card: {
         ...card,
-        doneAt: undefined,
+        doneAt: card.workerLog?.status?.code === 'done' ? card.doneAt : undefined,
       },
       cards: state.cards,
       sessions: state.sessions,

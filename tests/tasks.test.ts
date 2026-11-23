@@ -1390,6 +1390,106 @@ test(
       doneAt: null,
       hidden: false,
     })
+
+    await hydra.owner({
+      args: [
+        'task',
+        'create',
+        '--no-start',
+        '--key',
+        'earned',
+        '--title',
+        'Completed outside work',
+      ],
+    })
+    const earned = await workerLine({
+      hydra,
+      key: 'earned',
+      line: 'done: outside work completed',
+    })
+    expect(earned.doneAt).toBeTypeOf('string')
+    const agent = {
+      provider: 'claude',
+      sessionId: 'retention-earned',
+    }
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'earned',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent,
+        activity: 'finished',
+      }),
+    })
+    const retained = await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'earned',
+        '--full',
+      ],
+    })
+    expect(retained.task.doneAt).toBe(earned.doneAt)
+    expect((await hydra.task({ key: 'earned' })).status).toBe('done')
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'earned',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent,
+        activity: 'working',
+      }),
+    })
+    expect((await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'earned',
+        '--full',
+      ],
+    })).task.doneAt).toBeUndefined()
+    await hydra.owner({
+      args: [
+        'push',
+        '--key',
+        'earned',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent,
+        activity: 'finished',
+      }),
+    })
+    expect((await hydra.task({ key: 'earned' })).status).toBe('idle')
+    await hydra.owner({
+      args: [
+        'task',
+        'ask',
+        'earned',
+        '--to',
+        'owner',
+        '--question',
+        'Approve the delivered export?',
+        '--context',
+        'The owner must review the exported totals.',
+      ],
+    })
+    const awaitingOwner = await workerLine({
+      hydra,
+      key: 'earned',
+      line: 'done: export ready for owner review',
+    })
+    expect(awaitingOwner.doneAt).toBeUndefined()
+    expect((await hydra.task({ key: 'earned' })).status).toBe('needs you')
   },
 )
 
