@@ -23,8 +23,6 @@ export const MESSAGE_LOOKUP_OPTIONS: Options = {
   limit: { type: 'string' },
 }
 
-const NATIVE_ID = /^(.+):(\d+):m\d+$/
-
 function lookupThread({
   hydraId,
   state,
@@ -76,15 +74,11 @@ function lookupThread({
         })
       }
 
-      const [
-        , session,
-        offset,
-      ] = NATIVE_ID.exec(id) ?? []
-      const source = sources.find(candidate => candidate.session === session)
+      const source = sources.find(candidate => id.startsWith(`${candidate.session}:`))
       const entry = source && nativeRecord({
         source,
-        offset: Number(offset),
-      }).find(candidate => candidate.reference === id)
+        reference: id,
+      })
 
       if (entry) {
         return eventPositions({

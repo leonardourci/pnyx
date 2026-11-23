@@ -2,7 +2,8 @@ import { beforeAll, expect, test } from 'vitest'
 import { loadHydra } from '#app/store.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import { recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { liveReplies } from '#workers/streaming.ts'
 import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
 import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
 import { openPage, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
@@ -312,7 +313,10 @@ test(
         ],
       }) as unknown as { thread?: { entries: Entry[] } }
       reconnected.close()
-      expect(restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note '))).toEqual(everyNote)
+      expect(
+        restored.thread.entries.map(entry => entry.text).filter(text => text.startsWith('note ')),
+        JSON.stringify(restored.thread),
+      ).toEqual(everyNote)
       expect(unknownOption.thread?.entries.map(entry => entry.text)).toContain('note after reading back')
     } finally {
       await focusMode({ on: true })
@@ -592,5 +596,128 @@ test(
       operations: everything,
       rows: loaded.slice(-2),
     }).map(run => run.length)).toEqual([3])
+  },
+)
+
+test(
+  'native text blocks keep their identity through filtering and streamed settlement',
+  () => {
+    for (const provider of [
+      'claude',
+      'codex',
+    ] as const) {
+      const record = provider === 'claude' ? {
+        type: 'assistant',
+        uuid: 'record-uuid',
+        message: {
+          id: 'native-message',
+          content: [
+            {
+              type: 'thinking',
+              thinking: 'Consider the request',
+            },
+            {
+              type: 'text',
+              text: 'Same words',
+            },
+            {
+              type: 'tool_use',
+              id: 'native-call',
+              name: 'Read',
+              input: {},
+            },
+            {
+              type: 'text',
+              text: 'Same words',
+            },
+          ],
+        },
+      } : {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          id: 'native-message',
+          role: 'assistant',
+          content: [
+            { type: 'input_image' },
+            {
+              type: 'output_text',
+              text: 'Same words',
+            },
+            { type: 'input_image' },
+            {
+              type: 'output_text',
+              text: 'Same words',
+            },
+          ],
+        },
+      }
+      const entries = recordEntries({
+        record,
+        offset: 200,
+        tools: false,
+        thinking: false,
+      })
+      expect(entries.map(entry => entry.id)).toEqual([
+        'native-message:1',
+        'native-message:3',
+      ])
+      expect(recordEntries({
+        record,
+        offset: 900,
+        tools: false,
+        thinking: false,
+      }).map(entry => entry.id))
+        .toEqual(entries.map(entry => entry.id))
+      expect(recordEntries({
+        record,
+        offset: 200,
+        session: 'session-one',
+        tools: false,
+        thinking: false,
+      })
+        .map(entry => entry.id)).toEqual([
+        'session-one:native-message:1',
+        'session-one:native-message:3',
+      ])
+      expect(recordEntries({
+        record,
+        offset: 900,
+        session: 'session-two',
+        tools: false,
+        thinking: false,
+      })
+        .map(entry => entry.id)).toEqual([
+        'session-two:native-message:1',
+        'session-two:native-message:3',
+      ])
+      const replies = liveReplies()
+      replies.start({})
+      replies.update({
+        id: 'native-message:1',
+        text: 'Same',
+      })
+      replies.update({
+        id: 'other-message:0',
+        text: 'Same words',
+      })
+      const page: ThreadPage = {
+        card: 'task',
+        entries,
+        route: false,
+        watching: 'unknown',
+      }
+      const combined = replies.page({ page })
+      expect(combined.entries.map(entry => entry.text)).toEqual([
+        'Same words',
+        'Same words',
+        'Same words',
+      ])
+      expect(combined.entries.map(entry => entry.id)).toEqual([
+        'native-message:1',
+        'native-message:3',
+        'other-message:0',
+      ])
+    }
   },
 )

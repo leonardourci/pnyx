@@ -69,6 +69,7 @@ function entriesOf({
   return recordEntries({
     record,
     offset,
+    session: source.session,
     tools: false,
     thinking: false,
     boundaries: source.boundaries,
@@ -266,24 +267,40 @@ export function nativeWindow({
 
 export function nativeRecord({
   source,
-  offset,
+  reference,
 }: {
   source: NativeSource
-  offset: number
-}): SessionEntry[] {
-  const read = readTranscript({
-    cursor: {
-      source: source.path,
-      identity: '',
-      pos: offset,
-    },
-    maxBytes: CHUNK_BYTES,
-  })
-  const line = read?.lines.find(candidate => candidate.pos === offset)
+  reference: string
+}): SessionEntry | undefined {
+  let position = 0
 
-  return line ? entriesOf({
-    source,
-    record: line.record,
-    offset,
-  }) : []
+  while (true) {
+    const read = readTranscript({
+      cursor: {
+        source: source.path,
+        identity: '',
+        pos: position,
+      },
+      maxBytes: CHUNK_BYTES,
+    })
+
+    if (!read || read.end === position) {
+      return undefined
+    }
+
+    position = read.end
+
+    for (const line of read.lines) {
+      const entry = entriesOf({
+        source,
+        record: line.record,
+        offset: line.pos,
+      })
+        .find(candidate => candidate.reference === reference)
+
+      if (entry) {
+        return entry
+      }
+    }
+  }
 }

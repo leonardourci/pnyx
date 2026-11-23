@@ -21,7 +21,6 @@ import type { Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Card } from '#tasks/model.ts'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { trackChildren } from './children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
@@ -398,24 +397,13 @@ export function createLiveSessions({
       // ponytail: the agent may split or merge what it read ahead, so a turn's answers can be credited one turn off; the agent naming what each turn took would make it exact.
       const opening: {
         id: string | undefined
-        offset: number
       }[] = []
       let answering: string[] = []
       let turnRunning = false
       // Messages taken mid-turn, so one the agent carries to its next turn can move there.
       let joined: {
         id: string | undefined
-        offset: number
       }[] = []
-      let completedOffset = 0
-
-      const transcriptSize = () => {
-        try {
-          return statSync(entry.session?.path ?? card.agent.transcriptPath ?? '').size
-        } catch {
-          return 0
-        }
-      }
 
       const input = async function* () {
         for await (const item of entry.input) {
@@ -533,12 +521,10 @@ export function createLiveSessions({
           if (!turnRunning) {
             opening.push({
               id: item.id,
-              offset: transcriptSize(),
             })
           } else {
             joined.push({
               id: item.id,
-              offset: transcriptSize(),
             })
             answering = item.id ? [
               ...answering,
@@ -1087,7 +1073,6 @@ export function createLiveSessions({
           entry.tools.clear()
           entry.toolNames.clear()
           entry.thinking.clear()
-          completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
 
@@ -1100,7 +1085,6 @@ export function createLiveSessions({
         } else {
           const opened = opening.splice(0)
           const answers = opened.flatMap(item => item.id ? [item.id] : [])
-          const startOffset = opened.length ? opened[0]!.offset : 0
           answering = answers
           joined = []
           turnRunning = true
@@ -1112,10 +1096,6 @@ export function createLiveSessions({
 
           entry.replies.start({
             ownerStarted,
-            offset: Math.max(
-              startOffset,
-              completedOffset,
-            ),
           })
           streamed({ session: key })
         }

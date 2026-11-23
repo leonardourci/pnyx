@@ -32,6 +32,7 @@ import type { HydraMessage } from './model.ts'
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
   targetAgent?: AgentConfig
+  offset?: number
   final?: boolean
   block?: number
   reference?: string
@@ -84,6 +85,7 @@ export interface ThreadEntry {
 export interface ThreadPage {
   card: string
   session?: string
+  epoch?: string
   stream?: string
   version?: number
   entries: ThreadEntry[]
@@ -174,6 +176,7 @@ interface EntryOptions {
   tools?: boolean
   thinking?: boolean
   boundaries?: boolean
+  session?: string
 }
 
 export function recordEntries({
@@ -207,6 +210,7 @@ function transcriptEntries({
   tools = true,
   thinking = true,
   boundaries = false,
+  session,
 }: EntryOptions & { parsed: TranscriptRecord }): ThreadEntry[] {
   const messages = parsed.messages.filter(message => boundaries || !message.internal)
   const entries: ThreadEntry[] = messages.map((
@@ -214,7 +218,8 @@ function transcriptEntries({
     index,
   ) => {
     const entry: ThreadEntry = {
-      id: `${offset}:m${index}`,
+      id: message.id ?? `${offset}:m${index}`,
+      offset,
       kind: 'message',
       role: parsed.role,
       text: message.text,
@@ -245,7 +250,8 @@ function transcriptEntries({
     }
 
     const entry: ThreadEntry = {
-      id: `${offset}:t${trace.index}`,
+      id: trace.id ?? `${offset}:t${trace.index}`,
+      offset,
       block: trace.index,
       kind: trace.kind,
       role: trace.role,
@@ -263,7 +269,13 @@ function transcriptEntries({
   return entries.sort((
     a,
     b,
-  ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({ entry }))
+  ) => (a.block ?? 0) - (b.block ?? 0)).flatMap(entry => splitEntry({
+    entry: {
+      ...entry,
+      id: session ? `${session}:${entry.id}` : entry.id,
+      session,
+    },
+  }))
 }
 
 export function threadPath({ card }: { card: Pick<Card, 'agent'> }): string | undefined {
@@ -616,7 +628,6 @@ function readNative({
   thinking,
   boundaries,
   excludedAt,
-  renamed,
 }: {
   path: string
   session?: string
@@ -626,7 +637,6 @@ function readNative({
   thinking: boolean
   boundaries: boolean
   excludedAt: string[]
-  renamed: boolean
 }): {
   found: Candidate[]
   start: number
@@ -727,6 +737,7 @@ function readNative({
             tools,
             thinking,
             boundaries,
+            session,
           }).forEach((
             item,
             index,
@@ -744,14 +755,6 @@ function readNative({
                   messageId: item.messageId,
                 }) : undefined,
                 ...(session ? { session } : {}),
-              }
-
-              if (renamed && session) {
-                entry.id = `${session}:${item.id}`
-
-                if (item.messageId) {
-                  entry.messageId = `${session}:${item.messageId}`
-                }
               }
 
               window.push({
@@ -904,8 +907,6 @@ function readThreadPage(
         thinking,
         boundaries: card.id === HYDRA_CARD,
         excludedAt,
-        // Offsets repeat across transcripts, so an earlier session's entries carry its id.
-        renamed: !current,
       })
     } catch {
       if (current) {

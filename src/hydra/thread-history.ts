@@ -19,7 +19,7 @@ export function mergeThreadPages({
     return latest
   }
 
-  const saved = before.entries.filter(entry => olderPage || !entry.id.startsWith('live:'))
+  const saved = before.entries.filter(entry => olderPage || entry.streaming === undefined)
   // An older page goes first, so entries sharing a time, such as the parts of one long message, keep their order.
   const first = olderPage ? latest.entries : saved
   const then = olderPage ? saved : latest.entries
@@ -89,7 +89,7 @@ export function joinLatest({
   read({ before }: { before: string }): ThreadPage
 }): ThreadPage {
   const sameSession = history !== undefined && history.session === latest.session
-  const held = sameSession ? history.entries.filter(entry => !entry.id.startsWith('live:')) : []
+  const held = sameSession ? history.entries.filter(entry => entry.streaming === undefined) : []
 
   if (!history || !held.length) {
     return mergeThreadPages({

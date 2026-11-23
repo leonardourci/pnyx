@@ -2,6 +2,7 @@ import { HydraError } from '#store/errors.ts'
 import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { nativeHome } from './native-home.ts'
 import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
 import { joinLatest, mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
@@ -102,6 +103,7 @@ export function createThreadSubscriptions({
   }): boolean
   agents(): Pick<ReturnType<typeof createHost>, 'thread'>
 }) {
+  const epoch = nativeHome().epoch
   const maps = new Map<string, Map<HydraClient, Subscription>>()
 
   const threadSubscriptions = () => {
@@ -247,7 +249,7 @@ export function createThreadSubscriptions({
         card,
         page: {
           ...sub.history,
-          entries: sub.history.entries.filter(entry => !entry.id.startsWith('live:')),
+          entries: sub.history.entries.filter(entry => entry.streaming === undefined),
           currentTurn: undefined,
         },
       })
@@ -324,6 +326,7 @@ export function createThreadSubscriptions({
 
     const thread: ThreadPage = {
       ...prepared,
+      epoch,
       stream: sub.view.id,
       version: ++sub.view.version,
     }
