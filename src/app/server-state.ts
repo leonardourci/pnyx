@@ -2,11 +2,11 @@ import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { hydraDir } from './home-migration.ts'
-import { pnyxHome, withRegistryLock, writeDurably } from '#store/storage.ts'
+import { othrysHome, withRegistryLock, writeDurably } from '#store/storage.ts'
 
-// A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
+// A fixed default keeps every Titan at one address, so an open tab finds a restarted server again.
 export const DEFAULT_PORT = 4747
 // A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.
 const HEALTH_TIMEOUT_MS = 60_000
@@ -14,16 +14,16 @@ const HEALTH_TIMEOUT_MS = 60_000
 export interface ServerInfo {
   pid: number
   port: number
-  // The persisted URL is the root address. readServer returns a Hydra's page URL.
+  // The persisted URL is the root address. readServer returns a Titan's page URL.
   url: string
-  // A Hydra's hook socket; null when it could not be bound, and hooks then spool.
+  // A Titan's hook socket; null when it could not be bound, and hooks then spool.
   socket: string | null
   service?: boolean
   serveArgs?: string[]
 }
 
 export const infoPath = () => join(
-  pnyxHome(),
+  othrysHome(),
   'server.json',
 )
 export const socketPath = ({ hydraId }: { hydraId: string }) => join(
@@ -31,7 +31,7 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
   'server.sock',
 )
 
-// The running server and the Hydras it serves. stopped: none is running, which a server.json left by a server
+// The running server and the Titans it serves. stopped: none is running, which a server.json left by a server
 // that died (its pid or port since reused) also counts as; a dead pid is not asked at all.
 // silent: its process is alive but /health did not answer, so what it is doing is unknown.
 async function probeServer(): Promise<{
@@ -46,7 +46,7 @@ async function probeServer(): Promise<{
       'utf8',
     )) as ServerInfo
 
-    // Inside the server, the Hydras it runs are known without asking itself.
+    // Inside the server, the Titans it runs are known without asking itself.
     if (info.pid === process.pid) {
       return {
         info,
@@ -94,7 +94,7 @@ async function probeServer(): Promise<{
   }
 }
 
-// The server, with the address of this Hydra on it, or null when none answers or it does not serve this Hydra.
+// The server, with the address of this Titan on it, or null when none answers or it does not serve this Titan.
 export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
   const server = await probeServer()
 
@@ -108,7 +108,7 @@ export async function readServer({ hydraId }: { hydraId: string }): Promise<Serv
 // Created on first use, readable only by this user. The WebSocket handshake requires it.
 export function localToken(): string {
   const path = join(
-    pnyxHome(),
+    othrysHome(),
     'token',
   )
 
@@ -124,7 +124,7 @@ export function localToken(): string {
   }
 
   mkdirSync(
-    pnyxHome(),
+    othrysHome(),
     { recursive: true },
   )
 
@@ -158,7 +158,7 @@ export const hydraRemoval = {
 type Ask = ({ body }: { body: Record<string, unknown> }) => Promise<Record<string, unknown>>
 const hosts = new Map<string, Ask>()
 
-// The server offers each Hydra it runs; a command it runs asks that Hydra's agents through here.
+// The server offers each Titan it runs; a command it runs asks that Titan's agents through here.
 export function offerHost({
   hydraId,
   ask,
@@ -178,7 +178,7 @@ export function offerHost({
   }
 }
 
-// Acts on an agent the server runs. Throws NOT_RUNNING when this process serves no such Hydra, so nothing was sent.
+// Acts on an agent the server runs. Throws NOT_RUNNING when this process serves no such Titan, so nothing was sent.
 export async function askHost({
   hydraId,
   body,
@@ -189,10 +189,10 @@ export async function askHost({
   const ask = hosts.get(hydraId)
 
   if (!ask) {
-    throw new HydraError({
-      message: `the Pnyx server for Hydra ${hydraId} is not running`,
+    throw new TitanError({
+      message: `the Othrys server for Titan ${hydraId} is not running`,
       code: 'NOT_RUNNING',
-      help: ['Run `pnyx serve`; it runs the agents Pnyx starts'],
+      help: ['Run `othrys serve`; it runs the agents Othrys starts'],
     })
   }
 
@@ -258,7 +258,7 @@ let startup: {
 let lastStartupWrite = 0
 const STARTUP_PULSE_MS = 1000
 const startupPath = () => join(
-  pnyxHome(),
+  othrysHome(),
   'server.startup.json',
 )
 
@@ -292,7 +292,7 @@ export function startupRevision(): string | undefined {
     }
     const claim = JSON.parse(readFileSync(
       join(
-        pnyxHome(),
+        othrysHome(),
         'server.lock',
       ),
       'utf8',
@@ -315,16 +315,16 @@ export function startupRevision(): string | undefined {
   return undefined
 }
 
-// One server per Pnyx home; a second start while the first is alive is refused.
+// One server per Othrys home; a second start while the first is alive is refused.
 export function claimServer(): () => void {
   const path = join(
-    pnyxHome(),
+    othrysHome(),
     'server.lock',
   )
   const started = processStart({ pid: process.pid })
 
   if (!started) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'could not identify the server process',
       code: 'SERVER_UNAVAILABLE',
     })
@@ -355,8 +355,8 @@ export function claimServer(): () => void {
       if (typeof previous?.pid === 'number' && Number.isInteger(previous.pid) && previous.pid > 0
       && typeof previous.processStart === 'string'
       && processStart({ pid: previous.pid }) === previous.processStart) {
-        throw new HydraError({
-          message: 'a Pnyx server is already running for this home',
+        throw new TitanError({
+          message: 'an Othrys server is already running for this home',
           code: 'ALREADY_RUNNING',
         })
       }
@@ -387,7 +387,7 @@ export function claimServer(): () => void {
     throw error
   }
 
-  // A live owner cannot be replaced; releasing its claim does not write Hydra state.
+  // A live owner cannot be replaced; releasing its claim does not write Titan state.
   return () => {
     startup = undefined
     rmSync(

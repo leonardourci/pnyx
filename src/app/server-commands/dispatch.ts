@@ -1,14 +1,14 @@
 import { pageInterest, parsePage } from '#app/page-cli.ts'
 import { invocationOf } from '#cli/run.ts'
 import { log } from '#app/diagnostics.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { createHost } from '#app/host.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { saveEventId, savedEvent, type SaveCommand } from '#app/save-receipts.ts'
 import type { createServerClients } from '#app/server-clients.ts'
-import type { HydraClient } from '#app/server-transport.ts'
+import type { TitanClient } from '#app/server-transport.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
 import { cliCommand } from './cli-command.ts'
 import { compactCommand } from './compact.ts'
@@ -23,7 +23,7 @@ type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
 // A command the server answers itself: the tab that sent it, its id and arguments, and how to answer.
 export type CommandRequest = {
-  ws: HydraClient
+  ws: TitanClient
   id: string
   args: string[]
   send: ReturnType<typeof createServerClients>['send']
@@ -59,7 +59,7 @@ export function createServerCommands({
   hydraId: string
   url: string
   open({ id }: { id: string }): Promise<string>
-  state(): HydraState
+  state(): TitanState
   closed(): boolean
   send: ReturnType<typeof createServerClients>['send']
   kick(): void
@@ -78,7 +78,7 @@ export function createServerCommands({
   threadPage: ThreadSubscriptions['threadPage']
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
 }) {
-  const oracleSearches = new WeakMap<HydraClient, AbortController>()
+  const oracleSearches = new WeakMap<TitanClient, AbortController>()
   const runCommand = ({
     ws,
     message,
@@ -91,7 +91,7 @@ export function createServerCommands({
     ws,
     message,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     message: {
       id?: unknown
       name?: unknown
@@ -160,7 +160,7 @@ export function createServerCommands({
           try {
             const receipt = savedEvent({
               command,
-              state: loadHydra({ hydraId }).state,
+              state: loadTitan({ hydraId }).state,
             })
 
             if (receipt) {
@@ -298,9 +298,9 @@ export function createServerCommands({
             open,
           })
         } else if (name === 'page') {
-          if (args.some(arg => arg === '--hydra' || arg.startsWith('--hydra='))) {
+          if (args.some(arg => arg === '--titan' || arg.startsWith('--titan='))) {
             return fail({
-              error: `--hydra is not allowed; this server writes Hydra ${hydraId}`,
+              error: `--titan is not allowed; this server writes Titan ${hydraId}`,
               code: 'VALIDATION_ERROR',
             })
           }
@@ -355,7 +355,7 @@ export function createServerCommands({
       } catch (error) {
         fail({
           error: (error as Error).message,
-          code: error instanceof HydraError ? error.code : 'UNKNOWN',
+          code: error instanceof TitanError ? error.code : 'UNKNOWN',
         })
       }
 
@@ -377,7 +377,7 @@ export function createServerCommands({
 
   return {
     runCommand,
-    closeClient({ ws }: { ws: HydraClient }) {
+    closeClient({ ws }: { ws: TitanClient }) {
       oracleSearches.get(ws)?.abort()
       oracleSearches.delete(ws)
     },

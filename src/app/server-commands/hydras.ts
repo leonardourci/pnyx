@@ -1,5 +1,5 @@
-import { HydraError } from '#store/errors.ts'
-import { createHydra, editHydra, listHydras } from '#app/server-hydras.ts'
+import { TitanError } from '#store/errors.ts'
+import { createTitan, editTitan, listTitans } from '#app/server-hydras.ts'
 import type { CommandRequest } from './dispatch.ts'
 
 export async function hydrasCommand({
@@ -41,7 +41,7 @@ export async function hydrasCommand({
       type: 'receipt',
       id,
       hydraId,
-      hydras: listed || creation ? listHydras() : undefined,
+      hydras: listed || creation ? listTitans() : undefined,
       ...(open ? { url: open } : {}),
       ...(creation ? { creation } : {}),
     },
@@ -49,13 +49,13 @@ export async function hydrasCommand({
 
   if (action === 'create') {
     if (args.length > 4 || (second !== undefined && !/^[a-zA-Z0-9._:-]{1,128}$/.test(second))) {
-      throw new HydraError({
-        message: 'Invalid Hydra creation attempt',
+      throw new TitanError({
+        message: 'Invalid Titan creation attempt',
         code: 'VALIDATION_ERROR',
       })
     }
 
-    const created = await createHydra({
+    const created = await createTitan({
       name: first?.trim().slice(
         0,
         100,
@@ -84,7 +84,7 @@ export async function hydrasCommand({
         open => reply({ open }),
         (error: Error) => fail({
           error: error.message,
-          code: error instanceof HydraError ? error.code : 'UNKNOWN',
+          code: error instanceof TitanError ? error.code : 'UNKNOWN',
         }),
       )
     }
@@ -93,11 +93,11 @@ export async function hydrasCommand({
       open => reply({ open }),
       (error: Error) => fail({
         error: error.message,
-        code: error instanceof HydraError ? error.code : 'UNKNOWN',
+        code: error instanceof TitanError ? error.code : 'UNKNOWN',
       }),
     )
-  } else if (action === 'edit' && first && (second?.trim() || third) && listHydras().some(b => b.id === first)) {
-    await editHydra({
+  } else if (action === 'edit' && first && (second?.trim() || third) && listTitans().some(b => b.id === first)) {
+    await editTitan({
       id: first,
       name: second?.trim().slice(
         0,
@@ -106,8 +106,8 @@ export async function hydrasCommand({
       icon: third || undefined,
     })
     reply()
-  } else if (action === 'move' && first && second && listHydras().some(b => b.id === first)) {
-    await editHydra({
+  } else if (action === 'move' && first && second && listTitans().some(b => b.id === first)) {
+    await editTitan({
       id: first,
       position: Number(second),
     })
@@ -115,8 +115,8 @@ export async function hydrasCommand({
   } else if (action === undefined) {
     reply({ listed: true })
   } else {
-    throw new HydraError({
-      message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
+    throw new TitanError({
+      message: 'Titans expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
       code: 'VALIDATION_ERROR',
     })
   }

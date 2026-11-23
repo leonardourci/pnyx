@@ -1,9 +1,9 @@
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { CLI_COMMANDS } from '#app/server-transport.ts'
 import { type createServerWorkers } from '#app/server-workers.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// Any other CLI command the page may run, as the web actor and only on this Hydra.
+// Any other CLI command the page may run, as the web actor and only on this Titan.
 export function cliCommand({
   ws,
   id,
@@ -36,9 +36,9 @@ export function cliCommand({
     })
   }
 
-  if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
+  if (args.some(a => /^--(?:titan|hydra)(?:=|$)/.test(a))) {
     return fail({
-      error: `--hydra is not allowed; this server writes Hydra ${hydraId}`,
+      error: `--titan is not allowed; this server writes Titan ${hydraId}`,
       code: 'VALIDATION_ERROR',
     })
   }
@@ -53,7 +53,7 @@ export function cliCommand({
       name,
       ...args,
       ...actor,
-      '--hydra',
+      '--titan',
       hydraId,
     ],
     done: ({
@@ -83,7 +83,7 @@ export function cliCommand({
           ws,
           message: {
             ...result,
-            stateSeq: loadHydra({ hydraId }).state.seq,
+            stateSeq: loadTitan({ hydraId }).state.seq,
             type: 'receipt',
             id,
           },

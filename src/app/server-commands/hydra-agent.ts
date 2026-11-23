@@ -1,8 +1,8 @@
 import { background } from '#app/background.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { TitanError } from '#store/errors.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
 import { providerIdOf } from '#workers/providers.ts'
@@ -10,7 +10,7 @@ import type { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `hydra-agent-change <id> inscribe|compact|neither`: settles the message held for a Hydra agent change.
+// `hydra-agent-change <id> inscribe|compact|neither`: settles the message held for a Titan agent change.
 export async function hydraAgentChangeCommand({
   ws,
   id,
@@ -25,7 +25,7 @@ export async function hydraAgentChangeCommand({
   const choice = args[1]
 
   if (args.length !== 2 || (choice !== 'inscribe' && choice !== 'compact' && choice !== 'neither')) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Choose inscribe, compact or neither for the held message',
       code: 'VALIDATION_ERROR',
     })
@@ -46,7 +46,7 @@ export async function hydraAgentChangeCommand({
   })
 }
 
-// `hydra-agent <agent>`: saves the agent Hydra runs on, and hands a new permission mode to its running turn.
+// `hydra-agent <agent>`: saves the agent Titan runs on, and hands a new permission mode to its running turn.
 export async function hydraAgentCommand({
   ws,
   id,
@@ -61,7 +61,7 @@ export async function hydraAgentCommand({
   kick(): void
 }) {
   if (args.length !== 1) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'hydra-agent expects one agent configuration',
       code: 'VALIDATION_ERROR',
     })
@@ -103,7 +103,7 @@ export async function hydraAgentCommand({
 
       const decision = hydraEvent({
         state: writer.state,
-        cardId: HYDRA_CARD,
+        cardId: TITAN_CARD,
         meta: {
           id,
           at: new Date().toISOString(),
@@ -125,7 +125,7 @@ export async function hydraAgentCommand({
         writer.append({ event: decision.event })
       }
 
-      const running = writer.state.cards[HYDRA_CARD]?.agent
+      const running = writer.state.cards[TITAN_CARD]?.agent
 
       return {
         previous: config.hydra.agent,
@@ -137,16 +137,16 @@ export async function hydraAgentCommand({
   await agents.resendHeldMessages()
   kick()
 
-  // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.
+  // A new permission mode reaches Titan's running turn at once; other settings wait for the next message.
   if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
     && running.provider === providerIdOf({ harness: agent.harness })) {
     const mode = agent.mode
     // A mode the running turn refuses stays for its next turn; the failure is logged, and the receipt still says saved.
     background({
-      name: 'Hydra mode change',
+      name: 'Titan mode change',
       context: { hydraId },
       run: () => agents.set({
-        card: HYDRA_CARD,
+        card: TITAN_CARD,
         setting: 'mode',
         value: mode,
         actor: 'web',

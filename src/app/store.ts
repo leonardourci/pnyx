@@ -1,24 +1,24 @@
-import { nativeHydraIds, readNativeHydra } from './native-read.ts'
-import type { HydraState } from './model.ts'
+import { nativeTitanIds, readNativeTitan } from './native-read.ts'
+import type { TitanState } from './model.ts'
 import { nativeHome, openedNativeHome, type NativeHeld } from './native-home.ts'
-import { DEFAULT_HYDRA } from './home-migration.ts'
-import { HydraError } from '#store/errors.ts'
+import { DEFAULT_TITAN } from './home-migration.ts'
+import { TitanError } from '#store/errors.ts'
 import { log } from './diagnostics.ts'
 
-export interface HydraSnapshot {
+export interface TitanSnapshot {
   dir: string
-  state: HydraState
+  state: TitanState
 }
 
 export type Held = NativeHeld
 
-export const heldHydra = ({ hydraId }: { hydraId: string }): Held | undefined => {
+export const heldTitan = ({ hydraId }: { hydraId: string }): Held | undefined => {
   const home = openedNativeHome()
 
   return home?.held.has(hydraId) ? home.read({ hydra: hydraId }) : undefined
 }
 
-export async function holdHydra({
+export async function holdTitan({
   hydraId,
   changed,
 }: {
@@ -41,7 +41,7 @@ export async function holdHydra({
   }
 }
 
-export function reloadHydra({ hydraId }: { hydraId: string }): void {
+export function reloadTitan({ hydraId }: { hydraId: string }): void {
   const home = nativeHome()
 
   try {
@@ -66,7 +66,7 @@ export function reloadHydra({ hydraId }: { hydraId: string }): void {
   home.records.get(hydraId)?.changed()
 }
 
-export function writableHydra({
+export function writableTitan({
   hydraId,
 }: {
   hydraId: string
@@ -75,16 +75,16 @@ export function writableHydra({
   return nativeHome().read({ hydra: hydraId })
 }
 
-export function loadHydra({
+export function loadTitan({
   hydraId,
 }: {
   hydraId: string
   migrate?: boolean
-}): HydraSnapshot {
+}): TitanSnapshot {
   const home = openedNativeHome()
 
   if (!home) {
-    return readNativeHydra({ hydraId })
+    return readNativeTitan({ hydraId })
   }
 
   const {
@@ -101,15 +101,15 @@ export function loadHydra({
 export function hydraExists({ hydraId }: { hydraId: string }): boolean {
   const home = openedNativeHome()
 
-  return (home?.files.hydras() ?? nativeHydraIds()).includes(hydraId)
+  return (home?.files.hydras() ?? nativeTitanIds()).includes(hydraId)
 }
 
-export function requireHydra({ hydraId }: { hydraId: string }): void {
-  if (hydraId !== DEFAULT_HYDRA && !hydraExists({ hydraId })) {
-    throw new HydraError({
+export function requireTitan({ hydraId }: { hydraId: string }): void {
+  if (hydraId !== DEFAULT_TITAN && !hydraExists({ hydraId })) {
+    throw new TitanError({
       code: 'NOT_FOUND',
-      message: `unknown Hydra: ${hydraId}`,
-      help: ['Create a Hydra from the header in the UI'],
+      message: `unknown Titan: ${hydraId}`,
+      help: ['Create a Titan from the header in the UI'],
     })
   }
 }

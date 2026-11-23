@@ -1,6 +1,6 @@
 import { type EventBase } from '#store/events.ts'
 import type { Output } from './cli-support.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { nativeHome } from './native-home.ts'
 
 export type ApplyRecordedEvent = EventBase & {
@@ -29,7 +29,7 @@ export function transactionReceipt({
       knownIds,
       id,
     )) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'IDEMPOTENCY_CONFLICT',
         message: `event id ${id} already belongs to an individual event`,
       })
@@ -39,7 +39,7 @@ export function transactionReceipt({
   }
 
   if (recorded.digest !== digest) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'IDEMPOTENCY_CONFLICT',
       message: `apply event id ${id} was already used with different contents or actor`,
     })

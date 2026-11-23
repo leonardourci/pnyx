@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { knownHarness } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import type { CommandRequest } from './dispatch.ts'
@@ -17,7 +17,7 @@ export function modelsCommand({
   const harness = knownHarness({ name: args[0] })
 
   if (args.length < 1 || args.length > 2 || !harness) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'models expects claude or codex and an optional account name',
       code: 'VALIDATION_ERROR',
     })
@@ -36,7 +36,7 @@ export function modelsCommand({
       },
     }))
     .catch((error: Error) => fail({
-      error: error instanceof HydraError ? error.message : 'Harness model catalog unavailable. Reopen the picker to retry.',
-      code: error instanceof HydraError ? error.code : 'CATALOG_UNAVAILABLE',
+      error: error instanceof TitanError ? error.message : 'Harness model catalog unavailable. Reopen the picker to retry.',
+      code: error instanceof TitanError ? error.code : 'CATALOG_UNAVAILABLE',
     }))
 }

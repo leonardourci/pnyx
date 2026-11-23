@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, normalize, extname } from 'node:path'
 import { MAX_BODY, WEB_ROOT, MIME } from './server-transport.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { hydraIdentity } from './server-state.ts'
 
 export function readBytes({
@@ -57,7 +57,7 @@ export function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
         text += chunk
 
         if (text.length > MAX_BODY) {
-          reject(new HydraError({
+          reject(new TitanError({
             message: 'request too large',
             code: 'VALIDATION_ERROR',
           }))
@@ -71,7 +71,7 @@ export function readBody({ req }: { req: IncomingMessage }): Promise<unknown> {
         try {
           resolve(JSON.parse(text))
         } catch {
-          reject(new HydraError({
+          reject(new TitanError({
             message: 'request must be JSON',
             code: 'VALIDATION_ERROR',
           }))
@@ -148,7 +148,7 @@ export function reply({
   ).end(JSON.stringify(body))
 }
 
-// Only a Hydra's page carries the token; its base points the page at its own Hydra's WebSocket.
+// Only a Titan's page carries the token; its base points the page at its own Titan's WebSocket.
 export function serveStatic({
   res,
   path,
@@ -183,7 +183,7 @@ export function serveStatic({
         )
         const html = raw.replace(
           '</head>',
-          `<base href="${page.base}" />\n<meta name="pnyx-token" content="${page.token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${page.identity}" />\n<meta name="pnyx-installation" content="${hydraIdentity({ hydraId: '' })}" />\n</head>`,
+          `<base href="${page.base}" />\n<meta name="othrys-token" content="${page.token}" />\n<meta name="othrys-build" content="${buildOf({ html: raw })}" />\n<meta name="othrys-hydra" content="${page.identity}" />\n<meta name="othrys-installation" content="${hydraIdentity({ hydraId: '' })}" />\n</head>`,
         )
         res.writeHead(
           200,
@@ -220,7 +220,7 @@ export function serveStatic({
     res,
     status: 404,
     body: {
-      error: 'not found; run `pnpm run build` for the web Hydra',
+      error: 'not found; run `pnpm run build` for the web Titan',
       code: 'NOT_FOUND',
     },
   })

@@ -3,8 +3,8 @@ import { requireCopyAvailable } from '#projects/copy-lease.ts'
 import { toolNames } from '#workers/tools.ts'
 import type { Host, UsageInputs } from './host-types.ts'
 import { isHelper, taskLease } from '#routine-helper/leases.ts'
-import { HydraError } from '#store/errors.ts'
-import { loadHydra } from './store.ts'
+import { TitanError } from '#store/errors.ts'
+import { loadTitan } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { helperGrant, type HelperAction } from '#routine-helper/route.ts'
 import { isAbsolute } from 'node:path'
@@ -93,7 +93,7 @@ async function hostRequestUnlocked({
 
       return failed ? {
         applied: `deferred: ${failed.message}`,
-        help: failed instanceof HydraError ? failed.help : [],
+        help: failed instanceof TitanError ? failed.help : [],
       } : { applied: 'at the next safe turn boundary' }
     }
 
@@ -128,7 +128,7 @@ async function hostRequestUnlocked({
 
     case 'start': {
       if (body.tools !== undefined && (!Array.isArray(body.tools) || !body.tools.every(name => typeof name === 'string'))) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'tools must be a list of capability names',
           code: 'VALIDATION_ERROR',
         })
@@ -144,7 +144,7 @@ async function hostRequestUnlocked({
       })
 
       if (folder !== undefined && !isAbsolute(folder)) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'folder must be an absolute path',
           code: 'VALIDATION_ERROR',
         })
@@ -154,7 +154,7 @@ async function hostRequestUnlocked({
         body,
         name: 'task',
       })!
-      const current = loadHydra({ hydraId: host.hydraId }).state
+      const current = loadTitan({ hydraId: host.hydraId }).state
       const project = findCard({
         state: current,
         ref: task,
@@ -189,7 +189,7 @@ async function hostRequestUnlocked({
           ) : settings.model
 
           if (!models.includes(model)) {
-            throw new HydraError({
+            throw new TitanError({
               message: `${dispatch.provider}/${settings.model}: not offered`,
               code: 'VALIDATION_ERROR',
             })
@@ -202,7 +202,7 @@ async function hostRequestUnlocked({
             folder: dispatch.folder,
           },
         })).auth === 'signed-out') {
-          throw new HydraError({
+          throw new TitanError({
             message: `account ${dispatch.account} is signed out`,
             code: 'ACCOUNT_SIGNED_OUT',
           })
@@ -224,7 +224,7 @@ async function hostRequestUnlocked({
         settings.mode = mode
       }
 
-      // An explicit task start --fast wins; otherwise Fast in Hydra's composer reaches every worker, even a candidate saved with Fast off.
+      // An explicit task start --fast wins; otherwise Fast in Titan's composer reaches every worker, even a candidate saved with Fast off.
       const ownerFast = dispatch.override?.fast !== undefined
       const hydraFast = !ownerFast && await hydraFastReaches({
         hydraFast: current.config?.hydra.agent?.fast,
@@ -281,7 +281,7 @@ async function hostRequestUnlocked({
       })
 
       if (!harness) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'models expects claude or codex',
           code: 'VALIDATION_ERROR',
         })
@@ -306,7 +306,7 @@ async function hostRequestUnlocked({
       })
 
       if (choice !== 'allow' && choice !== 'deny') {
-        throw new HydraError({
+        throw new TitanError({
           message: 'choice must be allow or deny',
           code: 'VALIDATION_ERROR',
         })
@@ -409,7 +409,7 @@ async function hostRequestUnlocked({
       })!
 
       if (!SETTINGS.includes(setting)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `${setting} cannot be ${value}`,
           code: 'VALIDATION_ERROR',
           help: [`Settings: ${SETTINGS.join(', ')}`],
@@ -430,7 +430,7 @@ async function hostRequestUnlocked({
     }
 
     default:
-      throw new HydraError({
+      throw new TitanError({
         message: 'action must be hydra, start, models, continue, send, set or permission',
         code: 'VALIDATION_ERROR',
       })
@@ -474,7 +474,7 @@ async function runHostRequest({
     'set',
     'permission',
   ].includes(String(action))) {
-    const state = loadHydra({ hydraId: host.hydraId }).state
+    const state = loadTitan({ hydraId: host.hydraId }).state
     const card = findCard({
       state,
       ref,

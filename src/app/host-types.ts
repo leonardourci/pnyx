@@ -2,11 +2,11 @@ import type { Card } from '#tasks/model.ts'
 import type { AgentConfig, AgentSettings, AgentRef } from '#workers/model.ts'
 import type { AgentUsage, UsageReading, ModelOption, HostedSession } from '#workers/provider.ts'
 import type { DispatchChoice } from '#workers/dispatch.ts'
-import type { HydraState, HydraEvent } from './model.ts'
-import { inbox } from '#hydra/update-queue.ts'
-import type { HydraQueue } from '#hydra/wakes.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
+import type { TitanState, TitanEvent } from './model.ts'
+import { inbox } from '#titan/update-queue.ts'
+import type { TitanQueue } from '#titan/wakes.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import type { ThreadPage } from '#titan/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import type { RuntimeHealth } from '#diagnostics/health.ts'
 import type { TaskSessionOwner } from './task-runtime.ts'
@@ -54,7 +54,7 @@ export interface Host {
     selected?: AgentConfig
     // False opens a new session with memory only, for an agent that reads the log itself.
     history?: boolean
-    // The owner's messages the text lists, which Hydra takes with this input.
+    // The owner's messages the text lists, which Titan takes with this input.
     carried?: string[]
   }): Promise<Record<string, unknown>>
   agentExhausted({ agent }: { agent: AgentConfig }): Promise<boolean>
@@ -72,7 +72,7 @@ export interface Host {
     cancel }
   ?: {
     card?: string
-    // One message the queued messages list for Hydra, cancelled as Stop cancels them all.
+    // One message the queued messages list for Titan, cancelled as Stop cancels them all.
     cancel?: string
   }): Promise<Record<string, unknown>>
   // Asks for an upgrade as /upgrade does and answers with the one to watch; now restarts a built one at once.
@@ -188,7 +188,7 @@ export interface Host {
     reason?: string
     details?: string
   }): Promise<Record<string, unknown>>
-  reconcile({ state }: { state: HydraState }): Promise<void>
+  reconcile({ state }: { state: TitanState }): Promise<void>
   release({
     task,
     permanent,
@@ -196,7 +196,7 @@ export interface Host {
     task: string
     permanent?: boolean
   }): Promise<Record<string, unknown>>
-  // Queues a check turn for a hosted Hydra once a change it tracks lands at seq on that card.
+  // Queues a check turn for a hosted Titan once a change it tracks lands at seq on that card.
   wake({
     seq,
     card,
@@ -206,15 +206,15 @@ export interface Host {
     seq: number
     card: string
     reasons: string[]
-    event?: HydraEvent
+    event?: TitanEvent
   }): void
-  // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
+  // Notes a change at seq that joins Titan's next wake without queuing one, so that wake's cursor still covers it.
   unread({ seq }: { seq: number }): void
-  // The changes waiting for Hydra's next check turn and the ones its running turn is reading.
-  queue(): HydraQueue
-  // Recovers hosted sessions and resumes a cut Hydra turn once.
+  // The changes waiting for Titan's next check turn and the ones its running turn is reading.
+  queue(): TitanQueue
+  // Recovers hosted sessions and resumes a cut Titan turn once.
   recover(): Promise<void>
-  // A reply that never showed up in its session after its resends; Hydra hears of it once.
+  // A reply that never showed up in its session after its resends; Titan hears of it once.
   unconfirmed({
     card,
     reply,
@@ -254,7 +254,7 @@ export interface Live {
   steering: Set<string>
   // Steering inputs sent with their words, by input id; the agent taking one marks those messages read.
   delivered: Map<string, string[]>
-  // Hydra inputs that list the owner's messages, by input id; Hydra taking one receives those messages.
+  // Titan inputs that list the owner's messages, by input id; Titan taking one receives those messages.
   carried: Map<string, string[]>
   // Direct inputs whose reply waits for the provider's confirmation, by input id, and whether the agent took them.
   pendingDirect: Map<string, {

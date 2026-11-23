@@ -1,7 +1,7 @@
 import type { Query } from '#oracle/model.ts'
 import { readSearchFilters } from '#oracle/filters.ts'
 import { searchInBackground } from '#oracle/search-background.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { CommandRequest } from './dispatch.ts'
 
 const ORACLE_LIMIT = 100
@@ -36,8 +36,8 @@ export function oracleCommand({
   }
 
   if (args.length > 4 || (args[2] !== undefined && args[2] !== 'hydra' && args[2] !== '')) {
-    throw new HydraError({
-      message: 'oracle expects text, optional workspace, Hydra scope and filters',
+    throw new TitanError({
+      message: 'oracle expects text, optional workspace, Titan scope and filters',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -77,7 +77,7 @@ export function oracleCommand({
     } catch (error) {
       fail({
         error: (error as Error).message,
-        code: error instanceof HydraError ? error.code : 'UNKNOWN',
+        code: error instanceof TitanError ? error.code : 'UNKNOWN',
       })
     } finally {
       if (searches.get(ws) === controller) {

@@ -1,22 +1,22 @@
-import { HydraError } from '#store/errors.ts'
-import { threadDelta, type ThreadDelta } from '#hydra/thread-delta.ts'
+import { TitanError } from '#store/errors.ts'
+import { threadDelta, type ThreadDelta } from '#titan/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { nativeHome } from './native-home.ts'
-import { createHydraThreadView, hydraThreadView } from '#hydra/thread-view.ts'
-import { joinLatest, mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#hydra/thread-history.ts'
+import { createTitanThreadView, hydraThreadView } from '#titan/thread-view.ts'
+import { joinLatest, mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#titan/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { readThread, showsKind, threadAction, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { readThread, showsKind, threadAction, threadPath, type ThreadPage } from '#titan/transcripts-read.ts'
 import type { Card } from '#tasks/model.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import type { createHost } from './host.ts'
 import { LATEST_DELAY_MS } from './latest-feed.ts'
-import type { EventType, HydraEvent, HydraState } from './model.ts'
-import type { HydraClient, ServerMessage } from './server-transport.ts'
+import type { EventType, TitanEvent, TitanState } from './model.ts'
+import type { TitanClient, ServerMessage } from './server-transport.ts'
 import { watchPath, type PathWatch } from './watch.ts'
 
 const LIVE_TEXT_DELAY_MS = 80
@@ -33,9 +33,9 @@ export type Subscription = {
   base?: {
     signature: string
     page: ThreadPage
-    project?: ReturnType<typeof createHydraThreadView>
+    project?: ReturnType<typeof createTitanThreadView>
   }
-  client?: HydraClient
+  client?: TitanClient
   restoring?: number
   refreshPending?: boolean
   view?: {
@@ -44,7 +44,7 @@ export type Subscription = {
   }
   path?: string
   watcher?: { close(): unknown }
-  // The card titles the Hydra thread was last built from.
+  // The card titles the Titan thread was last built from.
   titles?: Record<string, string>
   // The last page the tab accepted, apart from the seq it was read at.
   sent?: string
@@ -53,33 +53,33 @@ export type Subscription = {
   readVersion?: number
 }
 
-// The events that can change what hydraThreadView shows: anything on Hydra's own card, its messages,
+// The events that can change what hydraThreadView shows: anything on Titan's own card, its messages,
 // operations and settings, the columns and view, the compactions and upgrades that hold messages,
 // and a new title for a card it names.
-export function changesHydraThread({
+export function changesTitanThread({
   event,
   sub,
   state,
 }: {
-  event: HydraEvent
+  event: TitanEvent
   sub: Subscription
-  state: HydraState
+  state: TitanState
 }): boolean {
-  return event.cardId === HYDRA_CARD
+  return event.cardId === TITAN_CARD
     || threadAction({
       event,
       state,
     })
-    || HYDRA_THREAD_PREFIXES.some(prefix => event.type.startsWith(prefix))
-    || HYDRA_THREAD_EVENTS.includes(event.type)
+    || TITAN_THREAD_PREFIXES.some(prefix => event.type.startsWith(prefix))
+    || TITAN_THREAD_EVENTS.includes(event.type)
     || state.cards[event.cardId]?.title !== sub.titles?.[event.cardId]
 }
 
-const HYDRA_THREAD_PREFIXES = [
+const TITAN_THREAD_PREFIXES = [
   'hydra.',
   'board.',
 ]
-const HYDRA_THREAD_EVENTS: readonly EventType[] = [
+const TITAN_THREAD_EVENTS: readonly EventType[] = [
   'session.compaction',
   'pnyx.upgrade',
 ]
@@ -92,19 +92,19 @@ export function createThreadSubscriptions({
   agents,
 }: {
   hydraId: string
-  state(): HydraState
+  state(): TitanState
   closed(): boolean
   send({
     ws,
     message,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     message: ServerMessage
   }): boolean
   agents(): Pick<ReturnType<typeof createHost>, 'thread'>
 }) {
   const epoch = nativeHome().epoch
-  const maps = new Map<string, Map<HydraClient, Subscription>>()
+  const maps = new Map<string, Map<TitanClient, Subscription>>()
 
   const threadSubscriptions = () => {
     for (const [
@@ -123,7 +123,7 @@ export function createThreadSubscriptions({
     let map = maps.get(card)
 
     if (!map) {
-      map = new Map<HydraClient, Subscription>()
+      map = new Map<TitanClient, Subscription>()
       maps.set(
         card,
         map,
@@ -133,11 +133,11 @@ export function createThreadSubscriptions({
     return map
   }
 
-  const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
+  const threadTimers = new Map<TitanClient, ReturnType<typeof setTimeout>>()
   const liveThreadTimers = new Map<Subscription, ReturnType<typeof setTimeout>>()
   const liveSentAt = new WeakMap<Subscription, number>()
-  const retiredClients = new WeakSet<HydraClient>()
-  const retireThreadClient = ({ws}: {ws: HydraClient}) => retiredClients.add(ws)
+  const retiredClients = new WeakSet<TitanClient>()
+  const retireThreadClient = ({ws}: {ws: TitanClient}) => retiredClients.add(ws)
 
   const deliver = ({
     ws,
@@ -145,7 +145,7 @@ export function createThreadSubscriptions({
     prepared,
     receipt,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     sub: Subscription
     prepared: PreparedThread
     receipt?: string
@@ -255,7 +255,7 @@ export function createThreadSubscriptions({
       })
     }
 
-    if (page.card !== HYDRA_CARD) {
+    if (page.card !== TITAN_CARD) {
       return versionThread({
         sub,
         prepared: shownRows({
@@ -272,7 +272,7 @@ export function createThreadSubscriptions({
       thinking,
     } = traces({
       view: effectiveView({ state: current }),
-      card: HYDRA_CARD,
+      card: TITAN_CARD,
     })
     const prepared = hydraThreadView({
       state: current,
@@ -310,7 +310,7 @@ export function createThreadSubscriptions({
       return undefined
     }
 
-    if (prepared.card === HYDRA_CARD) {
+    if (prepared.card === TITAN_CARD) {
       sub.titles = Object.fromEntries(Object.values(current.cards).map(card => [
         card.id,
         card.title,
@@ -395,15 +395,15 @@ export function createThreadSubscriptions({
         }),
       })
 
-      if (card.id === HYDRA_CARD) {
+      if (card.id === TITAN_CARD) {
         const selected = traces({
           view: effectiveView({ state: state() }),
-          card: HYDRA_CARD,
+          card: TITAN_CARD,
         })
         sub.base = {
           signature,
           page,
-          project: createHydraThreadView({
+          project: createTitanThreadView({
             state: state(),
             page: sub.history,
             ...selected,
@@ -433,7 +433,7 @@ export function createThreadSubscriptions({
     invalidate = true,
     resync = false,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     invalidate?: boolean
     resync?: boolean
   }) => {
@@ -475,7 +475,7 @@ export function createThreadSubscriptions({
     ws,
     only,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     only?: Subscription
   }) => {
     if (ws.readyState !== ws.OPEN) {
@@ -525,7 +525,7 @@ export function createThreadSubscriptions({
           })
           // A page that kept its base only added live text: one line each while detailed logging is on.
           const live = sub.base !== undefined && sub.base === base
-          // A rebuilt Hydra page's size comes from its signature, the page apart from its version fields;
+          // A rebuilt Titan page's size comes from its signature, the page apart from its version fields;
           // a live update's is on its detailed socket.send line, so it is not measured twice.
           const signature = live ? undefined : prepared.signature
           log({
@@ -549,7 +549,7 @@ export function createThreadSubscriptions({
     ws,
     card,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     card: string
   }) => {
     const sub = subscriptionMap({ card }).get(ws)
@@ -690,7 +690,7 @@ export function createThreadSubscriptions({
       }
 
       if ((before || retain) && version !== sub.readVersion) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'THREAD_SUPERSEDED',
           message: 'A newer conversation read replaced this one',
         })
@@ -725,7 +725,7 @@ export function createThreadSubscriptions({
     ws,
     card,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     card: Card
   }) => {
     const map = subscriptionMap({ card: card.id })
@@ -795,13 +795,13 @@ export function createThreadSubscriptions({
     ws,
     cards,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     cards: string[]
   }) => {
     for (const map of threadSubscriptions()) {
       const sub = map.get(ws)
 
-      if (!sub || sub.card === HYDRA_CARD || cards.includes(sub.card)) {
+      if (!sub || sub.card === TITAN_CARD || cards.includes(sub.card)) {
         continue
       }
 

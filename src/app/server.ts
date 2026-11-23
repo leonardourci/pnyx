@@ -3,7 +3,7 @@ import { followWorkerLogs } from '#workers/worker-log.ts'
 import { captureCpuProfile } from '#diagnostics/cpu-profile.ts'
 import { followGit } from '#tasks/delivery/follow-git.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { startReviewTimer } from '#hydra/review-timer.ts'
+import { startReviewTimer } from '#titan/review-timer.ts'
 import { FOLLOW_POLL_MS, followedLinks } from '#tasks/delivery/follow.ts'
 import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -15,14 +15,14 @@ import { createServerCommands } from '#app/server-commands/dispatch.ts'
 import { createServerRoutes } from './server-routes.ts'
 import { createServerTick } from './server-tick.ts'
 import { createThreadSubscriptions } from './thread-subscriptions.ts'
-import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
-import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
-import { wakeReasons } from '#hydra/wake-reasons.ts'
+import type { CatalogLocations } from '#titan/transcripts-catalog.ts'
+import { createCatalogIndex } from '#titan/transcripts-catalog-index.ts'
+import { wakeReasons } from '#titan/wake-reasons.ts'
 import { rmSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
-import { heldHydra, holdHydra, loadHydra } from './store.ts'
+import { heldTitan, holdTitan, loadTitan } from './store.ts'
 import { readChanges } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
 import { background } from './background.ts'
@@ -34,12 +34,12 @@ import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import { createServerWorkers } from './server-workers.ts'
-import { type HydraClient, type HydraSubscription, type MountedHydra } from './server-transport.ts'
+import { type TitanClient, type TitanSubscription, type MountedTitan } from './server-transport.ts'
 import { buildId } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
 import { healthFacts } from '#diagnostics/health.ts'
 import { DEBUG_LIMIT, DEBUG_MAX } from '#diagnostics/timeline.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { dropCopyLeases } from '#routine-helper/leases.ts'
 import { pageInterest, parsePage } from './page-cli.ts'
 import { pageState } from './page-state.ts'
@@ -48,7 +48,7 @@ export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
 export const CREATION_POLL_MS = 1000
 
-export async function mountOwnedHydra({
+export async function mountOwnedTitan({
   hydraId,
   url,
   catalogLocations,
@@ -90,7 +90,7 @@ export async function mountOwnedHydra({
   hydrasChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
-}): Promise<MountedHydra> {
+}): Promise<MountedTitan> {
   let failedRelease: (() => Promise<void>) | undefined
 
   try {
@@ -100,7 +100,7 @@ export async function mountOwnedHydra({
     let notifyChange = (): void => {}
 
     const dir = hydraDir({ hydraId })
-    const releaseHold = await holdHydra({
+    const releaseHold = await holdTitan({
       hydraId,
       changed: () => notifyChange(),
     })
@@ -109,7 +109,7 @@ export async function mountOwnedHydra({
     const token = Buffer.from(localToken())
     const identity = hydraIdentity({ hydraId })
     dropCopyLeases({ hydraId })
-    let { state } = loadHydra({ hydraId })
+    let { state } = loadTitan({ hydraId })
     let handledThrough = state.seq
     const catalogIndex = createCatalogIndex({ locations: catalogLocations })
     const {
@@ -125,7 +125,7 @@ export async function mountOwnedHydra({
       bindThread,
     } = createThreadSubscriptions({
       hydraId,
-      state: () => loadHydra({ hydraId }).state,
+      state: () => loadTitan({ hydraId }).state,
       closed: () => closed,
       send: ({
         ws,
@@ -156,7 +156,7 @@ export async function mountOwnedHydra({
     } = tabs
 
     const reload = () => {
-      ({ state } = loadHydra({ hydraId }))
+      ({ state } = loadTitan({ hydraId }))
       handledThrough = state.seq
 
       if (recovered) {
@@ -225,7 +225,7 @@ export async function mountOwnedHydra({
         after: handledThrough,
       })
 
-      const live = heldHydra({ hydraId })
+      const live = heldTitan({ hydraId })
 
       if (live) {
         state = live.state
@@ -382,7 +382,7 @@ export async function mountOwnedHydra({
       ask: async ({ body }) => {
         if (body.action === 'cpu-profile') {
           if (typeof body.seconds !== 'number' || typeof body.path !== 'string') {
-            throw new HydraError({
+            throw new TitanError({
               code: 'VALIDATION_ERROR',
               message: 'CPU profile needs seconds and output path',
             })
@@ -397,7 +397,7 @@ export async function mountOwnedHydra({
 
         if (body.action === 'refresh-links') {
           if (typeof body.task !== 'string') {
-            throw new HydraError({
+            throw new TitanError({
               code: 'VALIDATION_ERROR',
               message: 'task is required',
             })
@@ -435,7 +435,7 @@ export async function mountOwnedHydra({
           const limit = typeof body.limit === 'number' ? body.limit : DEBUG_LIMIT
 
           if (!Number.isInteger(limit) || limit < 1 || limit > DEBUG_MAX) {
-            throw new HydraError({
+            throw new TitanError({
               code: 'VALIDATION_ERROR',
               message: 'Invalid health limit',
             })
@@ -547,7 +547,7 @@ export async function mountOwnedHydra({
       ws,
       page,
     }: {
-      ws: HydraClient
+      ws: TitanClient
       page?: string[]
     }) => {
       if (!page) {
@@ -563,7 +563,7 @@ export async function mountOwnedHydra({
           }).interest,
         })
       } catch (error) {
-        if (!(error instanceof HydraError)) {
+        if (!(error instanceof TitanError)) {
           throw error
         }
       }
@@ -573,9 +573,9 @@ export async function mountOwnedHydra({
       ws,
       page,
     }: {
-      ws: HydraClient
+      ws: TitanClient
       page?: string[]
-    }): HydraSubscription => {
+    }): TitanSubscription => {
       clients.add(ws)
       openPageWithInitialInterest({
         ws,

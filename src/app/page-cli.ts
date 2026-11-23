@@ -1,8 +1,8 @@
 import { COMMON, guard, parse, type Options } from './cli-support.ts'
-import type { HydraState } from './model.ts'
-import { loadHydra } from './store.ts'
+import type { TitanState } from './model.ts'
+import { loadTitan } from './store.ts'
 import { pageState, type PageInterest } from './page-state.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { projectGroups } from '#projects/groups.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -29,7 +29,7 @@ export function pageInterest({
   state,
   values,
 }: {
-  state: HydraState
+  state: TitanState
   values: ReturnType<typeof parsePage>['values']
 }): {
   interest: PageInterest
@@ -73,7 +73,7 @@ function pageOutput({
   state,
   args,
 }: {
-  state: HydraState
+  state: TitanState
   args: string[]
 }) {
   const {
@@ -104,7 +104,7 @@ function pageOutput({
   const counts = new Map<string, number>()
 
   for (const card of cards) {
-    if (card.id === HYDRA_CARD || !liveTask({ card })) {
+    if (card.id === TITAN_CARD || !liveTask({ card })) {
       continue
     }
 
@@ -126,18 +126,18 @@ function pageOutput({
     })),
     opened: opened.length ? opened : 'none: no --card given',
     hidden: interest.hidden ? cards.filter(card => !liveTask({ card })).length : 'not included; pass --hidden',
-    ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Hydra',
+    ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Titan',
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
-      `Use the UI to inspect the full Hydra ${hydraId}`,
-      `Read hydra.log and tasks/<task>/task.log in Hydra ${hydraId}`,
+      `Use the UI to inspect the full Titan ${hydraId}`,
+      `Read hydra.log and tasks/<task>/task.log in Titan ${hydraId}`,
     ],
   }
 }
 
 export const page = guard({
   handler: ({ args }) => pageOutput({
-    state: loadHydra({ hydraId: parsePage({ args }).hydraId }).state,
+    state: loadTitan({ hydraId: parsePage({ args }).hydraId }).state,
     args,
   }),
 })

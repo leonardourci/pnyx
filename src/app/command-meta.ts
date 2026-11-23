@@ -1,4 +1,4 @@
-import type { HydraState, HydraEvent } from './model.ts'
+import type { TitanState, TitanEvent } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { freeId } from '#store/ids.ts'
 
@@ -18,13 +18,13 @@ export function base({
   meta,
   cardId,
 }: {
-  state: HydraState
+  state: TitanState
   meta: Meta
   cardId: string
 }) {
   const seq = state.seq + 1
 
-  const event: Pick<HydraEvent, 'v' | 'seq' | 'id' | 'at' | 'actor' | 'cardId' | 'reason' | 'details'> = {
+  const event: Pick<TitanEvent, 'v' | 'seq' | 'id' | 'at' | 'actor' | 'cardId' | 'reason' | 'details'> = {
     v: EVENT_VERSION,
     seq,
     id: meta.id ?? freeId({
@@ -49,7 +49,7 @@ export function recordEventId({
   id,
   seq,
 }: {
-  state: Pick<HydraState, 'eventIds'>
+  state: Pick<TitanState, 'eventIds'>
   id: string
   seq: number
 }) {

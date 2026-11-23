@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { asRecord } from '#app/command-validation.ts'
 import type { TaskOperation } from '#tasks/plans.ts'
 import type { DeliveryOperation } from '#tasks/delivery/plans.ts'
@@ -12,7 +12,7 @@ export interface ApplyIssue {
   reason: string
 }
 
-export class ApplyError extends HydraError {
+export class ApplyError extends TitanError {
   readonly errors: ApplyIssue[]
   constructor({
     errors,

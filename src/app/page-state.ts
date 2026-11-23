@@ -1,9 +1,9 @@
-import type { HydraState } from './model.ts'
-import type { HydraMessage } from '#hydra/model.ts'
+import type { TitanState } from './model.ts'
+import type { TitanMessage } from '#titan/model.ts'
 import { ownerActor } from './actors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { cardReference } from './card-reference.ts'
 import { isManagedTask, knownCards, liveTask } from '#tasks/select.ts'
 
@@ -12,12 +12,12 @@ export interface PageInterest {
   hidden: boolean
 }
 type ServerOnly = 'eventIds' | 'contextNotes' | 'questionReminders' | 'hydraMessages'
-export type PageState = Omit<HydraState, ServerOnly>
+export type PageState = Omit<TitanState, ServerOnly>
 
 function ownerMessage({ messages }: {
-  messages: HydraState['hydraMessages']
-}): HydraState['hydraOwnerMessage'] {
-  const ownerSend = ({ message }: { message: HydraMessage }) =>
+  messages: TitanState['hydraMessages']
+}): TitanState['hydraOwnerMessage'] {
+  const ownerSend = ({ message }: { message: TitanMessage }) =>
     ownerActor({ actor: message.actor }) && message.action === 'send'
   const latest = messages?.findLast(message => ownerSend({ message }))
 
@@ -43,7 +43,7 @@ export function pageShows({
   card: Card
   interest: PageInterest
 }): boolean {
-  return card.id === HYDRA_CARD || interest.hidden || interest.cards.includes(card.id)
+  return card.id === TITAN_CARD || interest.hidden || interest.cards.includes(card.id)
     || liveTask({ card })
 }
 
@@ -53,7 +53,7 @@ function pageSession({
   interest,
 }: {
   session: AgentSession
-  state: HydraState
+  state: TitanState
   interest: PageInterest
 }): boolean {
   const card = session.taskId && state.cards[session.taskId]
@@ -72,10 +72,10 @@ export function pageState({
   state,
   interest,
 }: {
-  state: HydraState
+  state: TitanState
   interest: PageInterest
 }): PageState {
-  const page: PageState & Partial<Pick<HydraState, ServerOnly>> = {
+  const page: PageState & Partial<Pick<TitanState, ServerOnly>> = {
     ...state,
     hydraOwnerMessage: ownerMessage({ messages: state.hydraMessages }),
   }

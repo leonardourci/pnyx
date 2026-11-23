@@ -1,11 +1,12 @@
 import { requestEnv } from '#app/request-context.ts'
 import { withCommandNotices, inform } from './command-notices.ts'
-import { parseArgs, type ParseArgsConfig } from 'node:util'
-import type { EventType, HydraState, HydraEvent, Decision } from './model.ts'
-import { DEFAULT_HYDRA } from './home-migration.ts'
+import { type ParseArgsConfig } from 'node:util'
+import { parseCommandArgs as parseArgs } from './command-aliases.ts'
+import type { EventType, TitanState, TitanEvent, Decision } from './model.ts'
+import { DEFAULT_TITAN } from './home-migration.ts'
 import type { Meta } from './command-meta.ts'
-import { HYDRA_ACTOR } from './actors.ts'
-import { HydraError } from '#store/errors.ts'
+import { TITAN_ACTOR } from './actors.ts'
+import { TitanError } from '#store/errors.ts'
 import { briefChange } from '#tasks/updates.ts'
 import { readChanges } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
@@ -49,8 +50,8 @@ export const WRITE: Options = {
 
 function flagError({ error }: {
   error: unknown
-}): HydraError {
-  return new HydraError({
+}): TitanError {
+  return new TitanError({
     message: (error as Error).message,
     code: 'VALIDATION_ERROR',
   })
@@ -82,7 +83,7 @@ export function parse({
   }
 
   if (parsed.positionals.length > positionals) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unexpected argument: ${parsed.positionals[positionals]}`,
       code: 'VALIDATION_ERROR',
     })
@@ -96,7 +97,7 @@ export function parse({
     }
 
     if (seen.has(token.name)) {
-      throw new HydraError({
+      throw new TitanError({
         message: `repeated scalar flag --${token.name}`,
         code: 'VALIDATION_ERROR',
       })
@@ -110,12 +111,12 @@ export function parse({
   return {
     values,
     positionals: parsed.positionals,
-    hydraId: commandHydra({ hydra: values.hydra as string | undefined }),
+    hydraId: commandTitan({ hydra: values.hydra as string | undefined }),
   }
 }
 
-export const commandHydra = ({ hydra }: { hydra?: string }): string =>
-  hydra ?? requestEnv().PNYX_HYDRA ?? DEFAULT_HYDRA
+export const commandTitan = ({ hydra }: { hydra?: string }): string =>
+  hydra ?? requestEnv().OTHRYS_TITAN ?? DEFAULT_TITAN
 
 export function required({
   value,
@@ -125,7 +126,7 @@ export function required({
   what: string
 }): string {
   if (!value) {
-    throw new HydraError({
+    throw new TitanError({
       message: `missing ${what}`,
       code: 'VALIDATION_ERROR',
     })
@@ -146,7 +147,7 @@ export function integer({
   }
 
   if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${flag} must be a non-negative integer`,
       code: 'VALIDATION_ERROR',
     })
@@ -188,10 +189,10 @@ export function meta({ values }: { values: Record<string, string | boolean | und
 export function explained({ meta }: { meta: Meta }): string {
   const reason = meta.reason?.trim() ?? ''
 
-  if (meta.actor === HYDRA_ACTOR && !reason) {
+  if (meta.actor === TITAN_ACTOR && !reason) {
     inform({
       reason: 'No reason was supplied for this change',
-      clear: 'Use pnyx with --reason "<why>" to record the reason',
+      clear: 'Use othrys with --reason "<why>" to record the reason',
     })
   }
 
@@ -202,8 +203,8 @@ function receipt({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): Output {
   if (event.type === 'hydra.project') {
     return {
@@ -251,7 +252,7 @@ function receipt({
       message: event.id,
       hydra: event.data.hydra,
       state: 'queued',
-      help: ['Hydra can read this in hydra.log; no worker was launched'],
+      help: ['Titan can read this in hydra.log; no worker was launched'],
     }
   }
 
@@ -266,7 +267,7 @@ function receipt({
     }
   }
 
-  // A retried write's card may have moved to another Hydra since.
+  // A retried write's card may have moved to another Titan since.
   if (!Object.hasOwn(
     state.cards,
     event.cardId,
@@ -304,7 +305,7 @@ interface Intent {
   arrangement?: boolean
 }
 
-export function isArrangement({ event }: { event: HydraEvent }): boolean {
+export function isArrangement({ event }: { event: TitanEvent }): boolean {
   return event.type === 'task.edited' && 'rank' in event.data && !('parentId' in event.data)
 }
 
@@ -316,13 +317,13 @@ function originalReceipt(
     original,
     intent,
   }: {
-    state: HydraState
+    state: TitanState
     id: string
-    original: HydraEvent
+    original: TitanEvent
     intent: Intent
   },
 ): Output {
-  // The key a card had when it moved to another Hydra still names it in a retry.
+  // The key a card had when it moved to another Titan still names it in a retry.
   const sessionObservation = original.type === 'session.observed' ? original.data : undefined
   const pushKey = sessionObservation && 'key' in sessionObservation ? sessionObservation.key : undefined
   const sameCard = original.cardId !== '$sessions' && (original.cardId === intent.card
@@ -337,7 +338,7 @@ function originalReceipt(
 
   if (!sameType || arrangement !== Boolean(intent.arrangement)
     || original.undoes !== intent.undoes || (!sameCard && !samePushKey)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `event id ${id} was already used by ${original.type} on card ${original.cardId}`,
       code: 'IDEMPOTENCY_CONFLICT',
       help: ['Retry with a new --event-id'],
@@ -375,7 +376,7 @@ export async function commit(
       state,
       meta,
     }: {
-      state: HydraState
+      state: TitanState
       meta: Meta
     }) => Decision
 
@@ -400,10 +401,10 @@ export async function commit(
         })[0]
 
         if (!original) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'RECEIPT_EXPIRED',
             message: `observation receipt expired: ${meta.id}`,
-            help: ['Read the current task or Hydra before sending another observation'],
+            help: ['Read the current task or Titan before sending another observation'],
           })
         }
 
@@ -417,7 +418,7 @@ export async function commit(
         if (original.type === 'hydra.memory' && original.data.key === 'workers') {
           workerNotesNotice({
             writer,
-            target: `Hydra ${hydraId}`,
+            target: `Titan ${hydraId}`,
             meta: original,
           })
         }
@@ -467,7 +468,7 @@ export async function commit(
           if (event.type === 'hydra.memory' && event.data.key === 'workers') {
             workerNotesNotice({
               writer,
-              target: `Hydra ${hydraId}`,
+              target: `Titan ${hydraId}`,
               meta: event,
             })
           }
@@ -516,7 +517,7 @@ export function clip({
   )}… (truncated, ${text.length} chars total)` : text
 }
 
-function summary({ event }: { event: HydraEvent }): string {
+function summary({ event }: { event: TitanEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
@@ -524,7 +525,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'session.observed': return 'fields' in event.data ? `Session ${event.data.fields.agent.sessionId}: ${event.data.fields.activity ?? 'updated'}` : `Session ${event.data.session} activity updated`
     case 'task.worker-line': return `${event.data.code}: ${event.data.text}`
     case 'task.wait-resumed': return event.data.message.text
-    case 'hydra.context-delivered': return 'Context notes delivered to Hydra'
+    case 'hydra.context-delivered': return 'Context notes delivered to Titan'
     case 'diagnostic.retry': return `Message recovery attempt ${event.data.number}: ${event.data.status}`
     case 'apply.recorded': return `Applied local changes: ${event.id}`
     case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
@@ -541,9 +542,9 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
     case 'task.steering.stopped': return 'Steering not delivered: stopped'
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
-    case 'chat.message': return 'Conversation copy from an older Pnyx'
-    case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
-    case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
+    case 'chat.message': return 'Conversation copy from an older Othrys'
+    case 'board.configured': return `Titan ${event.data.name}; Titan ${event.data.hydra.id}`
+    case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Titan ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`
     case 'task.report-reviewed': return `Report decisions reviewed (${event.data.calls.length} calls)`
@@ -551,8 +552,8 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.landing': return event.data.after
       ? `For this task only: lands as ${landingWording({ rule: event.data.after })}`
       : 'Follows its project\'s landing rule again'
-    case 'task.moved-out': return `Moved to Hydra ${event.data.to}`
-    case 'task.moved-in': return `Moved here from Hydra ${event.data.from}`
+    case 'task.moved-out': return `Moved to Titan ${event.data.to}`
+    case 'task.moved-in': return `Moved here from Titan ${event.data.from}`
     case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
@@ -563,20 +564,20 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.owner-ask':
     case 'task.intent': return 'Owner ask added'
     case 'task.brief': return briefChange({ data: event.data })
-    case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
-    case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
+    case 'task.retention': return event.data.after === null ? 'Using the Titan hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
+    case 'task.visibility': return event.data.after ? 'Task hidden from Titan' : 'Task returned to Titan'
     case 'hydra.helper-started': return 'Routine helper started'
     case 'hydra.helper-finished': return event.data.error ? `Helper handed back: ${event.data.error}` : 'Routine helper outcomes recorded'
-    case 'hydra.helper-acknowledged': return 'Helper outcomes handled by Hydra'
+    case 'hydra.helper-acknowledged': return 'Helper outcomes handled by Titan'
     case 'hydra.review': return 'Timed review'
-    case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
+    case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Titan memory: ${event.data.key}`
     case 'task.tools-applied': return 'Tool grants applied to the hosted session'
     case 'task.tools': return `Tools: ${event.data.after.join(', ') || 'none'}`
-    case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
+    case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Titan'} (${event.data.id}): ${event.data.question}`
     case 'task.ask.closed': return `Closed ${event.data.ask}: ${event.data.reason} (${event.data.evidence})`
     case 'task.ask.deferred': return event.data.until
       ? `Deferred ${event.data.ask} until ${event.data.until}` : `Question ${event.data.ask} is active again`
-    case 'task.ask.reopened': return `${event.data.reask ? 'Hydra re-asked' : 'Reopened'} ${event.data.ask}`
+    case 'task.ask.reopened': return `${event.data.reask ? 'Titan re-asked' : 'Reopened'} ${event.data.ask}`
     case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
@@ -584,18 +585,18 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
     case 'hydra.message':
       if (event.data.liftsHold) {
-        return `Hydra lifted Hold on ${event.data.answers}: ${event.data.text}`
+        return `Titan lifted Hold on ${event.data.answers}: ${event.data.text}`
       }
 
-      return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+      return `${event.actor === TITAN_ACTOR ? 'Titan' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Titan'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'hydra.agent-used': return `Agent ${event.data.model ?? event.data.harness}`
-    case 'hydra.delivered': return `Hydra turn in ${event.data.session}`
+    case 'hydra.delivered': return `Titan turn in ${event.data.session}`
     case 'hydra.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.input-stopped': return 'Messages not delivered: stopped'
-    case 'hydra.input': return `Hydra input ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
-    case 'hydra.received': return `Hydra received ${event.data.message}`
-    case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
+    case 'hydra.input': return `Titan input ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'hydra.received': return `Titan received ${event.data.message}`
+    case 'hydra.status': return `Titan ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.dependencies': return `Prerequisites: ${event.data.after.join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
@@ -625,7 +626,7 @@ function summary({ event }: { event: HydraEvent }): string {
   }
 }
 
-export function summarize({ event }: { event: HydraEvent }): string {
+export function summarize({ event }: { event: TitanEvent }): string {
   const text = summary({ event })
 
   return event.reason ? `${text} (why: ${event.reason})` : text

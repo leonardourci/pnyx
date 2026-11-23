@@ -1,5 +1,6 @@
+import { canonicalCommandName } from './command-aliases.ts'
 import type { HelperAction } from '#routine-helper/route.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 
 type Args = { args: string[] }
 
@@ -102,7 +103,7 @@ const COMMAND_REGISTRY = {
         'permission',
       ],
     },
-    agentNotices: ({ args }) => (args[0] === 'permission' && args[1] === HYDRA_CARD)
+    agentNotices: ({ args }) => (args[0] === 'permission' && args[1] === TITAN_CARD)
       || (args[0] === 'copy' && flag({
         args,
         name: '--discard',
@@ -247,18 +248,24 @@ type PageName = {
 }[Name]
 
 // CLI commands exposed to the browser. push stays CLI-only because it reads a file path.
-export const CLI_COMMANDS = entries.filter(([
-  , entry,
-]) => entry.page).map(([name]) => name) as PageName[]
+export const CLI_COMMANDS: (PageName | 'titan')[] = [
+  ...entries.filter(([
+    , entry,
+  ]) => entry.page).map(([name]) => name) as PageName[],
+  'titan',
+]
 
 const registered = ({ name }: { name: string }): Entry | undefined =>
-  (COMMAND_REGISTRY as Record<string, Entry>)[name]
+  (COMMAND_REGISTRY as Record<string, Entry>)[canonicalCommandName({ name })]
 
 export const waitsOnAgent = ({ name }: { name: string }) => registered({ name })?.agent === true
 
 export const repeatable = ({ name }: { name: string }) => registered({ name })?.repeatable === true
 
-export const WORKER_COMMANDS = ['pnyx']
+export const WORKER_COMMANDS = [
+  'othrys',
+  'pnyx',
+]
 
 export const workerScope = ({ name }: { name: string }) => registered({ name })?.scope
 
@@ -272,4 +279,7 @@ export const agentNoticeCommand = ({
   args,
 }: { name: string } & Args): boolean => registered({ name })?.agentNotices?.({ args }) ?? false
 
-export const HYDRA_COMMANDS = ['pnyx']
+export const TITAN_COMMANDS = [
+  'othrys',
+  'pnyx',
+]

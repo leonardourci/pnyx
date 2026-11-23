@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { createHost } from '#app/host.ts'
 import type { CommandRequest } from './dispatch.ts'
 
@@ -13,7 +13,7 @@ export function compactCommand({
   agents: ReturnType<typeof createHost>
 }) {
   if (args.length !== 1) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'compact expects a card',
       code: 'VALIDATION_ERROR',
     })
@@ -32,7 +32,7 @@ export function compactCommand({
     }),
     (error: Error) => fail({
       error: error.message,
-      code: error instanceof HydraError ? error.code : 'UNKNOWN',
+      code: error instanceof TitanError ? error.code : 'UNKNOWN',
     }),
   )
 }

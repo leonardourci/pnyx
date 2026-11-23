@@ -1,7 +1,7 @@
 import { workerTaskDir } from '#workers/worker-log.ts'
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
-import { stopHydraInputs } from '#hydra/stop-inputs.ts'
-import { heldOwnerMessages, hydraChatQueue } from '#hydra/chat-queue.ts'
+import { stopTitanInputs } from '#titan/stop-inputs.ts'
+import { heldOwnerMessages, hydraChatQueue } from '#titan/chat-queue.ts'
 import { compactCommand } from '#workers/compact-command.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
@@ -11,7 +11,7 @@ import { toolInstructions, toolEnvironment } from '#workers/tools.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { reservingTaskCopy } from '#projects/copy-pool.ts'
 import { log } from './diagnostics.ts'
-import { createAgentSwitch } from '#hydra/agent-switch.ts'
+import { createAgentSwitch } from '#titan/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
 import { PROVIDERS, knownProvider } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
@@ -33,44 +33,44 @@ import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { clip } from '#hydra/digest.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { clip } from '#titan/digest.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HYDRA_ACTOR } from './actors.ts'
-import { HydraError } from '#store/errors.ts'
+import { TITAN_ACTOR } from './actors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, AgentSession, Attention, SessionObservation } from '#workers/model.ts'
 import { decideSessionFacts } from '#workers/session-facts.ts'
-import type { HydraAgentChange } from '#hydra/model.ts'
+import type { TitanAgentChange } from '#titan/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { INTERRUPTED, sessionId, sessionTask } from '#workers/session-attachments.ts'
-import { loadHydra } from './store.ts'
+import { loadTitan } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
 import { WAKE_MS, STALL_MS, BUSY_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, untrackedBranches, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
-import { createStallChecks } from '#hydra/stalls.ts'
-import { createWakeQueue } from '#hydra/wake-queue.ts'
+import { createStallChecks } from '#titan/stalls.ts'
+import { createWakeQueue } from '#titan/wake-queue.ts'
 import { createHostRecovery } from './host-recovery.ts'
 import { createLiveSessions, type LiveSessionScope } from '#workers/live-sessions.ts'
-import { abortHydraTasks, registerTaskHost, taskChildren, taskToolCleanup, taskUsages, trackedTaskTools, type TaskSessionOwner, type ToolApplication } from './task-runtime.ts'
+import { abortTitanTasks, registerTaskHost, taskChildren, taskToolCleanup, taskUsages, trackedTaskTools, type TaskSessionOwner, type ToolApplication } from './task-runtime.ts'
 import { createCardInputs, waitingCardInput } from '#workers/card-input.ts'
 import { createLiveSettings } from '#workers/live-settings.ts'
-import { createHydraTurns } from '#hydra/turns.ts'
+import { createTitanTurns } from '#titan/turns.ts'
 import { createWorkerStarts } from '#workers/hosted-start.ts'
 import { createHostedDelivery } from '#workers/hosted-delivery.ts'
-import { createHydraOperations, createHydraOutage } from '#hydra/operations.ts'
+import { createTitanOperations, createTitanOutage } from '#titan/operations.ts'
 import { COMPACTION_DEADLINE_MS, createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { applyDecision } from './decision.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
 
-// After a failed start Pnyx tries again after each of these waits, then every last one, until a start works.
+// After a failed start Othrys tries again after each of these waits, then every last one, until a start works.
 const RETRY_MS = [
   60_000,
   120_000,
@@ -78,12 +78,12 @@ const RETRY_MS = [
   600_000,
 ]
 
-// Every Hydra this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
+// Every Titan this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
 const midTurnChecks = new Set<() => boolean>()
 
 export const agentsMidTurn = () => [...midTurnChecks].some(check => check())
 
-const pnyxCommand = ({ text }: { text: string }) => compactCommand({ text })
+const othrysCommand = ({ text }: { text: string }) => compactCommand({ text })
   || restartCommand({ text }) || upgradeCommand({ text })
 
 export function createHost({
@@ -122,7 +122,7 @@ export function createHost({
   }): void
   // A login's plan limits changed, so every session's usage view is rebuilt.
   usageChanged?(): void
-  // Hydra's queue of unread changes grew, or its check turn took or finished them.
+  // Titan's queue of unread changes grew, or its check turn took or finished them.
   queued?(): void
   wakeDelay?: number
   stallDelay?: number
@@ -131,7 +131,7 @@ export function createHost({
   compactionDelay?: number
   retryDelays?: number[]
   helperBound?: number
-  // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
+  // The Othrys folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Host {
@@ -210,7 +210,7 @@ export function createHost({
   midTurnChecks.add(midTurn)
   // Closed tasks whose agents were already stopped; their failed stops wait for a permanent release.
   const reaped = new Set<string>()
-  const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
+  const observedAssignments = new Map(Object.values(loadTitan({ hydraId }).state.cards)
     .map(card => [
       card.id,
       steeringAssignment({ card }),
@@ -223,7 +223,7 @@ export function createHost({
   })
 
   let closing = false
-  const queuedHydra = new Set<string>()
+  const queuedTitan = new Set<string>()
 
   const write = async <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T> => {
     const result = await withWriter({
@@ -245,7 +245,7 @@ export function createHost({
     const released = card.copy?.state === 'removed' && canonical({ path: card.copy.path }) === canonical({ path: cwd })
 
     if (!cwd || released || !isFolder({ path: cwd })) {
-      throw new HydraError({
+      throw new TitanError({
         message: released ? `the agent's copy ${cwd} was released, so its session cannot continue` : `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
         code: 'FOLDER_MISSING',
         help: [card.agent.host === 'pnyx' ? `Detach the missing session and start a fresh worker from task ${card.id} in the UI` : `Replace the missing session from task ${card.id} in the UI, using a folder that exists`],
@@ -258,7 +258,7 @@ export function createHost({
   const at = () => new Date().toISOString()
   const upgrades = upgradeQueue({
     root: upgradeRoot,
-    state: () => loadHydra({ hydraId }).state,
+    state: () => loadTitan({ hydraId }).state,
     record: async ({
       operation,
       eventId = randomUUID(),
@@ -269,7 +269,7 @@ export function createHost({
             v: 1,
             id: eventId,
             seq: writer.state.seq + 1,
-            cardId: HYDRA_CARD,
+            cardId: TITAN_CARD,
             actor: 'pnyx',
             at: at(),
             type: 'pnyx.upgrade',
@@ -279,7 +279,7 @@ export function createHost({
       })
       queued()
 
-      // Only the restart stops Hydra, of a /restart or of a built upgrade; the end recaps what waited.
+      // Only the restart stops Titan, of a /restart or of a built upgrade; the end recaps what waited.
       if (operation.state === 'restarting') {
         await startOperation({
           id: operation.id,
@@ -307,9 +307,9 @@ export function createHost({
     startOperation,
     endOperation,
     stoppedByOwner,
-  } = createHydraOperations({
+  } = createTitanOperations({
     hydraId,
-    queuedHydra,
+    queuedTitan,
     at,
     // Defined below; each is read only once an operation runs.
     note: ({ fn }) => note({ fn }),
@@ -320,7 +320,7 @@ export function createHost({
   const compaction = createCompactionControl({
     hydraId,
     compactionDelay,
-    queuedHydra,
+    queuedTitan,
     closing: () => closing,
     at,
     write,
@@ -332,7 +332,7 @@ export function createHost({
       card,
       operation,
     }) => {
-      if (card !== HYDRA_CARD) {
+      if (card !== TITAN_CARD) {
         return
       }
 
@@ -343,16 +343,16 @@ export function createHost({
         })
       }
     },
-    // Hydra is back once its compactions settle, including one that followed straight after.
+    // Titan is back once its compactions settle, including one that followed straight after.
     released: ({ card }) => {
-      const state = loadHydra({ hydraId }).state
+      const state = loadTitan({ hydraId }).state
       const running = state.hydraOperation
-      const last = state.cards[HYDRA_CARD]?.compaction?.operations.at(-1)
+      const last = state.cards[TITAN_CARD]?.compaction?.operations.at(-1)
 
-      const native = state.cards[HYDRA_CARD]?.compaction?.operations
+      const native = state.cards[TITAN_CARD]?.compaction?.operations
         .find(operation => operation.id === running?.id)
 
-      if (card !== HYDRA_CARD || running?.kind !== 'compaction' || !native || native.state === 'running') {
+      if (card !== TITAN_CARD || running?.kind !== 'compaction' || !native || native.state === 'running') {
         return
       }
 
@@ -437,8 +437,8 @@ export function createHost({
     })
 
     if (card.agent?.host !== 'pnyx') {
-      throw new HydraError({
-        message: `card ${card.id} has no agent that Pnyx runs`,
+      throw new TitanError({
+        message: `card ${card.id} has no agent that Othrys runs`,
         code: 'NO_ROUTE',
       })
     }
@@ -457,7 +457,7 @@ export function createHost({
     note: string
     resumeAttemptId?: string
   }) => {
-    // A turn Pnyx resumes is not reported as stopped; its card asks only when the resume is not sent or cannot reopen.
+    // A turn Othrys resumes is not reported as stopped; its card asks only when the resume is not sent or cannot reopen.
     const resuming = Boolean(resumeAttemptId)
     record({
       writer,
@@ -470,7 +470,7 @@ export function createHost({
     let task: Card | undefined
 
     if (session?.id === writer.state.config?.hydra.session) {
-      task = writer.state.cards[HYDRA_CARD]
+      task = writer.state.cards[TITAN_CARD]
     } else if (session?.taskId) {
       task = writer.state.cards[session.taskId]
     }
@@ -514,7 +514,7 @@ export function createHost({
     }
   }
 
-  // Hydra's own commands are recorded as its writes, so they never wake it; a worker's carry its task.
+  // Titan's own commands are recorded as its writes, so they never wake it; a worker's carry its task.
   const environment = ({
     hydra = false,
     task,
@@ -525,19 +525,19 @@ export function createHost({
     steeringWorker?: string
   } = {}) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
-    PNYX_HOME: pnyxHome(),
-    PNYX_HYDRA: hydraId,
+    OTHRYS_HOME: othrysHome(),
+    OTHRYS_TITAN: hydraId,
     ...(hydra ? {
-      PNYX_ACTOR: HYDRA_ACTOR,
-      PNYX_HOSTED: 'hydra',
+      OTHRYS_ACTOR: TITAN_ACTOR,
+      OTHRYS_HOSTED: 'hydra',
     } : task ? {
-      PNYX_ACTOR: `worker:${task}`,
-      PNYX_TASK_DIR: workerTaskDir({
+      OTHRYS_ACTOR: `worker:${task}`,
+      OTHRYS_TASK_DIR: workerTaskDir({
         hydraId,
         task,
       }),
-      PNYX_WORKER_HOME: pnyxHome(),
-      PNYX_STEERING_WORKER: steeringWorker,
+      OTHRYS_WORKER_HOME: othrysHome(),
+      OTHRYS_STEERING_WORKER: steeringWorker,
       ...untrackedBranches({ env: process.env }),
     } : {}),
   })
@@ -547,13 +547,13 @@ export function createHost({
     taskId,
   }: {
     provider: string
-    // The task whose agent this opens, Hydra's own included, for the agent's log lines.
+    // The task whose agent this opens, Titan's own included, for the agent's log lines.
     taskId?: string
   }): Provider => {
     const known = knownProvider({ name: provider })
 
     if (!known) {
-      throw new HydraError({
+      throw new TitanError({
         message: `unsupported hosted provider: ${provider}`,
         code: 'VALIDATION_ERROR',
       })
@@ -561,11 +561,11 @@ export function createHost({
 
     const chosen = providers[known]
 
-    // Every session the server opens, for Hydra, a worker or the helper, logs how long its provider took to start it,
+    // Every session the server opens, for Titan, a worker or the helper, logs how long its provider took to start it,
     // and its agent processes are listed with their memory under its ids.
     return {
       ...chosen,
-      // eslint-disable-next-line pnyx/object-params -- the provider owns open's options, which pass through whole.
+      // eslint-disable-next-line othrys/object-params -- the provider owns open's options, which pass through whole.
       open: async options => {
         const opening = performance.now()
         const ids: Parameters<typeof watchAgent>[0]['ids'] = {
@@ -579,7 +579,7 @@ export function createHost({
           spawned({ child })
 
           if (child.pid !== undefined && taskId) {
-            const trackedChildren = taskId === HYDRA_CARD ? children : taskChildren({
+            const trackedChildren = taskId === TITAN_CARD ? children : taskChildren({
               hydraId,
               task: taskId,
             })
@@ -595,7 +595,7 @@ export function createHost({
           })
         }
 
-        const toolOwner = taskId ? loadHydra({ hydraId }).state.cards[taskId] : undefined
+        const toolOwner = taskId ? loadTitan({ hydraId }).state.cards[taskId] : undefined
         const inheritsTools = options.capabilities === undefined
         const toolsRevision = inheritsTools ? toolOwner?.toolsRevision : undefined
         const capabilities = options.capabilities ?? toolOwner?.tools ?? []
@@ -612,7 +612,7 @@ export function createHost({
             options.instructions,
             taskId && toolInstructions({
               tools: capabilities,
-              worker: taskId !== HYDRA_CARD,
+              worker: taskId !== TITAN_CARD,
             }),
           ].filter(Boolean).join('\n\n'),
           spawned: tracked,
@@ -674,7 +674,7 @@ export function createHost({
     children,
     streamed,
     beginTools: ({ task }) => {
-      const revision = loadHydra({ hydraId }).state.cards[task]?.toolsRevision
+      const revision = loadTitan({ hydraId }).state.cards[task]?.toolsRevision
 
       if (!revision) {
         return false
@@ -785,7 +785,7 @@ export function createHost({
     startFailed,
     planRetry,
     close: stopRetry,
-  } = createHydraOutage({
+  } = createTitanOutage({
     hydraId,
     retryDelays,
     closing: () => closing,
@@ -833,7 +833,7 @@ export function createHost({
     hydraId,
     wakeDelay,
     live,
-    queuedHydra,
+    queuedTitan,
     closing: () => closing,
     queued,
     helper,
@@ -842,10 +842,10 @@ export function createHost({
     host: () => host,
   })
 
-  const turns = createHydraTurns({
+  const turns = createTitanTurns({
     hydraId,
     live,
-    queuedHydra,
+    queuedTitan,
     closing: () => closing,
     changed,
     queued,
@@ -895,7 +895,7 @@ export function createHost({
     busyDelay,
     stallRepeatMax,
     live,
-    queuedHydra,
+    queuedTitan,
     closing: () => closing,
     helper,
     helperOpen,
@@ -923,12 +923,12 @@ export function createHost({
     }),
   })
 
-  const changeAgent = async ({ change }: { change: HydraAgentChange }) => await write({
+  const changeAgent = async ({ change }: { change: TitanAgentChange }) => await write({
     fn: ({ writer }) => applyDecision({
       writer,
       decision: hydraEvent({
         state: writer.state,
-        cardId: HYDRA_CARD,
+        cardId: TITAN_CARD,
         meta: {
           at: at(),
           actor: 'pnyx',
@@ -968,7 +968,7 @@ export function createHost({
 
   const {
     start,
-    continueInPnyx,
+    continueInOthrys,
     starting,
   } = createWorkerStarts({
     hydraId,
@@ -1023,10 +1023,10 @@ export function createHost({
   const turnRunning = ({ entry }: { entry?: Live }) => Boolean(entry?.session
     && (entry.activity === 'working' || entry.session.snapshot().work.runningTurns.length))
 
-  const markHydraInterrupted = async () => {
+  const markTitanInterrupted = async () => {
     await write({
       fn: ({ writer }) => {
-        const card = writer.state.cards[HYDRA_CARD]
+        const card = writer.state.cards[TITAN_CARD]
 
         if (card?.agent?.host === 'pnyx') {
           record({
@@ -1043,7 +1043,7 @@ export function createHost({
           writer,
           decision: decidePush({
             state: writer.state,
-            key: HYDRA_CARD,
+            key: TITAN_CARD,
             input: { activity: 'interrupted' },
             meta: {
               at: at(),
@@ -1055,25 +1055,25 @@ export function createHost({
     })
   }
 
-  // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Pnyx itself handles are not messages to Hydra.
+  // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Othrys itself handles are not messages to Titan.
   const stopHeldInputs = async () => {
     stoppedByOwner()
     turns.cancel()
     await note({
-      fn: ({ writer }) => stopHydraInputs({
+      fn: ({ writer }) => stopTitanInputs({
         writer,
         ids: (writer.state.hydraMessages ?? [])
-          .filter(message => !pnyxCommand({ text: message.text }))
+          .filter(message => !othrysCommand({ text: message.text }))
           .map(message => message.id),
         at: at(),
       }),
     })
-    await markHydraInterrupted()
+    await markTitanInterrupted()
   }
 
-  const stopHydra = async () => {
-    const state = loadHydra({ hydraId }).state
-    const card = state.cards[HYDRA_CARD]
+  const stopTitan = async () => {
+    const state = loadTitan({ hydraId }).state
+    const card = state.cards[TITAN_CARD]
     const changing = agentChangeAbort()
     const waiting = state.hydraAgentChange
 
@@ -1087,13 +1087,13 @@ export function createHost({
     if (activeCompaction({ card })) {
       await stopHeldInputs()
 
-      return host.compact({ card: HYDRA_CARD })
+      return host.compact({ card: TITAN_CARD })
     }
 
     const upgrade = upgrades.stop()
 
     if (upgrade === 'restarting') {
-      return { stopped: 'none: Pnyx is restarting after the upgrade and comes back in a few seconds' }
+      return { stopped: 'none: Othrys is restarting after the upgrade and comes back in a few seconds' }
     }
 
     if (upgrade) {
@@ -1116,18 +1116,18 @@ export function createHost({
     const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
     const running = turnRunning({ entry })
 
-    if (!running && !queuedHydra.size && !entry?.input.pending()) {
-      return { stopped: waiting ? 'agent change' : 'none: Hydra is not working on a turn' }
+    if (!running && !queuedTitan.size && !entry?.input.pending()) {
+      return { stopped: waiting ? 'agent change' : 'none: Titan is not working on a turn' }
     }
 
     // Messages already in the agent's hands are settled by its own receipts, not here.
     const cleared = entry?.input.clear() ?? []
     turns.cancel()
     await note({
-      fn: ({ writer }) => stopHydraInputs({
+      fn: ({ writer }) => stopTitanInputs({
         writer,
         ids: [
-          ...queuedHydra,
+          ...queuedTitan,
           ...cleared.flatMap(item => [
             item.id ?? '',
             ...item.carried ?? [],
@@ -1136,7 +1136,7 @@ export function createHost({
         at: at(),
       }),
     })
-    await markHydraInterrupted()
+    await markTitanInterrupted()
 
     if (!entry?.session) {
       return { stopped: 'hydra' }
@@ -1155,14 +1155,14 @@ export function createHost({
 
   const stopWorker = async ({ ref }: { ref: string }) => {
     const card = findCard({
-      state: loadHydra({ hydraId }).state,
+      state: loadTitan({ hydraId }).state,
       ref,
     })
 
     if (card.agent?.host !== 'pnyx') {
-      throw new HydraError({
+      throw new TitanError({
         code: 'NO_ROUTE',
-        message: 'Pnyx does not run this task’s agent',
+        message: 'Othrys does not run this task’s agent',
       })
     }
 
@@ -1261,7 +1261,7 @@ export function createHost({
     diagnostics: () => ({
       helper: {
         ...helper.inspect(),
-        enabled: helperOpen({ state: loadHydra({ hydraId }).state }),
+        enabled: helperOpen({ state: loadTitan({ hydraId }).state }),
       },
       sessions: [...live].map(([
         sessionId,
@@ -1293,7 +1293,7 @@ export function createHost({
         return
       }
 
-      const state = loadHydra({ hydraId }).state
+      const state = loadTitan({ hydraId }).state
       const card = state.cards[task]
 
       if (!card?.agent || !card.toolsRevision || !toolApplicationReady({
@@ -1318,7 +1318,7 @@ export function createHost({
       const entry = live.get(sessionId({ agent: card.agent }))
       const text = toolInstructions({
         tools: card.tools ?? [],
-        worker: card.id !== HYDRA_CARD,
+        worker: card.id !== TITAN_CARD,
       })
 
       if (entry) {
@@ -1385,7 +1385,7 @@ export function createHost({
       card: ref,
     }) => {
       const card = findCard({
-        state: loadHydra({ hydraId }).state,
+        state: loadTitan({ hydraId }).state,
         ref,
       })
       const operation = activeCompaction({ card })
@@ -1397,7 +1397,7 @@ export function createHost({
       const entry = card.agent && live.get(sessionId({ agent: card.agent }))
 
       if (!entry?.session) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'NO_ROUTE',
           message: 'The compact session is unavailable',
         })
@@ -1420,22 +1420,22 @@ export function createHost({
       return { operation }
     },
     stop: async ({
-      card: ref = HYDRA_CARD,
+      card: ref = TITAN_CARD,
       cancel,
     } = {}) => {
       if (cancel) {
-        const listed = hydraChatQueue({ state: loadHydra({ hydraId }).state }).compactInputs
+        const listed = hydraChatQueue({ state: loadTitan({ hydraId }).state }).compactInputs
           .some(input => input.id === cancel && !upgradeCommand({ text: input.text }))
 
         if (!listed) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'NO_ROUTE',
-            message: 'This message is no longer queued for Hydra',
+            message: 'This message is no longer queued for Titan',
           })
         }
 
         await write({
-          fn: ({ writer }) => stopHydraInputs({
+          fn: ({ writer }) => stopTitanInputs({
             writer,
             ids: [cancel],
             at: at(),
@@ -1443,21 +1443,21 @@ export function createHost({
         })
 
         // A waiting change left holding nothing is withdrawn.
-        if (!heldOwnerMessages({ state: loadHydra({ hydraId }).state }).length) {
+        if (!heldOwnerMessages({ state: loadTitan({ hydraId }).state }).length) {
           await resendHeldMessages()
         }
 
         return { cancelled: cancel }
       }
 
-      return ref === HYDRA_CARD ? await stopHydra() : await stopWorker({ ref })
+      return ref === TITAN_CARD ? await stopTitan() : await stopWorker({ ref })
     },
     usageViews: usageTracker.usageViews,
     usage: usageTracker.usage,
     refreshUsage: usageTracker.refreshUsage,
     start,
 
-    continue: continueInPnyx,
+    continue: continueInOthrys,
 
     send,
 
@@ -1537,7 +1537,7 @@ export function createHost({
       if (permanent) {
         await children.stop({ task })
 
-        if (task !== HYDRA_CARD) {
+        if (task !== TITAN_CARD) {
           await taskChildren({
             hydraId,
             task,
@@ -1579,7 +1579,7 @@ export function createHost({
       ])
 
       for (const card of Object.values(state.cards)) {
-        if (card.id === HYDRA_CARD || !closedTask({
+        if (card.id === TITAN_CARD || !closedTask({
           state,
           card,
         })) {
@@ -1639,7 +1639,7 @@ export function createHost({
         )
 
         if (!previous || previous === assignment || !liveTask({ card })
-          || card.id === HYDRA_CARD || card.agent?.host !== 'pnyx' || steeringHeld({ card })) {
+          || card.id === TITAN_CARD || card.agent?.host !== 'pnyx' || steeringHeld({ card })) {
           continue
         }
 
@@ -1689,7 +1689,7 @@ export function createHost({
       }
 
       stalls.close()
-      abortHydraTasks({ hydraId })
+      abortTitanTasks({ hydraId })
       controller.abort()
 
       compaction.close()
@@ -1712,7 +1712,7 @@ export function createHost({
         || entry && !entry.session
 
       if (opening) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'CONFLICT',
           message: `Task ${task} is starting; retry its move after startup settles`,
         })

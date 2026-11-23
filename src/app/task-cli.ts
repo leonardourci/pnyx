@@ -7,7 +7,7 @@ import { knownHarness } from '#workers/providers.ts'
 import { reorderTask } from '#tasks/reorder.ts'
 import { taskRank } from '#tasks/order.ts'
 import { toolsCommand } from '#workers/tools-cli.ts'
-import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#hydra/message-lookup-cli.ts'
+import { MESSAGE_LOOKUP_OPTIONS, messageLookup } from '#titan/message-lookup-cli.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { WRITE, parse, meta, required, commit, explained, integer, HISTORY_LIMIT, clip, type Options, type Output } from './cli-support.ts'
@@ -16,13 +16,13 @@ import { inboxCommand } from '#workers/inbox-cli.ts'
 import { taskLandingCommand } from '#tasks/delivery/task-delivery.ts'
 import { mergeCommand } from '#tasks/delivery/merge.ts'
 import { reminderRepeat, waitingReminders } from '#tasks/reminders.ts'
-import { loadHydra } from './store.ts'
+import { loadTitan } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideSession } from '#workers/sessions.ts'
 import { cardStatus, currentState } from '#tasks/card-status.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TitanError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { askHost } from './server-state.ts'
 import { requireUnheld } from '#tasks/holds.ts'
@@ -43,8 +43,8 @@ import { taskSpend } from '#workers/task-spend.ts'
 import { readEvents, scanEvents } from './event-log.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { askRows, askCommand } from '#tasks/asks.ts'
-import { readThread } from '#hydra/transcripts-read.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { readThread } from '#titan/transcripts-read.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { hideAfterHours, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { moveTask } from '#tasks/move.ts'
 import { requireStopAuthority } from './stop-authority.ts'
@@ -166,7 +166,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     const createHarness = knownHarness({ name: values.harness })
 
     if (!createHarness) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Choose --harness claude|codex',
         code: 'VALIDATION_ERROR',
       })
@@ -184,7 +184,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'create' && values.kind !== undefined) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Tasks have no --kind; describe the work in --brief',
       code: 'VALIDATION_ERROR',
     })
@@ -253,7 +253,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'questions') {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const groups = ownerQuestionGroups({ state }).map(group => ({
       task: group.card.id,
       title: group.card.title,
@@ -293,7 +293,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'reminders') {
-    const reminders = waitingReminders({ state: loadHydra({ hydraId }).state })
+    const reminders = waitingReminders({ state: loadTitan({ hydraId }).state })
 
     return {
       hydraId,
@@ -326,7 +326,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         })
 
         if (isManagedTask({ card: task })) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'Choose a task for the reminder',
             code: 'VALIDATION_ERROR',
           })
@@ -373,7 +373,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       const got = positionals.slice(1).map(arg => `'${arg}'`)
         .join(' ') || 'nothing'
 
-      throw new HydraError({
+      throw new TitanError({
         message: `Use task permission <task> <request> allow|deny (got ${got})`,
         code: 'VALIDATION_ERROR',
         help: ['Pass the task, the request id and allow or deny as separate arguments'],
@@ -385,7 +385,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     try {
       answer = typeof values.answer === 'string' ? JSON.parse(values.answer) : undefined
     } catch {
-      throw new HydraError({
+      throw new TitanError({
         message: '--answer must be JSON',
         code: 'VALIDATION_ERROR',
       })
@@ -414,7 +414,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'send') {
     if (values.mode !== undefined || values.fast !== undefined) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'task send takes harness, account, model and effort',
         code: 'VALIDATION_ERROR',
       })
@@ -423,7 +423,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     const harness = knownHarness({ name: values.harness })
 
     if (!harness) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Choose --harness claude|codex',
         code: 'VALIDATION_ERROR',
       })
@@ -450,7 +450,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (action === 'stop') {
     requireStopAuthority({ meta: meta({ values }) })
     const card = findCard({
-      state: loadHydra({ hydraId }).state,
+      state: loadTitan({ hydraId }).state,
       ref: required({
         value: positionals[1],
         what: 'task id',
@@ -470,7 +470,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   if (action === 'continue') {
     requireUnheld({
       card: findCard({
-        state: loadHydra({ hydraId }).state,
+        state: loadTitan({ hydraId }).state,
         ref: required({
           value: positionals[1],
           what: 'task id',
@@ -536,11 +536,11 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'sessions' && values.full) {
-    return { sessions: Object.values(loadHydra({ hydraId }).state.sessions ?? {}) }
+    return { sessions: Object.values(loadTitan({ hydraId }).state.sessions ?? {}) }
   }
 
   if (action === 'sessions') {
-    const sessions = Object.values(loadHydra({ hydraId }).state.sessions ?? {}).map(s => ({
+    const sessions = Object.values(loadTitan({ hydraId }).state.sessions ?? {}).map(s => ({
       id: s.id,
       provider: s.agent.provider,
       title: s.title ?? 'none',
@@ -561,7 +561,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       value: values.behind as string | undefined,
       what: '--behind <task|session>',
     })
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = findCard({
       state,
       ref: task,
@@ -615,7 +615,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'list') {
     await hideDone({ hydraId })
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
 
     const fields = taskFields({ value: values.fields as string | undefined })
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
@@ -651,8 +651,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     if (!tasks.length) {
       return {
         hydraId,
-        tasks: 'none: no tasks on this Hydra',
-        help: [`Run \`pnyx task create --title <title> --hydra ${hydraId}\` to add one`],
+        tasks: 'none: no tasks on this Titan',
+        help: [`Run \`othrys task create --title <title> --titan ${hydraId}\` to add one`],
       }
     }
 
@@ -667,7 +667,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     if (workerIdentity({ actor: m.actor })) {
       inform({
         reason: 'Task moved by a worker',
-        clear: 'Move the task to its intended Hydra in the UI',
+        clear: 'Move the task to its intended Titan in the UI',
       })
     }
 
@@ -722,7 +722,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'show') {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const task = findCard({
       state,
       ref: required({
@@ -809,7 +809,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         })) : [],
         ...(task.hold ? { hold: task.hold } : {}),
       },
-      help: [`Read tasks/${task.id}/task.log in Hydra ${hydraId} for its record`],
+      help: [`Read tasks/${task.id}/task.log in Titan ${hydraId} for its record`],
     }
 
     if (task.asks?.length) {
@@ -865,7 +865,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'chat') {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const task = findCard({
       state,
       ref: required({
@@ -878,14 +878,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       ref: String(values.session),
     }) : undefined
 
-    const hydraSession = task.id === HYDRA_CARD && session !== undefined
+    const hydraSession = task.id === TITAN_CARD && session !== undefined
       && Boolean(state.hydraSessions?.includes(session.id))
 
     if (session && !hydraSession && !taskSessions({
       hydraId,
       ids: new Set([task.id]),
     }).has(session.id)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'this session has no recorded membership on the task',
         code: 'NOT_FOUND',
       })
@@ -966,7 +966,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
     })
 
     if (after === undefined) {
-      throw new HydraError({
+      throw new TitanError({
         message: `use hours from 0 to ${MAX_DONE_HOURS}, or default (0 keeps the card visible)`,
         code: 'VALIDATION_ERROR',
       })
@@ -986,7 +986,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         })
 
         if (isManagedTask({ card: task })) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',
           })
@@ -1012,7 +1012,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action === 'intent') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'task intent is now task owner-ask <task> --text <owner words>; the card\'s Intent changes with task brief --intent',
       code: 'VALIDATION_ERROR',
     })
@@ -1038,7 +1038,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         })
 
         if (isManagedTask({ card: task })) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',
           })
@@ -1114,14 +1114,14 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         const managedTarget = target !== undefined && isManagedTask({ card: target })
 
         if (isManagedTask({ card: task }) || managedTarget) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'Choose work tasks for a parent and sub-task',
             code: 'VALIDATION_ERROR',
           })
         }
 
         if (values.before !== undefined && parent !== 'none') {
-          throw new HydraError({
+          throw new TitanError({
             message: '--before places a detached task in the root order; use parent none',
             code: 'VALIDATION_ERROR',
           })
@@ -1149,7 +1149,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
   if (action === 'rename') {
     if (values.title === undefined && values.project === undefined) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'pass --title or --project (empty text clears the label)',
         code: 'VALIDATION_ERROR',
       })
@@ -1199,7 +1199,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
   }
 
   if (action !== 'attach' && action !== 'detach') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use task create, list, show, ask, answer, escalate, history, updates, messages, rename, parent, arrange, send, start, copy, move, permission, sessions, attach or detach',
       code: 'VALIDATION_ERROR',
     })
@@ -1227,8 +1227,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         }),
       })) {
-        throw new HydraError({
-          message: 'choose an explicit task; use hydra set to configure Hydra',
+        throw new TitanError({
+          message: 'choose an explicit task; use hydra set to configure Titan',
           code: 'VALIDATION_ERROR',
         })
       }

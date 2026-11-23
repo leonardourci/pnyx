@@ -1,12 +1,12 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { hydraImageFile } from '#hydra/image-files.ts'
-import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#hydra/images.ts'
+import { hydraImageFile } from '#titan/image-files.ts'
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#titan/images.ts'
 import { listFolders } from '#projects/folders.ts'
 import { privateDir } from '#store/storage.ts'
 import { buildId, readBytes, reply, serveStatic } from './server-http.ts'
-import type { HydraRequest } from './server-transport.ts'
+import type { TitanRequest } from './server-transport.ts'
 
 export function createServerRoutes({
   hydraId,
@@ -36,7 +36,7 @@ export function createServerRoutes({
     res,
     path,
     search,
-  }: HydraRequest) => {
+  }: TitanRequest) => {
     // An image dropped or pasted into a composer; the message then carries its path.
     if (req.method === 'POST' && path === '/attachments') {
       if (!authorized({

@@ -3,8 +3,8 @@ import { log } from './diagnostics.ts'
 import { nativeHome } from './native-home.ts'
 import { nativeEvent, type NativeFact } from './native-state.ts'
 import { durableEvent } from './event-policy.ts'
-import type { HydraEvent } from './model.ts'
-import { heldHydra } from './store.ts'
+import type { TitanEvent } from './model.ts'
+import { heldTitan } from './store.ts'
 import { readLog, type LogEntry, type LogPosition } from '#store/log.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
 
@@ -31,7 +31,7 @@ const homes = new WeakMap<ReturnType<typeof nativeHome>, Map<string, CachedLog>>
 function savedEvents({
   hydraId,
   cardId,
-}: EventSelection): HydraEvent[] {
+}: EventSelection): TitanEvent[] {
   const home = nativeHome()
   const logs = homes.get(home) ?? new Map<string, CachedLog>()
   homes.set(
@@ -185,7 +185,7 @@ function savedEvents({
             boardId: hydraId,
             type: 'task.moved-out',
             data: { to: entry.to },
-          } as HydraEvent,
+          } as TitanEvent,
         ]
       }
 
@@ -198,7 +198,7 @@ function matches({
   event,
   selection,
 }: {
-  event: HydraEvent
+  event: TitanEvent
   selection: EventSelection
 }): boolean {
   if (event.seq <= (selection.after ?? 0)
@@ -237,9 +237,9 @@ function selected({
   events,
   selection,
 }: {
-  events: Iterable<HydraEvent>
+  events: Iterable<TitanEvent>
   selection: EventSelection
-}): HydraEvent[] {
+}): TitanEvent[] {
   return [...events].filter(event => matches({
     event,
     selection,
@@ -254,7 +254,7 @@ function selected({
     )
 }
 
-function readSaved({ selection }: { selection: EventSelection }): HydraEvent[] {
+function readSaved({ selection }: { selection: EventSelection }): TitanEvent[] {
   const saved = new Map(savedEvents(selection).map(event => [
     event.id,
     event,
@@ -266,7 +266,7 @@ function readSaved({ selection }: { selection: EventSelection }): HydraEvent[] {
   })
 }
 
-export function readEvents({ ...selection }: EventSelection): HydraEvent[] {
+export function readEvents({ ...selection }: EventSelection): TitanEvent[] {
   const started = performance.now()
   const events = readSaved({ selection })
   const ms = performance.now() - started
@@ -284,8 +284,8 @@ export function readEvents({ ...selection }: EventSelection): HydraEvent[] {
 
 export function readChanges({
   ...selection
-}: EventSelection & { measured?: boolean }): HydraEvent[] {
-  const live = heldHydra({ hydraId: selection.hydraId })
+}: EventSelection & { measured?: boolean }): TitanEvent[] {
+  const live = heldTitan({ hydraId: selection.hydraId })
   const receipts = live?.state.historyMilestones
     ?.flatMap(milestone => milestone.receipts ?? []) ?? []
   const events = new Map(savedEvents(selection).map(event => [
@@ -310,7 +310,7 @@ export function readChanges({
   })
 }
 
-export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Generator<TitanEvent> {
   const started = performance.now()
   const events = readSaved({ selection })
   yield* events
@@ -326,7 +326,7 @@ export function* scanEvents({ ...selection }: Omit<EventSelection, 'limit'>): Ge
   })
 }
 
-export function* scanChanges({ ...selection }: Omit<EventSelection, 'limit'>): Generator<HydraEvent> {
+export function* scanChanges({ ...selection }: Omit<EventSelection, 'limit'>): Generator<TitanEvent> {
   yield* readChanges(selection)
 }
 
@@ -336,7 +336,7 @@ export const eventsOrLegacy = ({
 }: {
   hydraId: string
   types?: string[]
-}): HydraEvent[] =>
+}): TitanEvent[] =>
   readEvents({
     hydraId,
     types,
@@ -350,7 +350,7 @@ interface EventClock {
 }
 
 function clocks({ hydraId }: { hydraId: string }): EventClock[] {
-  const live = heldHydra({ hydraId })
+  const live = heldTitan({ hydraId })
   const events = readChanges({ hydraId }).map(event => ({
     seq: event.seq,
     at: event.at,
@@ -432,7 +432,7 @@ export function eventPositions({
       last,
       event.seq,
     ),
-    heldHydra({ hydraId })?.state.seq ?? 0,
+    heldTitan({ hydraId })?.state.seq ?? 0,
   ) + 1
   const positions = new Map<string, number>()
 

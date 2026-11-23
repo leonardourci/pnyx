@@ -1,21 +1,21 @@
 import { ownerPolis } from '#memory/owner-polis.ts'
-import type { HydraEvent, HydraState } from './model.ts'
-import type { HydraSummary } from './server-hydras.ts'
+import type { TitanEvent, TitanState } from './model.ts'
+import type { TitanSummary } from './server-hydras.ts'
 import { hydraIdentity } from './server-state.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { readEvents } from './event-log.ts'
 import { homeScoped } from '#store/paths.ts'
 import { projectsFor } from '#projects/read.ts'
 import { ownerQuestionGroups } from '#tasks/question-groups.ts'
 import { liveTask } from '#tasks/select.ts'
-import { hydraWorking } from '#hydra/chat-queue.ts'
+import { hydraWorking } from '#titan/chat-queue.ts'
 
 export const CREATION_PREFIX = 'hydra-create:'
 
-// A Hydra's first event never changes, so each is read once it exists.
-const firstEvents = new Map<string, HydraEvent>()
+// A Titan's first event never changes, so each is read once it exists.
+const firstEvents = new Map<string, TitanEvent>()
 
-function firstEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
+function firstEvent({ hydraId }: { hydraId: string }): TitanEvent | null {
   const key = homeScoped({ hydraId })
   const known = firstEvents.get(key)
 
@@ -38,7 +38,7 @@ function firstEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
   return event
 }
 
-const creationAttempt = ({ event }: { event: HydraEvent | null }) => {
+const creationAttempt = ({ event }: { event: TitanEvent | null }) => {
   if (!event?.id.startsWith(CREATION_PREFIX)) {
     return undefined
   }
@@ -46,8 +46,8 @@ const creationAttempt = ({ event }: { event: HydraEvent | null }) => {
   return event.id.slice(CREATION_PREFIX.length)
 }
 
-// A Hydra whose log has no readable first event sorts last.
-const createdAt = ({ event }: { event: HydraEvent | null }) => Date.parse(event?.at ?? '')
+// A Titan whose log has no readable first event sorts last.
+const createdAt = ({ event }: { event: TitanEvent | null }) => Date.parse(event?.at ?? '')
   || Number.MAX_SAFE_INTEGER
 
 export function summarize({
@@ -55,8 +55,8 @@ export function summarize({
   state,
 }: {
   id: string
-  state: HydraState
-}): HydraSummary {
+  state: TitanState
+}): TitanSummary {
   try {
     const config = hydraConfig({
       state,
@@ -101,8 +101,8 @@ export function summarize({
   }
 }
 
-// A Hydra that cannot be read stays in the list, last, so opening it reports why.
-export const unreadableSummary = ({ id }: { id: string }): HydraSummary => ({
+// A Titan that cannot be read stays in the list, last, so opening it reports why.
+export const unreadableSummary = ({ id }: { id: string }): TitanSummary => ({
   id,
   name: id,
   order: Number.MAX_SAFE_INTEGER,

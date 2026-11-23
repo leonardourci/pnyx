@@ -1,17 +1,17 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { hydraCandidate } from '#hydra/agent-choice.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { Catalog } from '#hydra/transcripts-catalog.ts'
-import type { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraCandidate } from '#titan/agent-choice.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { Catalog } from '#titan/transcripts-catalog.ts'
+import type { createCatalogIndex } from '#titan/transcripts-catalog-index.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { DEFAULT_HARNESS, HARNESSES } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
-import type { HydraState } from '#app/model.ts'
-import type { HydraClient } from '#app/server-transport.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanClient } from '#app/server-transport.ts'
 import type { CommandRequest } from './dispatch.ts'
 
 // The skills and commands the composer offers: the `catalog` command, one read in flight per tab, and its warm-up.
@@ -22,7 +22,7 @@ export function createCatalog({
   agents,
 }: {
   dir: string
-  state(): HydraState
+  state(): TitanState
   catalogIndex: ReturnType<typeof createCatalogIndex>
   agents: ReturnType<typeof createHost>
 }) {
@@ -33,7 +33,7 @@ export function createCatalog({
     card: Card
     provider?: string
   }): Card => {
-    if (card.id !== HYDRA_CARD) {
+    if (card.id !== TITAN_CARD) {
       return card
     }
 
@@ -61,7 +61,7 @@ export function createCatalog({
   }
 
   const warmCatalog = async () => {
-    const card = state().cards[HYDRA_CARD]
+    const card = state().cards[TITAN_CARD]
 
     if (!card) {
       return
@@ -76,7 +76,7 @@ export function createCatalog({
     })))
   }
 
-  const catalogReads = new WeakMap<HydraClient, {
+  const catalogReads = new WeakMap<TitanClient, {
     scope: string
     read: Promise<Catalog>
   }>()
@@ -89,7 +89,7 @@ export function createCatalog({
     send,
   }: CommandRequest) => {
     if (args.length !== 1) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'catalog expects a card',
         code: 'VALIDATION_ERROR',
       })
@@ -99,7 +99,7 @@ export function createCatalog({
       state: state(),
       ref: args[0],
     })
-    const receiving = card.id === HYDRA_CARD
+    const receiving = card.id === TITAN_CARD
       ? hydraCandidate({
         state: state(),
         dispatch: effectiveDispatch().dispatch,

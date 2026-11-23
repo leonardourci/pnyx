@@ -1,8 +1,8 @@
 import { applySessionFacts } from '#workers/session-facts.ts'
 import { recordEventId } from './command-meta.ts'
 import { draft } from './draft.ts'
-import { applyHistory } from '#hydra/history.ts'
-import type { HydraState, HydraEvent } from './model.ts'
+import { applyHistory } from '#titan/history.ts'
+import type { TitanState, TitanEvent } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { applyLabelColors } from '#tasks/labels.ts'
 import { applyCompaction } from '#workers/compaction/state.ts'
@@ -16,7 +16,7 @@ import { applyPermission } from '#workers/permission-rules.ts'
 import { applyAsk } from '#tasks/ask-reducer.ts'
 import { applyHelper } from '#routine-helper/state.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
-import { applyHydra } from '#hydra/reduce.ts'
+import { applyTitan } from '#titan/reduce.ts'
 import { applyMemory } from '#memory/reduce.ts'
 import { applyProject } from '#projects/reduce.ts'
 import { applyView } from '#preferences/reduce.ts'
@@ -24,10 +24,10 @@ import { applyTask } from '#tasks/reduce.ts'
 import { applyDispatchProposal, applyLaunch, applySessionMove } from '#workers/reduce.ts'
 import { applyCardEvent } from '#tasks/card-events.ts'
 import { applyRecovery } from '#diagnostics/recovery-state.ts'
-import { applyContextNotes } from '#hydra/context-notes.ts'
-import { applyHydraMove } from '#tasks/move-state.ts'
+import { applyContextNotes } from '#titan/context-notes.ts'
+import { applyTitanMove } from '#tasks/move-state.ts'
 
-export function emptyHydra(): HydraState {
+export function emptyTitan(): TitanState {
   return {
     v: EVENT_VERSION,
     seq: 0,
@@ -42,8 +42,8 @@ function apply({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.seq <= state.seq || Object.hasOwn(
     state.eventIds,
@@ -94,7 +94,7 @@ function apply({
   }) || applySteering({
     state,
     event,
-  }) || applyHydraMove({
+  }) || applyTitanMove({
     state,
     event,
   }) || applyDependencies({
@@ -119,7 +119,7 @@ function apply({
       state,
       event,
     })
-    || applyHydra({
+    || applyTitan({
       state,
       event,
     })
@@ -187,9 +187,9 @@ export function replayOwned({
   state,
   events,
 }: {
-  state: HydraState
-  events: Iterable<HydraEvent>
-}): HydraState {
+  state: TitanState
+  events: Iterable<TitanEvent>
+}): TitanState {
   for (const event of events) {
     if (apply({
       state,
@@ -219,9 +219,9 @@ export function replay({
   state,
   events,
 }: {
-  state: HydraState
-  events: Iterable<HydraEvent>
-}): HydraState {
+  state: TitanState
+  events: Iterable<TitanEvent>
+}): TitanState {
   return draft({
     state,
     change: ({ state }) => {
@@ -237,9 +237,9 @@ export function reduce({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
-}): HydraState {
+  state: TitanState
+  event: TitanEvent
+}): TitanState {
   return replay({
     state,
     events: [event],

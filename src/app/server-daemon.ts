@@ -1,6 +1,6 @@
 import { nativeHome } from './native-home.ts'
 import { trackChildren } from '#workers/children.ts'
-import { finishHydraRemoval } from '#hydra/remove.ts'
+import { finishTitanRemoval } from '#titan/remove.ts'
 import { recoverOwnerCommands } from './confirmations.ts'
 import { withLogRequest } from '#diagnostics/context.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -11,24 +11,24 @@ import { WebSocketServer } from 'ws'
 import { createSocketOutbox, MAX_SOCKET_BYTES } from './socket-outbox.ts'
 import { createSocketHistory, type SocketCursor, type SocketFrame } from './socket-history.ts'
 import { pageChanges, type HomeMessage, type HomePage, type PageChanges } from './socket-state.ts'
-import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
+import type { CatalogLocations } from '#titan/transcripts-catalog.ts'
 import { agentsMidTurn, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
-import { startReviewTimer } from '#hydra/review-timer.ts'
-import { allowedRequest, requestUrl, HYDRA_PATH, type RunningServer, type MountedHydra, type HydraSubscription, type ServerMessage, type HydraClient } from './server-transport.ts'
+import { startReviewTimer } from '#titan/review-timer.ts'
+import { allowedRequest, requestUrl, TITAN_PATH, type RunningServer, type MountedTitan, type TitanSubscription, type ServerMessage, type TitanClient } from './server-transport.ts'
 import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
-import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
+import { listTitans, nameUnnamedTitans } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydrasDir } from './home-migration.ts'
 import { hydraRemoval, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
-import { HydraError } from '#store/errors.ts'
-import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
+import { TitanError } from '#store/errors.ts'
+import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedTitan } from './server.ts'
 import { watchPath } from './watch.ts'
 import { pageSettings, readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
@@ -36,10 +36,10 @@ import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
-import { hydraExists, loadHydra } from './store.ts'
+import { hydraExists, loadTitan } from './store.ts'
 import { repairDispatchMirrors } from '#workers/dispatch-config.ts'
 
-// Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
+// Only the named and default Titans must load; any other Titan that fails is skipped and reported.
 const bearer = ({ req }: { req: IncomingMessage }) => {
   const token = Buffer.from(localToken())
   const given = Buffer.from(req.headers.authorization?.replace(
@@ -82,7 +82,7 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry, followed pull requests wait between reads and queues wait between checks; tests shorten them.
+  // How long a hosted Titan's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Titan start waits before each retry, followed pull requests wait between reads and queues wait between checks; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -96,7 +96,7 @@ export async function startServer({
   processLineMs?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
-  // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
+  // The Othrys folder the daily check and /upgrade read, and how /upgrade restarts the server.
   // Only serve checks the real folder, so a test server never asks GitHub.
   upgradeRoot?: string
   restart?(): void | Promise<void>
@@ -123,8 +123,8 @@ export async function startServer({
     maxPayload: MAX_MESSAGE_BYTES,
   })
   let importing = true
-  const mounts = new Map<string, Promise<MountedHydra>>()
-  const served = new Map<string, MountedHydra>()
+  const mounts = new Map<string, Promise<MountedTitan>>()
+  const served = new Map<string, MountedTitan>()
   const unmountedStops = new Set<Promise<void>>()
   const pendingLogs = new Map<string, () => void>()
   const skipped: Record<string, string> = {}
@@ -167,7 +167,7 @@ export async function startServer({
 
   const publishHome = () => {
     const next: HomePage = JSON.parse(JSON.stringify({
-      hydras: listHydras(),
+      hydras: listTitans(),
       settings: homeSettings(),
       upgrade: upgradeStatus,
       scopes: Object.fromEntries([...served].map(([
@@ -201,7 +201,7 @@ export async function startServer({
 
     summariesQueued = true
     setImmediate(() => background({
-      name: 'Hydra summaries',
+      name: 'Titan summaries',
       run: () => {
         summariesQueued = false
 
@@ -250,7 +250,7 @@ export async function startServer({
     const [
       , id,
       rest,
-    ] = HYDRA_PATH.exec(path) ?? []
+    ] = TITAN_PATH.exec(path) ?? []
 
     if (id !== undefined) {
       const mount = served.get(id)
@@ -274,7 +274,7 @@ export async function startServer({
           res,
           status: 404,
           body: {
-            error: `Hydra not served: ${id}`,
+            error: `Titan not served: ${id}`,
             code: 'NOT_FOUND',
             ...(skipped[id] ? { reason: skipped[id] } : {}),
           },
@@ -333,7 +333,7 @@ export async function startServer({
         build: buildId(),
         hydras,
         skipped,
-        // Whether an agent on any Hydra is mid-turn; an upgrade run from a terminal waits for none to be.
+        // Whether an agent on any Titan is mid-turn; an upgrade run from a terminal waits for none to be.
         midTurn: agentsMidTurn(),
       }
 
@@ -437,7 +437,7 @@ export async function startServer({
       )
       const url = requestUrl({ url: req.url })
 
-      // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
+      // ponytail: /ws, like /, is the named Titan's, for tabs from before one server and the Vite dev page.
       const requested = url.searchParams.get('scope')
       const initialScope = requested && served.has(requested) ? requested : hydraId
       const [
@@ -447,7 +447,7 @@ export async function startServer({
         '',
         initialScope,
         '/ws',
-      ] : HYDRA_PATH.exec(url.pathname) ?? []
+      ] : TITAN_PATH.exec(url.pathname) ?? []
       const mount = id === undefined ? undefined : served.get(id)
 
       if (!mount || rest !== '/ws' || !allowed({ req })) {
@@ -473,7 +473,7 @@ export async function startServer({
         socket,
         head,
         ws => {
-          const subscriptions = new Map<string, HydraSubscription>()
+          const subscriptions = new Map<string, TitanSubscription>()
           const attaching = new Map<string, symbol>()
           const scoped = url.searchParams.get('scoped') === '1'
           const readsHome = url.searchParams.get('home') === '1'
@@ -554,11 +554,11 @@ export async function startServer({
             subscriptionId,
           }: {
             hydra: string
-            mounted: MountedHydra
+            mounted: MountedTitan
             page?: string[]
             subscriptionId?: string
           }) => {
-            const client: HydraClient = {
+            const client: TitanClient = {
               get bufferedAmount() {
                 return ws.bufferedAmount
               },
@@ -631,7 +631,7 @@ export async function startServer({
                     scope: hydra,
                     subscription: subscriptionId,
                     error: (error as Error).message,
-                    code: error instanceof HydraError ? error.code : 'UNKNOWN',
+                    code: error instanceof TitanError ? error.code : 'UNKNOWN',
                   },
                 })
               }
@@ -676,7 +676,7 @@ export async function startServer({
                   message: {
                     type: 'error',
                     id: typeof message?.id === 'string' ? message.id : null,
-                    error: 'Invalid Hydra scope',
+                    error: 'Invalid Titan scope',
                     code: 'VALIDATION_ERROR',
                   },
                 })
@@ -705,7 +705,7 @@ export async function startServer({
                       type: 'error',
                       scope: hydra,
                       id: typeof message?.id === 'string' ? message.id : null,
-                      error: 'Subscribe to this Hydra before sending commands',
+                      error: 'Subscribe to this Titan before sending commands',
                       code: 'NOT_RUNNING',
                     },
                   })
@@ -756,7 +756,7 @@ export async function startServer({
     origins.add(`http://${host}`)
   }
 
-  // A folder can appear before its Hydra's first write commits; the Hydra is served once it has.
+  // A folder can appear before its Titan's first write commits; the Titan is served once it has.
   const watchMissingLog = ({ id }: { id: string }) => {
     if (closed || pendingLogs.has(id)) {
       return
@@ -768,7 +768,7 @@ export async function startServer({
     }
 
     const ready = () => background({
-      name: 'Hydra discovery',
+      name: 'Titan discovery',
       run: () => {
         if (closed || !hydraExists({ hydraId: id })) {
           return
@@ -792,12 +792,12 @@ export async function startServer({
   }
 
   const removalPending = ({ id }: { id: string }) =>
-    hydraExists({ hydraId: id }) && loadHydra({ hydraId: id }).state.config?.removing === true
+    hydraExists({ hydraId: id }) && loadTitan({ hydraId: id }).state.config?.removing === true
 
-  const mount = async ({ id }: { id: string }): Promise<MountedHydra> => {
+  const mount = async ({ id }: { id: string }): Promise<MountedTitan> => {
     if (removalPending({ id })) {
-      throw new HydraError({
-        message: `Hydra removal is pending: ${id}`,
+      throw new TitanError({
+        message: `Titan removal is pending: ${id}`,
         code: 'CONFLICT',
       })
     }
@@ -809,14 +809,14 @@ export async function startServer({
     }
 
     if (closed) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'the server is stopping',
         code: 'NOT_RUNNING',
       })
     }
 
     const opening = performance.now()
-    const started = mountHydra({
+    const started = mountTitan({
       hydraId: id,
       url: `http://127.0.0.1:${bound}/hydra/${id}/`,
       open,
@@ -829,7 +829,7 @@ export async function startServer({
     )
     started.then(
       m => {
-        // Loading the Hydra from its rows and starting its host, the start-up cost that grows with a Hydra.
+        // Loading the Titan from its rows and starting its host, the start-up cost that grows with a Titan.
         log({
           operation: 'hydra.open',
           hydraId: id,
@@ -852,7 +852,7 @@ export async function startServer({
         mounts.delete(id)
         skipped[id] = error.message
 
-        if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+        if (error instanceof TitanError && error.code === 'NOT_FOUND') {
           watchMissingLog({ id })
         }
       },
@@ -863,8 +863,8 @@ export async function startServer({
 
   async function open({ id }: { id: string }): Promise<string> {
     if (!hydraIds().includes(id)) {
-      throw new HydraError({
-        message: `Hydra not found: ${id}`,
+      throw new TitanError({
+        message: `Titan not found: ${id}`,
         code: 'NOT_FOUND',
       })
     }
@@ -877,9 +877,9 @@ export async function startServer({
     const mounted = mounts.get(hydraId)
 
     if (mounted) {
-      const openHydra = await mounted
+      const openTitan = await mounted
       served.delete(hydraId)
-      await openHydra.close({ permanent: true })
+      await openTitan.close({ permanent: true })
     } else {
       const stopping = trackChildren({ hydraId }).stopAll()
       unmountedStops.add(stopping)
@@ -912,9 +912,9 @@ export async function startServer({
     hydrasChanged()
   }
 
-  let named: MountedHydra
+  let named: MountedTitan
 
-  const recordSkippedHydra = ({
+  const recordSkippedTitan = ({
     id,
     error,
     before,
@@ -936,7 +936,7 @@ export async function startServer({
     }
   }
 
-  const mountDiscoveredHydra = async ({ id }: { id: string }) => {
+  const mountDiscoveredTitan = async ({ id }: { id: string }) => {
     const before = skipped[id]
 
     try {
@@ -944,7 +944,7 @@ export async function startServer({
         await mount({ id })
       }
     } catch (error) {
-      recordSkippedHydra({
+      recordSkippedTitan({
         id,
         error,
         before,
@@ -962,7 +962,7 @@ export async function startServer({
         continue
       }
 
-      void mountDiscoveredHydra({ id })
+      void mountDiscoveredTitan({ id })
     }
   }
 
@@ -1007,7 +1007,7 @@ export async function startServer({
   const retry = setInterval(
     () => {
       background({
-        name: 'mount Hydras',
+        name: 'mount Titans',
         run: mountAll,
       })
       background({
@@ -1058,7 +1058,7 @@ export async function startServer({
       })))
       const open = settled.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
 
-      // Every Hydra finishes its cleanup before the claim goes, even when one of them fails.
+      // Every Titan finishes its cleanup before the claim goes, even when one of them fails.
       await Promise.all(open.map(async ({
         id,
         mounted,
@@ -1100,7 +1100,7 @@ export async function startServer({
     for (const id of hydraIds()) {
       try {
         if (removalPending({ id })) {
-          await finishHydraRemoval({ id })
+          await finishTitanRemoval({ id })
         }
       } catch (error) {
         log({
@@ -1130,7 +1130,7 @@ export async function startServer({
         return false
       }
 
-      const config = loadHydra({ hydraId: id }).state.config
+      const config = loadTitan({ hydraId: id }).state.config
 
       return config?.removed === true || config?.removing === true
     }
@@ -1140,7 +1140,7 @@ export async function startServer({
         try {
           return !removedOrPending({ id })
         } catch (error) {
-          recordSkippedHydra({
+          recordSkippedTitan({
             id,
             error,
             before: skipped[id],
@@ -1151,8 +1151,8 @@ export async function startServer({
       })
 
       if (!activeId) {
-        throw new HydraError({
-          message: 'No active Hydra is available',
+        throw new TitanError({
+          message: 'No active Titan is available',
           code: 'NOT_FOUND',
         })
       }
@@ -1168,7 +1168,7 @@ export async function startServer({
 
     for (const id of hydraIds()) {
       if (!mounts.has(id)) {
-        await mountDiscoveredHydra({ id })
+        await mountDiscoveredTitan({ id })
       }
     }
 
@@ -1186,7 +1186,7 @@ export async function startServer({
         port: bound,
         url: serverUrl,
         socket: named.socket,
-        service: process.env.PNYX_SERVICE_ROLE === 'application'
+        service: process.env.OTHRYS_SERVICE_ROLE === 'application'
           || process.env.XPC_SERVICE_NAME === serviceFile().label,
         serveArgs: process.argv[2] === 'serve' ? process.argv.slice(3) : undefined,
       } satisfies ServerInfo),
@@ -1204,8 +1204,8 @@ export async function startServer({
   })
 
   background({
-    name: 'name Hydras',
-    run: nameUnnamedHydras,
+    name: 'name Titans',
+    run: nameUnnamedTitans,
   })
 
   return {
@@ -1218,7 +1218,7 @@ export async function startServer({
   }
 }
 
-async function mountHydra({
+async function mountTitan({
   hydraId,
   url,
   catalogLocations,
@@ -1260,8 +1260,8 @@ async function mountHydra({
   hydrasChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
-}): Promise<MountedHydra> {
-  return mountOwnedHydra({
+}): Promise<MountedTitan> {
+  return mountOwnedTitan({
     hydraId,
     url,
     catalogLocations,

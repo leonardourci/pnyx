@@ -1,10 +1,10 @@
 import { taskDiff } from './receipt.ts'
 import { createHash } from 'node:crypto'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { eventWriter } from '#app/writer.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { findCard, checkRevision } from '#tasks/push-rules.ts'
 import { planTaskChange } from '#tasks/plans.ts'
 import { planDeliveryChange } from '#tasks/delivery/plans.ts'
@@ -38,18 +38,18 @@ export function planDocument({
   full = false,
 }: {
   document: ApplyDocument
-  state: HydraState
+  state: TitanState
   dir: string
   hydraId: string
   meta: Meta
   id: string
   full?: boolean
 }): {
-  events: HydraEvent[]
+  events: TitanEvent[]
   receipt: ApplyReceipt
 } {
   const errors: ApplyIssue[] = []
-  const events: HydraEvent[] = []
+  const events: TitanEvent[] = []
   const aliases: Record<string, string> = Object.create(null)
   const operations: Output[] = []
   let current = state
@@ -70,7 +70,7 @@ export function planDocument({
       })
       base[card.id] = card.revision
     } catch (error) {
-      if (!(error instanceof HydraError)) {
+      if (!(error instanceof TitanError)) {
         throw error
       }
 
@@ -89,7 +89,7 @@ export function planDocument({
   ) => {
     const operation = structuredClone(source)
     let field = 'op'
-    const prepared: HydraEvent[] = []
+    const prepared: TitanEvent[] = []
     const writer = eventWriter({
       state: current,
       dir,
@@ -112,7 +112,7 @@ export function planDocument({
         const alias = aliases[reference.slice(1)]
 
         if (!alias) {
-          throw new HydraError({
+          throw new TitanError({
             message: `unknown or not-yet-created alias ${reference}`,
             code: 'NOT_FOUND',
           })
@@ -142,7 +142,7 @@ export function planDocument({
             aliases,
             operation.as,
           ))) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'alias must be unique and match [a-zA-Z][a-zA-Z0-9_-]*',
             code: 'VALIDATION_ERROR',
           })
@@ -190,7 +190,7 @@ export function planDocument({
         existing === operationId || existing.startsWith(`${operationId}:`))
 
       if (collision) {
-        throw new HydraError({
+        throw new TitanError({
           message: `event id ${collision} already exists`,
           code: 'IDEMPOTENCY_CONFLICT',
           field: 'op',
@@ -243,7 +243,7 @@ export function planDocument({
 
       operations.push(result)
     } catch (error) {
-      if (!(error instanceof HydraError)) {
+      if (!(error instanceof TitanError)) {
         throw error
       }
 
@@ -292,10 +292,10 @@ export function planDocument({
     0,
     RECEIPT_HINT_LIMIT,
   )
-    .map(task => `Read tasks/${task}/task.log in Hydra ${hydraId} for changed events`)
+    .map(task => `Read tasks/${task}/task.log in Titan ${hydraId} for changed events`)
 
   if (!help.length) {
-    help.push(`Use pnyx board --hydra ${hydraId} for current tasks`)
+    help.push(`Use othrys board --titan ${hydraId} for current tasks`)
   }
 
   return {
