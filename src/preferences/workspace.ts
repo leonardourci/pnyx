@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 export interface WorkspaceLayout {
   collapsed: boolean
@@ -39,7 +39,7 @@ export function patchWorkspace({
   input: unknown
 }): WorkspaceLayout {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'workspace must be an object',
       code: 'VALIDATION_ERROR',
     })
@@ -53,7 +53,7 @@ export function patchWorkspace({
   ] of Object.entries(input)) {
     if (key === 'collapsed' || key === 'chatCollapsed') {
       if (typeof value !== 'boolean') {
-        throw new HydraError({
+        throw new TitanError({
           message: `${key} must be boolean`,
           code: 'VALIDATION_ERROR',
         })
@@ -66,7 +66,7 @@ export function patchWorkspace({
           id,
           folded,
         ]) => !id || typeof folded !== 'boolean')) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'foldedProjects must be booleans by project id',
           code: 'VALIDATION_ERROR',
         })
@@ -88,7 +88,7 @@ export function patchWorkspace({
       next.foldedProjects = [...folded]
     } else if (key === 'projectOrder') {
       if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `${key} must be project ids`,
           code: 'VALIDATION_ERROR',
         })
@@ -97,7 +97,7 @@ export function patchWorkspace({
       next[key] = [...new Set(value as string[])]
     } else if (key === 'projectWidths') {
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `${key} must be widths by id`,
           code: 'VALIDATION_ERROR',
         })
@@ -112,7 +112,7 @@ export function patchWorkspace({
           'prototype',
           'constructor',
         ].includes(id)) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'Invalid layout id',
             code: 'VALIDATION_ERROR',
           })
@@ -125,7 +125,7 @@ export function patchWorkspace({
         }
 
         if (typeof width !== 'number' || !Number.isSafeInteger(width) || width < PROJECT_MIN_WIDTH) {
-          throw new HydraError({
+          throw new TitanError({
             message: `${key} widths must be integers of at least ${PROJECT_MIN_WIDTH}`,
             code: 'VALIDATION_ERROR',
           })
@@ -134,7 +134,7 @@ export function patchWorkspace({
         next[key][id] = width
       }
     } else {
-      throw new HydraError({
+      throw new TitanError({
         message: `Unknown workspace setting: ${key}`,
         code: 'VALIDATION_ERROR',
       })
