@@ -1,5 +1,5 @@
 import { taskLease } from '#routine-helper/leases.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { once } from 'node:events'
@@ -8,22 +8,22 @@ import { spawn } from 'node:child_process'
 import { stopOldHost, trackChildren } from '#workers/children.ts'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 import { legacyDuplicate } from './setup/legacy.ts'
 import { git } from './setup/upgrade.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 function projectFolder({
   hydra,
   name,
 }: {
-  hydra: Hydra
+  hydra: Titan
   name: string
 }) {
   const folder = hydra.folder({ name })
@@ -116,8 +116,8 @@ function landWork({
 test(
   'removal protects unlanded copies then runs directly, detaches its projects and keeps history searchable after restart',
   async () => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra({
+    const caller = await othrys.hydra()
+    const target = await othrys.hydra({
       id: 'default',
       create: false,
     })
@@ -136,7 +136,7 @@ test(
       ],
     })
     const shared = await legacyDuplicate({
-      pnyx,
+      othrys,
       id: 'legacy-reader',
       projects: [
         {
@@ -355,7 +355,7 @@ test(
     })
     expect(existsSync(foreignPool)).toBe(true)
 
-    const session = await caller.chat({ text: 'remove the other Hydra' })
+    const session = await caller.chat({ text: 'remove the other Titan' })
     const unsafe = await caller.as({ session }).refused({
       args: [
         'hydra',
@@ -385,7 +385,7 @@ test(
       process.env.TMPDIR!,
       'parked-foreign-copy',
     )
-    const normal = await pnyx.hydra()
+    const normal = await othrys.hydra()
     await normal.owner({
       args: [
         'project',
@@ -521,8 +521,8 @@ test(
       hydraId: target.id,
       types: ['task.created'],
     })).toHaveLength(3)
-    expect(loadHydra({ hydraId: target.id }).state.config?.removed).toBe(true)
-    await pnyx.restart()
+    expect(loadTitan({ hydraId: target.id }).state.config?.removed).toBe(true)
+    await othrys.restart()
     expect((await caller.owner({
       args: [
         'hydra',
@@ -550,8 +550,8 @@ test(
 test(
   'removal runs for the caller and page without confirmation',
   async () => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const caller = await othrys.hydra()
+    const target = await othrys.hydra()
     const page = await caller.page()
     const result = await page.send({
       name: 'hydra',
@@ -581,7 +581,7 @@ test(
 test(
   'permanent child cleanup stops worker processes and tools with no task assignment',
   async ({ onTestFinished }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const children = trackChildren({ hydraId: hydra.id })
     const worker = spawn(
       process.execPath,
@@ -643,7 +643,7 @@ test(
   'a legacy host recorded as a single process is stopped',
   async ({ onTestFinished }) => {
     const folder = join(
-      pnyxHome(),
+      othrysHome(),
       'native',
     )
     const path = join(
@@ -698,8 +698,8 @@ test(
 test(
   'a partial removal fences writes and resumes after restart without recreating discarded copies',
   async () => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const caller = await othrys.hydra()
+    const target = await othrys.hydra()
     const folder = projectFolder({
       hydra: target,
       name: 'recovery',
@@ -791,7 +791,7 @@ test(
         'Competing write',
       ],
     })).code).toBe('CONFLICT')
-    await pnyx.restart()
+    await othrys.restart()
     expect(existsSync(first)).toBe(false)
     expect(existsSync(locked)).toBe(true)
     expect((await target.ownerRefused({
@@ -813,7 +813,7 @@ test(
       expect.objectContaining({ id: target.id }),
     ]))
     const legacy = await legacyDuplicate({
-      pnyx,
+      othrys,
       id: `recovery-${target.id}`,
       projects: [
         {
@@ -830,11 +830,11 @@ test(
         locked,
       ],
     })
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         rmSync(
           join(
-            process.env.PNYX_HOME!,
+            process.env.OTHRYS_HOME!,
             'hydras',
             legacy.id,
           ),
@@ -866,8 +866,8 @@ test(
 test(
   'new ignored work written during landing checks or while stopping tools keeps the copy until a direct retry',
   async ({ onTestFinished }) => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const caller = await othrys.hydra()
+    const target = await othrys.hydra()
     const folder = projectFolder({
       hydra: target,
       name: 'changed-work',
@@ -1152,7 +1152,7 @@ process.exit(result.status ?? 1)
         'Created after removal refusal',
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     expect(existsSync(copy)).toBe(true)
     landWork({
       copy,
@@ -1172,7 +1172,7 @@ process.exit(result.status ?? 1)
 test(
   'command copies cannot contain another registered source project',
   async () => {
-    const target = await pnyx.hydra()
+    const target = await othrys.hydra()
     const folder = projectFolder({
       hydra: target,
       name: 'command-project',
@@ -1243,7 +1243,7 @@ test(
 test(
   'daemon shutdown joins a permanent close while its tools stop',
   async ({ onTestFinished }) => {
-    const target = await pnyx.hydra()
+    const target = await othrys.hydra()
     const child = spawn(
       process.execPath,
       [
@@ -1274,7 +1274,7 @@ test(
     )
     const permanent = hydraRemoval.close!({ hydraId: target.id })
     await stopping
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         expect(child.exitCode !== null || child.signalCode !== null).toBe(true)
       },
@@ -1286,8 +1286,8 @@ test(
 test(
   'failed tool shutdown keeps copies and a retry stops persisted tools before deleting',
   async ({ onTestFinished }) => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const caller = await othrys.hydra()
+    const target = await othrys.hydra()
     const folder = projectFolder({
       hydra: target,
       name: 'stop-retry',

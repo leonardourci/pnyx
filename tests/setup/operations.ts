@@ -8,17 +8,17 @@ import { reply } from '#workers/reply-cli.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
 import { oracleCommands } from '#oracle/cli.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
-import { agentNotices } from '#hydra/hydra-session.ts'
+import { agentNotices } from '#titan/titan-session.ts'
 import { workerScoped } from '#workers/worker-scope.ts'
 import { runForClient, requestInvocation, IDENTITY } from '#app/request-context.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { ApplyError } from '#app/apply/schema.ts'
 import { readFileSync } from 'node:fs'
 import { infoPath } from '#app/server-state.ts'
 import { CLI_COMMANDS } from '#app/command-registry.ts'
-import { openPage } from './pnyx.ts'
+import { openPage } from './othrys.ts'
 import { home } from '#cli/home.ts'
-import type { Run } from './pnyx.ts'
+import type { Run } from './othrys.ts'
 
 const operations = workerScoped({
   commands: agentNotices({
@@ -66,8 +66,8 @@ export async function serverOperation({
       throw new Error(`No browser operation for ${name}`)
     }
 
-    const hydraIndex = rest.indexOf('--hydra')
-    const hydraId = (hydraIndex < 0 ? env.PNYX_HYDRA : rest[hydraIndex + 1]) ?? 'default'
+    const hydraIndex = rest.indexOf('--titan')
+    const hydraId = (hydraIndex < 0 ? env.OTHRYS_TITAN : rest[hydraIndex + 1]) ?? 'default'
     const forwarded = rest.filter((
       _,
       index,
@@ -76,7 +76,7 @@ export async function serverOperation({
     if (!forwarded.includes('--actor')) {
       forwarded.push(
         '--actor',
-        env.PNYX_ACTOR ?? 'cli',
+        env.OTHRYS_ACTOR ?? 'cli',
       )
     }
 
@@ -122,13 +122,13 @@ export async function serverOperation({
         const handler = operations[name as keyof typeof operations]
 
         if (name && !handler) {
-          throw new HydraError({
+          throw new TitanError({
             message: `Unknown internal operation ${name}`,
             code: 'VALIDATION_ERROR',
           })
         }
 
-        const output = name ? await handler!(rest) : await home({ hydraId: env.PNYX_HYDRA })
+        const output = name ? await handler!(rest) : await home({ hydraId: env.OTHRYS_TITAN })
 
         return {
           status: 0,
@@ -137,7 +137,7 @@ export async function serverOperation({
           stdout: `${JSON.stringify(output)}\n`,
         }
       } catch (error) {
-        const code = error instanceof HydraError ? error.code : 'UNKNOWN'
+        const code = error instanceof TitanError ? error.code : 'UNKNOWN'
 
         return {
           status: code === 'VALIDATION_ERROR' ? 2 : 1,
@@ -146,7 +146,7 @@ export async function serverOperation({
           stdout: `${JSON.stringify({
             code,
             error: error instanceof Error ? error.message : String(error),
-            help: error instanceof HydraError ? error.help : [],
+            help: error instanceof TitanError ? error.help : [],
             ...(error instanceof ApplyError ? {
               applied: false,
               errors: error.errors,

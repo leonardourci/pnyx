@@ -81,7 +81,7 @@ test(
       },
       recorded: {
         unavailable: 0,
-        sharedHydra: false,
+        sharedTitan: false,
       },
       windows: [],
     }
@@ -105,7 +105,7 @@ test(
         first: {
           total: 1,
           unavailable: 0,
-          sharedHydra: false,
+          sharedTitan: false,
         },
       },
       usage: {first: usage},
@@ -150,7 +150,7 @@ test(
           second: {
             total: 2,
             unavailable: 0,
-            sharedHydra: false,
+            sharedTitan: false,
           },
         },
         usage: {second: usage},
@@ -172,7 +172,7 @@ test(
           first: {
             total: 3,
             unavailable: 0,
-            sharedHydra: false,
+            sharedTitan: false,
           },
         },
       },
@@ -221,12 +221,12 @@ test(
           first: {
             total: 3,
             unavailable: 0,
-            sharedHydra: false,
+            sharedTitan: false,
           },
           second: {
             total: 2,
             unavailable: 0,
-            sharedHydra: false,
+            sharedTitan: false,
           },
         },
         usage: {
@@ -352,7 +352,7 @@ test(
 )
 
 test(
-  'a smaller activity refresh replaces an undrained snapshot for the same Hydra',
+  'a smaller activity refresh replaces an undrained snapshot for the same Titan',
   () => {
     vi.useFakeTimers()
     const socket = slowSocket()

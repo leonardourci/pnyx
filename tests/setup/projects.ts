@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Hydra } from './pnyx.ts'
+import type { Titan } from './othrys.ts'
 import { git } from './upgrade.ts'
 
 export const createProject = async ({
@@ -9,7 +9,7 @@ export const createProject = async ({
   remote,
   name = 'shop',
 }: {
-  hydra: Hydra
+  hydra: Titan
   landing: 'branch' | 'pr'
   remote?: string
   name?: string

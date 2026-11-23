@@ -1,22 +1,22 @@
 import { beforeAll, expect, test } from 'vitest'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { loadHydra } from '#app/store.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import { joinLatest, mergeThreadPages } from '#hydra/thread-history.ts'
-import { createHydraThreadView } from '#hydra/thread-view.ts'
-import { readThread, recordEntries, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { loadTitan } from '#app/store.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { createThreadReceiver } from '#titan/thread-receive.ts'
+import { joinLatest, mergeThreadPages } from '#titan/thread-history.ts'
+import { createTitanThreadView } from '#titan/thread-view.ts'
+import { readThread, recordEntries, type ThreadPage } from '#titan/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
-import { compactionRuns, noticesInTimeline } from '../web/src/hydra/chat.ts'
-import { loadEarlierMessages } from '../web/src/hydra/conversation-history.ts'
-import { openPage, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { compactionRuns, noticesInTimeline } from '../web/src/titan/chat.ts'
+import { loadEarlierMessages } from '../web/src/titan/conversation-history.ts'
+import { openPage, startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 import { appendRecords, appendToolCalls } from './setup/transcripts.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 interface Entry {
@@ -50,11 +50,11 @@ const LONG_REPLY = `${'A long paragraph of the release notes. '.repeat(1500)}End
 test(
   'chat opens on its newest 20 entries, reading older pages reaches every message once, in order, with a long reply whole, and revealing an older message reads back only until it',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     let session
 
     for (let exchange = 1; exchange <= EXCHANGES; exchange++) {
-      pnyx.claude.plan({
+      othrys.claude.plan({
         hydra: hydra.id,
         text: `question ${exchange}`,
         reply: exchange === 5 ? LONG_REPLY : `answer ${exchange}`,
@@ -102,9 +102,9 @@ test(
       throw new Error('The newest page has no saved reply')
     }
 
-    const state = loadHydra({ hydraId: hydra.id }).state
+    const state = loadTitan({ hydraId: hydra.id }).state
     const detachedCard = {
-      ...state.cards[HYDRA_CARD],
+      ...state.cards[TITAN_CARD],
       agent: undefined,
       sessionIds: [],
     }
@@ -115,13 +115,13 @@ test(
         ...state,
         cards: {
           ...state.cards,
-          [HYDRA_CARD]: detachedCard,
+          [TITAN_CARD]: detachedCard,
         },
       },
     })
     expect(detachedHistory.entries.find(entry => entry.id === savedReply.id)?.text).toBe('answer 29')
 
-    const project = createHydraThreadView({
+    const project = createTitanThreadView({
       state,
       page: first.thread,
       tools: false,
@@ -148,7 +148,7 @@ test(
     }
 
     // A message that arrives while the owner reads back must neither be lost nor shift what was already read.
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       text: 'question 31',
       reply: LONG_REPLY,
@@ -162,7 +162,7 @@ test(
     const newestTab = await hydra.page()
     const newest = await newestTab.send({
       name: 'thread',
-      args: [HYDRA_CARD],
+      args: [TITAN_CARD],
     }) as unknown as ThreadReceipt
     newestTab.close()
     expect(newest.thread.conversation.entries.at(-1)?.text).toBe(LONG_REPLY)
@@ -234,7 +234,7 @@ test(
 test(
   'a task\'s older chat stays ordered through new replies and session changes, and Focus mode controls tool calls',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'notes' })
     const focusMode = ({ on }: { on: boolean }) => hydra.owner({
       args: [
@@ -265,7 +265,7 @@ test(
       })
       const threads = createThreadReceiver()
       const page = await openPage({
-        port: pnyx.port(),
+        port: othrys.port(),
         hydraId: hydra.id,
         receive: ({ message }) => {
           threads.receive({ message })
@@ -410,7 +410,7 @@ test(
 test(
   'Activity reads a card\'s updates newest first a page at a time, an update made while reading shifts nothing, and a bad page is refused',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { card } = await hydra.owner({
       args: [
         'task',
@@ -545,22 +545,22 @@ test(
   },
 )
 
-// What the chat holds for a Hydra: its saved compactions, oldest first.
-const compactions = ({ hydra }: { hydra: Hydra }) => (loadHydra({
+// What the chat holds for a Titan: its saved compactions, oldest first.
+const compactions = ({ hydra }: { hydra: Titan }) => (loadTitan({
   hydraId: hydra.id,
-}).state.cards[HYDRA_CARD]).compaction?.operations ?? []
+}).state.cards[TITAN_CARD]).compaction?.operations ?? []
 
 test(
   'a chat page shows only the compactions that happened within its messages, and compactions with no message between them fold into one run',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     let answered = 0
     let compacted = 0
 
     const exchange = async () => {
       answered += 1
       const number = answered
-      pnyx.claude.plan({
+      othrys.claude.plan({
         hydra: hydra.id,
         text: `question ${number}`,
         reply: `answer ${number}`,
@@ -574,7 +574,7 @@ test(
 
     const compact = async () => {
       const before = compactions({ hydra }).length
-      pnyx.claude.plan({
+      othrys.claude.plan({
         hydra: hydra.id,
         text: '/compact',
         compacting: true,
@@ -588,9 +588,9 @@ test(
         ],
       })
       await until({
-        what: 'the compaction to finish and Hydra to resume accepting messages',
+        what: 'the compaction to finish and Titan to resume accepting messages',
         check: () => compactions({ hydra }).filter(operation => operation.state === 'done').length > before
-          && !loadHydra({ hydraId: hydra.id }).state.hydraOperation,
+          && !loadTitan({ hydraId: hydra.id }).state.hydraOperation,
       })
       compacted += 1
     }

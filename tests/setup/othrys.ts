@@ -21,7 +21,7 @@ export const CLI = join(
   '..',
   'dist',
   'cli',
-  'pnyx.js',
+  'othrys.js',
 )
 export interface Run {
   status: number | null
@@ -30,7 +30,7 @@ export interface Run {
   stderr: string
 }
 
-export function pnyx({
+export function othrys({
   args,
   env,
   input,
@@ -103,7 +103,7 @@ export const operation = async ({
     'setup',
     'serve',
   ].includes(options.args[0] ?? '')) {
-    const result = await pnyx({
+    const result = await othrys({
       ...options,
       args: [
         ...options.args,
@@ -118,7 +118,7 @@ export const operation = async ({
   }
 
   if (options.args.includes('--help')) {
-    return pnyx(options)
+    return othrys(options)
   }
 
   return serverOperation(options)
@@ -133,9 +133,9 @@ export const parsed = ({ stdout }: { stdout: string }): Output =>
 // The owner's terminal: no agent identity.
 const ownerEnv = () => {
   const env = { ...process.env }
-  delete env.PNYX_ACTOR
-  delete env.PNYX_TASK
-  delete env.PNYX_HYDRA
+  delete env.OTHRYS_ACTOR
+  delete env.OTHRYS_TASK
+  delete env.OTHRYS_TITAN
 
   return env
 }
@@ -213,7 +213,7 @@ else console.log(JSON.stringify({ providers: [{ provider, state: { status: 'fres
   })
 }
 
-export interface PnyxOptions {
+export interface OthrysOptions {
   compactionDelay?: number
   queueDelay?: number
   codexConfig?: Record<string, unknown>
@@ -221,19 +221,19 @@ export interface PnyxOptions {
   restart?(): void | Promise<void>
 }
 
-export type Pnyx = Awaited<ReturnType<typeof startPnyx>>
+export type Othrys = Awaited<ReturnType<typeof startOthrys>>
 
 // Starts the server once for a test file; it stops when the file ends.
-export async function startPnyx({
+export async function startOthrys({
   compactionDelay,
   queueDelay,
   codexConfig,
   upgradeRoot,
   restart,
-}: PnyxOptions = {}) {
+}: OthrysOptions = {}) {
   const root = join(
     process.env.TMPDIR!,
-    'pnyx-run',
+    'othrys-run',
   )
   mkdirSync(
     root,
@@ -317,7 +317,7 @@ export async function startPnyx({
     },
     start,
     stop,
-    // A Hydra of its own, created through the CLI and served once the server mounts it.
+    // A Titan of its own, created through the CLI and served once the server mounts it.
     hydra: async ({
       id = `h${++hydras}`,
       create = true,
@@ -351,7 +351,7 @@ export async function startPnyx({
   }
 }
 
-export type Hydra = ReturnType<typeof hydraClient>
+export type Titan = ReturnType<typeof hydraClient>
 
 function hydraClient({
   hydraId,
@@ -375,7 +375,7 @@ function hydraClient({
   }) => operation({
     args: [
       ...args,
-      '--hydra',
+      '--titan',
       hydraId,
     ],
     env,
@@ -400,7 +400,7 @@ function hydraClient({
     if (run.status !== 0) {
       const outcome = run.status === null ? `signal ${run.signal}` : `status ${run.status}`
 
-      throw new Error(`pnyx ${args.join(' ')} exited with ${outcome}:\n${run.stdout}${run.stderr}`)
+      throw new Error(`othrys ${args.join(' ')} exited with ${outcome}:\n${run.stdout}${run.stderr}`)
     }
 
     return parsed(run)
@@ -422,7 +422,7 @@ function hydraClient({
     })
 
     if (run.status === 0) {
-      throw new Error(`pnyx ${args.join(' ')} succeeded:\n${run.stdout}`)
+      throw new Error(`othrys ${args.join(' ')} succeeded:\n${run.stdout}`)
     }
 
     const output = parsed(run)
@@ -442,9 +442,9 @@ function hydraClient({
     cwd?: string
     hydra?: boolean
   }) => until({
-    what: cwd ? `an agent in ${cwd}` : `Hydra ${hydraId}'s agent`,
-    check: () => sessions().findLast(s => s.env.PNYX_HYDRA === hydraId
-      && (hydra ? s.env.PNYX_ACTOR === 'hydra' : s.cwd === cwd)),
+    what: cwd ? `an agent in ${cwd}` : `Titan ${hydraId}'s agent`,
+    check: () => sessions().findLast(s => s.env.OTHRYS_TITAN === hydraId
+      && (hydra ? s.env.OTHRYS_ACTOR === 'hydra' : s.cwd === cwd)),
   })
 
   const folder = ({ name }: { name: string }) => {
@@ -575,18 +575,18 @@ function hydraClient({
       }),
     }),
     agent,
-    // The owner writes in Hydra's chat; resolves with Hydra's session once it heard the text.
+    // The owner writes in Titan's chat; resolves with Titan's session once it heard the text.
     chat: async ({ text }: { text: string }) => {
       const before = new Map(sessions().map(session => [
         session,
         session.received.length,
       ]))
-      const sent = await pnyx({
+      const sent = await othrys({
         args: [
           'send',
           '--text',
           text,
-          '--hydra',
+          '--titan',
           hydraId,
           '--json',
         ],
@@ -594,14 +594,14 @@ function hydraClient({
       })
 
       if (sent.status !== 0) {
-        throw new Error(`Hydra send failed: ${sent.stderr}`)
+        throw new Error(`Titan send failed: ${sent.stderr}`)
       }
 
       return until({
-        what: `Hydra to hear "${text}"`,
-        check: () => sessions().findLast(session => session.env.PNYX_HYDRA === hydraId
-          && session.env.PNYX_ACTOR === 'hydra'
-          && session.received.slice(before.get(session) ?? 0).some(heard => heard.endsWith(text) || heard.includes(`${text}\n<pnyx-wake>`))),
+        what: `Titan to hear "${text}"`,
+        check: () => sessions().findLast(session => session.env.OTHRYS_TITAN === hydraId
+          && session.env.OTHRYS_ACTOR === 'hydra'
+          && session.received.slice(before.get(session) ?? 0).some(heard => heard.endsWith(text) || heard.includes(`${text}\n<othrys-wake>`))),
       })
     },
     page: ({ cards }: { cards?: string[] } = {}) => openPage({

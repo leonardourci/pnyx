@@ -1,4 +1,4 @@
-// Fake Claude Code and Codex replaying a real recorded turn (`pnpm refresh-agent-fixtures`), so Pnyx's provider code runs as in use.
+// Fake Claude Code and Codex replaying a real recorded turn (`pnpm refresh-agent-fixtures`), so Othrys's provider code runs as in use.
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
@@ -34,7 +34,7 @@ const codexRecording = recording<{
   } | { notification: Message })[]
 }>({ name: 'codex.json' })
 
-// One agent session as Pnyx started it, and everything it heard.
+// One agent session as Othrys started it, and everything it heard.
 export interface AgentSession {
   id: string
   provider: 'claude' | 'codex'
@@ -49,10 +49,10 @@ export interface AgentSession {
   closed: boolean
   model?: string
   effort?: string
-  // Provider options Pnyx supplied when opening the session.
+  // Provider options Othrys supplied when opening the session.
   config?: Record<string, unknown>
   instructions?: string
-  // Claude: the agent calls a tool that needs permission mid-turn and gets Pnyx's decision.
+  // Claude: the agent calls a tool that needs permission mid-turn and gets Othrys's decision.
   useTool?({
     tool,
     input,
@@ -130,7 +130,7 @@ function plans() {
       text: string
       env: NodeJS.ProcessEnv
     }) => {
-      const at = waiting.findIndex(plan => (!plan.hydra || plan.hydra === env.PNYX_HYDRA)
+      const at = waiting.findIndex(plan => (!plan.hydra || plan.hydra === env.OTHRYS_TITAN)
         && (plan.match ? plan.match({ text }) : text.endsWith(plan.text ?? '')))
 
       return at === -1 ? undefined : waiting.splice(
@@ -180,8 +180,8 @@ export function fakeClaude() {
       }
     }
 
-    if (!options.env?.PNYX_HOME) {
-      throw new Error('a fake agent started without its own PNYX_HOME')
+    if (!options.env?.OTHRYS_HOME) {
+      throw new Error('a fake agent started without its own OTHRYS_HOME')
     }
 
     const id = options.sessionId ?? options.resume!
@@ -262,7 +262,7 @@ export function fakeClaude() {
 
     let contextWindow = claudeRecording.context.rawMaxTokens
 
-    // Like the SDK, the fake reads Pnyx's messages as they are sent, not one turn at a time.
+    // Like the SDK, the fake reads Othrys's messages as they are sent, not one turn at a time.
     const waiting: SDKUserMessage[] = []
     const folded: {
       text: string
@@ -366,7 +366,7 @@ export function fakeClaude() {
 
         arrived()
         let interrupted = false
-        // A planned turn waits for its release, or for Pnyx to stop it.
+        // A planned turn waits for its release, or for Othrys to stop it.
         const stopped = new Promise<void>(resolve => {
           stop = () => {
             interrupted = true
@@ -639,7 +639,7 @@ export function fakeClaude() {
           }
         }
 
-        // Resumed past the last yield only when Pnyx asks for more, so Pnyx has read the whole turn.
+        // Resumed past the last yield only when Othrys asks for more, so Othrys has read the whole turn.
         session.answered = session.received.length
       }
     }
@@ -668,12 +668,12 @@ export function fakeClaude() {
           ...claudeRecording.context,
           rawMaxTokens: contextWindow,
         }),
-        // eslint-disable-next-line pnyx/object-params -- Claude SDK owns setting signatures.
+        // eslint-disable-next-line othrys/object-params -- Claude SDK owns setting signatures.
         setModel: async (model: string) => {
           session.model = model
         },
         setPermissionMode: async () => {},
-        // eslint-disable-next-line pnyx/object-params -- Claude SDK owns setting signatures.
+        // eslint-disable-next-line othrys/object-params -- Claude SDK owns setting signatures.
         applyFlagSettings: async (settings: { effortLevel?: string }) => {
           session.effort = settings.effortLevel
         },
@@ -894,11 +894,11 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
 
         const params = (message.params ?? {}) as Message
 
-        if (message.method === 'initialize' && env.PNYX_ACTOR) {
-          const held = starts.get(env.PNYX_ACTOR)
+        if (message.method === 'initialize' && env.OTHRYS_ACTOR) {
+          const held = starts.get(env.OTHRYS_ACTOR)
 
           if (held) {
-            starts.delete(env.PNYX_ACTOR)
+            starts.delete(env.OTHRYS_ACTOR)
             held.entered = true
             await held.wait
           }

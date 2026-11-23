@@ -1,17 +1,17 @@
 import { basename } from 'node:path'
 import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
-import type { HydraProject } from '#projects/model.ts'
-import type { Pnyx } from './pnyx.ts'
+import type { TitanProject } from '#projects/model.ts'
+import type { Othrys } from './othrys.ts'
 
 export async function legacyDuplicate({
-  pnyx,
+  othrys,
   id,
   projects,
 }: {
-  pnyx: Pnyx
+  othrys: Othrys
   id: string
-  projects: Pick<HydraProject, 'path' | 'landing'>[]
+  projects: Pick<TitanProject, 'path' | 'landing'>[]
 }) {
   await withWriter({
     hydraId: id,
@@ -48,7 +48,7 @@ export async function legacyDuplicate({
     },
   })
 
-  return pnyx.hydra({
+  return othrys.hydra({
     id,
     create: false,
   })

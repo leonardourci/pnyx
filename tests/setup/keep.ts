@@ -8,7 +8,7 @@ export function keepFiles({
   from: string
   exclude?: string[]
 }) {
-  const target = process.env.PNYX_KEEP_TEST_FILES
+  const target = process.env.OTHRYS_KEEP_TEST_FILES
 
   if (!target || !existsSync(from)) {
     return
@@ -27,7 +27,7 @@ export function keepFiles({
     {
       recursive: true,
       // Sockets and pipes cannot be copied; cpSync owns the filter's signature.
-      // eslint-disable-next-line pnyx/object-params
+      // eslint-disable-next-line othrys/object-params
       filter: path => !exclude.some(name => path.includes(`/${name}`))
         && (!existsSync(path) || lstatSync(path).isFile() || lstatSync(path).isDirectory()),
     },

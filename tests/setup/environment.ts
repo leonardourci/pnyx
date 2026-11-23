@@ -20,9 +20,9 @@ const GUARDED = [
   'brew',
 ]
 const CHILD_HEAP_MB = 1024
-const KEEP = /^(VITEST|__VITEST|CI$|TERM$|FORCE_COLOR$|NO_COLOR$|PNYX_KEEP_TEST_FILES$)/
+const KEEP = /^(VITEST|__VITEST|CI$|TERM$|FORCE_COLOR$|NO_COLOR$|OTHRYS_KEEP_TEST_FILES$)/
 
-// Short paths leave room for the Unix socket names Pnyx makes inside its home.
+// Short paths leave room for the Unix socket names Othrys makes inside its home.
 const root = realpathSync(mkdtempSync('/tmp/pt-'))
 const guards = join(
   root,
@@ -59,7 +59,7 @@ Object.assign(
       root,
       'tmp',
     ),
-    PNYX_HOME: join(
+    OTHRYS_HOME: join(
       root,
       'pnyx',
     ),
@@ -71,7 +71,7 @@ Object.assign(
       root,
       'codex',
     ),
-    PNYX_GH_AXI: 'false',
+    OTHRYS_GH_AXI: 'false',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(
       root,
@@ -85,7 +85,7 @@ Object.assign(
 for (const key of [
   'HOME',
   'TMPDIR',
-  'PNYX_HOME',
+  'OTHRYS_HOME',
   'CLAUDE_CONFIG_DIR',
   'CODEX_HOME',
 ]) {

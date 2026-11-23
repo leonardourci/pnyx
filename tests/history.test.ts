@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { WORKER_RESUME } from '#workers/host.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { type NativeFact } from '#app/native-state.ts'
@@ -10,12 +10,12 @@ import { applyDecision } from '#app/decision.ts'
 import { withWriter } from '#app/writer.ts'
 import { decideSessionFacts } from '#workers/session-facts.ts'
 import { transcriptPath } from '#workers/claude.ts'
-import { startPnyx, until, type Hydra, type Output, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Titan, type Output, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 const EVENTS = 60_000
@@ -30,7 +30,7 @@ const GAP = {
 const BASE = Date.parse('2099-01-01T00:00:00.000Z')
 
 interface Fixture {
-  hydra: Hydra
+  hydra: Titan
   // The log position before the first bulk event.
   last: number
   through: number
@@ -107,10 +107,10 @@ async function insertEvents({
   home.reload({ hydra: hydraId })
 }
 
-// A Hydra that has answered once, with a task to hang bulk events on and the path of its transcript.
-async function seededHydra({ id }: { id: string }) {
-  const hydra = await pnyx.hydra({ id })
-  pnyx.claude.plan({
+// A Titan that has answered once, with a task to hang bulk events on and the path of its transcript.
+async function seededTitan({ id }: { id: string }) {
+  const hydra = await othrys.hydra({ id })
+  othrys.claude.plan({
     hydra: hydra.id,
     text: 'hello',
     reply: 'Hi.',
@@ -137,7 +137,7 @@ async function seededHydra({ id }: { id: string }) {
     folder: session.env.CLAUDE_CONFIG_DIR,
   })
 
-  const first = loadHydra({ hydraId: hydra.id }).state.seq
+  const first = loadTitan({ hydraId: hydra.id }).state.seq
 
   return {
     hydra,
@@ -147,7 +147,7 @@ async function seededHydra({ id }: { id: string }) {
   }
 }
 
-async function longHydra(): Promise<Fixture> {
+async function longTitan(): Promise<Fixture> {
   if (fixture) {
     return fixture
   }
@@ -157,9 +157,9 @@ async function longHydra(): Promise<Fixture> {
     busy,
     transcript,
     first,
-  } = await seededHydra({ id: 'long' })
+  } = await seededTitan({ id: 'long' })
 
-  await pnyx.restart({
+  await othrys.restart({
     whileStopped: async () => {
       await insertEvents({
         hydraId: hydra.id,
@@ -227,13 +227,13 @@ async function longHydra(): Promise<Fixture> {
   fixture = {
     hydra,
     get last() {
-      return loadHydra({ hydraId: hydra.id }).state.eventIds.bulk1! - 1
+      return loadTitan({ hydraId: hydra.id }).state.eventIds.bulk1! - 1
     },
     get through() {
-      return loadHydra({ hydraId: hydra.id }).state.seq
+      return loadTitan({ hydraId: hydra.id }).state.seq
     },
     order,
-    replySeq: ({ k }) => loadHydra({ hydraId: hydra.id }).state.eventIds[`bulk${replyAfter({ k }) + 1}`]!,
+    replySeq: ({ k }) => loadTitan({ hydraId: hydra.id }).state.eventIds[`bulk${replyAfter({ k }) + 1}`]!,
   }
 
   return fixture
@@ -242,7 +242,7 @@ async function longHydra(): Promise<Fixture> {
 test(
   'an explicit push retry returns the original receipt for a live observation',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -280,7 +280,7 @@ test(
 test(
   'an undo receipt belongs to the edit it reversed',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -334,7 +334,7 @@ test(
 test(
   'a completed native worker stays finished when an earlier hook observation is retried after restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const key = 'hook-replay'
     const folder = hydra.folder({ name: key })
     const fullTask = async () => (await hydra.owner({
@@ -358,9 +358,9 @@ test(
         folder,
       ],
     })
-    const turn = pnyx.claude.plan({
+    const turn = othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       partial: 'Native work in progress',
       reply: 'Native work completed',
       hold: true,
@@ -404,14 +404,14 @@ test(
       what: 'the native completion updates the task',
       check: async () => (await fullTask()).activity === 'finished',
     })
-    const unexpectedResume = pnyx.claude.plan({
+    const unexpectedResume = othrys.claude.plan({
       hydra: hydra.id,
       text: WORKER_RESUME,
       hold: true,
       partial: 'Resumed work is still running',
     })
     onTestFinished(unexpectedResume.release)
-    await pnyx.restart()
+    await othrys.restart()
     expect((await fullTask()).activity).toBe('finished')
     await hydra.owner({
       args,
@@ -428,7 +428,7 @@ test(
 test(
   'undoing a title edit observed by another task’s session preserves both assignments',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
 
     for (const key of [
       'first',
@@ -521,8 +521,8 @@ test(
 test(
   'completed native replies with offset clocks remain in history after observations leave the log and after restart',
   async () => {
-    const hydra = await pnyx.hydra()
-    pnyx.claude.plan({
+    const hydra = await othrys.hydra()
+    othrys.claude.plan({
       hydra: hydra.id,
       text: 'Read native history',
       reply: 'NATIVE-HISTORY-END',
@@ -557,7 +557,7 @@ test(
           candidate.agent.sessionId === session.id)
 
         if (!native) {
-          throw new Error('The native Hydra session is missing')
+          throw new Error('The native Titan session is missing')
         }
 
         for (const reading of [
@@ -645,7 +645,7 @@ test(
     })
     expect((await hydra.owner({ args: fixedArgs })).messages)
       .toContainEqual(expect.objectContaining({ text: 'NATIVE-TIME-LOOKUP' }))
-    await pnyx.restart()
+    await othrys.restart()
     const restored = await hydra.owner({
       args: [
         'hydra',
@@ -682,11 +682,11 @@ test(
 test(
   'an inscribe retry survives a restart without another history event',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const session = await hydra.chat({ text: 'Conversation before the saved inscribe boundary' })
     await until({
       what: 'the conversation before inscribe to finish',
-      check: () => session.answered === 1 && !pnyx.home().scopes[hydra.id]?.queue?.chat?.working,
+      check: () => session.answered === 1 && !othrys.home().scopes[hydra.id]?.queue?.chat?.working,
     })
     const args = [
       'hydra',
@@ -750,7 +750,7 @@ test(
       ],
     })).totalTokens).toBe(0)
     const log = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'hydra.log',
@@ -770,7 +770,7 @@ test(
       type: event.type,
     }))
     expect(saved.map(event => event.type)).not.toContain('hydra.operation')
-    await pnyx.restart()
+    await othrys.restart()
     const retried = await hydra.owner({ args })
     expect(retried.duplicate).toBe('event id already applied; nothing appended')
     expect(retried.event).toEqual(first.event)
@@ -804,7 +804,7 @@ test(
     const {
       hydra,
       replySeq,
-    } = await longHydra()
+    } = await longTitan()
     const one = await hydra.owner({
       args: [
         'hydra',
@@ -994,9 +994,9 @@ test(
       busy,
       transcript,
       first,
-    } = await seededHydra({ id: 'dense' })
+    } = await seededTitan({ id: 'dense' })
 
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: async () => {
         await insertEvents({
           hydraId: hydra.id,

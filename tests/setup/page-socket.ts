@@ -96,7 +96,7 @@ export async function openPage({
         const answer = answers.get(id)
 
         if (!answer && socket.readyState === WebSocket.CLOSED) {
-          throw new Error(`Page connection to Hydra ${hydraId ?? 'default'} closed while waiting for ${name} ${args.join(' ')}`)
+          throw new Error(`Page connection to Titan ${hydraId ?? 'default'} closed while waiting for ${name} ${args.join(' ')}`)
         }
 
         return answer

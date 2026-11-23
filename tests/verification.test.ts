@@ -222,7 +222,7 @@ const codeCommands = [
 ]
 
 test(
-  'the shared verifier selects local commands and Pnyx review instructions',
+  'the shared verifier selects local commands and Othrys review instructions',
   () => {
     const cases = [
       {
@@ -246,7 +246,7 @@ test(
         ],
       },
       {
-        path: 'skills/pnyx-cli/SKILL.md',
+        path: 'skills/othrys-cli/SKILL.md',
         commands: [],
         instructions: [
           'kill-ai-slop',
@@ -264,7 +264,7 @@ test(
         ],
       },
       {
-        path: 'web/src/hydra/hydra-chat.tsx',
+        path: 'web/src/titan/hydra-chat.tsx',
         commands: codeCommands,
         instructions: [
           'review-code',
@@ -328,7 +328,7 @@ test(
       paths: [
         'docs/testing.md',
         'tests/access.test.ts',
-        'web/src/hydra/hydra-chat.tsx',
+        'web/src/titan/hydra-chat.tsx',
         '.github/workflows/tests.yml',
       ],
     })
@@ -432,7 +432,7 @@ test.each([
   },
   {
     name: 'shared test setup',
-    paths: ['tests/setup/pnyx.ts'],
+    paths: ['tests/setup/othrys.ts'],
     output: 'tests=all\n',
     status: 0,
   },
@@ -465,13 +465,13 @@ test.each([
   },
   {
     name: 'shipped skills',
-    paths: ['skills/pnyx-cli/SKILL.md'],
+    paths: ['skills/othrys-cli/SKILL.md'],
     output: 'tests=all\n',
     status: 0,
   },
   {
     name: 'fixture Markdown',
-    paths: ['skills/pnyx-cli/fixtures/input.md'],
+    paths: ['skills/othrys-cli/fixtures/input.md'],
     output: 'tests=all\n',
     status: 0,
   },

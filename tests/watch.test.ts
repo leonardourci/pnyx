@@ -3,7 +3,7 @@ import { watchPath } from '#app/watch.ts'
 import { writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'vitest'
-import { until } from './setup/pnyx.ts'
+import { until } from './setup/othrys.ts'
 
 test(
   'a failed file notification is reconciled without another write',

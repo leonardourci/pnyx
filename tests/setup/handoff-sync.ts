@@ -39,7 +39,7 @@ export function afterHandoffSync({
   let fired = false
   let first: 'source' | 'target' | undefined
 
-  // eslint-disable-next-line pnyx/object-params -- Node owns the sync signature.
+  // eslint-disable-next-line othrys/object-params -- Node owns the sync signature.
   filesystem.fdatasyncSync = fd => {
     original(fd)
     const inode = filesystem.fstatSync(fd).ino

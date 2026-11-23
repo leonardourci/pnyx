@@ -2,9 +2,9 @@ import { beforeAll, expect, test, vi } from 'vitest'
 import { WebSocket } from 'ws'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { hydraIdentity, localToken } from '#app/server-state.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { createHydraConnection } from '../web/src/app/connection-store.ts'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { createTitanConnection } from '../web/src/app/connection-store.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 
 vi.mock(
   '#web-app/log.ts',
@@ -16,17 +16,17 @@ vi.mock(
   }),
 )
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test(
-  'a client resumes an unchanged home with only ready and retains every Hydra state',
+  'a client resumes an unchanged home with only ready and retains every Titan state',
   async () => {
-    const primary = await pnyx.hydra()
-    const background = await pnyx.hydra()
+    const primary = await othrys.hydra()
+    const background = await othrys.hydra()
     await background.owner({
       args: [
         'task',
@@ -46,7 +46,7 @@ test(
     }[] = []
 
     class ClientSocket extends WebSocket {
-      // eslint-disable-next-line pnyx/object-params -- WebSocket owns its constructor signature.
+      // eslint-disable-next-line othrys/object-params -- WebSocket owns its constructor signature.
       constructor(url: URL) {
         super(url)
         const frames: ServerMessage[] = []
@@ -67,12 +67,12 @@ test(
       new EventTarget(),
       {
         visibilityState: 'visible',
-        // eslint-disable-next-line pnyx/object-params -- Document owns the selector signature.
+        // eslint-disable-next-line othrys/object-params -- Document owns the selector signature.
         querySelector: (selector: string) => {
           const content = {
-            'meta[name=pnyx-installation]': hydraIdentity({ hydraId: '' }),
-            'meta[name=pnyx-hydra]': primary.id,
-            'meta[name=pnyx-token]': localToken(),
+            'meta[name=othrys-installation]': hydraIdentity({ hydraId: '' }),
+            'meta[name=othrys-hydra]': primary.id,
+            'meta[name=othrys-token]': localToken(),
           }[selector]
 
           return content ? {
@@ -100,13 +100,13 @@ test(
     )
     vi.stubGlobal(
       'location',
-      new URL(`http://127.0.0.1:${pnyx.port()}/hydra/${primary.id}/`),
+      new URL(`http://127.0.0.1:${othrys.port()}/hydra/${primary.id}/`),
     )
     vi.stubGlobal(
       'WebSocket',
       ClientSocket,
     )
-    const client = createHydraConnection()
+    const client = createTitanConnection()
     const stop = client.start()
     const connected = () => [
       primary.id,
@@ -115,7 +115,7 @@ test(
       .some(workspace => workspace.navigation.hydraId === id && workspace.connected))
     const taskCards = () => client.workspaces().map(workspace => ({
       hydra: workspace.navigation.hydraId,
-      cards: Object.values(workspace.state.cards).filter(card => card.id !== HYDRA_CARD)
+      cards: Object.values(workspace.state.cards).filter(card => card.id !== TITAN_CARD)
         .map(card => ({
           id: card.id,
           title: card.title,
@@ -125,7 +125,7 @@ test(
 
     try {
       await until({
-        what: 'both Hydra subscriptions to become current',
+        what: 'both Titan subscriptions to become current',
         check: connected,
       })
       const initial = sockets[0]!

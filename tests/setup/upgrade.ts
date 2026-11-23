@@ -1,4 +1,4 @@
-// A throwaway Pnyx folder whose fake pnpm runs the commit's own install.sh and build.sh, so a commit decides what fails.
+// A throwaway Othrys folder whose fake pnpm runs the commit's own install.sh and build.sh, so a commit decides what fails.
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -40,7 +40,7 @@ export const building = ({
   wait?: string
 }) => `${wait ? `while [ ! -f '${wait}' ]; do sleep 0.05; done\n` : ''}${fail ? 'echo "type error in build" >&2; exit 1\n' : ''}echo ${version} > built.txt
 mkdir -p dist/cli
-echo "process.exit(0)" > dist/cli/pnyx.js
+echo "process.exit(0)" > dist/cli/othrys.js
 `
 
 export function upgradeFolder({ root }: { root: string }) {
@@ -68,15 +68,15 @@ esac
   process.env.PATH = `${bin}:${process.env.PATH}`
   const origin = join(
     root,
-    'pnyx-origin.git',
+    'othrys-origin.git',
   )
   const author = join(
     root,
-    'pnyx-author',
+    'othrys-author',
   )
   const install = join(
     root,
-    'pnyx-install',
+    'othrys-install',
   )
   git({
     cwd: root,
@@ -270,7 +270,7 @@ esac
           args: [
             'rev-parse',
             '--git-path',
-            'pnyx-upgrade-from',
+            'othrys-upgrade-from',
           ],
         }),
       ),
