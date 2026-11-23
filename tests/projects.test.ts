@@ -5,12 +5,11 @@ import { base } from '#app/command-meta.ts'
 import * as processes from '#app/run-process.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { afterHandoffSync } from './setup/handoff-sync.ts'
-import * as queues from '#workers/advance-queue.ts'
 import { readEvents } from '#app/event-log.ts'
 import { spawn, spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
+import { beforeAll, expect, test, vi } from 'vitest'
 import { parsed, operation, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
 
 const PAGE_COMMAND = join(
@@ -746,28 +745,6 @@ if (branch === 'hercules/add-cart') {
       hook,
       { mode: 0o700 },
     )
-    const blockedPass = Promise.withResolvers<void>()
-    const advanceQueues = queues.advanceQueues
-    let restarted = false
-    const observeQueue = vi.spyOn(
-      queues,
-      'advanceQueues',
-    ).mockImplementation(async ({
-      hydraId,
-      ...options
-    }) => {
-      const result = await advanceQueues({
-        hydraId,
-        ...options,
-      })
-
-      if (restarted && hydraId === hydra.id) {
-        blockedPass.resolve()
-      }
-
-      return result
-    })
-    onTestFinished(() => observeQueue.mockRestore())
     await pnyx.restart({
       whileStopped: async () => {
         git({
@@ -808,11 +785,8 @@ if (branch === 'hercules/add-cart') {
             '--show-current',
           ],
         })).toBe('hercules/add-cart')
-        restarted = true
       },
     })
-    await blockedPass.promise
-    observeQueue.mockRestore()
     await hydra.owner({
       args: [
         'task',
