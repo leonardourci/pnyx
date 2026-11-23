@@ -1062,6 +1062,29 @@ test(
     })
     expect(restored.rank ?? restored.createdSeq).toBeGreaterThan(later.rank ?? later.createdSeq)
 
+    const earlierArrangement = await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        first.card.id,
+        '--before',
+        'later',
+      ],
+    })
+    await hydra.owner({
+      args: [
+        'task',
+        'arrange',
+        first.card.id,
+      ],
+    })
+    expect((await hydra.ownerRefused({
+      args: [
+        'undo',
+        earlierArrangement.event.id,
+      ],
+    })).code).toBe('CONFLICT')
+
     await hydra.owner({
       args: [
         'task',

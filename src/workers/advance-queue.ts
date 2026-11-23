@@ -153,7 +153,7 @@ function unsafeWorker({
 
   const stalled = session.activity === 'working'
     || card.workerLog?.status?.code === 'blocked'
-     || session.attention.some(a => a.blocking && !a.answered)
+    || session.attention.some(a => a.blocking && !a.answered)
 
   if (stalled && now - seenAt({ session }) >= QUEUE_STALL_MS) {
     return `The worker stalled for ${QUEUE_STALL_MS / 60_000} minutes`

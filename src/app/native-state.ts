@@ -742,8 +742,7 @@ function factType({ event }: { event: HydraEvent }): string {
     case 'board.configured': return 'config'
     case 'hydra.project': return 'project'
     case 'hydra.memory': return 'memory'
-    case 'board.view':
-      return 'layout'
+    case 'board.view': return 'layout'
     default: return event.type.replace(
       /^(task|card|hydra)\./,
       '',

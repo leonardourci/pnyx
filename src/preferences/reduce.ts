@@ -1,5 +1,4 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
-import { refreshTasks } from '#tasks/refresh.ts'
 import { workspaceLayout } from './workspace.ts'
 
 export function applyView({
@@ -17,8 +16,6 @@ export function applyView({
     )
     state.view.workspace = workspaceLayout({ input: state.view.workspace })
     state.viewRevision = (state.viewRevision ?? 0) + 1
-
-    refreshTasks({ state })
 
     if (event.undoes) {
       state.undone[event.undoes] = event.id
