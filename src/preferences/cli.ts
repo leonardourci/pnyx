@@ -145,12 +145,10 @@ export const layout = guard({
       return {
         widths: {
           hydra: view.hydraWidth,
-          columns: view.columnWidths,
+          projects: view.workspace.projectWidths,
         },
         defaults: {
-          column: view.defaultColumnWidth,
           hydra: view.defaultHydraWidth,
-          columns: view.defaultColumnWidths,
         },
       }
     }

@@ -2,7 +2,7 @@ import type { LogMode } from '#app/log-line.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 
-// The view preferences every Hydra shares; the rest of a view (dragged widths, card heights, custom columns) stays with its board.
+// The view preferences every Hydra shares; the rest of a view (project widths and card heights) stays with its board.
 export const SHARED_VIEW_KEYS = [
   'theme',
   'fontSize',
@@ -13,8 +13,6 @@ export const SHARED_VIEW_KEYS = [
   'toolDetails',
   'thinkingDetails',
   'defaultHydraWidth',
-  'defaultColumnWidth',
-  'defaultColumnWidths',
 ] as const
 
 export type SharedViewKey = (typeof SHARED_VIEW_KEYS)[number]

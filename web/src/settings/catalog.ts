@@ -5,7 +5,6 @@ export const SETTING_ICONS: Record<string, string> = {
   fontSize: 'text-size',
   chatFontSize: 'comment',
   codeFontSize: 'tool',
-  defaultColumnWidths: 'columns',
   defaultHydraWidth: 'chat-width',
   resetWidths: 'reset',
   lastMessageOnCards: 'cards',
@@ -157,18 +156,6 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     related: [
       ...TEXT_SIZE,
       'monospace',
-    ],
-  },
-  {
-    id: 'defaultColumnWidths',
-    section: 'layout',
-    label: 'Column width',
-    description: 'Resize this Hydra’s columns and save the width for new columns.',
-    related: [
-      'wide',
-      'narrow',
-      'size',
-      'board',
     ],
   },
   {

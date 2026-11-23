@@ -3,7 +3,6 @@ import type { HydraState, Decision } from '#app/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { HydraError } from '#store/errors.ts'
 import { viewFor, patchView } from './view.ts'
-import { removedColumnPlacements } from '#tasks/columns-decisions.ts'
 
 export function decideView({
   state,
@@ -40,11 +39,6 @@ export function decideView({
     return { skipped: 'unchanged' }
   }
 
-  const placements = removedColumnPlacements({
-    state,
-    after,
-  })
-
   return {
     event: {
       ...base({
@@ -56,7 +50,6 @@ export function decideView({
       data: {
         before,
         after,
-        ...(placements.length ? { placements } : {}),
       },
     },
   }

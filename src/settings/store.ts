@@ -184,10 +184,6 @@ function migrate(): void {
 
   if (view) {
     const migrated = pickView({ view: viewFor({ state: { view: view.data.after } }) })
-    migrated.defaultColumnWidths = Object.fromEntries(Object.entries(migrated.defaultColumnWidths)
-      .filter(([
-        , width,
-      ]) => width !== migrated.defaultColumnWidth))
     Object.assign(
       after,
       migrated,
