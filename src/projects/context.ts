@@ -12,7 +12,13 @@ import { projectMemoryLogPath, PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, 
 
 const WORKER_DOCUMENT_LIMIT = 400
 
-function fullMemory({ id, identity }: { id: string; identity: string }): string {
+function fullMemory({
+  id,
+  identity,
+}: {
+  id: string
+  identity: string
+}): string {
   const paths = [...readOwnerLogs().keys()].map(polis => ownerMemoryLogPath({ polis }))
   const owners = paths.filter(existsSync)
   const projectLog = JSON.stringify(projectMemoryLogPath({ id }))
