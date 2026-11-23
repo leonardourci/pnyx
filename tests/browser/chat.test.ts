@@ -1644,6 +1644,7 @@ test.each([
           hydra: hydra.id,
           match: ({ text: input }) => input.endsWith(text),
           reply,
+          splitReply: true,
           partial: 'Native reply',
           hold: true,
         })
@@ -1669,7 +1670,20 @@ test.each([
         })
         expect(await mounted.evaluate(({ isConnected }) => isConnected)).toBe(true)
         const copies = conversation.locator('[data-entry-id]').filter({ hasText: paragraph })
-        expect(await copies.count()).toBe(text === 'First native request' ? 1 : 2)
+        const perTurn = harness === 'claude' ? 2 : 1
+        expect(await copies.count()).toBe((text === 'First native request' ? 1 : 2) * perTurn)
+
+        if (harness === 'claude') {
+          const copiedIds: string[] = []
+
+          for (const row of await copies.all()) {
+            copiedIds.push((await row.getAttribute('data-entry-id'))!)
+          }
+
+          expect(new Set(copiedIds).size).toBe(copiedIds.length)
+          identities.push(...copiedIds.filter(key => !identities.includes(key)))
+        }
+
         expect(await conversation.getByText(
           text,
           { exact: true },

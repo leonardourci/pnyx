@@ -69,6 +69,7 @@ interface TurnPlan {
   text?: string
   match?({ text }: { text: string }): boolean
   reply?: string
+  splitReply?: boolean
   partial?: string
   hold?: boolean
   acknowledgeStartAfter?: Promise<void>
@@ -247,7 +248,12 @@ export function fakeClaude() {
         timestamp: new Date().toISOString(),
         message: {
           role,
-          content: text,
+          content: role === 'assistant' ? [
+            {
+              type: 'text',
+              text,
+            },
+          ] : text,
           id: nativeId,
           stop_reason: role === 'assistant' ? 'end_turn' : undefined,
         },
@@ -542,6 +548,50 @@ export function fakeClaude() {
                 ],
               },
             }
+
+            if (plan?.splitReply) {
+              const delta = claudeRecording.turn.find(event => event.type === 'stream_event'
+                && event.event.type === 'content_block_delta')!
+              yield {
+                ...delta,
+                session_id: id,
+                event: {
+                  type: 'content_block_start',
+                  index: 1,
+                  content_block: {
+                    type: 'text',
+                    text: '',
+                  },
+                },
+              } as SDKMessage
+              yield {
+                ...delta,
+                session_id: id,
+                event: {
+                  type: 'content_block_delta',
+                  index: 1,
+                  delta: {
+                    type: 'text_delta',
+                    text: answer,
+                  },
+                },
+              } as SDKMessage
+              yield {
+                ...recorded,
+                uuid: randomUUID(),
+                session_id: id,
+                message: {
+                  ...recorded.message,
+                  content: [
+                    {
+                      type: 'text',
+                      text: answer,
+                      citations: null,
+                    },
+                  ],
+                },
+              } as SDKMessage
+            }
           } else if (recorded.type === 'result') {
             yield {
               ...recorded,
@@ -579,6 +629,14 @@ export function fakeClaude() {
             nativeId,
             text: answer,
           })
+
+          if (plan?.splitReply) {
+            record({
+              role: 'assistant',
+              nativeId,
+              text: answer,
+            })
+          }
         }
 
         // Resumed past the last yield only when Pnyx asks for more, so Pnyx has read the whole turn.
@@ -1122,7 +1180,27 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
                 role: 'assistant',
                 id: `${replay?.id}:message`,
                 phase: 'final_answer',
-                content: [
+                content: plan?.splitReply ? [
+                  {
+                    type: 'input_image',
+                    image_url: 'fixture-image',
+                  },
+                  {
+                    type: 'output_text',
+                    text: answer.slice(
+                      0,
+                      Math.floor(answer.length / 2),
+                    ),
+                  },
+                  {
+                    type: 'input_image',
+                    image_url: 'fixture-image',
+                  },
+                  {
+                    type: 'output_text',
+                    text: answer.slice(Math.floor(answer.length / 2)),
+                  },
+                ] : [
                   {
                     type: 'output_text',
                     text: answer,
