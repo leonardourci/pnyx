@@ -129,9 +129,26 @@ export function createHydraOperations({
   // The owner's Stop ended the running stop and cancelled what waited behind it, so no recap follows.
   let stoppedByOwner = false
 
-  const stoppedFor = ({ id }: { id: string }) => {
+  const stoppedFor = ({
+    id,
+    actor,
+  }: {
+    id: string
+    actor?: string
+  }) => {
     const state = loadHydra({ hydraId }).state
     const recap = id.startsWith('operation:')
+    const active = state.hydraOperation
+
+    if (actor === 'pnyx' && active?.kind === 'compaction' && recapId === `operation:${active.id}`) {
+      const childId = `${active.id}:inscribe`
+      const child = state.historyMilestones?.find(pass => pass.id === childId)
+
+      if (id === `operation:${childId}` && child?.kind === 'inscribe'
+        && child.state === 'started' && child.parent === active.id) {
+        return false
+      }
+    }
 
     if (recap && recapId && id !== recapId) {
       return true

@@ -398,7 +398,10 @@ export function createHydraTurns({
     }
 
     // While a restart, an upgrade or a compaction stops Hydra, everything for it waits in its queue; the recap when it ends tells Hydra.
-    if (stoppedFor({ id })) {
+    if (stoppedFor({
+      id,
+      actor,
+    })) {
       queued()
 
       return Promise.resolve({ state: 'queued' })
@@ -445,7 +448,10 @@ export function createHydraTurns({
         })
       }
 
-      if (stoppedFor({ id })) {
+      if (stoppedFor({
+        id,
+        actor,
+      })) {
         return { state: 'queued' }
       }
 
