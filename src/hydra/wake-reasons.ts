@@ -13,7 +13,7 @@ import { cardLanding, failedChecks, pendingChecks, ranChecks, type Link } from '
 import { rankOf, taskDone } from '#tasks/select.ts'
 import { taskMention } from './mentions.ts'
 
-export type WakeKind = 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
+export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
   | 'instruction unread' | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
   | 'project refresh'
@@ -67,7 +67,9 @@ function checksSettled({
 // Backlog cards a free worker could take: no worker yet, not queued behind one, not held, and nothing waiting on the owner.
 export function readyBacklog({ state }: { state: HydraState }): Card[] {
   return Object.values(state.cards).filter(card => {
-    if (card.hidden || card.id === HYDRA_CARD || card.agent || card.sessionIds?.length || card.queue) {
+    const started = card.agent || card.sessionIds?.length || card.queue
+
+    if (card.hidden || card.id === HYDRA_CARD || started) {
       return false
     }
 
