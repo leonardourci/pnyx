@@ -1,13 +1,14 @@
+import { canonicalCommandName } from '#app/command-aliases.ts'
 import { inform } from '#app/command-notices.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
-import { parseArgs } from 'node:util'
+import { parseCommandArgs as parseArgs } from '#app/command-aliases.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import { reportActor } from '#hydra/hydra.ts'
+import { reportActor } from '#titan/titan.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { helperGrant } from './route.ts'
 import { HELPER_TASK_WRITES, helperReads } from '#app/command-registry.ts'
 import { isHelper, taskLease } from './leases.ts'
@@ -52,14 +53,14 @@ function commandLease({
     allowPositionals: true,
     strict: false,
   })
-  const actor = env.PNYX_ACTOR ?? String(values.actor ?? 'cli')
+  const actor = env.OTHRYS_ACTOR ?? String(values.actor ?? 'cli')
   const helper = isHelper({ actor })
 
   if (reportActor({ actor })) {
     return () => {}
   }
 
-  const hydraId = String(values.hydra ?? env.PNYX_HYDRA ?? 'default')
+  const hydraId = String(values.hydra ?? env.OTHRYS_TITAN ?? 'default')
   const action = positionals[0] ?? ''
   let task: string | undefined
 
@@ -67,7 +68,7 @@ function commandLease({
     const requestedActor = values.actor
     const sameActor = requestedActor === undefined || requestedActor === actor
 
-    if (hydraId !== env.PNYX_HYDRA || !sameActor || args.some(arg => /^--wait(?:=|$)/.test(arg))) {
+    if (hydraId !== env.OTHRYS_TITAN || !sameActor || args.some(arg => /^--wait(?:=|$)/.test(arg))) {
       denied()
     }
 
@@ -105,11 +106,11 @@ function commandLease({
     return () => {}
   }
 
-  let state: HydraState
+  let state: TitanState
   let card: Card
 
   try {
-    state = loadHydra({ hydraId }).state
+    state = loadTitan({ hydraId }).state
     card = findCard({
       state,
       ref: task,
@@ -191,7 +192,7 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
 
       try {
         release = commandLease({
-          name,
+          name: canonicalCommandName({ name }),
           args,
         })
         const result = run(args)
@@ -210,7 +211,7 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
         release()
 
         if (error instanceof TypeError && 'code' in error && String(error.code).startsWith('ERR_PARSE_ARGS')) {
-          throw new HydraError({
+          throw new TitanError({
             message: error.message,
             code: 'VALIDATION_ERROR',
             help: ['Run the command with --help'],

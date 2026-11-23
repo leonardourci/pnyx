@@ -1,6 +1,6 @@
 import type { Host } from '#app/host-types.ts'
-import type { HydraState } from '#app/model.ts'
-import { loadHydra } from '#app/store.ts'
+import type { TitanState } from '#app/model.ts'
+import { loadTitan } from '#app/store.ts'
 import { accountFor } from '#workers/account-choice.ts'
 import type { trackChildren } from '#workers/children.ts'
 import { accountEnv, accountEnvironment } from '#workers/dispatch.ts'
@@ -12,7 +12,7 @@ import { helperAgent, helperChoice } from './route.ts'
 import { createRoutineHelper } from './runner.ts'
 import { outcomeLines, type HelperAgent } from './state.ts'
 
-// The routine helper as a Hydra's server runs it: whether it may take work, and the agent, account and context it runs with.
+// The routine helper as a Titan's server runs it: whether it may take work, and the agent, account and context it runs with.
 export function createHostedHelper({
   hydraId,
   providers,
@@ -44,11 +44,11 @@ export function createHostedHelper({
   armWake(): void
   host(): Host
 }) {
-  const helperFailed = ({ state }: { state: HydraState }) => Object.values(state.helper?.runs ?? {})
+  const helperFailed = ({ state }: { state: TitanState }) => Object.values(state.helper?.runs ?? {})
     .some(batch => batch.error)
 
   const helperPending = () => {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
 
     return outcomeLines({ state }).length > 0 || helperFailed({ state })
   }
@@ -75,7 +75,7 @@ export function createHostedHelper({
     state,
     effective,
   }: {
-    state: HydraState
+    state: TitanState
     effective: EffectiveDispatch
   }) => {
     const candidate = helperAgent({
@@ -91,7 +91,7 @@ export function createHostedHelper({
 
   // A failed batch sends routine work to main until main has seen the failure.
   // An automatic helper has no account, so its openness never reads the dispatch file.
-  const helperOpen = ({ state }: { state: HydraState }) => {
+  const helperOpen = ({ state }: { state: TitanState }) => {
     const choice = helperChoice()
 
     return choice !== undefined
@@ -111,7 +111,7 @@ export function createHostedHelper({
     }) => {
       const env = {
         ...environment({ hydra: true }),
-        PNYX_ACTOR: actor,
+        OTHRYS_ACTOR: actor,
       }
 
       if (selectedFolder) {
@@ -150,7 +150,7 @@ export function createHostedHelper({
     },
     bound: helperBound,
     agentFor: async () => {
-      const state = loadHydra({ hydraId }).state
+      const state = loadTitan({ hydraId }).state
       const effective = effectiveDispatch()
       const candidate = usableHelper({
         state,
