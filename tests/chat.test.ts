@@ -3139,6 +3139,156 @@ test(
 )
 
 test(
+  'a compaction admits only its current started inscribe child and keeps other turns held',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const operations = createHydraOperations({
+      hydraId: hydra.id,
+      queuedHydra: new Set(),
+      at: () => new Date().toISOString(),
+      note: ({ fn }) => withWriter({
+        hydraId: hydra.id,
+        fn,
+      }),
+      armWake: () => {},
+      host: () => ({ hydra: async () => ({ state: 'queued' }) }),
+    })
+
+    const child = async ({
+      parent,
+      id = `${parent}:inscribe`,
+      state = 'started',
+    }: {
+      parent: string
+      id?: string
+      state?: 'started' | 'finished'
+    }) => {
+      await withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            operation: {
+              id,
+              kind: 'inscribe',
+              state,
+              parent,
+              through: writer.state.seq,
+              historySince: 'origin',
+            },
+          }),
+        }),
+      })
+    }
+
+    await operations.startOperation({
+      id: 'first-parent',
+      kind: 'compaction',
+    })
+    await child({ parent: 'first-parent' })
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(false)
+
+    for (const request of [
+      {
+        id: 'owner-message',
+        actor: 'cli',
+      },
+      {
+        id: 'operation:first-parent:inscribe',
+        actor: 'cli',
+      },
+      { id: 'operation:first-parent:inscribe' },
+      {
+        id: 'operation:first-parent',
+        actor: 'pnyx',
+      },
+      {
+        id: 'operation:unrelated:inscribe',
+        actor: 'pnyx',
+      },
+    ]) {
+      expect(operations.stoppedFor(request)).toBe(true)
+    }
+
+    await child({ parent: 'unrelated' })
+    expect(operations.stoppedFor({
+      id: 'operation:unrelated:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    await operations.startOperation({
+      id: 'later-stop',
+      kind: 'compaction',
+      independent: true,
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    operations.endOperation({ id: 'later-stop' })
+    operations.endOperation({ id: 'first-parent' })
+    await operations.startOperation({
+      id: 'wrong-parent',
+      kind: 'compaction',
+    })
+    await child({
+      parent: 'unrelated',
+      id: 'wrong-parent:inscribe',
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:wrong-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    operations.endOperation({ id: 'wrong-parent' })
+    await operations.startOperation({
+      id: 'current-parent',
+      kind: 'compaction',
+    })
+    await child({ parent: 'current-parent' })
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(false)
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    await child({
+      parent: 'current-parent',
+      state: 'finished',
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    operations.endOperation({ id: 'current-parent' })
+    await withWriter({
+      hydraId: hydra.id,
+      fn: () => {},
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent',
+      actor: 'pnyx',
+    })).toBe(false)
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent',
+      actor: 'pnyx',
+    })).toBe(true)
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+  },
+)
+
+test(
   'a queued operation recap waits for a later operation and keeps the first stop boundary',
   async () => {
     const hydra = await pnyx.hydra()
