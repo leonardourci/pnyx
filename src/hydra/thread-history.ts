@@ -20,7 +20,13 @@ export function mergeThreadPages({
   }
 
   const retained = before.entries.filter(entry => olderPage || entry.streaming === undefined)
-  const orderedPages = olderPage ? [latest.entries, retained] : [retained, latest.entries]
+  const orderedPages = olderPage ? [
+    latest.entries,
+    retained,
+  ] : [
+    retained,
+    latest.entries,
+  ]
   const combined = orderedPages.flat()
   const savedMessages = new Set(combined.filter(entry => entry.streaming === undefined)
     .map(entry => entry.messageId ?? entry.id))
