@@ -2,7 +2,7 @@ import { claudeTools } from './claude-tools.ts'
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
 import { blockText, foundSettings, injectedDigest, fastSetting, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
-import { existsSync } from 'node:fs'
+import { existsSync, openSync, readSync, closeSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
@@ -22,6 +22,7 @@ import { readTranscript } from './transcript-read.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
+const BLOCK_PREFIX_BYTES = 4096
 const SHADOWED_PERMISSION_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
 let permissionWarningLogged = false
 
@@ -1320,8 +1321,101 @@ function unsentUuid({
   return uuid !== undefined && !sent.has(uuid) ? uuid : randomUUID()
 }
 
+function priorBlocks({
+  source,
+  id,
+}: {
+  source: {
+    path: string
+    offset: number
+  }
+  id: string
+}): number {
+  const fd = openSync(
+    source.path,
+    'r',
+  )
+  let end = source.offset
+  let remainder = Buffer.alloc(0)
+  let blocks = 0
+
+  try {
+    while (end > 0) {
+      const start = Math.max(
+        0,
+        end - BLOCK_PREFIX_BYTES,
+      )
+      const chunk = Buffer.alloc(end - start)
+      readSync(
+        fd,
+        chunk,
+        0,
+        chunk.length,
+        start,
+      )
+      const bytes = Buffer.concat([
+        chunk,
+        remainder,
+      ])
+      const first = start ? bytes.indexOf(10) + 1 : 0
+
+      if (start && first === 0) {
+        remainder = bytes
+        end = start
+        continue
+      }
+
+      const lines = bytes.subarray(first).toString('utf8')
+        .split('\n')
+
+      for (const line of lines.reverse()) {
+        let record: unknown
+
+        try {
+          record = JSON.parse(line)
+        } catch {
+          continue
+        }
+
+        const entry = object({ value: record })
+
+        if (entry.isSidechain === true) {
+          continue
+        }
+
+        if (entry.type === 'user') {
+          return blocks
+        }
+
+        if (entry.type !== 'assistant') {
+          continue
+        }
+
+        const message = object({ value: entry.message })
+
+        if (message.id !== id) {
+          return blocks
+        }
+
+        blocks += Array.isArray(message.content) ? message.content.length : 1
+      }
+
+      remainder = bytes.subarray(
+        0,
+        first,
+      )
+      end = start
+    }
+
+    return blocks
+  } finally {
+    closeSync(fd)
+  }
+}
+
 export const readClaudeTranscript: TranscriptReader = ({
   record,
+  source,
   subagent = false,
 }) => {
   if (typeof record !== 'object' || record === null || 'payload' in record) {
@@ -1381,6 +1475,11 @@ export const readClaudeTranscript: TranscriptReader = ({
 
   const content = message.content
   const blocks = Array.isArray(content) ? content : []
+  const blockOffset = entry.type === 'assistant' && typeof message.id === 'string' && source
+    ? priorBlocks({
+      source,
+      id: message.id,
+    }) : 0
 
   if (entry.type === 'system' && entry.subtype === 'compact_boundary') {
     parsed.contextReset = true
@@ -1397,13 +1496,14 @@ export const readClaudeTranscript: TranscriptReader = ({
   if (entry.isCompactSummary !== true && (entry.type === 'user' || entry.type === 'assistant')) {
     const texts = typeof content === 'string' ? [content] : blocks
     parsed.messages = transcriptText({
+      id: transcriptString({ value: entry.type === 'assistant' ? message.id ?? entry.uuid : entry.uuid }),
       at,
       texts: texts.map((
         raw,
         block,
       ) => ({
         text: blockText({ value: raw }),
-        block,
+        block: blockOffset + block,
       })),
     })
   }
@@ -1417,8 +1517,19 @@ export const readClaudeTranscript: TranscriptReader = ({
     const thinking = block.type === 'thinking'
 
     if (tool || thinking) {
+      const call = transcriptString({ value: block.tool_use_id ?? block.id })
+      const native = transcriptString({ value: message.id ?? entry.uuid })
+      let id: string | undefined
+
+      if (tool && call) {
+        id = `${call}:${block.type}`
+      } else if (native) {
+        id = `${native}:${blockOffset + index}`
+      }
+
       parsed.traces.push(transcriptTrace({
-        index,
+        id,
+        index: blockOffset + index,
         kind: tool ? 'tool' : 'thinking',
         name: block.name,
         detail: block.thinking ?? block.content ?? block.input,

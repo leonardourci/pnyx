@@ -11,7 +11,9 @@ export function messageReference({
   id: string
   messageId?: string
 }): string {
-  return `${session}:${messageId ?? id}`
+  const native = messageId ?? id
+
+  return native.startsWith(`${session}:`) ? native : `${session}:${native}`
 }
 
 const shellArgument = ({ value }: { value: string }) => `'${value.replaceAll(
