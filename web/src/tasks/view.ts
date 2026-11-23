@@ -17,7 +17,7 @@ export const columnLook = () => ({
   tone: 'column-custom',
 })
 
-export const columnsFor = ({ state }: { state: HydraState }) => projectGroups({ state })
+export { projectGroups as columnsFor }
 
 export function filterCards({
   state,
