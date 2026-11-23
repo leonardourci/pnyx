@@ -829,7 +829,6 @@ test(
       [
         'outcome',
         'finished-checkout',
-        '--state',
         'done',
       ],
     ]) {
