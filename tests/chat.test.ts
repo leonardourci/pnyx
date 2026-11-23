@@ -15,10 +15,9 @@ import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { fireReminders } from '#tasks/fire-reminders.ts'
+import { boardReview } from '#hydra/review.ts'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { HYDRA_SKILLS, MANAGE_WORKERS_SKILL, ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { parse } from 'yaml'
@@ -2593,7 +2592,11 @@ test(
       expect(lateIndex).toBeGreaterThan(cutoffIndex)
       expect(facts.indexOf(pass)).toBeGreaterThan(lateIndex)
       expect(text).toContain(JSON.stringify(pass.inscribe.key))
-      expect(text).toContain('inscribe.since and inscribe.throughSeq')
+      expect(text).toContain('inscribe.since')
+      expect(text).toContain('inscribe.throughSeq')
+      const compaction = facts.find(fact => fact.event?.type === 'hydra.operation'
+        && fact.event.data.id === pass.inscribe.parent && fact.event.data.state === 'started')
+      expect(compaction.event.data.through).toEqual(pass.inscribe.throughSeq)
       await hydra.owner({
         args: [
           'hydra',
@@ -2610,20 +2613,19 @@ test(
           && session.received.some(text => text.includes('Compact the recorded conversation'))),
       })
       const prompt = summarizer.received.find(text => text.includes('Compact the recorded conversation'))!
-      expect(prompt).toContain(JSON.stringify(pass.inscribe.key.replace(
-        /:inscribe$/,
-        '',
-      )))
-      expect(prompt).toContain('saved through boundary')
+      expect(prompt).toContain(JSON.stringify(pass.inscribe.parent))
       summary.release()
       const resumed = await heardFromSummary({
         hydra,
         text: late,
       })
-      expect(heard({
-        received: resumed.received,
-        text: late,
-      })).toBe(1)
+      await until({
+        what: 'the cutoff handoff to release the held inputs',
+        check: () => queue({ hydraId: hydra.id })?.holding === false,
+      })
+      await hydra.chat({ text: 'Continue after the cutoff handoff' })
+      const delivered = resumed.received.join('\n').split(late).length - 1
+      expect(delivered).toBe(1)
     } finally {
       quota.mockRestore()
       inscribe.release()
@@ -2825,6 +2827,156 @@ test(
 )
 
 test(
+  'a compaction admits only its current started inscribe child and keeps other turns held',
+  async () => {
+    const hydra = await pnyx.hydra()
+    const operations = createHydraOperations({
+      hydraId: hydra.id,
+      queuedHydra: new Set(),
+      at: () => new Date().toISOString(),
+      note: ({ fn }) => withWriter({
+        hydraId: hydra.id,
+        fn,
+      }),
+      armWake: () => {},
+      host: () => ({ hydra: async () => ({ state: 'queued' }) }),
+    })
+
+    const child = async ({
+      parent,
+      id = `${parent}:inscribe`,
+      state = 'started',
+    }: {
+      parent: string
+      id?: string
+      state?: 'started' | 'finished'
+    }) => {
+      await withWriter({
+        hydraId: hydra.id,
+        fn: ({ writer }) => applyDecision({
+          writer,
+          decision: operationEvent({
+            state: writer.state,
+            meta: {
+              actor: 'pnyx',
+              at: new Date().toISOString(),
+            },
+            operation: {
+              id,
+              kind: 'inscribe',
+              state,
+              parent,
+              through: writer.state.seq,
+              historySince: 'origin',
+            },
+          }),
+        }),
+      })
+    }
+
+    await operations.startOperation({
+      id: 'first-parent',
+      kind: 'compaction',
+    })
+    await child({ parent: 'first-parent' })
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(false)
+
+    for (const request of [
+      {
+        id: 'owner-message',
+        actor: 'cli',
+      },
+      {
+        id: 'operation:first-parent:inscribe',
+        actor: 'cli',
+      },
+      { id: 'operation:first-parent:inscribe' },
+      {
+        id: 'operation:first-parent',
+        actor: 'pnyx',
+      },
+      {
+        id: 'operation:unrelated:inscribe',
+        actor: 'pnyx',
+      },
+    ]) {
+      expect(operations.stoppedFor(request)).toBe(true)
+    }
+
+    await child({ parent: 'unrelated' })
+    expect(operations.stoppedFor({
+      id: 'operation:unrelated:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    await operations.startOperation({
+      id: 'later-stop',
+      kind: 'compaction',
+      independent: true,
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    operations.endOperation({ id: 'later-stop' })
+    operations.endOperation({ id: 'first-parent' })
+    await operations.startOperation({
+      id: 'wrong-parent',
+      kind: 'compaction',
+    })
+    await child({
+      parent: 'unrelated',
+      id: 'wrong-parent:inscribe',
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:wrong-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    operations.endOperation({ id: 'wrong-parent' })
+    await operations.startOperation({
+      id: 'current-parent',
+      kind: 'compaction',
+    })
+    await child({ parent: 'current-parent' })
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(false)
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    await child({
+      parent: 'current-parent',
+      state: 'finished',
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+    operations.endOperation({ id: 'current-parent' })
+    await withWriter({
+      hydraId: hydra.id,
+      fn: () => {},
+    })
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent',
+      actor: 'pnyx',
+    })).toBe(false)
+    expect(operations.stoppedFor({
+      id: 'operation:first-parent',
+      actor: 'pnyx',
+    })).toBe(true)
+    expect(operations.stoppedFor({
+      id: 'operation:current-parent:inscribe',
+      actor: 'pnyx',
+    })).toBe(true)
+  },
+)
+
+test(
   'a queued operation recap waits for a later operation and keeps the first stop boundary',
   async () => {
     const hydra = await pnyx.hydra()
@@ -2890,7 +3042,7 @@ test(
 )
 
 test(
-  'timed reviews wake Hydra for a quiet running card and stay quiet for healthy or unchanged work',
+  'timed reviews wake for changed work and include overdue task and Hydra questions',
   async () => {
     const hydra = await pnyx.hydra()
     const previous = (await hydra.owner({
@@ -2899,20 +3051,6 @@ test(
         'show',
       ],
     })).settings.reviewMinutes
-    const session = await hydra.chat({ text: 'Prepare heartbeat review' })
-
-    const readyForReview = () => {
-      const card = loadHydra({ hydraId: hydra.id }).state.cards[HYDRA_CARD]
-
-      return session.answered === session.received.length && card?.sessionActivity === 'finished'
-        && !card.attention.some(item => item.key === INTERRUPTED)
-        && !queue({ hydraId: hydra.id })?.working
-    }
-
-    await until({
-      what: 'Hydra to finish preparing',
-      check: readyForReview,
-    })
     await hydra.owner({
       args: [
         'settings',
@@ -3073,39 +3211,15 @@ test(
         ],
       })
       now += 4 * 60 * 60_000
-      const reminderCount = await fireReminders({
-        hydraId: hydra.id,
-        at: new Date(now).toISOString(),
+      const overdue = boardReview({
         state: loadHydra({ hydraId: hydra.id }).state,
+        now,
       })
-      expect(reminderCount).toBe(1)
-      expect(Object.values(loadHydra({ hydraId: hydra.id }).state.questionReminders ?? {}))
-        .toContain(new Date(now).toISOString())
-      await until({
-        what: 'Hydra to be idle before reviewing the committed task question reminder',
-        check: readyForReview,
-      })
-      await timer.check()
-      await until({
-        what: 'the periodic review to wake Hydra for the task question reminder',
-        check: () => wakes === 3,
-      })
-      expect(wakes).toBe(3)
-      const overdue = await hydra.owner({
-        args: [
-          'history',
-          '--kind',
-          'hydra.review',
-          '--limit',
-          '1',
-          '--full',
-        ],
-      })
-      expect(overdue.events[0].data.block).toContain('question reminder:')
-      expect(overdue.events[0].data.block).toContain('Which account?')
-      now += 60_000
-      await timer.check()
-      expect(wakes).toBe(3)
+      expect(overdue.flags).toContainEqual(expect.objectContaining({
+        kind: 'question reminder',
+        task: task.id,
+      }))
+      expect(overdue.block).toContain('Which account?')
       await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
@@ -3128,32 +3242,15 @@ test(
         },
       })
       now += 4 * 60 * 60_000
-      await until({
-        what: 'the preceding review turn to finish',
-        check: readyForReview,
+      const ownQuestion = boardReview({
+        state: loadHydra({ hydraId: hydra.id }).state,
+        now,
       })
-      await timer.check()
-      await until({
-        what: 'the periodic review to wake Hydra for its question reminder',
-        check: () => wakes === 4,
-      })
-      expect(wakes).toBe(4)
-      const ownQuestion = await hydra.owner({
-        args: [
-          'history',
-          '--kind',
-          'hydra.review',
-          '--limit',
-          '1',
-          '--full',
-        ],
-      })
-      expect(ownQuestion.events[0].data.block).toContain('Can Hydra use the team account?')
-      now += 60_000
-      await timer.check()
-      now += 4 * 60 * 60_000
-      await timer.check()
-      expect(wakes).toBe(4)
+      expect(ownQuestion.flags).toContainEqual(expect.objectContaining({
+        kind: 'question reminder',
+        task: HYDRA_CARD,
+      }))
+      expect(ownQuestion.block).toContain('Can Hydra use the team account?')
     } finally {
       timer.close()
       await hydra.owner({
@@ -3379,7 +3476,8 @@ test.each([
     await hydra.chat({ text: 'Compact task context' })
     await until({
       what: 'the compacted turn to finish',
-      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working,
+      check: () => session.answered > answers && !queue({ hydraId: hydra.id })?.working
+        && queue({ hydraId: hydra.id })?.holding === false,
     })
     await hydra.chat({ text: 'Read the full snapshot after compaction' })
     const afterCompact = session.received.find(text => text.endsWith('Read the full snapshot after compaction'))!
