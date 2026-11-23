@@ -102,7 +102,7 @@ function resumable({
   state: HydraState
   card: Card
 }): boolean {
-  if (!card.wait || !liveTask({ card }) || card.status?.state !== 'paused'
+  if (!card.wait || !liveTask({ card })
     || steeringHeld({ card }) || activeCompaction({ card })
     || ownerGates({ card }).length || openAsks({ card }).length) {
     return false

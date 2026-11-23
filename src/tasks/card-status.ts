@@ -1,6 +1,5 @@
 import type { Card, TaskStatus } from './model.ts'
 import { ownerQuestions, type OwnerQuestion } from './questions.ts'
-import { reportActor } from '#hydra/hydra.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
 import { readyForReview } from '#tasks/delivery/model.ts'
@@ -47,6 +46,8 @@ export function cardStatus({
     cards,
   })
   const worker = card.workerLog?.status
+  const completedOutcome = card.outcome?.closed || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
+  const complete = worker?.code === 'done' || completedOutcome
 
   if (waiting.length || worker?.code === 'needs-you') {
     return {
@@ -58,12 +59,12 @@ export function cardStatus({
     }
   }
 
-  if (worker?.code === 'blocked') {
+  if (worker?.code === 'blocked' || (card.outcome?.state === 'failed' && !card.outcome.closed)) {
     return {
       kind: 'blocked',
       state: 'blocked',
       text: 'blocked',
-      at: worker.at,
+      at: worker?.at,
     }
   }
 
@@ -125,14 +126,14 @@ export function cardStatus({
     }
   }
 
-  if (activity === 'finished' && !card.doneAt && !card.outcome?.closed) {
+  if (activity === 'finished' && !card.doneAt && !completedOutcome) {
     return {
       kind: 'finished',
       text: 'idle',
     }
   }
 
-  if (worker?.code === 'done' || card.doneAt || card.outcome?.closed) {
+  if (complete || card.doneAt) {
     return {
       kind: 'done',
       state: 'done',
@@ -189,7 +190,7 @@ export function currentState({
 }): {
   text: string
   at: string
-  source: 'note' | 'progress' | 'reminder' | 'review'
+  source: 'note' | 'reminder' | 'review'
 } | undefined {
   const line = card.workerLog?.latest
   const workerUpdate = line ? {
@@ -202,9 +203,6 @@ export function currentState({
     return workerUpdate
   }
 
-  const note = (card.statusLog ?? [])
-    .filter(entry => entry.note.trim() && reportActor({ actor: entry.actor }))
-    .at(-1)
   const reviewUpdates = workerOnly ? [] : card.links.flatMap(link => {
     const at = link.checkedAt
     const openDecision = (card.asks ?? []).some(ask =>
@@ -228,8 +226,6 @@ export function currentState({
     ]
   })
   const reminder = workerOnly ? undefined : card.reminder
-  const progress = card.progress
-  const includeProgress = progress && (!workerOnly || reportActor({ actor: progress.actor }))
   const said = [
     ...reviewUpdates,
     workerUpdate,
@@ -237,16 +233,6 @@ export function currentState({
       text: 'Reminder due',
       at: reminder.dueAt,
       source: 'reminder' as const,
-    } : undefined,
-    note ? {
-      text: note.note,
-      at: note.at,
-      source: 'note' as const,
-    } : undefined,
-    includeProgress ? {
-      text: progress.text,
-      at: progress.at,
-      source: 'progress' as const,
     } : undefined,
   ].filter(entry => entry !== undefined)
 

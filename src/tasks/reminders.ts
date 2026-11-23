@@ -7,7 +7,6 @@ import { taskDone } from './select.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderInterval } from './time.ts'
 import { cloneValue } from '#app/json-copy.ts'
-import { cardFacts } from './columns.ts'
 import { deferredQuestions } from './ask-state.ts'
 
 const REMINDER_WORD_LIMIT = 30
@@ -163,18 +162,7 @@ export function reminderRepeat({
   return repeat
 }
 
-export function clearReminder({ card }: { card: Card }) {
-  const reminder = card.reminder
-  const declaration = reminder?.declaration ?? reminder?.dueEvent
-
-  if (declaration && card.status?.id === declaration) {
-    if (reminder?.resume) {
-      card.status = reminder.resume
-    } else {
-      delete card.status
-    }
-  }
-
+function clearReminder({ card }: { card: Card }) {
   delete card.reminder
 }
 
@@ -185,16 +173,10 @@ function reminderDone({
   state: HydraState
   card: Card
 }): boolean {
-  const restored = { ...card }
-  clearReminder({ card: restored })
-
   return taskDone({
     state,
-    card: restored,
-  }) || cardFacts({
-    state,
-    card: restored,
-  }).includes('done')
+    card,
+  })
 }
 
 export function stopReminders({
@@ -213,7 +195,6 @@ export function stopReminders({
 
     const workerStarted = (event.type === 'task.launched' && event.cardId === card.id)
       || (event.type === 'task.session' && event.data.after === card.id && (event.data.working || event.data.handoff))
-      || (event.type === 'task.declared' && event.cardId === card.id && event.data.state === 'working')
 
     const question = card.asks?.find(ask => ask.id === repeat.question)
     const answered = repeat.until === 'question-answered' && (!question || question.answered || question.closed)
@@ -296,13 +277,6 @@ export function applyReminder({
     }
 
     const reminder = card.reminder
-    const status = card.status
-    const previousDueEvent = reminder.dueEvent
-
-    if (!reminder.declaration && previousDueEvent && status?.id === previousDueEvent) {
-      reminder.declaration = previousDueEvent
-    }
-
     reminder.dueAt = event.at
     reminder.dueEvent = event.id
 
@@ -310,30 +284,6 @@ export function applyReminder({
       reminder.at = event.data.nextAt
     } else if (event.data.nextAt === null) {
       delete reminder.repeat
-    }
-
-    if (event.data.column !== undefined) {
-      // Older receipts moved the card and declared a status when replayed.
-      if (!status) {
-        delete reminder.resume
-      } else if (status.id !== reminder.declaration) {
-        reminder.resume = cloneValue({ value: status })
-      }
-
-      reminder.declaration = event.id
-      card.column = event.data.column
-      const declaration = {
-        id: event.id,
-        at: event.at,
-        actor: event.actor,
-        state: 'needs_you' as const,
-        note: event.data.message.text,
-      }
-      card.status = declaration
-      card.statusLog = [
-        ...(card.statusLog ?? []),
-        declaration,
-      ]
     }
 
     card.hidden = false

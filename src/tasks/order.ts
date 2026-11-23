@@ -9,7 +9,7 @@ export function taskProjectGroup({
   card,
 }: {
   state: HydraState
-  card: Card
+  card: Pick<Card, 'id' | 'parentId' | 'project'>
 }) {
   let root = card
   const visited = new Set([card.id])
@@ -38,7 +38,7 @@ export function taskRank({
   before,
 }: {
   state: HydraState
-  card: Card
+  card: Pick<Card, 'id' | 'parentId' | 'project' | 'rank' | 'createdSeq'>
   before?: string
 }): number {
   const group = taskProjectGroup({

@@ -14,16 +14,12 @@ import { askHost } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { carryCursors, harvestTranscripts } from '#integrations/hooks/harvest.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import { projectsFor } from '#projects/read.ts'
 import { matchesProject, sameProjectPath } from '#projects/identity.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import { workerQueue } from '#workers/queue.ts'
-import { fallbackColumn } from './column-rules.ts'
-import { cardFacts, placeCard } from './columns.ts'
-import type { Column } from './columns-model.ts'
 import type { Card } from './model.ts'
 import { movedAway, type HydraMoveEvent, type MovedCard } from './move-state.ts'
 import { isManagedTask } from './select.ts'
@@ -60,33 +56,6 @@ const missing = ({
   code: 'NOT_FOUND',
 })
 
-// The target's column with the card's column id, else its title, else where the target's rules place it.
-function targetColumn({
-  source,
-  target,
-  card,
-}: {
-  source: HydraState
-  target: HydraState
-  card: Card
-}): Column {
-  const columns = hydraConfig({ state: target }).columns
-  const title = hydraConfig({ state: source }).columns.find(c => c.id === card.column)?.title
-  const byId = columns.find(c => c.id === card.column)
-  const byTitle = columns.find(c => c.title === title)
-  const byRule = placeCard({
-    card: cardFacts({
-      card,
-      state: source,
-    }),
-    columns,
-  })
-
-  return byId?.id ?? byTitle?.id ?? byRule ?? fallbackColumn({ columns })
-}
-
-// The project a card's label names on the source, so a same-named project on the target does not pass for it.
-// A label no source project carries is matched by name, as before.
 function projectOnTarget({
   source,
   target,
@@ -419,13 +388,11 @@ function receipt({
   card,
   hydraId,
   to,
-  column,
   move,
 }: {
   card: Card
   hydraId: string
   to: string
-  column: Column
   move: string
 }): Output {
   return {
@@ -433,7 +400,6 @@ function receipt({
     title: card.title,
     from: hydraId,
     to,
-    column,
     event: move,
     copy: card.copy?.state === 'removed' ? 'none' : card.copy?.path ?? 'none',
     worker: card.sessionIds?.[0] ?? 'none',
@@ -551,11 +517,6 @@ export function stageTaskMove({
     type: 'task.moved-in',
     data: {
       from: hydraId,
-      column: targetColumn({
-        source: source.state,
-        target: target.state,
-        card: current,
-      }),
       card: {
         ...arriving,
         workerLogDir: workerTaskDir({
@@ -730,7 +691,6 @@ export async function moveTask({
         card: current,
         hydraId,
         to,
-        column: event.data.column,
         move,
       })
     },

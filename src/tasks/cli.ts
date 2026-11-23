@@ -1,36 +1,17 @@
-import { inform } from '#app/command-notices.ts'
 import { readInput } from '#app/request-context.ts'
-import { randomUUID } from 'node:crypto'
-import { isDeepStrictEqual } from 'node:util'
-import type { Column } from './columns-model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { projectsFor } from '#projects/read.ts'
 import { MAX_BRIEF_LENGTH, type Card } from './model.ts'
-import { clip, guard, parse, COMMON, WRITE, meta, required, commit, HISTORY_MAX, summarize, integer, TEXT_CUT, type Output } from '#app/cli-support.ts'
+import { clip, guard, parse, COMMON, WRITE, meta, required, commit, HISTORY_MAX, summarize, TEXT_CUT, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
 import { decidePush } from './push.ts'
 import { HydraError } from '#store/errors.ts'
 import { findCard } from './push-rules.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import { tagsTask } from './updates.ts'
 import { movedHistory, type HistoryEntry } from './move-history.ts'
-import { columnRule } from './column-defaults.ts'
-import { decideView } from '#preferences/decisions.ts'
-import { columnByRef, validateColumns } from './column-rules.ts'
-import { parseColumnRule } from './columns.ts'
-import { lifecycleMoves } from './lifecycle.ts'
-import { decideMove } from './columns-decisions.ts'
 
 const INTENT_LIMIT = 4000
-
-function column({ value }: { value: string }): Column {
-  return (value.startsWith('custom:') ? value : value.replace(
-    /-/g,
-    '_',
-  )) as Column
-}
 
 // A task records an attached project by path; rows show its name, and every row has the field
 // so lists stay tabular.
@@ -64,7 +45,6 @@ export function cardRow({
       state,
       project: card.project,
     }),
-    column: card.column,
   }
 }
 
@@ -86,7 +66,6 @@ function cardDetail({
       project: card.project,
     }),
     workspace: card.workspace,
-    column: card.column,
     tags: card.tags.length ? card.tags : 'none',
   }
 
@@ -183,10 +162,7 @@ export const push = guard({
       meta: m,
       intent: {
         type: 'task.edited',
-        accepts: [
-          'card.pushed',
-          'session.observed',
-        ],
+        accepts: ['session.observed'],
         card: key,
       },
       decide: ({ state }) => decidePush({
@@ -210,7 +186,7 @@ const TASK_FIELDS = [
 
 export type TaskField = (typeof TASK_FIELDS)[number]
 
-// `task list --fields status,worker` adds those fields to the default id, title, project and column.
+// `task list --fields status,worker` adds those fields to the default id, title and project.
 export function taskFields({ value }: { value?: string }): TaskField[] {
   const fields = (value ?? '').split(',').map(field => field.trim())
     .filter(Boolean)
@@ -426,290 +402,6 @@ function historyStart({
   return index === -1 ? history.length : index
 }
 
-async function columnCommand({ args }: { args: string[] }): Promise<Output> {
-  const {
-    values,
-    positionals,
-    hydraId,
-  } = parse({
-    args,
-    options: {
-      ...WRITE,
-      title: { type: 'string' },
-      description: { type: 'string' },
-      width: { type: 'string' },
-      when: {
-        type: 'string',
-        multiple: true,
-      },
-      clear: { type: 'boolean' },
-      id: { type: 'string' },
-      to: { type: 'string' },
-      before: { type: 'string' },
-    },
-    positionals: 2,
-  })
-  const action = positionals[0]
-
-  if (action === 'list') {
-    const state = loadHydra({ hydraId }).state
-
-    return {
-      columns: hydraConfig({
-        state,
-        id: hydraId,
-      }).columns.map(column => ({
-        ...column,
-        rule: columnRule({ column }),
-      })),
-      revision: state.configRevision ?? 0,
-    }
-  }
-
-  const m = meta({ values })
-
-  if (action === 'rule' && !m.reason?.trim()) {
-    inform({
-      reason: 'Column rule changed without a reason',
-      clear: 'Record the reason in the column rule editor',
-    })
-  }
-
-  if (action === 'resize') {
-    const ref = required({
-      value: positionals[1],
-      what: 'column id',
-    })
-    const width = integer({
-      value: values.width,
-      flag: '--width',
-    })
-
-    if (width === undefined) {
-      throw new HydraError({
-        message: 'pass --width <pixels>',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    return await commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'board.view',
-        card: '$board',
-      },
-      decide: ({ state }) => {
-        if (!hydraConfig({
-          state,
-          id: hydraId,
-        }).columns.some(c => c.id === ref)) {
-          throw new HydraError({
-            message: `column not found: ${ref}`,
-            code: 'NOT_FOUND',
-          })
-        }
-
-        return decideView({
-          state,
-          patch: { columnWidths: { [ref]: width } },
-          meta: m,
-        })
-      },
-    })
-  }
-
-  const changesPlacement = action === 'delete' || action === 'reorder' || action === 'rule'
-
-  return await commit({
-    hydraId,
-    meta: m,
-    intent: {
-      type: 'board.columns',
-      card: '$board',
-    },
-    decide: ({ state }) => {
-      const before = structuredClone(hydraConfig({
-        state,
-        id: hydraId,
-      }).columns)
-      let columns = structuredClone(before)
-      const ref = positionals[1]
-      const selected = columnByRef({
-        columns,
-        ref,
-      })
-
-      if (action !== 'create' && !selected) {
-        throw new HydraError({
-          message: `column not found: ${ref}`,
-          code: 'NOT_FOUND',
-        })
-      }
-
-      let fallback: Column | undefined
-
-      if (action === 'create') {
-        const id = String(values.id ?? `custom:${randomUUID()}`)
-
-        if (!/^custom:[a-z0-9-]{1,60}$/.test(id)) {
-          throw new HydraError({
-            message: 'new column ids use custom:<letters-digits-dashes>',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        columns.push({
-          id: id as Column,
-          title: required({
-            value: values.title as string,
-            what: '--title',
-          }),
-          description: String(values.description ?? ''),
-          rule: [],
-        })
-      } else if (action === 'rule') {
-        const when = values.when as string[] | undefined ?? []
-
-        if ((!values.clear && !when.length) || (values.clear && when.length)) {
-          throw new HydraError({
-            message: 'pass --when <fact[,fact]> (repeat for OR), or --clear for manual placement',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        selected!.rule = parseColumnRule({ when })
-      } else if (action === 'rename') {
-        selected!.title = required({
-          value: values.title as string,
-          what: '--title',
-        })
-      } else if (action === 'describe') {
-        if (typeof values.description !== 'string') {
-          throw new HydraError({
-            message: 'pass --description <text> (empty text clears it)',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        selected!.description = values.description
-      } else if (action === 'delete') {
-        columns = columns.filter(c => c.id !== selected!.id)
-        fallback = values.to
-          ? columnByRef({
-            columns,
-            ref: values.to as string,
-          })?.id : columns[0]?.id
-
-        if (values.to && !fallback) {
-          throw new HydraError({
-            message: 'fallback column not found',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-      } else if (action === 'reorder') {
-        columns = columns.filter(c => c.id !== selected!.id)
-        const above = values.before ? columnByRef({
-          columns,
-          ref: values.before as string,
-        }) : undefined
-        const index = above ? columns.indexOf(above) : columns.length
-
-        if (values.before && !above) {
-          throw new HydraError({
-            message: '--before column not found',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        columns.splice(
-          index,
-          0,
-          selected!,
-        )
-
-        if (columns.every((
-          c,
-          i,
-        ) => c.id === before[i]!.id)) {
-          return { skipped: 'unchanged' }
-        }
-      } else {
-        throw new HydraError({
-          message: 'Use column list, create, rename, describe, rule, resize, delete or reorder',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      validateColumns({ columns })
-
-      if (isDeepStrictEqual(
-        columns,
-        before,
-      )) {
-        return { skipped: 'unchanged' }
-      }
-
-      const gone = ({ id }: { id?: Column }) =>
-        id !== undefined && !columns.some(column => column.id === id)
-      const placements = Object.fromEntries(Object.values(state.cards)
-        .filter(c => gone({ id: c.column }))
-        .map(c => [
-          c.id,
-          {
-            before: c.column,
-            after: fallback ?? columns[0]!.id,
-          },
-        ]))
-
-      if (changesPlacement) {
-        const config = hydraConfig({
-          state,
-          id: hydraId,
-        })
-        const proposed = {
-          ...state,
-          config: {
-            ...config,
-            columns,
-          },
-        }
-
-        for (const move of lifecycleMoves({
-          before: state,
-          state: proposed,
-        })) {
-          if (placements[move.cardId]) {
-            continue
-          }
-
-          placements[move.cardId] = {
-            before: state.cards[move.cardId]!.column,
-            after: move.column,
-          }
-        }
-      }
-
-      return hydraEvent({
-        state,
-        meta: m,
-        cardId: '$board',
-        change: {
-          type: 'board.columns',
-          data: {
-            columns,
-            before,
-            placements,
-            ...(fallback ? { fallback } : {}),
-          },
-        },
-      })
-    },
-  })
-}
-
-export const columnCommandHandler = guard({ handler: columnCommand })
-
 const NOTES_SHOWN = 3
 
 const NOTE_CUT = 280
@@ -833,53 +525,5 @@ export const card = guard({
       notes,
       help,
     }
-  },
-})
-
-export const move = guard({
-  handler: async ({ args }) => {
-    const {
-      values,
-      positionals,
-      hydraId,
-    } = parse({
-      args,
-      options: {
-        ...WRITE,
-        before: { type: 'string' },
-      },
-      positionals: 2,
-    })
-    const m = meta({ values })
-    const ref = required({
-      value: positionals[0],
-      what: 'card id',
-    })
-    const target = column({
-      value: required({
-        value: positionals[1],
-        what: 'column',
-      }),
-    })
-    const before = values.before as string | undefined
-
-    return await commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'card.moved',
-        card: ref,
-      },
-      decide: ({ state }) => decideMove({
-        state,
-        ref,
-        column: columnByRef({
-          columns: hydraConfig({ state }).columns,
-          ref: target,
-        })?.id ?? target,
-        before,
-        meta: m,
-      }),
-    })
   },
 })

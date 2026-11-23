@@ -473,14 +473,6 @@ function hydraClient({
     env: ownerEnv(),
   })
 
-  // The id of the column with this role on the Hydra's board.
-  const column = async ({ role }: { role: 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done' }) => (await owner({
-    args: [
-      'column',
-      'list',
-    ],
-  })).columns.find((candidate: { role: string }) => candidate.role === role).id as string
-
   // The task as `task show` prints it.
   const task = async ({ key }: { key: string }) => (await owner({
     args: [
@@ -538,7 +530,6 @@ function hydraClient({
   return {
     id: hydraId,
     folder,
-    column,
     task,
     startTask,
     owner,

@@ -1,6 +1,5 @@
 import { withWriter } from '#app/writer.ts'
 import { loadHydra } from '#app/store.ts'
-import { migrateDefaultRule } from '#tasks/column-defaults.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
@@ -19,16 +18,9 @@ beforeAll(async () => {
 })
 
 test(
-  'a task moves across the board as its worker and Hydra report, a second start steers its worker unless a start flag is invalid, and its dependent becomes ready once it is done',
+  'a task uses factual state as its worker and Hydra report, a second start steers its worker unless a start flag is invalid, and its dependent becomes ready once it is done',
   async () => {
     const hydra = await pnyx.hydra()
-    const board = {
-      queued: await hydra.column({ role: 'queued' }),
-      in_progress: await hydra.column({ role: 'in_progress' }),
-      needs_you: await hydra.column({ role: 'needs_you' }),
-      parked: await hydra.column({ role: 'parked' }),
-      done: await hydra.column({ role: 'done' }),
-    }
     const folder = hydra.folder({ name: 'export' })
     await hydra.owner({
       args: [
@@ -65,7 +57,6 @@ test(
         'build',
       ],
     })
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
     expect((await hydra.task({ key: 'ship' })).readiness).toMatchObject({
       ready: false,
       unmet: [expect.objectContaining({ title: 'Build the export' })],
@@ -85,7 +76,6 @@ test(
     const worker = await hydra.agent({ cwd: folder })
     expect(worker.received).toHaveLength(1)
     expect(worker.received[0]).toContain('Write the CSV export')
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
 
     expect((await hydra.ownerRefused({
       args: [
@@ -144,7 +134,6 @@ test(
         'Only the owner knows the accounting rule',
       ],
     })
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.needs_you)
 
     await hydra.owner({
       args: [
@@ -161,7 +150,6 @@ test(
       check: () => session.received.some(message => message.includes('No, only open ones')),
     })
     expect(worker.received.some(message => message.includes('No, only open ones'))).toBe(false)
-    expect((await hydra.task({ key: 'build' })).column).toBe(board.queued)
 
     await hydra.owner({
       args: [
@@ -173,7 +161,6 @@ test(
       ],
     })
     expect(await hydra.task({ key: 'build' })).toMatchObject({
-      column: board.done,
       status: 'done',
     })
     expect((await hydra.task({ key: 'ship' })).readiness).toEqual({
@@ -1008,16 +995,9 @@ test(
 )
 
 test(
-  'a manual move can be undone until the card moves again, and apply --check previews without writing',
+  'apply --check previews task creation without writing',
   async () => {
     const hydra = await pnyx.hydra()
-    const board = {
-      queued: await hydra.column({ role: 'queued' }),
-      in_progress: await hydra.column({ role: 'in_progress' }),
-      needs_you: await hydra.column({ role: 'needs_you' }),
-      parked: await hydra.column({ role: 'parked' }),
-      done: await hydra.column({ role: 'done' }),
-    }
     await hydra.owner({
       args: [
         'task',
@@ -1029,40 +1009,6 @@ test(
         'later',
       ],
     })
-
-    const move = async ({ to }: { to: string }) => {
-      const preview = await hydra.owner({
-        args: [
-          'move',
-          'later',
-          to,
-        ],
-      })
-      expect(preview).not.toHaveProperty('confirmation')
-      expect((await hydra.task({ key: 'later' })).column).toBe(to)
-
-      return preview
-    }
-
-    const parked = await move({ to: board.parked })
-    expect((await hydra.task({ key: 'later' })).column).toBe(board.parked)
-    await hydra.owner({
-      args: [
-        'undo',
-        parked.event.id,
-      ],
-    })
-    expect((await hydra.task({ key: 'later' })).column).toBe(board.queued)
-
-    const again = await move({ to: board.parked })
-    await move({ to: board.done })
-    expect((await hydra.ownerRefused({
-      args: [
-        'undo',
-        again.event.id,
-      ],
-    })).code).toBe('CONFLICT')
-    expect((await hydra.task({ key: 'later' })).column).toBe(board.done)
 
     const seq = () => loadHydra({ hydraId: hydra.id }).state.seq
     const before = seq()
@@ -1483,7 +1429,7 @@ test(
       },
     ].map(event => JSON.stringify({
       v: 1,
-      type: 'card.pushed',
+      type: 'task.edited',
       at: '2026-11-17T00:00:00Z',
       actor: 'cli',
       ...event,
@@ -1588,7 +1534,7 @@ test(
         seq: 2,
         id: 'task',
         cardId: 'reminded-task',
-        type: 'card.pushed',
+        type: 'task.edited',
         data: {
           key: 'reminded',
           title: 'Check the reminder',
@@ -1612,7 +1558,6 @@ test(
         type: 'task.reminder-due',
         data: {
           reminder: 'reminder',
-          column: 'needs_you',
           grouped: true,
           message: {
             action: 'send',
@@ -1682,7 +1627,7 @@ test(
         at: '2026-11-17T00:00:00Z',
         actor: 'cli',
         cardId: 'predicted-task',
-        type: 'card.pushed' as const,
+        type: 'task.edited' as const,
         data: {
           key: 'predicted-task',
           title: 'Prediction',
@@ -2194,8 +2139,6 @@ test(
       key: 'questions',
       line: 'needs-you: Ready for review',
     })
-    const inProgress = await hydra.column({ role: 'queued' })
-    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
     const beforeReminder = await hydra.owner({
       args: [
         'task',
@@ -2206,41 +2149,6 @@ test(
     })
     expect(beforeReminder.task.workerLog.status).toMatchObject({ code: 'needs-you' })
 
-    const confirmColumnChange = async ({ args }: { args: string[] }) => {
-      const result = await hydra.owner({ args })
-      expect(result).not.toHaveProperty('confirmation')
-    }
-
-    await hydra.owner({
-      args: [
-        'column',
-        'create',
-        '--title',
-        'Reminder updates',
-        '--id',
-        'custom:reminder-updates',
-      ],
-    })
-    await confirmColumnChange({
-      args: [
-        'column',
-        'rule',
-        'custom:reminder-updates',
-        '--when',
-        'reminder-due,!done',
-        '--reason',
-        'Custom reminder placement',
-      ],
-    })
-    await confirmColumnChange({
-      args: [
-        'column',
-        'reorder',
-        'custom:reminder-updates',
-        '--before',
-        inProgress,
-      ],
-    })
     const due = new Date(Date.now() + 60_000).toISOString()
     await hydra.owner({
       args: [
@@ -2253,16 +2161,6 @@ test(
     await fireReminders({
       hydraId: hydra.id,
       at: new Date(Date.parse(due) + 1).toISOString(),
-    })
-    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
-    await confirmColumnChange({
-      args: [
-        'column',
-        'delete',
-        'custom:reminder-updates',
-        '--to',
-        inProgress,
-      ],
     })
     const afterReminder = await hydra.owner({
       args: [
@@ -2281,107 +2179,6 @@ test(
       ],
     })
     expect(JSON.stringify(updates)).toContain('task.reminder-due')
-    const history = readEvents({ hydraId: hydra.id })
-    const dueIndex = history.findIndex(event => event.type === 'task.reminder-due' && event.cardId === card.id)
-    const dueEvent = history[dueIndex]
-
-    if (dueEvent?.type !== 'task.reminder-due') {
-      throw new Error('Expected a reminder receipt')
-    }
-
-    let legacy = replay({
-      state: emptyHydra(),
-      events: history.slice(
-        0,
-        dueIndex,
-      ),
-    })
-    const scheduled = legacy.cards[card.id]?.reminder
-
-    if (!scheduled) {
-      throw new Error('Expected a scheduled reminder before its receipt')
-    }
-
-    scheduled.repeat = {
-      everyMs: 60_000,
-      until: 'task-done',
-    }
-    legacy = reduce({
-      state: legacy,
-      event: {
-        ...dueEvent,
-        data: {
-          ...dueEvent.data,
-          column: 'in_progress',
-        },
-      },
-    })
-    const legacyReminder = legacy.cards[card.id]?.reminder
-
-    if (!legacyReminder) {
-      throw new Error('Expected a recurring reminder after its legacy receipt')
-    }
-
-    const withLaterStatus = structuredClone(legacy)
-    delete legacyReminder.declaration
-    legacy = reduce({
-      state: legacy,
-      event: {
-        ...dueEvent,
-        seq: legacy.seq + 1,
-        id: 'modern-repeat',
-      },
-    })
-    legacy = reduce({
-      state: legacy,
-      event: {
-        ...dueEvent,
-        seq: legacy.seq + 1,
-        id: 'clear-repeat',
-        type: 'task.reminder',
-        data: {
-          before: due,
-          after: null,
-        },
-      },
-    })
-    expect(legacy.cards[card.id]?.status).toEqual(beforeReminder.task.status)
-
-    const workerStatus = {
-      ...beforeReminder.task.status,
-      id: 'later-worker-status',
-      state: 'working' as const,
-    }
-    const laterCard = withLaterStatus.cards[card.id]
-
-    if (!laterCard) {
-      throw new Error('Expected the task with the recurring reminder')
-    }
-
-    laterCard.status = workerStatus
-    const repeatedWithLaterStatus = reduce({
-      state: withLaterStatus,
-      event: {
-        ...dueEvent,
-        seq: withLaterStatus.seq + 1,
-        id: 'worker-repeat',
-      },
-    })
-    const clearedWithLaterStatus = reduce({
-      state: repeatedWithLaterStatus,
-      event: {
-        ...dueEvent,
-        seq: repeatedWithLaterStatus.seq + 1,
-        id: 'clear-worker-repeat',
-        type: 'task.reminder',
-        data: {
-          before: due,
-          after: null,
-        },
-      },
-    })
-    expect(clearedWithLaterStatus.cards[card.id]?.status).toEqual(workerStatus)
-
     const asked = await asHydra.run({
       args: [
         'task',
@@ -2394,7 +2191,6 @@ test(
         'Accounting decision',
       ],
     })
-    expect((await hydra.task({ key: 'questions' })).column).toBe(await hydra.column({ role: 'needs_you' }))
     await hydra.owner({
       args: [
         'task',
@@ -2405,7 +2201,6 @@ test(
         '1',
       ],
     })
-    expect((await hydra.task({ key: 'questions' })).column).toBe(inProgress)
     const workerAsk = await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -2467,7 +2262,6 @@ test(
         'Accounting decision',
       ],
     })
-    expect((await hydra.task({ key: 'questions' })).column).toBe(await hydra.column({ role: 'needs_you' }))
     const escalated = await hydra.owner({
       args: [
         'task',
@@ -3065,114 +2859,6 @@ test(
         'questions',
       ],
     })).count).toBe(0)
-  },
-)
-
-test(
-  'the preceding default working rule is removed without changing custom placement rules',
-  () => {
-    const expected = [
-      [
-        '!owner-question',
-        '!done',
-        '!held',
-        '!queued',
-        'worker:checks',
-      ],
-      [
-        '!owner-question',
-        '!done',
-        '!held',
-        '!queued',
-        'worker:blocked',
-      ],
-      [
-        '!owner-question',
-        '!done',
-        '!held',
-        '!queued',
-        'worker:hydra',
-      ],
-    ]
-    const previous = {
-      id: 'in_progress',
-      title: 'In progress',
-      role: 'in_progress' as const,
-      rule: [
-        [
-          '!owner-question',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:working',
-        ],
-        [
-          '!owner-question',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:checks',
-        ],
-        [
-          '!owner-question',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:blocked',
-        ],
-        [
-          '!owner-question',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:hydra',
-        ],
-      ],
-    } satisfies import('#tasks/columns-model.ts').HydraColumn
-    expect(migrateDefaultRule({ column: previous }).rule).toEqual(expected)
-    const reminderExcluded = {
-      ...previous,
-      rule: [
-        [
-          '!owner-question',
-          '!reminder-due',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:working',
-        ],
-        [
-          '!owner-question',
-          '!reminder-due',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:checks',
-        ],
-        [
-          '!owner-question',
-          '!reminder-due',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:blocked',
-        ],
-        [
-          '!owner-question',
-          '!reminder-due',
-          '!done',
-          '!held',
-          '!queued',
-          'worker:hydra',
-        ],
-      ],
-    } satisfies import('#tasks/columns-model.ts').HydraColumn
-    expect(migrateDefaultRule({ column: reminderExcluded }).rule).toEqual(expected)
-    const custom = {
-      ...previous,
-      rule: [['worker:working']],
-    } satisfies import('#tasks/columns-model.ts').HydraColumn
-    expect(migrateDefaultRule({ column: custom }).rule).toEqual([['worker:working']])
   },
 )
 

@@ -1,7 +1,6 @@
 import type { HydraEvent } from '#app/model.ts'
 import { PROVIDERS, type Harness } from '#workers/providers.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
-import type { HydraColumn } from './columns-model.ts'
 import type { Ask, RepliedEvent } from './model.ts'
 import type { Link } from '#tasks/delivery/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
@@ -82,20 +81,10 @@ type Row = Omit<TaskUpdate, 'id' | 'at' | 'seq'> & {
   at?: string
 }
 
-export type UpdateColumns = Pick<HydraColumn, 'id' | 'title' | 'role'>[]
-
 const LINK_VERBS: Record<string, string> = {
   merged: 'merged',
   closed: 'closed',
 }
-
-const column = ({
-  columns,
-  id,
-}: {
-  columns: UpdateColumns
-  id: unknown
-}) => columns.find(c => c.id === id)
 
 const linkName = ({ link }: { link: Link }) => {
   if (link.kind === 'github_pr') {
@@ -249,10 +238,8 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
 // Receipts, worker attachments, reminders and project changes stay in recorded history.
 function updateRow({
   event,
-  columns,
 }: {
   event: TaskEvent
-  columns: UpdateColumns
 }): Row | undefined {
   const data = event.data ?? {}
 
@@ -379,7 +366,7 @@ function updateRow({
       if (reportActor({ actor: event.actor ?? '' }) && typeof data.text === 'string' && data.text.trim()) {
         return {
           kind: 'report',
-          state: data.kind === 'progress' ? 'Progress' : 'Reported to Hydra',
+          state: 'Reported to Hydra',
           note: data.text,
         }
       }
@@ -430,11 +417,6 @@ function updateRow({
       state: String(data.code),
       note: String(data.text),
     }
-    case 'task.declared': return typeof data.state === 'string' ? {
-      kind: data.state === 'done' ? 'done' : 'status',
-      state: data.state,
-      note: String(data.note ?? ''),
-    } : undefined
     case 'task.created': return {
       kind: 'created',
       state: 'Created',
@@ -463,26 +445,10 @@ function updateRow({
       state: data.after ? 'Hidden from Hydra' : 'Back on the Hydra',
       note: event.reason ?? '',
     }
-    case 'card.moved': {
-      if (data.before === data.after) {
-        return undefined
-      }
-
-      const after = column({
-        columns,
-        id: data.after,
-      })
-
-      return {
-        kind: after?.role === 'done' ? 'done' : 'moved',
-        state: `Moved to ${after?.title ?? String(data.after ?? 'none')}`,
-        note: event.reason ?? '',
-      }
-    }
     case 'card.linked': return linked({ data })
     case 'card.outcome': return outcome({ data })
     case 'task.edited':
-    case 'card.pushed': return renamed({ data })
+      return renamed({ data })
     case 'card.noted': return noted({ data })
     default: return undefined
   }
@@ -490,14 +456,11 @@ function updateRow({
 
 export function relevantUpdate({
   event,
-  columns,
 }: {
   event: TaskEvent
-  columns: UpdateColumns
 }): Row | undefined {
   const row = updateRow({
     event,
-    columns,
   })
 
   if (!row || !event.details?.trim()) {
@@ -555,6 +518,5 @@ export function showsUpdate({ event }: { event: HydraEvent }): boolean {
     event: {
       ...event,
     } as TaskEvent,
-    columns: [],
   })
 }
