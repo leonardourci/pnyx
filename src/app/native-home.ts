@@ -53,7 +53,6 @@ function errorCard({
     ],
     links: [],
     sourceRefs: [],
-    column: 'queued',
     revision: 0,
     createdSeq: 0,
     updatedSeq: 0,

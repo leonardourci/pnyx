@@ -50,7 +50,7 @@ import { loadHydra } from './store.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, untrackedBranches, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
+import { WAKE_MS, STALL_MS, BUSY_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, INHERITED, untrackedBranches, steeringAssignment, closedTask, closedByWorker, toolApplicationReady } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
@@ -98,7 +98,6 @@ export function createHost({
   stallDelay = STALL_MS,
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
-  pauseDelay = PAUSE_MS,
   compactionDelay = COMPACTION_DEADLINE_MS,
   retryDelays = RETRY_MS,
   helperBound,
@@ -129,7 +128,6 @@ export function createHost({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
-  pauseDelay?: number
   compactionDelay?: number
   retryDelays?: number[]
   helperBound?: number
@@ -896,7 +894,6 @@ export function createHost({
     stallDelay,
     busyDelay,
     stallRepeatMax,
-    pauseDelay,
     live,
     queuedHydra,
     closing: () => closing,

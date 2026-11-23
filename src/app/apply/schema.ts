@@ -55,7 +55,6 @@ const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       hold: 'boolean',
       noStart: 'boolean',
       parent: 'text',
-      column: 'text',
       before: 'text',
       ask: 'text',
       message: 'text',

@@ -7,7 +7,6 @@ import { hydraConfig } from '#hydra/config.ts'
 import { readServer } from '#app/server-state.ts'
 import { projectRows } from '#projects/read.ts'
 import { spoolFiles } from '#store/storage.ts'
-import type { Card } from '#tasks/model.ts'
 import { cardRow } from '#tasks/cli.ts'
 
 export async function home({ hydraId = DEFAULT_HYDRA }: { hydraId?: string }): Promise<Output> {
@@ -18,19 +17,12 @@ export async function home({ hydraId = DEFAULT_HYDRA }: { hydraId?: string }): P
   } = loadHydra({ hydraId })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const config = hydraConfig({ state })
-  const columns = Object.fromEntries(
-    config.columns.map(c => [
-      c.id,
-      cards.filter(card => card.column === c.id).length,
-    ]),
-  )
   const server = await readServer({ hydraId })
   const out: Output = {
     projects: projectRows({ state }),
     hydraId,
     hydra: config.hydra.id,
     server: server ? `running at ${server.url}` : 'not running',
-    columns,
   }
 
   const spooled = spoolFiles({ dir }).length
@@ -45,15 +37,10 @@ export async function home({ hydraId = DEFAULT_HYDRA }: { hydraId?: string }): P
     return out
   }
 
-  const order = ({ c }: { c: Card }) => config.columns.findIndex(column => column.id === c.column)
   const sorted = cards.sort((
     a,
     b,
-  ) => order({
-    c: a,
-  }) - order({
-    c: b,
-  }) || rankOf({ card: a }) - rankOf({ card: b }))
+  ) => (a.project ?? '').localeCompare(b.project ?? '') || rankOf({ card: a }) - rankOf({ card: b }))
   out.cards = sorted.slice(
     0,
     HOME_LIMIT,

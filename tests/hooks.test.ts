@@ -273,7 +273,7 @@ test(
                 id: 'legacy-outside-observation',
               },
             }),
-            type: 'card.pushed',
+            type: 'task.edited',
             data: {
               key: 'claude:outside-1',
               agent: working.agent,
@@ -310,7 +310,7 @@ test(
                 id: 'legacy-outside-settings',
               },
             }),
-            type: 'card.pushed',
+            type: 'task.edited',
             data: {
               key: 'claude:outside-1',
               settings: {
@@ -555,13 +555,19 @@ test(
       ].includes((await sessionFacts({ session: 'outside-1' }))?.activity),
     })
 
-    await flushLogs()
-    const logs = logFiles().map(file => readFileSync(
-      file.path,
-      'utf8',
-    ))
-      .join('')
-    expect(logs).toContain('hook.push')
+    const logs = await until({
+      what: 'the detailed Stop hook diagnostic',
+      check: async () => {
+        await flushLogs()
+        const text = logFiles().map(file => readFileSync(
+          file.path,
+          'utf8',
+        ))
+          .join('')
+
+        return text.includes('hook.push') && text
+      },
+    })
     expect(logs).not.toContain('Fix the flaky login test')
     expect(logs).not.toContain('with more detail below')
 

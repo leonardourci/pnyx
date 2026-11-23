@@ -119,7 +119,7 @@ test(
         .map(card => ({
           id: card.id,
           title: card.title,
-          column: card.column,
+          project: card.project,
         })),
     }))
 

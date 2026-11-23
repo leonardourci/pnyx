@@ -2,8 +2,7 @@ import type { SourceObservation } from '#tasks/observations.ts'
 import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
 import type { HydraProject, TaskCopy } from '#projects/model.ts'
-import type { Column, HydraColumn } from '#tasks/columns-model.ts'
-import type { OwnerAsk, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
+import type { OwnerAsk, AnswerMessage, Ask, PushedEvent, ObservedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, SessionObservedEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
 import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent } from '#hydra/model.ts'
@@ -95,7 +94,6 @@ export type HydraChange = EventBase & (
       before: TaskQueue | null
       after: TaskQueue | null
       order?: string[]
-      column: Column
       note?: string
     }
   }
@@ -118,18 +116,6 @@ export type HydraChange = EventBase & (
       original?: string
     }
     data: HydraConfig
-  }
-  | {
-    type: 'board.columns'
-    data: {
-      columns: HydraColumn[]
-      before?: HydraColumn[]
-      fallback?: Column
-      placements?: Record<string, {
-        before: Column | null
-        after: Column | null
-      }>
-    }
   }
   | {
     type: 'hydra.project'
@@ -170,7 +156,6 @@ export type HydraChange = EventBase & (
       // The card's first Intent: what the owner wants from the task and why, written by Hydra.
       intent?: string
       parentId?: string
-      column?: Column
       rank?: number
       folder?: string
       workerLogDir?: string
@@ -235,7 +220,6 @@ export type HydraChange = EventBase & (
       reminder: string
       nextAt?: string | null
       grouped?: boolean
-      column?: Column
       message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
     }
   }
@@ -275,10 +259,6 @@ export type HydraChange = EventBase & (
       before: string | null
       after: string | null
     }
-  }
-  | {
-    type: 'task.declared'
-    data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'>
   }
   | {
     type: 'task.asked'
@@ -404,7 +384,6 @@ export type HydraEvent =
   | SteeringEvent
   | PushedEvent
   | ObservedEvent
-  | MovedEvent
   | LinkedEvent
   | OutcomeEvent
   | RepliedEvent
@@ -437,10 +416,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.steering.handled',
   'task.steering.stopped',
   'task.steering.recovery',
-  'card.pushed',
   'task.edited',
   'card.observed',
-  'card.moved',
   'card.linked',
   'card.outcome',
   'card.replied',
@@ -449,7 +426,6 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.session',
   'session.observed',
   'board.configured',
-  'board.columns',
   'task.created',
   'task.brief',
   'task.owner-ask',
@@ -457,7 +433,6 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.visibility',
   'task.retention',
   'hydra.memory',
-  'task.declared',
   'task.worker-line',
   'task.branch',
   'task.tools',
@@ -517,7 +492,6 @@ export interface HydraState {
   projects?: HydraProject[]
   projectsRevision?: number
   config?: HydraConfig
-  // Set once a board.configured event applies; a column edit alone does not configure Hydra.
   configured?: boolean
   configRevision?: number
   helper?: HelperState

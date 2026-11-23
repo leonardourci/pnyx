@@ -87,7 +87,6 @@ export async function startServer({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
-  pauseDelay?: number
   compactionDelay?: number
   retryDelays?: number[]
   followDelay?: number
@@ -1200,7 +1199,6 @@ async function mountHydra({
   stallDelay,
   busyDelay,
   stallRepeatMax,
-  pauseDelay,
   compactionDelay,
   retryDelays,
   followDelay,
@@ -1222,7 +1220,6 @@ async function mountHydra({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
-  pauseDelay?: number
   compactionDelay?: number
   retryDelays?: number[]
   followDelay?: number
@@ -1245,7 +1242,6 @@ async function mountHydra({
     stallDelay,
     busyDelay,
     stallRepeatMax,
-    pauseDelay,
     compactionDelay,
     retryDelays,
     followDelay,

@@ -16,7 +16,7 @@ import { owner } from '#memory/cli.ts'
 import { settings } from '#settings/cli.ts'
 import { harvest } from '#integrations/cli.ts'
 import { link, outcome } from '#tasks/delivery/cli.ts'
-import { columnCommandHandler, push, card, move } from '#tasks/cli.ts'
+import { push, card } from '#tasks/cli.ts'
 import { hydraCommandHandler } from '#hydra/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
@@ -74,7 +74,6 @@ const history = guard({
       hydraId,
       cardId: ref,
       types: [
-        'card.pushed',
         'task.edited',
         'task.created',
         'task.moved-in',
@@ -210,8 +209,7 @@ const undo = guard({
         hydraId,
         meta: m,
         intent: {
-          type: target.type === 'card.pushed' ? 'task.edited' : target.type,
-          accepts: target.type === 'card.pushed' ? ['card.pushed'] : undefined,
+          type: target.type,
           card: target.cardId,
           undoes: target.id,
         },
@@ -235,7 +233,6 @@ export const commands = supervisedCommands({
     logs,
     apply,
     layout,
-    column: columnCommandHandler,
     hydra: hydraCommandHandler,
     owner,
     settings,
@@ -244,7 +241,6 @@ export const commands = supervisedCommands({
     push,
     card,
     harvest,
-    move,
     link,
     outcome,
     history,

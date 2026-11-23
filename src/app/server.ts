@@ -58,7 +58,6 @@ export async function mountOwnedHydra({
   stallDelay,
   busyDelay,
   stallRepeatMax,
-  pauseDelay,
   compactionDelay,
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
@@ -80,7 +79,6 @@ export async function mountOwnedHydra({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
-  pauseDelay?: number
   compactionDelay?: number
   retryDelays?: number[]
   followDelay?: number
@@ -287,8 +285,6 @@ export async function mountOwnedHydra({
             reasons,
             event,
           })
-        } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
-          agents.unread({ seq: event.seq })
         }
       }
 
@@ -362,7 +358,6 @@ export async function mountOwnedHydra({
       stallDelay,
       busyDelay,
       stallRepeatMax,
-      pauseDelay,
       compactionDelay,
       retryDelays,
       upgradeRoot,

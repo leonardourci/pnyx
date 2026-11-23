@@ -9,7 +9,6 @@ import { requireHydra, writableHydra, reloadHydra } from './store.ts'
 import { nativeHome, bindNativeTask, type NativeHeld } from './native-home.ts'
 import { nativeChanges, nativeDecision, nativeFact, nativeInscribe, nativeSessionSource, nativeJson, nativeReferences, nativeId, projectNative, reduceNative, type NativeFact, type NativeState } from './native-state.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
-import { migrateColumns } from '#tasks/column-rules.ts'
 import { agentActor } from '#hydra/hydra.ts'
 import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/leases.ts'
 import { helperGrant } from '#routine-helper/route.ts'
@@ -18,8 +17,6 @@ import { randomInt } from 'node:crypto'
 import { replayOwned } from './reducer.ts'
 import { draft } from './draft.ts'
 import { reconcileAsks, retireableReviewQuestions } from '#tasks/delivery/merge-questions.ts'
-import { lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
-import { decideMove } from '#tasks/columns-decisions.ts'
 import { log } from './diagnostics.ts'
 import { durableEvent } from './event-policy.ts'
 import { enqueueSteering } from '#workers/inbox.ts'
@@ -223,7 +220,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             before,
             after,
           }) => {
-            if (event.type === 'session.observed' || event.type === 'card.pushed') {
+            if (event.type === 'session.observed') {
               const agent = sessionFields({
                 event,
                 state: after,
@@ -418,17 +415,6 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
         for (const stage of stages) {
           if (migrate) {
             retireReviewQuestions({ writer: stage.writer })
-            const columns = migrateColumns({
-              state: stage.writer.state,
-              meta: {
-                at: new Date().toISOString(),
-                actor: 'pnyx',
-              },
-            })
-
-            if ('event' in columns) {
-              stage.writer.append({ event: columns.event })
-            }
           }
         }
 
@@ -865,7 +851,7 @@ export function eventWriter({
         agent = state.sessions?.[session]?.agent
       }
 
-      if ((event.type === 'card.pushed' || event.type === 'task.edited') && event.data.agent) {
+      if (event.type === 'task.edited' && event.data.agent) {
         agent = event.data.agent
       } else if (event.type === 'session.observed' && 'fields' in event.data) {
         agent = event.data.fields.agent
@@ -998,17 +984,15 @@ export function eventWriter({
 
       switch (event.type) {
         case 'task.edited':
-        case 'card.pushed':
         case 'board.configured':
         case 'card.linked':
         case 'card.outcome':
         case 'hydra.project':
-        case 'task.declared':
         case 'task.landing':
         case 'task.moved-in':
         case 'task.moved-out':
         case 'task.project':
-          if ((event.type === 'card.pushed' || event.type === 'task.edited')
+          if (event.type === 'task.edited'
               && before.cards[event.cardId]?.project === state.cards[event.cardId]?.project) {
             break
           }
@@ -1018,36 +1002,6 @@ export function eventWriter({
             at: event.at,
           })
           break
-      }
-
-      for (const move of lifecycleMoves({
-        before,
-        state,
-        event,
-      })) {
-        const moved = decideMove({
-          state,
-          ref: move.cardId,
-          column: move.column,
-          meta: {
-            id: lifecycleMoveId({
-              event: event.id,
-              cardId: move.cardId,
-            }),
-            at: event.at,
-            actor: 'pnyx',
-            reason: move.reason,
-          },
-        })
-
-        if ('event' in moved) {
-          writer.append({
-            event: {
-              ...moved.event,
-              derived: true,
-            },
-          })
-        }
       }
     },
   }
