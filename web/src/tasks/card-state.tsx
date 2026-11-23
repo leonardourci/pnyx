@@ -72,7 +72,7 @@ export function CardState({
     status,
   })
   const at = status.at || card.updatedAt
-  const created = card.createdAt || card.statusLog?.[0]?.at
+  const created = card.createdAt
   const createdText = created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'
   const age = relativeTime({
     at,

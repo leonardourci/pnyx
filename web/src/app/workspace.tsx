@@ -1,3 +1,4 @@
+import { hydraConfig } from '#hydra/config.ts'
 import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useSessionView, sessionViewKey } from './session-view.ts'
 import { useWorkspaceViewport } from './workspace-viewport.tsx'
@@ -336,7 +337,6 @@ export function HydraView({
     selected,
     expandedIds,
     cards,
-    columns: statusColumns,
     cancelOpen,
     clearSelection,
     open,
@@ -657,6 +657,7 @@ export function HydraView({
     ],
   )
 
+  const statusColumns = hydraConfig({ state }).columns
   const queuedColumn = statusColumns.find(column => column.role === 'queued')?.id ?? statusColumns[0]!.id
 
   const requestProject = () => {

@@ -1,6 +1,5 @@
 import { mentionQuery,reference } from '#hydra/mentions.ts'
 import { skillReference } from '#hydra/transcripts-skill-reference.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
 import { ImageViewer } from './attached-image.tsx'
 import { embedImages,imagesHtml } from './clipboard.ts'
 import { copyDraft,draftView,editDraft,isPendingImage,placeBlock,removeChip,replaceDisplay,shownDraft,snapSelection,type PlacedChip } from './draft.ts'
@@ -453,9 +452,7 @@ export function ComposerField({
       return taskLook({ id: chip.value })
     }
 
-    const look = columnLook({
-      column: columns.find(column => column.id === chip.value) ?? { id: chip.value as HydraColumn['id'] },
-    })
+    const look = columnLook()
 
     return {
       icons: [look.icon],

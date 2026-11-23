@@ -1,6 +1,6 @@
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { SearchFilters } from '#oracle/filters.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
+import type { ProjectGroup } from '#projects/groups.ts'
 import { columnLook } from '#web-tasks/view.ts'
 
 // A panel is a whole settings block shown in the preview, such as Projects.
@@ -152,7 +152,7 @@ export function filterOptions({
   projects,
 }: {
   hydra: Filter
-  columns: HydraColumn[]
+  columns: ProjectGroup[]
   projects: HydraProjectSummary[]
 }): Filter[] {
   return [
@@ -162,7 +162,7 @@ export function filterOptions({
       id: `column:${column.id}`,
       type: 'column',
       label: column.title,
-      icon: columnLook({ column }).icon,
+      icon: columnLook().icon,
       values: [column.id],
     })),
     ...projects.map((project): Filter => ({

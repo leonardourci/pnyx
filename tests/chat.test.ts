@@ -3341,20 +3341,10 @@ test.each([
       key: 'review-page',
       line: 'note: Review page is in progress',
     })
-    const reviewTask = await hydra.task({ key: 'review-page' })
-    await hydra.owner({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        reviewTask.id,
-        '--actor',
-        `worker:${reviewTask.id}`,
-        '--kind',
-        'progress',
-        '--text',
-        'Review page is ready',
-      ],
+    await workerLine({
+      hydra,
+      key: 'review-page',
+      line: 'note: Review page is ready',
     })
     await hydra.chat({ text: 'Read the changed cards' })
     const changed = session.received.find(text => text.endsWith('Read the changed cards'))!
@@ -4116,7 +4106,6 @@ test(
       ],
       held: new Set(['held']),
       actions: [],
-      columns: [],
       working: false,
       tools: true,
       thinking: false,

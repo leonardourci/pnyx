@@ -177,7 +177,6 @@ test(
     const noise = readEvents({
       hydraId: hydra.id,
       types: [
-        'card.pushed',
         'session.observed',
         'card.observed',
       ],
@@ -672,7 +671,6 @@ test(
       line: 'blocked: Waiting for a missing fixture',
     })
     const task = await hydra.task({ key: 'blocked-in-done' })
-    const done = await hydra.column({ role: 'done' })
     await hydra.owner({
       args: [
         'outcome',
@@ -684,7 +682,6 @@ test(
     })
     expect(await hydra.task({ key: 'blocked-in-done' })).toMatchObject({
       status: 'blocked',
-      column: done,
     })
     const selector = await openChat({
       hydraId: hydra.id,
