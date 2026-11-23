@@ -1,6 +1,6 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { homedir } from 'node:os'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
 import { background } from '#app/background.ts'
@@ -13,13 +13,13 @@ const RESTART_PENDING_MS = 15 * 60_000
 // How often a built upgrade looks for a moment no agent is mid-turn.
 const IDLE_POLL_MS = 1000
 
-// Upgrades of any Hydra this server runs that are installing, building or waiting to restart.
+// Upgrades of any Titan this server runs that are installing, building or waiting to restart.
 const underway = new Set<string>()
 
 // While one is, the server starts no index process, which would load the new build into the old server's work.
 const upgradeUnderway = () => underway.size > 0
 
-// The upgrade this server is pulling, installing, building or checking, for whichever Hydra asked for it.
+// The upgrade this server is pulling, installing, building or checking, for whichever Titan asked for it.
 let building: {
   id: string
   stopping: AbortController
@@ -28,7 +28,7 @@ let building: {
 const shortHome = ({ path }: { path: string }) => path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path
 
 // /upgrade pulls, installs and builds at once; after a passing build it restarts on Restart now,
-// at the next moment no agent on any Hydra is mid-turn, or after RESTART_PENDING_MS at most.
+// at the next moment no agent on any Titan is mid-turn, or after RESTART_PENDING_MS at most.
 export function upgradeQueue({
   root,
   state,
@@ -39,10 +39,10 @@ export function upgradeQueue({
   at,
   pendingMs = RESTART_PENDING_MS,
 }: {
-  // The Pnyx folder; a server without one refuses /upgrade.
+  // The Othrys folder; a server without one refuses /upgrade.
   root?: string
-  state(): HydraState
-  // Appends the operation's new state; eventId marks the Hydra message it answers as taken.
+  state(): TitanState
+  // Appends the operation's new state; eventId marks the Titan message it answers as taken.
   record({
     operation,
     eventId,
@@ -50,7 +50,7 @@ export function upgradeQueue({
     operation: UpgradeOperation
     eventId?: string
   }): Promise<void>
-  // Whether an agent on any Hydra this server runs is mid-turn.
+  // Whether an agent on any Titan this server runs is mid-turn.
   midTurn(): boolean
   closing(): boolean
   restart(): void | Promise<void>
@@ -135,7 +135,7 @@ export function upgradeQueue({
       stopping: new AbortController(),
     }
 
-    // An upgrade asked for while another Hydra's runs is refused at once and leaves that one's stop alone.
+    // An upgrade asked for while another Titan's runs is refused at once and leaves that one's stop alone.
     if (!building) {
       building = mine
     }
@@ -276,7 +276,7 @@ export function upgradeQueue({
       }
 
       if (active()) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'UPGRADE_BUSY',
           message: 'Wait for the current upgrade or restart to finish',
         })
@@ -317,11 +317,11 @@ export function upgradeQueue({
         return await refuse({
           id,
           folder: '',
-          reason: 'This Pnyx server has no folder to upgrade.',
+          reason: 'This Othrys server has no folder to upgrade.',
         })
       }
 
-      // Another Hydra's upgrade still builds or waits to restart; a second build in the same folder would be cut by that restart.
+      // Another Titan's upgrade still builds or waits to restart; a second build in the same folder would be cut by that restart.
       if (upgradeUnderway()) {
         return await refuse({
           id,
@@ -399,7 +399,7 @@ export function upgradeQueue({
               ...operation,
               state: 'failed',
               failed: operation.steps.at(-1)?.step,
-              error: 'Pnyx stopped during the upgrade.',
+              error: 'Othrys stopped during the upgrade.',
               rolledBack: false,
               endedAt: at(),
             },

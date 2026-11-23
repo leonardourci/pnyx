@@ -1,12 +1,12 @@
 import type { EventBase } from '#store/events.ts'
-import type { Suggestion } from '#hydra/transcripts-catalog.ts'
+import type { Suggestion } from '#titan/transcripts-catalog.ts'
 
 export const UPGRADE_COMMAND = '/upgrade'
 export const RESTART_COMMAND = '/restart'
 
 export const RESTART_SUGGESTION: Suggestion = {
   command: RESTART_COMMAND,
-  description: 'Restart Pnyx on its current code. Turns it cuts resume from their saved sessions.',
+  description: 'Restart Othrys on its current code. Turns it cuts resume from their saved sessions.',
   source: 'Built-in',
   kind: 'command',
 }
@@ -21,7 +21,7 @@ export const isServerCommand = ({ item }: { item?: Suggestion }): boolean =>
 
 export const UPGRADE_SUGGESTION: Suggestion = {
   command: UPGRADE_COMMAND,
-  description: 'Upgrade Pnyx and restart its server. Workers keep going; any the restart pauses pick up again on their own.',
+  description: 'Upgrade Othrys and restart its server. Workers keep going; any the restart pauses pick up again on their own.',
   source: 'Built-in',
   kind: 'command',
 }
@@ -65,13 +65,13 @@ export interface UpgradeStep {
   seconds: number
 }
 
-// One /upgrade the owner sent to Hydra, from its place in the queue to the restarted server.
+// One /upgrade the owner sent to Titan, from its place in the queue to the restarted server.
 export interface UpgradeOperation {
-  // The Hydra message that asked for it.
+  // The Titan message that asked for it.
   id: string
   // waiting: built, and restarting once no agent is mid-turn, on Restart now, or at restartBy.
   state: 'queued' | 'running' | 'waiting' | 'restarting' | 'done' | 'current' | 'failed' | 'refused' | 'stopped'
-  // The Pnyx folder, with the home folder shortened to ~.
+  // The Othrys folder, with the home folder shortened to ~.
   folder: string
   queuedAt: string
   startedAt?: string
@@ -95,7 +95,7 @@ export type UpgradeEvent = EventBase & {
   data: UpgradeOperation
 }
 
-// What the daily check found: whether GitHub's main has a commit the installed Pnyx lacks.
+// What the daily check found: whether GitHub's main has a commit the installed Othrys lacks.
 export interface UpgradeStatus {
   available: boolean
   checkedAt: string
