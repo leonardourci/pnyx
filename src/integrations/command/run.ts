@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 export function runCommand({
   command,
@@ -10,14 +10,18 @@ export function runCommand({
   cwd: string
   env: Record<string, string>
 }): { pid: number } {
-  // A worker never writes as the actor that started it, such as Hydra, nor counts as the Hydra Pnyx runs.
-  const {
-    PNYX_ACTOR: _actor,
-    PNYX_HOSTED: _hosted,
-    ...inherited
-  } = process.env
-  void _actor
-  void _hosted
+  // A worker never writes as the actor that started it, such as Titan, nor counts as the Titan Othrys runs.
+  const inherited = { ...process.env }
+
+  for (const name of [
+    'OTHRYS_ACTOR',
+    'OTHRYS_HOSTED',
+    'PNYX_ACTOR',
+    'PNYX_HOSTED',
+  ]) {
+    delete inherited[name]
+  }
+
   const child = spawn(
     '/bin/sh',
     [
@@ -42,10 +46,10 @@ export function runCommand({
   child.unref()
 
   if (child.pid === undefined) {
-    throw new HydraError({
-      message: 'the Hydra command did not start',
+    throw new TitanError({
+      message: 'the Titan command did not start',
       code: 'COMMAND_ERROR',
-      help: ['Use pnyx board to inspect the Hydra'],
+      help: ['Use othrys board to inspect the Titan'],
     })
   }
 

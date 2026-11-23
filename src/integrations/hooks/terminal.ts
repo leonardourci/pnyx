@@ -313,7 +313,7 @@ async function tmuxSend({
 
   // Each send loads its own buffer, since sends to other panes of the same tmux server run at once.
   // paste-buffer -p brackets the paste only when the program asked for it.
-  const buffer = `pnyx-${process.pid}-${randomUUID()}`
+  const buffer = `othrys-${process.pid}-${randomUUID()}`
   const loaded = outcome({
     result: await run({
       command: 'tmux',
@@ -528,7 +528,7 @@ async function appleScript({
   if (err.includes('(-1743)')) {
     return {
       state: 'failed',
-      detail: 'macOS has not allowed Pnyx to control this terminal; allow it under System Settings > Privacy & Security > Automation, then send again',
+      detail: 'macOS has not allowed Othrys to control this terminal; allow it under System Settings > Privacy & Security > Automation, then send again',
     }
   }
 
@@ -609,7 +609,7 @@ export async function pressKey({
       if (key !== 'enter') {
         return {
           state: 'failed',
-          detail: 'Pnyx does not press keys other than Enter in Herdr; nothing was sent',
+          detail: 'Othrys does not press keys other than Enter in Herdr; nothing was sent',
         }
       }
 
@@ -650,7 +650,7 @@ export async function pressKey({
         text: '',
       }) : {
         state: 'failed',
-        detail: 'Terminal types whole lines, so Pnyx cannot press keys there; nothing was sent',
+        detail: 'Terminal types whole lines, so Othrys cannot press keys there; nothing was sent',
       }
   }
 }
@@ -670,7 +670,7 @@ export async function pressKeys({
   if (route.kind !== 'tmux') {
     return {
       state: 'failed',
-      detail: 'Pnyx answers prompts only in tmux, so answer in the session itself',
+      detail: 'Othrys answers prompts only in tmux, so answer in the session itself',
     }
   }
 
