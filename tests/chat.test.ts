@@ -15,6 +15,7 @@ import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { createDigestContext } from '#hydra/digest-context.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
+import { fireReminders } from '#tasks/fire-reminders.ts'
 import { boardReview } from '#hydra/review.ts'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -2619,10 +2620,6 @@ test(
         hydra,
         text: late,
       })
-      await until({
-        what: 'the cutoff handoff to release the held inputs',
-        check: () => queue({ hydraId: hydra.id })?.holding === false,
-      })
       await hydra.chat({ text: 'Continue after the cutoff handoff' })
       const delivered = resumed.received.join('\n').split(late).length - 1
       expect(delivered).toBe(1)
@@ -3220,6 +3217,15 @@ test(
         task: task.id,
       }))
       expect(overdue.block).toContain('Which account?')
+      const remindedAt = new Date(now).toISOString()
+      expect(await fireReminders({
+        hydraId: hydra.id,
+        at: remindedAt,
+      })).toBe(1)
+      const reminders = loadHydra({ hydraId: hydra.id }).state.hydraMessages
+        ?.filter(message => message.at === remindedAt && message.reminderQuestions?.length)
+      expect(reminders).toHaveLength(1)
+      expect(reminders?.[0]?.text).toContain('1 question waiting on you')
       await withWriter({
         hydraId: hydra.id,
         fn: ({ writer }) => {
