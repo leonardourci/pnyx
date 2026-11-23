@@ -24,7 +24,7 @@ if (project) {
         sessions: state.sessions,
       }),
     }))
-    .filter(({ status }) => status.kind !== 'done')
+    .filter(({ status }) => status.kind !== 'done' && status.kind !== 'merged')
     .sort((
       a,
       b,
