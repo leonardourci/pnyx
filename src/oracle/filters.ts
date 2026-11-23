@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Query } from './model.ts'
 
 export type SearchFilters = Pick<Query, 'columns' | 'projects' | 'since'>
@@ -9,14 +9,14 @@ function parseFilters({ value }: { value: string }): Record<string, unknown> {
   try {
     parsed = JSON.parse(value)
   } catch {
-    throw new HydraError({
+    throw new TitanError({
       message: 'invalid Oracle filters',
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Oracle filters must be an object',
       code: 'VALIDATION_ERROR',
     })
@@ -39,7 +39,7 @@ function validateFilters({ filters }: { filters: Record<string, unknown> }): Sea
   ] of Object.entries(filters)) {
     if (key === 'columns' || key === 'projects') {
       if (!isNames({ value: filter })) {
-        throw new HydraError({
+        throw new TitanError({
           message: `invalid Oracle ${key}`,
           code: 'VALIDATION_ERROR',
         })
@@ -49,7 +49,7 @@ function validateFilters({ filters }: { filters: Record<string, unknown> }): Sea
     } else if (key === 'since' && isDate({ value: filter })) {
       found.since = new Date(filter as string).toISOString()
     } else {
-      throw new HydraError({
+      throw new TitanError({
         message: `invalid Oracle filter: ${key}`,
         code: 'VALIDATION_ERROR',
       })

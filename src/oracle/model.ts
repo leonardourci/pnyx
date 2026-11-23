@@ -1,8 +1,8 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { LogPosition } from '#store/log.ts'
 
 export interface SearchSnapshot {
-  state: HydraState
+  state: TitanState
   positions: Map<string, number>
   sources: {
     key: string

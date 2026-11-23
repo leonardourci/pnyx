@@ -2,18 +2,18 @@ import { readEvents } from '#app/event-log.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { loadHydra } from '#app/store.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import { loadTitan } from '#app/store.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import { appendFileSync, existsSync } from 'node:fs'
 import { transcriptPath } from '#workers/claude.ts'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import type { WorkerOptions } from 'node:worker_threads'
-import { parsed, operation, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 import { git } from './setup/upgrade.ts'
 import { createProject } from './setup/projects.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 const searchStart = vi.hoisted(() => ({
   enabled: false,
@@ -29,7 +29,7 @@ vi.mock(
     return {
       ...native,
       Worker: class extends native.Worker {
-      // eslint-disable-next-line pnyx/object-params -- Worker owns its constructor signature.
+      // eslint-disable-next-line othrys/object-params -- Worker owns its constructor signature.
         constructor(
           filename: string | URL,
           options: WorkerOptions = {},
@@ -63,7 +63,7 @@ vi.mock(
 )
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 interface Result {
@@ -82,7 +82,7 @@ const search = async ({
   hydra,
   args,
 }: {
-  hydra: Hydra
+  hydra: Titan
   args: string[]
 }) => ((await hydra.owner({
   args: [
@@ -94,7 +94,7 @@ const search = async ({
 test(
   'the Oracle finds a new task at once by its title, brief and status notes, ranks a title match first, hides secrets and never reads agent transcripts',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'billing' })
     await hydra.owner({
       args: [
@@ -162,9 +162,9 @@ test(
     expect(fuzzy.mode).toBe('fuzzy')
     expect(fuzzy.results).toContainEqual(expect.objectContaining({ title: 'Tidy the ledger' }))
 
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       reply: 'Checked the zebracorn scheduler config.',
     })
     await hydra.owner({
@@ -270,7 +270,7 @@ test(
       hydra,
       args: ['amber'],
     })).toBe('none: no matches for "amber"')
-    await pnyx.restart()
+    await othrys.restart()
     const restored = await hydra.owner({
       args: [
         'card',
@@ -306,7 +306,7 @@ test(
 test(
   'column and date filters narrow a search the same way from the page and the CLI, and a bad filter is refused',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const done = 'ideas'
 
     for (const key of [
@@ -403,7 +403,7 @@ test(
 test(
   'the project filter keeps only the tasks of the named project, from the CLI and from the page',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const projects = {} as Record<'alpha' | 'beta', string>
 
     for (const name of [
@@ -498,8 +498,8 @@ test(
 test(
   'a task folder can move after an Oracle snapshot is captured and before its worker reads',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const created = await source.owner({
       args: [
         'task',
@@ -564,8 +564,8 @@ test(
 test(
   'the Oracle follows task log tails across restart and a folder move',
   async () => {
-    const source = await pnyx.hydra()
-    const destination = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const destination = await othrys.hydra()
     const created = await source.owner({
       args: [
         'task',
@@ -591,7 +591,7 @@ test(
       key: 'travel',
       line: 'note: latercomet tail evidence',
     })
-    const find = async ({ hydra }: { hydra: Hydra }) => search({
+    const find = async ({ hydra }: { hydra: Titan }) => search({
       hydra,
       args: ['nebularocket'],
     })
@@ -608,7 +608,7 @@ test(
       hydra: source,
       args: ['latercomet'],
     })).toEqual([portable])
-    await pnyx.restart()
+    await othrys.restart()
     expect(await find({ hydra: source })).toEqual([portable])
     await source.owner({
       args: [
@@ -635,7 +635,7 @@ test(
         title: 'Moved notes',
       }),
     ])
-    await pnyx.restart()
+    await othrys.restart()
     expect(await find({ hydra: destination })).toEqual([
       expect.objectContaining({
         card: created.card.id,
@@ -646,13 +646,13 @@ test(
 )
 
 test(
-  'the Oracle refuses a Hydra that does not exist and makes no folder for it',
+  'the Oracle refuses a Titan that does not exist and makes no folder for it',
   async () => {
     const run = await operation({
       args: [
         'oracle',
         'invoice',
-        '--hydra',
+        '--titan',
         'typo-oracle',
       ],
       env: process.env,
@@ -661,10 +661,10 @@ test(
     expect(run.status).not.toBe(0)
     expect(parsed(run)).toMatchObject({
       code: 'NOT_FOUND',
-      error: 'unknown Hydra: typo-oracle',
+      error: 'unknown Titan: typo-oracle',
     })
     expect(existsSync(join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       'typo-oracle',
     ))).toBe(false)
@@ -674,7 +674,7 @@ test(
 test(
   'Oracle result metadata and family previews include a child’s live native work and its hidden parent’s project',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = await createProject({
       hydra,
       landing: 'branch',
@@ -704,9 +704,9 @@ test(
         'preview-family',
       ],
     })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: hydra.id,
-      match: ({ text }) => text.includes(`<pnyx-worker task="${child.card.id}"`),
+      match: ({ text }) => text.includes(`<othrys-worker task="${child.card.id}"`),
       reply: 'Child turn complete',
       hold: true,
     })
@@ -724,7 +724,7 @@ test(
       what: 'the child turn to start',
       check: async () => (await hydra.task({ key: child.card.id })).status === 'running',
     })
-    const state = structuredClone(loadHydra({ hydraId: hydra.id }).state)
+    const state = structuredClone(loadTitan({ hydraId: hydra.id }).state)
     const actions: Record<string, CurrentAction> = {}
     // Web modules are source-only; a runtime import keeps them out of the CLI's TypeScript emit graph.
     const resultsModule: string = '#web-oracle/results.ts'
