@@ -22,7 +22,7 @@ export function interactive({ session }: { session: AgentSession }): boolean {
   return Boolean(session.terminal?.tty || session.agent.host)
 }
 
-export function cardSessionId({ card }: { card: Card }): string | undefined {
+export function cardSessionId({ card }: { card: Pick<Card, 'agent' | 'sessionIds'> }): string | undefined {
   return card.sessionIds?.[0] ?? (card.agent ? sessionId({ agent: card.agent }) : undefined)
 }
 
