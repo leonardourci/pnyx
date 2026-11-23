@@ -1,6 +1,6 @@
 ---
 name: write-pull-request
-description: Write or update a Pnyx pull request description, including Intent, Problem, Fix, Validation and Review. Read before opening a PR or changing its title or body, and after every push to keep the description true to the final diff.
+description: Write or update an Othrys pull request description, including Intent, Problem, Fix, Validation and Review. Read before opening a PR or changing its title or body, and after every push to keep the description true to the final diff.
 ---
 
 # Write a pull request
