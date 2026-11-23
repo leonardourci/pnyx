@@ -1,10 +1,10 @@
 import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useState } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { DispatchChange } from '#workers/dispatch-check.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
-import { DISPATCH_CHANGED, useHeadsDispatch } from './heads-dispatch.ts'
+import { DISPATCH_CHANGED, useTitanDispatch } from './heads-dispatch.ts'
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? 'none' : JSON.stringify(value)
 const COMMAND_PREVIEW_FIELDS = [
@@ -18,7 +18,7 @@ function useDispatchProposals({
   command,
   notify,
 }: {
-  state: HydraState
+  state: TitanState
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -26,7 +26,7 @@ function useDispatchProposals({
     busy,
     setBusy,
   ] = useState<string>()
-  const statuses = useHeadsDispatch({ command }).effective?.proposals ?? []
+  const statuses = useTitanDispatch({ command }).effective?.proposals ?? []
 
   const resolve = async ({
     token,
@@ -79,7 +79,7 @@ export function DispatchProposals({
   connected,
   notify,
 }: {
-  state: HydraState
+  state: TitanState
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -101,8 +101,8 @@ export function DispatchProposals({
     name,
   }) => {
     const note = status?.reason
-      ? `${status.reason}. Dismiss it and ask Hydra again.`
-      : 'Hydra proposes this change. Confirm to apply it.'
+      ? `${status.reason}. Dismiss it and ask Titan again.`
+      : 'Titan proposes this change. Confirm to apply it.'
     const applying = proposal.status === 'applying'
     const commandApplying = proposal.kind === 'command' && applying
     const applyingMessage = proposal.kind === 'dispatch'

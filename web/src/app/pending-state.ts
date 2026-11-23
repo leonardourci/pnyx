@@ -1,17 +1,17 @@
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { argument, optimisticState, type Edit } from '#web-tasks/optimistic.ts'
 import { CommandFailure, createPendingResource } from '#web-shared/pending-intents.ts'
 
-function createHydraResource({
+function createTitanResource({
   scope,
   confirmed,
 }: {
   scope: string
-  confirmed: HydraState
+  confirmed: TitanState
 }) {
   const receipts = new Map<string, number>()
-  const resource = createPendingResource<HydraState, Edit>({
+  const resource = createPendingResource<TitanState, Edit>({
     scope,
     confirmed,
     adapter: {
@@ -80,20 +80,20 @@ function createHydraResource({
   }
 }
 
-export type HydraResource = ReturnType<typeof createHydraResource>
-const resources = new Map<string, HydraResource>()
+export type TitanResource = ReturnType<typeof createTitanResource>
+const resources = new Map<string, TitanResource>()
 
-export function pendingHydra({
+export function pendingTitan({
   scope,
   confirmed,
 }: {
   scope: string
-  confirmed: HydraState
-}): HydraResource {
+  confirmed: TitanState
+}): TitanResource {
   let resource = resources.get(scope)
 
   if (!resource) {
-    resource = createHydraResource({
+    resource = createTitanResource({
       scope,
       confirmed,
     })

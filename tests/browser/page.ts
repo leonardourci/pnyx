@@ -27,7 +27,7 @@ afterAll(async () => {
   await browser?.close()
 })
 
-export async function openHydra({
+export async function openTitan({
   port,
   hydraId,
   reducedMotion = false,

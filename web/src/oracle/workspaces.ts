@@ -1,6 +1,6 @@
-import type { HydraState } from '#app/model.ts'
-import type { HydraProjectSummary } from '#app/server-hydras.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import type { Hit } from '#oracle/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { knownCards } from '#tasks/select.ts'
@@ -10,13 +10,13 @@ import { oracleResults, type OracleResult } from './results.ts'
 
 export type ScopedHit = Hit & { hydra?: string }
 export interface OracleWorkspace {
-  state: HydraState
+  state: TitanState
   hydra: {
     id: string
     name: string
     icon: string
   }
-  projects: HydraProjectSummary[]
+  projects: TitanProjectSummary[]
   actions: Record<string, CurrentAction>
 }
 

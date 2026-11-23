@@ -1,0 +1,145 @@
+import type { RefObject, Dispatch, SetStateAction } from 'react'
+import { reference } from '#titan/mentions.ts'
+import { displayAt, draftView, replaceDisplay } from './draft.ts'
+import type { MentionItem } from './mention-picker.tsx'
+
+// Add project asks Titan in the composer: the @ opens the project and folder picker, and the goal is an optional blank.
+const GOAL_SLOT = reference({
+  kind: 'slot',
+  value: 'goal',
+  label: 'what you want done',
+})
+export const REQUEST_HEAD = 'Add '
+const REQUEST_START = `${REQUEST_HEAD}@`
+const PROJECT_REQUEST = `${REQUEST_START} to this Titan and ${GOAL_SLOT}.`
+const UNPICKED = /(?:^|\n)Add @ to this Titan\b/
+
+// The path in an Add project request, which shows as a badge while staying plain text.
+const REQUEST_PATH = /(^|\n)Add ([^\s@](?:(?! to this Titan)[^\n])*) to this Titan/g
+
+// In an Add project request a project goes in as its plain path, so the caret moves through it like text.
+export const mentionText = ({
+  item,
+  before,
+}: {
+  item: MentionItem
+  before: string
+}) => before.endsWith(REQUEST_HEAD) && item.path ? item.path : item.insert
+
+export function requestPaths({ display }: { display: string }) {
+  const matches = [...display.matchAll(REQUEST_PATH)]
+
+  // Both groups always take part in a match.
+  return matches.map(match => {
+    const from = match.index + match[1]!.length + REQUEST_HEAD.length
+
+    return {
+      from,
+      to: from + match[2]!.length,
+    }
+  })
+}
+
+export const GOALS = [
+  'look around and tell me what it is',
+  'fix the failing tests',
+  'pick up its open issues',
+  'review its open pull requests',
+] as const
+
+// The request goes on its own line under any draft, with the caret right after its @.
+function withProjectRequest({ text }: { text: string }): {
+  text: string
+  caret: number
+} {
+  const draft = text.trimEnd()
+  const next = draft ? `${draft}\n${PROJECT_REQUEST}` : PROJECT_REQUEST
+
+  return {
+    text: next,
+    caret: displayAt({
+      text: next,
+      offset: next.lastIndexOf(REQUEST_START) + REQUEST_START.length,
+    }),
+  }
+}
+
+// An unfilled goal leaves the message; an @ with no project picked keeps it from going out.
+export function sendableRequest({ text }: { text: string }): {
+  text: string
+  unpicked: boolean
+} {
+  return {
+    text: text.replaceAll(
+      ` and ${GOAL_SLOT}`,
+      '',
+    ).replaceAll(
+      GOAL_SLOT,
+      '',
+    ),
+    unpicked: UNPICKED.test(text),
+  }
+}
+
+export function projectRequestActions({
+  input,
+  read,
+  write,
+  trackMention,
+  setGoal,
+}: {
+  input: RefObject<HTMLTextAreaElement | null>
+  read(): string
+  write({
+    text,
+    caret,
+    anchor,
+  }: {
+    text: string
+    caret: number
+    anchor?: number
+  }): void
+  trackMention({
+    text,
+    cursor,
+  }: {
+    text: string
+    cursor: number
+  }): void
+  setGoal: Dispatch<SetStateAction<number | null>>
+}) {
+  const requestProject = ({ text }: { text: string }) => {
+    const edit = withProjectRequest({ text })
+    write(edit)
+    input.current?.focus()
+    trackMention({
+      text: edit.text,
+      cursor: edit.caret,
+    })
+  }
+
+  const fillGoal = ({ text }: { text: string }) => {
+    // The goal the caret is on, so a second request never fills the first one's blank.
+    const caret = input.current?.selectionStart ?? 0
+    const draft = read()
+    const slots = draftView({ text: draft }).chips.filter(chip => chip.kind === 'slot')
+    const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)
+    const slot = onCaret ?? slots.find(chip => chip.from >= caret)
+
+    if (slot) {
+      write(replaceDisplay({
+        text: draft,
+        from: slot.from,
+        to: slot.to,
+        insert: text,
+      }))
+    }
+
+    setGoal(null); input.current?.focus()
+  }
+
+  return {
+    requestProject,
+    fillGoal,
+  }
+}

@@ -1,13 +1,13 @@
-import type { createThreadReceiver } from '#hydra/thread-receive.ts'
+import type { createThreadReceiver } from '#titan/thread-receive.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
 import type { AgentUsage } from '#workers/provider.ts'
-import type { HydraSummary } from '#app/server-hydras.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
-import type { LatestMessage,ThreadPage } from '#hydra/transcripts-read.ts'
-import type { HydraQueue } from '#hydra/wakes.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import type { LatestMessage,ThreadPage } from '#titan/transcripts-read.ts'
+import type { TitanQueue } from '#titan/wakes.ts'
 import { createPendingResource } from '#web-shared/pending-intents.ts'
 import type { Command,Receipt } from './connection.ts'
-import { type HydraResource } from './pending-state.ts'
+import { type TitanResource } from './pending-state.ts'
 import type { createPendingTurns } from '#web-workers/pending-turns.ts'
 
 export interface Creation {
@@ -24,7 +24,7 @@ export interface Scope {
   id: string
   identity: string
   viewKey: string
-  resource: HydraResource
+  resource: TitanResource
   turns: ReturnType<typeof createPendingTurns>
   hasSnapshot: boolean
   ready: boolean
@@ -41,7 +41,7 @@ export interface Scope {
   subscriptionAttempt: number
   readonly thread: ThreadPage | null
   threads: ReturnType<typeof createThreadReceiver>
-  queue: HydraQueue
+  queue: TitanQueue
   spend: Record<string, TaskSpend>
   usage: Record<string, AgentUsage>
   latest: Record<string, LatestMessage>
@@ -69,6 +69,6 @@ export interface Request {
   reject({ error }: { error: Error }): void
 }
 
-export type HydraListResource = ReturnType<
-  typeof createPendingResource<HydraSummary[], HydraSummary>
+export type TitanListResource = ReturnType<
+  typeof createPendingResource<TitanSummary[], TitanSummary>
 >

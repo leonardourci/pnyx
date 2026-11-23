@@ -38,7 +38,7 @@ function createDispatch({ scope }: { scope: string }) {
           rules: {
             ...state.dispatch.rules,
             hydra: {
-              when: rule?.when ?? 'Hydra',
+              when: rule?.when ?? 'Titan',
               candidates: [
                 candidate,
                 ...rule?.candidates.slice(1) ?? [],

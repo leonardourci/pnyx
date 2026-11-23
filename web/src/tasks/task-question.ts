@@ -1,4 +1,4 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
 import { reviewRequests } from './review-requests.ts'
@@ -7,7 +7,7 @@ export function taskQuestions({
   state,
   card,
 }: {
-  state?: HydraState
+  state?: TitanState
   card: Card
 }) {
   const questions = ownerQuestions({

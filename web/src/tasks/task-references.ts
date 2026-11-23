@@ -1,6 +1,6 @@
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { cardState } from './view.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
@@ -14,7 +14,7 @@ export function taskReferences({
   actions,
   connected,
 }: {
-  state: HydraState
+  state: TitanState
   hours?: DoneAfterHours
   actions?: Record<string, CurrentAction>
   connected?: boolean
@@ -48,7 +48,7 @@ export function useTaskReferences({
   actions,
   connected,
 }: {
-  state: HydraState
+  state: TitanState
   actions?: Record<string, CurrentAction>
   connected?: boolean
 }) {

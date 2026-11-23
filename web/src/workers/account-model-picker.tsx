@@ -26,12 +26,12 @@ export const PROVIDERS = [
   },
 ] as const
 
-export const ACCOUNT_SETTINGS = 'pnyx-account-settings'
+export const ACCOUNT_SETTINGS = 'othrys-account-settings'
 const HOLD_MS = 500
 
 export type Provider = (typeof PROVIDERS)[number]
 
-// Every harness Pnyx runs has an entry in PROVIDERS.
+// Every harness Othrys runs has an entry in PROVIDERS.
 export const providerFor = ({ harness }: { harness: Harness }): Provider =>
   PROVIDERS.find(item => item.harness === harness)!
 
@@ -453,7 +453,7 @@ export function SelectionMenu({
       {step !== 'model' && (
         <div className="account-model-add flex-none border-t border-line pt-2 [&>.button]:w-full [&>.button]:text-ui [&>p]:mx-0 [&>p]:mt-1.25 [&>p]:mb-0 [&>p]:text-center [&>p]:text-meta [&>p]:text-muted">
           <Button variant="surface" onClick={add}><Icon name="plus" size={ICON_SIZE.control} />{addLabel}</Button>
-          <p>Or ask Hydra to add it for you.</p>
+          <p>Or ask Titan to add it for you.</p>
         </div>
       )}
     </ModelMenu>

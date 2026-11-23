@@ -5,9 +5,9 @@ import { FoldContent } from '#web-shared/ui/fold-content.tsx'
 import { SortablePanel } from '#web-shared/ui/sortable-panel.tsx'
 import { useSortState, SortGroup } from '#web-shared/ui/sortable.tsx'
 import { memo, useCallback, useEffect, useRef, type ReactNode, type ComponentProps } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import { movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
 import { compareTasks, taskRollup } from './project-view.ts'
 import type { ObservedStatus } from './observed-status.ts'
@@ -79,7 +79,7 @@ export function TaskFamily({
 }: {
   card: Card
   hydraId: string
-  state: HydraState
+  state: TitanState
   actions: Record<string, CurrentAction>
   selected: string[]
   preview: SortMove | null
@@ -91,7 +91,7 @@ export function TaskFamily({
   const expanded = folds[card.id] ?? false
   const setExpanded = useCallback(
     ({ open }: { open: boolean }) => {
-      // eslint-disable-next-line pnyx/object-params -- React owns functional state updaters.
+      // eslint-disable-next-line othrys/object-params -- React owns functional state updaters.
       setFolds(current => ({
         ...current,
         [card.id]: open,
@@ -104,7 +104,7 @@ export function TaskFamily({
   )
   const toggleChildren = useCallback(
     () => {
-      // eslint-disable-next-line pnyx/object-params -- React owns functional state updaters.
+      // eslint-disable-next-line othrys/object-params -- React owns functional state updaters.
       setFolds(current => ({
         ...current,
         [card.id]: !current[card.id],

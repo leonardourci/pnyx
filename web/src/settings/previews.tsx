@@ -1,7 +1,7 @@
 import { runtimeStyle } from '#web-shared/ui/runtime-style.ts'
 import type { ComponentProps, ReactNode } from 'react'
 import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { logDay, logged, type LogLine, type LogMode } from '#app/log-line.ts'
 import { keptDays } from '#diagnostics/retention.ts'
@@ -182,7 +182,7 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
           {' '}Empty state: <span className="preview-image-chip inline-flex h-preview-image-height items-center gap-preview-image-gap rounded-preview-image border border-line bg-surface py-0 pr-preview-image-right pl-preview-image-left align-middle [&>span:first-child]:h-attachment-icon [&>span:first-child]:w-preview-thumbnail [&>span:first-child]:rounded-preview-thumbnail [&>span:first-child]:bg-preview-image [&>span:last-child]:text-preview-image"><span /><span>export-empty.png</span></span>
         </PreviewBubble>
         <PreviewBubble >
-          On it with <PreviewChip kind="skill"><Icon name="skill" size={ICON_SIZE.badge} />pnyx-report-progress</PreviewChip>.
+          On it with <PreviewChip kind="skill"><Icon name="skill" size={ICON_SIZE.badge} />othrys-report-progress</PreviewChip>.
           {' '}Running <PreviewChip kind="command"><Icon name="terminal" size={ICON_SIZE.badge} />/test</PreviewChip> next.
         </PreviewBubble>
       </PreviewConversation>
@@ -193,7 +193,7 @@ export function ChatTextPreview({ view }: { view: ViewPreferences }) {
 export function CodeTextPreview({ view }: { view: ViewPreferences }) {
   return (
     <Preview>
-      <pre className="preview-code m-0 rounded-md bg-raised px-2.5 py-2 font-mono whitespace-pre" style={runtimeStyle({ fontSize: view.codeFontSize })}>{'pnyx task create --title Build \\\n  --rule build'}</pre>
+      <pre className="preview-code m-0 rounded-md bg-raised px-2.5 py-2 font-mono whitespace-pre" style={runtimeStyle({ fontSize: view.codeFontSize })}>{'othrys task create --title Build \\\n  --rule build'}</pre>
     </Preview>
   )
 }
@@ -228,18 +228,18 @@ const fitting = ({ widths }: { widths: Widths }) => {
   return count
 }
 
-// The same widths drive the Hydra and the live Settings preview.
+// The same widths drive the Titan and the live Settings preview.
 function boardWidths({
   state,
   view,
   dragged,
 }: {
-  state: HydraState
+  state: TitanState
   view: ViewPreferences
   dragged: boolean
 }): Widths {
   return {
-    chat: dragged ? view.hydraWidth : view.defaultHydraWidth,
+    chat: dragged ? view.hydraWidth : view.defaultTitanWidth,
     columns: columnsFor({ state }).map(column => {
       const own = dragged ? view.workspace.projectWidths[column.id] : undefined
 
@@ -287,7 +287,7 @@ export function BoardPreview({
   view,
   mark,
 }: {
-  state: HydraState
+  state: TitanState
   view: ViewPreferences
   mark: 'columns' | 'chat'
 }) {
@@ -418,7 +418,7 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
     ) => (index + 1) * minutes,
   )
 
-  const caption = minutes === 0 ? 'Timed reviews off. Hydra still wakes for messages and worker updates.'
+  const caption = minutes === 0 ? 'Timed reviews off. Titan still wakes for messages and worker updates.'
     : minutes > TIMELINE_MINUTES ? `First review in ${minutes} min.` : `${ticks.length} reviews in the next 3 hours.`
 
   return (
@@ -648,7 +648,7 @@ export function HelperPreview({
   helper: HelperSetting
   hydra: Partial<AgentConfig>
 }) {
-  const main = <Pill icon={providerIdOf({ harness: hydra.harness ?? 'claude' })} label={`Hydra · ${modelName({ agent: hydra })}`} />
+  const main = <Pill icon={providerIdOf({ harness: hydra.harness ?? 'claude' })} label={`Titan · ${modelName({ agent: hydra })}`} />
   const routine = helper === 'off' ? main : (
     <Pill
       helper
@@ -701,7 +701,7 @@ export function AgentPreview({ agent }: { agent: Partial<AgentConfig> }) {
     <Preview>
       <div className="preview-lanes grid gap-1.5 text-meta">
         <PreviewLane data-on>
-          <b><Icon name="hydra" size={ICON_SIZE.inline} />Hydra, the orchestrator</b>
+          <b><Icon name="hydra" size={ICON_SIZE.inline} />Titan, the orchestrator</b>
           <span>{details}</span>
         </PreviewLane>
         <PreviewLane >
@@ -717,7 +717,7 @@ export function ResetPreview({
   state,
   view,
 }: {
-  state: HydraState
+  state: TitanState
   view: ViewPreferences
 }) {
   const now = boardWidths({

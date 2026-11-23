@@ -11,7 +11,7 @@ interface AskStart {
 
 const ASK = /^ask(?::(\S+))?\s/i
 
-// "ask " opens a request whose Hydra is picked later; "ask:<name> " names the Hydra, and an unknown name stays a search.
+// "ask " opens a request whose Titan is picked later; "ask:<name> " names the Titan, and an unknown name stays a search.
 export function askStart({
   query,
   hydras,
@@ -40,7 +40,7 @@ export function askStart({
   } : null
 }
 
-// The current Hydra leads even before the Hydra list has loaded.
+// The current Titan leads even before the Titan list has loaded.
 export const askTargets = ({
   hydras,
   current,
@@ -65,7 +65,7 @@ export function askKey({
   key: string
   mod?: boolean
   composing: boolean
-  // The Hydra list is showing.
+  // The Titan list is showing.
   picking: boolean
   targeted: boolean
   request: string
@@ -94,13 +94,13 @@ export function askKey({
 }
 
 export interface AskAttempt {
-  // Pnyx records an event id once, so a retry with the same id replays the first receipt.
+  // Othrys records an event id once, so a retry with the same id replays the first receipt.
   id: string
   text: string
   to: string
 }
 
-// A retry of the same request to the same Hydra keeps its event id, so the Hydra gets it once.
+// A retry of the same request to the same Titan keeps its event id, so the Titan gets it once.
 export const askAttempt = ({
   kept,
   text,

@@ -2,7 +2,7 @@ import type { Ask, Card } from '#tasks/model.ts'
 import { askWording } from '#tasks/ask-state.ts'
 import { Disclosure, CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { clock } from '#web-hydra/chat.ts'
+import { clock } from '#web-titan/chat.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export const recordedAnswers = ({ card }: { card: Card }) =>
@@ -51,7 +51,7 @@ function AnsweredQuestion({
   }
 
   const recorded = ask.mergeHold && ask.choice === 'Merge'
-    ? 'Hydra lifted Hold using your answer' : 'Recorded as your answer'
+    ? 'Titan lifted Hold using your answer' : 'Recorded as your answer'
 
   return (
     <div className="decided">

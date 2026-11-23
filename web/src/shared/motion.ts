@@ -75,7 +75,7 @@ function motionPreference() {
   return `${document.documentElement.dataset.motion ?? MOTION_MODE}:${motionMedia?.matches ?? false}`
 }
 
-// eslint-disable-next-line pnyx/object-params -- React owns the subscription callback signature.
+// eslint-disable-next-line othrys/object-params -- React owns the subscription callback signature.
 function subscribeMotion(changed: () => void) {
   const update = () => {
     durations = readDurations()

@@ -1,6 +1,6 @@
 import { applyRuntimeStyle } from './runtime-style.ts'
 import { FloatingPanel } from './floating-panel.tsx'
-import { suggestionMatch, type SuggestionMatch } from '#hydra/suggestion-matches.ts'
+import { suggestionMatch, type SuggestionMatch } from '#titan/suggestion-matches.ts'
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { Button } from './controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
@@ -75,7 +75,7 @@ export function SuggestionPicker<T extends PickerItem>({
   anchor,
   label,
   loading = false,
-  empty = 'Nothing in this Hydra matches.',
+  empty = 'Nothing in this Titan matches.',
   footer,
   className = '',
   query = '',
@@ -192,7 +192,7 @@ export function SuggestionPicker<T extends PickerItem>({
       ref={root}
       popover="manual"
       className={`mention-menu group/suggestions z-8 max-h-80 rounded-panel border-gold-line! p-2.5 shadow-suggestions [&_mark]:rounded-sm [&_mark]:bg-comment-emphasis [&_mark]:p-0 [&_mark]:text-inherit [&_p]:text-meta [&_p]:text-muted ${className}`}
-      // eslint-disable-next-line pnyx/object-params -- React owns the pointer event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the pointer event signature.
       onMouseDown={event => event.preventDefault()}
     >
       <span className="eyebrow">{label} · Tab or Enter picks</span>

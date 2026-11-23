@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { resizeViewPatch } from '#preferences/view.ts'
 import { isSettingKey } from '#settings/model.ts'
 import { saveSharedSettings } from '#web-settings/shared-settings.ts'
@@ -10,13 +10,13 @@ export function useSaveView({
   command,
   notify,
 }: {
-  state: HydraState
+  state: TitanState
   command: Command
   notify({ text }: { text: string }): void
 }) {
   return useCallback(
     async ({ patch }: { patch: Record<string, unknown> }) => {
-      const resize = 'defaultHydraWidth' in patch
+      const resize = 'defaultTitanWidth' in patch
       const applied = resize ? resizeViewPatch({
         patch,
       }) : patch

@@ -2,12 +2,12 @@ import { readEvents } from '#app/event-log.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { chrome } from './chrome.ts'
 import { workerLine } from '../setup/worker-log.ts'
-import { startPnyx, until, type Pnyx } from '../setup/pnyx.ts'
+import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 const EXITED_PROCESS_PID = '2147483647'
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 async function openChat({
@@ -21,7 +21,7 @@ async function openChat({
   await chrome({
     args: [
       'open',
-      `http://127.0.0.1:${pnyx.port()}/hydra/${hydraId}/`,
+      `http://127.0.0.1:${othrys.port()}/hydra/${hydraId}/`,
     ],
   })
   await chrome({
@@ -119,7 +119,7 @@ const turns = [
 test(
   'hook activity updates the card and chat without adding event history',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -190,15 +190,15 @@ test(
 )
 
 test(
-  'Hydra first send shows Starting… on the first frame, then Thinking, Working and Idle',
+  'Titan first send shows Starting… on the first frame, then Thinking, Working and Idle',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
-    const badge = `${hydraChat} [aria-label="Hydra status"]`
+    const badge = `${hydraChat} [aria-label="Titan status"]`
     await chrome({
       script: `
-      await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
-      await page.wait('${hydraChat} [aria-label="Reply to Hydra"]', 5000);
+      await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});
+      await page.wait('${hydraChat} [aria-label="Reply to Titan"]', 5000);
     `,
     })
     await recordBadges({ selectors: { hydra: badge } })
@@ -208,7 +208,7 @@ test(
       label,
       tool,
     } of turns) {
-      const turn = pnyx.claude.plan({
+      const turn = othrys.claude.plan({
         hydra: hydra.id,
         text,
         tool,
@@ -219,7 +219,7 @@ test(
         const started = await chrome({
           script: `
           await page.eval(() => { window.badgeFrames = []; });
-          await page.fill('${hydraChat} [aria-label="Reply to Hydra"]', ${JSON.stringify(text)});
+          await page.fill('${hydraChat} [aria-label="Reply to Titan"]', ${JSON.stringify(text)});
           await page.wait('${hydraChat} [aria-label="Send reply"]:not(:disabled)', 5000);
           await page.click('${hydraChat} [aria-label="Send reply"]');
           console.log(JSON.stringify(await page.eval(() => window.firstSentFrame)));
@@ -255,13 +255,13 @@ test(
 )
 
 test(
-  'a running worker moved to another Hydra keeps its live badge and receives the destination composer message once',
+  'a running worker moved to another Titan keeps its live badge and receives the destination composer message once',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const { worker } = await source.startTask({ key: 'moving-live-worker' })
     const task = await source.task({ key: 'moving-live-worker' })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: source.id,
       match: ({ text }) => text.includes('Keep working during the move'),
       hold: true,
@@ -314,7 +314,7 @@ test(
         selector,
         label: 'Working',
       })
-      const text = 'Continue in the destination Hydra'
+      const text = 'Continue in the destination Titan'
       await chrome({
         script: `
         await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, ${JSON.stringify(text)});
@@ -351,7 +351,7 @@ test(
 test(
   'worker first send shows Starting… before attachment, reports a refused start and follows later live turns',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'live-badges' })
     await hydra.owner({
       args: [
@@ -426,7 +426,7 @@ test(
       label,
       tool,
     } of turns) {
-      const turn = pnyx.claude.plan({
+      const turn = othrys.claude.plan({
         hydra: hydra.id,
         match: ({ text: prompt }) => prompt.includes(text),
         tool,
@@ -489,9 +489,9 @@ test(
 )
 
 test(
-  'a refused turn replaces the pending Hydra and worker badges with its error',
+  'a refused turn replaces the pending Titan and worker badges with its error',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const hydraChat = `[data-hydra="${hydra.id}"] .hydra-chat`
     const owner = await hydra.page()
     await owner.send({
@@ -512,19 +512,19 @@ test(
       hydraId: hydra.id,
       taskId: task.id,
     })
-    pnyx.codex.plan({
+    othrys.codex.plan({
       hydra: hydra.id,
-      text: 'Refuse Hydra badge turn',
+      text: 'Refuse Titan badge turn',
       refuse: true,
     })
-    pnyx.codex.plan({
+    othrys.codex.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Refuse worker badge turn'),
       refuse: true,
     })
     await chrome({
       script: `
-      await page.fill('${hydraChat} [aria-label="Reply to Hydra"]', 'Refuse Hydra badge turn');
+      await page.fill('${hydraChat} [aria-label="Reply to Titan"]', 'Refuse Titan badge turn');
       await page.click('${hydraChat} [aria-label="Send reply"]');
     `,
     })
@@ -533,7 +533,7 @@ test(
       await page.fill(${JSON.stringify(`${selector} [aria-label="Message worker"]`)}, 'Refuse worker badge turn');
       await page.wait(${JSON.stringify(`${selector} [aria-label="Send to worker"]:not(:disabled)`)}, 5000);
       await page.click(${JSON.stringify(`${selector} [aria-label="Send to worker"]`)});
-      await page.wait('${hydraChat} [aria-label="Hydra status"][data-status*="refused this turn"]', 5000);
+      await page.wait('${hydraChat} [aria-label="Titan status"][data-status*="refused this turn"]', 5000);
       await page.wait(${JSON.stringify(`${selector} .agent-activity[aria-label*="refused this turn"]`)}, 5000);
       await page.wait(${JSON.stringify(`${selector} [aria-label="Worker status"][data-status*="refused this turn"]`)}, 5000);
       console.log(await page.eval(() => document.querySelectorAll(${JSON.stringify(`${hydraChat} .chat-running-status .working-dots, ${selector} .chat-running-status .working-dots`)}).length));
@@ -541,7 +541,7 @@ test(
     })
     expect(result).toBe('0')
 
-    const resumed = pnyx.codex.plan({
+    const resumed = othrys.codex.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Resume worker from CLI'),
       hold: true,
@@ -568,16 +568,16 @@ test(
       selector,
       label: 'Idle',
     })
-    const recovery = pnyx.codex.plan({
+    const recovery = othrys.codex.plan({
       hydra: hydra.id,
-      text: 'Recover Hydra badge turn',
+      text: 'Recover Titan badge turn',
       hold: true,
     })
 
     try {
       await chrome({
         script: `
-        await page.fill('${hydraChat} [aria-label="Reply to Hydra"]', 'Recover Hydra badge turn');
+        await page.fill('${hydraChat} [aria-label="Reply to Titan"]', 'Recover Titan badge turn');
         await page.click('${hydraChat} [aria-label="Send reply"]');
         await page.wait('${hydraChat} [data-status="Thinking"]', 5000);
       `,
@@ -593,7 +593,7 @@ test(
 test(
   'an exited outside worker shows its delivery error on the pill and chat',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -657,9 +657,9 @@ test(
 )
 
 test(
-  'Oracle preserves worker status with a retention deadline and failed outcomes keep owner questions visible in Hydra chat',
+  'Oracle preserves worker status with a retention deadline and failed outcomes keep owner questions visible in Titan chat',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({ key: 'blocked-in-done' })
     await until({
       what: 'the worker turn to end',
@@ -739,7 +739,7 @@ test(
     await chrome({
       args: [
         'open',
-        `http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`,
+        `http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`,
       ],
     })
     const question = await chrome({

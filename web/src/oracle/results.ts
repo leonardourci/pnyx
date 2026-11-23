@@ -2,10 +2,10 @@ import { taskProjectGroup } from '#tasks/order.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import { taskRollup } from '#web-tasks/project-view.ts'
 import { tokens } from '#oracle/query.ts'
-import type { HydraState } from '#app/model.ts'
-import type { HydraProjectSummary } from '#app/server-hydras.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import type { Hit } from '#oracle/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -29,11 +29,11 @@ export type OracleResult = Shown & ({
 } | {
   kind: 'conversation'
   hit?: Hit
-  // A task's own conversation; without one, the result is the Hydra's chat.
+  // A task's own conversation; without one, the result is the Titan's chat.
   card?: Card
 } | {
   kind: 'project'
-  summary: HydraProjectSummary
+  summary: TitanProjectSummary
 } | {
   kind: 'setting'
   match: SettingsMatch
@@ -50,7 +50,7 @@ interface ResultGroup {
   results: OracleResult[]
 }
 
-interface Hydra {
+interface Titan {
   id: string
   name: string
 }
@@ -61,10 +61,10 @@ const taskResult = ({
   hit,
   hydra,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   hit?: Hit
-  hydra: Hydra
+  hydra: Titan
 }): OracleResult => ({
   id: `task:${card.id}`,
   kind: 'task',
@@ -91,7 +91,7 @@ const conversationResult = ({
 }: {
   hit?: Hit
   at?: string
-  hydra: Hydra
+  hydra: Titan
 }): OracleResult => ({
   id: 'conversation:hydra',
   kind: 'conversation',
@@ -107,7 +107,7 @@ const taskConversation = ({
   hydra,
 }: {
   card: Card
-  hydra: Hydra
+  hydra: Titan
 }): OracleResult => ({
   id: `conversation:${card.id}`,
   kind: 'conversation',
@@ -128,8 +128,8 @@ const actionResult = ({ action }: { action: OracleAction }): OracleResult => ({
   action,
 })
 
-const recentCards = ({ state }: { state: HydraState }) => Object.values(state.cards)
-  .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
+const recentCards = ({ state }: { state: TitanState }) => Object.values(state.cards)
+  .filter(card => card.id !== TITAN_CARD && liveTask({ card }))
   .sort((
     a,
     b,
@@ -147,7 +147,7 @@ const panelResult = ({
   hydra,
 }: {
   panel: OraclePanel
-  hydra: Hydra
+  hydra: Titan
 }): OracleResult => ({
   id: panel.id,
   kind: 'panel',
@@ -168,8 +168,8 @@ export const menuActions = ({
   token: FilterToken | null
   text: string
   actions: OracleAction[]
-  state: HydraState
-  hydra: Hydra
+  state: TitanState
+  hydra: Titan
 }): OracleResult[] => {
   if (!token || token.type || text) {
     return []
@@ -208,13 +208,13 @@ export function oracleResults({
   badges,
   now,
 }: {
-  state: HydraState
+  state: TitanState
   hits: Hit[]
-  projects: HydraProjectSummary[]
+  projects: TitanProjectSummary[]
   actions: OracleAction[]
   // What each task's worker is doing now, which its status badge shows.
   cardActions: Record<string, CurrentAction>
-  hydra: Hydra
+  hydra: Titan
   text: string
   badges: Filter[]
   now: number
@@ -237,7 +237,7 @@ export function oracleResults({
     state,
     query: text,
     actions: cardActions,
-  }).filter(card => card.id !== HYDRA_CARD && !found.has(card.id))
+  }).filter(card => card.id !== TITAN_CARD && !found.has(card.id))
     .map(card => taskResult({
       state,
       card,
@@ -267,7 +267,7 @@ export function oracleResults({
     hydra,
   }))
   const ownChat = conversationResult({
-    at: state.cards[HYDRA_CARD]?.updatedAt,
+    at: state.cards[TITAN_CARD]?.updatedAt,
     hydra,
   })
   const taskChats = recentCards({ state }).filter(card => hasConversation({ card }))
@@ -381,7 +381,7 @@ export function resultMeta({
 }: {
   actions: Record<string, CurrentAction>
   result: OracleResult
-  state: HydraState
+  state: TitanState
   now: number
 }): string {
   switch (result.kind) {

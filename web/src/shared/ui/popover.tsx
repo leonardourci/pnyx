@@ -158,7 +158,7 @@ export function Popover({
       }}
     >
       <Button
-        // eslint-disable-next-line pnyx/object-params -- React ref callback.
+        // eslint-disable-next-line othrys/object-params -- React ref callback.
         ref={element => {
           button.current = element
 

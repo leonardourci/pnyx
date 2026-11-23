@@ -1,7 +1,7 @@
 import { ProjectForm, ProjectList } from './folder-ui.tsx'
 import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
 import { useEffect, useState } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { AddProject } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
@@ -85,7 +85,7 @@ function ProjectCommand({
         />
         </label>
         <Switch label="Brings its own folder" checked={ownFolder} onChange={({ value }) => edit({ patch: { bringsOwnFolder: value } })} />
-        <p className="small muted">The command creates the worker’s folder when checked. Hydra can choose this command by name.</p>
+        <p className="small muted">The command creates the worker’s folder when checked. Titan can choose this command by name.</p>
         <Button type="submit" variant="surface">{busy ? 'Saving…' : 'Save start command'}</Button>
       </fieldset>
     </ProjectForm>
@@ -139,7 +139,7 @@ export function Projects({
   command,
   notify,
 }: {
-  state: HydraState
+  state: TitanState
   connected: boolean
   command: Command
   notify({ text }: { text: string }): void

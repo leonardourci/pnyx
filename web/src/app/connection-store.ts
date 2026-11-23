@@ -1,15 +1,15 @@
 import { withDefaults } from '#settings/settings.ts'
-import { createThreadReceiver } from '#hydra/thread-receive.ts'
-import type { HydraState } from '#app/model.ts'
-import type { HydraSummary } from '#app/server-hydras.ts'
-import { emptyHydra } from '#app/reducer.ts'
+import { createThreadReceiver } from '#titan/thread-receive.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
+import { emptyTitan } from '#app/reducer.ts'
 import { saveEventId,savedReply,type SaveCommand } from '#app/save-receipts.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraQueue } from '#hydra/wakes.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanQueue } from '#titan/wakes.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { readSavedCommands,saveCommands } from '#web-hydra/outbox.ts'
+import { readSavedCommands,saveCommands } from '#web-titan/outbox.ts'
 import { sharedSettings } from '#web-settings/shared-settings.ts'
 import { CommandFailure,createPendingResource } from '#web-shared/pending-intents.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
@@ -18,11 +18,11 @@ import type { Creation,Request,Scope } from './connection-model.ts'
 import { reconnectDelay,retainedReadings,withChanges } from './connection-protocol.ts'
 import { createConnectionRequests } from './connection-requests.ts'
 import { dropSnapshots, save } from './connection-storage.ts'
-import { createHydraCreation } from './hydra-creation.ts'
+import { createTitanCreation } from './hydra-creation.ts'
 import { applyPageChanges, pageChanges, type HomePage } from '#app/socket-state.ts'
 import type { SocketCursor } from '#app/socket-history.ts'
 import { log, setLogMode, startPageLog, takeFrames } from './log.ts'
-import { pendingHydra } from './pending-state.ts'
+import { pendingTitan } from './pending-state.ts'
 import { shouldReload } from './view.ts'
 
 const HEARTBEAT_INTERVAL_MS = 10_000
@@ -30,7 +30,7 @@ const RECOVERY_TIMEOUT_MS = 25_000
 const TOKEN_REFRESH_TIMEOUT_MS = 5_000
 const NO_TOKEN_MESSAGE = 'This page has no connection token. Reload to connect.'
 const OTHER_INSTALLATION_MESSAGE =
-  'This address now serves another Pnyx installation. Reload to continue.'
+  'This address now serves another Othrys installation. Reload to continue.'
 const PERMANENT_SCOPE_ERRORS = new Set([
   'NOT_FOUND',
   'VALIDATION_ERROR',
@@ -39,15 +39,15 @@ const PERMANENT_SCOPE_ERRORS = new Set([
   'OWNER_ONLY',
 ])
 
-const emptyQueue = (): HydraQueue => ({
+const emptyQueue = (): TitanQueue => ({
   waiting: [],
   reading: [],
 })
 
-export function createHydraConnection() {
+export function createTitanConnection() {
   const origin = location.origin
-  const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
-    ?? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? ''
+  const installation = document.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
+    ?? document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content ?? ''
   const namespace = `${origin}:${installation}`
   const initialId = location.pathname.split('/')[2] ?? 'default'
   const scopes = new Map<string, Scope>()
@@ -58,7 +58,7 @@ export function createHydraConnection() {
   const creations = new Map<string, Creation>()
   let selected = initialId
   let socket: WebSocket | null = null
-  let physicalHydra: string | null = null
+  let physicalTitan: string | null = null
   let listed = false
   let active = false
   let offline = false
@@ -76,7 +76,7 @@ export function createHydraConnection() {
   let watchdog: ReturnType<typeof setInterval> | undefined
   let staleSince: number | undefined
 
-  const hydras = createPendingResource<HydraSummary[], HydraSummary>({
+  const hydras = createPendingResource<TitanSummary[], TitanSummary>({
     scope: `${namespace}/hydras`,
     confirmed: [],
     adapter: {
@@ -113,26 +113,26 @@ export function createHydraConnection() {
     subscribe: ({ scope }) => subscribe({ scope }),
     persistSaves: ({ scope }) => persistSaves({ scope }),
     send: ({ message }) => send({ message }),
-    updateHydras: ({ rows }) => updateHydras({ rows }),
+    updateTitans: ({ rows }) => updateTitans({ rows }),
   })
   const {
-    updateHydras,
+    updateTitans,
     attemptCreation,
     create,
     restoreCreations,
-  } = createHydraCreation({
+  } = createTitanCreation({
     connection: {
       get selected() {
         return selected
       },
-      // eslint-disable-next-line pnyx/object-params -- JavaScript setter contract.
+      // eslint-disable-next-line othrys/object-params -- JavaScript setter contract.
       set selected(value) {
         selected = value
       },
       get listed() {
         return listed
       },
-      // eslint-disable-next-line pnyx/object-params -- JavaScript setter contract.
+      // eslint-disable-next-line othrys/object-params -- JavaScript setter contract.
       set listed(value) {
         listed = value
       },
@@ -160,15 +160,15 @@ export function createHydraConnection() {
 
     const summary = hydras.snapshot().view.find(hydra => hydra.id === id)
     const identity = summary?.identity ?? (id === initialId
-      ? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? id : id)
+      ? document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content ?? id : id)
     const threads = createThreadReceiver()
     const scope: Scope = {
       id,
       identity,
       viewKey: id,
-      resource: pendingHydra({
+      resource: pendingTitan({
         scope: `${namespace}/hydra/${id}/`,
-        confirmed: emptyHydra(),
+        confirmed: emptyTitan(),
       }),
       turns: createPendingTurns({ scope: `${namespace}/hydra/${id}/turns` }),
       hasSnapshot: false,
@@ -182,7 +182,7 @@ export function createHydraConnection() {
       subscriptionAttempt: 0,
       threads,
       get thread() {
-        return threads.read({ card: HYDRA_CARD })
+        return threads.read({ card: TITAN_CARD })
       },
       queue: emptyQueue(),
       spend: {},
@@ -282,8 +282,8 @@ export function createHydraConnection() {
     return scope
   }
 
-  const shell = ({ scope }: { scope: Scope }): HydraState => {
-    const state = emptyHydra()
+  const shell = ({ scope }: { scope: Scope }): TitanState => {
+    const state = emptyTitan()
     const summary = hydras.snapshot().view.find(hydra => hydra.id === scope.id)
 
     return {
@@ -301,10 +301,10 @@ export function createHydraConnection() {
   const selection = () => scopeFor({ id: selected })
 
   const shown = new Map<string, {
-    view: HydraState
+    view: TitanState
     spend: Scope['spend']
     usage: Scope['usage']
-    state: HydraState
+    state: TitanState
   }>()
 
   // Live spend and usage join only their own cards, so every other card keeps its identity between publishes.
@@ -313,8 +313,8 @@ export function createHydraConnection() {
     view,
   }: {
     scope: Scope
-    view: HydraState
-  }): HydraState => {
+    view: TitanState
+  }): TitanState => {
     const previous = shown.get(scope.id)
     const sameReadings = previous !== undefined && previous.spend === scope.spend
       && previous.usage === scope.usage
@@ -397,7 +397,7 @@ export function createHydraConnection() {
         view: resource.view,
       }) : shell({ scope }),
       viewKey: scope.viewKey,
-      storageHydra: scope.identity,
+      storageTitan: scope.identity,
       connected: scope.ready && socket?.readyState === WebSocket.OPEN
         && homeReady
         && resource.confirmed.seq >= (scope.expectedSeq ?? 0),
@@ -453,7 +453,7 @@ export function createHydraConnection() {
   let snapshot = visible()
 
   const metadata = () => {
-    document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.setAttribute(
+    document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.setAttribute(
       'content',
       selection().identity,
     )
@@ -520,7 +520,7 @@ export function createHydraConnection() {
       }
 
       const state = scope.resource.snapshot().confirmed
-      // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
+      // The page keeps no event ids, so a Titan message or agent change confirms only from its receipt.
       const receipt = savedReply({
         command: saveCommand({ request }),
         state,
@@ -554,7 +554,7 @@ export function createHydraConnection() {
         continue
       }
 
-      if (scope.id === physicalHydra && !listed) {
+      if (scope.id === physicalTitan && !listed) {
         continue
       }
 
@@ -603,7 +603,7 @@ export function createHydraConnection() {
     clearTimeout(scope.subscriptionTimer)
     scope.subscriptionTimer = setTimeout(
       () => {
-        scope.loadError = 'Hydra did not finish loading. Retrying automatically.'
+        scope.loadError = 'Titan did not finish loading. Retrying automatically.'
         retrySubscription({ scope })
         publish()
       },
@@ -626,7 +626,7 @@ export function createHydraConnection() {
   }
 
   const reconcileReads = () => {
-    if (staleSince === undefined || !homeReady || !physicalHydra) {
+    if (staleSince === undefined || !homeReady || !physicalTitan) {
       return
     }
 
@@ -664,7 +664,7 @@ export function createHydraConnection() {
   }
 
   const subscribe = ({ scope }: { scope: Scope }) => {
-    if (scope.id.startsWith('pending-') || scope.subscribed || scope.failed || !physicalHydra || socket?.readyState !== WebSocket.OPEN) {
+    if (scope.id.startsWith('pending-') || scope.subscribed || scope.failed || !physicalTitan || socket?.readyState !== WebSocket.OPEN) {
       return
     }
 
@@ -690,7 +690,7 @@ export function createHydraConnection() {
     state,
   }: {
     scope: Scope
-    state: HydraState
+    state: TitanState
   }) => {
     const handling = performance.now()
     const first = !scope.hasSnapshot
@@ -723,7 +723,7 @@ export function createHydraConnection() {
     state,
   }: {
     scope: Scope
-    state: HydraState
+    state: TitanState
   }) => {
     const before = scope.resource.snapshot().confirmed
     scope.spend = retainedReadings({
@@ -782,7 +782,7 @@ export function createHydraConnection() {
       }
 
       if (home) {
-        updateHydras({ rows: home.hydras })
+        updateTitans({ rows: home.hydras })
         setLogMode({ mode: home.settings.settings.logs })
         sharedSettings().receive({
           state: {
@@ -803,7 +803,7 @@ export function createHydraConnection() {
             receiveState({
               scope,
               state: {
-                ...emptyHydra(),
+                ...emptyTitan(),
                 ...page.state,
               },
             })
@@ -831,7 +831,7 @@ export function createHydraConnection() {
     const scope = scopeFor({ id: message.scope })
     const response = 'id' in message && !!message.id
 
-    if (physicalHydra && !response && scope.subscription !== message.subscription) {
+    if (physicalTitan && !response && scope.subscription !== message.subscription) {
       return
     }
 
@@ -839,7 +839,7 @@ export function createHydraConnection() {
       return
     }
 
-    if (message.type === 'hello' && physicalHydra && !scope.subscribed) {
+    if (message.type === 'hello' && physicalTitan && !scope.subscribed) {
       return
     }
 
@@ -877,8 +877,8 @@ export function createHydraConnection() {
         return
       }
 
-      if (!physicalHydra) {
-        physicalHydra = scope.id
+      if (!physicalTitan) {
+        physicalTitan = scope.id
         scope.subscribed = true
         scope.subscription = message.subscription ?? null
         watchSubscription({ scope })
@@ -916,7 +916,7 @@ export function createHydraConnection() {
       }
 
       if (shouldReload({
-        loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content,
+        loaded: document.querySelector<HTMLMetaElement>('meta[name=othrys-build]')?.content,
         server: message.build,
       })) {
         location.reload()
@@ -983,7 +983,7 @@ export function createHydraConnection() {
 
   const disconnected = () => {
     markStale()
-    physicalHydra = null
+    physicalTitan = null
     listed = false
     homeReady = false
 
@@ -1003,7 +1003,7 @@ export function createHydraConnection() {
       return
     }
 
-    const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
+    const token = document.querySelector<HTMLMetaElement>('meta[name=othrys-token]')?.content
 
     if (!token) {
       reloadError = NO_TOKEN_MESSAGE
@@ -1100,15 +1100,15 @@ export function createHydraConnection() {
                   await response.text(),
                   'text/html',
                 )
-                const identity = page.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
-                const refreshed = page.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
+                const identity = page.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
+                const refreshed = page.querySelector<HTMLMetaElement>('meta[name=othrys-token]')?.content
 
                 if (!active || version !== generation) {
                   return
                 }
 
                 if (identity === installation && refreshed) {
-                  document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.setAttribute(
+                  document.querySelector<HTMLMetaElement>('meta[name=othrys-token]')?.setAttribute(
                     'content',
                     refreshed,
                   )
@@ -1201,7 +1201,7 @@ export function createHydraConnection() {
     watchdog = setInterval(
       () => {
         const now = Date.now()
-        const handshakeStalled = !physicalHydra && now - started > RECOVERY_TIMEOUT_MS
+        const handshakeStalled = !physicalTitan && now - started > RECOVERY_TIMEOUT_MS
 
         if (now - received > RECOVERY_TIMEOUT_MS || handshakeStalled) {
           recover()
@@ -1227,7 +1227,7 @@ export function createHydraConnection() {
 
     if (next.origin !== origin || !/^\/hydra\/[a-z0-9._-]+\/(?:settings\/)?$/.test(next.pathname)) {
       throw new CommandFailure({
-        message: 'Invalid Hydra URL',
+        message: 'Invalid Titan URL',
         code: 'VALIDATION_ERROR',
       })
     }
@@ -1301,7 +1301,7 @@ export function createHydraConnection() {
 
       return [...ids].map(id => visible({ scope: scopeFor({ id }) }))
     },
-    // eslint-disable-next-line pnyx/object-params -- React useSyncExternalStore subscription contract.
+    // eslint-disable-next-line othrys/object-params -- React useSyncExternalStore subscription contract.
     subscribe: (listener: () => void) => {
       listeners.add(listener)
 

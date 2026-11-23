@@ -44,7 +44,7 @@ let queue: {
 }[] = []
 let timer: ReturnType<typeof setTimeout> | undefined
 let output: Output | undefined
-// The owner's last send in each Hydra's chat, until the reply's first text is on the page.
+// The owner's last send in each Titan's chat, until the reply's first text is on the page.
 const sent = new Map<string, number>()
 // The reveal frames since the last live update's line, and the slowest of them.
 let frames = 0, worstFrameMs = 0, frameBudget = DISPLAY_FRAME_MS
@@ -144,7 +144,7 @@ export const setLogMode = ({ mode: next }: { mode: LogMode }) => {
 }
 
 // Queues the line for the server when the level allows it: a detailed line only under Detailed, a warning or error always.
-// eslint-disable-next-line pnyx/object-params -- the line passes on whole, so nothing is copied before the level check.
+// eslint-disable-next-line othrys/object-params -- the line passes on whole, so nothing is copied before the level check.
 export function log(line: PageLine): void {
   if (!logged({
     mode,
@@ -157,14 +157,14 @@ export function log(line: PageLine): void {
     error,
     ...fields
   } = line
-  // A line about no Hydra in particular belongs to the one the page shows.
-  const selectedHydra = output?.hydra()
+  // A line about no Titan in particular belongs to the one the page shows.
+  const selectedTitan = output?.hydra()
   queue.push({
     queued: performance.now(),
     text: JSON.stringify({
       ...fields,
       tab,
-      hydraId: fields.hydraId ?? selectedHydra,
+      hydraId: fields.hydraId ?? selectedTitan,
       error: line.level && error !== undefined ? pageError({ error }) : undefined,
     }),
   })
@@ -176,7 +176,7 @@ export function log(line: PageLine): void {
   schedule()
 }
 
-// Starts timing the owner's send in Hydra's chat; firstTextShown logs the time to the reply's first text.
+// Starts timing the owner's send in Titan's chat; firstTextShown logs the time to the reply's first text.
 export const markSend = ({ hydraId }: { hydraId: string }) => {
   sent.set(
     hydraId,
@@ -298,13 +298,13 @@ export function startPageLog({
     SAMPLE_MS,
   )
 
-  // eslint-disable-next-line pnyx/object-params -- addEventListener owns the handler signature.
+  // eslint-disable-next-line othrys/object-params -- addEventListener owns the handler signature.
   const failed = (event: ErrorEvent) => log({
     level: 'error',
     operation: 'page.error',
     error: event.error ?? event.message,
   })
-  // eslint-disable-next-line pnyx/object-params -- addEventListener owns the handler signature.
+  // eslint-disable-next-line othrys/object-params -- addEventListener owns the handler signature.
   const rejected = (event: PromiseRejectionEvent) => log({
     level: 'error',
     operation: 'page.error',

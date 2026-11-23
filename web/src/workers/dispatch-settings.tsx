@@ -11,8 +11,8 @@ import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
 import { AccountModelPicker } from './account-model-picker.tsx'
 import type { SavedDispatch } from './dispatch-resource.ts'
-import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
-import { candidateMarks, changesBetween, documentOf, draftIssues, formatted, HYDRA_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
+import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useTitanDispatch } from './heads-dispatch.ts'
+import { candidateMarks, changesBetween, documentOf, draftIssues, formatted, TITAN_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
 
 function DispatchFrame({ ...props }: ComponentProps<'div'>) {
   return <div {...props} className="dispatch-settings flex w-full min-w-0 flex-col gap-4 text-ui [&_h4]:m-0 [&_h4]:flex [&_h4]:items-center [&_h4]:gap-1.5 [&_h4]:text-ui [&_h4_svg]:text-muted" />
@@ -144,12 +144,12 @@ function HowPicked() {
     <section className="dispatch-how rounded-lg border border-subtle bg-background px-3 py-2.5 [&_li]:border-l-2 [&_li]:border-gold-line [&_li]:pl-2 [&_li]:text-meta [&_li]:text-muted [&_li_strong]:mb-0.5 [&_li_strong]:flex [&_li_strong]:items-center [&_li_strong]:gap-1.25 [&_li_strong]:text-ui [&_li_strong]:text-ink [&_ol]:mx-0 [&_ol]:mt-2 [&_ol]:mb-0 [&_ol]:grid [&_ol]:list-none [&_ol]:grid-cols-3 [&_ol]:gap-2.5 [&_ol]:p-0 max-phone:[&_ol]:grid-cols-1 [&>.dispatch-desc]:mx-0 [&>.dispatch-desc]:mt-2 [&>.dispatch-desc]:mb-0" aria-labelledby="dispatch-how">
       <h4 id="dispatch-how"><Icon name="about" size={ICON_SIZE.inline} />How a worker’s agent is picked</h4>
       <ol>
-        <li><strong><Icon name="dispatch" size={ICON_SIZE.inline} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
+        <li><strong><Icon name="dispatch" size={ICON_SIZE.inline} />1 · Rule</strong>Titan picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
         <li><strong><Icon name="you" size={ICON_SIZE.inline} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
         <li><strong><Icon name="effort" size={ICON_SIZE.inline} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts.</li>
       </ol>
       <DispatchDescription>
-        Fast on in a Hydra’s composer puts every worker that Hydra starts on Fast, whatever its
+        Fast on in a Titan’s composer puts every worker that Titan starts on Fast, whatever its
         candidate says, where the model has Fast.
       </DispatchDescription>
     </section>
@@ -221,7 +221,7 @@ function RuleGroup({
   command: Command
   edit: Edit
 }) {
-  const { effective } = useHeadsDispatch({ command })
+  const { effective } = useTitanDispatch({ command })
   const problemsId = useId()
   const fixed = at === 'default'
   const rule = fixed ? undefined : draft.rules[at]
@@ -289,10 +289,10 @@ function RuleGroup({
               />
               <Textarea
                 className={`${CELL_CLASSES} dispatch-when min-h-0 text-meta text-muted`}
-                aria-label={`When Hydra picks ${name}`}
+                aria-label={`When Titan picks ${name}`}
                 aria-invalid={broken({ field: ['when'] }) || undefined}
                 data-changed={saved?.when !== rule!.when || undefined}
-                placeholder="When should Hydra pick this rule?"
+                placeholder="When should Titan pick this rule?"
                 value={rule!.when}
                 onChange={event => edit({
                   next: withRule({
@@ -483,13 +483,13 @@ function RulesTable({
   const named = draft.rules.flatMap((
     rule,
     index,
-  ) => rule.name === HYDRA_RULE ? [] : [index])
+  ) => rule.name === TITAN_RULE ? [] : [index])
 
   return (
     <DispatchSection aria-labelledby="dispatch-rules">
       <h4 id="dispatch-rules"><Icon name="dispatch" size={ICON_SIZE.inline} />Rules</h4>
       <DispatchDescription>
-        Each rule, then the candidates Hydra tries for it. Change any cell in place. A valid
+        Each rule, then the candidates Titan tries for it. Change any cell in place. A valid
         change saves as soon as you pick it or leave the field; a problem shows beside its rule
         and saves nothing.
       </DispatchDescription>
@@ -554,13 +554,13 @@ function JsonView({
   issues: DispatchIssue[]
 }) {
   return (
-    <DispatchSection json aria-label="Heads dispatch JSON">
+    <DispatchSection json aria-label="Titan dispatch JSON">
       <DispatchDescription>
         The whole document, with the same checks as the table. It formats itself and saves when
         you leave the box, if it is valid.
       </DispatchDescription>
       <Textarea
-        aria-label="Heads dispatch document"
+        aria-label="Titan dispatch document"
         aria-invalid={errorsIn({ issues }).length > 0 || undefined}
         spellCheck={false}
         value={text}
@@ -780,9 +780,9 @@ export function DispatchSettings({
   return (
     <DispatchFrame ref={root} onBlur={() => setLeft(count => count + 1)}>
       <div className="dispatch-top flex flex-wrap items-center justify-between gap-3">
-        <span className="dispatch-source inline-flex items-center gap-1.5 text-meta text-muted"><Icon name="file" size={ICON_SIZE.inline} />Shared by every Hydra · revision <code>{saved.revision}</code></span>
+        <span className="dispatch-source inline-flex items-center gap-1.5 text-meta text-muted"><Icon name="file" size={ICON_SIZE.inline} />Shared by every Titan · revision <code>{saved.revision}</code></span>
         <Segmented
-          label="Heads dispatch view"
+          label="Titan dispatch view"
           value={json ? 'json' : 'table'}
           options={VIEWS}
           onChange={show}

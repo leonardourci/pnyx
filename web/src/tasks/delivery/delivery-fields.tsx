@@ -29,7 +29,7 @@ const MERGER_OPTIONS = [
   },
   {
     value: 'hydra',
-    label: 'Hydra, once checks are green',
+    label: 'Titan, once checks are green',
   },
 ]
 

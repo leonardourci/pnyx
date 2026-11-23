@@ -13,7 +13,7 @@ export type Restore = {
   scroll?: Record<string, [number, number]>
 }
 
-// What the open Hydra shows: its page, the selected and opened cards and the revealed ones.
+// What the open Titan shows: its page, the selected and opened cards and the revealed ones.
 export type PageView = {
   page: string
   selected: string | null
@@ -21,7 +21,7 @@ export type PageView = {
   revealed: NonNullable<Restore['revealed']>
 }
 
-// The view a Hydra opens with: the one it saved, unless its link opens a project or settings.
+// The view a Titan opens with: the one it saved, unless its link opens a project or settings.
 export function openingView({
   restored,
   hydraId,

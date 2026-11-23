@@ -8,7 +8,7 @@ const SCROLL_LERP = 0.12
 const scrolls = new Set<Lenis>()
 let scrollFrame: number | undefined
 
-// eslint-disable-next-line pnyx/object-params -- requestAnimationFrame supplies its timestamp.
+// eslint-disable-next-line othrys/object-params -- requestAnimationFrame supplies its timestamp.
 function advanceScroll(time: number) {
   scrollFrame = undefined
   scrolls.forEach(lenis => lenis.raf(time))

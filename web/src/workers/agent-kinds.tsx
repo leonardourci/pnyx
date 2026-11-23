@@ -1,22 +1,22 @@
 import { SettingsBox } from '#web-shared/ui/settings-box.tsx'
-import { useHeadsDispatch } from './heads-dispatch.ts'
-import type { HydraState } from '#app/model.ts'
+import { useTitanDispatch } from './heads-dispatch.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export function AgentKinds({ command }: {
-  state: HydraState
+  state: TitanState
   command: Command
   notify({ text }: { text: string }): void
 }) {
   const {
     effective,
     error,
-  } = useHeadsDispatch({ command })
+  } = useTitanDispatch({ command })
 
   return (
     <SettingsBox aria-label="Agents">
       <h2>Agents</h2>
-      <p className="muted">Your explicit agent choice wins. Otherwise Hydra picks a rule and quota ranks its Claude and Codex candidates. Ask Hydra to change rules or accounts. Each change is recorded in chat.</p>
+      <p className="muted">Your explicit agent choice wins. Otherwise Titan picks a rule and quota ranks its Claude and Codex candidates. Ask Titan to change rules or accounts. Each change is recorded in chat.</p>
       {error && <p role="alert">{error}</p>}
       {!effective && !error && <p className="muted">Loading heads dispatch…</p>}
       {effective && (

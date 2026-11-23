@@ -7,7 +7,7 @@ import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '#work
 import type { Card } from '#tasks/model.ts'
 import type { Attention, FormField, Question } from '#workers/model.ts'
 import { Button, Input, NativeInput } from '#web-shared/ui/controls.tsx'
-import { markdownText } from '#web-hydra/markdown-text.ts'
+import { markdownText } from '#web-titan/markdown-text.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import type { Command } from '#web-app/connection.ts'
 

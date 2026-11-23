@@ -2,17 +2,17 @@ import { QuestionActions, QuestionPanel } from '#web-shared/ui/question-panel.ts
 import { useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
-import { ComposerField } from '#web-hydra/composer-field.tsx'
-import { hasPendingImage } from '#web-hydra/draft.ts'
+import { ComposerField } from '#web-titan/composer-field.tsx'
+import { hasPendingImage } from '#web-titan/draft.ts'
 import type { Command } from '#web-app/connection.ts'
 import { reviewState, type ReviewRequest } from './review-requests.ts'
 import { QuestionTiming } from './question-timing.tsx'
 import { textOption } from './ask.tsx'
 
 const NOTICE = {
-  Merge: 'Merge approved. Hydra will run the required checks.',
+  Merge: 'Merge approved. Titan will run the required checks.',
   Hold: 'Review put on hold.',
-  note: 'Note sent to Hydra. The review stays open.',
+  note: 'Note sent to Titan. The review stays open.',
 }
 
 export function ReviewReadiness({
@@ -43,7 +43,7 @@ export function ReviewReadiness({
   const noted = !!note.trim()
   const locked = busy || inFlight || !!ask.deferredUntil || hasPendingImage({ text: note })
 
-  // A note alone is a discussion: it reaches Hydra and leaves the decision open.
+  // A note alone is a discussion: it reaches Titan and leaves the decision open.
   const send = async ({ choice }: { choice?: 'Merge' | 'Hold' }) => {
     if (busy) {
       return
@@ -89,10 +89,10 @@ export function ReviewReadiness({
     <QuestionPanel as="section" className="ask-structured" aria-label="Pull request review">
       <strong className="eyebrow">{state}</strong>
       <CollapsibleText text={ask.context ?? link.title ?? link.url} />
-      <p className="muted small">Checks: {link.checks ?? 'not read yet'}. Hydra merges after the required checks pass.</p>
+      <p className="muted small">Checks: {link.checks ?? 'not read yet'}. Titan merges after the required checks pass.</p>
       {!approved && (
         <ComposerField
-          label="Note for Hydra"
+          label="Note for Titan"
           placeholder="Add a note or a point to highlight"
           value={note}
           change={({ text }) => setNote(text)}

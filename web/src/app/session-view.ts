@@ -5,7 +5,7 @@ import { kept } from '#web-shared/stable.ts'
 export interface SessionView<Value> {
   key: string
   snapshot(): Value
-  // eslint-disable-next-line pnyx/object-params -- React owns the subscription signature.
+  // eslint-disable-next-line othrys/object-params -- React owns the subscription signature.
   subscribe(changed: () => void): () => void
   set: Dispatch<SetStateAction<Value>>
   remember({ value }: { value: Value }): void
@@ -30,7 +30,7 @@ export function sessionViewKey({
   id: string
   field: string
 }) {
-  const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
+  const installation = document.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
 
   return `pnyx:view:${JSON.stringify([
     location.origin,
@@ -75,7 +75,7 @@ export function sessionView<Value>({
   const view: SessionView<Value> = {
     key,
     snapshot: () => value,
-    // eslint-disable-next-line pnyx/object-params -- useSyncExternalStore owns subscription callbacks.
+    // eslint-disable-next-line othrys/object-params -- useSyncExternalStore owns subscription callbacks.
     subscribe: changed => {
       listeners.add(changed)
 
@@ -83,9 +83,9 @@ export function sessionView<Value>({
         listeners.delete(changed)
       }
     },
-    // eslint-disable-next-line pnyx/object-params -- React owns the state setter signature.
+    // eslint-disable-next-line othrys/object-params -- React owns the state setter signature.
     set: update => {
-      // eslint-disable-next-line pnyx/object-params -- React owns functional state updaters.
+      // eslint-disable-next-line othrys/object-params -- React owns functional state updaters.
       const next = typeof update === 'function' ? (update as (value: Value) => Value)(value) : update
       const retained = kept({
         previous: value,

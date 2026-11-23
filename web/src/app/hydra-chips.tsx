@@ -2,29 +2,29 @@ import { Fragment } from 'react'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
-import type { HydraSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
 import { SortGroup } from '#web-shared/ui/sortable.tsx'
 import { SortableChip } from '#web-shared/ui/sortable-chip.tsx'
 import { WaitingCount } from '#web-shared/ui/waiting-count.tsx'
-import { HydraLabel } from '#web-hydra/hydra-title.tsx'
+import { TitanLabel } from '#web-titan/hydra-title.tsx'
 
-export function HydraChips({
+export function TitanChips({
   hydras,
   current,
   navigate,
-  createHydra,
+  createTitan,
   polisFilter,
   filterPolis,
 }: {
-  hydras: HydraSummary[]
+  hydras: TitanSummary[]
   current: string
   navigate({ url }: { url: string }): Promise<void>
   polisFilter?: string
   filterPolis({ polis }: { polis?: string }): void
-  createHydra(): unknown
+  createTitan(): unknown
 }) {
   return (
-    <nav data-sort-surface={`hydra-chips:${current}`} className="hydra-chips flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden" aria-label="Hydra navigation">
+    <nav data-sort-surface={`hydra-chips:${current}`} className="hydra-chips flex min-w-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden" aria-label="Titan navigation">
       <SortGroup id={`hydra-chips:${current}`} items={hydras.map(hydra => hydra.id)}>
         {hydras.map((
           hydra,
@@ -74,7 +74,7 @@ export function HydraChips({
                   return navigate({ url: `/hydra/${encodeURIComponent(hydra.id)}/` })
                 }}
               >
-                <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
+                <TitanLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
                 <WaitingCount count={waiting} />
               </SortableChip>
             </Fragment>
@@ -82,8 +82,8 @@ export function HydraChips({
         })}
       </SortGroup>
       <IconButton
-        label="New Hydra"
-        onClick={createHydra}
+        label="New Titan"
+        onClick={createTitan}
         icon="plus"
       />
     </nav>

@@ -1,4 +1,4 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { TaskReference } from './task-reference.tsx'
@@ -8,7 +8,7 @@ export function Prerequisites({
   state,
 }: {
   card: Card
-  state: HydraState
+  state: TitanState
 }) {
   if (!card.prerequisites?.length) {
     return null

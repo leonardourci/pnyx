@@ -3,7 +3,7 @@ import { accountLabel } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { TooltipPanel, TooltipSection } from '#web-shared/ui/tooltip.tsx'
-import { useHeadsDispatch } from './heads-dispatch.ts'
+import { useTitanDispatch } from './heads-dispatch.ts'
 import { Usage } from './usage.tsx'
 import { useUsageRefresh } from './usage-ring.tsx'
 
@@ -14,7 +14,7 @@ export function AgentDetails({
   card: Card
   command: Command
 }) {
-  const { effective } = useHeadsDispatch({ command })
+  const { effective } = useTitanDispatch({ command })
   const reading = useUsageRefresh({
     card,
     command,
@@ -41,7 +41,7 @@ export function AgentDetails({
     ],
     [
       'Host',
-      agent.host === 'pnyx' ? 'Pnyx' : undefined,
+      agent.host === 'pnyx' ? 'Othrys' : undefined,
     ],
     [
       'Folder',

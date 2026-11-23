@@ -48,15 +48,15 @@ function Steps({ operation }: { operation: UpgradeOperation }) {
   )
 }
 
-// The chat row Pnyx draws for an /upgrade, from its first step to the restarted server.
+// The chat row Othrys draws for an /upgrade, from its first step to the restarted server.
 export function UpgradeRow({
   operation,
-  askHydra,
+  askTitan,
   stop,
   restartNow,
 }: {
   operation: UpgradeOperation
-  askHydra({ text }: { text: string }): void
+  askTitan({ text }: { text: string }): void
   stop(): Promise<void>
   // Restarts a built upgrade without waiting for agents between turns.
   restartNow(): Promise<void>
@@ -68,7 +68,7 @@ export function UpgradeRow({
     running: active,
   })
   const restartOnly = operation.steps.length === 1 && operation.steps[0]?.step === 'restart'
-  const progressTitle = restartOnly ? 'Restarting Pnyx' : 'Upgrading Pnyx'
+  const progressTitle = restartOnly ? 'Restarting Othrys' : 'Upgrading Othrys'
   const finishedTitle = restartOnly ? 'Restarted' : 'Upgraded'
   const activeIcon = restartOnly ? 'restart' : 'upgrade'
   const brokenBack = operation.rolledBack === false
@@ -78,7 +78,7 @@ export function UpgradeRow({
     detail,
   ] = operation.state === 'waiting' ? [
     'Upgraded; restarting once no agent is mid-turn',
-    `Pnyx restarts by ${new Date(operation.restartBy ?? Date.now()).toLocaleTimeString(
+    `Othrys restarts by ${new Date(operation.restartBy ?? Date.now()).toLocaleTimeString(
       [],
       {
         hour: '2-digit',
@@ -88,14 +88,14 @@ export function UpgradeRow({
   ]
     : active ? [`${progressTitle}… ${elapsed}`]
       : operation.state === 'done' ? [`${finishedTitle} · ${elapsed}`]
-        : operation.state === 'current' ? ['Pnyx is already up to date']
+        : operation.state === 'current' ? ['Othrys is already up to date']
           : operation.state === 'stopped' ? brokenBack ? [
             'Upgrade stopped.',
-            'Going back to the previous version failed, so the Pnyx folder may be partly upgraded.',
+            'Going back to the previous version failed, so the Othrys folder may be partly upgraded.',
           ] : ['Upgrade stopped; nothing changed.']
             : operation.state === 'refused' ? [
               'Upgrade not started.',
-              `The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
+              `The Othrys folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
             ]
               : operation.failed === 'restart' ? restartOnly ? ['Restart failed.'] : [
                 'Upgrade finished, but restart failed.',
@@ -104,7 +104,7 @@ export function UpgradeRow({
                 : [
                   `Upgrade failed while ${stoppedWhile({ operation })}.`,
                   operation.rolledBack === false
-                    ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
+                    ? 'Going back to the previous version failed too, so the Othrys folder may be partly upgraded.'
                     : 'Went back to the previous version; nothing changed.',
                 ]
 
@@ -138,8 +138,8 @@ export function UpgradeRow({
         )}
         {needsFix && operation.error && <pre className="upgrade-error m-0 max-h-upgrade-error overflow-auto rounded-md border border-line bg-raised px-2 py-1.5 font-mono text-meta leading-normal wrap-anywhere whitespace-pre-wrap text-ink">{operation.error}</pre>}
         {needsFix && !restartOnly && (
-          <UpgradeAction onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
-            <Icon name="fix" size={ICON_SIZE.inline} />Ask Hydra to fix
+          <UpgradeAction onClick={() => askTitan({ text: fixPrompt({ operation }) })}>
+            <Icon name="fix" size={ICON_SIZE.inline} />Ask Titan to fix
           </UpgradeAction>
         )}
       </div>

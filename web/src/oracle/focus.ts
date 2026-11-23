@@ -461,7 +461,7 @@ export function usePreviewFocus({
     event.preventDefault(); event.stopPropagation()
 
     if (typed) {
-      // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+      // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
       setQuery(value => value + event.key)
     }
 

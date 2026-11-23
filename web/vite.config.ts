@@ -4,22 +4,22 @@ import react from '@vitejs/plugin-react'
 import { defaultClientConditions, defineConfig, type Plugin } from 'vite'
 import { hydraIdentity, localToken } from '#app/server-state.ts'
 
-const PORT = Number(process.env.PNYX_DEV_PORT ?? 4319)
+const PORT = Number(process.env.OTHRYS_DEV_PORT ?? 4319)
 const SERVER = `http://127.0.0.1:${PORT}`
 
-// The Hydra server accepts only its own origin, so a request from a page this dev server served is passed on as one from
+// The Titan server accepts only its own origin, so a request from a page this dev server served is passed on as one from
 // the server's own page; any other origin passes through and is refused.
 const fromDevPage = ({ req }: { req: IncomingMessage }) => req.headers.origin === `http://${req.headers.host}`
 
-// The dev page gets the same token meta the Hydra server injects into the built page.
+// The dev page gets the same token meta the Titan server injects into the built page.
 const devToken: Plugin = {
-  name: 'pnyx-dev-token',
+  name: 'othrys-dev-token',
   apply: 'serve',
   transformIndexHtml: () => [
     {
       tag: 'meta',
       attrs: {
-        name: 'pnyx-token',
+        name: 'othrys-token',
         content: localToken(),
       },
       injectTo: 'head',
@@ -27,7 +27,7 @@ const devToken: Plugin = {
     {
       tag: 'meta',
       attrs: {
-        name: 'pnyx-hydra',
+        name: 'othrys-hydra',
         content: hydraIdentity({ hydraId: 'dev' }),
       },
       injectTo: 'head',
@@ -35,7 +35,7 @@ const devToken: Plugin = {
     {
       tag: 'meta',
       attrs: {
-        name: 'pnyx-installation',
+        name: 'othrys-installation',
         content: hydraIdentity({ hydraId: '' }),
       },
       injectTo: 'head',
@@ -51,14 +51,14 @@ export default defineConfig({
     devToken,
   ],
   resolve: {
-    alias: process.env.VITE_PNYX_PROFILE === '1' ? { 'react-dom/client': 'react-dom/profiling' } : {},
+    alias: process.env.VITE_OTHRYS_PROFILE === '1' ? { 'react-dom/client': 'react-dom/profiling' } : {},
     conditions: [
       ...defaultClientConditions,
       'source',
     ],
   },
   build: {
-    sourcemap: process.env.VITE_PNYX_PROFILE === '1',
+    sourcemap: process.env.VITE_OTHRYS_PROFILE === '1',
     outDir: '../dist/web',
     emptyOutDir: true,
   },
@@ -69,7 +69,7 @@ export default defineConfig({
       '/folders': {
         target: SERVER,
         changeOrigin: true,
-        // eslint-disable-next-line pnyx/object-params
+        // eslint-disable-next-line othrys/object-params
         rewrite: path => `/hydra/dev${path}`,
       },
       '/ws': {

@@ -1,0 +1,571 @@
+import { Prose, ProseCode } from './prose.tsx'
+import { TaskReference } from '#web-tasks/task-reference.tsx'
+import { decodeValue, mentionId } from '#titan/mentions.ts'
+import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
+import type { Token, Tokens } from 'marked'
+import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
+import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#titan/images.ts'
+import { ImageChip, MessageImage } from './attached-image.tsx'
+import { ColumnChip } from '#web-tasks/column-chip.tsx'
+import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
+import { prepareChatTokens } from './chat-tokens.ts'
+import { readSkillReference } from '#titan/transcripts-skill-reference.ts'
+import { CHIP_SOURCE } from './message-selection.ts'
+
+// Tokens become React elements; raw HTML remains visible text.
+function markdownHref({ href }: { href: string }): string | undefined {
+  try {
+    const url = new URL(decodeEntities({ text: href }))
+
+    return [
+      'https:',
+      'http:',
+      'mailto:',
+    ].includes(url.protocol) ? url.href : undefined
+  } catch {
+    return undefined
+  }
+}
+
+type TaskLink = {
+  openTask?({ id }: { id: string }): void
+  columnLook?({ id }: { id: string }): {
+    icon: string
+    tone: string
+  }
+  images?: Map<string, string>
+}
+
+function Sourced({
+  markdown,
+  children,
+}: {
+  markdown: string
+  children: ReactNode
+}) {
+  return <span {...{ [CHIP_SOURCE]: markdown }}>{children}</span>
+}
+
+const withImages = ({
+  text,
+  images,
+}: {
+  text: string
+  images?: Map<string, string>
+}): ReactNode => {
+  const parts: ReactNode[] = []
+  let end = 0
+
+  for (const match of text.matchAll(SHOWN_IMAGE)) {
+    const [source] = match
+    const { path } = shownImagePath({ match })
+    const label = shownImageLabel({
+      match,
+      names: images,
+    })
+    parts.push(
+      <ChatTokenText
+        key={end}
+        text={text.slice(
+          end,
+          match.index,
+        )}
+      />,
+      <Sourced key={`${match.index}:image`} markdown={source}>
+        <ImageChip path={path} label={label} />
+      </Sourced>,
+    )
+    end = match.index + source.length
+  }
+
+  return [
+    ...parts,
+    <ChatTokenText key={end} text={text.slice(end)} />,
+  ]
+}
+
+const inline = ({
+  tokens,
+  openTask,
+  columnLook,
+  images,
+}: { tokens: Token[] } & TaskLink): ReactNode =>
+  tokens.map((
+    token,
+    i,
+  ) => {
+    const children = 'tokens' in token && token.tokens ? inline({
+      tokens: token.tokens,
+      openTask,
+      columnLook,
+      images,
+    })
+      : 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
+
+    switch (token.type) {
+      case 'strong': return <strong key={i}>{children}</strong>
+      case 'em': return <em key={i}>{children}</em>
+      case 'del': return <del key={i}>{children}</del>
+      case 'codespan': return <ProseCode key={i}><ChatTokenText text={token.text} code /></ProseCode>
+      case 'html': return <ChatTokenText key={i} text={token.text} />
+      case 'br': return <br key={i} />
+      case 'image': {
+        const src = decodeEntities({ text: token.href })
+        const alt = decodeEntities({ text: token.text })
+        const href = markdownHref({ href: src })
+
+        return (
+          <Sourced key={i} markdown={token.raw}>
+            {href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+              >{alt}
+              </a>
+            ) : <MessageImage src={src} alt={alt} title={token.title ?? undefined} />}
+          </Sourced>
+        )
+      }
+      case 'link': {
+        const task = mentionId({ href: token.href })
+        const skillPointer = /^(?:othrys|pnyx)-skill:([\w%~.-]+)$/.exec(token.href)
+        const skillValue = skillPointer ? decodeValue({ value: skillPointer[1]! }) : undefined
+        const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
+
+        if (skill) {
+          return <Sourced key={i} markdown={token.raw}><SkillToken skill={skill} /></Sourced>
+        }
+
+        const pointer = /^othrys-(project|column|image|file):([\w%~.-]+)$/.exec(token.href)
+        const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
+        const label = inlineText({ tokens: token.tokens ?? [] }).replace(
+          /^@/,
+          '',
+        )
+
+        if (pointer?.[1] === 'image' && value !== undefined) {
+          return (
+            <Sourced key={i} markdown={token.raw}>
+              <ImageChip
+                path={value}
+                label={label}
+                reference
+              />
+            </Sourced>
+          )
+        }
+
+        if (pointer?.[1] === 'column' && value !== undefined) {
+          const look = columnLook?.({ id: value }) ?? {
+            icon: 'custom',
+            tone: '',
+          }
+
+          return (
+            <Sourced key={i} markdown={token.raw}>
+              <ColumnChip
+                {...look}
+                label={label}
+              />
+            </Sourced>
+          )
+        }
+
+        if (pointer) {
+          return (
+            <Sourced key={i} markdown={token.raw}>
+              <span className="chip reference-chip inline-flex py-px px-1.5 border border-gold-line rounded-md text-gold">{children}</span>
+            </Sourced>
+          )
+        }
+
+        if (task) {
+          return (
+            <Sourced key={i} markdown={token.raw}>
+              <TaskReference
+                id={task}
+                openTask={openTask}
+                savedLabel={label}
+              >{children}
+              </TaskReference>
+            </Sourced>
+          )
+        }
+
+        const href = markdownHref({ href: token.href })
+
+        return href ? (
+          <a
+            key={i}
+            href={href}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            {children}
+          </a>
+        ) : <Fragment key={i}>{children}</Fragment>
+      }
+      case 'text': return (
+        <Fragment key={i}>{typeof children === 'string' ? withImages({
+          text: children,
+          images,
+        }) : children}
+        </Fragment>
+      )
+      default: return <Fragment key={i}>{children}</Fragment>
+    }
+  })
+
+function Code({
+  text,
+  language,
+}: {
+  text: string
+  language?: string
+}) {
+  const lang = language?.split(/\s/)[0]?.toLowerCase() ?? ''
+
+  return (
+    <div className="code-block bg-background border border-line rounded-md my-(--block-gap) mx-0 min-w-0 [:is(.card,.ask)_&]:my-1">
+      {lang && <span className="code-language block pt-1.5 px-2.5 pb-0 text-meta leading-[normal] font-mono font-normal not-italic text-muted">{lang}</span>}
+      <pre className="m-0 overflow-auto max-w-full p-2.5 text-code leading-(--chat-line) font-mono font-normal not-italic whitespace-pre [:is(.card,.ask)_&]:p-1.5 [:is(.card,.ask)_&]:text-[length:inherit] [:is(.card,.ask)_&]:leading-question">
+        <ProseCode block><ChatTokenText text={text} code /></ProseCode>
+      </pre>
+    </div>
+  )
+}
+
+function Table({
+  token,
+  openTask,
+  columnLook,
+  images,
+}: { token: Tokens.Table } & TaskLink) {
+  const align = token.align.map(a => ({ textAlign: a ?? undefined }))
+  const cells = ({
+    row,
+    Cell,
+  }: {
+    row: Tokens.TableCell[]
+    Cell: 'th' | 'td'
+  }) => row.map((
+    cell,
+    n,
+  ) => (
+    <Cell key={n} style={align[n]} className="border border-line py-1.25 px-2.25 max-w-90 text-left [&:is(th)]:bg-raised [&:is(th)]:font-semibold [:is(.card,.ask)_&]:py-0.75 [:is(.card,.ask)_&]:px-1.25">{inline({
+      tokens: cell.tokens,
+      openTask,
+      columnLook,
+      images,
+    })}
+    </Cell>
+  ))
+
+  return (
+    <div className="markdown-table overflow-auto max-w-full my-(--block-gap) mx-0 [:is(.card,.ask)_&]:my-1">
+      <table className="border-collapse w-max min-w-full">
+        <thead>
+          <tr>
+            {cells({
+              row: token.header,
+              Cell: 'th',
+            })}
+          </tr>
+        </thead>
+        <tbody>{token.rows.map((
+          row,
+          n,
+        ) => (
+          <tr key={n}>{cells({
+            row,
+            Cell: 'td',
+          })}
+          </tr>
+        ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+interface MarkdownBlock {
+  index: number
+  offset: number
+  quote: string
+}
+type Render = {
+  tokens: Token[]
+  inItem?: boolean
+  base?: number
+}
+
+type BlockWrap = ({
+  index,
+  offset,
+  quote,
+  children,
+}: MarkdownBlock & { children: ReactNode }) => ReactNode
+
+type Blocks = {
+  text: string
+  tokens: Token[]
+  // Where `text` starts in the message, and the index of its first block.
+  offset?: number
+  index?: number
+  block?: BlockWrap
+} & TaskLink
+
+// blockCount in reveal.ts mirrors every `block` call made here.
+const renderBlocks = ({
+  text,
+  tokens,
+  offset: start = 0,
+  index: first = 0,
+  block,
+  openTask,
+  columnLook,
+  images,
+}: Blocks): ReactNode => {
+  let index = first
+
+  const wrap = ({
+    offset,
+    quote,
+    children,
+  }: Omit<MarkdownBlock, 'index'> & { children: ReactNode }) =>
+    block ? block({
+      index: index++,
+      offset: start + offset,
+      quote: quote.trim(),
+      children,
+    }) : children
+
+  const render = ({
+    tokens,
+    inItem = false,
+    base = 0,
+  }: Render): ReactNode => {
+    let cursor = base
+
+    return tokens.map((
+      token,
+      i,
+    ) => {
+      const found = text.indexOf(
+        token.raw,
+        cursor,
+      )
+      const offset = found < 0 ? cursor : found
+      cursor = offset + token.raw.length
+      let node: ReactNode
+
+      switch (token.type) {
+        case 'space': case 'checkbox': return null
+        case 'hr': return <hr key={i} />
+        case 'blockquote':
+          return (
+            <blockquote key={i}>{render({
+              tokens: token.tokens ?? [],
+              base: offset,
+            })}
+            </blockquote>
+          )
+        case 'list': return (
+          <Fragment key={i}>{list({
+            token: token as Tokens.List,
+            offset,
+          })}
+          </Fragment>
+        )
+        case 'heading': {
+          const Heading = `h${Math.min(
+            6,
+            token.depth,
+          )}` as 'h1'
+          node = (
+            <Heading>{inline({
+              tokens: token.tokens ?? [],
+              openTask,
+              columnLook,
+              images,
+            })}
+            </Heading>
+          ); break
+        }
+        case 'paragraph': case 'text': {
+          const content = token.tokens ? inline({
+            tokens: token.tokens,
+            openTask,
+            columnLook,
+            images,
+          }) : withImages({
+            text: token.text,
+            images,
+          })
+          const paragraph = <p>{content}</p>
+
+          if (inItem) {
+            return <Fragment key={i}>{paragraph}</Fragment>
+          }
+
+          node = paragraph; break
+        }
+        case 'code': node = <Code text={token.text} language={token.lang} />; break
+        case 'html': node = <p><ChatTokenText text={token.text} /></p>; break
+        case 'table': node = (
+          <Table
+            token={token as Tokens.Table}
+            openTask={openTask}
+            columnLook={columnLook}
+            images={images}
+          />
+        ); break
+        default: node = <p>{token.raw}</p>
+      }
+
+      const quote = token.type !== 'table' && 'text' in token ? String(token.text) : token.raw
+
+      return (
+        <Fragment key={i}>{wrap({
+          offset,
+          quote,
+          children: node,
+        })}
+        </Fragment>
+      )
+    })
+  }
+
+  // A plain function, not a component: a component defined here would remount
+  // on every render and drop focus from comments inside list items.
+  const list = ({
+    token,
+    offset,
+  }: {
+    token: Tokens.List
+    offset: number
+  }) => {
+    const Tag = token.ordered ? 'ol' : 'ul'
+    let cursor = offset
+
+    return (
+      <Tag start={token.ordered ? Number(token.start) : undefined}>
+        {token.items.map((
+          item,
+          n,
+        ) => {
+          const found = text.indexOf(
+            item.raw,
+            cursor,
+          )
+          const itemOffset = found < 0 ? cursor : found
+          cursor = itemOffset + item.raw.length
+          const marker = item.task && (
+            <span
+              role="img"
+              aria-label={item.checked ? 'Completed' : 'Not completed'}
+              className="task-marker mr-1.5 text-green"
+            >
+              {item.checked ? '☑' : '☐'}
+            </span>
+          )
+          const content = render({
+            tokens: item.tokens,
+            inItem: true,
+            base: itemOffset,
+          })
+          const body = <>{marker}{content}</>
+
+          return (
+            <li key={n}>{wrap({
+              offset: itemOffset,
+              quote: item.text,
+              children: body,
+            })}
+            </li>
+          )
+        })}
+      </Tag>
+    )
+  }
+
+  return render({ tokens })
+}
+
+// Memoized, so a streamed reply's completed blocks skip the typing frames between pushes.
+export const MarkdownBlocks = memo(renderBlocks)
+
+export const Markdown = memo(function Markdown({
+  text,
+  block,
+  openTask,
+  columnLook,
+}: {
+  text: string
+  block?: BlockWrap
+} & TaskLink) {
+  const context = useContext(ChatTokensContext)
+  const prepared = useMemo(
+    () => prepareChatTokens({
+      text,
+      suggestions: context.suggestions ?? [],
+    }),
+    [
+      text,
+      context.suggestions,
+    ],
+  )
+  const tokens = useMemo(
+    () => {
+      const tokens = markdown.lexer(prepared.text)
+      markdown.walkTokens(
+        tokens,
+        // eslint-disable-next-line othrys/object-params -- Marked owns this callback signature.
+        token => {
+          token.raw = prepared.restore({ text: token.raw })
+
+          if ('href' in token) {
+            token.href = prepared.restore({ text: token.href })
+          }
+
+          if (token.type === 'code' && token.lang) {
+            token.lang = prepared.restore({ text: token.lang })
+          }
+        },
+      )
+
+      return tokens
+    },
+    [prepared],
+  )
+  const images = useMemo(
+    () => shownImageNames({ text }),
+    [text],
+  )
+
+  return (
+    <ChatTokensContext.Provider
+      value={{
+        ...context,
+        tokens: prepared,
+      }}
+    >
+      <Prose>{renderBlocks({
+        text,
+        tokens,
+        block: block ? ({
+          quote,
+          ...props
+        }) => block({
+          ...props,
+          quote: prepared.restore({ text: quote }),
+        }) : undefined,
+        openTask,
+        columnLook,
+        images,
+      })}
+      </Prose>
+    </ChatTokensContext.Provider>
+  )
+})

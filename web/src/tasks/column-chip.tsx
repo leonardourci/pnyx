@@ -1,4 +1,4 @@
-import { COLUMN_CHIP_TONE } from '#web-hydra/draft-chip.tsx'
+import { COLUMN_CHIP_TONE } from '#web-titan/draft-chip.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 
 export function ColumnChip({

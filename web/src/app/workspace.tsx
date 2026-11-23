@@ -11,18 +11,18 @@ import { StatusNotice, StatusMessage, ErrorBanner } from '#web-shared/ui/status-
 import { projectTitle } from '#web-projects/view.ts'
 import { IconButton } from '#web-shared/ui/icon-button.tsx'
 import { createPortal } from 'react-dom'
-import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { taskMention } from '#hydra/mentions.ts'
+import { TITAN_MARK, pickName } from '#titan/titan-names.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { taskMention } from '#titan/mentions.ts'
 import { viewFor } from '#preferences/view.ts'
 import { pickView } from '#settings/settings.ts'
 import type { Card } from '#tasks/model.ts'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { useChatDrafts } from '#web-hydra/chat-drafts.ts'
-import { HydraComposerSources } from '#web-hydra/composer-sources.tsx'
-import { HydraChat } from '#web-hydra/hydra-chat.tsx'
-import { HydraLabel } from '#web-hydra/hydra-title.tsx'
-import { storageKey } from '#web-hydra/outbox.ts'
+import { useChatDrafts } from '#web-titan/chat-drafts.ts'
+import { TitanComposerSources } from '#web-titan/composer-sources.tsx'
+import { TitanChat } from '#web-titan/hydra-chat.tsx'
+import { TitanLabel } from '#web-titan/hydra-title.tsx'
+import { storageKey } from '#web-titan/outbox.ts'
 import { Oracle } from '#web-oracle/oracle.tsx'
 import { workspaceSearch } from '#web-oracle/workspaces.ts'
 import { focusElement } from '#web-shared/ui/focus.ts'
@@ -37,7 +37,7 @@ import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useScrollingClass } from '#web-shared/use-scrolling-class.ts'
-import { HydraCard } from '#web-tasks/card.tsx'
+import { TitanCard } from '#web-tasks/card.tsx'
 import { ProjectCounts } from '#web-tasks/project-counts.tsx'
 import { ProjectColumn } from '#web-tasks/project-column.tsx'
 import { TaskChat } from '#web-tasks/task-chat.tsx'
@@ -57,15 +57,15 @@ import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode } from 'react'
-import { useHydra } from './connection.ts'
-import { useHydraEdits } from './hydra-edits.ts'
+import { useTitan } from './connection.ts'
+import { useTitanEdits } from './hydra-edits.ts'
 import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/ui/sortable.tsx'
-import { HydraChips } from './hydra-chips.tsx'
+import { TitanChips } from './hydra-chips.tsx'
 import { Panel } from './panel.tsx'
 import { hydraViews,openingView,restoreView,usePersistView } from './restore.ts'
 import { hydraTitle,pageTitle } from './view.ts'
 
-function HydraDragName({
+function TitanDragName({
   id,
   name,
   disabled,
@@ -102,7 +102,7 @@ function HydraDragName({
   )
 }
 
-export function HydraView({
+export function TitanView({
   hydra,
   active,
   edits,
@@ -111,10 +111,10 @@ export function HydraView({
   polisFilter,
   filterPolis,
 }: {
-  hydra: ReturnType<typeof useHydra>
-  navigatePage: ReturnType<typeof useHydra>['navigate']
+  hydra: ReturnType<typeof useTitan>
+  navigatePage: ReturnType<typeof useTitan>['navigate']
   active: boolean
-  edits: ReturnType<typeof useHydraEdits>
+  edits: ReturnType<typeof useTitanEdits>
   preview: SortMove | null
   polisFilter?: string
   filterPolis({ polis }: { polis?: string }): void
@@ -150,7 +150,7 @@ export function HydraView({
   const projectPending = useProjectIntents({ command })
   const restoreKey = storageKey({
     key: 'restore',
-    hydraId: hydra.storageHydra,
+    hydraId: hydra.storageTitan,
   })
   const commentsKey = storageKey({
     key: 'comments',
@@ -196,10 +196,10 @@ export function HydraView({
   const drafts = useRef<Record<string, string>>(restored.drafts ?? {})
   const chatDrafts = useChatDrafts({
     identity: restoreKey,
-    text: drafts.current[HYDRA_CARD] ?? '',
+    text: drafts.current[TITAN_CARD] ?? '',
     commentsKey,
     saveText: ({ text }) => {
-      drafts.current[HYDRA_CARD] = text
+      drafts.current[TITAN_CARD] = text
 
       try {
         const saved = restoreView({ key: restoreKey })
@@ -226,13 +226,13 @@ export function HydraView({
   } | null>({
     key: sessionViewKey({
       scope: 'hydra',
-      id: hydra.storageHydra,
+      id: hydra.storageTitan,
       field: 'creatingTask',
     }),
     initial: null,
   })
   const taskFormVersion = useRef(creatingTask?.version ?? 0)
-  // Another Hydra's Add project request waits in the URL until that Hydra opens.
+  // Another Titan's Add project request waits in the URL until that Titan opens.
   const [
     projectRequest,
     setProjectRequest,
@@ -374,7 +374,7 @@ export function HydraView({
     workspace: {
       ...configuredView.workspace,
       collapsed: state.view?.workspace?.collapsed
-        ?? shared?.hiddenHydras.includes(navigation.hydraId) ?? false,
+        ?? shared?.hiddenTitans.includes(navigation.hydraId) ?? false,
     },
   }
   const references = useTaskReferences({
@@ -403,11 +403,11 @@ export function HydraView({
     }
   }
 
-  const shownHydra = edits.hydras.find(h => h.id === navigation.hydraId)
+  const shownTitan = edits.hydras.find(h => h.id === navigation.hydraId)
   const title = pageTitle({
     page,
     taskTitle: selected ? state.cards[selected]?.title : undefined,
-    hydra: shownHydra && hydraTitle(shownHydra),
+    hydra: shownTitan && hydraTitle(shownTitan),
   })
   useEffect(
     () => {
@@ -787,12 +787,12 @@ export function HydraView({
     }
 
     window.addEventListener(
-      'pnyx:workspace-target',
+      'othrys:workspace-target',
       receive,
     )
 
     return () => window.removeEventListener(
-      'pnyx:workspace-target',
+      'othrys:workspace-target',
       receive,
     )
   })
@@ -811,7 +811,7 @@ export function HydraView({
     await navigate({ url: `/hydra/${encodeURIComponent(destination)}/` })
 
     window.dispatchEvent(new CustomEvent(
-      'pnyx:workspace-target',
+      'othrys:workspace-target',
       {
         detail: {
           hydra: destination,
@@ -846,13 +846,13 @@ export function HydraView({
       hydra: {
         id: workspace.navigation.hydraId,
         name: summary?.name ?? '',
-        icon: summary?.icon ?? HYDRA_MARK,
+        icon: summary?.icon ?? TITAN_MARK,
       },
     }
   })
 
-  // The same command Hydra's composer sends the owner's message with, scoped to the chosen Hydra.
-  const askHydra = ({
+  // The same command Titan's composer sends the owner's message with, scoped to the chosen Titan.
+  const askTitan = ({
     id,
     text,
     event,
@@ -886,18 +886,18 @@ export function HydraView({
     }
   }
 
-  const oracleHydra = {
+  const oracleTitan = {
     id: navigation.hydraId,
-    name: shownHydra ? hydraTitle(shownHydra) : 'Hydra',
-    icon: shownHydra?.icon ?? HYDRA_MARK,
+    name: shownTitan ? hydraTitle(shownTitan) : 'Titan',
+    icon: shownTitan?.icon ?? TITAN_MARK,
   }
   const askTargets = edits.hydras.map(h => ({
     id: h.id,
     name: hydraTitle(h),
-    icon: h.icon ?? HYDRA_MARK,
+    icon: h.icon ?? TITAN_MARK,
   }))
   const opening = navigation.hydras.find(h => h.id === loading)
-  const retryLabel = hydra.creating ? 'Retry creating Hydra' : 'Retry loading Hydra'
+  const retryLabel = hydra.creating ? 'Retry creating Titan' : 'Retry loading Titan'
   const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
   const otherProjects = others.flatMap(h => h.projects.map(p => ({
     name: p.name,
@@ -924,7 +924,7 @@ export function HydraView({
     save({ patch: { workspace: { foldedProjects } } })
   }
 
-  const toggleHydra = () => {
+  const toggleTitan = () => {
     save({ patch: { workspace: { collapsed: !view.workspace.collapsed } } })
     requestAnimationFrame(() => layer?.scrollIntoView({
       inline: 'start',
@@ -966,7 +966,7 @@ export function HydraView({
     }) : family.status
 
     return (
-      <HydraCard
+      <TitanCard
         key={item.key}
         card={item}
         hydraId={navigation.hydraId}
@@ -995,7 +995,7 @@ export function HydraView({
         tabIndex={0}
         chat={opened && (
           <TaskChat
-            storageIdentity={hydra.storageHydra}
+            storageIdentity={hydra.storageTitan}
             hydraId={navigation.hydraId}
             card={item}
             state={state}
@@ -1017,7 +1017,7 @@ export function HydraView({
             connected={connected}
           />
         )}
-      </HydraCard>
+      </TitanCard>
     )
   }
 
@@ -1030,7 +1030,7 @@ export function HydraView({
 
   return (
 
-    <HydraComposerSources
+    <TitanComposerSources
       state={state}
       command={command}
       connected={connected}
@@ -1072,8 +1072,8 @@ export function HydraView({
                 view={view}
                 command={command}
                 connected={connected}
-                hydra={oracleHydra}
-                projects={shownHydra?.projects ?? []}
+                hydra={oracleTitan}
+                projects={shownTitan?.projects ?? []}
                 layer={layer}
                 save={save}
                 notify={notify}
@@ -1100,21 +1100,21 @@ export function HydraView({
                 }}
                 createColumn={requestProject}
                 hydras={askTargets}
-                send={askHydra}
+                send={askTitan}
                 openChat={openChat}
               />
             </ProfileSurface>
           )}
         >
-          <HydraChips
+          <TitanChips
             polisFilter={polisFilter}
             filterPolis={filterPolis}
             hydras={edits.hydras}
             current={navigation.hydraId}
             navigate={navigate}
-            createHydra={async () => {
+            createTitan={async () => {
               try {
-                await hydra.createHydra(pickName({
+                await hydra.createTitan(pickName({
                   taken: edits.hydras.map(item => item.name),
                 }))
               } catch (error) {
@@ -1125,8 +1125,8 @@ export function HydraView({
         </Panel>
         <header className="hydra-workspace-bar sticky left-4 z-5 flex min-h-9.5 w-max max-w-workspace-bar flex-none items-center gap-2.5 bg-background px-0.5 pb-2 group-data-[collapsed=true]/workspace:relative group-data-[collapsed=true]/workspace:left-auto group-data-[collapsed=true]/workspace:h-full group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:max-w-none group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:px-0 [&>.button]:flex-none">
           <IconButton
-            label={view.workspace.collapsed ? 'Unfold Hydra' : 'Fold Hydra'}
-            onClick={toggleHydra}
+            label={view.workspace.collapsed ? 'Unfold Titan' : 'Fold Titan'}
+            onClick={toggleTitan}
             icon={view.workspace.collapsed ? 'chevron_right' : 'chevron_left'}
           />
           <IconButton
@@ -1134,7 +1134,7 @@ export function HydraView({
             onClick={toggleAllProjects}
             icon={allProjectsFolded ? 'unfold_columns' : 'fold_columns'}
           />
-          <HydraDragName id={navigation.hydraId} name={shownHydra?.name ?? 'Hydra'} disabled={!connected}>
+          <TitanDragName id={navigation.hydraId} name={shownTitan?.name ?? 'Titan'} disabled={!connected}>
             {view.workspace.collapsed && (
               <ProjectCounts
                 asks={columns.reduce(
@@ -1153,8 +1153,8 @@ export function HydraView({
                 )}
               />
             )}
-            <HydraLabel name={shownHydra?.name ?? ''} icon={shownHydra?.icon} size={ICON_SIZE.heading} />
-          </HydraDragName>
+            <TitanLabel name={shownTitan?.name ?? ''} icon={shownTitan?.icon} size={ICON_SIZE.heading} />
+          </TitanDragName>
           <IconButton
             label="Add project"
             icon="plus"
@@ -1196,14 +1196,14 @@ export function HydraView({
           {(loading || !loaded || hydra.offline) && (
             <StatusMessage role="status">
               {hydra.offline && 'Connection lost. Reconnecting automatically.'}
-              {!hydra.offline && <>{hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={ICON_SIZE.inline} /> : 'Hydra'}</>}…</>}
+              {!hydra.offline && <>{hydra.creating ? 'Creating Titan' : <>Loading {opening ? <TitanLabel name={opening.name} icon={opening.icon} size={ICON_SIZE.inline} /> : 'Titan'}</>}…</>}
             </StatusMessage>
           )}
           {error && <ErrorBanner role="alert">{error} <Button onClick={hydra.dismissError}>Dismiss</Button></ErrorBanner>}
           {hydra.recovery && (
             <ErrorBanner role="alert">
               {hydra.recovery.message}
-              {hydra.recovery.action === 'retry' && <Button onClick={hydra.retryHydra}>{retryLabel}</Button>}
+              {hydra.recovery.action === 'retry' && <Button onClick={hydra.retryTitan}>{retryLabel}</Button>}
               {hydra.recovery.action === 'reload' && <Button onClick={() => location.reload()}>Reload page</Button>}
             </ErrorBanner>
           )}
@@ -1226,14 +1226,14 @@ export function HydraView({
                 />
                 <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate [&>.hydra-chat]:h-full [&>.hydra-chat]:max-h-none [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
                   <ProfileSurface name="chat" hydraId={navigation.hydraId}>
-                    <HydraChat
+                    <TitanChat
                       hydraId={navigation.hydraId}
-                      identity={shownHydra && {
-                        name: shownHydra.name,
-                        icon: shownHydra.icon,
-                        taken: edits.hydras.filter(h => h.id !== shownHydra.id).map(h => h.name),
+                      identity={shownTitan && {
+                        name: shownTitan.name,
+                        icon: shownTitan.icon,
+                        taken: edits.hydras.filter(h => h.id !== shownTitan.id).map(h => h.name),
                       }}
-                      editHydra={({
+                      editTitan={({
                         name,
                         icon,
                       }) => edits.edit({
@@ -1241,13 +1241,13 @@ export function HydraView({
                         name,
                         icon,
                       })}
-                      storageIdentity={hydra.storageHydra}
+                      storageIdentity={hydra.storageTitan}
                       projectRequest={projectRequest}
                       projectRequested={() => setProjectRequest(false)}
                       state={state}
                       liveThread={hydraThread}
-                      action={actions[HYDRA_CARD]}
-                      pendingTurn={hydra.pendingTurns[HYDRA_CARD]}
+                      action={actions[TITAN_CARD]}
+                      pendingTurn={hydra.pendingTurns[TITAN_CARD]}
                       taskActions={actions}
                       selectedTask={selectedRef}
                       queue={hydraQueue}
@@ -1296,7 +1296,7 @@ export function HydraView({
                                     {creatingTask?.group === c.id && (
                                       <TaskCreate
                                         hydraId={navigation.hydraId}
-                                        storageIdentity={hydra.storageHydra}
+                                        storageIdentity={hydra.storageTitan}
                                         key={`${c.id}:${creatingTask.parent ?? ''}`}
                                         {...creatingTask}
                                         repositories={c.repositories.length
@@ -1409,7 +1409,7 @@ export function HydraView({
           document.body,
         )}
       </div>
-    </HydraComposerSources>
+    </TitanComposerSources>
 
   )
 }

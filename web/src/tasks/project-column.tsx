@@ -61,7 +61,7 @@ export function ProjectColumn({
   })
   const outdentNode = outdentZone.setNodeRef
   const scrollRef = useCallback(
-    // eslint-disable-next-line pnyx/object-params -- The library owns this callback signature.
+    // eslint-disable-next-line othrys/object-params -- The library owns this callback signature.
     (node: HTMLDivElement | null) => {
       scroll.current = node
       remembered.ref(node)

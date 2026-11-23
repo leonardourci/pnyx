@@ -1,8 +1,8 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
 import { knownCards } from '#tasks/select.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import type { PendingTurn } from '#web-workers/pending-turns.ts'
 
 export interface ObservedStatus extends CardStatus {
@@ -16,7 +16,7 @@ export function observedStatus({
   pending,
 }: {
   card?: Card
-  state?: HydraState
+  state?: TitanState
   action?: CurrentAction
   pending?: PendingTurn
 }): ObservedStatus {

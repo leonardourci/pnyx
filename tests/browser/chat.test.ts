@@ -1,14 +1,14 @@
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
 import type { Page } from 'playwright-core'
-import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
+import { startOthrys, until, type Titan, type Othrys } from '../setup/othrys.ts'
 import { appendRecords } from '../setup/transcripts.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { openHydra } from './page.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { openTitan } from './page.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 const EXCHANGES = 12
@@ -143,12 +143,12 @@ const offEnd = ({ frames }: { frames: Frame[] }) => frames.map(frame => frame.fr
 test(
   'plain task ids, exact titles and card links open live task chips in both chats',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'mentions' })
     const task = await hydra.task({ key: 'mentions' })
-    const prose = `Check ${task.id}, Task mentions and [the card](pnyx-task:${task.id}).`
+    const prose = `Check ${task.id}, Task mentions and [the card](othrys-task:${task.id}).`
     const text = `${prose}\n\n\`Task mentions\`\n\n\`\`\`\n${task.id}\n\`\`\``
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       text: 'Show the references',
       reply: text,
@@ -163,8 +163,8 @@ test(
         },
       ],
     })
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       beforeLoad: async ({ page }) => {
         await page.setViewportSize({
@@ -175,7 +175,7 @@ test(
     })
     const hydraChat = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
-      { name: 'Hydra conversation' },
+      { name: 'Titan conversation' },
     )
     await hydraChat.getByText(
       'Check',
@@ -183,7 +183,7 @@ test(
     ).waitFor()
     expect(await hydraChat.locator(`[data-task-ref="${task.id}"]`).count()).toBe(3)
     const unmatched = 'Send this @zzzznomatchingtaskzzzz'
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       text: unmatched,
       reply: 'Received the unmatched reference.',
@@ -191,7 +191,7 @@ test(
     const composer = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'textbox',
       {
-        name: 'Reply to Hydra',
+        name: 'Reply to Titan',
         exact: true,
       },
     )
@@ -215,7 +215,7 @@ test(
     expect(await composer.inputValue()).toBe(draft)
     await composer.fill(unmatched)
     await page.getByText(
-      'Nothing in this Hydra matches.',
+      'Nothing in this Titan matches.',
       { exact: true },
     ).waitFor()
     await page.keyboard.press('Enter')
@@ -338,10 +338,10 @@ const exchange = async ({
   hydra,
   number,
 }: {
-  hydra: Hydra
+  hydra: Titan
   number: number
 }) => {
-  pnyx.claude.plan({
+  othrys.claude.plan({
     hydra: hydra.id,
     text: `question ${number}`,
     reply: tallParagraph({ label: `answer ${number}` }),
@@ -361,7 +361,7 @@ async function hydraWithLongConversation({
   exchanges?: number
   tieLast?: boolean
 } = {}) {
-  const hydra = await pnyx.hydra()
+  const hydra = await othrys.hydra()
 
   for (let number = 1; number <= exchanges; number++) {
     if (tieLast && number === exchanges) {
@@ -398,7 +398,7 @@ const setFocusMode = ({
   hydra,
   on,
 }: {
-  hydra: Hydra
+  hydra: Titan
   on: boolean
 }) => hydra.owner({
   args: [
@@ -410,7 +410,7 @@ const setFocusMode = ({
 })
 
 test(
-  'Hydra\'s chat and a task\'s chat open on their latest row, hold still and keep the end in view as rows arrive, in a card as tall as its column',
+  'Titan\'s chat and a task\'s chat open on their latest row, hold still and keep the end in view as rows arrive, in a card as tall as its column',
   async () => {
     onTestFinished(() => {
       vi.useRealTimers()
@@ -425,8 +425,8 @@ test(
       }),
     })
 
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       reducedMotion: true,
       beforeLoad: async ({ page }) => {
@@ -435,7 +435,7 @@ test(
     })
     await shownText({
       page,
-      chat: 'Hydra conversation',
+      chat: 'Titan conversation',
       text: `answer ${EXCHANGES}`,
     })
     vi.useRealTimers()
@@ -445,7 +445,7 @@ test(
     })
     const opened = await framesOf({
       page,
-      label: 'Hydra conversation',
+      label: 'Titan conversation',
     })
     expect(opened.at(-1)?.scrolls).toBe(true)
     expect(offEnd({ frames: opened })).toEqual([])
@@ -457,7 +457,7 @@ test(
     })
     await shownText({
       page,
-      chat: 'Hydra conversation',
+      chat: 'Titan conversation',
       text: `answer ${EXCHANGES + 1}`,
     })
     await nextFrames({
@@ -467,7 +467,7 @@ test(
     expect(offEnd({
       frames: await framesOf({
         page,
-        label: 'Hydra conversation',
+        label: 'Titan conversation',
       }),
     })).toEqual([])
 
@@ -536,20 +536,20 @@ test(
 test(
   'plain send and answer calls and saved legacy calls show their action and live task links',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({ key: 'labels' })
     const task = await hydra.task({ key: 'labels' })
     await setFocusMode({
       hydra,
       on: false,
     })
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
 
     try {
-      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/settings/`)
+      await page.goto(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/settings/`)
       await expect.poll(
         () => page.getByRole(
           'switch',
@@ -559,10 +559,10 @@ test(
           },
         ).getAttribute('aria-checked'),
       ).toBe('false')
-      await page.goto(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)
+      await page.goto(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)
       const session = await hydra.chat({ text: 'Review the work' })
       await until({
-        what: 'Hydra to finish its first reply',
+        what: 'Titan to finish its first reply',
         check: () => session.answered === session.received.length,
       })
       await appendRecords({
@@ -601,19 +601,19 @@ test(
           ...[
             {
               id: 'toolu_send',
-              command: `pnyx send --task ${task.id} --text "Check it"`,
+              command: `othrys send --task ${task.id} --text "Check it"`,
             },
             {
               id: 'toolu_answer',
-              command: `pnyx answer ${task.id} question-1 --text "Use it"`,
+              command: `othrys answer ${task.id} question-1 --text "Use it"`,
             },
             {
               id: 'toolu_legacy',
-              command: `pnyx-axi reply ${task.id} --text "Earlier call"`,
+              command: `othrys-axi reply ${task.id} --text "Earlier call"`,
             },
             {
               id: 'toolu_file',
-              command: `pnyx send --task ${task.id} --file message.txt`,
+              command: `othrys send --task ${task.id} --file message.txt`,
             },
           ].flatMap(({
             id,
@@ -645,7 +645,7 @@ test(
       })
       const conversation = page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
         'region',
-        { name: 'Hydra conversation' },
+        { name: 'Titan conversation' },
       )
       const progress = conversation.locator('.turn-actions > .disclosure').filter({
         has: page.locator('.trace-label').getByRole(
@@ -683,9 +683,9 @@ test(
 )
 
 test(
-  'with Focus mode on, a running tool call is named in neither Hydra\'s nor a task\'s working line, and a card\'s status never names one',
+  'with Focus mode on, a running tool call is named in neither Titan\'s nor a task\'s working line, and a card\'s status never names one',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({ key: 'build' })
     await setFocusMode({
       hydra,
@@ -696,14 +696,14 @@ test(
       name: 'Bash',
       input: { command: 'pnpm build' },
     })
-    const hydraTurn = pnyx.claude.plan({
+    const hydraTurn = othrys.claude.plan({
       hydra: hydra.id,
       text: 'Check the build',
       reply: 'The build passes.',
       tool: build({ id: 'toolu_hydra_build' }),
       hold: true,
     })
-    const workerTurn = pnyx.claude.plan({
+    const workerTurn = othrys.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Run the build'),
       reply: 'Built.',
@@ -712,8 +712,8 @@ test(
     })
 
     try {
-      const page = await openHydra({
-        port: pnyx.port(),
+      const page = await openTitan({
+        port: othrys.port(),
         hydraId: hydra.id,
       })
       await hydra.chat({ text: 'Check the build' })
@@ -788,8 +788,8 @@ test(
       tieLast: true,
       exchanges: 32,
     })
-    const hydraSession = pnyx.claude.sessions.findLast(session =>
-      session.env.PNYX_HYDRA === hydra.id)!
+    const hydraSession = othrys.claude.sessions.findLast(session =>
+      session.env.OTHRYS_TITAN === hydra.id)!
     const { worker } = await hydra.startTask({ key: 'older-notes' })
     const card = await hydra.task({ key: 'older-notes' })
     await appendRecords({
@@ -806,8 +806,8 @@ test(
     const epochs = new Map<string, string>()
     const olderReads = new Set<string>()
     const heldOlderAnswers: (() => void)[] = []
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       reducedMotion: true,
       beforeLoad: async ({ page }) => {
@@ -894,13 +894,13 @@ test(
     })
     await shownText({
       page,
-      chat: 'Hydra conversation',
+      chat: 'Titan conversation',
       text: 'answer 32',
     })
     vi.useRealTimers()
 
     for (const label of [
-      'Hydra conversation',
+      'Titan conversation',
       'Task older-notes conversation',
     ]) {
       if (label === 'Task older-notes conversation') {
@@ -933,7 +933,7 @@ test(
           -pastTheTop,
         )
 
-        if (label === 'Hydra conversation' && olderPage === 0) {
+        if (label === 'Titan conversation' && olderPage === 0) {
           await conversation.getByRole('alert').filter({ hasText: 'Earlier messages did not load: The transcript is unavailable' })
             .getByRole(
               'button',
@@ -1054,10 +1054,10 @@ test(
         return row.getBoundingClientRect().top - chat.getBoundingClientRect().top
       })
       const loadedRows = await conversation.locator('[data-entry-id]').count()
-      const session = label === 'Hydra conversation' ? hydraSession : worker
+      const session = label === 'Titan conversation' ? hydraSession : worker
       const priorResyncs = resyncs
       dropped = false
-      dropCard = label === 'Hydra conversation' ? HYDRA_CARD : card.id
+      dropCard = label === 'Titan conversation' ? TITAN_CARD : card.id
       await appendRecords({
         session,
         records: [
@@ -1102,10 +1102,10 @@ test(
         }) - anchorBeforeRecovery,
       ))
         .toBeLessThanOrEqual(1)
-      const recoveringCard = label === 'Hydra conversation' ? HYDRA_CARD : card.id
+      const recoveringCard = label === 'Titan conversation' ? TITAN_CARD : card.id
       const beforeEpoch = epochs.get(recoveringCard)
       expect(beforeEpoch).toBeDefined()
-      await pnyx.restart()
+      await othrys.restart()
       await appendRecords({
         session,
         records: [
@@ -1165,14 +1165,14 @@ test(
 )
 
 test.each([
-  { target: 'Hydra' },
+  { target: 'Titan' },
   { target: 'worker' },
 ] as const)(
   'a $target sent message stays as one owner row while held and through its answer',
   async ({ target }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'lakes' })
-    const compact = pnyx.claude.plan({
+    const compact = othrys.claude.plan({
       hydra: hydra.id,
       text: '/compact',
       compacting: true,
@@ -1181,7 +1181,7 @@ test.each([
     onTestFinished(() => compact.release())
     let session = worker
 
-    if (target === 'Hydra') {
+    if (target === 'Titan') {
       session = await hydra.chat({ text: '/compact' })
     } else {
       await hydra.owner({
@@ -1198,17 +1198,17 @@ test.each([
       })
     }
 
-    const label = target === 'Hydra' ? 'Hydra conversation' : 'Task lakes conversation'
-    const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
-    const answer = pnyx.claude.plan({
+    const label = target === 'Titan' ? 'Titan conversation' : 'Task lakes conversation'
+    const field = target === 'Titan' ? 'Reply to Titan' : 'Message worker'
+    const answer = othrys.claude.plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('List three lakes'),
       reply: 'Titicaca, Baikal and Victoria.',
       hold: true,
     })
     onTestFinished(() => answer.release())
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       reducedMotion: true,
     })
@@ -1293,7 +1293,7 @@ test.each([
 ] as const)(
   '$harness sends in either chat interrupt the turn and Stop adds no conversation text',
   async ({ harness }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({
       key: 'interrupt',
       harness,
@@ -1304,14 +1304,14 @@ test.each([
       args: [JSON.stringify({ harness })],
     })
     socket.close()
-    const turn = pnyx[harness].plan({
+    const turn = othrys[harness].plan({
       hydra: hydra.id,
       text: 'Keep working',
       partial: 'Working on it',
       hold: true,
     })
     const hydraSession = await hydra.chat({ text: 'Keep working' })
-    const workerTurn = pnyx[harness].plan({
+    const workerTurn = othrys[harness].plan({
       hydra: hydra.id,
       match: ({ text }) => text.includes('Keep working too'),
       partial: 'Working too',
@@ -1336,8 +1336,8 @@ test.each([
       what: 'the worker to take its first held input',
       check: () => worker.received.some(input => input.includes('Keep working too')),
     })
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       reducedMotion: true,
     })
@@ -1355,11 +1355,11 @@ test.each([
       stop,
     ] of [
         [
-          'Reply to Hydra',
-          'Hydra conversation',
+          'Reply to Titan',
+          'Titan conversation',
           hydraSession,
           'Answer this instead',
-          'Stop Hydra',
+          'Stop Titan',
         ],
         [
           'Message worker',
@@ -1369,7 +1369,7 @@ test.each([
           'Stop worker',
         ],
       ] as const) {
-      const nextTurn = pnyx[harness].plan({
+      const nextTurn = othrys[harness].plan({
         hydra: hydra.id,
         match: ({ text: input }) => input.includes(text),
         partial: 'New reply',
@@ -1436,12 +1436,12 @@ test.each([
 )
 
 test.each([
-  { target: 'Hydra' },
+  { target: 'Titan' },
   { target: 'worker' },
 ])(
   'a refused $target send shows its error on the same bubble and Retry delivers the same id once',
   async ({ target }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({
       key: 'retry-input',
       harness: 'codex',
@@ -1454,25 +1454,25 @@ test.each([
     socket.close()
     const text = `Retry the ${target} input`
 
-    if (target === 'Hydra') {
-      const turn = pnyx.codex.plan({
+    if (target === 'Titan') {
+      const turn = othrys.codex.plan({
         hydra: hydra.id,
         text: 'Keep working before refusal',
         hold: true,
       })
       onTestFinished(() => turn.release())
       await hydra.chat({ text: 'Keep working before refusal' })
-      pnyx.codex.refuseNextInterrupt()
+      othrys.codex.refuseNextInterrupt()
     } else {
-      pnyx.codex.plan({
+      othrys.codex.plan({
         hydra: hydra.id,
         match: ({ text: input }) => input.includes(text),
         refuse: true,
       })
     }
 
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       reducedMotion: true,
     })
@@ -1485,8 +1485,8 @@ test.each([
         .click()
     }
 
-    const label = target === 'Hydra' ? 'Hydra conversation' : 'Task retry-input conversation'
-    const field = target === 'Hydra' ? 'Reply to Hydra' : 'Message worker'
+    const label = target === 'Titan' ? 'Titan conversation' : 'Task retry-input conversation'
+    const field = target === 'Titan' ? 'Reply to Titan' : 'Message worker'
     const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
       'region',
       { name: label },
@@ -1511,8 +1511,8 @@ test.each([
     expect(await row.getByRole('alert').textContent()).toContain('refused')
     const id = await row.locator('[data-entry-id]').getAttribute('data-entry-id')
 
-    if (target === 'Hydra') {
-      await pnyx.restart()
+    if (target === 'Titan') {
+      await othrys.restart()
       await row.getByRole(
         'button',
         {
@@ -1529,7 +1529,7 @@ test.each([
       throw new Error('No sent bubble before Retry')
     }
 
-    pnyx.codex.plan({
+    othrys.codex.plan({
       hydra: hydra.id,
       match: ({ text: input }) => input.includes(text),
       refuse: true,
@@ -1544,8 +1544,8 @@ test.each([
     ).click()
     await until({
       what: 'the repeated refusal to reach the provider',
-      check: () => pnyx.codex.sessions.flatMap(session => session.received)
-        .filter(input => input.includes(text)).length === (target === 'Hydra' ? 1 : 2),
+      check: () => othrys.codex.sessions.flatMap(session => session.received)
+        .filter(input => input.includes(text)).length === (target === 'Titan' ? 1 : 2),
     })
     await row.getByRole('alert').filter({ hasText: 'refused the retry' })
       .waitFor()
@@ -1557,11 +1557,11 @@ test.each([
         exact: true,
       },
     ).click()
-    const expectedAttempts = target === 'Hydra' ? 2 : 3
+    const expectedAttempts = target === 'Titan' ? 2 : 3
     await until({
       what: 'the successful Retry turn to finish',
       check: () => {
-        const sessions = pnyx.codex.sessions.filter(session => session.received
+        const sessions = othrys.codex.sessions.filter(session => session.received
           .some(input => input.includes(text)))
         const attempts = sessions.flatMap(session => session.received)
           .filter(input => input.includes(text))
@@ -1574,7 +1574,7 @@ test.each([
     expect(await row.count()).toBe(1)
     expect(await row.locator('[data-entry-id]').getAttribute('data-entry-id')).toBe(id)
     await row.getByRole('alert').waitFor({ state: 'hidden' })
-    const attempts = pnyx.codex.sessions.flatMap(session => session.received)
+    const attempts = othrys.codex.sessions.flatMap(session => session.received)
       .filter(input => input.includes(text))
     expect(attempts).toHaveLength(expectedAttempts)
     expect(await row.locator('time').count()).toBe(1)
@@ -1587,7 +1587,7 @@ test.each([
 ] as const)(
   '$harness native replies keep the same mounted row when saved, repeated and reloaded in either chat',
   async ({ harness }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({
       key: 'native-replies',
       harness,
@@ -1597,8 +1597,8 @@ test.each([
       name: 'hydra-agent',
       args: [JSON.stringify({ harness })],
     })
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       reducedMotion: true,
     })
@@ -1612,7 +1612,7 @@ test.each([
     const identities: string[] = []
 
     for (const scope of [
-      'Hydra conversation',
+      'Titan conversation',
       'Task native-replies conversation',
     ]) {
       const conversation = page.locator('[data-hydra-workspace][data-active=true]').getByRole(
@@ -1624,7 +1624,7 @@ test.each([
       )
 
       const send = async ({ text }: { text: string }) => {
-        if (scope === 'Hydra conversation') {
+        if (scope === 'Titan conversation') {
           await hydra.chat({ text })
         } else {
           await hydra.owner({
@@ -1645,7 +1645,7 @@ test.each([
         'First native request',
         'Second native request',
       ]) {
-        const turn = pnyx[harness].plan({
+        const turn = othrys[harness].plan({
           hydra: hydra.id,
           match: ({ text: input }) => input.endsWith(text),
           reply,

@@ -1,4 +1,4 @@
-import { CARET_HOST } from '#web-hydra/caret.ts'
+import { CARET_HOST } from '#web-titan/caret.ts'
 
 export const isEditing = ({ target }: { target: Element }) => {
   const field = target.closest('input,textarea,[contenteditable]:not([contenteditable=false])')

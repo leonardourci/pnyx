@@ -159,7 +159,7 @@ export function createSettingsResource<State, Patch>({
         publish()
       }
     },
-    // eslint-disable-next-line pnyx/object-params -- React useSyncExternalStore subscription contract.
+    // eslint-disable-next-line othrys/object-params -- React useSyncExternalStore subscription contract.
     subscribe(listener: () => void) {
       listeners.add(listener)
 

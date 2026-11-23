@@ -4,8 +4,8 @@ import { useState } from 'react'
 import type { Ask, Card } from '#tasks/model.ts'
 import { answerDelivery, askWording } from '#tasks/ask-state.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { ComposerField } from '#web-hydra/composer-field.tsx'
-import { hasPendingImage } from '#web-hydra/draft.ts'
+import { ComposerField } from '#web-titan/composer-field.tsx'
+import { hasPendingImage } from '#web-titan/draft.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { RichText } from '#web-shared/ui/rich-text.tsx'
 import type { Command } from '#web-app/connection.ts'
@@ -98,7 +98,7 @@ export function AskPanel({
       const clarification = discuss || !!receipt.clarification
 
       if (clarification) {
-        notify({ text: 'Follow-up sent to Hydra. The question stays open.' })
+        notify({ text: 'Follow-up sent to Titan. The question stays open.' })
         setDraft(current => {
           if (current && (current.text !== text || current.pick !== pick)) {
             return current
@@ -107,7 +107,7 @@ export function AskPanel({
           return { text: '' }
         })
       } else {
-        const notice = receipt.answered ? 'Answer sent to Hydra.' : RECEIPT[String(receipt.state)]
+        const notice = receipt.answered ? 'Answer sent to Titan.' : RECEIPT[String(receipt.state)]
         notify({ text: notice ?? 'The answer may not have arrived. Check the session before answering again.' })
       }
     } catch (error) {
@@ -173,7 +173,7 @@ export function AskPanel({
           })}
         />
         <QuestionActions>
-          <div className="muted small">{ask.escalated ? 'Hydra passed this on' : 'Hydra asks'}{ask.escalated?.reason && <CollapsibleText text={ask.escalated.reason} />}</div>
+          <div className="muted small">{ask.escalated ? 'Titan passed this on' : 'Titan asks'}{ask.escalated?.reason && <CollapsibleText text={ask.escalated.reason} />}</div>
           <Button
             disabled={busy || imagesLoading || !text.trim()}
             onClick={async () => {

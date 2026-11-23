@@ -1,5 +1,5 @@
 import { tokens } from '#oracle/query.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 
 export type OracleAction = {
   id: string
@@ -25,7 +25,7 @@ export interface OraclePanel {
 }
 
 // The Projects and Agents blocks, which have no other place in the web app; their previews hold the whole block.
-export const oraclePanels = ({ state }: { state: HydraState }): OraclePanel[] => [
+export const oraclePanels = ({ state }: { state: TitanState }): OraclePanel[] => [
   {
     id: 'panel:projects',
     label: 'Projects',
@@ -34,7 +34,7 @@ export const oraclePanels = ({ state }: { state: HydraState }): OraclePanel[] =>
   },
   {
     id: 'panel:agents',
-    label: 'Hydra identity and default model; heads dispatch rules',
+    label: 'Titan identity and default model; heads dispatch rules',
     words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`,
     panel: 'agents',
   },
@@ -51,9 +51,9 @@ export function oracleActions({
   return [
     {
       id: 'action:ask',
-      label: 'Ask a Hydra',
+      label: 'Ask a Titan',
       words: 'request message send',
-      does: 'Enter starts a request to a Hydra, as typing ask and a space does.',
+      does: 'Enter starts a request to a Titan, as typing ask and a space does.',
       run: 'ask',
     },
     ...columns.map((column): OracleAction => ({

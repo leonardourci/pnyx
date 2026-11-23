@@ -89,7 +89,7 @@ export function openTaskFamily({
     key: familyViewKey({ hydraId }),
     initial: {},
   })
-  // eslint-disable-next-line pnyx/object-params -- React owns functional state updaters.
+  // eslint-disable-next-line othrys/object-params -- React owns functional state updaters.
   view.set(current => ({
     ...current,
     [id]: true,

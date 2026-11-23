@@ -5,7 +5,7 @@ export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
 export function pageTitle({
   page = 'hydra',
   taskTitle,
-  hydra = 'Hydra',
+  hydra = 'Titan',
 }: {
   page?: string
   taskTitle?: string
@@ -32,7 +32,7 @@ export function pageTitle({
   return [
     label,
     hydra,
-    'Pnyx',
+    'Othrys',
   ].filter(Boolean).join(' · ')
 }
 

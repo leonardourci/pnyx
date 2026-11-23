@@ -1,10 +1,10 @@
 import { SearchBadgeLabel } from '#web-shared/ui/search-bar.tsx'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
-import type { HydraState } from '#app/model.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import type { HydraProjectSummary } from '#app/server-hydras.ts'
+import type { TitanState } from '#app/model.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import { TITAN_MARK } from '#titan/titan-names.ts'
+import type { TitanProjectSummary } from '#app/server-hydras.ts'
 import type { Hit, Kind } from '#oracle/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { viewFor } from '#preferences/view.ts'
@@ -20,11 +20,11 @@ import { changedIds, resetPatch } from '#web-settings/changed.ts'
 import { SETTING_ICONS, type SettingsMatch } from '#web-settings/catalog.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
-import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { useTitanDispatch } from '#web-workers/heads-dispatch.ts'
 import { SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
-import { markdownText } from '#web-hydra/markdown-text.ts'
+import { markdownText } from '#web-titan/markdown-text.ts'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
@@ -104,7 +104,7 @@ function TaskPreview({
 }: {
   card: Card
   hit?: Hit
-  state: HydraState
+  state: TitanState
   action?: CurrentAction
   actions: Record<string, CurrentAction>
   connected: boolean
@@ -158,8 +158,8 @@ function ProjectPreview({
   project,
   state,
 }: {
-  project: HydraProjectSummary
-  state: HydraState
+  project: TitanProjectSummary
+  state: TitanState
 }) {
   const tasks = Object.values(state.cards)
     .filter(card => liveTask({ card }) && card.project === project.path)
@@ -199,7 +199,7 @@ function filterReach({ filter }: { filter: Filter }) {
   }
 
   if (filter.type === 'hydra') {
-    return 'Keeps this Hydra’s results; settings and actions apply to every Hydra.'
+    return 'Keeps this Titan’s results; settings and actions apply to every Titan.'
   }
 
   return `Keeps only the ${names({ kinds: APPLIES[filter.type] })} it matches.`
@@ -249,7 +249,7 @@ function SettingResult({
   settings,
 }: {
   match: SettingsMatch
-  state: HydraState
+  state: TitanState
   settings: SettingProps
 }) {
   const { entry } = match
@@ -260,9 +260,9 @@ function SettingResult({
   const shared = useSharedSettings() ?? DEFAULT_SETTINGS
   const {
     effective,
-    saveHydra,
+    saveTitan,
     error: dispatchError,
-  } = useHeadsDispatch({ command: settings.command })
+  } = useTitanDispatch({ command: settings.command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const shownSettings = {
     ...shared,
@@ -325,7 +325,7 @@ function SettingResult({
         slide={slide}
         settings={shared}
         rule={rule}
-        saveHydra={saveHydra}
+        saveTitan={saveTitan}
         dispatchError={dispatchError}
       />
     </SettingRow>
@@ -339,7 +339,7 @@ function PanelPreview({
   settings,
 }: {
   panel: OraclePanel
-  state: HydraState
+  state: TitanState
   connected: boolean
   settings: SettingProps
 }) {
@@ -377,7 +377,7 @@ export function ResultPreview({
   choose,
 }: {
   result: OracleResult
-  state: HydraState
+  state: TitanState
   cardActions: Record<string, CurrentAction>
   terms: string[]
   doneAfterHours?: DoneAfterHours
@@ -443,7 +443,7 @@ export function ResultPreview({
   )
 }
 
-// The request exactly as Hydra will read it, with where it goes.
+// The request exactly as Titan will read it, with where it goes.
 export function AskPreview({
   to,
   request,
@@ -461,7 +461,7 @@ export function AskPreview({
 
   return (
     <>
-      <PreviewTitle><Icon name={to?.icon ?? HYDRA_MARK} size={ICON_SIZE.control} />Request to {to?.name ?? 'a Hydra'}</PreviewTitle>
+      <PreviewTitle><Icon name={to?.icon ?? TITAN_MARK} size={ICON_SIZE.control} />Request to {to?.name ?? 'a Titan'}</PreviewTitle>
       {request.trim() && <p className="oracle-ask-message m-0 rounded-lg border border-subtle bg-background px-3 py-2.5 wrap-anywhere whitespace-pre-wrap">{request.trim()}</p>}
       {error && <p className="oracle-ask-error text-red" role="alert">{error}</p>}
       {sending && <p className="muted small" role="status">{progress}</p>}
