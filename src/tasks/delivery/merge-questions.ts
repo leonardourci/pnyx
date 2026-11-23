@@ -119,6 +119,10 @@ export function isCanonicalQuestion({
   return canonical?.card.id === card.id && canonical.ask.id === ask.id
 }
 
+function reviewComplete({ outcome }: { outcome?: Card['outcome'] | null }): boolean {
+  return Boolean(outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled')
+}
+
 function ownerReviewsPullRequests({
   state,
   card,
@@ -126,7 +130,7 @@ function ownerReviewsPullRequests({
   state: HydraState
   card: Card
 }): boolean {
-  if (isManagedTask({ card }) || card.workerLog?.status?.code === 'done' || card.outcome?.closed || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled') {
+  if (isManagedTask({ card }) || reviewComplete({ outcome: card.outcome })) {
     return false
   }
 
@@ -219,9 +223,7 @@ export function reconcileAsks({
   }
 
   const changes: HydraEvent[] = []
-  const outcome = event.type === 'card.outcome' ? event.data.after : undefined
-  const completed = outcome?.closed || outcome?.state === 'done' || outcome?.state === 'cancelled'
-  const ended = completed || (event.type === 'task.worker-line' && event.data.code === 'done')
+  const ended = event.type === 'card.outcome' && reviewComplete({ outcome: event.data.after })
 
   for (const ask of openAsks({
     card,
