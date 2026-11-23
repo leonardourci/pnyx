@@ -365,7 +365,7 @@ export const HydraCard = memo(function HydraCard({
     role: 'assistant' as const,
     text: said.text,
     at: said.at,
-  } : latest?.role === 'assistant' ? latest : undefined
+  } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
   const waiting = waitingQuestions({ card })
   const canStop = connected && card.agent?.host === 'pnyx'

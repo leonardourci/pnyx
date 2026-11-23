@@ -17,6 +17,9 @@ export interface CardStatus {
 const inFlight = ({ question }: { question: OwnerQuestion }) =>
   question.delivery?.state === 'queued' || question.delivery?.state === 'delivery_unknown'
 
+export const hasCompletedOutcome = ({ card }: { card: Card }): boolean =>
+  card.outcome?.closed === true || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
+
 // What the owner still has to answer, failed sends included; the status word and closed card share it.
 export const waitingQuestions = ({
   card,
@@ -46,7 +49,7 @@ export function cardStatus({
     cards,
   })
   const worker = card.workerLog?.status
-  const completedOutcome = card.outcome?.closed || card.outcome?.state === 'done' || card.outcome?.state === 'cancelled'
+  const completedOutcome = hasCompletedOutcome({ card })
   const complete = worker?.code === 'done' || completedOutcome
 
   if (waiting.length || worker?.code === 'needs-you') {

@@ -2,7 +2,7 @@ import type { HydraState } from '#app/model.ts'
 import { canonical } from '#store/paths.ts'
 import { readNativeHydra } from '#app/native-read.ts'
 import { projectsFor } from '#projects/read.ts'
-import { cardStatus } from '#tasks/card-status.ts'
+import { cardStatus, hasCompletedOutcome } from '#tasks/card-status.ts'
 import { recordContext } from '#hydra/file-context.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 
@@ -15,7 +15,7 @@ const project = projectsFor({ state }).find(project => !project.detached
 
 if (project) {
   const open = Object.values(state.cards)
-    .filter(card => liveTask({ card }) && card.project === project.path)
+    .filter(card => liveTask({ card }) && card.project === project.path && !hasCompletedOutcome({ card }))
     .map(card => ({
       card,
       status: cardStatus({
