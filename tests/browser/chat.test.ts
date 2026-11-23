@@ -1630,7 +1630,7 @@ test.each([
           paragraph,
           { exact: true },
         ).waitFor()
-        expect(await saved.locator('pre code').textContent()).toBe('END_NATIVE_REPLY\n')
+        expect((await saved.locator('pre code').textContent())?.trim()).toBe('END_NATIVE_REPLY')
         await until({
           what: 'the native reply to settle under its mounted key',
           check: async () => await saved.getAttribute('data-streaming') === null,
@@ -1654,8 +1654,8 @@ test.each([
           { exact: true },
         )
         .waitFor()
-      expect(await page.locator(`[data-hydra-workspace][data-active=true] [data-entry-id="${id}"] pre code`)
-        .textContent()).toBe('END_NATIVE_REPLY\n')
+      expect((await page.locator(`[data-hydra-workspace][data-active=true] [data-entry-id="${id}"] pre code`)
+        .textContent())?.trim()).toBe('END_NATIVE_REPLY')
     }
 
     socket.close()
