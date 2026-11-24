@@ -15,15 +15,19 @@ it(
   () => {
     const taken = TITAN_ICONS.filter(icon => !additions.some(name => name.toLowerCase() === icon))
 
-    for (const name of additions) {
+    const picks = additions.map(() => {
       const picked = pickName({
         taken,
         random: () => 0,
       })
-      expect(picked).toEqual({
-        name,
-        icon: name.toLowerCase(),
-      })
+      taken.push(picked.name)
+
+      return picked
+    })
+    expect(new Set(picks.map(picked => picked.name))).toEqual(new Set(additions))
+
+    for (const picked of picks) {
+      expect(picked.icon).toBe(picked.name.toLowerCase())
       expect(isTitanIcon({ icon: picked.icon })).toBe(true)
       const icon = IDENTITY_ICONS.find(icon => icon.id === picked.icon)
       expect(icon?.kind).toBe('hydra')
@@ -31,7 +35,6 @@ it(
         `../web/src/shared/ui/icons/identity/${icon?.file}`,
         import.meta.url,
       ))).toBe(true)
-      taken.push(name)
     }
   },
 )

@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { dirname, join } from 'node:path'
+import { afterEach, expect, it, test, vi } from 'vitest'
 import { agentActor, reportActor } from '#app/actors.ts'
 import { visibleText, wakeInput } from '#oracle/text.ts'
 import { mentionId, reference, taskMentions } from '#titan/mentions.ts'
+import { CLI } from './setup/othrys.ts'
+import { compatibleEnvironment } from '#store/legacy-env.ts'
+import { readAttempt, saveAttempt } from '#web-titan/outbox.ts'
 import { ownerInputUuid } from '#workers/input.ts'
 import { withoutInterrupted } from '#workers/session-attachments.ts'
 import { permissionAttention } from '#workers/permission-rules.ts'
@@ -20,7 +23,10 @@ const root = mkdtempSync(join(
   'rebrand-',
 ))
 
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+})
 
 it(
   'keeps saved native input IDs and server actors stable',
@@ -32,7 +38,7 @@ it(
 )
 
 it(
-  'clears persisted interruption and permission attention after an upgrade',
+  'clears permission and interruption attention saved under the legacy keys',
   () => {
     const card = {
       attention: [
@@ -69,7 +75,12 @@ it.each([
       },
     ])
     expect(mentionId({ href: `${brand}-task:task-saved` })).toBe('task-saved')
-    expect(original).toContain(`${brand}-task:`)
+  },
+)
+
+it(
+  'writes new task references with the Othrys scheme',
+  () => {
     expect(reference({
       kind: 'task',
       value: 'task-new',
@@ -282,6 +293,15 @@ it(
       '../setup/hooks/othrys-hook.sh',
       import.meta.url,
     )
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PNYX_HOME: home,
+      PNYX_HYDRA: 'saved',
+      PNYX_TASK: 'task-saved',
+    }
+    delete env.OTHRYS_HOME
+    delete env.OTHRYS_TITAN
+    delete env.OTHRYS_TASK
     execFileSync(
       'sh',
       [
@@ -290,15 +310,7 @@ it(
         'Stop',
       ],
       {
-        env: {
-          ...process.env,
-          OTHRYS_HOME: '',
-          OTHRYS_TITAN: '',
-          OTHRYS_TASK: '',
-          PNYX_HOME: home,
-          PNYX_HYDRA: 'saved',
-          PNYX_TASK: 'task-saved',
-        },
+        env,
         input: '{}',
       },
     )
@@ -322,12 +334,15 @@ it(
   },
 )
 
-it(
-  'retires owned legacy skill links while preserving custom new-name skills',
-  () => {
+it.each([
+  { installed: 'pnyx' },
+  { installed: 'othrys' },
+])(
+  'retires owned legacy skill links from a $installed install while preserving custom new-name skills',
+  ({ installed }) => {
     const userHome = join(
       root,
-      'skill-links',
+      `skill-links-${installed}`,
     )
     const global = join(
       userHome,
@@ -356,7 +371,7 @@ it(
         previousInstall,
         'package.json',
       ),
-      JSON.stringify({ name: 'othrys' }),
+      JSON.stringify({ name: installed }),
     )
     writeFileSync(
       join(
@@ -406,5 +421,175 @@ it(
       'othrys-report-progress',
       'SKILL.md',
     ))).toBe(true)
+  },
+)
+
+test(
+  'both legacy executable paths still start the rebranded CLI',
+  () => {
+    for (const name of [
+      'pnyx.js',
+      'pnyx-axi.js',
+    ]) {
+      const output = execFileSync(
+        join(
+          dirname(CLI),
+          name,
+        ),
+        ['--help'],
+        {
+          env: process.env,
+          encoding: 'utf8',
+        },
+      )
+      expect(output).toContain('usage: othrys')
+    }
+  },
+)
+
+test(
+  'new environment values take precedence while legacy identities and homes remain inputs',
+  () => {
+    expect(compatibleEnvironment({
+      env: {
+        PNYX_HOME: '/old',
+        OTHRYS_HOME: '/new',
+        PNYX_HYDRA: 'west',
+        PNYX_ACTOR: 'worker:task',
+        PNYX_TASK: 'task',
+        PNYX_STEERING_WORKER: 'session',
+        PNYX_WORKER_HOME: '/captured',
+      },
+    })).toMatchObject({
+      OTHRYS_HOME: '/new',
+      OTHRYS_TITAN: 'west',
+      OTHRYS_ACTOR: 'worker:task',
+      OTHRYS_TASK: 'task',
+      OTHRYS_STEERING_WORKER: 'session',
+      OTHRYS_WORKER_HOME: '/captured',
+    })
+  },
+)
+
+test(
+  'a source-installed legacy login service can still invoke its saved CLI entry',
+  () => {
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        join(
+          import.meta.dirname,
+          '..',
+          'src',
+          'cli',
+          'pnyx.ts',
+        ),
+        '--help',
+      ],
+      {
+        env: process.env,
+        encoding: 'utf8',
+      },
+    )
+    expect(output).toContain('usage: othrys')
+  },
+)
+
+test(
+  'reopens a pending send saved under the legacy key and keeps updating that record',
+  () => {
+    const attempt = {
+      text: 'My unsent draft',
+      id: 'saved-attempt',
+      pending: true,
+    }
+    const records = new Map([
+      [
+        'pnyx:west:send:chat',
+        JSON.stringify(attempt),
+      ],
+    ])
+    vi.stubGlobal(
+      'sessionStorage',
+      {
+        getItem: records.get.bind(records),
+        setItem: records.set.bind(records),
+        removeItem: records.delete.bind(records),
+      },
+    )
+    expect(readAttempt({
+      hydraId: 'west',
+      key: 'chat',
+    })).toEqual(attempt)
+    saveAttempt({
+      hydraId: 'west',
+      key: 'chat',
+      attempt: {
+        ...attempt,
+        pending: false,
+      },
+    })
+    expect(JSON.parse(records.get('pnyx:west:send:chat')!)).toEqual({
+      ...attempt,
+      pending: false,
+    })
+    expect(records.has('othrys:west:send:chat')).toBe(false)
+  },
+)
+
+test(
+  'restores a saved task editor draft and keeps editing its existing browser record',
+  async () => {
+    const origin = 'http://example.test'
+    const installation = 'saved-installation'
+    const savedKey = `pnyx:view:${JSON.stringify([
+      origin,
+      installation,
+      'task',
+      'west:task-saved',
+      'editor.title',
+    ])}`
+    const records = new Map([
+      [
+        savedKey,
+        JSON.stringify('My saved task title'),
+      ],
+    ])
+    vi.stubGlobal(
+      'addEventListener',
+      vi.fn(),
+    )
+    vi.stubGlobal(
+      'document',
+      { querySelector: () => ({ content: installation }) },
+    )
+    vi.stubGlobal(
+      'location',
+      { origin },
+    )
+    vi.stubGlobal(
+      'sessionStorage',
+      {
+        getItem: records.get.bind(records),
+        setItem: records.set.bind(records),
+        removeItem: records.delete.bind(records),
+      },
+    )
+    const {
+      sessionView,
+      sessionViewKey,
+    } = await import('#web-app/session-view.ts')
+    const view = sessionView({
+      key: sessionViewKey({
+        scope: 'task',
+        id: 'west:task-saved',
+        field: 'editor.title',
+      }),
+      initial: 'Published task title',
+    })
+    expect(view.snapshot()).toBe('My saved task title')
+    view.set('My revised draft')
+    expect(JSON.parse(records.get(savedKey)!)).toBe('My revised draft')
   },
 )

@@ -1,13 +1,6 @@
-import { mkdirSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { openTitan } from './page.ts'
 import { startOthrys, until, type Othrys } from '../setup/othrys.ts'
-
-const media = resolve(
-  import.meta.dirname,
-  '../../.vitest/rebrand-media',
-)
 
 let app: Othrys
 beforeAll(async () => {
@@ -51,75 +44,35 @@ test(
         exact: true,
       },
     ).waitFor()
-    mkdirSync(
-      media,
-      { recursive: true },
-    )
+    const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
+    await workspace.getByRole(
+      'button',
+      {
+        name: 'Change icon',
+        exact: true,
+      },
+    ).click()
 
-    for (const width of [
-      1440,
-      390,
+    for (const icon of [
+      'cronus',
+      'rhea',
+      'hyperion',
+      'mnemosyne',
+      'atlas',
+      'prometheus',
+      'themis',
     ]) {
-      await page.setViewportSize({
-        width,
-        height: 900,
-      })
-
-      for (const theme of [
-        'light',
-        'dark',
-      ]) {
-        await page.evaluate(
-          theme => {
-            document.documentElement.dataset.theme = theme
-          },
-          theme,
-        )
-        await page.screenshot({
-          path: resolve(
-            media,
-            `after-${width}-${theme}.png`,
-          ),
-        })
-        const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
-        await workspace.getByRole(
-          'button',
-          {
-            name: 'Change icon',
-            exact: true,
-          },
-        ).click()
-
-        for (const icon of [
-          'cronus',
-          'rhea',
-          'hyperion',
-          'mnemosyne',
-          'atlas',
-          'prometheus',
-          'themis',
-        ]) {
-          const option = page.getByRole(
-            'option',
-            {
-              name: icon,
-              exact: true,
-            },
-          )
-          await option.waitFor()
-          expect(await option.locator('svg path').getAttribute('d')).toBeTruthy()
-        }
-
-        await page.screenshot({
-          path: resolve(
-            media,
-            `after-picker-${width}-${theme}.png`,
-          ),
-        })
-        await page.keyboard.press('Escape')
-      }
+      await page.getByRole(
+        'option',
+        {
+          name: icon,
+          exact: true,
+        },
+      ).locator(`svg[data-icon="${icon}"]`)
+        .waitFor()
     }
 
+    await page.keyboard.press('Escape')
     await page.locator(`[data-hydra-workspace="${hydra.id}"]`).getByRole(
       'button',
       {

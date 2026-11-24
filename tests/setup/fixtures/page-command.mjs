@@ -8,7 +8,7 @@ const [
   name,
   ...args
 ] = process.argv.slice(2)
-const home = process.env.OTHRYS_HOME || process.env.PNYX_HOME
+const home = process.env.OTHRYS_HOME
 
 if (!home || !hydra || !name) {
   throw new Error('A page command needs a scratch home, Titan and command')

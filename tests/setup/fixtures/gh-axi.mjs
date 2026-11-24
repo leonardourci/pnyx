@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync, w
 import { join } from 'node:path'
 
 const args = process.argv.slice(2)
-const root = process.env.OTHRYS_FAKE_GITHUB || process.env.PNYX_FAKE_GITHUB
+const root = process.env.OTHRYS_FAKE_GITHUB
 appendFileSync(
   join(
     root,

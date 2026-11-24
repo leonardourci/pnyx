@@ -1,7 +1,8 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, test } from 'vitest'
 import { selectHome } from '#store/home.ts'
+import { othrys } from './setup/othrys.ts'
 
 const fixture = () => mkdtempSync(join(
   process.env.TMPDIR!,
@@ -284,5 +285,51 @@ it(
         )
       }
     }
+  },
+)
+
+test(
+  'an invalid default home reports a structured failure without changing the existing file',
+  async () => {
+    const userHome = mkdtempSync(join(
+      process.env.TMPDIR!,
+      'invalid-home-',
+    ))
+    const invalid = join(
+      userHome,
+      '.othrys',
+    )
+    writeFileSync(
+      invalid,
+      'Keep this existing file',
+    )
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: userHome,
+    }
+    delete env.OTHRYS_HOME
+    delete env.PNYX_HOME
+    const result = await othrys({
+      args: [
+        'board',
+        '--json',
+      ],
+      env,
+    })
+    expect(result.status).toBe(1)
+    expect(JSON.parse(result.stderr)).toMatchObject({
+      code: 'HOME_MIGRATION_FAILED',
+      error: expect.stringContaining('Cannot select Othrys home'),
+      help: expect.arrayContaining([expect.stringContaining('OTHRYS_HOME')]),
+    })
+    const text = await othrys({
+      args: ['board'],
+      env,
+    })
+    expect(text.stderr).toMatch(/^HOME_MIGRATION_FAILED: Cannot select Othrys home[^\n]*\n.*OTHRYS_HOME/s)
+    expect(readFileSync(
+      invalid,
+      'utf8',
+    )).toBe('Keep this existing file')
   },
 )
