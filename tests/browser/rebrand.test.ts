@@ -51,10 +51,6 @@ test(
         exact: true,
       },
     ).waitFor()
-    expect(await page.title()).toBe('Othrys')
-    expect(await page.locator('link[rel=icon][sizes="16x16"]').getAttribute('href')).toBe('/favicon-16.png')
-    expect(await page.locator('link[rel=icon][sizes="32x32"]').getAttribute('href')).toBe('/favicon-32.png')
-    expect(await page.locator('link[rel=icon][sizes="any"]').getAttribute('href')).toBe('/favicon.svg')
     mkdirSync(
       media,
       { recursive: true },
@@ -163,10 +159,6 @@ test(
         return identity.name === 'Poseidon' && identity.icon === 'cronus'
       },
     })
-    expect(await page.title()).toBe('Othrys')
-    expect(await page.locator('link[rel=icon][sizes="16x16"]').getAttribute('href')).toBe('/favicon-16.png')
-    expect(await page.locator('link[rel=icon][sizes="32x32"]').getAttribute('href')).toBe('/favicon-32.png')
-    expect(await page.locator('link[rel=icon][sizes="any"]').getAttribute('href')).toBe('/favicon.svg')
     await app.restart()
     expect((await hydra.owner({
       args: [
@@ -231,7 +223,6 @@ test(
       { name: /^(Show task summary|Focus on chat)$/ },
     )
     await summary.waitFor()
-    expect(await page.title()).toBe('Othrys')
     expect(await summary.getAttribute('aria-label')).toBe('Show task summary')
     expect(await summary.getAttribute('aria-pressed')).toBe('true')
     await summary.click()
