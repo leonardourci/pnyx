@@ -52,11 +52,9 @@ test(
       },
     ).waitFor()
     expect(await page.title()).toBe('Othrys')
-    expect(await page.locator('link[rel=icon]').evaluateAll(links => links.map(link => link.getAttribute('href')))).toEqual([
-      '/favicon-16.png',
-      '/favicon-32.png',
-      '/favicon.svg',
-    ])
+    expect(await page.locator('link[rel=icon][sizes="16x16"]').getAttribute('href')).toBe('/favicon-16.png')
+    expect(await page.locator('link[rel=icon][sizes="32x32"]').getAttribute('href')).toBe('/favicon-32.png')
+    expect(await page.locator('link[rel=icon][sizes="any"]').getAttribute('href')).toBe('/favicon.svg')
     mkdirSync(
       media,
       { recursive: true },
@@ -166,11 +164,9 @@ test(
       },
     })
     expect(await page.title()).toBe('Othrys')
-    expect(await page.locator('link[rel=icon]').evaluateAll(links => links.map(link => link.getAttribute('href')))).toEqual([
-      '/favicon-16.png',
-      '/favicon-32.png',
-      '/favicon.svg',
-    ])
+    expect(await page.locator('link[rel=icon][sizes="16x16"]').getAttribute('href')).toBe('/favicon-16.png')
+    expect(await page.locator('link[rel=icon][sizes="32x32"]').getAttribute('href')).toBe('/favicon-32.png')
+    expect(await page.locator('link[rel=icon][sizes="any"]').getAttribute('href')).toBe('/favicon.svg')
     await app.restart()
     expect((await hydra.owner({
       args: [
