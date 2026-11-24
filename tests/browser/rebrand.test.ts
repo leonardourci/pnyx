@@ -235,6 +235,7 @@ test(
       { name: /^(Show task summary|Focus on chat)$/ },
     )
     await summary.waitFor()
+    expect(await page.title()).toBe('Othrys')
     expect(await summary.getAttribute('aria-label')).toBe('Show task summary')
     expect(await summary.getAttribute('aria-pressed')).toBe('true')
     await summary.click()

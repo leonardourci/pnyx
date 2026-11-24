@@ -6,7 +6,6 @@ import { emptyTitan, reduce, replay } from '#app/reducer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-// TypeScript cannot rewrite the web alias's .ts extension when checking this test.
 import { beforeAll, expect, test } from 'vitest'
 import { operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
