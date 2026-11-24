@@ -3,11 +3,30 @@ import { realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 
+let selected: {
+  key: string
+  home: string
+} | undefined
+
+// Selecting the default home checks the file system, so a process keeps the answer until its inputs change.
 export function othrysHome(): string {
-  return selectHome({
-    env: process.env,
-    userHome: homedir(),
-  })
+  const key = [
+    process.env.OTHRYS_HOME,
+    process.env.PNYX_HOME,
+    homedir(),
+  ].join('\0')
+
+  if (selected?.key !== key) {
+    selected = {
+      key,
+      home: selectHome({
+        env: process.env,
+        userHome: homedir(),
+      }),
+    }
+  }
+
+  return selected.home
 }
 
 // The home's hydras folder under each name it has, since a ~/.othrys alias and its ~/.pnyx target hold the same files.
