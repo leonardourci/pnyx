@@ -12,7 +12,7 @@ The plain CLI is `othrys`. Othrys is pre-v1.
 
 ![Othrys](docs/media/othrys.png)
 
-A new Titan, Poseidon, on the current app in light mode, captured in an isolated data home.
+A new Titan on the current app in light mode, captured in an isolated data home.
 
 ## Install
 
