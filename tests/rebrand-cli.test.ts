@@ -13,14 +13,11 @@ test(
       'pnyx-axi.js',
     ]) {
       const output = execFileSync(
-        process.execPath,
-        [
-          join(
-            dirname(CLI),
-            name,
-          ),
-          '--help',
-        ],
+        join(
+          dirname(CLI),
+          name,
+        ),
+        ['--help'],
         {
           env: process.env,
           encoding: 'utf8',
