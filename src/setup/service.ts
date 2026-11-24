@@ -130,12 +130,14 @@ export function serviceFile({
             'utf8',
           ),
         })
-        const storedHome = stored.storedHome ?? join(
-          userHome,
-          '.pnyx',
-        )
 
-        return canonical({ path: storedHome }) === canonical({ path: othrysHome() })
+        return canonical({
+          path: serviceHome({
+            name,
+            storedHome: stored.storedHome,
+            userHome,
+          }),
+        }) === canonical({ path: othrysHome() })
       })
 
     if (legacy) {
@@ -329,6 +331,20 @@ const SERVICE_DEFINITIONS = {
   },
 }
 
+// A service file without a stored home served the default home of the build that wrote it.
+const serviceHome = ({
+  name,
+  storedHome,
+  userHome,
+}: {
+  name: string
+  storedHome?: string
+  userHome: string
+}) => storedHome ?? join(
+  userHome,
+  name.startsWith('local.pnyx.') ? '.pnyx' : '.othrys',
+)
+
 function requireAvailableServicePort({
   agents,
   home,
@@ -359,10 +375,11 @@ function requireAvailableServicePort({
         'utf8',
       ),
     })
-    const otherHome = storedHome ?? join(
-      homedir(),
-      name.startsWith('local.pnyx.') ? '.pnyx' : '.othrys',
-    )
+    const otherHome = serviceHome({
+      name,
+      storedHome,
+      userHome: homedir(),
+    })
 
     if (canonical({ path: otherHome }) === canonical({ path: home })) {
       if (name !== basename(path) && name.includes('.server.')) {
@@ -701,10 +718,11 @@ export function setupService({
         })
 
         return canonical({
-          path: stored.storedHome ?? join(
+          path: serviceHome({
+            name,
+            storedHome: stored.storedHome,
             userHome,
-            '.pnyx',
-          ),
+          }),
         }) === canonical({ path: home })
       })
         .map(name => join(
