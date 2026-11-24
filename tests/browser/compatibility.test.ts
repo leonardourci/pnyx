@@ -44,6 +44,7 @@ test(
         exact: true,
       },
     ).waitFor()
+    expect(await page.locator('.brand img').getAttribute('src')).toBe('/favicon.svg')
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
     await workspace.getByRole(
       'button',

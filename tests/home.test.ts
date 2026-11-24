@@ -1,8 +1,11 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, it, test } from 'vitest'
+import { afterEach, expect, it, test, vi } from 'vitest'
 import { selectHome } from '#store/home.ts'
+import { othrysHome } from '#store/paths.ts'
 import { othrys } from './setup/othrys.ts'
+
+afterEach(() => vi.unstubAllEnvs())
 
 const fixture = () => mkdtempSync(join(
   process.env.TMPDIR!,
@@ -285,6 +288,56 @@ it(
         )
       }
     }
+  },
+)
+
+it(
+  'resolves the default home through HOME to an existing Pnyx installation',
+  () => {
+    const userHome = fixture()
+    const log = join(
+      userHome,
+      '.pnyx',
+      'hydras',
+      'default',
+      'hydra.log',
+    )
+    mkdirSync(
+      join(
+        log,
+        '..',
+      ),
+      { recursive: true },
+    )
+    writeFileSync(
+      log,
+      '{"saved":true}\n',
+    )
+    vi.stubEnv(
+      'HOME',
+      userHome,
+    )
+    vi.stubEnv(
+      'OTHRYS_HOME',
+      undefined,
+    )
+    vi.stubEnv(
+      'PNYX_HOME',
+      undefined,
+    )
+    expect(othrysHome()).toBe(join(
+      userHome,
+      '.othrys',
+    ))
+    expect(readFileSync(
+      join(
+        othrysHome(),
+        'hydras',
+        'default',
+        'hydra.log',
+      ),
+      'utf8',
+    )).toBe('{"saved":true}\n')
   },
 )
 

@@ -1,11 +1,17 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { afterEach, expect, it, test, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, test, vi } from 'vitest'
 import { agentActor, reportActor } from '#app/actors.ts'
 import { visibleText, wakeInput } from '#oracle/text.ts'
-import { mentionId, reference, taskMentions } from '#titan/mentions.ts'
-import { CLI } from './setup/othrys.ts'
+import { mentionId, pointerReference, reference, taskMentions } from '#titan/mentions.ts'
+import { attachedImages, imageLine } from '#titan/images.ts'
+import { hydrasFolders } from '#store/paths.ts'
+import { readSteeringMessages } from '#workers/inbox-notice.ts'
+import { steeringText } from '#workers/steering-text.ts'
+import { resumeMessage } from '#workers/host.ts'
+import { othrysSentence } from '#web-titan/othrys-action.ts'
+import { CLI, startOthrys, type Othrys } from './setup/othrys.ts'
 import { compatibleEnvironment } from '#store/legacy-env.ts'
 import { readAttempt, saveAttempt } from '#web-titan/outbox.ts'
 import { ownerInputUuid } from '#workers/input.ts'
@@ -26,6 +32,11 @@ const root = mkdtempSync(join(
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
+})
+
+let app: Othrys
+beforeAll(async () => {
+  app = await startOthrys()
 })
 
 it(
@@ -75,6 +86,10 @@ it.each([
       },
     ])
     expect(mentionId({ href: `${brand}-task:task-saved` })).toBe('task-saved')
+    expect(pointerReference({ href: `${brand}-image:shot.png` })).toEqual({
+      kind: 'image',
+      value: 'shot.png',
+    })
   },
 )
 
@@ -421,6 +436,131 @@ it.each([
       'othrys-report-progress',
       'SKILL.md',
     ))).toBe(true)
+  },
+)
+
+it.each([
+  { name: 'Othrys' },
+  { name: 'Pnyx' },
+])(
+  'reads $name steering notices and worker resumes from saved transcripts',
+  ({ name }) => {
+    expect(steeringText({ text: `${name} steering inbox has pending instruction IDs ["saved"]. Read them.` })).toBe(true)
+    expect(readSteeringMessages({
+      text: `New instructions for task task-saved, in order (${name} inbox IDs ["first","second"]):\nDo both.`,
+      task: 'task-saved',
+    })).toEqual([
+      'first',
+      'second',
+    ])
+    expect(resumeMessage({ text: `${name} restarted during your turn; continue from where you stopped.` })).toBe(true)
+  },
+)
+
+it(
+  'recognizes the resume wake a restart sends Titan, in both spellings',
+  () => {
+    expect(resumeMessage({ text: '<othrys-wake>An Othrys server restart cut your last turn before you answered.' })).toBe(true)
+    expect(resumeMessage({ text: '<pnyx-wake>A Pnyx server restart cut your last turn before you answered.' })).toBe(true)
+    expect(resumeMessage({ text: 'Please continue.' })).toBe(false)
+  },
+)
+
+it.each([
+  { area: 'titan' },
+  { area: 'hydra' },
+])(
+  'labels $area commands in chat as Titan actions',
+  ({ area }) => {
+    expect(othrysSentence({
+      words: [
+        area,
+        'stop',
+      ],
+      lookup: {
+        task: () => undefined,
+        column: () => undefined,
+      },
+    })).toEqual(['Stopped Titan’s turn'])
+  },
+)
+
+it(
+  'lets a server from before the rename restart into this build',
+  async () => {
+    const restart = await import('#upgrade/restart.ts')
+    expect(restart.restartPnyx).toBe(restart.restartOthrys)
+  },
+)
+
+it(
+  'sends an attachment saved under either name of an aliased home',
+  () => {
+    const target = join(
+      realpathSync(root),
+      'aliased-target',
+    )
+    const attachments = join(
+      target,
+      'hydras',
+      'west',
+      'attachments',
+    )
+    mkdirSync(
+      attachments,
+      { recursive: true },
+    )
+    const alias = join(
+      realpathSync(root),
+      'aliased-home',
+    )
+    symlinkSync(
+      target,
+      alias,
+      'dir',
+    )
+    vi.stubEnv(
+      'OTHRYS_HOME',
+      alias,
+    )
+    const file = '0b8e6a52-8c2f-4f3e-9d11-5a7c2b1e9f40.png'
+    const paths = [
+      target,
+      alias,
+    ].map(home => join(
+      home,
+      'hydras',
+      'west',
+      'attachments',
+      file,
+    ))
+    expect(attachedImages({
+      text: paths.map(path => imageLine({ path })).join('\n'),
+      hydras: hydrasFolders(),
+    })).toEqual(paths)
+  },
+)
+
+it(
+  'a hosted Titan drops a legacy identity the server inherited and gets the legacy location names',
+  async () => {
+    vi.stubEnv(
+      'PNYX_TASK',
+      'stale-task',
+    )
+    vi.stubEnv(
+      'PNYX_ACTOR',
+      'worker:stale-task',
+    )
+    const hydra = await app.hydra()
+    const session = await hydra.chat({ text: 'Check the inherited identity' })
+    expect(session.env.PNYX_TASK).toBeUndefined()
+    expect(session.env.PNYX_ACTOR).toBeUndefined()
+    expect(session.env).toMatchObject({
+      OTHRYS_ACTOR: 'hydra',
+      PNYX_HYDRA: hydra.id,
+      PNYX_HOME: session.env.OTHRYS_HOME,
+    })
   },
 )
 
