@@ -1,3 +1,4 @@
+import { hydrasFolders } from '#store/paths.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { taskChildren, taskController, trackTaskSession, untrackTaskSession, type TaskSessionOwner } from '#app/task-runtime.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -18,10 +19,8 @@ import { failTitanInput, receivedWith } from '#titan/received.ts'
 import type { createTitanTurns } from '#titan/turns.ts'
 import { loadTitan } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
-import { othrysHome } from '#store/storage.ts'
 import type { Card } from '#tasks/model.ts'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import type { trackChildren } from './children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
@@ -557,10 +556,7 @@ export function createLiveSessions({
             id: item.id ?? randomUUID(),
             text: item.text,
             original,
-            hydras: join(
-              othrysHome(),
-              'hydras',
-            ),
+            hydras: hydrasFolders(),
             ownerMessageId: firstOwnerMessage({
               state: loadTitan({ hydraId: currentOwner().hydraId }).state,
               card: card.id,

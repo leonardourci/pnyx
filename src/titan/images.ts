@@ -123,12 +123,12 @@ export function attachedImages({
   hydras,
 }: {
   text: string
-  hydras: string
+  hydras: string[]
 }): string[] {
-  return [...new Set(imagePaths({ text }))].filter(path => {
-    const parts = path.slice(hydras.length + 1).split('/')
+  return [...new Set(imagePaths({ text }))].filter(path => hydras.some(root => {
+    const parts = path.slice(root.length + 1).split('/')
 
-    return path.startsWith(`${hydras}/`) && parts.length === 3 && parts[1] === 'attachments'
+    return path.startsWith(`${root}/`) && parts.length === 3 && parts[1] === 'attachments'
       && ATTACHMENT_NAME.test(parts[2]!) && !parts[0]!.startsWith('.')
-  })
+  }))
 }

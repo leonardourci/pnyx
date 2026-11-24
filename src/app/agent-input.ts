@@ -14,7 +14,7 @@ export function agentInput({
   id: string
   text: string
   original: string
-  hydras: string
+  hydras: string[]
   ownerMessageId?: string
 }): HostedInput {
   const images = attachedImages({

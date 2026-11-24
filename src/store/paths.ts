@@ -10,6 +10,17 @@ export function othrysHome(): string {
   })
 }
 
+// The home's hydras folder under each name it has, since a ~/.othrys alias and its ~/.pnyx target hold the same files.
+export const hydrasFolders = (): string[] => [
+  ...new Set([
+    othrysHome(),
+    canonical({ path: othrysHome() }) ?? othrysHome(),
+  ]),
+].map(home => resolve(
+  home,
+  'hydras',
+))
+
 export const taskRuntimeDir = ({ task }: { task: string }) => resolve(
   othrysHome(),
   'runtime',

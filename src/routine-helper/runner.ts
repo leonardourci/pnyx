@@ -1,7 +1,7 @@
+import { hydrasFolders } from '#store/paths.ts'
 import { recordContext, recordFiles } from '#titan/file-context.ts'
 import { compactionPermission, readCommand } from '#titan/compaction-files.ts'
 import { createDigestContext } from '#titan/digest-context.ts'
-import { othrysHome } from '#store/paths.ts'
 import { base } from '#app/command-meta.ts'
 import { log } from '#app/diagnostics.ts'
 import { TITAN_COMMANDS } from '#app/command-registry.ts'
@@ -551,10 +551,7 @@ export function createRoutineHelper({
             id: batch.id,
             text,
             original: batch.prompt,
-            hydras: join(
-              othrysHome(),
-              'hydras',
-            ),
+            hydras: hydrasFolders(),
           })
         }
 

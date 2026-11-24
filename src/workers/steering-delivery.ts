@@ -1,3 +1,4 @@
+import { hydrasFolders } from '#store/paths.ts'
 import { attachedImages } from '#titan/images.ts'
 import { acknowledgeSteering, recordSteeringAttempt } from './inbox.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
@@ -5,11 +6,9 @@ import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, stee
 import { steeringNotice } from './inbox-notice.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { TitanError } from '#store/errors.ts'
-import { join } from 'node:path'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { Card } from '#tasks/model.ts'
 import { sessionId } from './session-attachments.ts'
-import { othrysHome } from '#store/storage.ts'
 import type { Live } from '#app/host-types.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -79,10 +78,7 @@ export function createSteeringDelivery({
     const messages = (card.steering ?? []).filter(message => ids.includes(message.id))
     const images = messages.flatMap(message => attachedImages({
       text: message.text,
-      hydras: join(
-        othrysHome(),
-        'hydras',
-      ),
+      hydras: hydrasFolders(),
     }))
 
     return [
