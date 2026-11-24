@@ -22,19 +22,22 @@ export type RunAnswer = {
 const strings = ({ value }: { value: unknown }) => Array.isArray(value) && value.every(item => typeof item === 'string')
 
 // The Titan a command line runs on, for its log line: the one it names, or the default one; the command parses its own flags.
+// The legacy --hydra spelling still names a Titan.
+const TITAN_FLAG = /^--(?:titan|hydra)(?:=|$)/
+
 function namedTitan({
   argv,
   env,
 }: Pick<RunRequest, 'argv' | 'env'>): string {
-  const inline = argv.find(arg => arg.startsWith('--titan='))
+  const inline = argv.find(arg => TITAN_FLAG.test(arg) && arg.includes('='))
 
   if (inline) {
-    return inline.slice('--titan='.length) || DEFAULT_TITAN
+    return inline.slice(inline.indexOf('=') + 1) || DEFAULT_TITAN
   }
 
-  const flag = argv.indexOf('--titan')
+  const flag = argv.findIndex(arg => TITAN_FLAG.test(arg))
 
-  return (flag < 0 ? env.OTHRYS_TITAN : argv[flag + 1]) || DEFAULT_TITAN
+  return (flag < 0 ? env.OTHRYS_TITAN ?? env.PNYX_HYDRA : argv[flag + 1]) || DEFAULT_TITAN
 }
 
 function request({ body }: { body: unknown }): RunRequest {
