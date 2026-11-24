@@ -102,10 +102,14 @@ export function readSteeringMessages({
   text: string
   task: string
 }): string[] {
-  const prefix = `New instructions for task ${task}, in order (Othrys inbox IDs `
+  const prefix = [
+    'Othrys',
+    'Pnyx',
+  ].map(name => `New instructions for task ${task}, in order (${name} inbox IDs `)
+    .find(prefix => text.startsWith(prefix))
   const end = text.indexOf('):\n')
 
-  if (!text.startsWith(prefix) || end < prefix.length) {
+  if (!prefix || end < prefix.length) {
     return []
   }
 

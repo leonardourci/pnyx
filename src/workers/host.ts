@@ -34,6 +34,15 @@ export const UNCONFIRMED_QUOTE_CHARS = 80
 export const TITAN_TURN_POLL_MS = 20
 
 export const WORKER_RESUME = 'Othrys restarted during your turn; continue from where you stopped.'
+const LEGACY_WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
+const TITAN_RESUME = /^<(?:othrys|pnyx)-wake>An? (?:Othrys|Pnyx) server restart cut your last turn/
+
+// Whether a message is a resume Othrys sent after a restart, including the Pnyx spelling in older transcripts.
+export const resumeMessage = ({ text }: { text: string }) =>
+  [
+    WORKER_RESUME,
+    LEGACY_WORKER_RESUME,
+  ].includes(text.trim()) || TITAN_RESUME.test(text)
 
 export { WORKER_COMMANDS } from '#app/command-registry.ts'
 

@@ -4,7 +4,7 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { readTranscript } from './transcript-read.ts'
 import { readTranscriptRecord } from './transcripts.ts'
-import { WORKER_RESUME } from './host.ts'
+import { resumeMessage } from './host.ts'
 import { decideSessionFacts } from './session-facts.ts'
 import { acknowledgeSteering, recordSteeringAttempt } from './inbox.ts'
 import { readSteeringMessages } from './inbox-notice.ts'
@@ -79,8 +79,7 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
                 continue
               }
 
-              const resumed = parsed.messages.some(message => message.text.trim() === WORKER_RESUME
-                || /^<(?:othrys|pnyx)-wake>A (?:Othrys|Pnyx) server restart cut your last turn/.test(message.text))
+              const resumed = parsed.messages.some(resumeMessage)
 
               if (resumed) {
                 readInstructions.clear()
