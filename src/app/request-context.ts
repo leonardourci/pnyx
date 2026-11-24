@@ -1,4 +1,4 @@
-import { compatibleEnvironment } from '#store/legacy-env.ts'
+import { compatibleEnvironment, legacyName } from '#store/legacy-env.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { TITAN_ACTOR } from './actors.ts'
 import { readFileSync } from 'node:fs'
@@ -47,13 +47,7 @@ const CURRENT_IDENTITY = [
 
 export const IDENTITY = [
   ...CURRENT_IDENTITY,
-  ...CURRENT_IDENTITY.filter(name => name.startsWith('OTHRYS_')).map(name => name.replace(
-    'OTHRYS_',
-    'PNYX_',
-  ).replace(
-    'TITAN',
-    'HYDRA',
-  )),
+  ...CURRENT_IDENTITY.filter(name => name.startsWith('OTHRYS_')).map(name => legacyName({ name })),
 ]
 
 export const requestEnv = (): NodeJS.ProcessEnv => compatibleEnvironment({

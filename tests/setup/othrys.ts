@@ -133,9 +133,17 @@ export const parsed = ({ stdout }: { stdout: string }): Output =>
 // The owner's terminal: no agent identity.
 const ownerEnv = () => {
   const env = { ...process.env }
-  delete env.OTHRYS_ACTOR
-  delete env.OTHRYS_TASK
-  delete env.OTHRYS_TITAN
+
+  for (const name of [
+    'OTHRYS_ACTOR',
+    'OTHRYS_TASK',
+    'OTHRYS_TITAN',
+    'PNYX_ACTOR',
+    'PNYX_TASK',
+    'PNYX_HYDRA',
+  ]) {
+    delete env[name]
+  }
 
   return env
 }

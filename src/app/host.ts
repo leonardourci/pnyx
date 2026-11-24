@@ -1,3 +1,4 @@
+import { withLegacyNames } from '#store/legacy-env.ts'
 import { workerTaskDir } from '#workers/worker-log.ts'
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
 import { stopTitanInputs } from '#titan/stop-inputs.ts'
@@ -523,23 +524,32 @@ export function createHost({
     hydra?: boolean
     task?: string
     steeringWorker?: string
-  } = {}) => ({
-    ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
-    OTHRYS_HOME: othrysHome(),
-    OTHRYS_TITAN: hydraId,
-    ...(hydra ? {
-      OTHRYS_ACTOR: TITAN_ACTOR,
-      OTHRYS_HOSTED: 'hydra',
-    } : task ? {
-      OTHRYS_ACTOR: `worker:${task}`,
-      OTHRYS_TASK_DIR: workerTaskDir({
-        hydraId,
-        task,
-      }),
-      OTHRYS_WORKER_HOME: othrysHome(),
-      OTHRYS_STEERING_WORKER: steeringWorker,
-      ...untrackedBranches({ env: process.env }),
-    } : {}),
+  } = {}) => withLegacyNames({
+    env: {
+      ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
+      OTHRYS_HOME: othrysHome(),
+      OTHRYS_TITAN: hydraId,
+      ...(hydra ? {
+        OTHRYS_ACTOR: TITAN_ACTOR,
+        OTHRYS_HOSTED: 'hydra',
+      } : task ? {
+        OTHRYS_ACTOR: `worker:${task}`,
+        OTHRYS_TASK_DIR: workerTaskDir({
+          hydraId,
+          task,
+        }),
+        OTHRYS_WORKER_HOME: othrysHome(),
+        OTHRYS_STEERING_WORKER: steeringWorker,
+        ...untrackedBranches({ env: process.env }),
+      } : {}),
+    },
+    // Hooks and resumed contexts from before the rename find the home, Titan and worker log under PNYX_ names;
+    // identity stays under OTHRYS_ names only, so an agent has one actor to read.
+    only: [
+      'OTHRYS_HOME',
+      'OTHRYS_TITAN',
+      'OTHRYS_TASK_DIR',
+    ],
   })
 
   const providerOf = ({

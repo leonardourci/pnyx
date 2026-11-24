@@ -38,7 +38,7 @@ export const WORKER_RESUME = 'Othrys restarted during your turn; continue from w
 export { WORKER_COMMANDS } from '#app/command-registry.ts'
 
 // The agent must not inherit the server's terminal, task or actor.
-export const INHERITED = /^(OTHRYS_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
+export const INHERITED = /^(OTHRYS_|PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 // A branch a worker creates from a remote branch must not track it, or a plain push under `push.default=upstream` lands there.
 export function untrackedBranches({ env }: { env: NodeJS.ProcessEnv }): Record<string, string> {
