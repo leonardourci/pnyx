@@ -720,3 +720,44 @@ test(
     expect(first.byteLength + second.byteLength).toBeLessThanOrEqual(4000)
   },
 )
+
+test(
+  'a command naming its Titan with the legacy --hydra flag is logged under that Titan',
+  async () => {
+    const hydra = await othrys.hydra()
+    await hydra.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"logs":"on"}',
+      ],
+    })
+    await until({
+      what: 'the server applies On logging',
+      check: () => logMode() === 'on',
+    })
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    delete env.OTHRYS_TITAN
+    delete env.OTHRYS_ACTOR
+    delete env.OTHRYS_TASK
+    const run = await othrysCommand({
+      args: [
+        'board',
+        '--hydra',
+        hydra.id,
+        '--json',
+      ],
+      env,
+    })
+    expect(run.status).toBe(0)
+    await until({
+      what: 'the command line logged under the Titan it named',
+      check: async () => {
+        await flushLogs()
+
+        return lines().some(line => line.operation === 'command.cli' && line.name === 'board' && line.hydraId === hydra.id)
+      },
+    })
+  },
+)

@@ -11,7 +11,7 @@ import { readSteeringMessages } from '#workers/inbox-notice.ts'
 import { steeringText } from '#workers/steering-text.ts'
 import { resumeMessage } from '#workers/host.ts'
 import { othrysSentence } from '#web-titan/othrys-action.ts'
-import { CLI, startOthrys, type Othrys } from './setup/othrys.ts'
+import { CLI, othrys, startOthrys, type Othrys } from './setup/othrys.ts'
 import { compatibleEnvironment } from '#store/legacy-env.ts'
 import { readAttempt, saveAttempt } from '#web-titan/outbox.ts'
 import { ownerInputUuid } from '#workers/input.ts'
@@ -731,5 +731,21 @@ test(
     expect(view.snapshot()).toBe('My saved task title')
     view.set('My revised draft')
     expect(JSON.parse(records.get(savedKey)!)).toBe('My revised draft')
+  },
+)
+
+test(
+  'bare setup refuses the legacy --hydra flag as it refuses --titan',
+  async () => {
+    const run = await othrys({
+      args: [
+        'setup',
+        '--hydra',
+        'west',
+      ],
+      env: process.env,
+    })
+    expect(run.status).not.toBe(0)
+    expect(run.stderr).toContain('setup runs every Titan')
   },
 )
