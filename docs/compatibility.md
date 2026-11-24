@@ -2,6 +2,8 @@
 
 Othrys calls its coordinators Titans. Existing names such as Poseidon, Hades and custom names stay unchanged. Existing icons remain available; the random default pool also includes Cronus, Rhea, Hyperion and Mnemosyne alongside Atlas, Prometheus, Themis and the Greek god names.
 
+The browser tab keeps the Othrys name and product favicon when changing Titans, icons or task views.
+
 ## Home selection
 
 `OTHRYS_HOME` takes precedence over the legacy `PNYX_HOME`. An explicit home is used as supplied and never automatically moved or merged. New installations use `~/.othrys`.
