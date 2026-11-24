@@ -1,3 +1,4 @@
+import { withLegacyNames } from '#store/legacy-env.ts'
 import { workerTaskDir } from './worker-log.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -174,26 +175,28 @@ export async function startCommand({
   const { pid } = runCommand({
     command: claimed.command,
     cwd: claimed.cwd,
-    env: {
-      OTHRYS_HOME: othrysHome(),
-      OTHRYS_TITAN: hydraId,
-      OTHRYS_WORKER_HOME: othrysHome(),
-      OTHRYS_TASK: target,
-      OTHRYS_TASK_DIR: workerTaskDir({
-        hydraId,
-        task: target,
-      }),
-      OTHRYS_ROLE: role,
-      OTHRYS_TASK_TITLE: claimed.card?.title ?? 'Titan',
-      OTHRYS_PROMPT: claimed.card
-        ? await taskPrompt({
+    env: withLegacyNames({
+      env: {
+        OTHRYS_HOME: othrysHome(),
+        OTHRYS_TITAN: hydraId,
+        OTHRYS_WORKER_HOME: othrysHome(),
+        OTHRYS_TASK: target,
+        OTHRYS_TASK_DIR: workerTaskDir({
           hydraId,
-          card: claimed.card,
-          prompt,
-        }) : prompt ?? hydraPrompt({ hydraId }),
-      OTHRYS_HARNESS: harness ?? '',
-      OTHRYS_FOLDER: claimed.cwd,
-    },
+          task: target,
+        }),
+        OTHRYS_ROLE: role,
+        OTHRYS_TASK_TITLE: claimed.card?.title ?? 'Titan',
+        OTHRYS_PROMPT: claimed.card
+          ? await taskPrompt({
+            hydraId,
+            card: claimed.card,
+            prompt,
+          }) : prompt ?? hydraPrompt({ hydraId }),
+        OTHRYS_HARNESS: harness ?? '',
+        OTHRYS_FOLDER: claimed.cwd,
+      },
+    }),
   })
   const text = `Started ${role === 'hydra' ? 'Titan' : 'a worker'} with ${commandName ? `project command ${commandName}` : 'the Titan command'} in ${claimed.cwd}`
   await withWriter({

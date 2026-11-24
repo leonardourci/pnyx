@@ -3600,7 +3600,7 @@ test(
         'hydra',
         'set',
         '--command',
-        'printenv OTHRYS_TASK > launch.txt; test -n "$OTHRYS_TASK_DIR" && printf "note: command update\\n" >> "$OTHRYS_TASK_DIR/worker.log"',
+        'printenv OTHRYS_TASK > launch.txt; printenv PNYX_TASK > legacy-launch.txt; test -n "$OTHRYS_TASK_DIR" && printf "note: command update\\n" >> "$OTHRYS_TASK_DIR/worker.log"',
       ],
     })
     const commandFolder = hydra.folder({ name: 'command-worker' })
@@ -3640,6 +3640,13 @@ test(
       join(
         commandFolder,
         'launch.txt',
+      ),
+      'utf8',
+    ).trim()).toBe(commandTask.id)
+    expect(readFileSync(
+      join(
+        commandFolder,
+        'legacy-launch.txt',
       ),
       'utf8',
     ).trim()).toBe(commandTask.id)
