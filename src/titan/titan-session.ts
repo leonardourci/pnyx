@@ -1,8 +1,7 @@
-import { canonicalCommandName } from '#app/command-aliases.ts'
+import { canonicalCommandName, parseCommandArgs } from '#app/command-aliases.ts'
 import { inform } from '#app/command-notices.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import { TITAN_OPTIONS } from './cli.ts'
-import { parseCommandArgs as parseArgs } from '#app/command-aliases.ts'
 import { DEFAULT_TITAN } from '#app/home-migration.ts'
 import { TITAN_ACTOR } from '#app/actors.ts'
 import { guard, WRITE, type Options } from '#app/cli-support.ts'
@@ -39,7 +38,7 @@ export function agentNotices<T extends Record<string, Command>>({
       const {
         values,
         positionals,
-      } = parseArgs({
+      } = parseCommandArgs({
         args,
         options: {
           ...WRITE,

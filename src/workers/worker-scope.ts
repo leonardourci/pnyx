@@ -1,6 +1,5 @@
-import { canonicalCommandName } from '#app/command-aliases.ts'
+import { canonicalCommandName, parseCommandArgs } from '#app/command-aliases.ts'
 import { inform, withCommandNotices } from '#app/command-notices.ts'
-import { parseCommandArgs as parseArgs } from '#app/command-aliases.ts'
 import { workerScope } from '#app/command-registry.ts'
 import { commandTitan, guard, type Options } from '#app/cli-support.ts'
 import { requestEnv, requestInvocation } from '#app/request-context.ts'
@@ -61,7 +60,7 @@ function split({
   const {
     values,
     positionals,
-  } = parseArgs({
+  } = parseCommandArgs({
     args: nested ? args.slice(1) : args,
     options: nested ?? COMMAND_OPTIONS.get(name) ?? TASK_OPTIONS,
     allowPositionals: true,
