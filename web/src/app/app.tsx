@@ -12,7 +12,6 @@ import { projectColumns, compareTasks, nextSibling } from '#web-tasks/project-vi
 import { taskProjectGroup } from '#tasks/order.ts'
 import { useTitan } from './connection.ts'
 import { useTitanEdits } from './hydra-edits.ts'
-import { useTitanFavicon } from './hydra-favicon.ts'
 import { placements } from './hydra-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
 import { TitanView } from './workspace.tsx'
@@ -551,8 +550,6 @@ export function App() {
       hydra.loaded,
     ],
   )
-
-  useTitanFavicon({ icon: hydra.navigation.hydras.find(item => item.id === current)?.icon })
 
   const navigate = useCallback(
     async ({

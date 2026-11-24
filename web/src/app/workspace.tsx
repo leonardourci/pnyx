@@ -63,7 +63,7 @@ import { SortGroup, useSortItem, movedOrder, type SortMove } from '#web-shared/u
 import { TitanChips } from './hydra-chips.tsx'
 import { Panel } from './panel.tsx'
 import { hydraViews,openingView,restoreView,usePersistView } from './restore.ts'
-import { hydraTitle,pageTitle } from './view.ts'
+import { hydraTitle } from './view.ts'
 
 function TitanDragName({
   id,
@@ -404,22 +404,6 @@ export function TitanView({
   }
 
   const shownTitan = edits.hydras.find(h => h.id === navigation.hydraId)
-  const title = pageTitle({
-    page,
-    taskTitle: selected ? state.cards[selected]?.title : undefined,
-    hydra: shownTitan && hydraTitle(shownTitan),
-  })
-  useEffect(
-    () => {
-      if (active) {
-        document.title = title
-      }
-    },
-    [
-      title,
-      active,
-    ],
-  )
   const save = useSaveView({
     state,
     command,

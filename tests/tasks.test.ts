@@ -7,7 +7,6 @@ import { readEvents } from '#app/event-log.ts'
 import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 // TypeScript cannot rewrite the web alias's .ts extension when checking this test.
-import { pageTitle } from '../web/src/app/view.ts'
 import { beforeAll, expect, test } from 'vitest'
 import { operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
@@ -2111,25 +2110,6 @@ test(
       }),
     })).code).toBe('VALIDATION_ERROR')
     expect(snapshot()).toEqual(before)
-  },
-)
-
-test(
-  'settings take precedence over the task title and truncation keeps a whole Unicode code point',
-  () => {
-    expect(pageTitle({
-      hydra: 'Poseidon',
-      page: 'settings',
-      taskTitle: 'Add the cart',
-    })).toBe('Settings · Poseidon · Othrys')
-    expect(pageTitle({
-      hydra: 'Poseidon',
-      taskTitle: '0123456789 0123456789 0123456789 0123456789 0123456789 123456 extra',
-    })).toBe('0123456789 0123456789 0123456789 0123456789 0123456789… · Poseidon · Othrys')
-    expect(pageTitle({
-      hydra: 'Poseidon',
-      taskTitle: '01234567890123456789012345678901234567890123456789012345678🚀extra',
-    })).toBe('01234567890123456789012345678901234567890123456789012345678🚀… · Poseidon · Othrys')
   },
 )
 
