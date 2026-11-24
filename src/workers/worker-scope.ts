@@ -8,6 +8,7 @@ import { loadTitan } from '#app/store.ts'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import { TITAN_OPTIONS } from '#titan/cli.ts'
 import { othrysHome } from '#store/storage.ts'
+import { canonical } from '#store/paths.ts'
 import { SOURCE_OPTIONS } from '#task-sources/cli.ts'
 import { LINK_OPTIONS } from '#tasks/delivery/cli.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -150,9 +151,12 @@ function checkWorkerScope({
   const declared = typeof values.actor === 'string' ? values.actor : undefined
   const identity = workerIdentity({ actor: declared })
   const home = requestEnv().OTHRYS_WORKER_HOME
+  // The ~/.othrys alias and its ~/.pnyx target are one home.
+  const ownHome = home === undefined
+    || canonical({ path: home }) === canonical({ path: othrysHome() })
 
   // A worker starting or stopping a server in a scratch home of its own is not working in the home that started it.
-  if (!identity || (home !== undefined && home !== othrysHome())) {
+  if (!identity || !ownHome) {
     return
   }
 

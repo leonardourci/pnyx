@@ -1,7 +1,7 @@
 import { readEvents } from '#app/event-log.ts'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync } from 'node:fs'
+import { readFileSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { WAIT_MS } from './setup/until.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -797,5 +797,35 @@ test(
       ],
     })
     expect(await statusOfOther()).toBe('on hold')
+  },
+)
+
+test(
+  'a worker that recorded its home under another name of the same folder keeps its scope notices',
+  async () => {
+    const alias = join(
+      process.env.TMPDIR!,
+      'worker-home-alias',
+    )
+    symlinkSync(
+      worker.env.OTHRYS_HOME!,
+      alias,
+      'dir',
+    )
+    const output = await hydra.as({
+      session: worker,
+      env: {
+        ...worker.env,
+        OTHRYS_WORKER_HOME: alias,
+      },
+    }).run({
+      args: [
+        'link',
+        'other',
+        '--url',
+        'https://example.test/aliased-home',
+      ],
+    })
+    expect(output.notices).toEqual(expect.arrayContaining([expect.objectContaining({ reason: `Worker ${mine.id} changed another task` })]))
   },
 )
