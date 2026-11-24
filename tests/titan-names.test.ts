@@ -84,3 +84,17 @@ it(
     }
   },
 )
+
+it(
+  'credits each added Titan icon to its game-icons.net source',
+  () => {
+    for (const name of additions) {
+      const icon = IDENTITY_ICONS.find(icon => icon.id === name.toLowerCase())!
+      expect(icon).toMatchObject({
+        author: 'Lorc',
+        license: 'CC BY 3.0',
+      })
+      expect(icon.source).toMatch(/^https:\/\/game-icons\.net\/1x1\/lorc\/[a-z-]+\.html$/)
+    }
+  },
+)
