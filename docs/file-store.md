@@ -1,6 +1,6 @@
 # Native file store
 
-The daemon keeps canonical state in memory and appends native facts to one Titan log and one log per task. Start this release with an empty home and keep any existing home separately.
+The daemon keeps canonical state in memory and appends native facts to one Titan log and one log per task. A Postgres-era home is not read; a native `~/.pnyx` home is reused as [Compatibility](compatibility.md) describes.
 
 ## Files and identity
 

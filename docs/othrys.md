@@ -25,7 +25,7 @@ othrys answer <task> <question> --text "Use the existing design" --titan work
 
 ## Migrate from a Postgres installation
 
-Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`othrys` or `othrys-axi`) before rebuilding. Select the old installation's home for removal and add `--allow-custom-home` if it uses a custom home. Update and build the clone using the install steps in the README. Keep the old home and set `OTHRYS_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, run `othrys setup hooks --allow-custom-home` with the new home selected. Use `othrys setup --allow-custom-home --port <previous-port>` to reinstall the login service at the same address.
+Stop the previous foreground server with Ctrl+C. If you installed its login service, note its port and run `setup --remove` with the old executable (`pnyx` or `pnyx-axi`) before rebuilding. Select the old installation's home for removal and add `--allow-custom-home` if it uses a custom home. Update and build the clone using the install steps in the README. Keep the old home and set `OTHRYS_HOME` to an empty folder before starting the new server. Existing data stays in the old installation. If you installed hooks, run `othrys setup hooks --allow-custom-home` with the new home selected. Use `othrys setup --allow-custom-home --port <previous-port>` to reinstall the login service at the same address.
 
 ## Read records and report through files
 

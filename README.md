@@ -12,7 +12,7 @@ The plain CLI is `othrys`. Othrys is pre-v1.
 
 ![Othrys](docs/media/othrys.png)
 
-Recorded on the current app in dark mode, with made-up projects, tasks and agents in an isolated data home.
+A new Titan, Poseidon, on the current app in light mode, captured in an isolated data home.
 
 ## Install
 
@@ -81,7 +81,7 @@ Ask Titan to start an agreed task, or create and start one from the CLI:
 
 ```sh
 othrys task create --title "Improve the empty state" --project project \
-  --brief "Explain the empty state and add a useful next action." --hydra work
+  --brief "Explain the empty state and add a useful next action." --titan work
 ```
 
 Replace `project` with the attached folder's name and `work` with your Titan's ID. Use `--harness codex` if that is your signed-in harness.
@@ -141,7 +141,7 @@ Use `othrys --help` for syntax and the [plain CLI reference](docs/othrys.md) for
 
 | Flag | Description |
 | --- | --- |
-| `--hydra <name>` | Titan to use (default: assigned Titan or `default`). |
+| `--titan <name>` | Titan to use (default: assigned Titan or `default`). |
 | `--json` | Print a JSON receipt for a script. |
 | `--port <n>` | Port for `serve`; `0` picks a free one. |
 | `--idempotency-key <key>` | Retry `send` with the same key and message if its receipt is lost. |

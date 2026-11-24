@@ -18,7 +18,7 @@ Hook activity, transcript metadata, delivery and helper progress and project ref
 
 Shared settings, dispatch configuration, project memory and owner memory keep their separate local files. The home also contains hooks, its local authentication token, `server.json`, the daemon’s `server.lock`, diagnostic files and provider model catalogs. Each Titan keeps a derived `oracle.db`, transcript cursors, process records, handoffs and its hosted agent folder. Oracle is a disposable index over saved task decisions and notes; it does not own state. Nothing at runtime writes inside the repository.
 
-This release uses a fresh empty `OTHRYS_HOME`. It does not import old Postgres databases or legacy event files, and it does not delete existing data. Keep the previous home as a backup when changing versions. Older builds cannot read native task logs.
+Moving from a Postgres build needs a fresh empty `OTHRYS_HOME`: this release does not import old Postgres databases or legacy event files, and it does not delete existing data. A native `~/.pnyx` home is reused through the alias described in [Compatibility](compatibility.md). The alias is not a backup, so copy the folder when you want one before changing versions. Older builds cannot read native task logs.
 
 Agent conversations are read from each agent’s native transcripts. If a harness deletes those files, its side of the conversation goes with them; Othrys keeps the owner’s saved messages, decisions and worker reports.
 
@@ -32,7 +32,7 @@ Agents use the harness and provider you configure, so their prompts and tool res
 
 ## Uninstall
 
-Select the installation's home before removing its login service or hooks. For a custom home, export its `OTHRYS_HOME` and add `--allow-custom-home` to the setup commands. Stop the server and settle any task copies before deleting the selected home. The default home is `~/.othrys` and may hold your previous installation.
+Select the installation's home before removing its login service or hooks. For a custom home, export its `OTHRYS_HOME` and add `--allow-custom-home` to the setup commands. Stop the server and settle any task copies before deleting the selected home. The default home is `~/.othrys` and may hold your previous installation. When `~/.othrys` links to `~/.pnyx`, delete `~/.pnyx` as well; removing the link alone keeps the data.
 
 ```sh
 othrys setup --remove  # if the login service was installed
