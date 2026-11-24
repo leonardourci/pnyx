@@ -216,7 +216,10 @@ const failure = ({
     output.help = help
   }
 
-  process.stderr.write(json ? `${JSON.stringify(output)}\n` : `${code}: ${message}\n`)
+  process.stderr.write(json ? `${JSON.stringify(output)}\n` : `${[
+    `${code}: ${message}`,
+    ...help ?? [],
+  ].join('\n')}\n`)
   process.exitCode = code === 'VALIDATION_ERROR' ? 2 : 1
 }
 
@@ -226,6 +229,7 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
 
   try {
     input = await commandInput({ argv })
+    // A default home that cannot be selected fails here, before the command reaches a server.
     othrysHome()
   } catch (error) {
     failure({

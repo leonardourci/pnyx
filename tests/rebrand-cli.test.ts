@@ -86,6 +86,11 @@ test(
       error: expect.stringContaining('Cannot select Othrys home'),
       help: expect.arrayContaining([expect.stringContaining('OTHRYS_HOME')]),
     })
+    const text = await othrys({
+      args: ['board'],
+      env,
+    })
+    expect(text.stderr).toMatch(/^HOME_MIGRATION_FAILED: Cannot select Othrys home[^\n]*\n.*OTHRYS_HOME/s)
     expect(readFileSync(
       invalid,
       'utf8',
