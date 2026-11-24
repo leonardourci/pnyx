@@ -1,6 +1,6 @@
 import { Prose, ProseCode } from './prose.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
-import { decodeValue, mentionId } from '#titan/mentions.ts'
+import { decodeValue, mentionId, pointerReference } from '#titan/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import type { Token, Tokens } from 'marked'
 import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
@@ -137,14 +137,14 @@ const inline = ({
           return <Sourced key={i} markdown={token.raw}><SkillToken skill={skill} /></Sourced>
         }
 
-        const pointer = /^othrys-(project|column|image|file):([\w%~.-]+)$/.exec(token.href)
-        const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
+        const pointer = pointerReference({ href: token.href })
+        const value = pointer?.value
         const label = inlineText({ tokens: token.tokens ?? [] }).replace(
           /^@/,
           '',
         )
 
-        if (pointer?.[1] === 'image' && value !== undefined) {
+        if (pointer?.kind === 'image' && value !== undefined) {
           return (
             <Sourced key={i} markdown={token.raw}>
               <ImageChip
@@ -156,7 +156,7 @@ const inline = ({
           )
         }
 
-        if (pointer?.[1] === 'column' && value !== undefined) {
+        if (pointer?.kind === 'column' && value !== undefined) {
           const look = columnLook?.({ id: value }) ?? {
             icon: 'custom',
             tone: '',

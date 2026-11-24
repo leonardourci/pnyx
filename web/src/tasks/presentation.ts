@@ -244,7 +244,7 @@ export function useTaskModal({
       history.pushState(
         {
           ...history.state,
-          othrysTaskModal: id,
+          pnyxTaskModal: id,
         },
         '',
         url,
@@ -252,7 +252,7 @@ export function useTaskModal({
       dispatchEvent(new Event(TASK_MODAL_CHANGED))
     },
     closeModal: () => {
-      if (history.state?.othrysTaskModal === id) {
+      if (history.state?.pnyxTaskModal === id) {
         history.back()
       } else {
         const url = new URL(location.href)

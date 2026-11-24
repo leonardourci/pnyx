@@ -30,7 +30,7 @@ export function save({
 export function dropSnapshots() {
   try {
     for (const key of Object.keys(sessionStorage)) {
-      if (key.startsWith('othrys:') && key.endsWith(':hydra-state')) {
+      if (key.startsWith('pnyx:') && key.endsWith(':hydra-state')) {
         sessionStorage.removeItem(key)
       }
     }

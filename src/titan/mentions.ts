@@ -39,6 +39,19 @@ export function mentionId({ href }: { href: string }): string | undefined {
   return decodeValue({ value: href.slice(href.indexOf(':') + 1) }) || undefined
 }
 
+// A project, column, image or file reference link, in either spelling.
+export function pointerReference({ href }: { href: string }): {
+  kind: string
+  value?: string
+} | undefined {
+  const pointer = /^(?:othrys|pnyx)-(project|column|image|file):([\w%~.-]+)$/.exec(href)
+
+  return pointer ? {
+    kind: pointer[1]!,
+    value: decodeValue({ value: pointer[2]! }),
+  } : undefined
+}
+
 // Only task references add context for Titan; the other kinds are plain pointers.
 export function reference({
   kind,
