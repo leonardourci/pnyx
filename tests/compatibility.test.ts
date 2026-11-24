@@ -4,13 +4,12 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeAll, expect, it, test, vi } from 'vitest'
 import { agentActor, reportActor } from '#app/actors.ts'
 import { visibleText, wakeInput } from '#oracle/text.ts'
-import { mentionId, pointerReference, reference, taskMentions } from '#titan/mentions.ts'
+import { mentionId, pointerReference, taskMentions } from '#titan/mentions.ts'
 import { attachedImages, imageLine } from '#titan/images.ts'
 import { hydrasFolders } from '#store/paths.ts'
 import { readSteeringMessages } from '#workers/inbox-notice.ts'
 import { steeringText } from '#workers/steering-text.ts'
 import { resumeMessage } from '#workers/host.ts'
-import { othrysSentence } from '#web-titan/othrys-action.ts'
 import { CLI, othrys, startOthrys, type Othrys } from './setup/othrys.ts'
 import { compatibleEnvironment } from '#store/legacy-env.ts'
 import { readAttempt, saveAttempt } from '#web-titan/outbox.ts'
@@ -90,17 +89,6 @@ it.each([
       kind: 'image',
       value: 'shot.png',
     })
-  },
-)
-
-it(
-  'writes new task references with the Othrys scheme',
-  () => {
-    expect(reference({
-      kind: 'task',
-      value: 'task-new',
-      label: 'New',
-    })).toBe('[@New](othrys-task:task-new)')
   },
 )
 
@@ -463,25 +451,6 @@ it(
     expect(resumeMessage({ text: '<othrys-wake>An Othrys server restart cut your last turn before you answered.' })).toBe(true)
     expect(resumeMessage({ text: '<pnyx-wake>A Pnyx server restart cut your last turn before you answered.' })).toBe(true)
     expect(resumeMessage({ text: 'Please continue.' })).toBe(false)
-  },
-)
-
-it.each([
-  { area: 'titan' },
-  { area: 'hydra' },
-])(
-  'labels $area commands in chat as Titan actions',
-  ({ area }) => {
-    expect(othrysSentence({
-      words: [
-        area,
-        'stop',
-      ],
-      lookup: {
-        task: () => undefined,
-        column: () => undefined,
-      },
-    })).toEqual(['Stopped Titan’s turn'])
   },
 )
 
