@@ -95,3 +95,28 @@ test(
     )).toBe('Keep this existing file')
   },
 )
+
+test(
+  'a source-installed legacy login service can still invoke its saved CLI entry',
+  () => {
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        join(
+          import.meta.dirname,
+          '..',
+          'src',
+          'cli',
+          'pnyx.ts',
+        ),
+        '--help',
+      ],
+      {
+        env: process.env,
+        encoding: 'utf8',
+      },
+    )
+    expect(output).toContain('usage: othrys')
+  },
+)
