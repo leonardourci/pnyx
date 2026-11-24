@@ -655,7 +655,7 @@ function callLabel({
     const known = !(typeof sentence[0] === 'string' && sentence[0].startsWith(UNKNOWN_COMMAND))
 
     return {
-      icon: 'pnyx',
+      icon: 'othrys',
       sentence: known ? othrysNow({ sentence }) : ['Using Othrys'],
     }
   }

@@ -99,7 +99,7 @@ export function Icon({
     )
   }
 
-  if (name === 'pnyx') {
+  if (name === 'othrys') {
     return (
       <img
         aria-hidden="true"

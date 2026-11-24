@@ -314,6 +314,7 @@ export function othrysSentence({
 
       break
     }
+    case 'titan':
     case 'hydra':
       switch (action) {
         case 'check': return ['Checked what changed']
