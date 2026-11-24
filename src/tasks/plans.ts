@@ -1,10 +1,10 @@
 import { taskRank } from './order.ts'
 import { randomUUID } from 'node:crypto'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { explained } from '#app/cli-support.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError, inField } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TitanError, inField } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
 import { findCard } from './push-rules.ts'
@@ -71,7 +71,7 @@ export function planTaskChange({
   meta,
   cardId,
 }: {
-  state: HydraState
+  state: TitanState
   operation: TaskOperation
   meta: Meta
   hydraId: string
@@ -90,7 +90,7 @@ export function planTaskChange({
 
   if (operation.op === 'task.create') {
     if (operation.message && !operation.ask) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'message requires ask',
         field: 'message',
         code: 'VALIDATION_ERROR',
@@ -100,7 +100,7 @@ export function planTaskChange({
     const title = operation.title.trim()
 
     if (!title) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'title must be a non-empty string',
         field: 'title',
         code: 'VALIDATION_ERROR',
@@ -110,7 +110,7 @@ export function planTaskChange({
     const key = operation.key ?? `task:${meta.id ?? randomUUID()}`
 
     if (key.startsWith('$')) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'task keys beginning with $ are reserved',
         field: 'key',
         code: 'VALIDATION_ERROR',
@@ -118,7 +118,7 @@ export function planTaskChange({
     }
 
     if (state.keys[key]) {
-      throw new HydraError({
+      throw new TitanError({
         message: `task key already exists: ${key}`,
         field: 'key',
         code: 'CONFLICT',
@@ -138,7 +138,7 @@ export function planTaskChange({
     }) : undefined
 
     if (parent?.parentId || (parent !== undefined && isManagedTask({ card: parent }))) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'subtasks have one level under a task',
         field: 'parent',
         code: 'VALIDATION_ERROR',
@@ -217,7 +217,7 @@ export function planTaskChange({
           at: meta.at,
         })
       } catch (error) {
-        if (error instanceof HydraError && error.field === 'text') {
+        if (error instanceof TitanError && error.field === 'text') {
           error.field = 'ask'
         }
 
@@ -238,7 +238,7 @@ export function planTaskChange({
 
   if (operation.op === 'task.depend' || operation.op === 'task.undepend') {
     if (!operation.on.length) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'on must contain at least one task',
         code: 'VALIDATION_ERROR',
       })
@@ -269,7 +269,7 @@ export function planTaskChange({
   })
 
   if (isManagedTask({ card: task })) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'choose a task',
       code: 'VALIDATION_ERROR',
     })
@@ -286,7 +286,7 @@ export function planTaskChange({
     })
 
     if (brief === undefined && intent === undefined) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'provide brief (empty text clears it) or intent',
         field: 'brief',
         code: 'VALIDATION_ERROR',

@@ -1,20 +1,20 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { decideReply } from './reply-rules.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { readTranscriptRecord } from './transcripts.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { scanEvents } from '#app/event-log.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
-import { threadPath } from '#hydra/transcripts-read.ts'
+import { threadPath } from '#titan/transcripts-read.ts'
 
 // A resend's reply id is the original's with this and its try number.
 const RETRY_MARK = '~retry'
-// Resends before Hydra is told the message never arrived.
+// Resends before Titan is told the message never arrived.
 export const MAX_RESENDS = 2
 // A send gets this long to show up in the session before it counts as missing.
 const RESEND_GRACE_MS = 60_000
@@ -22,7 +22,7 @@ const RESEND_GRACE_MS = 60_000
 const TRANSCRIPT_WINDOW = 4 * 1024 * 1024
 // Only a reply sent this recently is followed up, so an old one is never resent out of the blue.
 const FOLLOW_UP_WINDOW_MS = 30 * 60 * 1000
-// A transcript stamps a message a little after Pnyx queued it, never long before.
+// A transcript stamps a message a little after Othrys queued it, never long before.
 const CLOCK_SLACK_MS = 1000
 // How much of the message, whitespace folded, must appear in the transcript.
 const MATCH_CHARS = 200
@@ -64,7 +64,7 @@ const folded = ({ text }: { text: string }) => text.replace(
 ).trim()
 
 // Replies a terminal route could not confirm, other than resends, answers to a request and setting changes.
-// One to an agent Pnyx runs is never resent by itself: the owner sends it again.
+// One to an agent Othrys runs is never resent by itself: the owner sends it again.
 const unconfirmedOriginals = ({ card }: { card: Card }) => (card.replies ?? [])
   .filter(reply => reply.state === 'delivery_unknown' && reply.route !== 'pnyx' && !reply.answers && !reply.id.includes(RETRY_MARK)
     && !card.steering?.some(message => message.reply === reply.id))
@@ -75,7 +75,7 @@ export function repliesToFollow({
   state,
   now = Date.now(),
 }: {
-  state: HydraState
+  state: TitanState
   now?: number
 }): boolean {
   return Object.values(state.cards).some(card => {
@@ -89,7 +89,7 @@ function sentReplies({
   events,
   wanted,
 }: {
-  events: Iterable<HydraEvent>
+  events: Iterable<TitanEvent>
   wanted: Set<string>
 }): Map<string, Sent> {
   const sent = new Map<string, Sent>()
@@ -213,7 +213,7 @@ function replyFollowUps({
   now,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   tried: Map<string, number>
   now: number
 }): ReplyFollowUp[] {
@@ -386,7 +386,7 @@ export async function followUpReplies({
 }): Promise<void> {
   const followUps = replyFollowUps({
     hydraId,
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     tried,
     now,
   })

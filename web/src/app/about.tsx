@@ -1,5 +1,5 @@
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { clock } from '#web-hydra/chat.ts'
+import { clock } from '#web-titan/chat.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { IdentityCredits } from '#web-shared/ui/icons/identity-credits.tsx'
@@ -12,7 +12,7 @@ function upgradeStatus({ upgrade }: { upgrade?: UpgradeStatus }): string {
 
   const checked = `checked ${checkedDay({ at: upgrade.checkedAt })} at ${clock({ at: upgrade.checkedAt })}`
 
-  return upgrade.available ? `A newer Pnyx is available, ${checked}.` : `Up to date, ${checked}.`
+  return upgrade.available ? `A newer Othrys is available, ${checked}.` : `Up to date, ${checked}.`
 }
 
 function Version({
@@ -22,7 +22,7 @@ function Version({
   upgrade?: UpgradeStatus
   startUpgrade(): void
 }) {
-  const build = document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content
+  const build = document.querySelector<HTMLMetaElement>('meta[name=othrys-build]')?.content
 
   return (
     <div className="about-version flex flex-wrap items-center gap-3">
@@ -40,8 +40,8 @@ export function About({
   startUpgrade(): void
 }) {
   return (
-    <section className="about flex flex-col gap-2 text-ui [&_a]:underline [&_summary]:cursor-pointer" aria-label="About Pnyx">
-      <p>Pnyx brings your agents and their work into a Hydra.</p>
+    <section className="about flex flex-col gap-2 text-ui [&_a]:underline [&_summary]:cursor-pointer" aria-label="About Othrys">
+      <p>Othrys brings your agents and their work into a Titan.</p>
       <Version upgrade={upgrade} startUpgrade={startUpgrade} />
       <Disclosure title="License notices">
         <IdentityCredits />

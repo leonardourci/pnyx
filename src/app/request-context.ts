@@ -1,5 +1,6 @@
+import { compatibleEnvironment, legacyName } from '#store/legacy-env.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { HYDRA_ACTOR } from './actors.ts'
+import { TITAN_ACTOR } from './actors.ts'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
@@ -33,21 +34,28 @@ export const recordExitCode = ({ code }: { code: number }) => {
 export const requestExitCode = () => current.getStore()?.exitCode
 
 // The variables a client sends with each command: who it is, and the terminal or task it runs in.
-export const IDENTITY = [
-  'PNYX_ACTOR',
-  'PNYX_TASK',
-  'PNYX_HYDRA',
-  'PNYX_STEERING_WORKER',
-  'PNYX_WORKER_HOME',
-  'PNYX_HOSTED',
+const CURRENT_IDENTITY = [
+  'OTHRYS_ACTOR',
+  'OTHRYS_TASK',
+  'OTHRYS_TITAN',
+  'OTHRYS_STEERING_WORKER',
+  'OTHRYS_WORKER_HOME',
+  'OTHRYS_HOSTED',
   'TMUX_PANE',
   'HERDR_PANE_ID',
 ] as const
 
-export const requestEnv = (): NodeJS.ProcessEnv => current.getStore()?.env ?? process.env
+export const IDENTITY = [
+  ...CURRENT_IDENTITY,
+  ...CURRENT_IDENTITY.filter(name => name.startsWith('OTHRYS_')).map(name => legacyName({ name })),
+]
+
+export const requestEnv = (): NodeJS.ProcessEnv => compatibleEnvironment({
+  env: current.getStore()?.env ?? process.env,
+})
 
 export const hydraActor = ({ actor }: { actor?: string }) =>
-  actor === HYDRA_ACTOR || requestEnv().PNYX_ACTOR === HYDRA_ACTOR
+  actor === TITAN_ACTOR || requestEnv().OTHRYS_ACTOR === TITAN_ACTOR
 
 export const requestCwd = (): string => current.getStore()?.cwd ?? process.cwd()
 
@@ -74,7 +82,7 @@ export function runForClient<T>({
 
   return current.run(
     {
-      env,
+      env: compatibleEnvironment({ env }),
       cwd,
       stdin,
       invocation: {},
@@ -105,7 +113,7 @@ export function readInput({ file }: { file: string }): string {
 
 export function agentRequest(): boolean {
   const env = requestEnv()
-  const actor = env.PNYX_ACTOR ?? ''
+  const actor = env.OTHRYS_ACTOR ?? ''
 
-  return actor === 'hydra' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.PNYX_TASK)
+  return actor === 'hydra' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.OTHRYS_TASK)
 }

@@ -1,6 +1,6 @@
-import type { HydraEvent } from './model.ts'
+import type { TitanEvent } from './model.ts'
 
-export function durableEvent({ event }: { event: HydraEvent }): boolean {
+export function durableEvent({ event }: { event: TitanEvent }): boolean {
   switch (event.type) {
     case 'task.edited':
       return !event.data.source

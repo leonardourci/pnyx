@@ -1,4 +1,4 @@
-import { joinMessageParts } from '#hydra/history.ts'
+import { joinMessageParts } from '#titan/history.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import { observedStatus } from './observed-status.ts'
 import type { PendingTurn } from '#web-workers/pending-turns.ts'
@@ -6,26 +6,26 @@ import type { AgentConfig } from '#workers/model.ts'
 import { queuedAgentLabel } from '#workers/providers.ts'
 import { useCardAgent, RepositoryPicker } from '#web-workers/card-agent.tsx'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { ThreadPage } from '#titan/transcripts-read.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
 import { stored, save as saveLocal } from '#web-app/connection-storage.ts'
 import type { Command } from '#web-app/connection.ts'
-import { sendChatMessage } from '#web-hydra/chat-send.ts'
-import { Messages, type ChatEntry } from '#web-hydra/messages.tsx'
-import { ActionBubble } from '#web-hydra/action-bubble.tsx'
-import { useChatScroll } from '#web-hydra/chat-scroll.ts'
-import { CHAT_FRAME, Chat } from '#web-hydra/chat-view.tsx'
-import { useComposerSources } from '#web-hydra/composer-sources.tsx'
-import { useChatThread } from '#web-hydra/chat-thread.ts'
-import { Running } from '#web-hydra/running-indicator.tsx'
-import { Composer } from '#web-hydra/composer.tsx'
-import { useChatDrafts, useDraftSnapshot } from '#web-hydra/chat-drafts.ts'
-import { pnyxLookup } from '#web-hydra/pnyx-action.ts'
-import { quoteInto } from '#web-hydra/chat.ts'
+import { sendChatMessage } from '#web-titan/chat-send.ts'
+import { Messages, type ChatEntry } from '#web-titan/messages.tsx'
+import { ActionBubble } from '#web-titan/action-bubble.tsx'
+import { useChatScroll } from '#web-titan/chat-scroll.ts'
+import { CHAT_FRAME, Chat } from '#web-titan/chat-view.tsx'
+import { useComposerSources } from '#web-titan/composer-sources.tsx'
+import { useChatThread } from '#web-titan/chat-thread.ts'
+import { Running } from '#web-titan/running-indicator.tsx'
+import { Composer } from '#web-titan/composer.tsx'
+import { useChatDrafts, useDraftSnapshot } from '#web-titan/chat-drafts.ts'
+import { othrysLookup } from '#web-titan/othrys-action.ts'
+import { quoteInto } from '#web-titan/chat.ts'
 import { Icon } from '#web-shared/icons.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { CommandFailure, createPendingResource } from '#web-shared/pending-intents.ts'
@@ -52,7 +52,7 @@ export function TaskChat({
   hydraId: string
   storageIdentity: string
   card: Card
-  state: HydraState
+  state: TitanState
   live: ThreadPage | null | undefined
   action?: CurrentAction
   pendingTurn?: PendingTurn
@@ -91,7 +91,7 @@ export function TaskChat({
       label: project.name,
     }))
 
-  const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
+  const installation = document.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
   const key = `${location.origin}:${installation}:${hydraId}:${card.id}`
   const [resource] = useState(() => {
     const existing = replies.get(key)
@@ -219,7 +219,7 @@ export function TaskChat({
     scroll,
   })
   const lookup = useMemo(
-    () => pnyxLookup({ state: () => state }),
+    () => othrysLookup({ state: () => state }),
     [state],
   )
   const failed = snapshot.intents.filter(intent => intent.stage === 'refused')

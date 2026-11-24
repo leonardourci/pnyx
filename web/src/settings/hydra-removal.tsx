@@ -1,16 +1,16 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import type { HydraSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { HydraLabel } from '#web-hydra/hydra-title.tsx'
+import { TitanLabel } from '#web-titan/hydra-title.tsx'
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 
-export function HydraRemoval({
+export function TitanRemoval({
   hydras,
   command,
   connected,
 }: {
-  hydras: HydraSummary[]
+  hydras: TitanSummary[]
   command: Command
   connected: boolean
 }) {
@@ -36,12 +36,12 @@ export function HydraRemoval({
   ] = useState<string[]>([])
 
   return (
-    <section className="my-3 rounded-xl border border-gold-line p-4" aria-label="Hydras">
-      <h2>Hydras</h2>
+    <section className="my-3 rounded-xl border border-gold-line p-4" aria-label="Titans">
+      <h2>Titans</h2>
       {error && <p role="alert">{error}</p>}
       {hydras.map(hydra => (
         <div key={hydra.id} className="mt-3 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-2"><HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} /></span>
+          <span className="inline-flex items-center gap-2"><TitanLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} /></span>
           <Button
             aria-label={`Remove ${hydra.name}`}
             disabled={!connected || pendingIds.includes(hydra.id)}

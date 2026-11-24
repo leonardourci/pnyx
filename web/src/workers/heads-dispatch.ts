@@ -5,7 +5,7 @@ import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 
-export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'
+export const DISPATCH_CHANGED = 'othrys-dispatch-changed'
 
 // rule apply answers with what changed; reading the document in the same step lets the preview become the saved state without a gap.
 export const showingAfter = ({ command }: { command: Command }): Command => Object.assign(
@@ -128,7 +128,7 @@ export function useDispatchDocument({ command }: { command: Command }) {
   }
 }
 
-export function useHeadsDispatch({ command }: { command: Command }) {
+export function useTitanDispatch({ command }: { command: Command }) {
   const resource = dispatchSettings()
   const snapshot = useSyncExternalStore(
     resource.subscribe,
@@ -145,7 +145,7 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     action: 'list',
   })
 
-  const saveHydra = async ({ patch }: { patch: Partial<AgentConfig> }) => {
+  const saveTitan = async ({ patch }: { patch: Partial<AgentConfig> }) => {
     const args = [
       'set',
       'hydra',
@@ -196,6 +196,6 @@ export function useHeadsDispatch({ command }: { command: Command }) {
   return {
     effective,
     error: snapshot.error,
-    saveHydra,
+    saveTitan,
   }
 }

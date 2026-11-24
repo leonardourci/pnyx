@@ -4,34 +4,34 @@ import { afterHandoffSync } from '../handoff-sync.ts'
 import { startServer } from '#app/server-daemon.ts'
 import { fakeClaude, fakeCodex } from '../agents.ts'
 
-process.env.PNYX_HANDOFF_CRASH_PID = String(process.pid)
-const crashAfterCommit = process.env.PNYX_CRASH_AFTER_COMMIT
-const hydraId = process.env.PNYX_CRASH_HYDRA
+process.env.OTHRYS_HANDOFF_CRASH_PID = String(process.pid)
+const crashAfterCommit = process.env.OTHRYS_CRASH_AFTER_COMMIT
+const hydraId = process.env.OTHRYS_CRASH_TITAN
 
 if (!hydraId) {
-  throw new Error('PNYX_CRASH_HYDRA is required')
+  throw new Error('OTHRYS_CRASH_TITAN is required')
 }
 
 if (crashAfterCommit) {
-  const source = process.env.PNYX_CRASH_SOURCE
-  const target = process.env.PNYX_CRASH_TARGET
+  const source = process.env.OTHRYS_CRASH_SOURCE
+  const target = process.env.OTHRYS_CRASH_TARGET
 
-  if (!source || !target || !process.env.PNYX_HOME) {
+  if (!source || !target || !process.env.OTHRYS_HOME) {
     throw new Error('The crash fixture needs both native task logs')
   }
 
   afterHandoffSync({
-    home: process.env.PNYX_HOME,
+    home: process.env.OTHRYS_HOME,
     hydra: hydraId,
     source,
     target,
     cwd: crashAfterCommit,
     branch: 'iris/target-2',
-    cut: process.env.PNYX_CRASH_SCOPE_CUT === 'first' ? 'first' : 'both',
+    cut: process.env.OTHRYS_CRASH_SCOPE_CUT === 'first' ? 'first' : 'both',
     after: ({ first }) => {
-      if (process.env.PNYX_CRASH_PROOF) {
+      if (process.env.OTHRYS_CRASH_PROOF) {
         writeFileSync(
-          process.env.PNYX_CRASH_PROOF,
+          process.env.OTHRYS_CRASH_PROOF,
           first,
         )
       }

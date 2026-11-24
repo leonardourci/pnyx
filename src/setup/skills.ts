@@ -4,7 +4,7 @@ import {
   ORCHESTRATE_SKILL,
   REPORT_PROGRESS_SKILL,
   CLI_SKILL,
-  HYDRA_SKILLS,
+  TITAN_SKILLS,
   GLOBAL_SKILLS,
 } from './skill-names.ts'
 import {
@@ -23,6 +23,12 @@ const LEGACY_SKILLS = [
   'pnyx-setup',
   'pnyx-worker',
   'pnyx-inscribe',
+  'pnyx-orchestrate',
+  'pnyx-manage-workers',
+  'pnyx-arrange-columns',
+  'pnyx-set-up',
+  'pnyx-cli',
+  'pnyx-report-progress',
   'pnyx',
 ] as const
 const SOURCE = join(
@@ -38,7 +44,7 @@ export const skillSource = ({ name }: { name: string }) => join(
   'SKILL.md',
 )
 
-function removeLegacyHydraSkills({
+function removeLegacyTitanSkills({
   folder,
 }: {
   folder: string
@@ -190,9 +196,9 @@ export function prepareHelperFolder({
     { recursive: true },
   )
 
-  removeLegacyHydraSkills({ folder })
+  removeLegacyTitanSkills({ folder })
 
-  for (const name of HYDRA_SKILLS) {
+  for (const name of TITAN_SKILLS) {
     rmSync(
       join(
         folder,
@@ -223,8 +229,8 @@ export function prepareHelperFolder({
   )
 }
 
-// The hosted Hydra's folder: its contract, which both harnesses load every turn, and the skills it loads on demand.
-export function prepareHydraFolder({
+// The hosted Titan's folder: its contract, which both harnesses load every turn, and the skills it loads on demand.
+export function prepareTitanFolder({
   folder,
   instructions,
 }: {
@@ -235,16 +241,16 @@ export function prepareHydraFolder({
     folder,
     { recursive: true },
   )
-  removeLegacyHydraSkills({ folder })
+  removeLegacyTitanSkills({ folder })
   const installed = copySkills({
     folder,
-    names: HYDRA_SKILLS,
+    names: TITAN_SKILLS,
     missing: ({ path }) => log({
       level: 'warn',
       operation: 'skills.missing',
       // The skill's folder names it; the rest of the path is the install's.
       name: basename(dirname(path)),
-      error: 'A shipped skill is missing; Hydra continues with the others. Run /upgrade to repair the install.',
+      error: 'A shipped skill is missing; Titan continues with the others. Run /upgrade to repair the install.',
     }),
   })
   const orchestrate = join(
@@ -253,7 +259,7 @@ export function prepareHydraFolder({
     'skills',
     ORCHESTRATE_SKILL,
   )
-  let contract = 'The shipped Pnyx orchestration skill is missing. Tell the owner to run /upgrade to repair the install before taking on work.'
+  let contract = 'The shipped Othrys orchestration skill is missing. Tell the owner to run /upgrade to repair the install before taking on work.'
 
   if (installed.includes(orchestrate)) {
     contract = readFileSync(
@@ -426,7 +432,7 @@ export function setupSkills(
     for (const link of links.filter(link => link.status === 'conflict')) {
       inform({
         reason: `Kept the existing skill at ${link.path}`,
-        clear: 'Move that skill aside and run pnyx setup skills to install the Pnyx link',
+        clear: 'Move that skill aside and run othrys setup skills to install the Othrys link',
       })
     }
   }
@@ -464,7 +470,12 @@ export function setupSkills(
         'utf8',
       ))
 
-      if (pkg.name !== 'pnyx' && pkg.name !== 'pnyx-axi') {
+      if (![
+        'pnyx',
+        'pnyx-axi',
+        'othrys',
+        'othrys-axi',
+      ].includes(pkg.name)) {
         return []
       }
     } catch {
@@ -519,6 +530,6 @@ export function setupSkills(
       ...legacy,
     ],
     ...(preview ? { preview: 'nothing written; rerun without --preview to apply' } : {}),
-    help: [remove ? 'Run `pnyx setup skills` to install them again' : `New sessions can load ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} in any project or copy`],
+    help: [remove ? 'Run `othrys setup skills` to install them again' : `New sessions can load ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} in any project or copy`],
   }
 }

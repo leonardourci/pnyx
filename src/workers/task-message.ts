@@ -1,12 +1,12 @@
-import { mentionContext } from '#hydra/mentions.ts'
+import { mentionContext } from '#titan/mentions.ts'
 import { randomUUID } from 'node:crypto'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideReply } from './reply-rules.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { inform } from '#app/command-notices.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { ReplyState } from './model.ts'
 import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -34,7 +34,7 @@ export async function sendTaskMessage({
   request: Pick<ReplyRequest, 'card' | 'text' | 'id' | 'actor'>
 }): Promise<TaskMessageReceipt> {
   if (!request.text.trim()) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'message text is empty',
       code: 'VALIDATION_ERROR',
     })
@@ -54,8 +54,8 @@ export async function sendTaskMessage({
         ref: request.card,
       })
 
-      if (card.id === HYDRA_CARD) {
-        throw new HydraError({
+      if (card.id === TITAN_CARD) {
+        throw new TitanError({
           message: 'choose a task for this message',
           code: 'VALIDATION_ERROR',
         })
@@ -154,7 +154,7 @@ export async function sendTaskMessage({
   } catch (error) {
     hydra = {
       state: 'delivery_unknown',
-      detail: `Hydra receipt could not be confirmed: ${(error as Error).message}`,
+      detail: `Titan receipt could not be confirmed: ${(error as Error).message}`,
     }
   }
 

@@ -4,8 +4,8 @@ import { parse } from './cli-support.ts'
 import { DEFAULT_PORT } from './server-state.ts'
 import { type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
-import { PNYX_ROOT } from '#upgrade/runner.ts'
-import { HydraError } from '#store/errors.ts'
+import { OTHRYS_ROOT } from '#upgrade/runner.ts'
+import { TitanError } from '#store/errors.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import { stopOldHost } from '#workers/children.ts'
 
@@ -31,7 +31,7 @@ export async function serve({
   const source = portFlag === undefined ? 'PORT' : '--port'
 
   if (rawPort !== undefined && (!/^\d+$/.test(rawPort) || Number(rawPort) > MAX_PORT)) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${source} must be a port from 0 to ${MAX_PORT}`,
       code: 'VALIDATION_ERROR',
     })
@@ -45,11 +45,11 @@ export async function serve({
     server = await startServer({
       hydraId,
       port,
-      upgradeRoot: PNYX_ROOT,
+      upgradeRoot: OTHRYS_ROOT,
     })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      throw new HydraError({
+      throw new TitanError({
         message: `port ${port} is in use`,
         code: 'PORT_IN_USE',
         help: [`Stop what holds port ${port}, or pick another --port`],
@@ -62,7 +62,7 @@ export async function serve({
   const skipped = Object.entries(server.skipped).map(([
     id,
     reason,
-  ]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
+  ]) => `skipped: ${JSON.stringify(`Titan ${id}: ${reason}`)}\n`)
     .join('')
   stdout.write(json ? `${JSON.stringify({
     server: 'running',

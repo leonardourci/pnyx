@@ -1,15 +1,15 @@
 import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { workerLine } from './setup/worker-log.ts'
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { localToken } from '#app/server-state.ts'
-import { openPage, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { openPage, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 const image = Buffer.from(
   '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea735819f0000000049454e44ae426082',
@@ -17,7 +17,7 @@ const image = Buffer.from(
 )
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 // A request exactly as given: fetch would normalize the path and drop a forged Host header.
@@ -37,7 +37,7 @@ const raw = ({
   const sent = request(
     {
       host: '127.0.0.1',
-      port: pnyx.port(),
+      port: othrys.port(),
       path,
       headers,
     },
@@ -66,7 +66,7 @@ const raw = ({
 test(
   'a worker acts as itself: its worker line lands on its own task, and it can move its task with a notice',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'app' })
     await hydra.owner({
       args: [
@@ -89,8 +89,8 @@ test(
       ],
     })
     const worker = await hydra.agent({ cwd: folder })
-    expect(worker.env.PNYX_ACTOR).toMatch(/^worker:task-/)
-    expect(worker.env.PNYX_HOME).toBe(process.env.PNYX_HOME)
+    expect(worker.env.OTHRYS_ACTOR).toMatch(/^worker:task-/)
+    expect(worker.env.OTHRYS_HOME).toBe(process.env.OTHRYS_HOME)
 
     await workerLine({
       hydra,
@@ -105,7 +105,7 @@ test(
       ],
     })).task.status).toBe('idle')
 
-    const other = await pnyx.hydra()
+    const other = await othrys.hydra()
     const moved = await hydra.as({ session: worker }).run({
       args: [
         'task',
@@ -117,14 +117,14 @@ test(
     })
     expect(moved.notices).toBeDefined()
     expect((await other.task({ key: 'export' })).worker).not.toContain('none:')
-    expect((await fetch(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/health`)).status).toBe(200)
+    expect((await fetch(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/health`)).status).toBe(200)
   },
 )
 
 test(
-  'Hydra changes worker permission mode directly and receives a notice',
+  'Titan changes worker permission mode directly and receives a notice',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({ key: 'permission-mode' })
     const session = await hydra.chat({ text: 'Change the worker mode' })
     const output = await hydra.as({ session }).run({
@@ -156,16 +156,16 @@ test(
 )
 
 test(
-  'Hydra\'s own permission request waits for the owner: Hydra\'s answer is refused and the owner\'s is accepted once',
+  'Titan\'s own permission request waits for the owner: Titan\'s answer is refused and the owner\'s is accepted once',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const session = await hydra.chat({ text: 'clean the build folder' })
     const decision = session.useTool!({
       tool: 'Bash',
       input: { command: 'rm -rf build' },
     })
     const [request] = await until({
-      what: 'Hydra\'s permission request',
+      what: 'Titan\'s permission request',
       check: async () => (await hydra.owner({
         args: [
           'task',
@@ -222,11 +222,11 @@ test(
 )
 
 test(
-  'the page\'s socket and files need the local token, its commands stay on its own Hydra, and only the Hydra\'s own files are served',
+  'the page\'s socket and files need the local token, its commands stay on its own Titan, and only the Titan\'s own files are served',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await expect(openPage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
       token: 'wrong-token',
     })).rejects.toThrow()
@@ -236,7 +236,7 @@ test(
       name: 'task',
       args: [
         'list',
-        '--hydra',
+        '--titan',
         'default',
       ],
     })
@@ -261,7 +261,7 @@ test(
 
     page.close()
 
-    const base = `http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}`
+    const base = `http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}`
     const unauthorized = await fetch(
       `${base}/attachments`,
       {
@@ -312,11 +312,11 @@ test(
 )
 
 test(
-  'an image outside the Hydra\'s folder is never served, whether asked for through .. or through a linked copy folder',
+  'an image outside the Titan\'s folder is never served, whether asked for through .. or through a linked copy folder',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const home = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
     )
@@ -338,16 +338,16 @@ test(
       ),
       image,
     )
-    // Two real images beside the Hydra's folder: one at the home's root, one in a folder a copy links to.
+    // Two real images beside the Titan's folder: one at the home's root, one in a folder a copy links to.
     writeFileSync(
       join(
-        process.env.PNYX_HOME!,
+        process.env.OTHRYS_HOME!,
         'outside.png',
       ),
       image,
     )
     const elsewhere = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       `${hydra.id}-elsewhere`,
     )
     mkdirSync(elsewhere)
@@ -386,9 +386,9 @@ test(
 test(
   'a command line posted to /api/run needs the local token and writes nothing without it',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const run = ({ authorization }: { authorization?: string } = {}) => fetch(
-      `http://127.0.0.1:${pnyx.port()}/api/run`,
+      `http://127.0.0.1:${othrys.port()}/api/run`,
       {
         method: 'POST',
         headers: {
@@ -403,7 +403,7 @@ test(
             'Unauthorized',
             '--key',
             'unauthorized',
-            '--hydra',
+            '--titan',
             hydra.id,
           ],
           cwd: process.cwd(),
@@ -479,7 +479,7 @@ test(
         })
       },
     })
-    const hydra = await pnyx.hydra({
+    const hydra = await othrys.hydra({
       id,
       create: false,
     })
@@ -554,7 +554,7 @@ test(
         })
       },
     })
-    const hydra = await pnyx.hydra({
+    const hydra = await othrys.hydra({
       id,
       create: false,
     })
@@ -594,7 +594,7 @@ test(
 test(
   'a saved approval applies native worker settings once',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.startTask({ key: 'approved-mode' })
     expect((await hydra.owner({
       args: [
@@ -613,7 +613,7 @@ test(
           seq: writer.state.seq + 1,
           at: new Date().toISOString(),
           actor: 'hydra',
-          cardId: HYDRA_CARD,
+          cardId: TITAN_CARD,
           type: 'hydra.dispatch-proposed',
           data: {
             token: 'native-mode-approval',

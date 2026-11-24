@@ -2,17 +2,17 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
 import * as processes from '#app/run-process.ts'
-import { operation, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { operation, parsed, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test(
   'owner-memory revisions cannot cross a home-polis change',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
 
     await hydra.owner({
       args: [
@@ -136,7 +136,7 @@ test(
       ],
     })
     const path = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'owner',
       'poleis',
       'revision-next',
@@ -144,7 +144,7 @@ test(
     )
     const beforeCorruption = readFileSync(path)
     const firstPath = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'owner',
       'poleis',
       'revision-first',
@@ -455,7 +455,7 @@ test(
 test(
   'completed project confirmation retries keep their pinned revision',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const path = hydra.folder({ name: 'confirmation-retry' })
     await hydra.owner({
       args: [
@@ -514,10 +514,10 @@ test(
 )
 
 test(
-  'owner journals, Hydra notes and project notes stay readable across Hydras without access rules',
+  'owner journals, Titan notes and project notes stay readable across Titans without access rules',
   async () => {
-    const owner = await pnyx.hydra()
-    const caller = await pnyx.hydra()
+    const owner = await othrys.hydra()
+    const caller = await othrys.hydra()
     const project = owner.folder({ name: 'unrestricted-memory' })
     await owner.owner({
       args: [
@@ -547,7 +547,7 @@ test(
         '--key',
         'context',
         '--text',
-        'Hydra note available to every caller',
+        'Titan note available to every caller',
       ],
     })
     await owner.owner({
@@ -807,7 +807,7 @@ test(
     const session = await owner.chat({ text: 'Inspect the moved project memory records' })
     const context = session.received.at(-1)!
     const ownerLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'owner',
       'poleis',
       'moved-journal',
@@ -849,7 +849,7 @@ test(
       reason: 'Importer changed',
     }))
     const settingsPath = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'settings',
       'events.jsonl',
     )
@@ -878,14 +878,14 @@ test(
       const output = await operation({
         args: [
           ...args,
-          '--hydra',
+          '--titan',
           owner.id,
         ],
         env: {
           ...process.env,
-          PNYX_ACTOR: 'worker:memory-reader',
-          PNYX_TASK: worker.worker.env.PNYX_TASK,
-          PNYX_HYDRA: caller.id,
+          OTHRYS_ACTOR: 'worker:memory-reader',
+          OTHRYS_TASK: worker.worker.env.OTHRYS_TASK,
+          OTHRYS_TITAN: caller.id,
         },
       })
       expect(
@@ -909,7 +909,7 @@ test(
         'memory',
         'list',
       ],
-    })).memory)).toContain('Hydra note available to every caller')
+    })).memory)).toContain('Titan note available to every caller')
     expect((await read({
       args: [
         'project',
@@ -952,7 +952,7 @@ test.each([
 ])(
   'worker context shares the attachment check (detached: $detached)',
   async ({ detached }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = hydra.folder({ name: 'worker-snapshot' })
     await hydra.owner({
       args: [
@@ -1057,7 +1057,7 @@ test.each([
     await pending
     const worker = await until({
       what: 'the worker prompt',
-      check: () => pnyx.claude.sessions.find(session =>
+      check: () => othrys.claude.sessions.find(session =>
         session.cwd === project && session.received.length > 0),
     })
     const prompt = worker.received.join('\n')

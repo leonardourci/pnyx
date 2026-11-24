@@ -82,13 +82,13 @@ export function ContextMenu({
       aria-label={label}
       ref={menu}
       popover="manual"
-      // eslint-disable-next-line pnyx/object-params -- React owns the div event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the div event signature.
       onKeyDown={event => {
         if (event.key === 'Escape') {
           event.stopPropagation(); close()
         }
       }}
-      // eslint-disable-next-line pnyx/object-params -- React owns the div event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the div event signature.
       onClick={e => {
         const button = (e.target as Element).closest('button')
 

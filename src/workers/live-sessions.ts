@@ -1,32 +1,31 @@
+import { hydrasFolders } from '#store/paths.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { taskChildren, taskController, trackTaskSession, untrackTaskSession, type TaskSessionOwner } from '#app/task-runtime.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { applyDecision } from '#app/decision.ts'
-import { stopHydraInputs } from '#hydra/stop-inputs.ts'
+import { stopTitanInputs } from '#titan/stop-inputs.ts'
 import { stopWorkerInputs } from './stop-inputs.ts'
 import { background } from '#app/background.ts'
 import { log } from '#app/diagnostics.ts'
 import { logAgentMemory } from './agent-memory.ts'
 import type { Host, Live } from '#app/host-types.ts'
-import { inbox } from '#hydra/update-queue.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { inbox } from '#titan/update-queue.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
-import { failHydraInput, receivedWith } from '#hydra/received.ts'
-import type { createHydraTurns } from '#hydra/turns.ts'
-import { loadHydra } from '#app/store.ts'
+import type { TitanState } from '#app/model.ts'
+import { failTitanInput, receivedWith } from '#titan/received.ts'
+import type { createTitanTurns } from '#titan/turns.ts'
+import { loadTitan } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
-import { pnyxHome } from '#store/storage.ts'
 import type { Card } from '#tasks/model.ts'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import type { trackChildren } from './children.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { accountEnvironment } from './dispatch.ts'
-import { HYDRA_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask, toolApplicationReady } from './host.ts'
+import { TITAN_TURN_POLL_MS, IDLE_MS, WORKER_COMMANDS, closedTask, toolApplicationReady } from './host.ts'
 import type { createHostedDelivery } from './hosted-delivery.ts'
 import { steeringMessages } from './inbox-notice.ts'
 import type { AgentRef, SessionObservation } from './model.ts'
@@ -46,7 +45,7 @@ function firstOwnerMessage({
   input,
   steering,
 }: {
-  state: HydraState
+  state: TitanState
   card: string
   input?: string
   steering?: string[]
@@ -60,7 +59,7 @@ function firstOwnerMessage({
     return reply && ownerActor({ actor: reply.source }) ? reply.id : undefined
   }
 
-  if (card !== HYDRA_CARD) {
+  if (card !== TITAN_CARD) {
     const sent = state.cards[card]?.replies?.find(reply => reply.id === input)
     const untakenCardSend = sent !== undefined && sent.worker !== undefined && !sent.received
 
@@ -155,7 +154,7 @@ export interface LiveSessionScope {
   ringSteering: ReturnType<typeof createSteeringDelivery>['ringSteering']
   settleDirect: ReturnType<typeof createHostedDelivery>['settleDirect']
   directReply: ReturnType<typeof createHostedDelivery>['directReply']
-  turns(): ReturnType<typeof createHydraTurns>
+  turns(): ReturnType<typeof createTitanTurns>
 }
 
 export function createLiveSessions({
@@ -203,7 +202,7 @@ export function createLiveSessions({
 
     untrackTaskSession({ entry })
 
-    if (permanent && entry.task !== HYDRA_CARD) {
+    if (permanent && entry.task !== TITAN_CARD) {
       taskController({
         hydraId,
         task: entry.task,
@@ -230,7 +229,7 @@ export function createLiveSessions({
     }
 
     if (permanent && entry.activity === 'working') {
-      const agent = loadHydra({ hydraId }).state.sessions?.[key]?.agent
+      const agent = loadTitan({ hydraId }).state.sessions?.[key]?.agent
 
       if (agent) {
         note({
@@ -247,8 +246,8 @@ export function createLiveSessions({
     streamed({ session: key })
   }
 
-  // Hydra took this input, and with it the owner's messages the input lists.
-  const recordHydraReceived = ({
+  // Titan took this input, and with it the owner's messages the input lists.
+  const recordTitanReceived = ({
     entry,
     input,
     taken,
@@ -270,7 +269,7 @@ export function createLiveSessions({
             writer,
             decision: hydraEvent({
               state: writer.state,
-              cardId: HYDRA_CARD,
+              cardId: TITAN_CARD,
               meta: {
                 id: `${message}:received`,
                 at: at(),
@@ -327,16 +326,16 @@ export function createLiveSessions({
     const resumeTools: TaskSessionOwner['resumeTools'] = ({ ...input }) => currentOwner().resumeTools(input)
 
     let failure: string | undefined
-    const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
+    const env = environment(card.id === TITAN_CARD ? { hydra: true } : {
       task: card.id,
       steeringWorker: steeringWorkerIdentity({
-        state: loadHydra({ hydraId: currentOwner().hydraId }).state,
+        state: loadTitan({ hydraId: currentOwner().hydraId }).state,
         card,
       }),
     })
 
     const compactOwner = () => {
-      const state = loadHydra({ hydraId: currentOwner().hydraId }).state
+      const state = loadTitan({ hydraId: currentOwner().hydraId }).state
 
       return sessionOwner({
         state,
@@ -346,7 +345,7 @@ export function createLiveSessions({
     }
 
     try {
-      const contract = card.id === HYDRA_CARD
+      const contract = card.id === TITAN_CARD
         ? turns().hydraSession({ agent: card.agent }) : { allow: WORKER_COMMANDS }
 
       if (!entry.session) {
@@ -365,11 +364,11 @@ export function createLiveSessions({
             },
             env,
           }) : env,
-          signal: card.id === HYDRA_CARD ? currentOwner().controller.signal : taskController({
+          signal: card.id === TITAN_CARD ? currentOwner().controller.signal : taskController({
             hydraId: currentOwner().hydraId,
             task: card.id,
           }).signal,
-          spawned: card.id === HYDRA_CARD ? currentOwner().children.spawned
+          spawned: card.id === TITAN_CARD ? currentOwner().children.spawned
             : taskChildren({
               hydraId: currentOwner().hydraId,
               task: card.id,
@@ -383,7 +382,7 @@ export function createLiveSessions({
         return
       }
 
-      const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+      const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
 
       if (current?.agent && sessionId({ agent: current.agent }) === key
         && current.steeringGeneration === card.steeringGeneration) {
@@ -437,9 +436,9 @@ export function createLiveSessions({
                   id: item.id ?? randomUUID(),
                   text: item.text,
                   original: item.original,
-                  actor: item.id ? loadHydra({ hydraId: currentOwner().hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
-                  route: card.id === HYDRA_CARD ? 'hydra' : 'direct',
-                  accepted: card.id === HYDRA_CARD,
+                  actor: item.id ? loadTitan({ hydraId: currentOwner().hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
+                  route: card.id === TITAN_CARD ? 'hydra' : 'direct',
+                  accepted: card.id === TITAN_CARD,
                   agent: item.agent,
                 },
               })
@@ -452,7 +451,7 @@ export function createLiveSessions({
             while (!closing() && currentOwner().live.get(key) === entry && turnRunning) {
               await new Promise(resolve => setTimeout(
                 resolve,
-                HYDRA_TURN_POLL_MS,
+                TITAN_TURN_POLL_MS,
               ))
             }
 
@@ -460,7 +459,7 @@ export function createLiveSessions({
               return
             }
 
-            const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+            const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
 
             if (!activeCompaction({ card: current })) {
               await compactChange({
@@ -482,7 +481,7 @@ export function createLiveSessions({
           let inlineSteering: string[] | undefined
 
           if (item.steeringIds) {
-            const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+            const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
 
             const ids = pendingSteeringIds({
               card: current,
@@ -557,12 +556,9 @@ export function createLiveSessions({
             id: item.id ?? randomUUID(),
             text: item.text,
             original,
-            hydras: join(
-              pnyxHome(),
-              'hydras',
-            ),
+            hydras: hydrasFolders(),
             ownerMessageId: firstOwnerMessage({
-              state: loadHydra({ hydraId: currentOwner().hydraId }).state,
+              state: loadTitan({ hydraId: currentOwner().hydraId }).state,
               card: card.id,
               input: item.id,
               steering: inlineSteering,
@@ -578,10 +574,10 @@ export function createLiveSessions({
           return
         }
 
-        const state = loadHydra({ hydraId: currentOwner().hydraId }).state
+        const state = loadTitan({ hydraId: currentOwner().hydraId }).state
         const current = state.cards[entry.task]
 
-        if (entry.task !== HYDRA_CARD && current && closedTask({
+        if (entry.task !== TITAN_CARD && current && closedTask({
           state,
           card: current,
         })) {
@@ -742,14 +738,14 @@ export function createLiveSessions({
         if (refused) {
           const carried = entry.carried.get(receipt.inputId) ?? []
 
-          if (card.id === HYDRA_CARD && !receipt.stopped) {
+          if (card.id === TITAN_CARD && !receipt.stopped) {
             note({
               fn: ({ writer }) => {
                 for (const input of [
                   receipt.inputId,
                   ...carried,
                 ]) {
-                  failHydraInput({
+                  failTitanInput({
                     writer,
                     input,
                     error: receipt.error ?? 'The agent refused this message; nothing was delivered',
@@ -771,7 +767,7 @@ export function createLiveSessions({
           if (receipt.stopped) {
             note({
               fn: ({ writer }) => {
-                stopHydraInputs({
+                stopTitanInputs({
                   writer,
                   ids: [
                     receipt.inputId,
@@ -821,8 +817,8 @@ export function createLiveSessions({
           })
         }
 
-        if (card.id === HYDRA_CARD && confirmed) {
-          recordHydraReceived({
+        if (card.id === TITAN_CARD && confirmed) {
+          recordTitanReceived({
             entry,
             input: confirmed.inputId,
             taken: confirmed.at ?? at(),
@@ -897,7 +893,7 @@ export function createLiveSessions({
         }
 
         if (typeof activity !== 'string' && activity.type === 'compaction') {
-          await syncCompactions({ state: loadHydra({ hydraId: currentOwner().hydraId }).state })
+          await syncCompactions({ state: loadTitan({ hydraId: currentOwner().hydraId }).state })
           const current = compactOwner()
 
           if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
@@ -1076,7 +1072,7 @@ export function createLiveSessions({
           entry.replies.finish()
           streamed({ session: key })
 
-          if (card.id === HYDRA_CARD && !entry.stopping) {
+          if (card.id === TITAN_CARD && !entry.stopping) {
             turns().turnFinished({
               entry,
               answering,
@@ -1090,7 +1086,7 @@ export function createLiveSessions({
           turnRunning = true
           let ownerStarted: boolean | undefined
 
-          if (card.id === HYDRA_CARD) {
+          if (card.id === TITAN_CARD) {
             ownerStarted = turns().startedByOwner({ answers })
           }
 
@@ -1105,7 +1101,7 @@ export function createLiveSessions({
 
         if (activity === 'finished') {
           entry.stopping = false
-          const current = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+          const current = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
           const pending = entry.input.pending({
             includes: ({ steeringIds }) => {
               if (!steeringIds) {
@@ -1131,7 +1127,7 @@ export function createLiveSessions({
         if (recordedActivity !== entry.activity) {
           entry.activity = recordedActivity
 
-          if (card.id === HYDRA_CARD && activity !== 'working') {
+          if (card.id === TITAN_CARD && activity !== 'working') {
             turns().activityChanged({ activity: recordedActivity })
           }
 
@@ -1155,7 +1151,7 @@ export function createLiveSessions({
           clearTimeout(entry.idle)
 
           if (activity === 'finished') {
-            if (card.id === HYDRA_CARD) {
+            if (card.id === TITAN_CARD) {
               turns().turnRecorded()
             }
 
@@ -1215,7 +1211,7 @@ export function createLiveSessions({
       return
     }
 
-    const pendingTools = loadHydra({ hydraId: currentOwner().hydraId }).state.cards[card.id]
+    const pendingTools = loadTitan({ hydraId: currentOwner().hydraId }).state.cards[card.id]
     const unapplied = pendingTools?.toolsRevision !== pendingTools?.toolsApplied
     retire({
       key,
@@ -1223,7 +1219,7 @@ export function createLiveSessions({
       failed: Boolean(entry.toolResume) && unapplied,
     })
 
-    if (card.id === HYDRA_CARD) {
+    if (card.id === TITAN_CARD) {
       turns().sessionEnded({ entry })
     }
 
@@ -1348,7 +1344,7 @@ export function createLiveSessions({
     task: string
     text: string
   }) => {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = state.cards[task]
 
     if (!card?.agent || closing()) {

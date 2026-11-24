@@ -1,7 +1,7 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
-export function notUndoable({ message }: { message: string }): HydraError {
-  return new HydraError({
+export function notUndoable({ message }: { message: string }): TitanError {
+  return new TitanError({
     message,
     code: 'NOT_UNDOABLE',
     help: ['Read hydra.log and task.log to find an undoable edit'],
@@ -14,8 +14,8 @@ export function invalid({
 }: {
   message: string
   field?: string
-}): HydraError {
-  return new HydraError({
+}): TitanError {
+  return new TitanError({
     message,
     code: 'VALIDATION_ERROR',
     field,

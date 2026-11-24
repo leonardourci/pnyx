@@ -176,7 +176,7 @@ export function RoutineHelper({
           },
         })}
       />
-      <Help text="Off sends every wake to the main Hydra. Pnyx suggests a lighter model; choose any provider, account and model. Fast stays off unless you turn it on here or in a Hydra’s composer, which also puts that Hydra’s helper on Fast where its model has it." />
+      <Help text="Off sends every wake to the main Titan. Othrys suggests a lighter model; choose any provider, account and model. Fast stays off unless you turn it on here or in a Titan’s composer, which also puts that Titan’s helper on Fast where its model has it." />
     </SettingStack>
   )
 }
@@ -185,22 +185,22 @@ export function DefaultAgent({
   rule,
   command,
   connected,
-  saveHydra,
+  saveTitan,
 }: {
   rule: AgentConfig
   command: Command
   connected: boolean
-  saveHydra({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
+  saveTitan({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }) {
   return (
     <SettingStack >
       <AgentPickers
-        label="Hydra’s default agent"
+        label="Titan’s default agent"
         defaultAction="edit"
         agent={rule}
         command={command}
         connected={connected}
-        onChange={({ next }) => saveHydra({
+        onChange={({ next }) => saveTitan({
           patch: {
             harness: next.harness,
             account: next.account,

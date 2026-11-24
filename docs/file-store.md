@@ -1,11 +1,11 @@
 # Native file store
 
-The daemon keeps canonical state in memory and appends native facts to one Hydra log and one log per task. Start this release with an empty home and keep any existing home separately.
+The daemon keeps canonical state in memory and appends native facts to one Titan log and one log per task. A Postgres-era home is not read; a native `~/.pnyx` home is reused as [Compatibility](compatibility.md) describes.
 
 ## Files and identity
 
 ```text
-$PNYX_HOME/
+$OTHRYS_HOME/
 └── hydras/<hydra>/
     ├── hydra.log
     ├── snapshot.json
@@ -17,7 +17,7 @@ Each line is newline-terminated JSON. Its header is `n`, `at`, `by`, `t`, `id`, 
 
 Reference conversion applies to application sequence fields and history boundaries. Permission tool inputs and answer values remain opaque JSON, including literal fields named `native` or `seq`. Compaction and current inscribe cutoffs use their durable decisions as anchors when the preceding live observation has no log entry.
 
-The first Hydra fact is `config`; the first task fact is `created`. Task membership comes from the task folders, including when a snapshot lists a task that has since moved or omits a new task. The application creates task UUIDs. The store refuses a second task with the same ID anywhere in its open home.
+The first Titan fact is `config`; the first task fact is `created`. Task membership comes from the task folders, including when a snapshot lists a task that has since moved or omits a new task. The application creates task UUIDs. The store refuses a second task with the same ID anywhere in its open home.
 
 Only the daemon opens the store for writing or recovery. Workers read files and append to their own `worker.log`; they must not use the daemon's log repair functions. The host owns the single daemon instance. The store does not acquire filesystem or database locks.
 
@@ -25,19 +25,19 @@ Within a process, opening the same canonical home twice refuses with `STORE_OPEN
 
 ## Store interface
 
-`openFileStore` takes a home and two synchronous pure reducers, `reduceHydra` and `reduceTask`. The home's parent must already exist; the store creates and durably publishes the home directory if needed. A reducer receives the scope's previous state, its ID and a numbered native fact. It validates that fact and returns plain JSON state. It performs no I/O, clock reads or random choices.
+`openFileStore` takes a home and two synchronous pure reducers, `reduceTitan` and `reduceTask`. The home's parent must already exist; the store creates and durably publishes the home directory if needed. A reducer receives the scope's previous state, its ID and a numbered native fact. It validates that fact and returns plain JSON state. It performs no I/O, clock reads or random choices.
 
 | Operation | Result |
 |---|---|
-| `createHydra({hydra, facts})` | Publishes a Hydra folder with its first facts. |
-| `createTask({hydra, task, facts})` | Publishes a task folder under an existing Hydra. |
-| `changeHydra({hydra, decide})` | Decides and appends Hydra facts in queue order. |
+| `createTitan({hydra, facts})` | Publishes a Titan folder with its first facts. |
+| `createTask({hydra, task, facts})` | Publishes a task folder under an existing Titan. |
+| `changeTitan({hydra, decide})` | Decides and appends Titan facts in queue order. |
 | `changeTask({hydra, task, decide})` | Decides and appends task facts in queue order. |
 | `change({decide})` | Reads the durable queue prefix and validates every changed scope before appending a command’s facts. |
 | `moveTask({from, to, task, id, at, by})` | Records the move and renames the task folder. |
-| `hydras()` | Lists the native Hydras loaded in memory. |
+| `hydras()` | Lists the native Titans loaded in memory. |
 | `read({hydra})` | Returns a copy of its state, task states, worker cursors and scope errors. |
-| `locateTask({task})` | Resolves the task's current Hydra and folder. |
+| `locateTask({task})` | Resolves the task's current Titan and folder. |
 | `snapshot()` | Writes atomic snapshots after earlier queued writes finish. |
 | `close()` | Stops accepting commands, drains earlier writes and snapshots the state. |
 
@@ -53,22 +53,22 @@ One ordered queue collects commands for up to five milliseconds. The store appen
 
 Repeating an accepted ID with the same contents returns its original receipt with `duplicate: true`. A different timestamp is a retry of the same intent. Changing the contents or author role refuses with `IDEMPOTENCY_CONFLICT`. Accepted IDs follow a task when its folder moves and survive snapshots and restart.
 
-The retained internal batch operation keeps its completed command receipt in the originating Hydra log, including when the command changes nothing. That receipt stays with the Hydra when a touched task moves. General multi-scope decisions still have the partial-write limits below.
+The retained internal batch operation keeps its completed command receipt in the originating Titan log, including when the command changes nothing. That receipt stays with the Titan when a touched task moves. General multi-scope decisions still have the partial-write limits below.
 
 An append or sync failure returns `WRITE_FAILED`, with no success receipt. Some complete lines may already be present. The store reloads and syncs those lines before accepting more commands; retrying their native IDs reconciles the uncertain write without duplicating it. If recovery also fails, further commands return `STORE_UNAVAILABLE` until the home can be reopened.
 
 A failed `change()` may have persisted some scopes before another scope failed. Rerunning `decide` reads the recovered state and can choose different facts. Retry the original scope changes and facts with their native IDs, or independently verify completion in every scope before treating that command as complete.
 
-A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery validates the task's replay before completing an interrupted rename and reconciles directory syncs before recovered receipts can succeed. The directory is authoritative after rename. Retrying an older move returns its original receipt even if a later move changed the holder. General decisions cannot append move facts. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Hydra folders.
+A move first syncs a `moved` fact in the task log, then renames the folder and syncs both parents. Recovery validates the task's replay before completing an interrupted rename and reconciles directory syncs before recovered receipts can succeed. The directory is authoritative after rename. Retrying an older move returns its original receipt even if a later move changed the holder. General decisions cannot append move facts. Copy paths stored in task facts stay unchanged; the integration places worker copies outside Titan folders.
 
 A worker handoff retains its checkout intent until both task logs and the checkout agree. If a crash records the handoff in only one task log, startup completes the other projection using the same decision ID. Changed checkout contents keep both tasks fenced until recovery can verify the recorded branch and commit.
 
 ## Snapshots and recovery
 
-Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep the Hydra and task folded worker byte cursors. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported, unreadable or changed cache falls back to the logs, as does a snapshot path that points to a symlink or another nonregular file. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
+Snapshots contain state, accepted native IDs and the byte and line position covered in each log. They also keep the Titan and task folded worker byte cursors. Their checksum covers the cached state and its positions. The store validates that cache before using its offsets for reads or repairs. A malformed, unsupported, unreadable or changed cache falls back to the logs, as does a snapshot path that points to a symlink or another nonregular file. A valid cache replays only each file's tail; a task absent from the cache is read from its first line.
 
 Worker facts carry `off`, the byte immediately after the consumed worker line. A new worker fact advances that cursor within the same file identity; replacement files have independent offsets, and a same-offset truncation warning is retained; a retry uses the same native ID. The cursor is rebuilt from native facts if the snapshot is absent.
 
-The daemon truncates an unterminated final line or invalid JSON at the end of a log. Corruption before the tail in bytes that replay reads reports the file and byte position as `LOG_CORRUPT`. Bytes covered by a valid snapshot are not reread on open, so corruption in them is not reported then. A permission-denied canonical log reports `LOG_UNREADABLE`. The affected task remains visible with an error and refuses changes; other healthy tasks continue. A corrupt Hydra log refuses changes to that Hydra. Legacy folders without `hydra.log` are left untouched.
+The daemon truncates an unterminated final line or invalid JSON at the end of a log. Corruption before the tail in bytes that replay reads reports the file and byte position as `LOG_CORRUPT`. Bytes covered by a valid snapshot are not reread on open, so corruption in them is not reported then. A permission-denied canonical log reports `LOG_UNREADABLE`. The affected task remains visible with an error and refuses changes; other healthy tasks continue. A corrupt Titan log refuses changes to that Titan. Legacy folders without `hydra.log` are left untouched.
 
-Task cards keep owner text and briefs, worker.log lines, links, explicit questions, holds, dependencies and outcomes. Running and idle are native session facts. Hidden lifecycle columns, placement rules and task declarations are absent. Native task transcript summaries are not copied into task notes; Hydra memory and compaction milestones retain their durable recovery records.
+Task cards keep owner text and briefs, worker.log lines, links, explicit questions, holds, dependencies and outcomes. Running and idle are native session facts. Hidden lifecycle columns, placement rules and task declarations are absent. Native task transcript summaries are not copied into task notes; Titan memory and compaction milestones retain their durable recovery records.

@@ -1,8 +1,8 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { readInput } from '#app/request-context.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { guard, parse, meta, required, COMMON, type Output } from '#app/cli-support.ts'
-import { loadHydra, requireHydra } from '#app/store.ts'
+import { loadTitan, requireTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
 import { transactionReceipt } from '#app/transactions.ts'
@@ -54,7 +54,7 @@ export const apply = guard({
     })
 
     if (values.full && !values.check) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--full requires --check',
         code: 'VALIDATION_ERROR',
         help: ['Use --check --full for complete before/after records without writing'],
@@ -97,7 +97,7 @@ export const apply = guard({
       },
     })))
       .digest('hex')
-    requireHydra({ hydraId })
+    requireTitan({ hydraId })
 
     if (values.check) {
       const duplicate = transactionReceipt({
@@ -108,7 +108,7 @@ export const apply = guard({
 
       if (duplicate) {
         if (values.full) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'This apply already has a recorded receipt; full preview requires a fresh event id',
             code: 'VALIDATION_ERROR',
             help: ['Run task history <task> --full for original event data, or omit --event-id to preview current state'],
@@ -122,7 +122,7 @@ export const apply = guard({
         }
       }
 
-      const loaded = loadHydra({
+      const loaded = loadTitan({
         hydraId,
         migrate: false,
       })

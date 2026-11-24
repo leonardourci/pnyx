@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import type { Question } from './model.ts'
 import { form } from './native-prompts.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { othrysHome } from '#store/paths.ts'
 import { imageBytes } from './input.ts'
 import { nativeSession, type NativeEvent, type NativeSession } from './native-session.ts'
 import { compactCommand } from './compact-command.ts'
@@ -26,11 +26,11 @@ export type SpawnCodex = ({
 type ObjectValue = Record<string, unknown>
 // JSON-RPC's code for a method the app-server does not have.
 const METHOD_NOT_FOUND = -32601
-// Codex's never with full access is Pnyx's bypass permissions.
+// Codex's never with full access is Othrys's bypass permissions.
 const NEVER = 'never', ON_REQUEST = 'on-request', BYPASS = 'bypassPermissions'
 const FULL_ACCESS = 'danger-full-access', WORKSPACE_WRITE = 'workspace-write'
 
-// The server requests Pnyx answers, each shown to the owner as this tool.
+// The server requests Othrys answers, each shown to the owner as this tool.
 const TOOLS: Record<string, string> = {
   'item/commandExecution/requestApproval': 'Command',
   'item/fileChange/requestApproval': 'File change',
@@ -383,7 +383,7 @@ function connection({
                   id,
                   error: {
                     code: -32601,
-                    message: 'Pnyx cannot answer this request yet',
+                    message: 'Othrys cannot answer this request yet',
                   },
                 },
               })
@@ -875,17 +875,17 @@ const sandboxPolicy = ({
   ? { type: 'dangerFullAccess' }
   : {
     type: 'workspaceWrite',
-    writableRoots: [env.PNYX_HOME || pnyxHome()],
+    writableRoots: [env.OTHRYS_HOME || othrysHome()],
     networkAccess: true,
   }
 
-// A shell_environment_policy that inherits only core variables would drop Pnyx's own and its git settings, so they are set explicitly.
-const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
+// A shell_environment_policy that inherits only core variables would drop Othrys's own and its git settings, so they are set explicitly.
+const othrysShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fromEntries(Object
   .entries(env)
   .filter(([
     name,
     value,
-  ]) => (name.startsWith('PNYX_') || name.startsWith('CHROME_DEVTOOLS_AXI_') || name.startsWith('GIT_CONFIG_')) && value !== undefined)
+  ]) => (name.startsWith('OTHRYS_') || name.startsWith('CHROME_DEVTOOLS_AXI_') || name.startsWith('GIT_CONFIG_')) && value !== undefined)
   .map(([
     name,
     value,
@@ -1132,7 +1132,7 @@ export function codexProvider({
         // A Codex that cannot start or read its config still offers the stored list, with its own defaults.
         const config = object({ value: (await read.catch((): ObjectValue => ({}))).config })
         const approval = config.approval_policy
-        // Every Pnyx mode brings its own sandbox, so a never without full access is named on-request, never wider.
+        // Every Othrys mode brings its own sandbox, so a never without full access is named on-request, never wider.
         const defaultMode = approval === NEVER && config.sandbox_mode === FULL_ACCESS
           ? BYPASS
           : typeof approval === 'string' && approval !== NEVER ? approval : ON_REQUEST
@@ -1150,7 +1150,7 @@ export function codexProvider({
         rpc.close()
       }
     },
-    // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Hydra or worker asks in its chat.
+    // ponytail: Codex has no per-command allow list here, so `allow` is unused and a Codex Titan or worker asks in its chat.
     async open({
       cwd,
       agent,
@@ -1206,7 +1206,7 @@ export function codexProvider({
         // Bypass permissions is Codex's never: no approvals, full access.
         const policy = () => (options.mode === BYPASS ? NEVER : options.mode ?? '')
         const config: Record<string, unknown> = {
-          ...pnyxShellEnvironment({ env }),
+          ...othrysShellEnvironment({ env }),
         }
 
         Object.assign(
@@ -1747,7 +1747,7 @@ export function codexProvider({
               // The steered message is already in the thread, so the new turn only points at it.
               continuation = {
                 id: randomUUID(),
-                text: '<pnyx-wake>The owner interrupted your previous step. Answer their latest message above now.</pnyx-wake>',
+                text: '<othrys-wake>The owner interrupted your previous step. Answer their latest message above now.</othrys-wake>',
                 images: [],
               }
             }

@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, test, vi } from 'vitest'
-import { parsed, operation, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
 const PAGE_COMMAND = join(
   import.meta.dirname,
@@ -22,7 +22,7 @@ import { legacyDuplicate } from './setup/legacy.ts'
 import { createTaskBranch } from '#projects/git.ts'
 import { createProject } from './setup/projects.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 const github = join(
   process.env.TMPDIR!,
   'github',
@@ -38,14 +38,14 @@ beforeAll(async () => {
     { recursive: true },
   )
   // Pull request state comes from this fake gh-axi, never GitHub.
-  process.env.PNYX_FAKE_GITHUB = github
-  process.env.PNYX_GH_AXI = join(
+  process.env.OTHRYS_FAKE_GITHUB = github
+  process.env.OTHRYS_GH_AXI = join(
     import.meta.dirname,
     'setup',
     'fixtures',
     'gh-axi.mjs',
   )
-  pnyx = await startPnyx({ queueDelay: 100 })
+  othrys = await startOthrys({ queueDelay: 100 })
 })
 
 const pullRequest = ({
@@ -68,10 +68,10 @@ const pullRequest = ({
 )
 
 test(
-  'Hydras share the home copy pool and keep another Hydra’s attached checkout reserved',
+  'Titans share the home copy pool and keep another Titan’s attached checkout reserved',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const project = await createProject({
       hydra: source,
       landing: 'branch',
@@ -116,7 +116,7 @@ test(
     const first = starts[0]!.agent.folder as string
     const second = starts[1]!.agent.folder as string
     const pool = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'copies',
     )
     expect(first.startsWith(`${pool}/`)).toBe(true)
@@ -305,7 +305,7 @@ const args = process.argv.slice(2)
         ],
       })
       const legacy = join(
-        process.env.PNYX_HOME!,
+        process.env.OTHRYS_HOME!,
         'hydras',
         target.id,
         'copies',
@@ -397,7 +397,7 @@ const args = process.argv.slice(2)
 test(
   'a create behind a worker on the same project queues it, a start that fails leaves it queued, a start takes it out of the queue for a worker of its own, once detached it is not shown as never started, and a replayed create or queue keeps its answer after the worker leaves',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await createProject({
       hydra,
       landing: 'branch',
@@ -556,9 +556,9 @@ test(
         'lead',
       ],
     })
-    const sessions = pnyx.claude.sessions.length
+    const sessions = othrys.claude.sessions.length
     expect(await hydra.owner({ args: second })).toMatchObject({ launch: 'queued' })
-    expect(pnyx.claude.sessions).toHaveLength(sessions)
+    expect(othrys.claude.sessions).toHaveLength(sessions)
     const replayedQueue = await hydra.owner({ args: queueWait })
     expect(replayedQueue.queued).toBeUndefined()
     expect(replayedQueue.duplicate).toBeDefined()
@@ -568,7 +568,7 @@ test(
 test(
   'a pull-request task is done only once GitHub reports its pull request merged',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await createProject({
       hydra,
       landing: 'pr',
@@ -708,9 +708,9 @@ const merges = ({ number }: { number: number }) => readFileSync(
   .filter(line => line.includes('PUT') && line.includes(`/pulls/${number}/merge`)).length
 
 test(
-  'Hydra submits a merge despite owner defaults, Hold and red checks, shows the facts, and submits once after restart',
+  'Titan submits a merge despite owner defaults, Hold and red checks, shows the facts, and submits once after restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await createProject({
       hydra,
       landing: 'pr',
@@ -800,7 +800,7 @@ test(
     expect(questionAfterReport).toBeDefined()
     expect(questionAfterReport?.closed).toBeUndefined()
     const session = await hydra.chat({ text: 'Review the open pull requests.' })
-    const asHydra = hydra.as({ session })
+    const asTitan = hydra.as({ session })
     const merge = [
       'task',
       'merge',
@@ -823,7 +823,7 @@ test(
       checks: '0 passed, 1 failed, 1 total',
       mergeBehavior: 'rejected',
     })
-    expect((await asHydra.refused({
+    expect((await asTitan.refused({
       args: [
         ...merge,
         '--event-id',
@@ -844,7 +844,7 @@ test(
       checks: '0 passed, 1 failed, 1 total',
       mergeBehavior: 'queued',
     })
-    const submitted = await asHydra.run({
+    const submitted = await asTitan.run({
       args: [
         ...merge,
         '--event-id',
@@ -860,18 +860,18 @@ test(
     ]).toContain(submitted.merge)
     expect(merges({ number: 21 })).toBe(2)
 
-    await pnyx.restart()
-    await asHydra.run({ args: merge })
+    await othrys.restart()
+    await asTitan.run({ args: merge })
     expect(merges({ number: 21 })).toBe(2)
   },
 )
 
 test(
-  'Hydra submits private-repository merges with unreadable or failing evidence and records each gap',
+  'Titan submits private-repository merges with unreadable or failing evidence and records each gap',
   async () => {
     const repo = 'private'
     const rulesError = 'error: "Insufficient permissions for this action"\ncode: FORBIDDEN'
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = join(
       github,
       'o',
@@ -961,7 +961,7 @@ test(
       ],
     })
     const session = await hydra.chat({ text: 'Review the private repository pull request.' })
-    const asHydra = hydra.as({ session })
+    const asTitan = hydra.as({ session })
     const merge = [
       'task',
       'merge',
@@ -1069,7 +1069,7 @@ test(
         ],
       })
       const submittedBefore = merges({ number: 22 })
-      const result = await asHydra.run({ args: merge })
+      const result = await asTitan.run({ args: merge })
       expect(result.merge).toBe('queued')
       expect(merges({ number: 22 }) - submittedBefore).toBe(1)
       const reason = expect.stringContaining(sample.reason)
@@ -1107,7 +1107,7 @@ test(
         url,
       ],
     })
-    const result = await asHydra.run({ args: merge })
+    const result = await asTitan.run({ args: merge })
     expect(result.merge).toBe('merged')
     expect(result.head).toBe(head)
     const calls = readFileSync(
@@ -1171,7 +1171,7 @@ const upstreamOf = ({
 test(
   'task branches never track the default branch, so a plain push from a task copy never lands on main',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = await createProject({
       hydra,
       landing: 'pr',
@@ -1380,7 +1380,7 @@ test(
     })
 
     for (const branch of [
-      'pnyx/other-task-1',
+      'othrys/other-task-1',
       'fix/feature-work',
     ]) {
       git({
@@ -1401,7 +1401,7 @@ test(
     })).toBe('')
     expect(upstreamOf({
       cwd: project,
-      branch: 'pnyx/other-task-1',
+      branch: 'othrys/other-task-1',
     })).toBe('')
     expect(upstreamOf({
       cwd: project,
@@ -1425,7 +1425,7 @@ test(
       cwd: project,
       args: [
         'branch',
-        'pnyx/custom-refspec-1',
+        'othrys/custom-refspec-1',
         'origin/main',
       ],
     })
@@ -1433,7 +1433,7 @@ test(
       cwd: project,
       args: [
         'config',
-        'branch.pnyx/custom-refspec-1.remote',
+        'branch.othrys/custom-refspec-1.remote',
         'origin',
       ],
     })
@@ -1441,7 +1441,7 @@ test(
       cwd: project,
       args: [
         'config',
-        'branch.pnyx/custom-refspec-1.merge',
+        'branch.othrys/custom-refspec-1.merge',
         'refs/heads/main',
       ],
     })
@@ -1450,19 +1450,19 @@ test(
       args: [
         'config',
         'remote.origin.fetch',
-        '+refs/heads/pnyx/*:refs/remotes/origin/pnyx/*',
+        '+refs/heads/othrys/*:refs/remotes/origin/othrys/*',
       ],
     })
     expect(upstreamOf({
       cwd: project,
-      branch: 'pnyx/custom-refspec-1',
+      branch: 'othrys/custom-refspec-1',
     })).toBe('')
     await start({ key: 'fourth' })
     expect(gitSucceeded({
       cwd: project,
       args: [
         'config',
-        'branch.pnyx/custom-refspec-1.merge',
+        'branch.othrys/custom-refspec-1.merge',
       ],
     })).toBe(false)
     git({
@@ -1581,10 +1581,10 @@ test(
 )
 
 test(
-  'attaching a repository to another Hydra succeeds with its existing owner visible and keeps existing work',
+  'attaching a repository to another Titan succeeds with its existing owner visible and keeps existing work',
   async () => {
-    const owner = await pnyx.hydra()
-    const other = await pnyx.hydra()
+    const owner = await othrys.hydra()
+    const other = await othrys.hydra()
     const path = owner.folder({ name: 'owned-project' })
     await owner.owner({
       args: [
@@ -1631,7 +1631,7 @@ test(
 test(
   'a keeper choice moves open work atomically, reports its defaults and preserves dependencies within the moved group',
   async () => {
-    const owner = await pnyx.hydra()
+    const owner = await othrys.hydra()
     const path = owner.folder({ name: 'legacy-shared' })
     await owner.owner({
       args: [
@@ -1667,7 +1667,7 @@ test(
         })
       },
     })
-    const legacy = await pnyx.hydra({
+    const legacy = await othrys.hydra({
       id,
       create: false,
     })
@@ -1695,7 +1695,7 @@ test(
       args: [
         'setup',
         'check',
-        '--hydra',
+        '--titan',
         legacy.id,
       ],
     })
@@ -1847,7 +1847,7 @@ test(
         'Work after the move',
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     expect((await owner.task({ key: task.card.id })).title).toBe('Work after the move')
     const sourceHistory = readEvents({
       hydraId: legacy.id,
@@ -1866,7 +1866,7 @@ test(
 test(
   'parent-folder attachment preserves rules, guards one revision and retries once',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const parent = hydra.folder({ name: 'repositories' })
     const first = join(
       parent,
@@ -1947,7 +1947,7 @@ test(
       '__proto__',
     ]
     await hydra.owner({ args: noOpArgs })
-    await pnyx.restart()
+    await othrys.restart()
     const third = join(
       parent,
       'cedar',
@@ -1982,17 +1982,17 @@ test(
 test(
   'readable branch names strip accents and punctuation, shorten at words, and avoid local and remote collisions',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const cwd = await createProject({
       hydra,
       landing: 'branch',
     })
-    const titleHydra = await pnyx.hydra()
+    const titleTitan = await othrys.hydra()
     const titleProject = await createProject({
-      hydra: titleHydra,
+      hydra: titleTitan,
       landing: 'branch',
     })
-    await titleHydra.owner({
+    await titleTitan.owner({
       args: [
         'hydra',
         'set',
@@ -2008,7 +2008,7 @@ test(
       title: string
       key: string
     }) => {
-      await titleHydra.owner({
+      await titleTitan.owner({
         args: [
           'task',
           'create',
@@ -2021,7 +2021,7 @@ test(
           'shop',
         ],
       })
-      const started = await titleHydra.owner({
+      const started = await titleTitan.owner({
         args: [
           'task',
           'start',
@@ -2029,7 +2029,7 @@ test(
         ],
       })
 
-      const { id } = await titleHydra.task({ key })
+      const { id } = await titleTitan.task({ key })
 
       if (typeof id !== 'string') {
         throw new Error('Expected the created task ID')
@@ -2110,7 +2110,7 @@ test(
         'refs/heads/poseidon/chart-3',
       ],
     })).toBe('init')
-    await titleHydra.owner({
+    await titleTitan.owner({
       args: [
         'hydra',
         'set',
@@ -2397,7 +2397,7 @@ test(
       ],
     })).toBe(reserved)
     const other = await legacyDuplicate({
-      pnyx,
+      othrys,
       id: 'legacy-branch-names',
       projects: [
         {
@@ -2521,7 +2521,7 @@ test(
 test(
   'a project reassigned by a checkout hook refuses the old copy and starts in the new project',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'hydra',
@@ -2673,7 +2673,7 @@ execFileSync(process.execPath, ${JSON.stringify([
 test(
   'unrecorded slots preserve and report dirty or unlanded work, then reuse it after landing',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'hydra',
@@ -2978,7 +2978,7 @@ throw new Error('fixture allocation refusal')
 test(
   'helper-agent records do not block keeper selection or individual task moves',
   async () => {
-    const keeper = await pnyx.hydra()
+    const keeper = await othrys.hydra()
     const path = keeper.folder({ name: 'helpers-project' })
     await keeper.owner({
       args: [
@@ -2988,7 +2988,7 @@ test(
       ],
     })
     const source = await legacyDuplicate({
-      pnyx,
+      othrys,
       id: 'helper-project-source',
       projects: [
         {
@@ -3097,7 +3097,7 @@ test(
         'helper-record',
       ],
     })).code).toBe('NOT_FOUND')
-    const target = await pnyx.hydra()
+    const target = await othrys.hydra()
     await keeper.owner({
       args: [
         'project',
@@ -3212,9 +3212,9 @@ test(
 )
 
 test(
-  'ready review becomes an update when its task changes to Hydra merges',
+  'ready review becomes an update when its task changes to Titan merges',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await createProject({
       hydra,
       landing: 'pr',
@@ -3528,7 +3528,7 @@ test(
 test(
   'a task discovers pull requests from its branch and keeps worker links deduplicated',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = await createProject({
       hydra,
       landing: 'pr',
@@ -3644,7 +3644,7 @@ test(
     })
     expect(linked.task.links).toHaveLength(1)
     expect(linked.task.links[0].src).toBe('branch')
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: async () => {
         let active = true
         const callLog = join(
@@ -3829,7 +3829,7 @@ test(
       }
     }
 
-    await pnyx.restart()
+    await othrys.restart()
     const restored = await hydra.owner({
       args: [
         'task',
@@ -3983,7 +3983,7 @@ test(
 test(
   'copy reuse skips an ordinary retained directory inside the source repository',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = await createProject({
       hydra,
       landing: 'branch',
@@ -4083,8 +4083,8 @@ test(
 test(
   'copy reuse protects a worker running in a released slot subdirectory',
   async () => {
-    const source = await pnyx.hydra()
-    const peer = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const peer = await othrys.hydra()
     const project = await createProject({
       hydra: source,
       landing: 'branch',
@@ -4187,7 +4187,7 @@ test(
 test(
   'copy reuse refuses a linked active checkout before restarting its worker',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const project = await createProject({
       hydra,
       landing: 'branch',

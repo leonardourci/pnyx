@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { writeFileSync, renameSync } from 'node:fs'
 
 // Writes one hook event to the spool without a write of its own. The next write ingests it; the spool is a buffer,
-// never a second writer of the Hydra.
+// never a second writer of the Titan.
 export function spoolWrite({
   hydraId,
   entry,

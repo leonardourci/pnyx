@@ -1,4 +1,4 @@
-import { splitEntry, type ThreadEntry, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { splitEntry, type ThreadEntry, type ThreadPage } from '#titan/transcripts-read.ts'
 import type { HostedText } from './provider.ts'
 
 export function liveReplies() {

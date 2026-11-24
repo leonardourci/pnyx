@@ -1,8 +1,8 @@
 import { REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { hookStatus } from '#setup/hooks.ts'
 import { skillStatus } from '#setup/skills.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { onPath } from '#setup/check.ts'
 import { COMMON, guard, parse, type Output } from '#app/cli-support.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -17,7 +17,7 @@ async function integrations({
   hydraId: string
 }): Promise<Output> {
   const config = hydraConfig({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     id: hydraId,
   })
   const hooks = hookStatus()
@@ -28,20 +28,20 @@ async function integrations({
       {
         name: 'skills',
         status: skillStatus(),
-        setup: 'pnyx setup skills',
+        setup: 'othrys setup skills',
         docs: `${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} are available in every project or copy through global skill links`,
       },
       {
         name: 'hooks',
         status: hooks === 'current' ? 'ready' : `hook script ${hooks}`,
-        setup: 'pnyx setup hooks',
-        docs: 'Claude Code and Codex sessions report to the Hydra through them',
+        setup: 'othrys setup hooks',
+        docs: 'Claude Code and Codex sessions report to the Titan through them',
       },
       {
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
-        setup: 'Set the Hydra command in Settings',
-        docs: 'Started with PNYX_HOME, PNYX_WORKER_HOME, PNYX_HYDRA, PNYX_TASK, PNYX_ROLE, PNYX_TASK_TITLE, PNYX_PROMPT, PNYX_HARNESS and PNYX_FOLDER',
+        setup: 'Set the Titan command in Settings',
+        docs: 'Started with OTHRYS_HOME, OTHRYS_WORKER_HOME, OTHRYS_TITAN, OTHRYS_TASK, OTHRYS_ROLE, OTHRYS_TASK_TITLE, OTHRYS_PROMPT, OTHRYS_HARNESS and OTHRYS_FOLDER, and the same values under their PNYX_ names',
       },
       {
         name: 'github',
@@ -88,7 +88,7 @@ export const harvest = guard({
       },
       positionals: 0,
     })
-    const { state } = loadHydra({ hydraId })
+    const { state } = loadTitan({ hydraId })
     const cards = values.card ? [
       findCard({
         state,
@@ -143,7 +143,7 @@ export const harvest = guard({
 
         out.help = [
           ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
-          values.card ? `Run \`pnyx card ${cards[0]!.id}\` to see its notes` : "Run `pnyx card <id>` to see a card's notes",
+          values.card ? `Run \`othrys card ${cards[0]!.id}\` to see its notes` : "Run `othrys card <id>` to see a card's notes",
         ]
 
         return out

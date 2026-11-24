@@ -1,4 +1,5 @@
-import { HydraError } from '#store/errors.ts'
+import { canonicalCommandName } from './command-aliases.ts'
+import { TitanError } from '#store/errors.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
 import { followUpSteering } from '#workers/inbox-follow-up.ts'
 import { agent } from '#workers/agent-cli.ts'
@@ -15,7 +16,7 @@ export type PageAnswer = {
 
 const handlerOf = ({ name }: { name: string }) => {
   if (name === 'inbox-follow') {
-    // eslint-disable-next-line pnyx/object-params -- the same shape as the CLI commands beside it.
+    // eslint-disable-next-line othrys/object-params -- the same shape as the CLI commands beside it.
     return async (args: string[]) => {
       await followUpSteering({ hydraId: args[0]! })
 
@@ -28,7 +29,7 @@ const handlerOf = ({ name }: { name: string }) => {
   }
 
   if (!(CLI_COMMANDS as readonly string[]).includes(name)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'NOT_FOUND',
       message: 'Unknown browser command',
     })
@@ -36,7 +37,7 @@ const handlerOf = ({ name }: { name: string }) => {
 
   return name === 'integrations'
     ? integrationsCommand
-    : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
+    : commands[canonicalCommandName({ name }) as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
 }
 
 export async function runPageCommand({ argv }: { argv: string[] }): Promise<PageAnswer> {
@@ -62,7 +63,7 @@ export async function runPageCommand({ argv }: { argv: string[] }): Promise<Page
     }
   } catch (error) {
     // A reply that failed unexpectedly may or may not have reached its agent; the page says so instead of a reason.
-    if (!(error instanceof HydraError) && [
+    if (!(error instanceof TitanError) && [
       'agent',
       'reply',
       'inbox-follow',
@@ -76,7 +77,7 @@ export async function runPageCommand({ argv }: { argv: string[] }): Promise<Page
     let code = 'UNKNOWN'
     let help: string[] | undefined
 
-    if (error instanceof HydraError) {
+    if (error instanceof TitanError) {
       code = error.code
       help = error.help
     }

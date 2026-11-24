@@ -19,11 +19,11 @@ const KINDS: Record<UpdateKind, {
   },
   hydra: {
     icon: 'hydra',
-    label: 'Hydra, from its chat reply',
+    label: 'Titan, from its chat reply',
   },
   told: {
     icon: 'send',
-    label: 'Hydra told the worker',
+    label: 'Titan told the worker',
   },
   decision: {
     icon: 'decision',
@@ -59,7 +59,7 @@ const KINDS: Record<UpdateKind, {
   },
   report: {
     icon: 'send',
-    label: 'Reported to Hydra',
+    label: 'Reported to Titan',
   },
   plain: {
     icon: 'summary',
@@ -214,7 +214,7 @@ export function UpdateEntry({
 
 function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> }) {
   if (!decision.answer) {
-    return <p className="muted">{decision.ask?.to === 'hydra' ? 'Waiting for Hydra' : decision.ask ? 'Waiting for your answer' : 'Waiting for an answer'}</p>
+    return <p className="muted">{decision.ask?.to === 'hydra' ? 'Waiting for Titan' : decision.ask ? 'Waiting for your answer' : 'Waiting for an answer'}</p>
   }
 
   const you = decision.actor === 'You'
@@ -241,7 +241,7 @@ function AskParts({
 
   return (
     <>
-      {ask.from && <p className={QUESTION_SOURCE}>{ask.from} asked {ask.from === 'Hydra' ? 'you' : 'Hydra'}</p>}
+      {ask.from && <p className={QUESTION_SOURCE}>{ask.from} asked {ask.from === 'Titan' ? 'you' : 'Titan'}</p>}
       {ask.context && <CollapsibleText text={ask.context} />}
       {!!ask.options?.length && (
         <ol className="decision-choices m-0 grid gap-0.5 pl-4.5 [&>li[aria-current]]:font-semibold [&>li[aria-current]]:text-gold">
@@ -259,7 +259,7 @@ function AskParts({
       )}
       {escalation && (
         <div className="decision-escalation grid gap-1 border-l-2 border-line pl-2">
-          <p className={QUESTION_SOURCE}>Hydra asked you</p>
+          <p className={QUESTION_SOURCE}>Titan asked you</p>
           {escalation.reason && (
             <CollapsibleText className={QUESTION_SOURCE} text={escalation.reason} />
           )}

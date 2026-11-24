@@ -1,17 +1,17 @@
 import type { SourceObservation } from '#tasks/observations.ts'
 import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
-import type { HydraProject, TaskCopy } from '#projects/model.ts'
+import type { TitanProject, TaskCopy } from '#projects/model.ts'
 import type { OwnerAsk, AnswerMessage, Ask, PushedEvent, ObservedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card, ReminderRepeat } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, SessionObservedEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
-import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent } from '#hydra/model.ts'
+import type { TitanConfig, TitanMessage, TitanOperation, TitanStatus, ChatEvent } from '#titan/model.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '#routine-helper/state.ts'
 import type { ExternalSourceEvent } from '#task-sources/model.ts'
 import type { RecoveryEvent, RecoveryAttempt } from '#diagnostics/recovery-state.ts'
 
-export type Decision = { event: HydraEvent } | {
+export type Decision = { event: TitanEvent } | {
   skipped: 'unchanged' | 'stale' | 'duplicate'
   observation?: SourceObservation
 }
@@ -27,7 +27,7 @@ export interface SourceRef {
   observedAt?: string
 }
 
-export type HydraChange = EventBase & (
+export type TitanChange = EventBase & (
   | {
     type: 'session.observed'
     data: {
@@ -115,13 +115,13 @@ export type HydraChange = EventBase & (
       text: string
       original?: string
     }
-    data: HydraConfig
+    data: TitanConfig
   }
   | {
     type: 'hydra.project'
     data: {
-      before: HydraProject | null
-      after: HydraProject
+      before: TitanProject | null
+      after: TitanProject
       sharedWith: {
         id: string
         name: string
@@ -136,7 +136,7 @@ export type HydraChange = EventBase & (
       after: string | null
     }
   }
-  | import('#tasks/move-state.ts').HydraMoveEvent
+  | import('#tasks/move-state.ts').TitanMoveEvent
   | {
     type: 'task.copy'
     data: {
@@ -153,7 +153,7 @@ export type HydraChange = EventBase & (
       key: string
       title: string
       brief?: string
-      // The card's first Intent: what the owner wants from the task and why, written by Hydra.
+      // The card's first Intent: what the owner wants from the task and why, written by Titan.
       intent?: string
       parentId?: string
       rank?: number
@@ -220,7 +220,7 @@ export type HydraChange = EventBase & (
       reminder: string
       nextAt?: string | null
       grouped?: boolean
-      message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
+      message: Omit<TitanMessage, 'id' | 'at' | 'actor'>
     }
   }
   | {
@@ -233,7 +233,7 @@ export type HydraChange = EventBase & (
     data: {
       before: string
       after: string
-      // Hydra's rewrite of the card's Intent when the goal itself changed; older ones stay in the log.
+      // Titan's rewrite of the card's Intent when the goal itself changed; older ones stay in the log.
       intent?: string
     }
   }
@@ -304,18 +304,18 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'hydra.message'
-    data: Omit<HydraMessage, 'id' | 'at' | 'actor'>
+    data: Omit<TitanMessage, 'id' | 'at' | 'actor'>
   }
   | {
     type: 'hydra.status'
-    data: HydraStatus
+    data: TitanStatus
   }
   | {
-    // Hydra's harness confirmed it took this message.
+    // Titan's harness confirmed it took this message.
     type: 'hydra.received'
     data: {
       message: string
-      // When Hydra's harness took it, by its own record.
+      // When Titan's harness took it, by its own record.
       at: string
     }
   }
@@ -336,17 +336,17 @@ export type HydraChange = EventBase & (
     data: import('#workers/model.ts').AgentConfig
   }
   | {
-    // Pnyx handed Hydra a turn in a session already configured; its id, <turn>:hosted, marks the turn delivered.
+    // Othrys handed Titan a turn in a session already configured; its id, <turn>:hosted, marks the turn delivered.
     type: 'hydra.delivered'
     data: { session: string }
   }
   | {
     type: 'hydra.agent-change'
-    data: import('#hydra/model.ts').HydraAgentChange
+    data: import('#titan/model.ts').TitanAgentChange
   }
   | {
     type: 'hydra.operation'
-    data: HydraOperation
+    data: TitanOperation
   }
   | {
     type: 'hydra.dispatch-proposed'
@@ -376,7 +376,7 @@ export type HydraChange = EventBase & (
   }
 )
 
-export type HydraEvent =
+export type TitanEvent =
   | import('./transactions.ts').ApplyRecordedEvent
   | import('#workers/compaction/model.ts').CompactionEvent
   | import('#upgrade/model.ts').UpgradeEvent
@@ -391,11 +391,11 @@ export type HydraEvent =
   | ViewEvent
   | SessionEvent
   | SessionObservedEvent
-  | HydraChange
+  | TitanChange
   | ChatEvent
   | PermissionEvent
 
-export type EventType = HydraEvent['type']
+export type EventType = TitanEvent['type']
 
 export const EVENT_TYPES: readonly EventType[] = [
   'task.wait-resumed',
@@ -479,19 +479,19 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.landing',
 ]
 
-export interface HydraState {
+export interface TitanState {
   changedAt?: string
   nativeTimes?: {
     seq: number
     at: string
   }[]
-  contextNotes?: import('#hydra/context-notes.ts').ContextNote[]
+  contextNotes?: import('#titan/context-notes.ts').ContextNote[]
   diagnosticRetries?: Record<string, RecoveryAttempt[]>
   dispatchProposals?: DispatchProposal[]
   labelColors?: SavedLabelColor[]
-  projects?: HydraProject[]
+  projects?: TitanProject[]
   projectsRevision?: number
-  config?: HydraConfig
+  config?: TitanConfig
   configured?: boolean
   configRevision?: number
   helper?: HelperState
@@ -502,15 +502,15 @@ export interface HydraState {
     reminders: Record<string, string>
     flags?: string[]
   }
-  hydraMessages?: HydraMessage[]
-  // The page's stand-in for hydraMessages: the owner's latest message to Hydra.
-  hydraOwnerMessage?: Pick<HydraMessage, 'id' | 'task' | 'text'>
+  hydraMessages?: TitanMessage[]
+  // The page's stand-in for hydraMessages: the owner's latest message to Titan.
+  hydraOwnerMessage?: Pick<TitanMessage, 'id' | 'task' | 'text'>
   questionReminders?: Record<string, string>
   hydraAgent?: import('#workers/model.ts').AgentConfig
-  // Every session Hydra has been configured with, oldest first.
+  // Every session Titan has been configured with, oldest first.
   hydraSessions?: string[]
-  hydraAgentChange?: import('#hydra/model.ts').HydraAgentChange
-  historyMilestones?: import('#hydra/history.ts').HistoryMilestone[]
+  hydraAgentChange?: import('#titan/model.ts').TitanAgentChange
+  historyMilestones?: import('#titan/history.ts').HistoryMilestone[]
   hydraContext?: {
     after: number
     summary: string
@@ -518,10 +518,10 @@ export interface HydraState {
   }
 
   upgrades?: import('#upgrade/model.ts').UpgradeOperation[]
-  // seq is the event that set it, so a recap can list what came after Hydra went down.
-  hydraStatus?: HydraStatus & { seq: number }
-  // The operation stopping Hydra now; everything addressed to Hydra waits until it ends. seq is its start.
-  hydraOperation?: Pick<HydraOperation, 'id' | 'kind'> & {
+  // seq is the event that set it, so a recap can list what came after Titan went down.
+  hydraStatus?: TitanStatus & { seq: number }
+  // The operation stopping Titan now; everything addressed to Titan waits until it ends. seq is its start.
+  hydraOperation?: Pick<TitanOperation, 'id' | 'kind'> & {
     since: string
     seq: number
   }
@@ -536,7 +536,7 @@ export interface HydraState {
   cards: Record<string, Card>
   // Only on the page: hidden tasks without their histories, for the cards and messages that name them.
   references?: Record<string, Card>
-  // Cards this Hydra handed to another one; the source log keeps their earlier events.
+  // Cards this Titan handed to another one; the source log keeps their earlier events.
   movedOut?: Record<string, import('#tasks/move-state.ts').MovedOut>
   sessions?: Record<string, AgentSession>
   keys: Record<string, string>

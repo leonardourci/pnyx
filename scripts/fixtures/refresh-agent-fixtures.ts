@@ -1,5 +1,5 @@
 // pnpm refresh-agent-fixtures, by hand after upgrading the Agent SDK or Codex (never in CI or deslop): records one real
-// turn of each into tests/setup/fixtures/agents/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
+// turn of each into tests/setup/fixtures/agents/ with your logins, in a temporary folder and OTHRYS_HOME so no hook reaches your Othrys.
 import { execFileSync, spawn } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -20,13 +20,13 @@ const PROMPT = 'Reply with exactly this sentence and nothing else: Recorded repl
 const TIMEOUT_MS = 120_000
 const work = realpathSync(mkdtempSync(join(
   tmpdir(),
-  'pnyx-refresh-',
+  'othrys-refresh-',
 )))
 const env = {
   ...process.env,
-  PNYX_HOME: join(
+  OTHRYS_HOME: join(
     work,
-    'pnyx',
+    'othrys',
   ),
 }
 
@@ -70,7 +70,7 @@ const SYSTEM = [
   'status',
   'session_state_changed',
 ]
-// The Codex notifications a turn of Pnyx's reads; the rest (MCP servers, hooks, warnings) describe this machine.
+// The Codex notifications a turn of Othrys's reads; the rest (MCP servers, hooks, warnings) describe this machine.
 const NOTIFICATIONS = [
   'thread/started',
   'thread/status/changed',
@@ -347,7 +347,7 @@ async function recordCodex() {
       method: 'initialize',
       params: {
         clientInfo: {
-          name: 'pnyx',
+          name: 'othrys',
           version: '0',
         },
       },
@@ -357,7 +357,7 @@ async function recordCodex() {
       method: 'model/list',
       params: {},
     })
-    // Only the settings Pnyx reads; the rest of a config can hold secrets.
+    // Only the settings Othrys reads; the rest of a config can hold secrets.
     await request({
       method: 'config/read',
       params: { cwd: work },

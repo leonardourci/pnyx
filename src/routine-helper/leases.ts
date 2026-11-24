@@ -3,9 +3,9 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
 import { join } from 'node:path'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { canonical } from '#store/paths.ts'
 
 export const COPY_LEASE_PREFIX = 'copy-settlement:'
@@ -29,11 +29,11 @@ export function copySettlingRefusal({
   hydraId: string
   task: string
   code: string
-}): HydraError {
-  return new HydraError({
+}): TitanError {
+  return new TitanError({
     message: `Task ${task} is settling its copy; try again when cleanup finishes`,
     code,
-    help: [`Read tasks/${task}/task.log in Hydra ${hydraId} for the copy's state`],
+    help: [`Read tasks/${task}/task.log in Titan ${hydraId} for the copy's state`],
   })
 }
 
@@ -99,7 +99,7 @@ const writeLease = ({
   )
 }
 
-// Set while Pnyx delivers a message to a task's agent; the delivery's own writes pass a helper's lease.
+// Set while Othrys delivers a message to a task's agent; the delivery's own writes pass a helper's lease.
 export const deliveringMessage = new AsyncLocalStorage<true>()
 
 export function guardTaskLease({
@@ -125,7 +125,7 @@ export function guardTaskLease({
   if ((helper && lease?.actor !== actor) || otherHelper) {
     inform({
       task,
-      reason: `Task is leased to ${lease?.actor ?? 'another Hydra session'}`,
+      reason: `Task is leased to ${lease?.actor ?? 'another Titan session'}`,
       clear: `Read ${JSON.stringify(join(
         dir,
         'tasks',
@@ -189,14 +189,14 @@ export function taskLease({
   }
 
   if (isHelper({ actor }) && !helperGrant({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     actor,
     task,
   })) {
     inform({
       task,
       reason: 'Helper has no current task grant',
-      clear: `Read tasks/${task}/task.log in Hydra ${hydraId} to inspect the change`,
+      clear: `Read tasks/${task}/task.log in Titan ${hydraId} to inspect the change`,
     })
   }
 

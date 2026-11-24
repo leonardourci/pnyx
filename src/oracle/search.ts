@@ -2,7 +2,7 @@ import { taskProjectGroup } from '#tasks/order.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { OWNER_DOCUMENTS } from '#memory/budgets.ts'
 import { liveTask } from '#tasks/select.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Document, Hit, Match, Query, SearchSnapshot, Snippet } from './model.ts'
 import { queryTerms, fold, tokens, matches, type Term } from './query.ts'
 import { openIndex } from './index.ts'
@@ -205,10 +205,10 @@ export function search({
   const terms = queryTerms({ text: query.text })
 
   if (!terms.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'query has no words to search for',
       code: 'VALIDATION_ERROR',
-      help: ['Run `pnyx oracle "<words>"`'],
+      help: ['Run `othrys oracle "<words>"`'],
     })
   }
 
@@ -288,7 +288,7 @@ export function search({
       ...Object.values(state.cards).filter(card => card.id !== '$hydra'),
       {
         id: '$board',
-        title: 'Hydra',
+        title: 'Titan',
         workspace: '',
         project: undefined,
         updatedAt: '',

@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path'
-import { HydraError } from '#store/errors.ts'
-import { pnyxHome, privateDir } from '#store/storage.ts'
+import { TitanError } from '#store/errors.ts'
+import { othrysHome, privateDir } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
 import { DEFAULT_PORT } from '#app/server-state.ts'
 import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
@@ -78,7 +78,7 @@ const stableNode = ({
     .find(candidate => resolve({ path: candidate }) === real)) || node
 }
 
-// The launchd job or systemd unit of this Pnyx home's login service, named after the home so other homes keep their own.
+// The launchd job or systemd unit of this Othrys home's login service, named after the home so other homes keep their own.
 export function serviceFile({
   userHome = homedir(),
   platform = process.platform,
@@ -88,36 +88,75 @@ export function serviceFile({
   platform?: NodeJS.Platform
   configHome?: string
 } = {}) {
-  const label = `local.pnyx.server.${createHash('sha256').update(pnyxHome())
+  const label = `local.othrys.server.${createHash('sha256').update(othrysHome())
     .digest('hex')
     .slice(
       0,
       16,
     )}`
 
-  if (platform === 'linux') {
-    return {
-      label,
-      path: join(
-        configHome && isAbsolute(configHome) ? configHome : join(
-          userHome,
-          '.config',
+  const agents = platform === 'linux' ? join(
+    configHome && isAbsolute(configHome) ? configHome : join(
+      userHome,
+      '.config',
+    ),
+    'systemd',
+    'user',
+  ) : join(
+    userHome,
+    'Library',
+    'LaunchAgents',
+  )
+  const extension = platform === 'linux' ? '.service' : '.plist'
+  const path = join(
+    agents,
+    `${label}${extension}`,
+  )
+
+  if (!existsSync(path) && existsSync(agents)) {
+    const definition = SERVICE_DEFINITIONS[platform === 'linux' ? 'systemd' : 'launchd']
+    const legacy = readdirSync(agents).sort()
+      .find(name => {
+        if (!name.endsWith(extension) || !/^local\.pnyx\.server\.[0-9a-f]{16}\.(plist|service)$/.test(name)) {
+          return false
+        }
+
+        const stored = definition.read({
+          text: readFileSync(
+            join(
+              agents,
+              name,
+            ),
+            'utf8',
+          ),
+        })
+
+        return canonical({
+          path: serviceHome({
+            name,
+            storedHome: stored.storedHome,
+            userHome,
+          }),
+        }) === canonical({ path: othrysHome() })
+      })
+
+    if (legacy) {
+      return {
+        label: basename(
+          legacy,
+          extension,
         ),
-        'systemd',
-        'user',
-        `${label}.service`,
-      ),
+        path: join(
+          agents,
+          legacy,
+        ),
+      }
     }
   }
 
   return {
     label,
-    path: join(
-      userHome,
-      'Library',
-      'LaunchAgents',
-      `${label}.plist`,
-    ),
+    path,
   }
 }
 
@@ -140,7 +179,7 @@ export async function startService() {
     })
 
     if (started.status !== 0) {
-      throw new Error(started.stderr.trim() || 'systemd could not start the Pnyx server')
+      throw new Error(started.stderr.trim() || 'systemd could not start the Othrys server')
     }
 
     return
@@ -169,13 +208,13 @@ export async function startService() {
   })
 
   if (loaded.status !== 0) {
-    throw new Error(loaded.stderr.trim() || 'launchd could not start the Pnyx server')
+    throw new Error(loaded.stderr.trim() || 'launchd could not start the Othrys server')
   }
 }
 
 const systemdLiteral = ({ text }: { text: string }) => {
   if (/[\r\n]/.test(text)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'login service paths and environment values must fit on one line',
       code: 'VALIDATION_ERROR',
     })
@@ -262,9 +301,9 @@ const systemdSetting = ({
 
 const SERVICE_DEFINITIONS = {
   launchd: {
-    pattern: /^local\.pnyx\.(server|board)\.[0-9a-f]{16}\.plist$/,
+    pattern: /^local\.(?:othrys|pnyx)\.(server|board)\.[0-9a-f]{16}\.plist$/,
     read: ({ text }: { text: string }) => {
-      const storedHome = /<key>PNYX_HOME<\/key>\s*<string>([^<]*)<\/string>/.exec(text)?.[1]
+      const storedHome = /<key>(?:OTHRYS_HOME|PNYX_HOME)<\/key>\s*<string>([^<]*)<\/string>/.exec(text)?.[1]
       const argumentsXml = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text)?.[1] ?? ''
 
       return {
@@ -274,13 +313,15 @@ const SERVICE_DEFINITIONS = {
     },
   },
   systemd: {
-    pattern: /^local\.pnyx\.server\.[0-9a-f]{16}\.service$/,
+    pattern: /^local\.(?:othrys|pnyx)\.server\.[0-9a-f]{16}\.service$/,
     read: ({ text }: { text: string }) => ({
       storedHome: systemdSetting({
         text,
         key: 'Environment',
-      }).find(variable => variable.startsWith('PNYX_HOME='))
-        ?.slice('PNYX_HOME='.length),
+      }).find(variable => /^(?:OTHRYS_HOME|PNYX_HOME)=/.test(variable))
+        ?.split('=')
+        .slice(1)
+        .join('='),
       args: systemdSetting({
         text,
         key: 'ExecStart',
@@ -290,12 +331,28 @@ const SERVICE_DEFINITIONS = {
   },
 }
 
+// A service file without a stored home served the default home of the build that wrote it.
+const serviceHome = ({
+  name,
+  storedHome,
+  userHome,
+}: {
+  name: string
+  storedHome?: string
+  userHome: string
+}) => storedHome ?? join(
+  userHome,
+  name.startsWith('local.pnyx.') ? '.pnyx' : '.othrys',
+)
+
 function requireAvailableServicePort({
   agents,
   home,
   port,
   definition,
+  path,
 }: {
+  path: string
   agents: string
   home: string
   port: number
@@ -318,12 +375,21 @@ function requireAvailableServicePort({
         'utf8',
       ),
     })
-    const otherHome = storedHome ?? join(
-      homedir(),
-      '.pnyx',
-    )
+    const otherHome = serviceHome({
+      name,
+      storedHome,
+      userHome: homedir(),
+    })
 
     if (canonical({ path: otherHome }) === canonical({ path: home })) {
+      if (name !== basename(path) && name.includes('.server.')) {
+        throw new TitanError({
+          code: 'CONFLICT',
+          message: `Multiple login services use this home: ${name} and ${basename(path)}`,
+          help: ['Stop and remove the duplicate login service before running setup again'],
+        })
+      }
+
       continue
     }
 
@@ -332,8 +398,8 @@ function requireAvailableServicePort({
     const otherPort = portValue === undefined ? DEFAULT_PORT : Number(portValue)
 
     if (port === otherPort) {
-      throw new HydraError({
-        message: `port ${port} is reserved by another Pnyx home's service: ${otherHome} (${name})`,
+      throw new TitanError({
+        message: `port ${port} is reserved by another Othrys home's service: ${otherHome} (${name})`,
         code: 'PORT_IN_USE',
         help: ['Choose a different --port; --allow-custom-home does not override a service port conflict'],
       })
@@ -353,8 +419,8 @@ type ServiceResult = {
 }
 
 const INSTALLED_HELP = [
-  'The server of every Hydra starts at login and restarts after exit',
-  'Run `pnyx setup --remove` to stop and uninstall it',
+  'The server of every Titan starts at login and restarts after exit',
+  'Run `othrys setup --remove` to stop and uninstall it',
 ]
 
 // A systemd unit does not inherit the login shell's environment, so it carries the PATH and login folders setup ran with.
@@ -385,9 +451,9 @@ function setupSystemdService({
 }): ServiceResult {
   const unitName = `${label}.service`
   const variables = [
-    `PNYX_HOME=${home}`,
+    `OTHRYS_HOME=${home}`,
     // Tells the server its service started it, so a restart leaves the replacement to systemd.
-    'PNYX_SERVICE_ROLE=application',
+    'OTHRYS_SERVICE_ROLE=application',
     `PATH=${searchPath}`,
     ...[
       'CLAUDE_CONFIG_DIR',
@@ -396,7 +462,7 @@ function setupSystemdService({
       .map(name => `${name}=${environment[name]}`),
   ]
   const unit = `[Unit]
-Description=Pnyx server
+Description=Othrys server
 
 [Service]
 ExecStart=${args.map(arg => systemdQuote({
@@ -423,8 +489,8 @@ WantedBy=default.target
   }
 
   if (!remove && !existsSync(cli)) {
-    throw new HydraError({
-      message: 'build Pnyx before installing its login service',
+    throw new TitanError({
+      message: 'build Othrys before installing its login service',
       code: 'NOT_BUILT',
     })
   }
@@ -446,7 +512,7 @@ WantedBy=default.target
         })
       }
     } catch (error) {
-      throw new HydraError({
+      throw new TitanError({
         message: `${failure}: ${error instanceof Error ? error.message : String(error)}`,
         code: 'SERVICE_ERROR',
         help: [
@@ -507,7 +573,7 @@ WantedBy=default.target
         unitName,
       ],
     ],
-    failure: 'systemd could not start the Pnyx server',
+    failure: 'systemd could not start the Othrys server',
   })
 
   return {
@@ -518,7 +584,7 @@ WantedBy=default.target
   }
 }
 
-// One login service runs the one server of every Hydra in this Pnyx home.
+// One login service runs the one server of every Titan in this Othrys home.
 export function setupService({
   port = DEFAULT_PORT,
   remove = false,
@@ -559,20 +625,20 @@ export function setupService({
   sleep?({ ms }: { ms: number }): unknown
 }): ServiceResult {
   if (platform !== 'darwin' && platform !== 'linux') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'the login service requires macOS launchd or Linux systemd',
       code: 'UNSUPPORTED_PLATFORM',
     })
   }
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new HydraError({
+    throw new TitanError({
       message: '--port must be 1 to 65535 for a login service',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  const home = pnyxHome()
+  const home = othrysHome()
   const {
     label,
     path,
@@ -588,6 +654,7 @@ export function setupService({
       agents,
       home,
       port,
+      path,
       definition: SERVICE_DEFINITIONS[platform === 'linux' ? 'systemd' : 'launchd'],
     })
   }
@@ -600,7 +667,7 @@ export function setupService({
     import.meta.dirname,
     '..',
     'cli',
-    import.meta.url.endsWith('.ts') ? 'pnyx.ts' : 'pnyx.js',
+    import.meta.url.endsWith('.ts') ? 'othrys.ts' : 'othrys.js',
   )
   const args = [
     stableNode({
@@ -631,18 +698,33 @@ export function setupService({
   }
 
   const domain = `gui/${process.getuid!()}`
-  const homeEntry = `<key>PNYX_HOME</key><string>${xml({ text: home })}</string>`
-  // Services from before one server ran every Hydra each ran one Hydra of this home; they are replaced.
+  const homeEntry = `<key>OTHRYS_HOME</key><string>${xml({ text: home })}</string>`
+  // Services from before one server ran every Titan each ran one Titan of this home; they are replaced.
   const replaced = (() => {
     try {
-      return readdirSync(agents).filter(name => /^local\.pnyx\.board\.[0-9a-f]{16}\.plist$/.test(name)
-        && readFileSync(
-          join(
-            agents,
-            name,
+      return readdirSync(agents).filter(name => {
+        if (!/^local\.(?:othrys|pnyx)\.board\.[0-9a-f]{16}\.plist$/.test(name)) {
+          return false
+        }
+
+        const stored = SERVICE_DEFINITIONS.launchd.read({
+          text: readFileSync(
+            join(
+              agents,
+              name,
+            ),
+            'utf8',
           ),
-          'utf8',
-        ).includes(homeEntry))
+        })
+
+        return canonical({
+          path: serviceHome({
+            name,
+            storedHome: stored.storedHome,
+            userHome,
+          }),
+        }) === canonical({ path: home })
+      })
         .map(name => join(
           agents,
           name,
@@ -656,7 +738,7 @@ export function setupService({
 <plist version="1.0"><dict>
 <key>Label</key><string>${label}</string>
 <key>ProgramArguments</key><array>${args.map(arg => `<string>${xml({ text: arg })}</string>`).join('')}</array>
-<key>EnvironmentVariables</key><dict>${homeEntry}<key>PNYX_SERVICE_ROLE</key><string>application</string><key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
+<key>EnvironmentVariables</key><dict>${homeEntry}<key>OTHRYS_SERVICE_ROLE</key><string>application</string><key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
 <key>WorkingDirectory</key><string>${xml({ text: home })}</string>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>ThrottleInterval</key><integer>5</integer>
@@ -675,8 +757,8 @@ export function setupService({
   }
 
   if (!remove && !existsSync(cli)) {
-    throw new HydraError({
-      message: 'build Pnyx before installing its login service',
+    throw new TitanError({
+      message: 'build Othrys before installing its login service',
       code: 'NOT_BUILT',
     })
   }
@@ -714,7 +796,7 @@ export function setupService({
       // launchd finishes a bootout asynchronously, and bootstrapping the same label before it is gone fails with an I/O error.
       for (let attempt = 0; listed(); attempt++) {
         if (attempt === 50) {
-          throw new HydraError({
+          throw new TitanError({
             message: `launchd did not stop the running service ${label}`,
             code: 'SERVICE_ERROR',
             help: [
@@ -788,8 +870,8 @@ export function setupService({
         ],
       })
     } catch (error) {
-      throw new HydraError({
-        message: `launchd could not start the Pnyx server: ${(error as Error).message}`,
+      throw new TitanError({
+        message: `launchd could not start the Othrys server: ${(error as Error).message}`,
         code: 'SERVICE_ERROR',
         help: [
           `Read ${log}`,

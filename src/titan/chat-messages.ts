@@ -1,0 +1,354 @@
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
+import { hydraDelivery,QUIET_REPLY,reportActor } from './titan.ts'
+import { taskMentions } from './mentions.ts'
+import type { TitanMessage } from './model.ts'
+import type { ThreadEntry } from './transcripts-read.ts'
+import { withoutInjected } from '#oracle/text.ts'
+import { TITAN_CARD } from './identity.ts'
+import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
+
+// One of the owner's messages shown in the thread.
+interface Owned {
+  message: TitanMessage
+  entry: ThreadEntry
+  // The words a transcript copy of this message can have.
+  copies: Set<string>
+  // The words of the transcript copy shown for it.
+  copy?: string
+}
+
+// An owned message shown by its transcript copy, which has a time.
+type ShownCopy = Owned & {
+  entry: ThreadEntry & { at: string }
+  copy: string
+}
+
+export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
+  if (!entry.task || entry.task === TITAN_CARD) {
+    return undefined
+  }
+
+  const mentioned = taskMentions({ text: entry.text }).some(mention => mention.id === entry.task)
+
+  return mentioned ? undefined : entry.task
+}
+
+export const ownMessage = ({ entry }: { entry: ThreadEntry }) =>
+  entry.kind === 'message' && [
+    'user',
+    'You',
+  ].includes(entry.role)
+
+export interface TurnTiming {
+  start: string
+  end: string
+  reply: string
+  // The task the reply opens with when its words don't mention it.
+  task?: string
+  latest: boolean
+}
+
+// Quiet reply prefixes hide only while text is streaming.
+export const quietReply = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
+  && Boolean(entry.text.trim()) && (entry.streaming
+  ? QUIET_REPLY.startsWith(entry.text.trim())
+  : entry.text.trim() === QUIET_REPLY)
+
+export const injectedInstructions = ({
+  entry,
+  provider,
+}: {
+  entry: ThreadEntry
+  provider?: string
+}) => provider === 'codex' && ownMessage({ entry }) && /^# AGENTS\.md instructions(?: for [^\n]*)?\s*<INSTRUCTIONS>[\s\S]*<\/INSTRUCTIONS>\s*$/.test(entry.text.trim())
+
+export function hydraMessages({
+  messages,
+  transcript,
+  provider,
+  boundaries = false,
+  waiting,
+  receipts = true,
+}: {
+  messages: TitanMessage[]
+  transcript: ThreadEntry[]
+  provider?: string
+  boundaries?: boolean
+  // Why the owner's queued messages wait, when Othrys knows.
+  waiting?: string
+  // Only a Titan Othrys runs reports when it took a message.
+  receipts?: boolean
+}): ThreadEntry[] {
+  transcript = transcript.filter(entry => {
+    const visible = boundaries || !quietReply({ entry })
+
+    return visible && !injectedInstructions({
+      entry,
+      provider,
+    })
+  })
+  const normalized = ({ text }: { text: string }) => text.trim().replace(
+    /\s+/g,
+    ' ',
+  )
+  const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
+  const owned: Owned[] = []
+  const rewritten = new Map<ThreadEntry, ThreadEntry>()
+  const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
+    entry,
+    normalized(entry),
+  ]))
+
+  // A copy is known by what Othrys delivered: reports never show, the owner's own words always do.
+  const deliveredWords = ({ message }: { message: TitanMessage }) => {
+    const text = message.details ? `${message.text}\n\n${message.details}` : message.text
+    const sent = message.context ? `${text}\n\n${message.context}` : text
+    // An older server delivered a report as its bare words; the transcript reader drops harness markup the owner quoted.
+    const delivered = reportActor({ actor: message.actor }) ? [
+      hydraDelivery({ message }),
+      text,
+      sent,
+    ] : [
+      text,
+      sent,
+      withoutInjected({ text }),
+      withoutInjected({ text: sent }),
+    ]
+
+    return new Set(delivered.map(copy => normalized({ text: copy })))
+  }
+
+  const claims = new Map<TitanMessage, ThreadEntry>(), claimed = new Set<ThreadEntry>()
+  const pairable = messages.filter(message => message.actor !== TITAN_ACTOR && message.actor !== 'pnyx' && !message.stopped)
+  const messageIds = new Set(messages.map(message => message.id))
+
+  const claim = ({
+    message,
+    copy,
+  }: {
+    message: TitanMessage
+    copy?: ThreadEntry
+  }) => {
+    if (copy) {
+      claimed.add(copy)
+      claims.set(
+        message,
+        copy,
+      )
+    }
+  }
+
+  for (const message of pairable) {
+    const recordedLines = transcript.filter(entry => entry.inputUuid === message.id
+      && ownCopies.has(entry))
+    const [
+      copy,
+      ...otherParts
+    ] = recordedLines
+    claim({
+      message,
+      copy,
+    })
+
+    for (const part of otherParts) {
+      claimed.add(part)
+      replaced.add(part)
+    }
+  }
+
+  const newestFirst = pairable.toReversed()
+
+  for (const message of newestFirst) {
+    if (claims.has(message)) {
+      continue
+    }
+
+    const copies = deliveredWords({ message })
+    claim({
+      message,
+      copy: transcript.findLast(entry => {
+        const words = ownCopies.get(entry)
+        const othersCopy = entry.inputUuid !== undefined && messageIds.has(entry.inputUuid)
+
+        return !claimed.has(entry) && !othersCopy && words !== undefined && copies.has(words)
+          && (entry.at === undefined || entry.at >= message.at)
+      }),
+    })
+  }
+
+  for (const message of messages) {
+    const report = reportActor({ actor: message.actor })
+    const role = message.actor === TITAN_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Othrys' : 'user'
+    const copies = deliveredWords({ message })
+    const entered = message.enteredText ?? message.text
+    const shown = message.details ? `${entered}\n\n${message.details}` : entered
+    const entry = claims.get(message)
+
+    if (entry) {
+      if (report) {
+        replaced.add(entry)
+
+        if (boundaries) {
+          recorded.push({
+            ...entry,
+            text: '',
+            hidden: true,
+          })
+        }
+      } else {
+        const copy: ThreadEntry = {
+          ...entry,
+          reference: message.id,
+          text: shown,
+        }
+
+        if (message.task) {
+          copy.task = message.task
+        }
+
+        if (ownerActor({ actor: message.actor })) {
+          owned.push({
+            message,
+            entry: copy,
+            copies,
+            copy: ownCopies.get(entry),
+          })
+        }
+
+        rewritten.set(
+          entry,
+          copy,
+        )
+      }
+    } else if (!report) {
+      const entry: ThreadEntry = {
+        id: message.id,
+        reference: message.id,
+        kind: message.kind === 'divider' ? 'divider' : 'message',
+        role,
+        final: message.actor === TITAN_ACTOR ? true : undefined,
+        text: shown,
+        at: message.at,
+        hidden: boundaries && message.kind !== 'divider' && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
+        ...(message.task ? { task: message.task } : {}),
+      }
+      recorded.push(entry)
+
+      if (role === 'user' && ownerActor({ actor: message.actor }) && !entry.hidden) {
+        owned.push({
+          message,
+          entry,
+          copies,
+        })
+      }
+    }
+  }
+
+  for (const {
+    message,
+    entry,
+  } of owned) {
+    if (message.answers) {
+      entry.answers = message.answers
+    }
+
+    if (message.discusses) {
+      entry.discusses = message.discusses
+    }
+
+    if (message.choice) {
+      entry.choice = message.choice
+    }
+  }
+
+  // A copy found by its words is the newest unclaimed message with those words sent before it, so an older message
+  // cannot take a newer one's copy when its own copy is on another page.
+  const copyTimes = new Map<TitanMessage, string>()
+  const shownCopies = owned
+    .filter((item): item is ShownCopy => item.copy !== undefined && !!item.entry.at)
+    .toSorted((
+      a,
+      b,
+    ) => b.entry.at.localeCompare(a.entry.at))
+  const recordedUnderId = ({
+    message,
+    entry,
+  }: ShownCopy) => entry.inputUuid === message.id
+
+  for (const {
+    message,
+    entry,
+  } of shownCopies.filter(recordedUnderId)) {
+    copyTimes.set(
+      message,
+      entry.at,
+    )
+  }
+
+  for (const {
+    entry,
+    copy,
+  } of shownCopies.filter(item => !recordedUnderId(item))) {
+    const taker = owned.findLast(item => !copyTimes.has(item.message) && item.copies.has(copy)
+      && item.message.at <= entry.at)
+
+    if (taker) {
+      copyTimes.set(
+        taker.message,
+        entry.at,
+      )
+    }
+  }
+
+  // Titan takes the owner's messages in order, so one sent before a received message no longer waits; with no
+  // recorded time, it shows no receipt.
+  let laterReceived = false
+
+  for (const {
+    message,
+    entry,
+  } of receipts ? owned.toReversed() : []) {
+    entry.sent = message.at
+    // Othrys runs /restart and /upgrade itself, so they never reach the harness.
+    const othrysCommand = restartCommand({ text: message.text })
+      || upgradeCommand({ text: message.text })
+
+    if (othrysCommand) {
+      continue
+    }
+
+    if (message.failure) {
+      entry.receipt = 'failed'
+      entry.waiting = message.failure
+      continue
+    }
+
+    if (message.stopped) {
+      entry.receipt = 'failed'
+      entry.waiting = 'stopped'
+      entry.sentAgain = owned.some(item => item.message.text === message.text
+        && item.message.at > message.at)
+      continue
+    }
+
+    const copyTime = copyTimes.get(message)
+    const received = message.received ?? copyTime
+
+    if (received) {
+      entry.receipt = 'delivered'
+      entry.received = received
+      laterReceived = true
+    } else if (!laterReceived) {
+      entry.receipt = 'queued'
+
+      if (waiting) {
+        entry.waiting = waiting
+      }
+    }
+  }
+
+  return [
+    ...recorded,
+    ...transcript.filter(entry => !replaced.has(entry)).map(entry => rewritten.get(entry) ?? entry),
+  ]
+}

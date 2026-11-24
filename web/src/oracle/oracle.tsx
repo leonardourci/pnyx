@@ -5,10 +5,10 @@ import { useMemo } from 'react'
 import { workspaceResults, type OracleWorkspace } from './workspaces.ts'
 import { tokens } from '#oracle/query.ts'
 import { searchFilters } from './filters.ts'
-import type { HydraState } from '#app/model.ts'
-import type { HydraProjectSummary } from '#app/server-hydras.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanProjectSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import { TITAN_MARK } from '#titan/titan-names.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command,Receipt } from '#web-app/connection.ts'
@@ -78,7 +78,7 @@ export function Oracle({
   send,
   openChat,
 }: {
-  state: HydraState
+  state: TitanState
   workspaces: OracleWorkspace[]
   searchCommand: Command
   cardActions: Record<string, CurrentAction>
@@ -90,7 +90,7 @@ export function Oracle({
     name: string
     icon: string
   }
-  projects: HydraProjectSummary[]
+  projects: TitanProjectSummary[]
   // The page element the palette draws in, so it takes the page's text sizes.
   layer: HTMLElement | null
   save({ patch }: { patch: unknown }): Promise<boolean>
@@ -104,7 +104,7 @@ export function Oracle({
     id: string
     hydra?: string
   }): unknown
-  // Opens the task and Hydra's composer, ready to reply about it.
+  // Opens the task and Titan's composer, ready to reply about it.
   answerTask({
     id,
     hydra,
@@ -122,7 +122,7 @@ export function Oracle({
   openSettings({ query }: { query: string }): void
   createTask({ column }: { column: string }): void
   createColumn(): void
-  // Every Hydra a request can go to, by display name.
+  // Every Titan a request can go to, by display name.
   hydras: AskTarget[]
   send({
     id,
@@ -202,7 +202,7 @@ export function Oracle({
     ...workspaces.filter(item => item.hydra.id !== hydra.id)
       .map(item => hydraFilter({ hydra: item.hydra })),
   ]
-  // Badges keep only ids, so a renamed column or Hydra shows its new name and a deleted one drops out.
+  // Badges keep only ids, so a renamed column or Titan shows its new name and a deleted one drops out.
   const badges = badgeIds.flatMap(id => options.filter(option => option.id === id))
   // A request is not a search, so Ask mode reads no filters and sends no query.
   const token = ask ? null : filterToken({ query })
@@ -742,7 +742,7 @@ export function Oracle({
       id: ASK_BADGE,
       label: askTarget ? `Ask ${askTarget.name}` : 'Ask',
       kind: 'ask',
-      icon: askTarget?.icon ?? HYDRA_MARK,
+      icon: askTarget?.icon ?? TITAN_MARK,
     },
   ]
   const shownBadges = ask ? askBadges : searchBadges
@@ -798,11 +798,11 @@ export function Oracle({
       data-ui-surface="oracle"
       aria-label="Oracle"
       onClose={() => setOpen(false)}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onCancel={event => {
         event.preventDefault(); close({ restore: true })
       }}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onKeyDown={event => {
         if (event.key === 'Tab' && !composing({ event: event.nativeEvent })) {
           cycleFocus({ event })
@@ -810,7 +810,7 @@ export function Oracle({
           event.preventDefault(); event.stopPropagation(); close({ restore: true })
         }
       }}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onMouseDown={event => {
         if (onBackdrop({ event })) {
           close({ restore: true })

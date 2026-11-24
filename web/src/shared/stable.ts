@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 
-// eslint-disable-next-line pnyx/object-params -- a type for any callback; each one takes its own object.
+// eslint-disable-next-line othrys/object-params -- a type for any callback; each one takes its own object.
 type Action = (input: never) => unknown
 
 // Callbacks that keep their identity across renders and always call the latest ones, so a memoized child that
@@ -12,7 +12,7 @@ export function useStableActions<Actions extends Record<string, Action>>({
   latest.current = actions
   const [stable] = useState(() => Object.fromEntries(Object.keys(actions).map(key => [
     key,
-    // eslint-disable-next-line pnyx/object-params -- forwards whatever object the callback takes.
+    // eslint-disable-next-line othrys/object-params -- forwards whatever object the callback takes.
     (input: never) => latest.current[key]!(input),
   ])) as Actions)
 

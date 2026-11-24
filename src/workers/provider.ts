@@ -50,7 +50,7 @@ export type AgentUsage = {
     worker?: number
     hydra?: number
     unavailable: number
-    sharedHydra: boolean
+    sharedTitan: boolean
   }
   windows: PlanWindow[]
   unavailable?: string
@@ -296,7 +296,7 @@ const fastModel = ({
   model,
 })?.fast === true
 
-// Fast in a Hydra's composer reaches an agent only where its model has a Fast tier.
+// Fast in a Titan's composer reaches an agent only where its model has a Fast tier.
 export async function hydraFastReaches({
   hydraFast,
   models,
@@ -358,7 +358,7 @@ export interface Provider {
     capabilities?: string[]
     toolScope?: 'routine'
     context?({ compacted }: { compacted?: boolean }): Promise<string>
-    // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.
+    // Commands the session runs without asking, such as Othrys's own CLI for Titan.
     allow?: string[]
     agent?: AgentRef
     settings: AgentSettings
@@ -374,8 +374,8 @@ export interface TranscriptMessage {
   id?: string
   block?: number
   internal?: boolean
-  // Pnyx wrote this input: it carried a worker header, as a worker's start prompt does.
-  pnyx?: boolean
+  // Othrys wrote this input: it carried a worker header, as a worker's start prompt does.
+  othrys?: boolean
   at?: string
   text: string
 }

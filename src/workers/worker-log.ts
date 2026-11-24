@@ -1,16 +1,16 @@
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
 import { watchPath } from '#app/watch.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { WorkerCode, WorkerLine } from '#tasks/model.ts'
 import { parseLink, decideLink } from '#tasks/delivery/links.ts'
 import { applyDecision } from '#app/decision.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { background } from '#app/background.ts'
 
@@ -33,7 +33,7 @@ export function workerTaskDir({
   hydraId: string
   task: string
 }): string {
-  const card = loadHydra({ hydraId }).state.cards[task]
+  const card = loadTitan({ hydraId }).state.cards[task]
   const dir = reportDirectory({
     hydraFolder: hydraDir({ hydraId }),
     task,
@@ -260,7 +260,7 @@ export function foldWorkerLog({
             src: 'worker' as const,
           }
         } catch (error) {
-          if (!(error instanceof HydraError)) {
+          if (!(error instanceof TitanError)) {
             throw error
           }
 
@@ -324,7 +324,7 @@ export function followWorkerLogs({
   const watches = new Map<string, ReturnType<typeof watchPath>>()
   let closed = false
 
-  const reconcile = ({ state }: { state: HydraState }) => {
+  const reconcile = ({ state }: { state: TitanState }) => {
     if (closed) {
       return
     }

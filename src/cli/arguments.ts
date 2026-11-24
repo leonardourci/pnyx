@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util'
 
 const VALUE_FLAGS = [
   'hydra',
+  'titan',
   'actor',
   'reason',
   'details',

@@ -1,12 +1,12 @@
 import { projectsFor } from '#projects/read.ts'
 import { readSearchFilters } from './filters.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import type { HydraProject } from '#projects/model.ts'
+import type { TitanProject } from '#projects/model.ts'
 import { findProject } from '#projects/read.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
-import { loadHydra, requireHydra } from '#app/store.ts'
+import { loadTitan, requireTitan } from '#app/store.ts'
 import { KINDS, type Hit, type Kind, type Match } from './model.ts'
 import { searchInBackground } from './search-background.ts'
 
@@ -35,8 +35,8 @@ function projectRefs({
   ref,
   projects,
 }: {
-  projects: HydraProject[]
-  state: HydraState
+  projects: TitanProject[]
+  state: TitanState
   ref: string
 }): string[] {
   try {
@@ -51,7 +51,7 @@ function projectRefs({
       path,
     ]
   } catch (error) {
-    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+    if (error instanceof TitanError && error.code === 'NOT_FOUND') {
       return [ref]
     }
 
@@ -73,17 +73,17 @@ const oracleCommand = guard({
     const text = positionals.join(' ')
 
     if (!text) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'missing query',
         code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx oracle "<words>"`'],
+        help: ['Run `othrys oracle "<words>"`'],
       })
     }
 
     const kind = values.kind as string | undefined
 
     if (kind !== undefined && !(KINDS as readonly string[]).includes(kind)) {
-      throw new HydraError({
+      throw new TitanError({
         message: `unknown kind: ${kind}`,
         code: 'VALIDATION_ERROR',
         help: [`Use one of ${KINDS.join(', ')}`],
@@ -93,15 +93,15 @@ const oracleCommand = guard({
     const rawLimit = values.limit as string | undefined
 
     if (rawLimit !== undefined && !/^[1-9]\d*$/.test(rawLimit)) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--limit must be a positive integer',
         code: 'VALIDATION_ERROR',
       })
     }
 
-    requireHydra({ hydraId })
+    requireTitan({ hydraId })
 
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = values.card === undefined
       ? undefined
       : findCard({
@@ -174,7 +174,7 @@ function present(
     }
   }
 
-  const help = ['Open the matched Hydra or task in the UI to read its conversation']
+  const help = ['Open the matched Titan or task in the UI to read its conversation']
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {

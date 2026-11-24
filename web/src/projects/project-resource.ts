@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { HydraProject } from '#projects/model.ts'
+import type { TitanProject } from '#projects/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { argument } from '#web-tasks/optimistic.ts'
 import { DEFAULT_LANDING, type LandingChoice } from '#web-tasks/delivery/delivery-fields.tsx'
@@ -12,7 +12,7 @@ export interface ProjectRow {
   state: string
   landing: LandingChoice['landing']
   merge: LandingChoice['merge']
-  startCommand?: HydraProject['startCommand']
+  startCommand?: TitanProject['startCommand']
   pending?: string
 }
 interface ProjectsState {

@@ -1,7 +1,7 @@
 import { useLinkRefresh } from './link-refresh.ts'
 import { Prerequisites } from './prerequisites.tsx'
 import { TaskUpdates } from './task-updates.tsx'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
 
@@ -12,7 +12,7 @@ export function Detail({
   connected,
 }: {
   card: Card
-  state: HydraState
+  state: TitanState
   command: Command
   connected: boolean
 }) {

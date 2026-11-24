@@ -1,6 +1,6 @@
 import type { Landing, Merger } from '#tasks/delivery/model.ts'
 
-export interface HydraProject {
+export interface TitanProject {
   group?: {
     id: string
     name: string

@@ -4,7 +4,7 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
-import { clock } from '#web-hydra/chat.ts'
+import { clock } from '#web-titan/chat.ts'
 
 export const checkedDay = ({ at }: { at: string }) => {
   const day = new Date(at).toDateString()
@@ -14,7 +14,7 @@ export const checkedDay = ({ at }: { at: string }) => {
       : `on ${new Date(at).toLocaleDateString()}`
 }
 
-// The brand's hint that GitHub's main has a newer Pnyx; Upgrade sends /upgrade to the open Hydra.
+// The brand's hint that GitHub's main has a newer Othrys; Upgrade sends /upgrade to the open Titan.
 export function UpgradeHint({
   status,
   upgrade,

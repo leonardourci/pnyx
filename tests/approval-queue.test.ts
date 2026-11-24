@@ -1,19 +1,19 @@
 import { expect, test, vi } from 'vitest'
 import { recoverOwnerCommands } from '#app/confirmations.ts'
-import { emptyHydra } from '#app/reducer.ts'
+import { emptyTitan } from '#app/reducer.ts'
 import type { Writer } from '#app/writer.ts'
 
 const queue = vi.hoisted(() => ({
   entered: Promise.withResolvers<void>(),
   release: Promise.withResolvers<void>(),
 }))
-const loaded = emptyHydra()
-const current = emptyHydra()
+const loaded = emptyTitan()
+const current = emptyTitan()
 const append = vi.fn()
 
 vi.mock(
   '#app/store.ts',
-  () => ({ loadHydra: () => ({ state: loaded }) }),
+  () => ({ loadTitan: () => ({ state: loaded }) }),
 )
 vi.mock(
   '#app/writer.ts',

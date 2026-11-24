@@ -66,7 +66,7 @@ export function Dialog({
       ref={dialog}
       aria-labelledby={heading}
       className={className}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onKeyDown={e => {
         if (e.key === 'Tab') {
           const controls = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])')]
@@ -86,15 +86,15 @@ export function Dialog({
           e.preventDefault(); e.stopPropagation(); close()
         }
       }}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onCancel={e => {
         e.preventDefault(); close()
       }}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onMouseDown={e => {
         pressed.current = e.target
       }}
-      // eslint-disable-next-line pnyx/object-params -- React owns the dialog event signature.
+      // eslint-disable-next-line othrys/object-params -- React owns the dialog event signature.
       onClick={e => {
         if (e.target === e.currentTarget && pressed.current === e.currentTarget) {
           close()

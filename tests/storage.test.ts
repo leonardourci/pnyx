@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { appendLog, readLog, type LogEntry, type LogFact, type LogPosition } from '#store/log.ts'
 import { readSnapshot, writeSnapshot } from '#store/snapshot.ts'
-import { createHydraFiles } from '#store/file-home.ts'
+import { createTitanFiles } from '#store/file-home.ts'
 
 vi.hoisted(() => {
   vi.resetModules()
@@ -35,7 +35,7 @@ const LARGE_MESSAGE = 'Native λ message. '.repeat(5000)
 
 const folder = () => mkdtempSync(join(
   tmpdir(),
-  'pnyx-file-store-',
+  'othrys-file-store-',
 ))
 const message = ({
   id,
@@ -59,7 +59,7 @@ async function recordSyncs({
   const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
   const synced = new Set<number>()
 
-  // eslint-disable-next-line pnyx/object-params -- Node's sync replacement receives a file descriptor.
+  // eslint-disable-next-line othrys/object-params -- Node's sync replacement receives a file descriptor.
   const syncFile: typeof filesystem.fsyncSync = fd => {
     const inode = filesystem.fstatSync(fd).ino
 
@@ -153,7 +153,7 @@ test(
 )
 
 test(
-  'retrying Hydra creation syncs the home even when its hydras directory already exists',
+  'retrying Titan creation syncs the home even when its hydras directory already exists',
   async () => {
     const home = folder()
     const inode = statSync(home).ino
@@ -174,14 +174,14 @@ test(
     }
 
     try {
-      expect(() => createHydraFiles(creating)).toThrow(/sync outage/)
+      expect(() => createTitanFiles(creating)).toThrow(/sync outage/)
       expect(existsSync(join(
         home,
         'hydras',
       ))).toBe(true)
       outage = false
       syncs.synced.clear()
-      expect(createHydraFiles(creating).n).toBe(1)
+      expect(createTitanFiles(creating).n).toBe(1)
       expect(syncs.synced.has(inode)).toBe(true)
     } finally {
       syncs.restore()
@@ -770,7 +770,7 @@ test(
         encoding: 'utf8',
         env: {
           ...process.env,
-          PNYX_HOME: home,
+          OTHRYS_HOME: home,
         },
       },
     )

@@ -1,12 +1,12 @@
 import { taskProjectGroup } from '#tasks/order.ts'
 import { tokens } from '#oracle/query.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { projectGroups } from '#projects/groups.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import { elapsedTime } from '#web-shared/time.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import { observedStatus, type ObservedStatus } from './observed-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
@@ -24,7 +24,7 @@ export function filterCards({
   query = '',
   actions,
 }: {
-  state: HydraState
+  state: TitanState
   query?: string
   actions?: Record<string, CurrentAction>
 }): Card[] {
@@ -60,7 +60,7 @@ export function cardState({
   card: Card
   hours?: DoneAfterHours
   now: number
-  state?: HydraState
+  state?: TitanState
   action?: CurrentAction
   connected?: boolean
 }): ObservedStatus {
@@ -109,7 +109,7 @@ export function expandedByColumn({
   cards,
   state,
 }: {
-  state?: HydraState
+  state?: TitanState
   ids: string[]
   cards: Record<string, Card>
 }): string[] {

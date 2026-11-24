@@ -1,11 +1,11 @@
 import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { HYDRA_ID } from '#hydra/identity.ts'
+import { TITAN_ID } from '#titan/identity.ts'
 import { COMPONENT, hydraFiles, taskFiles } from '#store/file-home.ts'
 import { readLog, type LogEntry } from '#store/log.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { othrysHome } from '#store/paths.ts'
 import { assembleNative, nativeId, nativeReferences, reduceNative, type NativeState } from './native-state.ts'
-import type { HydraState } from './model.ts'
+import type { TitanState } from './model.ts'
 
 function directories({ path }: { path: string }): string[] {
   if (!existsSync(path)) {
@@ -19,15 +19,15 @@ function directories({ path }: { path: string }): string[] {
     .map(entry => entry.name)
 }
 
-export function nativeHydraIds(): string[] {
-  const home = pnyxHome()
+export function nativeTitanIds(): string[] {
+  const home = othrysHome()
 
   return directories({
     path: join(
       home,
       'hydras',
     ),
-  }).filter(hydra => HYDRA_ID.test(hydra)
+  }).filter(hydra => TITAN_ID.test(hydra)
     && existsSync(join(
       hydraFiles({
         home,
@@ -38,11 +38,11 @@ export function nativeHydraIds(): string[] {
     .sort()
 }
 
-export function readNativeHydra({ hydraId }: { hydraId: string }): {
+export function readNativeTitan({ hydraId }: { hydraId: string }): {
   dir: string
-  state: HydraState
+  state: TitanState
 } {
-  const home = pnyxHome()
+  const home = othrysHome()
   const dir = hydraFiles({
     home,
     hydra: hydraId,

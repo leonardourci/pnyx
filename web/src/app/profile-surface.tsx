@@ -10,11 +10,11 @@ export function ProfileSurface({
   hydraId?: string
   children: ReactNode
 }) {
-  if (import.meta.env.VITE_PNYX_PROFILE !== '1') {
+  if (import.meta.env.VITE_OTHRYS_PROFILE !== '1') {
     return children
   }
 
-  // eslint-disable-next-line pnyx/object-params -- React owns the Profiler callback signature.
+  // eslint-disable-next-line othrys/object-params -- React owns the Profiler callback signature.
   const rendered: ProfilerOnRenderCallback = (
     _id,
     _phase,

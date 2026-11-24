@@ -3,10 +3,10 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, beforeEach, expect, test } from 'vitest'
-import { startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 import { building, git, upgradeFolder } from './setup/upgrade.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 let folder: ReturnType<typeof upgradeFolder>
 let restarts = 0
 const root = join(
@@ -17,7 +17,7 @@ const root = join(
 beforeAll(async () => {
   mkdirSync(root)
   folder = upgradeFolder({ root })
-  pnyx = await startPnyx({
+  othrys = await startOthrys({
     upgradeRoot: folder.install,
     // A real restart replaces this process; the tests restart the server themselves.
     restart: () => {
@@ -32,22 +32,23 @@ beforeEach(() => {
   restarts = 0
 })
 
-const upgrades = ({ hydra }: { hydra: Hydra }) => pnyx.home().scopes[hydra.id]?.state.upgrades ?? []
+const upgrades = ({ hydra }: { hydra: Titan }) =>
+  othrys.home().scopes[hydra.id]?.state.upgrades ?? []
 
-const upgradeNotice = () => pnyx.home().upgrade
+const upgradeNotice = () => othrys.home().upgrade
 
 const settled = ({
   hydra,
   state,
 }: {
-  hydra: Hydra
+  hydra: Titan
   state: string
 }) => until({
   what: `the upgrade to end ${state}`,
   check: () => upgrades({ hydra }).find(upgrade => upgrade.state === state),
 })
 
-const upgrade = ({ hydra }: { hydra: Hydra }) => hydra.owner({
+const upgrade = ({ hydra }: { hydra: Titan }) => hydra.owner({
   args: [
     'hydra',
     'send',
@@ -57,10 +58,10 @@ const upgrade = ({ hydra }: { hydra: Hydra }) => hydra.owner({
 })
 
 test(
-  'a failed install or build goes back to the previous commit and its build, while Hydra keeps working',
+  'a failed install or build goes back to the previous commit and its build, while Titan keeps working',
   async () => {
-    const hydra = await pnyx.hydra()
-    const turn = pnyx.claude.plan({
+    const hydra = await othrys.hydra()
+    const turn = othrys.claude.plan({
       hydra: hydra.id,
       text: 'keep working',
       reply: 'Still here.',
@@ -134,16 +135,16 @@ test(
     expect(session.closed).toBe(false)
     turn.release()
     await until({
-      what: 'Hydra to finish its turn',
+      what: 'Titan to finish its turn',
       check: () => session.answered === 1,
     })
   },
 )
 
 test(
-  'Stop during a build goes back like a failed step, and Hydra keeps running',
+  'Stop during a build goes back like a failed step, and Titan keeps running',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const previous = folder.head()
     const gate = join(
       root,
@@ -187,19 +188,19 @@ test(
 )
 
 test(
-  'a built upgrade waits for Hydra\'s turn to end, restarts once, and the server comes back on the new build; a message sent during the build reaches Hydra once',
+  'a built upgrade waits for Titan\'s turn to end, restarts once, and the server comes back on the new build; a message sent during the build reaches Titan once',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const published = folder.publish({
       files: { 'build.sh': building({ version: 'two' }) },
       message: 'two',
     })
-    await pnyx.restart()
+    await othrys.restart()
     await until({
       what: 'the page to hear of the newer main',
       check: () => upgradeNotice()?.available === true,
     })
-    const turn = pnyx.claude.plan({
+    const turn = othrys.claude.plan({
       hydra: hydra.id,
       text: 'long task',
       reply: 'Long task done.',
@@ -210,13 +211,13 @@ test(
 
     await upgrade({ hydra })
     await until({
-      what: 'the build to finish and wait for Hydra',
+      what: 'the build to finish and wait for Titan',
       check: () => upgrades({ hydra }).at(-1)?.steps.some(step => step.step === 'build' && step.state === 'done'),
     })
     expect(restarts).toBe(0)
     expect(folder.built()).toBe('two')
 
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: hydra.id,
       text: 'sent during the upgrade',
       reply: 'Got it after the restart.',
@@ -239,7 +240,7 @@ test(
       check: () => upgrades({ hydra }).at(-1)?.state === 'restarting',
     })
 
-    await pnyx.restart()
+    await othrys.restart()
     await until({
       what: 'the upgrade to finish after the restart',
       check: () => upgrades({ hydra }).at(-1)?.state === 'done',
@@ -249,13 +250,13 @@ test(
       folder.install,
       'dist',
       'cli',
-      'pnyx.js',
+      'othrys.js',
     ))).toBe(true)
     await until({
-      what: 'Hydra to get the message sent during the upgrade',
-      check: () => pnyx.claude.sessions.some(s => s.env.PNYX_HYDRA === hydra.id && s.received.some(text => text.endsWith('sent during the upgrade'))),
+      what: 'Titan to get the message sent during the upgrade',
+      check: () => othrys.claude.sessions.some(s => s.env.OTHRYS_TITAN === hydra.id && s.received.some(text => text.endsWith('sent during the upgrade'))),
     })
-    expect(pnyx.claude.sessions.filter(s => s.env.PNYX_HYDRA === hydra.id)
+    expect(othrys.claude.sessions.filter(s => s.env.OTHRYS_TITAN === hydra.id)
       .flatMap(s => s.received)
       .filter(text => text.endsWith('sent during the upgrade'))).toHaveLength(1)
     expect(session.received.filter(text => text.endsWith('long task'))).toHaveLength(1)
@@ -276,7 +277,7 @@ test(
       'detached',
     ]) {
       folder.reset()
-      const hydra = await pnyx.hydra()
+      const hydra = await othrys.hydra()
       const next = folder.publish({
         files: { 'build.sh': building({ version: mode }) },
         message: mode,
@@ -328,7 +329,7 @@ test(
         ].includes(operation.state)),
       })
       expect(built.state).toBe('restarting')
-      await pnyx.restart()
+      await othrys.restart()
       const result = await settled({
         hydra,
         state: 'done',
@@ -381,10 +382,10 @@ test(
 )
 
 test(
-  'a built upgrade also waits while a worker on another Hydra is mid-turn, and restarts once that turn ends',
+  'a built upgrade also waits while a worker on another Titan is mid-turn, and restarts once that turn ends',
   async () => {
-    const hydra = await pnyx.hydra()
-    const other = await pnyx.hydra()
+    const hydra = await othrys.hydra()
+    const other = await othrys.hydra()
     const workerFolder = other.folder({ name: 'busy' })
     await other.owner({
       args: [
@@ -399,9 +400,9 @@ test(
         workerFolder,
       ],
     })
-    const turn = pnyx.claude.plan({
+    const turn = othrys.claude.plan({
       hydra: other.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       reply: 'Job done.',
       partial: 'Job',
       hold: true,
@@ -442,6 +443,101 @@ test(
 )
 
 test(
+  'an interrupted legacy upgrade keeps its original commit and saved local work when it resumes',
+  async () => {
+    const hydra = await othrys.hydra()
+    const previous = folder.head()
+    const next = folder.publish({
+      files: { 'build.sh': building({ version: 'resumed' }) },
+      message: 'finish interrupted upgrade',
+    })
+    writeFileSync(
+      join(
+        folder.install,
+        'build.sh',
+      ),
+      'echo saved local work\n',
+    )
+    git({
+      cwd: folder.install,
+      args: [
+        'stash',
+        'push',
+        '-m',
+        'saved before interrupted upgrade',
+      ],
+    })
+    const saved = git({
+      cwd: folder.install,
+      args: [
+        'rev-parse',
+        'refs/stash',
+      ],
+    })
+    git({
+      cwd: folder.install,
+      args: [
+        'fetch',
+        'origin',
+        'main',
+      ],
+    })
+    git({
+      cwd: folder.install,
+      args: [
+        'merge',
+        '--ff-only',
+        'FETCH_HEAD',
+      ],
+    })
+    const marker = join(
+      folder.install,
+      git({
+        cwd: folder.install,
+        args: [
+          'rev-parse',
+          '--git-path',
+          'pnyx-upgrade-from',
+        ],
+      }),
+    )
+    writeFileSync(
+      marker,
+      JSON.stringify({
+        from: previous,
+        stashes: [saved],
+      }),
+    )
+    expect(folder.built()).toBe('one')
+
+    await upgrade({ hydra })
+    const result = await settled({
+      hydra,
+      state: 'restarting',
+    })
+    expect(result).toMatchObject({
+      from: previous,
+      to: next,
+    })
+    expect(result.reasons?.join(' ')).toContain(`Saved local work as ${saved}`)
+    expect(folder.built()).toBe('resumed')
+    expect(git({
+      cwd: folder.install,
+      args: [
+        'show',
+        `${saved}:build.sh`,
+      ],
+    })).toBe('echo saved local work')
+    expect(existsSync(marker)).toBe(false)
+    await othrys.restart()
+    await settled({
+      hydra,
+      state: 'done',
+    })
+  },
+)
+
+test(
   'a detached restart imports an installation path containing a fragment character',
   async () => {
     const install = join(
@@ -474,7 +570,7 @@ test(
         'upgrade',
         'restart.js',
       ),
-      `import { writeFileSync } from 'node:fs'; export function restartPnyx() { writeFileSync(${JSON.stringify(marker)}, 'restarted') }`,
+      `import { writeFileSync } from 'node:fs'; export function restartOthrys() { writeFileSync(${JSON.stringify(marker)}, 'restarted') }`,
     )
     await requestRestart({ root: install })
     expect(readFileSync(

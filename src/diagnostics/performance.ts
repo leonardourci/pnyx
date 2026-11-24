@@ -177,11 +177,11 @@ export async function performanceReport({
       }
 
       const line = readLine({ text })
-      // Lines without a Hydra, such as the process line, belong to every Hydra.
-      const lineHydra = line?.hydraId
-      const otherHydra = hydraId !== undefined && lineHydra !== undefined && lineHydra !== hydraId
+      // Lines without a Titan, such as the process line, belong to every Titan.
+      const lineTitan = line?.hydraId
+      const otherTitan = hydraId !== undefined && lineTitan !== undefined && lineTitan !== hydraId
 
-      if (!line || line.at < from || line.at > to || otherHydra) {
+      if (!line || line.at < from || line.at > to || otherTitan) {
         continue
       }
 

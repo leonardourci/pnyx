@@ -1,16 +1,16 @@
 import { inform } from '#app/command-notices.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
-import type { HydraState, Decision } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
+import type { TitanState, Decision } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { AnswerMessage, Ask, AskAudience, Card } from './model.ts'
 import type { Question } from '#workers/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent, reportActor } from '#hydra/hydra.ts'
+import { hydraEvent, reportActor } from '#titan/titan.ts'
 import { isManagedTask } from './select.ts'
 import { askWording, openAsks, pendingAnswer } from './ask-state.ts'
 import { clarificationMessage } from './question-actions.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -19,7 +19,7 @@ const OPTIONS_MAX = 8
 const LABEL_MAX = 120
 const ANSWER_MAX = 4000
 
-const invalid = ({ message }: { message: string }) => new HydraError({
+const invalid = ({ message }: { message: string }) => new TitanError({
   message,
   code: 'VALIDATION_ERROR',
 })
@@ -50,7 +50,7 @@ const askableTask = ({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): Card => {
   const card = findCard({
@@ -58,8 +58,8 @@ const askableTask = ({
     ref,
   })
 
-  if (isManagedTask({ card }) && card.id !== HYDRA_CARD) {
-    throw new HydraError({
+  if (isManagedTask({ card }) && card.id !== TITAN_CARD) {
+    throw new TitanError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
     })
@@ -78,7 +78,7 @@ const findAsk = ({
   const ask = card.asks?.find(a => a.id === id)
 
   if (!ask) {
-    throw new HydraError({
+    throw new TitanError({
       message: `task ${card.id} has no question ${id}`,
       code: 'NOT_FOUND',
       help: [`Read tasks/${card.id}/task.log to see its questions`],
@@ -99,7 +99,7 @@ const closed = ({
   undelivered?: boolean
 }) => {
   if (ask.answered || ask.closed) {
-    throw new HydraError({
+    throw new TitanError({
       message: `question ${ask.id} on task ${card.id} is already answered`,
       code: 'ASK_CLOSED',
     })
@@ -111,7 +111,7 @@ const closed = ({
   })
 
   if (pending && !undelivered) {
-    throw new HydraError({
+    throw new TitanError({
       message: `an answer to ${ask.id} is ${pending.state === 'queued' ? 'still being sent' : 'of unknown delivery'}; nothing was sent`,
       code: 'SESSION_WAITING',
       help: ['Check the worker\'s session; if that answer never arrived, repeat with --undelivered'],
@@ -193,7 +193,7 @@ function validateOwnerQuestion({
     missing.push('--question with one plain decision ending in ?')
   }
 
-  const taskLinks = /\[(?:\\[^\r\n]|[^\\\]\r\n])+\]\(pnyx-task:([^\s)]+)\)/g
+  const taskLinks = /\[(?:\\[^\r\n]|[^\\\]\r\n])+\]\((?:othrys|pnyx)-task:([^\s)]+)\)/g
   const explanation = context?.replace(
     taskLinks,
     '',
@@ -208,7 +208,7 @@ function validateOwnerQuestion({
   const linksToCard = links && [...links].some(link => link[1] === taskId)
 
   if (!linksToCard) {
-    missing.push(`a card link in --context: [Card](pnyx-task:${taskId})`)
+    missing.push(`a card link in --context: [Card](othrys-task:${taskId})`)
   }
 
   if (options.length < 2) {
@@ -241,7 +241,7 @@ export function decideAsk({
   recommended,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   id: string
   kind?: string
@@ -258,37 +258,37 @@ export function decideAsk({
     ref,
   })
 
-  if (card.id === HYDRA_CARD && audience !== 'owner') {
+  if (card.id === TITAN_CARD && audience !== 'owner') {
     audience = 'owner'
     inform({
       task: card.id,
-      reason: 'Hydra-wide question routed to the owner',
-      clear: 'Workers can ask Hydra by appending a needs-you line to their worker.log.',
+      reason: 'Titan-wide question routed to the owner',
+      clear: 'Workers can ask Titan by appending a needs-you line to their worker.log.',
     })
   }
 
-  if (audience === 'owner' && meta.actor !== HYDRA_ACTOR) {
+  if (audience === 'owner' && meta.actor !== TITAN_ACTOR) {
     inform({
       reason: 'Worker question sent directly to the owner',
-      clear: 'Ask Hydra by appending a needs-you line to your worker.log.',
+      clear: 'Ask Titan by appending a needs-you line to your worker.log.',
       task: card.id,
     })
   }
 
-  if (audience === 'hydra' && meta.actor === HYDRA_ACTOR) {
+  if (audience === 'hydra' && meta.actor === TITAN_ACTOR) {
     audience = 'owner'
     inform({
       task: card.id,
-      reason: 'Hydra question routed to the owner',
-      clear: `Use pnyx answer ${card.id} <question> --text "<answer>"`,
+      reason: 'Titan question routed to the owner',
+      clear: `Use othrys answer ${card.id} <question> --text "<answer>"`,
     })
   }
 
-  // Hydra hears a question as its asker's report, so only an agent's question goes to Hydra.
+  // Titan hears a question as its asker's report, so only an agent's question goes to Titan.
   if (audience === 'hydra' && !reportActor({ actor: meta.actor })) {
     inform({
-      reason: 'Question sent to Hydra by another actor',
-      clear: 'pnyx send --text "<message>"',
+      reason: 'Question sent to Titan by another actor',
+      clear: 'othrys send --text "<message>"',
       task: card.id,
     })
   }
@@ -357,7 +357,7 @@ export function decideAsk({
       options: choices,
       recommended: recommendation,
     })
-    said.context ??= `Task: ${card.title}. [Card](pnyx-task:${encodeURIComponent(card.id)})`
+    said.context ??= `Task: ${card.title}. [Card](othrys-task:${encodeURIComponent(card.id)})`
   }
 
   return hydraEvent({
@@ -394,7 +394,7 @@ export function decideEscalation({
   recommended,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   ask: string
   question?: string
@@ -413,10 +413,10 @@ export function decideEscalation({
     id,
   })
 
-  if (meta.actor !== HYDRA_ACTOR) {
+  if (meta.actor !== TITAN_ACTOR) {
     inform({
       reason: 'Question escalated by an agent',
-      clear: 'pnyx answer <task> <question> --text "<answer>"',
+      clear: 'othrys answer <task> <question> --text "<answer>"',
       task: card.id,
     })
   }
@@ -431,7 +431,7 @@ export function decideEscalation({
     inform({
       task: card.id,
       reason: 'Updated a question that already waits for the owner',
-      clear: `Use pnyx answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
+      clear: `Use othrys answer ${card.id} ${ask.id} --text "<answer>" to answer it`,
     })
   }
 
@@ -494,9 +494,9 @@ export const askReport = ({
     o,
     i,
   ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
-  ...(ask.details ? [`Details: read tasks/${task}/task.log in Hydra ${hydraId}`] : []),
-  `Answer with \`pnyx answer ${task} ${ask.id} --text "<answer>" --hydra ${hydraId}\` or pass --choice <n>.`,
-  'If the owner must decide, present the question and its choices in Hydra chat.',
+  ...(ask.details ? [`Details: read tasks/${task}/task.log in Titan ${hydraId}`] : []),
+  `Answer with \`othrys answer ${task} ${ask.id} --text "<answer>" --titan ${hydraId}\` or pass --choice <n>.`,
+  'If the owner must decide, present the question and its choices in Titan chat.',
 ].join('\n')
 
 const answeredMergeHold = ({ ask }: { ask: Ask }) =>
@@ -518,7 +518,7 @@ export function askAnswer({
   choice?: string
   text?: string
   undelivered?: boolean
-  state?: HydraState
+  state?: TitanState
   fromMessage?: string
 }): {
   text: string
@@ -560,7 +560,7 @@ export function askAnswer({
     const message = state?.hydraMessages?.find(message => message.id === fromMessage)
 
     if (!message) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Saved message not found',
         code: 'NOT_FOUND',
       })
@@ -599,7 +599,7 @@ export function askAnswer({
     }
   }
 
-  if (ask.audience === 'owner' && actor === HYDRA_ACTOR && !source) {
+  if (ask.audience === 'owner' && actor === TITAN_ACTOR && !source) {
     inform({
       reason: 'Question answered without a saved owner message',
       clear: 'Review the saved question and its answers in the UI.',
@@ -675,8 +675,8 @@ export function askAnswer({
 
   if (source || ownerActor({ actor })) {
     by = 'the owner'
-  } else if (actor === HYDRA_ACTOR) {
-    by = 'Hydra'
+  } else if (actor === TITAN_ACTOR) {
+    by = 'Titan'
   }
 
   return {
@@ -707,7 +707,7 @@ export function decideAskClosure({
   answer,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   id: string
   evidence?: string
@@ -735,7 +735,7 @@ export function decideAskClosure({
     }
 
     if (!ask.answered || !answeredMergeHold({ ask })) {
-      throw invalid({ message: 'only Hydra can re-ask an answered merge Hold' })
+      throw invalid({ message: 'only Titan can re-ask an answered merge Hold' })
     }
 
     return hydraEvent({
@@ -775,10 +775,10 @@ export function decideAskClosure({
     })
   }
 
-  if (meta.actor !== HYDRA_ACTOR || !meta.reason?.trim() || !evidence?.trim()) {
+  if (meta.actor !== TITAN_ACTOR || !meta.reason?.trim() || !evidence?.trim()) {
     inform({
       task: card.id,
-      reason: 'Question closed without Hydra’s usual reason and evidence',
+      reason: 'Question closed without Titan’s usual reason and evidence',
       clear: `Review question ${ask.id} on task ${card.id} and its saved answers in the UI.`,
     })
   }

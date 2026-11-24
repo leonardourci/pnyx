@@ -8,9 +8,9 @@ import { joinedKey } from '#tasks/push-rules.ts'
 import { decideLink, parseLink } from '#tasks/delivery/links.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { decideSession } from '#workers/sessions.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { TitanError } from '#store/errors.ts'
 import type { AgentRef } from '#workers/model.ts'
 import { terminalFacts } from '#workers/reply-route.ts'
 import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
@@ -41,7 +41,7 @@ function ingest({
   entry: Record<string, unknown>
 }): string[] {
   if (typeof entry?.id !== 'string' || typeof entry.at !== 'string') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'spool entry needs id and at',
       code: 'VALIDATION_ERROR',
     })
@@ -57,7 +57,7 @@ function ingest({
 
   if (!isHookEnvelope({ value: entry })) {
     if (typeof entry.key !== 'string') {
-      throw new HydraError({
+      throw new TitanError({
         message: 'spool entry needs id, key and at',
         code: 'VALIDATION_ERROR',
       })
@@ -93,7 +93,7 @@ function ingest({
   }
 
   if (!(HARNESSES as readonly string[]).includes(entry.harness as string) || typeof entry.event !== 'string') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'hook entry needs a known harness and an event',
       code: 'VALIDATION_ERROR',
     })
@@ -260,12 +260,12 @@ function ingest({
 
     const config = writer.state.config
 
-    if (task === HYDRA_CARD && o.card.agent && config && !config.hydra.session) {
+    if (task === TITAN_CARD && o.card.agent && config && !config.hydra.session) {
       const session = sessionId({ agent: o.card.agent as AgentRef })
 
       const recorded = writer.state.sessions?.[session]
 
-      if (recorded && (!recorded.taskId || recorded.taskId === HYDRA_CARD)) {
+      if (recorded && (!recorded.taskId || recorded.taskId === TITAN_CARD)) {
         applyDecision({
           writer,
           decision: hydraEvent({
@@ -320,7 +320,7 @@ export function drainSpool({ writer }: {
         harvest.add(id)
       }
     } catch (error) {
-      if (!(error instanceof HydraError || error instanceof SyntaxError)) {
+      if (!(error instanceof TitanError || error instanceof SyntaxError)) {
         throw error
       }
 
@@ -342,7 +342,7 @@ export function drainSpool({ writer }: {
   const turned = [...harvest].flatMap(id => writer.state.cards[id] ?? [])
 
   if (hydra && turned.some(card => cardSessionId({ card }) === hydra)) {
-    harvest.add(HYDRA_CARD)
+    harvest.add(TITAN_CARD)
   }
 
   const notes = harvest.size ? harvestTranscripts({

@@ -1,11 +1,11 @@
 import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
 import { dirname, join } from 'node:path'
-import type { CurrentAction } from '#hydra/calls.ts'
-import { latestMessage, threadPath, type LatestMessage, type LatestRead } from '#hydra/transcripts-read.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import { latestMessage, threadPath, type LatestMessage, type LatestRead } from '#titan/transcripts-read.ts'
 import { background } from './background.ts'
 import type { createHost } from './host.ts'
-import type { HydraState } from './model.ts'
-import type { HydraClient, ServerMessage } from './server-transport.ts'
+import type { TitanState } from './model.ts'
+import type { TitanClient, ServerMessage } from './server-transport.ts'
 import type { Subscription } from './thread-subscriptions.ts'
 import { pollPath, watchPath, type PathWatch } from './watch.ts'
 
@@ -14,7 +14,7 @@ const EVENT_POLL_MS = 500
 
 // A hosted session's hook card never gets an activity, so the session decides
 // for every card that names its transcript.
-function watchedTranscripts({ state }: { state: HydraState }): Set<string> {
+function watchedTranscripts({ state }: { state: TitanState }): Set<string> {
   return new Set(Object.values(state.cards).flatMap(card => {
     const session = state.sessions?.[cardSessionId({ card }) ?? '']
     const activity = session?.sessionActivity ?? session?.activity
@@ -40,29 +40,29 @@ export function createLatestFeed({
   agents,
   spend,
 }: {
-  state(): HydraState
+  state(): TitanState
   closed(): boolean
-  clients: Set<HydraClient>
+  clients: Set<TitanClient>
   send({
     ws,
     message,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     message: ServerMessage
   }): void
-  threadSubscriptions(): Map<HydraClient, Subscription>[]
+  threadSubscriptions(): Map<TitanClient, Subscription>[]
   refreshThread({
     ws,
     invalidate,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     invalidate?: boolean
   }): void
   refreshLiveThread({
     ws,
     card,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     card: string
   }): void
   agents(): Pick<ReturnType<typeof createHost>, 'action'>
@@ -327,7 +327,7 @@ export function createLatestFeed({
     }
   }
 
-  // A session Pnyx runs streamed: its cards' latest messages and open thread pages are read again.
+  // A session Othrys runs streamed: its cards' latest messages and open thread pages are read again.
   const streamed = ({
     session,
     text = false,

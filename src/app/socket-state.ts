@@ -1,23 +1,23 @@
-import type { HydraSummary } from './server-hydras.ts'
+import type { TitanSummary } from './server-hydras.ts'
 import type { PageState } from './page-state.ts'
-import type { HydraQueue } from '#hydra/wakes.ts'
+import type { TitanQueue } from '#titan/wakes.ts'
 import type { PageSettings } from '#settings/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { SocketCursor } from './socket-history.ts'
 
-export interface HydraPage {
+export interface TitanPage {
   state: PageState
-  queue: HydraQueue
+  queue: TitanQueue
 }
 
 export interface HomePage {
-  hydras: HydraSummary[]
+  hydras: TitanSummary[]
   settings: {
     settings: PageSettings
     revision: number
   }
   upgrade: UpgradeStatus | null
-  scopes: Record<string, HydraPage>
+  scopes: Record<string, TitanPage>
 }
 
 export interface PageChanges {

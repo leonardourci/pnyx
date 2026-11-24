@@ -1,10 +1,10 @@
 import { inform } from '#app/command-notices.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
-import { taskMention } from '#hydra/mentions.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
+import { taskMention } from '#titan/mentions.ts'
 import type { Card, ReminderRepeat } from './model.ts'
 import { touch } from './touch.ts'
 import { taskDone } from './select.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { reminderInterval } from './time.ts'
 import { cloneValue } from '#app/json-copy.ts'
 import { deferredQuestions } from './ask-state.ts'
@@ -59,7 +59,7 @@ export function reminderMessage({
   return `- Reminder: ${mention} ${summary}`
 }
 
-export function waitingReminders({ state }: { state: HydraState }) {
+export function waitingReminders({ state }: { state: TitanState }) {
   return Object.values(state.cards)
     .filter(card => card.reminder && (!card.reminder.dueAt || card.reminder.repeat))
     .map(card => ({
@@ -83,7 +83,7 @@ export function reminderRepeat({
   until,
   question,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   when: string
   every?: string
@@ -95,14 +95,14 @@ export function reminderRepeat({
   }
 
   if (when === 'clear') {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Use clear without recurrence options',
     })
   }
 
   if (every === undefined) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Recurring reminders need --every',
     })
@@ -111,7 +111,7 @@ export function reminderRepeat({
   const everyMs = reminderInterval({ text: every })
 
   if (until !== 'worker-started' && until !== 'question-answered' && until !== 'task-done') {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Choose --until worker-started|question-answered|task-done',
     })
@@ -137,7 +137,7 @@ export function reminderRepeat({
     const ask = card.asks?.find(ask => ask.id === question)
 
     if (!ask) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'VALIDATION_ERROR',
         message: 'Choose an open owner question with --question <id>',
       })
@@ -146,14 +146,14 @@ export function reminderRepeat({
     if (ask.answered || ask.closed || ask.audience !== 'owner') {
       inform({
         task: card.id,
-        reason: 'Question is answered, closed or directed to Hydra; recurrence uses its recorded answer state',
+        reason: 'Question is answered, closed or directed to Titan; recurrence uses its recorded answer state',
         clear: `Review the reminder on task ${card.id} in the UI.`,
       })
     }
 
     repeat.question = ask.id
   } else if (question !== undefined) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: '--question goes with --until question-answered',
     })
@@ -170,7 +170,7 @@ function reminderDone({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): boolean {
   return taskDone({
@@ -183,8 +183,8 @@ export function stopReminders({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }) {
   for (const card of Object.values(state.cards)) {
     const repeat = card.reminder?.repeat
@@ -214,7 +214,7 @@ export function stopReminders({
   }
 }
 
-export function reminderDeadline({ state }: { state: HydraState }): number | undefined {
+export function reminderDeadline({ state }: { state: TitanState }): number | undefined {
   const deadlines = deferredQuestions({ state }).map(question => question.at)
     .filter(Number.isFinite)
 
@@ -242,8 +242,8 @@ export function applyReminder({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'task.reminder' && event.type !== 'task.reminder-due') {
     return false

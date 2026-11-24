@@ -4,23 +4,23 @@ import { once } from 'node:events'
 import { spawn, spawnSync } from 'node:child_process'
 import { relative } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 
 const COMPACTION_TEST_DEADLINE_MS = 10_000
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  process.env.PNYX_HOME = relative(
+  process.env.OTHRYS_HOME = relative(
     process.cwd(),
-    process.env.PNYX_HOME!,
+    process.env.OTHRYS_HOME!,
   )
-  pnyx = await startPnyx({ compactionDelay: COMPACTION_TEST_DEADLINE_MS })
+  othrys = await startOthrys({ compactionDelay: COMPACTION_TEST_DEADLINE_MS })
 })
 
 test(
-  'a worker with a relative Pnyx home writes reports from its own directory',
+  'a worker with a relative Othrys home writes reports from its own directory',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     onTestFinished(async () => {
       await hydra.owner({
         args: [
@@ -35,7 +35,7 @@ test(
       process.execPath,
       [
         '-e',
-        'require("node:fs").appendFileSync(process.env.PNYX_TASK_DIR + "/worker.log", "note: relative home report\\n")',
+        'require("node:fs").appendFileSync(process.env.OTHRYS_TASK_DIR + "/worker.log", "note: relative home report\\n")',
       ],
       {
         cwd: worker.cwd,
@@ -58,9 +58,9 @@ test(
 )
 
 test(
-  'a detached worker’s retained tools are recovered after restart and stopped on Hydra removal',
+  'a detached worker’s retained tools are recovered after restart and stopped on Titan removal',
   async () => {
-    const hydra = await pnyx.hydra({
+    const hydra = await othrys.hydra({
       id: 'default',
       create: false,
     })
@@ -133,12 +133,12 @@ test(
     leader.stdin.end('exit')
     await exited
     expect(processStart({ pid: tool })).not.toBeNull()
-    await pnyx.restart()
+    await othrys.restart()
     expect(processStart({ pid: tool })).not.toBeNull()
     await until({
-      what: 'only the target Hydra is mounted before permanent removal',
+      what: 'only the target Titan is mounted before permanent removal',
       check: () => {
-        const { scopes } = pnyx.home()
+        const { scopes } = othrys.home()
 
         return Object.keys(scopes).length === 1 && Boolean(scopes[hydra.id])
       },
@@ -151,7 +151,7 @@ test(
       ],
     })
     await until({
-      what: 'Hydra removal stops the recovered background tool',
+      what: 'Titan removal stops the recovered background tool',
       check: () => processStart({ pid: tool }) === null,
     })
   },
@@ -160,12 +160,12 @@ test(
 test(
   'a moved silent compaction keeps its deadline and delivers its held input once through another move',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
-    const final = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
+    const final = await othrys.hydra()
     const { worker } = await source.startTask({ key: 'silent-compaction' })
     const task = await source.task({ key: 'silent-compaction' })
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: source.id,
       text: '/compact',
       compacting: true,
@@ -189,7 +189,7 @@ test(
         ],
       })).task.compaction?.operations.some((operation: { state: string }) => operation.state === 'done'),
     })
-    const held = pnyx.claude.plan({
+    const held = othrys.claude.plan({
       hydra: source.id,
       text: '/compact',
       compacting: true,
@@ -217,7 +217,7 @@ test(
     })
     const text = '/review Resume exactly once after the compaction deadline'
     const output = 'Completed in the final destination after compaction'
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: source.id,
       match: ({ text: prompt }) => prompt.includes(text),
       reply: output,
@@ -373,8 +373,8 @@ test(
     })
     expect(await question).toMatchObject({ behavior: 'deny' })
     await until({
-      what: 'neither source Hydra retains the moved task or questions',
-      check: () => !pnyx.home().scopes[source.id] && !pnyx.home().scopes[target.id],
+      what: 'neither source Titan retains the moved task or questions',
+      check: () => !othrys.home().scopes[source.id] && !othrys.home().scopes[target.id],
     })
     expect((await final.owner({
       args: [

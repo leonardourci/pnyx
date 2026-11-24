@@ -52,7 +52,7 @@ export async function checkCopy({
     return {
       clean: false,
       landed: false,
-      reason: 'it is not a git checkout Pnyx can read',
+      reason: 'it is not a git checkout Othrys can read',
     }
   }
 
@@ -126,7 +126,7 @@ export async function removeCopy({
   })
 
   if (!common || !gitDir.ok || gitDir.out === common) {
-    return 'it is not a git worktree Pnyx can remove'
+    return 'it is not a git worktree Othrys can remove'
   }
 
   if (!force && !await onBranch({ cwd: copy.path })) {

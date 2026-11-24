@@ -1,13 +1,13 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { upgradeMilestone } from './model.ts'
 
 export function applyUpgrade({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'pnyx.upgrade') {
     return false

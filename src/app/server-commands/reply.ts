@@ -1,7 +1,7 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { replyRoute } from '#workers/reply-route.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { createServerWorkers } from '#app/server-workers.ts'
 import type { CommandRequest } from './dispatch.ts'
 
@@ -21,7 +21,7 @@ export function replyCommand({
 }: CommandRequest & {
   name: unknown
   hydraId: string
-  state(): HydraState
+  state(): TitanState
   closed(): boolean
   kick(): void
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
@@ -36,7 +36,7 @@ export function replyCommand({
       : args.length === 3 && !!args[2] && args[1].length <= 32000
 
   if (!valid) {
-    throw new HydraError({
+    throw new TitanError({
       message: agent
         ? 'agent expects card, setting, value and idempotency key'
         : answering ? 'answer expects card, request key, answer, idempotency key and request id' : 'reply expects card, text and idempotency key',
@@ -52,7 +52,7 @@ export function replyCommand({
   const found = replyRoute({ card })
 
   if ('reason' in found && name !== 'task-message') {
-    throw new HydraError({
+    throw new TitanError({
       message: `${found.reason}${agent ? '' : ' Your draft stays here.'}`,
       code: 'NO_ROUTE',
     })
@@ -102,7 +102,7 @@ export function replyCommand({
 
   if (closed()) {
     return fail({
-      error: 'Pnyx is shutting down',
+      error: 'Othrys is shutting down',
       code: 'UNAVAILABLE',
     })
   }
@@ -110,7 +110,7 @@ export function replyCommand({
   startWorker({
     args: [
       ...command,
-      '--hydra',
+      '--titan',
       hydraId,
       '--actor',
       'web',

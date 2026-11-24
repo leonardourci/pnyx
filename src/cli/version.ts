@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 // A leaf module: `--version` reads it before the command graph loads.
 export const { version } = createRequire(import.meta.url)('../../package.json') as { version: string }
 
-// The version and the installed commit, the one place Pnyx shows which commit it runs.
+// The version and the installed commit, the one place Othrys shows which commit it runs.
 export function installedVersion(): string {
   try {
     return `${version} (${execFileSync(

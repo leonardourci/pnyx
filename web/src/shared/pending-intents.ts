@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 export type IntentStage = 'pending' | 'sending' | 'accepted' | 'confirmed' | 'refused' | 'unknown'
 
@@ -146,8 +146,8 @@ export function createPendingResource<State, Patch>({
           id: intent.id,
           error: error instanceof CommandFailure ? error : new CommandFailure({
             message: error instanceof Error ? error.message : String(error),
-            code: error instanceof HydraError ? error.code : 'INVALID_PREVIEW',
-            help: error instanceof HydraError ? error.help : [],
+            code: error instanceof TitanError ? error.code : 'INVALID_PREVIEW',
+            help: error instanceof TitanError ? error.help : [],
           }),
         })
       }
@@ -187,7 +187,7 @@ export function createPendingResource<State, Patch>({
 
   return {
     snapshot: () => snapshot,
-    // eslint-disable-next-line pnyx/object-params -- React useSyncExternalStore subscription contract.
+    // eslint-disable-next-line othrys/object-params -- React useSyncExternalStore subscription contract.
     subscribe: (listener: () => void) => {
       listeners.add(listener)
 

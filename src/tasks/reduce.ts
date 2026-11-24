@@ -1,4 +1,4 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { refreshTasks } from './refresh.ts'
 import { touch } from './touch.ts'
 import { applySteering } from '#workers/steering.ts'
@@ -7,8 +7,8 @@ export function applyTask({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type === 'task.branch') {
     const card = state.cards[event.cardId]

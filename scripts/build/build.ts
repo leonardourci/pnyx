@@ -3,6 +3,8 @@ import { chmodSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { stagedBuild } from './staged.ts'
 
+const EXECUTABLE_MODE = 0o755
+
 const root = join(
   import.meta.dirname,
   '..',
@@ -43,18 +45,30 @@ try {
       chmodSync(
         join(
           out,
-          'cli/pnyx.js',
+          'cli/othrys.js',
         ),
-        0o755,
+        EXECUTABLE_MODE,
       )
-      writeFileSync(
-        join(
+
+      for (const alias of [
+        'othrys-axi',
+        'pnyx',
+        'pnyx-axi',
+      ]) {
+        const entry = join(
           out,
-          'cli/pnyx-axi.js',
-        ),
-        "#!/usr/bin/env node\nimport './pnyx.js'\n",
-        { mode: 0o755 },
-      )
+          `cli/${alias}.js`,
+        )
+        writeFileSync(
+          entry,
+          "#!/usr/bin/env node\nimport './othrys.js'\n",
+        )
+        chmodSync(
+          entry,
+          EXECUTABLE_MODE,
+        )
+      }
+
       run({
         command: 'vite',
         args: [

@@ -2,8 +2,8 @@ import { asRecord } from '#app/command-validation.ts'
 import type { Candidate, Rule } from '#workers/dispatch-config.ts'
 import { canonical, checkDispatch, patchChanges, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 
-// Hydra's own agent: Settings edits it under Hydra's default agent, not in the workers' table.
-export const HYDRA_RULE = 'hydra'
+// Titan's own agent: Settings edits it under Titan's default agent, not in the workers' table.
+export const TITAN_RULE = 'hydra'
 
 const CANDIDATE_FIELDS = [
   'model',

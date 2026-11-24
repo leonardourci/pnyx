@@ -1,4 +1,4 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Ask, Card } from '#tasks/model.ts'
 import { readyForReview, type Link } from '#tasks/delivery/model.ts'
 import { canonicalMergeQuestion } from '#tasks/delivery/merge-questions.ts'
@@ -13,7 +13,7 @@ export function reviewRequests({
   state,
   card,
 }: {
-  state?: HydraState
+  state?: TitanState
   card: Card
 }): ReviewRequest[] {
   return card.links.flatMap(link => {

@@ -21,7 +21,7 @@ export interface AgentRef {
   transcriptPath?: string
   account?: string
   loginFolder?: string
-  // Set when the Pnyx server runs this agent itself instead of a terminal.
+  // Set when the Othrys server runs this agent itself instead of a terminal.
   host?: 'pnyx'
   // An adopted native session must resume even when its transcript is unavailable.
   resume?: true
@@ -75,7 +75,7 @@ export interface Attention {
   text?: string
   questions?: Question[]
   form?: FormField[]
-  // The reply that answered it from the Hydra. The request stays until the session's
+  // The reply that answered it from the Titan. The request stays until the session's
   // own hooks close it, but no longer counts as waiting on anyone.
   answered?: string
 }
@@ -219,7 +219,7 @@ export interface AgentConfig {
   quota?: 'high' | 'medium' | 'low'
 }
 
-// A task's own copy of its project: a git worktree Pnyx made, or the folder the
+// A task's own copy of its project: a git worktree Othrys made, or the folder the
 // project's copy command printed. It is removed only once its work has landed.
 export interface TaskQueue {
   session: string

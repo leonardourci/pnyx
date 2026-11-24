@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { repeatedLine, flushRepeatedLines } from '#diagnostics/repeated-lines.ts'
 import { logRequestId } from '#diagnostics/context.ts'
 import { logFailure } from '#diagnostics/log-failure.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { othrysHome } from '#store/paths.ts'
 import { privateDir } from '#store/storage.ts'
 import { LOG_FIELDS, logDay, logged, oneDecimal, TEXT_MAX, type LogLine, type LogMode } from './log-line.ts'
 
@@ -16,7 +16,7 @@ const streams = new Map<string, {
 }>()
 
 export const logsDir = () => join(
-  pnyxHome(),
+  othrysHome(),
   'logs',
 )
 
@@ -382,7 +382,7 @@ export function writeLine({
 }
 
 // Writes the line when the level allows it: a detailed line only under Detailed, a warning or error always.
-// eslint-disable-next-line pnyx/object-params -- the line passes on whole, so nothing is copied before the level check.
+// eslint-disable-next-line othrys/object-params -- the line passes on whole, so nothing is copied before the level check.
 export function log(line: LogLine): void {
   // Outside the server only warnings and errors are printed, so other lines stop before they are built.
   const printed = toFiles || line.level !== undefined

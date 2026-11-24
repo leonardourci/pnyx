@@ -117,7 +117,7 @@ export function AddProject({
 
   return (
     <section className="add-project-box min-w-0 [&_h2]:mx-0 [&_h2]:mt-0 [&_h2]:mb-2 [&_h2]:text-chat [&>p]:leading-normal" aria-label="Add a project">
-      <h2 ref={heading} tabIndex={-1}>Give Hydra a project</h2>
+      <h2 ref={heading} tabIndex={-1}>Give Titan a project</h2>
       <p className="small muted">Attach a folder on this laptop, or clone a repository here.</p>
       <ProjectActions>
         <Button
@@ -223,8 +223,8 @@ export function AddProject({
         </ProjectForm>
       )}
       <p className="small muted project-sharing-note mt-4">
-        Each worker normally gets its own copy. A project belongs to one Hydra; a folder another
-        Hydra already uses is refused.
+        Each worker normally gets its own copy. A project belongs to one Titan; a folder another
+        Titan already uses is refused.
       </p>
     </section>
   )

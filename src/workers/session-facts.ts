@@ -1,5 +1,5 @@
 import { decided } from '#app/decision.ts'
-import type { Decision, HydraEvent, HydraState, SourceRef } from '#app/model.ts'
+import type { Decision, TitanEvent, TitanState, SourceRef } from '#app/model.ts'
 import type { Card, PushFields } from '#tasks/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { isStaleSource, sameSource, offerTitle } from '#tasks/events.ts'
@@ -8,7 +8,7 @@ import { touch } from '#tasks/touch.ts'
 import { checkRevision } from '#tasks/push-rules.ts'
 import { sessionId, projectSession, sessionTask } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
-import { WAKE_TURN, WAKE_HANDLED } from '#hydra/wake-ids.ts'
+import { WAKE_TURN, WAKE_HANDLED } from '#titan/wake-ids.ts'
 import { ownerInputUuid } from './input.ts'
 
 export function isSessionSource({ source }: { source?: SourceRef }): boolean {
@@ -19,12 +19,12 @@ export function isSessionSource({ source }: { source?: SourceRef }): boolean {
   ].includes(source.adapter)
 }
 
-export function recordHydraTurn({
+export function recordTitanTurn({
   session,
   event,
 }: {
   session: AgentSession
-  event: HydraEvent
+  event: TitanEvent
 }): void {
   if (WAKE_TURN.test(event.id)) {
     session.wakeStarted = event.id
@@ -44,7 +44,7 @@ function recordTurn({
   activity,
 }: {
   session: AgentSession
-  event: HydraEvent
+  event: TitanEvent
   activity: string
 }): void {
   if (session.agent.host !== 'pnyx' || session.agent.agentId) {
@@ -117,7 +117,7 @@ export function decideSessionFacts({
   cursor,
   key,
 }: {
-  state: HydraState
+  state: TitanState
   fields: PushFields & { agent: AgentSession['agent'] }
   source?: SourceRef
   meta: Meta
@@ -188,8 +188,8 @@ export function applySessionFacts({
   state,
   event,
 }: {
-  state: HydraState
-  event: Extract<import('#app/model.ts').HydraEvent, { type: 'session.observed' }>
+  state: TitanState
+  event: Extract<import('#app/model.ts').TitanEvent, { type: 'session.observed' }>
 }): void {
   if ('session' in event.data) {
     const session = state.sessions?.[event.data.session]
@@ -356,7 +356,7 @@ export function applySessionFacts({
     const inputSeq = input && state.eventIds[input.id]
 
     if (fields.activity === 'working' && input && typeof inputSeq === 'number') {
-      recordHydraTurn({
+      recordTitanTurn({
         session,
         event: {
           ...event,
@@ -365,7 +365,7 @@ export function applySessionFacts({
         },
       })
     } else if (fields.activity === 'working' && event.id.startsWith('resume:')) {
-      recordHydraTurn({
+      recordTitanTurn({
         session,
         event,
       })
@@ -458,8 +458,8 @@ export function sessionFields({
   event,
   state,
 }: {
-  event: import('#app/model.ts').HydraEvent
-  state?: HydraState
+  event: import('#app/model.ts').TitanEvent
+  state?: TitanState
 }): PushFields | undefined {
   if (event.type === 'session.observed') {
     if ('fields' in event.data) {

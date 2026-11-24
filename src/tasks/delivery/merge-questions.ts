@@ -1,7 +1,7 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Ask, Card } from '#tasks/model.ts'
 import { cardLanding, readyForReview, type Link } from './model.ts'
-import { hydraEvent, reportActor } from '#hydra/hydra.ts'
+import { hydraEvent, reportActor } from '#titan/titan.ts'
 import { isManagedTask } from '#tasks/select.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 
@@ -10,7 +10,7 @@ export function mergeApproval({
   card,
   url,
 }: {
-  state?: HydraState
+  state?: TitanState
   card: Card
   url: string
 }) {
@@ -29,7 +29,7 @@ export function canonicalMergeQuestion({
   card,
   url,
 }: {
-  state?: HydraState
+  state?: TitanState
   cards?: Record<string, Card>
   card: Card
   url: string
@@ -100,7 +100,7 @@ export function isCanonicalQuestion({
   card,
   ask,
 }: {
-  state?: HydraState
+  state?: TitanState
   cards?: Record<string, Card>
   card: Card
   ask: Ask
@@ -123,7 +123,7 @@ function ownerReviewsPullRequests({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): boolean {
   if (isManagedTask({ card }) || completedOutcome({ outcome: card.outcome })) {
@@ -140,9 +140,9 @@ export function* retireableReviewQuestions({
   state,
   at,
 }: {
-  state: HydraState
+  state: TitanState
   at: string
-}): Iterable<HydraEvent> {
+}): Iterable<TitanEvent> {
   const cards = Object.values(state.cards)
   const questions = cards.flatMap(card => {
     const asks = openAsks({
@@ -209,16 +209,16 @@ export function reconcileAsks({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
-}): HydraEvent[] {
+  state: TitanState
+  event: TitanEvent
+}): TitanEvent[] {
   const card = state.cards[event.cardId]
 
   if (!card || isManagedTask({ card }) || event.type === 'task.ask.closed') {
     return []
   }
 
-  const changes: HydraEvent[] = []
+  const changes: TitanEvent[] = []
   const ended = event.type === 'card.outcome' && completedOutcome({ outcome: event.data.after })
 
   for (const ask of openAsks({
@@ -325,11 +325,11 @@ function mergeQuestion({
   link,
   id,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   link: Link
   id: string
-}): Extract<HydraEvent, { type: 'task.asked' }>['data'] {
+}): Extract<TitanEvent, { type: 'task.asked' }>['data'] {
   const number = link.url.split('/').at(-1)
   const report = state.hydraMessages?.findLast(message => message.task === card.id
     && reportActor({ actor: message.actor }) && !message.ask)
@@ -351,7 +351,7 @@ function mergeQuestion({
     /[\\[\]]/g,
     '\\$&',
   )
-  context.push(`[${cardTitle}](pnyx-task:${encodeURIComponent(card.id)})`)
+  context.push(`[${cardTitle}](othrys-task:${encodeURIComponent(card.id)})`)
 
   return {
     id,

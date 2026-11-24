@@ -1,15 +1,15 @@
-import type { ThreadDelta } from '#hydra/thread-delta.ts'
+import type { ThreadDelta } from '#titan/thread-delta.ts'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { commands as cliCommands } from './cli.ts'
 import { approval } from './confirmations.ts'
 import { project } from '#projects/cli.ts'
 import { dispatchCommands } from '#workers/dispatch-cli.ts'
-import type { ThreadPage, LatestMessage } from '#hydra/transcripts-read.ts'
+import type { ThreadPage, LatestMessage } from '#titan/transcripts-read.ts'
 import type { TaskSpend } from '#workers/task-spend.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import type { ClientMessage } from './server-http.ts'
-import type { HomeMessage, HydraPage } from './socket-state.ts'
+import type { HomeMessage, TitanPage } from './socket-state.ts'
 
 export const commands = {
   ...cliCommands,
@@ -92,7 +92,7 @@ export type ServerMessage = (ServerPayload | HomeMessage | {
   subscription?: string
 }
 
-export interface HydraClient {
+export interface TitanClient {
   readonly bufferedAmount: number
   readonly readyState: number
   readonly OPEN: number
@@ -106,51 +106,51 @@ export interface HydraClient {
   terminate(): void
 }
 
-export interface HydraSubscription {
+export interface TitanSubscription {
   receive({ message }: { message: ClientMessage | undefined }): void
   close(): void
 }
 
 export interface RunningServer {
   port: number
-  // The server's root address, which opens an active Hydra.
+  // The server's root address, which opens an active Titan.
   url: string
   socket: string | null
-  // Hydras that could not be loaded, with the reason; the others keep working.
+  // Titans that could not be loaded, with the reason; the others keep working.
   skipped: Record<string, string>
   open({ id }: { id: string }): Promise<string>
   close(): Promise<void>
 }
 
-export interface MountedHydra {
+export interface MountedTitan {
   url: string
   socket: string | null
-  view(): HydraPage
+  view(): TitanPage
   request({
     req,
     res,
     path,
     search,
-  }: HydraRequest): void | Promise<void>
+  }: TitanRequest): void | Promise<void>
   connect({
     ws,
     page,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     page?: string[]
-  }): HydraSubscription
+  }): TitanSubscription
   settings(): void
   close({ permanent }?: { permanent?: boolean }): Promise<void>
 }
 
-export type HydraRequest = {
+export type TitanRequest = {
   req: IncomingMessage
   res: ServerResponse
   path: string
   search: string
 }
 
-export const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+export const TITAN_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 
 // A target such as // reads as a URL with an empty host, which throws; take it as a path instead.
 export const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
@@ -159,7 +159,7 @@ export const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
 ) ?? new URL(`http://localhost${url}`)
 
 // Exact matches refuse other sites and rebound DNS names; *.localhost names (portless's
-// https://pnyx.localhost) pass because browsers resolve them to loopback (RFC 6761).
+// https://othrys.localhost) pass because browsers resolve them to loopback (RFC 6761).
 const localName = String.raw`[a-z0-9.-]+\.localhost(:\d+)?`
 
 const localHost = new RegExp(

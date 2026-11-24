@@ -1,6 +1,6 @@
 import type { Card } from '#tasks/model.ts'
-import type { HydraState } from '#app/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import type { TitanState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import { createPendingResource } from '#web-shared/pending-intents.ts'
 import { argument } from '#web-tasks/optimistic.ts'
@@ -63,13 +63,13 @@ export function turnTarget({
 }: {
   name: string
   args: string[]
-  state: HydraState
+  state: TitanState
 }): string | undefined {
   if (name === 'hydra' && args[0] === 'send' && argument({
     args,
     flag: '--task',
   }) === undefined) {
-    return HYDRA_CARD
+    return TITAN_CARD
   }
 
   let ref: string | undefined
@@ -92,7 +92,7 @@ export function pendingTurns({
   hydraStatus,
 }: {
   resource: ReturnType<typeof createPendingTurns>
-  hydraStatus?: HydraState['hydraStatus']
+  hydraStatus?: TitanState['hydraStatus']
 }): Record<string, PendingTurn> {
   const snapshot = resource.snapshot()
   const latest = new Map<string, typeof snapshot.intents[number]>()
@@ -109,12 +109,12 @@ export function pendingTurns({
   for (const intent of latest.values()) {
     const card = snapshot.confirmed[intent.patch.card]
     const activity = card?.sessionActivity ?? card?.activity
-    const hydraFailed = intent.patch.card === HYDRA_CARD && hydraStatus?.state === 'down'
+    const hydraFailed = intent.patch.card === TITAN_CARD && hydraStatus?.state === 'down'
       && hydraStatus.seq > intent.patch.afterSeq && activity !== 'working'
       && (card?.turnEndedSeq ?? 0) <= hydraStatus.seq
 
     if (hydraFailed) {
-      pending[intent.patch.card] = { error: hydraStatus.detail ?? 'Hydra could not start a turn' }
+      pending[intent.patch.card] = { error: hydraStatus.detail ?? 'Titan could not start a turn' }
       continue
     }
 

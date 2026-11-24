@@ -1,6 +1,6 @@
-import { settleSavedCommand } from '#web-hydra/outbox.ts'
+import { settleSavedCommand } from '#web-titan/outbox.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
-import type { HydraSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { saveEventId, savedReply } from '#app/save-receipts.ts'
@@ -8,7 +8,7 @@ import { commandTimeout, retryable } from './connection-protocol.ts'
 import { argument, currentRevision, optimisticState } from '#web-tasks/optimistic.ts'
 import { commandArguments, editTargets } from './pending-state.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
-import type { Scope, Request, HydraListResource } from './connection-model.ts'
+import type { Scope, Request, TitanListResource } from './connection-model.ts'
 import type { Receipt } from './connection.ts'
 import { turnTarget } from '#web-workers/pending-turns.ts'
 
@@ -23,16 +23,16 @@ export function createConnectionRequests({
   subscribe,
   persistSaves,
   send,
-  updateHydras,
+  updateTitans,
 }: {
   connection: { readonly socket: WebSocket | null }
   scopes: Map<string, Scope>
   requests: Map<string, Request>
-  hydras: HydraListResource
+  hydras: TitanListResource
   publish(): void
   subscribe({ scope }: { scope: Scope }): void
   persistSaves({ scope }: { scope: Scope }): void
-  updateHydras({ rows }: { rows: HydraSummary[] }): void
+  updateTitans({ rows }: { rows: TitanSummary[] }): void
   send({ message }: { message: unknown }): void
 }) {
   const flush = () => {
@@ -186,9 +186,9 @@ export function createConnectionRequests({
       resolve,
       reject,
     ) => {
-      if (!document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content) {
+      if (!document.querySelector<HTMLMetaElement>('meta[name=othrys-token]')?.content) {
         reject(new CommandFailure({
-          message: 'Open this Hydra through pnyx serve to send. Draft kept.',
+          message: 'Open this Titan through othrys serve to send. Draft kept.',
           code: 'UNAUTHORIZED',
         }))
 
@@ -232,7 +232,7 @@ export function createConnectionRequests({
         }
       }
 
-      // The page keeps no event ids, so a Hydra message or agent change confirms only from its receipt.
+      // The page keeps no event ids, so a Titan message or agent change confirms only from its receipt.
       const confirmed = savedReply({
         command: {
           type: 'command',
@@ -282,7 +282,7 @@ export function createConnectionRequests({
 
       if ((!scope.ready || connection.socket?.readyState !== WebSocket.OPEN) && !retry) {
         reject(new CommandFailure({
-          message: 'This Hydra is still connecting. Try again when it is ready.',
+          message: 'This Titan is still connecting. Try again when it is ready.',
           code: 'NOT_RUNNING',
         }))
 
@@ -408,7 +408,7 @@ export function createConnectionRequests({
     }
 
     if (request.creation && message.type === 'receipt' && Array.isArray(message.hydras)) {
-      updateHydras({ rows: message.hydras as HydraSummary[] })
+      updateTitans({ rows: message.hydras as TitanSummary[] })
     }
 
     if (message.type === 'error' && request.saveId && message.saved !== false) {

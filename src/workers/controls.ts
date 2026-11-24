@@ -8,7 +8,7 @@ export const KEY_LABEL: Record<Key, string> = {
   'shift-down': 'Shift+Down',
 }
 
-// set: a Pnyx-hosted agent takes the value directly, nothing typed.
+// set: an Othrys-hosted agent takes the value directly, nothing typed.
 export type ControlInput =
   | {
     text: string
@@ -220,7 +220,7 @@ const HOSTED_CLAUDE: Controls = {
       }),
     },
   ],
-  note: 'Pnyx runs this agent, so a change applies to this session only and is kept for its next turns. Permission requests appear on the task with Allow and Deny.',
+  note: 'Othrys runs this agent, so a change applies to this session only and is kept for its next turns. Permission requests appear on the task with Allow and Deny.',
 }
 
 const HOSTED_CODEX: Controls = {
@@ -250,7 +250,7 @@ const HOSTED_CODEX: Controls = {
         ],
       }),
     },
-    // bypassPermissions is never under Claude Code's name, so a bypass Hydra can pass it to a Codex worker.
+    // bypassPermissions is never under Claude Code's name, so a bypass Titan can pass it to a Codex worker.
     {
       setting: 'mode',
       confirm: 'equals',
@@ -270,7 +270,7 @@ const HOSTED_CODEX: Controls = {
       }),
     },
   ],
-  note: 'Pnyx keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny. Never and Bypass permissions run with full access; the other modes write only in the task folder and Pnyx’s home.',
+  note: 'Othrys keeps these settings for the next turn. Permission requests appear on the task with Allow and Deny. Never and Bypass permissions run with full access; the other modes write only in the task folder and Othrys’s home.',
 }
 
 export function harnessControls({
@@ -326,7 +326,7 @@ export function inputReason({
   input: ControlInput
 }): string | undefined {
   if ((kind === 'pnyx') !== ('set' in input)) {
-    return kind === 'pnyx' ? 'Pnyx sets this agent\'s settings directly.' : 'Only an agent Pnyx runs takes this setting directly.'
+    return kind === 'pnyx' ? 'Othrys sets this agent\'s settings directly.' : 'Only an agent Othrys runs takes this setting directly.'
   }
 
   if (!('key' in input)) {
@@ -336,8 +336,8 @@ export function inputReason({
   const key = KEY_LABEL[input.key]
 
   switch (kind) {
-    case 'terminal-app': return `Terminal types whole lines, so Pnyx cannot press ${key} there.`
-    case 'herdr': return `Pnyx does not press keys such as ${key} in Herdr yet.`
+    case 'terminal-app': return `Terminal types whole lines, so Othrys cannot press ${key} there.`
+    case 'herdr': return `Othrys does not press keys such as ${key} in Herdr yet.`
     default: return undefined
   }
 }

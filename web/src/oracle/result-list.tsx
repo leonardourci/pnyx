@@ -1,7 +1,7 @@
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import type { OracleWorkspace } from './workspaces.ts'
-import type { HydraState } from '#app/model.ts'
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
+import type { TitanState } from '#app/model.ts'
+import { TITAN_MARK } from '#titan/titan-names.ts'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { type ReactNode } from 'react'
@@ -87,7 +87,7 @@ export function oracleResultList({
   sendAsk,
 }: {
   terms: string[]
-  state: HydraState
+  state: TitanState
   actions: Record<string, CurrentAction>
   workspaces: OracleWorkspace[]
   now: number
@@ -206,16 +206,16 @@ export function oracleResultList({
         id={optionId({ index: 0 })}
         value={ASK_BADGE}
         selected
-        icon={askTarget?.icon ?? HYDRA_MARK}
-        label={askTarget ? `Send to ${askTarget.name}` : 'Send to which Hydra?'}
+        icon={askTarget?.icon ?? TITAN_MARK}
+        label={askTarget ? `Send to ${askTarget.name}` : 'Send to which Titan?'}
         terms={[]}
-        meta={askTarget ? `↵ sends · ${mod}↵ and opens its chat` : '↵ picks the Hydra'}
+        meta={askTarget ? `↵ sends · ${mod}↵ and opens its chat` : '↵ picks the Titan'}
         pick={() => askAct({ key: askTarget ? 'send' : 'pick' })}
       />
     </Group>
   )
   const pickList = (
-    <Group label="Send to which Hydra?">
+    <Group label="Send to which Titan?">
       {targets.map((
         target,
         index,
@@ -228,7 +228,7 @@ export function oracleResultList({
           icon={target.icon}
           label={target.name}
           terms={[]}
-          meta={target.id === hydra.id ? 'this Hydra' : ''}
+          meta={target.id === hydra.id ? 'this Titan' : ''}
           pick={() => sendAsk({
             to: target,
             opening: false,

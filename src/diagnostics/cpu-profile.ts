@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { writeOpenFile } from '#store/storage.ts'
 import { log } from '#app/diagnostics.ts'
 import { oneDecimal } from '#app/log-line.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 export const PROFILE_SECONDS = 10
 const PROFILE_MAX_SECONDS = 60
@@ -87,14 +87,14 @@ export async function captureCpuProfile({
   signal?: AbortSignal
 }) {
   if (!Number.isInteger(seconds) || seconds < 1 || seconds > PROFILE_MAX_SECONDS) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: `--seconds must be between 1 and ${PROFILE_MAX_SECONDS}`,
     })
   }
 
   if (profiling) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'BUSY',
       message: 'A CPU profile is already running',
     })
@@ -124,9 +124,9 @@ export async function captureCpuProfile({
       )
     } catch (error) {
       if (signal?.aborted) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'CANCELLED',
-          message: 'CPU profile cancelled: its Hydra stopped',
+          message: 'CPU profile cancelled: its Titan stopped',
         })
       }
 
@@ -186,14 +186,14 @@ function reserveOutput({ path }: { path: string }): number {
     const code = (error as NodeJS.ErrnoException).code
 
     if (code === 'EEXIST') {
-      throw new HydraError({
+      throw new TitanError({
         code: 'ALREADY_EXISTS',
         message: `CPU profile output already exists: ${path}`,
       })
     }
 
     if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EACCES') {
-      throw new HydraError({
+      throw new TitanError({
         code: 'VALIDATION_ERROR',
         message: `CPU profile folder is missing or not writable: ${dirname(path)}`,
       })

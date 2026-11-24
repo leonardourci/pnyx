@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { CARD_SIZING } from '#web-shared/card-sizing.ts'
 
 const PRESENTATION_KEY = 'pnyx:task-presentation'
-const TASK_MODAL_CHANGED = 'pnyx:task-modal-changed'
-const CHAT_ONLY_CHANGED = 'pnyx:task-chat-only-changed'
+const TASK_MODAL_CHANGED = 'othrys:task-modal-changed'
+const CHAT_ONLY_CHANGED = 'othrys:task-chat-only-changed'
 
-// eslint-disable-next-line pnyx/object-params -- React owns the subscription callback signature.
+// eslint-disable-next-line othrys/object-params -- React owns the subscription callback signature.
 const subscribeChatOnly = (changed: () => void) => {
   addEventListener(
     CHAT_ONLY_CHANGED,
@@ -192,7 +192,7 @@ export function useTaskModalSize() {
   }
 }
 
-// eslint-disable-next-line pnyx/object-params -- React owns the subscription callback signature.
+// eslint-disable-next-line othrys/object-params -- React owns the subscription callback signature.
 const subscribeModal = (changed: () => void) => {
   addEventListener(
     'popstate',
@@ -215,7 +215,7 @@ const subscribeModal = (changed: () => void) => {
   }
 }
 
-// The task whose modal this Hydra's address opens; the board behind it keeps its own layout.
+// The task whose modal this Titan's address opens; the board behind it keeps its own layout.
 export function useModalTask({ hydraId }: { hydraId: string }) {
   return useSyncExternalStore(
     subscribeModal,

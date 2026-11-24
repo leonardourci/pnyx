@@ -1,8 +1,8 @@
 import type { Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HydraError } from '#store/errors.ts'
-import { loadHydra } from '#app/store.ts'
+import { TitanError } from '#store/errors.ts'
+import { loadTitan } from '#app/store.ts'
 import { checkCopy } from './copy-check.ts'
 import { settleCopy } from './copy-settle.ts'
 
@@ -20,7 +20,7 @@ export async function copyCommand({
   meta: Meta
 }): Promise<Output> {
   const card = findCard({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     ref,
   })
 
@@ -45,7 +45,7 @@ export async function copyCommand({
   }
 
   if (action !== 'remove' || (values.safe && values.discard)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use task copy <task> [remove [--safe | --discard]]',
       code: 'VALIDATION_ERROR',
     })

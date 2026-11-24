@@ -2,15 +2,15 @@ import { chmodSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
-import type { HydraEvent } from '#app/model.ts'
+import type { TitanEvent } from '#app/model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { nativeEvent } from '#app/native-state.ts'
 import { readLog, type LogPosition } from '#store/log.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { privateDir } from '#store/storage.ts'
 import type { Document, SearchSnapshot } from './model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { chunk, eventText, redact } from './text.ts'
 import { fold, inflection, matches, tokens, type Term } from './query.ts'
 
@@ -31,13 +31,13 @@ function sqlite(): typeof import('node:sqlite') {
 // Bump when the schema, stored text, visibility or tokenization changes.
 const INDEX_VERSION = 10
 const CATCH_UP_BATCH_EVENTS = 500
-// The full-text index an earlier version kept beside each Hydra.
+// The full-text index an earlier version kept beside each Titan.
 const RETIRED_INDEX_FILES = [
   'search.db',
   'search.db-wal',
   'search.db-shm',
 ]
-// Oracle indexes Pnyx data only: cards, their events and notes, never agent transcripts.
+// Oracle indexes Othrys data only: cards, their events and notes, never agent transcripts.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS cursors (
   source TEXT PRIMARY KEY, pos INTEGER NOT NULL, n INTEGER NOT NULL, event TEXT NOT NULL
@@ -291,7 +291,7 @@ function catchUp({
           })
 
           if (next.n <= after.n) {
-            throw new HydraError({
+            throw new TitanError({
               code: 'LOG_CORRUPT',
               message: 'native log ended before its acknowledged position',
             })
@@ -344,7 +344,7 @@ function* documentChunks({
 }: Document): Generator<Document> {
   for (const body of chunk({ text: redact({ text }) })) {
     yield {
-      card: card === HYDRA_CARD ? '$board' : card,
+      card: card === TITAN_CARD ? '$board' : card,
       kind,
       at,
       text: body,
@@ -352,7 +352,7 @@ function* documentChunks({
   }
 }
 
-function* eventDocuments({ event }: { event: HydraEvent }): Generator<Document> {
+function* eventDocuments({ event }: { event: TitanEvent }): Generator<Document> {
   if (event.type === 'chat.message' || event.type === 'hydra.memory' || event.type === 'hydra.review') {
     return
   }

@@ -244,7 +244,7 @@ export function trackUIDrag({
   let finished = false
   const started = performance.now()
 
-  // eslint-disable-next-line pnyx/object-params -- requestAnimationFrame owns the callback signature.
+  // eslint-disable-next-line othrys/object-params -- requestAnimationFrame owns the callback signature.
   const tick = (now: number) => {
     if (finished || !measuring()) {
       return
@@ -385,7 +385,7 @@ export function startUIMetrics({ log }: { log: typeof pageLog }): () => void {
       context: ReturnType<typeof context>
     }[] = []
 
-    // eslint-disable-next-line pnyx/object-params -- addEventListener owns the event signature.
+    // eslint-disable-next-line othrys/object-params -- addEventListener owns the event signature.
     const capture = (event: Event) => {
       const since = performance.now()
       captured.push({
@@ -427,7 +427,7 @@ export function startUIMetrics({ log }: { log: typeof pageLog }): () => void {
         return
       }
 
-      // eslint-disable-next-line pnyx/object-params -- PerformanceObserver owns its callback signature.
+      // eslint-disable-next-line othrys/object-params -- PerformanceObserver owns its callback signature.
       const observer = new PerformanceObserver(list => {
         if (!measuring()) {
           return

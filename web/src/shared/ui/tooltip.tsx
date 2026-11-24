@@ -1,7 +1,7 @@
 import { applyRuntimeStyle } from './runtime-style.ts'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 
-export const HOVER_CLAIM = 'pnyx-tooltip'
+export const HOVER_CLAIM = 'othrys-tooltip'
 export const LINK_TOOLTIP_DELAY = 1500
 const GAP = 8
 const CLOSE_DELAY_MS = 180

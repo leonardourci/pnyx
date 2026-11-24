@@ -4,10 +4,10 @@ import { existsSync, linkSync, lstatSync, readFileSync, rmSync, unlinkSync, writ
 import { dirname, join, resolve } from 'node:path'
 import { openFileStore } from '#store/file-store.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
-import { canonical, pnyxHome, taskRuntimeDir } from '#store/paths.ts'
+import { canonical, othrysHome, taskRuntimeDir } from '#store/paths.ts'
 import { privateDir, writeDurably } from '#store/storage.ts'
-import { HydraError } from '#store/errors.ts'
-import type { HydraEvent, HydraState } from './model.ts'
+import { TitanError } from '#store/errors.ts'
+import type { TitanEvent, TitanState } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { assembleNative, reduceNative, nativeReferences, nativeId, type NativeState } from './native-state.ts'
 import { log } from './diagnostics.ts'
@@ -17,10 +17,10 @@ const SNAPSHOT_MS = 5 * 60_000
 
 export interface NativeHeld {
   dir: string
-  state: HydraState
+  state: TitanState
   committed: number
-  changes: HydraEvent[]
-  pending: HydraEvent[]
+  changes: TitanEvent[]
+  pending: TitanEvent[]
   stale?: boolean
   changed(): void
 }
@@ -35,7 +35,7 @@ function errorCard({
   issue,
 }: {
   id: string
-  issue: HydraError
+  issue: TitanError
 }): Card {
   return {
     id,
@@ -75,7 +75,7 @@ function loadedState({
 }: {
   view: NativeView
   positions: ReadonlyMap<string, number>
-}): HydraState {
+}): TitanState {
   if (view.issue) {
     throw view.issue
   }
@@ -138,7 +138,7 @@ function linkFile({
   )
 
   if (!original.isFile()) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'LOG_CORRUPT',
       message: `native task file is not a regular file: ${source}`,
     })
@@ -263,7 +263,7 @@ export class NativeHome {
     this.path = path
     this.files = openFileStore({
       home: path,
-      reduceHydra: reduceNative,
+      reduceTitan: reduceNative,
       reduceTask: reduceNative,
     })
     const timelines = new Map<string, {
@@ -449,7 +449,7 @@ export class NativeHome {
     from: string
     to: string
     card: Card
-    state: HydraState
+    state: TitanState
   }): Card {
     const source = this.references({ hydra: from })
     const destination = this.references({ hydra: to })
@@ -588,13 +588,13 @@ export class NativeHome {
       home: this.path,
       hydra,
     }))) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'FRESH_HOME_REQUIRED',
-        message: 'this release needs an empty PNYX_HOME; existing Hydra data is left untouched',
+        message: 'this release needs an empty OTHRYS_HOME; existing Titan data is left untouched',
       })
     }
 
-    await this.files.createHydra({
+    await this.files.createTitan({
       hydra,
       facts: [
         {
@@ -621,8 +621,8 @@ export class NativeHome {
     dirty,
   }: {
     hydra: string
-    state: HydraState
-    events: HydraEvent[]
+    state: TitanState
+    events: TitanEvent[]
     dirty: boolean
   }): void {
     const record = this.read({ hydra })
@@ -718,13 +718,13 @@ export const closeNativeHomes = (): Promise<void[]> =>
   Promise.all([...homes.values()].map(home => home.close()))
 
 export function openedNativeHome(): NativeHome | undefined {
-  const requested = resolve(pnyxHome())
+  const requested = resolve(othrysHome())
 
   return homes.get(canonical({ path: requested }) ?? requested)
 }
 
 export function nativeHome(): NativeHome {
-  const requested = resolve(pnyxHome())
+  const requested = resolve(othrysHome())
   privateDir({ dir: dirname(requested) })
   privateDir({ dir: requested })
   const path = canonical({ path: requested })!

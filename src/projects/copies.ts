@@ -1,7 +1,7 @@
 import { workerQueue } from '#workers/queue.ts'
 import { handoffPending } from '#workers/handoff-checkout.ts'
 import type { Card } from '#tasks/model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { settleCopy } from './copy-settle.ts'
 import { trimPool } from './copy-pool.ts'
 
@@ -16,7 +16,7 @@ export async function settleDone({
   hydraId: string
   at?: string
 }): Promise<number> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   const due = Object.values(state.cards).filter(card => {
     if (!settles({ card })) {

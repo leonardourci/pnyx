@@ -40,7 +40,7 @@ const DRAG_EDGE_THRESHOLD = {
 }
 const MEASURING = { droppable: { strategy: MeasuringStrategy.Always } }
 
-// eslint-disable-next-line pnyx/object-params -- dnd-kit supplies the activator event.
+// eslint-disable-next-line othrys/object-params -- dnd-kit supplies the activator event.
 const dragTransition = (event: Event | null) => event instanceof KeyboardEvent
   ? `transform ${motionDuration()}ms ${MOTION_CSS_EASING}` : undefined
 
@@ -244,7 +244,7 @@ export function useSortItem({
 
   const activate = sortable.listeners?.onPointerDown as PointerEventHandler<HTMLElement> | undefined
   const capturePointerDown = useCallback<PointerEventHandler<HTMLElement>>(
-    // eslint-disable-next-line pnyx/object-params -- React supplies the pointer event.
+    // eslint-disable-next-line othrys/object-params -- React supplies the pointer event.
     event => {
       const element = event.currentTarget.closest<HTMLElement>('[data-sort-key]') ?? event.currentTarget
       pickup.current = grabPoint({
@@ -300,9 +300,9 @@ function dropTargets({
 
   return containers.filter(container => {
     const target = itemOf({ data: container.data })
-    const sameHydra = source.kind === 'hydra' || target?.hydra === source.hydra
+    const sameTitan = source.kind === 'hydra' || target?.hydra === source.hydra
 
-    if (!target || target.kind !== source.kind || !sameHydra) {
+    if (!target || target.kind !== source.kind || !sameTitan) {
       return false
     }
 
@@ -319,7 +319,7 @@ function dropTargets({
   })
 }
 
-// eslint-disable-next-line pnyx/object-params -- dnd-kit owns coordinate getter signatures.
+// eslint-disable-next-line othrys/object-params -- dnd-kit owns coordinate getter signatures.
 const keyboardCoordinates: KeyboardCoordinateGetter = (
   event,
   args,
@@ -410,7 +410,7 @@ class WorkspacePointerSensor extends PointerSensor {
   static activators: typeof PointerSensor.activators = [
     {
       eventName: 'onPointerDown',
-      // eslint-disable-next-line pnyx/object-params -- dnd-kit owns sensor activator signatures.
+      // eslint-disable-next-line othrys/object-params -- dnd-kit owns sensor activator signatures.
       handler: (
         event,
         options,
@@ -832,7 +832,7 @@ export function SortableWorkspace({
     ],
   )
 
-  // eslint-disable-next-line pnyx/object-params -- dnd-kit supplies the collision arguments.
+  // eslint-disable-next-line othrys/object-params -- dnd-kit supplies the collision arguments.
   const detect: CollisionDetection = args => {
     latestDetection.current = args
     const source = itemOf({ data: args.active.data })

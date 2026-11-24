@@ -1,11 +1,11 @@
-import type { HydraEvent } from '#app/model.ts'
+import type { TitanEvent } from '#app/model.ts'
 import { PROVIDERS, type Harness } from '#workers/providers.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
 import type { Ask, RepliedEvent } from './model.ts'
 import type { Link } from '#tasks/delivery/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
-import { reportActor } from '#hydra/hydra.ts'
-import { taskMentions } from '#hydra/mentions.ts'
+import { reportActor } from '#titan/titan.ts'
+import { taskMentions } from '#titan/mentions.ts'
 
 // Updates and the CLI history name a brief change the same way; a rewritten Intent is never folded as bookkeeping.
 export const briefChange = ({ data }: {
@@ -23,7 +23,7 @@ export const UPDATES_MAX_PAGE = 200
 export type UpdatesPage = {
   task: string
   // Newest first; each is capped so one huge event cannot make a page heavy.
-  events: HydraEvent[]
+  events: TitanEvent[]
   // The `before` that reads the next older page; absent on the last page.
   older?: number
 }
@@ -39,7 +39,7 @@ export interface TaskEvent {
   details?: string
 }
 
-// hydra: a chat paragraph that starts with the task's chip; told: Hydra to the worker.
+// hydra: a chat paragraph that starts with the task's chip; told: Titan to the worker.
 export type UpdateKind = 'ask' | 'hydra' | 'told' | 'decision' | 'status' | 'worker' | 'link' | 'created' | 'moved' | 'renamed' | 'done' | 'report' | 'plain'
 
 export interface UpdateDecision {
@@ -159,15 +159,15 @@ const outcome = ({ data }: { data: Record<string, unknown> }): Row | undefined =
 
 const decisionActor = ({ actor }: { actor?: string }) => {
   if (actor === 'hydra') {
-    return 'Hydra'
+    return 'Titan'
   }
 
   return ownerActor({ actor }) ? 'You' : actor!
 }
 
 const asker = ({ actor = '' }: { actor?: string }) => {
-  if (actor === HYDRA_ACTOR) {
-    return 'Hydra'
+  if (actor === TITAN_ACTOR) {
+    return 'Titan'
   }
 
   return reportActor({ actor }) ? 'The worker' : 'You'
@@ -217,7 +217,7 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
   if (data.source === 'hydra') {
     return {
       kind: 'hydra',
-      state: 'Hydra replied',
+      state: 'Titan replied',
       note: text,
       ...at,
     }
@@ -273,7 +273,7 @@ function updateRow({
 
       return (reply.accepted || reply.state === 'delivered') && reply.decision ? {
         kind: 'decision',
-        state: reply.decision.liftsHold ? 'Hydra lifted Hold' : 'Decision',
+        state: reply.decision.liftsHold ? 'Titan lifted Hold' : 'Decision',
         note: '',
         decision: {
           ...reply.decision,
@@ -320,7 +320,7 @@ function updateRow({
     }
     case 'task.ask.reopened': return {
       kind: 'status',
-      state: data.reask ? 'Hydra asked again' : 'Question reopened',
+      state: data.reask ? 'Titan asked again' : 'Question reopened',
       note: String(data.ask),
     }
     case 'task.ask.escalated': return {
@@ -366,7 +366,7 @@ function updateRow({
       if (reportActor({ actor: event.actor ?? '' }) && typeof data.text === 'string' && data.text.trim()) {
         return {
           kind: 'report',
-          state: 'Reported to Hydra',
+          state: 'Reported to Titan',
           note: data.text,
         }
       }
@@ -393,7 +393,7 @@ function updateRow({
 
         return {
           kind: 'decision',
-          state: data.liftsHold ? 'Hydra lifted Hold' : 'Decision',
+          state: data.liftsHold ? 'Titan lifted Hold' : 'Decision',
           note: '',
           decision,
         }
@@ -442,7 +442,7 @@ function updateRow({
     }
     case 'task.visibility': return data.automatic ? undefined : {
       kind: 'plain',
-      state: data.after ? 'Hidden from Hydra' : 'Back on the Hydra',
+      state: data.after ? 'Hidden from Titan' : 'Back on the Titan',
       note: event.reason ?? '',
     }
     case 'card.linked': return linked({ data })
@@ -476,8 +476,8 @@ export function relevantUpdate({
   }
 }
 
-// A Hydra chat message belongs to its task and to every task it names with a chip.
-const taggedTasks = ({ event }: { event: HydraEvent }): string[] => {
+// A Titan chat message belongs to its task and to every task it names with a chip.
+const taggedTasks = ({ event }: { event: TitanEvent }): string[] => {
   if (event.type !== 'hydra.message') {
     return []
   }
@@ -494,14 +494,14 @@ export function tagsTask({
   event,
   ids,
 }: {
-  event: HydraEvent
+  event: TitanEvent
   ids: Set<string>
 }): boolean {
   return taggedTasks({ event }).some(id => ids.has(id))
 }
 
 // Every task whose history lists the event: its own card and the tasks it tags.
-export const historyTasks = ({ event }: { event: HydraEvent }): string[] => [
+export const historyTasks = ({ event }: { event: TitanEvent }): string[] => [
   ...new Set([
     event.cardId,
     ...taggedTasks({ event }),
@@ -509,11 +509,11 @@ export const historyTasks = ({ event }: { event: HydraEvent }): string[] => [
 ]
 
 // The tasks whose Updates list shows the event.
-export const updateTasks = ({ event }: { event: HydraEvent }): string[] =>
+export const updateTasks = ({ event }: { event: TitanEvent }): string[] =>
   showsUpdate({ event }) ? historyTasks({ event }) : []
 
 // Whether the event adds or changes a row in its task's Updates list.
-export function showsUpdate({ event }: { event: HydraEvent }): boolean {
+export function showsUpdate({ event }: { event: TitanEvent }): boolean {
   return !!updateRow({
     event: {
       ...event,

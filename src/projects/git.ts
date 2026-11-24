@@ -1,7 +1,7 @@
 import { runProcess } from '#app/run-process.ts'
 import { log } from '#app/diagnostics.ts'
-import { HydraError } from '#store/errors.ts'
-import type { HydraProject } from './model.ts'
+import { TitanError } from '#store/errors.ts'
+import type { TitanProject } from './model.ts'
 
 export const COPY_TIMEOUT_MS = 120_000
 
@@ -84,7 +84,7 @@ async function taskBranch({
   })
 
   if (!refs.ok) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'COPY_FAILED',
       message: `could not read branches: ${refs.err}`,
     })
@@ -107,7 +107,7 @@ async function taskBranch({
   })
 
   if (!remotes.ok) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'COPY_FAILED',
       message: `could not read remotes: ${remotes.err}`,
     })
@@ -127,7 +127,7 @@ async function taskBranch({
     })
 
     if (!heads.ok) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'COPY_FAILED',
         message: `could not read branches on remote ${remote}: ${heads.err}`,
       })
@@ -231,7 +231,7 @@ export async function createTaskBranch({
     const nextBranch = await taskBranch(naming)
 
     if (nextBranch === branch) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'COPY_FAILED',
         message: `could not create task branch: ${created.err}`,
       })
@@ -240,7 +240,7 @@ export async function createTaskBranch({
     branch = nextBranch
   }
 
-  throw new HydraError({
+  throw new TitanError({
     code: 'COPY_FAILED',
     message: 'task branch allocation kept colliding; try again',
   })
@@ -294,7 +294,7 @@ async function originHead({ cwd }: { cwd: string }): Promise<string | undefined>
   return head.ok && head.out.startsWith(ORIGIN_REFS) ? head.out : undefined
 }
 
-export async function gitProject({ project }: { project: HydraProject }): Promise<void> {
+export async function gitProject({ project }: { project: TitanProject }): Promise<void> {
   if (!(await git({
     cwd: project.path,
     args: [
@@ -302,7 +302,7 @@ export async function gitProject({ project }: { project: HydraProject }): Promis
       '--show-toplevel',
     ],
   })).ok) {
-    throw new HydraError({
+    throw new TitanError({
       message: `project ${project.name} is not a git repository`,
       code: 'VALIDATION_ERROR',
       help: ['Set a copy command for the project in Settings.'],
@@ -310,7 +310,7 @@ export async function gitProject({ project }: { project: HydraProject }): Promis
   }
 }
 
-export async function branchStart({ project }: { project: HydraProject }): Promise<{
+export async function branchStart({ project }: { project: TitanProject }): Promise<{
   base?: string
   start: string
 }> {
@@ -343,7 +343,7 @@ export async function branchStart({ project }: { project: HydraProject }): Promi
       })
 
       if (!result.ok) {
-        throw new HydraError({
+        throw new TitanError({
           message: `could not refresh the project's default branch: ${result.err}`,
           code: 'COPY_FAILED',
           help: ['Fix origin and try again; the existing copies were kept'],
@@ -354,7 +354,7 @@ export async function branchStart({ project }: { project: HydraProject }): Promi
     const remote = await originHead({ cwd: project.path })
 
     if (!remote) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'origin has no default branch',
         code: 'COPY_FAILED',
       })
@@ -464,7 +464,7 @@ export async function clearDefaultUpstreams({
   for (const line of config.out.split('\n')) {
     const match = /^branch\.(.+)\.(remote|merge) (.*)$/.exec(line)
 
-    if (match && (match[1].startsWith('pnyx/') || branches.includes(match[1]))) {
+    if (match && (/^(?:othrys|pnyx)\//.test(match[1]) || branches.includes(match[1]))) {
       const [
         ,
         branch,

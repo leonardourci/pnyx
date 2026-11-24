@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { attachedImages, imageType } from '#hydra/images.ts'
-import { HydraError } from '#store/errors.ts'
+import { attachedImages, imageType } from '#titan/images.ts'
+import { TitanError } from '#store/errors.ts'
 import type { HostedInput } from '#workers/provider.ts'
 
 export function agentInput({
@@ -14,7 +14,7 @@ export function agentInput({
   id: string
   text: string
   original: string
-  hydras: string
+  hydras: string[]
   ownerMessageId?: string
 }): HostedInput {
   const images = attachedImages({
@@ -24,7 +24,7 @@ export function agentInput({
     const mediaType = imageType({ path })
 
     if (!mediaType) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_IMAGE',
         message: `Unsupported image: ${path}`,
       })
@@ -41,7 +41,7 @@ export function agentInput({
         digest,
       }
     } catch (error) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_IMAGE',
         message: `Could not read attached image ${path}: ${(error as Error).message}`,
       })

@@ -1,11 +1,11 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { readUpdateEvents } from '#tasks/updates-page.ts'
 import { page } from './page-cli.ts'
 import { apply } from '#app/apply/cli.ts'
 import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize, isArrangement } from './cli-support.ts'
 import { taskCommand } from './task-cli.ts'
-import { EVENT_TYPES, type HydraEvent } from './model.ts'
-import { loadHydra } from './store.ts'
+import { EVENT_TYPES, type TitanEvent } from './model.ts'
+import { loadTitan } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { readEvents, scanEvents } from './event-log.ts'
 import { historyTasks, showsUpdate, updateTasks } from '#tasks/updates.ts'
@@ -17,7 +17,7 @@ import { settings } from '#settings/cli.ts'
 import { harvest } from '#integrations/cli.ts'
 import { link, outcome } from '#tasks/delivery/cli.ts'
 import { push, card } from '#tasks/cli.ts'
-import { hydraCommandHandler } from '#hydra/cli.ts'
+import { hydraCommandHandler } from '#titan/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
 
@@ -58,7 +58,7 @@ const history = guard({
     const type = kind && (kind.includes('.') ? kind : `card.${kind}`)
 
     if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
-      throw new HydraError({
+      throw new TitanError({
         message: `unknown kind: ${kind}`,
         code: 'VALIDATION_ERROR',
         help: ['Use one of task.edited, linked, outcome, replied, noted'],
@@ -82,13 +82,13 @@ const history = guard({
       limit: 1,
     }).length > 0
     const needsState = !!workspace || (!!ref && !listed)
-    const state = needsState ? loadHydra({ hydraId }).state : undefined
+    const state = needsState ? loadTitan({ hydraId }).state : undefined
     const cardId = ref && state ? findCard({
       state,
       ref,
     }).id : ref
     // An outcome keeps the workspace it was recorded under; other events use the card's current one.
-    const inWorkspace = ({ e }: { e: HydraEvent }) =>
+    const inWorkspace = ({ e }: { e: TitanEvent }) =>
       (e.type === 'card.outcome' ? e.data.card.workspace : state?.cards[e.cardId]?.workspace) === workspace
 
     const selection = {
@@ -98,7 +98,7 @@ const history = guard({
       before,
     }
     let matches = 0
-    const page: HydraEvent[] = []
+    const page: TitanEvent[] = []
     const exactSelection = !workspace && (!cardId || values.updates)
 
     if (exactSelection) {
@@ -197,7 +197,7 @@ const undo = guard({
     })[0]
 
     if (!target) {
-      throw new HydraError({
+      throw new TitanError({
         message: `event not found: ${id}`,
         code: 'NOT_FOUND',
         help: ['Read hydra.log and task.log to find event IDs'],
@@ -235,6 +235,7 @@ export const commands = supervisedCommands({
     apply,
     layout,
     hydra: hydraCommandHandler,
+    titan: hydraCommandHandler,
     owner,
     settings,
     task,

@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { guard, WRITE, parse, integer, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
 import { requireSetupHome } from './home.ts'
@@ -46,9 +46,9 @@ export const setup = guard({
     }
 
     if (positionals[0] === undefined) {
-      if (args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
-        throw new HydraError({
-          message: 'setup runs every Hydra; it takes no --hydra',
+      if (args.some(a => /^--(?:titan|hydra)(?:=|$)/.test(a))) {
+        throw new TitanError({
+          message: 'setup runs every Titan; it takes no --titan',
           code: 'VALIDATION_ERROR',
         })
       }
@@ -64,17 +64,17 @@ export const setup = guard({
     }
 
     if (positionals[0] !== 'hooks') {
-      throw new HydraError({
+      throw new TitanError({
         message: `unknown setup target: ${positionals[0] ?? '(none)'}`,
         code: 'VALIDATION_ERROR',
-        help: ['Run `pnyx setup`, `pnyx setup check`, `pnyx setup skills` or `pnyx setup hooks`'],
+        help: ['Run `othrys setup`, `othrys setup check`, `othrys setup skills` or `othrys setup hooks`'],
       })
     }
 
     const harness = values.harness as string | undefined
 
     if (harness !== undefined && !(HARNESSES as readonly string[]).includes(harness)) {
-      throw new HydraError({
+      throw new TitanError({
         message: `unknown harness: ${harness}`,
         code: 'VALIDATION_ERROR',
         help: [`Use one of ${HARNESSES.join(', ')}`],
@@ -84,10 +84,10 @@ export const setup = guard({
     const targets = harness ? [harness as Harness] : detectedHarnesses()
 
     if (targets.length === 0) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'no Claude Code or Codex config folder found',
         code: 'NOT_FOUND',
-        help: ['Run `pnyx setup hooks --harness claude|codex`'],
+        help: ['Run `othrys setup hooks --harness claude|codex`'],
       })
     }
 
@@ -112,7 +112,7 @@ export const setup = guard({
       help.push('Codex asks you to review and trust new hooks: run `/hooks` in Codex')
     }
 
-    help.push(remove ? 'Run `pnyx setup hooks` to install them again' : 'New sessions appear on the Hydra; run `pnyx` to see it')
+    help.push(remove ? 'Run `othrys setup hooks` to install them again' : 'New sessions appear on the Titan; run `othrys` to see it')
     out.help = help
 
     return out

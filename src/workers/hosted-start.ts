@@ -17,21 +17,21 @@ import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, knownProvider } from './provide
 import { sessionId, withoutInterrupted } from './session-attachments.ts'
 import { decideSession } from './sessions.ts'
 import { freeTask } from './start.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
+import { hydraEvent } from '#titan/titan.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import type { Card } from '#tasks/model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { taskInstructions } from '#tasks/owner-ask.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { applyDecision } from '#app/decision.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { base } from '#app/command-meta.ts'
 
-// Starting a worker in Pnyx, and continuing an outside Claude Code or Codex session in Pnyx.
+// Starting a worker in Othrys, and continuing an outside Claude Code or Codex session in Othrys.
 export function createWorkerStarts({
   hydraId,
   live,
@@ -88,8 +88,8 @@ export function createWorkerStarts({
 
     if (!agent || !knownProvider({ name: agent.provider })
       || agent.host || agent.agentId) {
-      throw new HydraError({
-        message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
+      throw new TitanError({
+        message: 'Continue in Othrys needs an outside Claude Code or Codex session attached to a task',
         code: 'NO_ROUTE',
       })
     }
@@ -105,7 +105,7 @@ export function createWorkerStarts({
     const session = writer.state.sessions?.[sessionId({ agent })]
 
     if (!session || session.taskId !== card.id) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'the session is no longer attached to this task',
         code: 'SESSION_CONFLICT',
       })
@@ -116,17 +116,17 @@ export function createWorkerStarts({
 
   const noticeOutsidePresence = ({ current }: { current: Presence }) => {
     if (current.state === 'unknown') {
-      throw new HydraError({
+      throw new TitanError({
         message: `cannot confirm the outside session has ended: ${current.detail}`,
         code: 'SESSION_RUNNING',
-        help: ['End the outside session, then try Continue in Pnyx again'],
+        help: ['End the outside session, then try Continue in Othrys again'],
       })
     }
 
     if (current.state === 'present') {
       inform({
-        reason: 'Outside session is still present; continuing its saved conversation in Pnyx',
-        clear: 'Read the task.log session records for both the outside session and its Pnyx worker',
+        reason: 'Outside session is still present; continuing its saved conversation in Othrys',
+        clear: 'Read the task.log session records for both the outside session and its Othrys worker',
       })
     }
   }
@@ -176,7 +176,7 @@ export function createWorkerStarts({
         || !nativeIdle({ work: running.session.snapshot().work }))
 
       if (!queued || current !== replacement || busy) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'The worker changed or is still working',
           code: 'SESSION_CONFLICT',
         })
@@ -191,7 +191,7 @@ export function createWorkerStarts({
     })
 
     if (previous.id !== replacement) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'the task has a different session now; reopen its card before starting fresh',
         code: 'SESSION_CONFLICT',
       })
@@ -251,7 +251,7 @@ export function createWorkerStarts({
     }
 
     if (starting.has(target.id)) {
-      throw new HydraError({
+      throw new TitanError({
         message: `task ${target.id} is already starting`,
         code: 'TASK_STARTING',
         help: [`Read tasks/${target.id}/task.log once its session opens`],
@@ -261,7 +261,7 @@ export function createWorkerStarts({
     const requestedFolder = folder ?? target.folder
 
     if (!requestedFolder || !isFolder({ path: requestedFolder })) {
-      throw new HydraError({
+      throw new TitanError({
         message: requestedFolder ? `folder not found: ${requestedFolder}` : 'choose the folder the agent works in',
         code: 'VALIDATION_ERROR',
         help: ['Pass --folder <absolute path>'],
@@ -319,7 +319,7 @@ export function createWorkerStarts({
       session = prepared
 
       if (closing()) {
-        throw new Error('Pnyx is stopping')
+        throw new Error('Othrys is stopping')
       }
 
       const transaction = tools ? {
@@ -345,7 +345,7 @@ export function createWorkerStarts({
         }
 
         if (card.toolsRevision !== toolsRevision) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'the task tools changed while its agent was starting; retry the start',
             code: 'CONFLICT',
           })
@@ -359,14 +359,14 @@ export function createWorkerStarts({
         })
 
         if ((folder ?? card.folder) !== requestedFolder) {
-          throw new HydraError({
+          throw new TitanError({
             message: 'the task folder changed while its agent was starting; retry the start',
             code: 'CONFLICT',
           })
         }
 
         if (!isFolder({ path: cwd })) {
-          throw new HydraError({
+          throw new TitanError({
             message: `folder not found: ${cwd}`,
             code: 'VALIDATION_ERROR',
             help: ['Pass --folder <absolute path>'],
@@ -524,7 +524,7 @@ export function createWorkerStarts({
           const queued = card.replies?.find(reply => reply.id === inputId && reply.worker)
 
           if (!queued?.worker) {
-            throw new HydraError({
+            throw new TitanError({
               message: 'The starting message is missing',
               code: 'CONFLICT',
             })
@@ -574,7 +574,7 @@ export function createWorkerStarts({
             task: claimed.task,
             launch: 'pending',
             session: claimed.existing,
-            information: 'The provider returned an existing session. Pnyx kept its current worker unchanged.',
+            information: 'The provider returned an existing session. Othrys kept its current worker unchanged.',
             help: ['Retry the same start request to open a fresh worker, or read task.log session records to see the existing session'],
           }
         }
@@ -586,7 +586,7 @@ export function createWorkerStarts({
         }
       }
 
-      const started = loadHydra({ hydraId }).state.cards[claimed.task] as Card & { agent: AgentRef }
+      const started = loadTitan({ hydraId }).state.cards[claimed.task] as Card & { agent: AgentRef }
       const entry = open({
         card: started,
         session,
@@ -617,7 +617,7 @@ export function createWorkerStarts({
           folder: started.agent.cwd,
           host: 'pnyx',
         },
-        help: [`Run \`pnyx send --task ${started.id} --text <text>\` to continue; the Pnyx server runs the agent`],
+        help: [`Run \`othrys send --task ${started.id} --text <text>\` to continue; the Othrys server runs the agent`],
       }
     } catch (error) {
       session?.close()
@@ -627,7 +627,7 @@ export function createWorkerStarts({
     }
   }
 
-  const continueInPnyx: Host['continue'] = async ({
+  const continueInOthrys: Host['continue'] = async ({
     task,
     id,
     actor,
@@ -736,14 +736,14 @@ export function createWorkerStarts({
           folder: agent.cwd,
           host: 'pnyx',
         },
-        help: [`Send a message with \`pnyx send --task ${card.id} --text <text>\` to resume the session in Pnyx`],
+        help: [`Send a message with \`othrys send --task ${card.id} --text <text>\` to resume the session in Othrys`],
       }
     },
   })
 
   return {
     start,
-    continueInPnyx,
+    continueInOthrys,
     starting: ({ task }: { task: string }) => starting.has(task),
   }
 }

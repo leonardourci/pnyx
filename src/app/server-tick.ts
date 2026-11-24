@@ -1,5 +1,5 @@
 import { discoverPullRequests, discoverableTasks } from '#tasks/delivery/discover.ts'
-import type { startReviewTimer } from '#hydra/review-timer.ts'
+import type { startReviewTimer } from '#titan/review-timer.ts'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import { settleDone, settles } from '#projects/copies.ts'
 import { readSettings } from '#settings/store.ts'
@@ -19,7 +19,7 @@ import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import type { createHost } from './host.ts'
-import type { HydraState } from './model.ts'
+import type { TitanState } from './model.ts'
 import type { createServerWorkers } from './server-workers.ts'
 
 // How often replies a route could not confirm are checked for a resend.
@@ -29,7 +29,7 @@ const SPOOL_RETRY_MS = 1000
 
 type ServerWorkers = ReturnType<typeof createServerWorkers>
 
-// The one coalesced scheduler tick of a mounted Hydra: read the log, run what is due, and set the next wake.
+// The one coalesced scheduler tick of a mounted Titan: read the log, run what is due, and set the next wake.
 export function createServerTick({
   hydraId,
   state,
@@ -47,7 +47,7 @@ export function createServerTick({
   recover,
 }: {
   hydraId: string
-  state(): HydraState
+  state(): TitanState
   closed(): boolean
   pump(): void
   followDelay: number

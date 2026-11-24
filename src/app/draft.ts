@@ -57,7 +57,7 @@ export function draft<T extends object>({
     branch.proxy = new Proxy(
       value,
       {
-      // eslint-disable-next-line pnyx/object-params -- ProxyHandler owns these signatures.
+      // eslint-disable-next-line othrys/object-params -- ProxyHandler owns these signatures.
         get(
           _target,
           key,
@@ -72,7 +72,7 @@ export function draft<T extends object>({
             parent: branch,
           }) : child
         },
-        // eslint-disable-next-line pnyx/object-params -- ProxyHandler owns these signatures.
+        // eslint-disable-next-line othrys/object-params -- ProxyHandler owns these signatures.
         set(
           _target,
           key,
@@ -98,7 +98,7 @@ export function draft<T extends object>({
             next,
           )
         },
-        // eslint-disable-next-line pnyx/object-params -- ProxyHandler owns these signatures.
+        // eslint-disable-next-line othrys/object-params -- ProxyHandler owns these signatures.
         deleteProperty(
           _target,
           key,
@@ -111,7 +111,7 @@ export function draft<T extends object>({
             key,
           )
         },
-        // eslint-disable-next-line pnyx/object-params -- ProxyHandler owns these signatures.
+        // eslint-disable-next-line othrys/object-params -- ProxyHandler owns these signatures.
         has(
           _target,
           key,
@@ -124,7 +124,7 @@ export function draft<T extends object>({
         ownKeys() {
           return Reflect.ownKeys(current())
         },
-        // eslint-disable-next-line pnyx/object-params -- ProxyHandler owns these signatures.
+        // eslint-disable-next-line othrys/object-params -- ProxyHandler owns these signatures.
         getOwnPropertyDescriptor(
           _target,
           key,

@@ -4,7 +4,7 @@ import { applyDecision } from '#app/decision.ts'
 import { ownerActor } from '#app/actors.ts'
 import { decideReply } from './reply-rules.ts'
 
-// The owner's own steering the agent has not read; Hydra's and Pnyx's steering is not the owner's to cancel.
+// The owner's own steering the agent has not read; Titan's and Othrys's steering is not the owner's to cancel.
 export const unreadOwnerSteering = ({ card }: { card: Card }) => (card.steering ?? [])
   .filter(message => !message.ack && !message.stopped && ownerActor({ actor: message.source }))
 

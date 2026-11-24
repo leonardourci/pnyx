@@ -4,9 +4,9 @@ import { randomUUID } from 'node:crypto'
 import { sendReply } from '#workers/reply.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
 import type { Card } from '#tasks/model.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { SteeringMessage } from '#workers/model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
 import { sameClaim, steeringClaim } from '#workers/steering.ts'
@@ -60,8 +60,8 @@ export function createSourceRunner({
   spawnSource?: typeof startSourceChild
   commit?: typeof commitCapture
   tell?: typeof sendReply
-  // The Hydra the server already holds.
-  state(): HydraState
+  // The Titan the server already holds.
+  state(): TitanState
 }) {
   const server = randomUUID()
   const running = new Map<string, RunningSource>()
@@ -234,7 +234,7 @@ export function createSourceRunner({
     child.send(
       source,
       // Node owns the IPC callback's positional error parameter.
-      // eslint-disable-next-line pnyx/object-params
+      // eslint-disable-next-line othrys/object-params
       error => {
         if (error) {
           failure = error
@@ -704,7 +704,7 @@ export function createSourceRunner({
                   data: {
                     source: source.id,
                     sequence: captured.sequence,
-                    detail: `External result ${message} is unread. Worker notification: ${result} (${detail}). Read source ${source.id}, result ${captured.sequence}, in tasks/${card}/task.log in Hydra ${hydraId} and restore worker delivery.`,
+                    detail: `External result ${message} is unread. Worker notification: ${result} (${detail}). Read source ${source.id}, result ${captured.sequence}, in tasks/${card}/task.log in Titan ${hydraId} and restore worker delivery.`,
                   },
                 },
               })
@@ -750,7 +750,7 @@ export function createSourceRunner({
 
     const wrote = flushed.committed || prepared.locked
     // What this pass wrote is not in the shared state yet, so its results come from disk.
-    const state = wrote ? loadHydra({ hydraId }).state : shared()
+    const state = wrote ? loadTitan({ hydraId }).state : shared()
 
     for (const card of Object.values(state.cards)) {
       for (const source of card.externalSources ?? []) {

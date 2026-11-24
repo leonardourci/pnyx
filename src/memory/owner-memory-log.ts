@@ -1,10 +1,10 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { POLIS_NAME } from './owner-polis.ts'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Learning, LearningChange } from './learnings.ts'
 import type { ProjectMemoryEvent } from './project-memory.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { othrysHome } from '#store/paths.ts'
 
 // One replacement or removal of an owner memory key; the log is only appended, so every old version stays.
 export interface OwnerEntry {
@@ -42,7 +42,7 @@ export function ownerRevision({
 
 export function ownerMemoryLogPath({ polis = 'shared' }: { polis?: string } = {}) {
   const owner = join(
-    pnyxHome(),
+    othrysHome(),
     'owner',
   )
   const folder = polis === 'shared' ? owner : join(
@@ -139,7 +139,7 @@ function ownerLogPoleis(): string[] {
 
   try {
     names = readdirSync(join(
-      pnyxHome(),
+      othrysHome(),
       'owner',
       'poleis',
     ))
@@ -253,7 +253,7 @@ export function readOwnerLogs(): Map<string, OwnerEntries> {
 export function ownerProjectMoves({ id }: { id: string }) {
   return [...readOwnerLogs().values()].flatMap(log => {
     if (log.corrupt) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Owner memory has an unreadable line; inspect its log before reading project moves',
         code: 'LOG_CORRUPT',
       })

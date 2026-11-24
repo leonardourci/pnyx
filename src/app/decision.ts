@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState, HydraEvent, Decision } from './model.ts'
+import type { TitanState, TitanEvent, Decision } from './model.ts'
 import type { PushedEvent } from '#tasks/model.ts'
 import type { Meta } from './command-meta.ts'
 import type { Writer } from './writer.ts'
@@ -15,13 +15,13 @@ interface LastReport {
   revision: number
   session: string
 }
-const lastReports = new WeakMap<HydraState, Map<string, LastReport>>()
+const lastReports = new WeakMap<TitanState, Map<string, LastReport>>()
 
 const sessionSignature = ({
   state,
   event,
 }: {
-  state: HydraState
+  state: TitanState
   event: PushedEvent
 }) => {
   const agent = event.data.agent ?? state.cards[event.cardId]?.agent
@@ -34,7 +34,7 @@ const sessionSignature = ({
   })
 }
 
-const reportCache = ({ state }: { state: HydraState }) => {
+const reportCache = ({ state }: { state: TitanState }) => {
   let cache = lastReports.get(state)
 
   if (!cache) {
@@ -79,9 +79,9 @@ export function decided({
   meta,
   event,
 }: {
-  state: HydraState
+  state: TitanState
   meta: Meta
-  event: HydraEvent
+  event: TitanEvent
 }): Decision {
   if (Object.hasOwn(
     state.eventIds,

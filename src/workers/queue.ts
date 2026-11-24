@@ -1,6 +1,6 @@
 import { liveTask } from '#tasks/select.ts'
 import { interactive } from './session-attachments.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from './model.ts'
 import { touch } from '#tasks/touch.ts'
@@ -14,7 +14,7 @@ export function queueWorker({
   state,
   session,
 }: {
-  state: HydraState
+  state: TitanState
   session: AgentSession
 }): Card | undefined {
   const card = session.taskId ? state.cards[session.taskId] : undefined
@@ -28,7 +28,7 @@ export function workerQueue({
   state,
   session,
 }: {
-  state: HydraState
+  state: TitanState
   session: string
 }): Card[] {
   return Object.values(state.cards).filter(c => c.queue?.session === session)
@@ -42,7 +42,7 @@ export function queuePosition({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }) {
   return card.queue ? {
@@ -58,8 +58,8 @@ export function applyQueue({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'task.queue') {
     return false

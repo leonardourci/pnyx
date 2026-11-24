@@ -4,12 +4,12 @@ import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideLink } from './links.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
-import { HydraError } from '#store/errors.ts'
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Link } from './model.ts'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '#integrations/github/merge-evidence.ts'
 import { MergeRejectedError, mergePullRequest, pullRequestStatus, type PullRequestStatus } from '#integrations/github/pull-request.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { mergeObservation } from './merge-observation.ts'
 import { refreshConfirmedProject } from '#projects/refresh-confirmed.ts'
@@ -25,7 +25,7 @@ function refuse({
   message: string
   code?: string
 }): never {
-  throw new HydraError({
+  throw new TitanError({
     message,
     code,
   })
@@ -82,7 +82,7 @@ function mergeNotices({ status }: { status: PullRequestStatus }): void {
   }
 }
 
-// task merge <task> [--url <pull request>]: the owner, or Hydra where the task's rule lets it, merges a green pull request.
+// task merge <task> [--url <pull request>]: the owner, or Titan where the task's rule lets it, merges a green pull request.
 export async function mergeCommand({
   hydraId,
   ref,
@@ -102,7 +102,7 @@ export async function mergeCommand({
   readEvidence?: typeof pullRequestMergeEvidence
   readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<Output> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = findCard({
     state,
     ref: required({
@@ -116,7 +116,7 @@ export async function mergeCommand({
   })
   const owner = ownerActor({ actor: meta.actor })
 
-  if (!owner && meta.actor !== HYDRA_ACTOR) {
+  if (!owner && meta.actor !== TITAN_ACTOR) {
     inform({
       task: card.id,
       reason: 'Merge requested by a worker',

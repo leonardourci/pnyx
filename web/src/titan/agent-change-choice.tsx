@@ -1,0 +1,222 @@
+import { TITAN_CARD } from '#titan/identity.ts'
+import { useEffect, useId, useState } from 'react'
+import { canSkipCompaction, NEITHER_REASON } from '#titan/history.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanAgentChange } from '#titan/model.ts'
+import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import type { Command } from '#web-app/connection.ts'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
+import { useModels } from '#web-workers/agent-picker.tsx'
+import { resolvedAccount, useTitanDispatch } from '#web-workers/heads-dispatch.ts'
+
+const COMPACT_WHY = 'Compacting first gives it a short summary of the chat since the last compaction.'
+
+// The model picker's label, or the model id the "Switched to" divider shows until the catalog answers.
+function useAgentName({
+  agent,
+  effective,
+  command,
+  connected,
+}: {
+  agent: AgentConfig
+  effective?: EffectiveDispatch
+  command: Command
+  connected: boolean
+}) {
+  const account = resolvedAccount({
+    effective,
+    agent,
+  })
+  const catalog = useModels({
+    harness: agent.harness,
+    account,
+    folder: account ? effective?.accounts[account]?.folder : undefined,
+    command,
+    connected: connected && account !== undefined,
+  })
+  const label = catalog.models?.find(option => option.value === agent.model)?.label
+
+  return label ?? agent.model ?? agent.harness
+}
+
+function HeldMessageCard({
+  change,
+  revision,
+  command,
+  connected,
+  notify,
+}: {
+  change: TitanAgentChange
+  revision: string
+  command: Command
+  connected: boolean
+  notify({ text }: { text: string }): void
+}) {
+  const { effective } = useTitanDispatch({ command })
+  const next = useAgentName({
+    agent: change.next,
+    effective,
+    command,
+    connected,
+  })
+  const captionId = useId()
+  const [
+    history,
+    setHistory,
+  ] = useState<{
+    tokens?: number
+    error?: string
+    revision?: string
+  }>({})
+
+  useEffect(
+    () => {
+      let active = true
+
+      async function refresh() {
+        if (!connected || change.kind === 'effort' || change.state === 'running') {
+          return
+        }
+
+        try {
+          const receipt = await command({
+            name: 'hydra',
+            args: [
+              'history',
+              '--since',
+              'last-compaction',
+              '--count',
+            ],
+          })
+
+          if (active) {
+            setHistory({
+              tokens: Number(receipt.totalTokens),
+              revision,
+            })
+          }
+        } catch (error) {
+          if (active) {
+            setHistory({
+              error: (error as Error).message,
+              revision,
+            })
+          }
+        }
+      }
+
+      refresh()
+
+      return () => {
+        active = false
+      }
+    },
+    [
+      command,
+      connected,
+      revision,
+      change.id,
+      change.kind,
+      change.state,
+    ],
+  )
+
+  const choose = async ({ choice }: { choice: string }) => {
+    try {
+      await command({
+        name: 'hydra-agent-change',
+        args: [
+          change.id,
+          choice,
+        ],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
+  const running = change.state === 'running'
+  const effort = change.kind === 'effort'
+  const actionsDisabled = !connected || running
+  let title = effort ? `Changing effort to ${change.next.effort ?? 'default'}` : `Switching to ${next}`
+
+  if (running) {
+    title = 'Preparing the conversation…'
+  }
+
+  const explanation = effort ? `The agent continues at its new effort. ${COMPACT_WHY}` : `A new agent starts with fresh context. ${COMPACT_WHY}`
+  const caption = 'Recommended: saves what\'s worth remembering first.'
+  const tokens = history.revision === revision ? history.tokens : undefined
+  const historyKnown = tokens !== undefined
+  const neitherAllowed = effort || (tokens !== undefined && canSkipCompaction({ tokens }))
+  const neitherReason = historyKnown ? NEITHER_REASON : history.error ?? 'Counting the conversation…'
+
+  return (
+    <div className="agent-change-choice mt-0 mb-2 p-3 border border-line rounded-card bg-surface text-ui [&_p]:mt-1 [&_p]:mx-0 [&_p]:mb-2.5 [&_p]:text-muted [&_.agent-change-caption]:mt-2 [&_.agent-change-caption]:mx-0 [&_.agent-change-caption]:mb-0 [&_.agent-change-caption]:text-meta" role="region" aria-label="Continue with the selected agent">
+      <strong>{title}</strong>
+      <p>{explanation}</p>
+      {change.error && <p role="alert">{change.error}</p>}
+      <div className="agent-change-actions flex flex-wrap gap-2 [&>.agent-change-neither]:bg-transparent [&>.agent-change-neither]:text-muted">
+        <Button
+          variant="primary"
+          disabled={actionsDisabled}
+          aria-describedby={captionId}
+          onClick={() => choose({ choice: 'inscribe' })}
+        >
+          <Icon name="inscribe" size={ICON_SIZE.control} />
+          Inscribe +{' '}
+          <Icon name="compact" size={ICON_SIZE.control} />
+          compact
+        </Button>
+        <Button variant="surface" disabled={actionsDisabled} onClick={() => choose({ choice: 'compact' })}>
+          <Icon name="compact" size={ICON_SIZE.control} />
+          Compact only
+        </Button>
+        <Button
+          variant="surface"
+          className="agent-change-neither"
+          disabled={actionsDisabled || !neitherAllowed}
+          aria-describedby={neitherAllowed ? captionId : `${captionId}-neither`}
+          onClick={() => choose({ choice: 'neither' })}
+        >
+          Neither
+        </Button>
+      </div>
+      <p id={captionId} className="agent-change-caption">{caption}</p>
+      {!neitherAllowed && <p id={`${captionId}-neither`} className="agent-change-caption">{neitherReason}</p>}
+    </div>
+  )
+}
+
+export function AgentChangeChoice({
+  state,
+  command,
+  connected,
+  notify,
+}: {
+  state: TitanState
+  command: Command
+  connected: boolean
+  notify({ text }: { text: string }): void
+}) {
+  const change = state.hydraAgentChange
+
+  if (!change) {
+    return null
+  }
+
+  const cardSeq = state.cards[TITAN_CARD]?.updatedSeq ?? 0
+  const revision = `${cardSeq}:${state.hydraOwnerMessage?.id ?? ''}`
+
+  return (
+    <HeldMessageCard
+      change={change}
+      revision={revision}
+      command={command}
+      connected={connected}
+      notify={notify}
+    />
+  )
+}

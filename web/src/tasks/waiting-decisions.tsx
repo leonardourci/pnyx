@@ -7,11 +7,11 @@ import { RichText } from '#web-shared/ui/rich-text.tsx'
 import { askWording } from '#tasks/ask-state.ts'
 import type { Command } from '#web-app/connection.ts'
 import { QuestionGroupAnswers, GroupAnswerRetries, useGroupAnswers } from './question-group.tsx'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { conversationMessages, latestAgentMessage, placeMessageCaret } from '#web-hydra/caret.ts'
+import { conversationMessages, latestAgentMessage, placeMessageCaret } from '#web-titan/caret.ts'
 import { Popover } from '#web-shared/ui/popover.tsx'
-import { markdownText } from '#web-hydra/markdown-text.ts'
+import { markdownText } from '#web-titan/markdown-text.ts'
 
 export function WaitingDecisions({
   state,
@@ -22,7 +22,7 @@ export function WaitingDecisions({
   command,
   notify,
 }: {
-  state: HydraState
+  state: TitanState
   hydraId: string
   command: Command
   notify({ text }: { text: string }): void

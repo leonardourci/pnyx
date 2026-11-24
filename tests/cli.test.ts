@@ -4,22 +4,22 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { localToken } from '#app/server-state.ts'
 import { MAX_BODY } from '#app/server-protocol.ts'
 import { dirname, join } from 'node:path'
-import { CLI, parsed, pnyx, startPnyx, until, type Hydra, type Pnyx } from './setup/pnyx.ts'
+import { CLI, parsed, othrys, startOthrys, until, type Titan, type Othrys } from './setup/othrys.ts'
 
-let app: Pnyx
-let hydra: Hydra
+let app: Othrys
+let hydra: Titan
 const env = () => ({ ...process.env })
-const run = ({ args }: { args: string[] }) => pnyx({
+const run = ({ args }: { args: string[] }) => othrys({
   args: [
     ...args,
-    '--hydra',
+    '--titan',
     hydra.id,
   ],
   env: env(),
 })
 
 beforeAll(async () => {
-  app = await startPnyx()
+  app = await startOthrys()
   hydra = await app.hydra()
 })
 
@@ -31,17 +31,17 @@ describe(
       async () => {
         const unused = {
           ...env(),
-          PNYX_HOME: hydra.folder({ name: 'no-server' }),
+          OTHRYS_HOME: hydra.folder({ name: 'no-server' }),
         }
-        const help = await pnyx({
+        const help = await othrys({
           args: ['--help'],
           env: unused,
         })
         expect(help.status).toBe(0)
-        expect(help.stdout).toContain('usage: pnyx')
+        expect(help.stdout).toContain('usage: othrys')
         expect(help.stdout).toContain('worker.log')
         expect(help.stdout).not.toContain('help[')
-        const version = await pnyx({
+        const version = await othrys({
           args: [
             '--version',
             '--json',
@@ -53,12 +53,12 @@ describe(
     )
 
     it(
-      'creates and starts a task once, messages its worker and prints a plain Hydra',
+      'creates and starts a task once, messages its worker and prints a plain Titan',
       async () => {
         const folder = hydra.folder({ name: 'plain-cli-worker' })
         const args = [
           'task',
-          '--hydra',
+          '--titan',
           hydra.id,
           'create',
           '--title',
@@ -75,7 +75,7 @@ describe(
           'plain-create',
           '--json',
         ]
-        const first = await pnyx({
+        const first = await othrys({
           args,
           env: env(),
         })
@@ -87,7 +87,7 @@ describe(
         })
         expect(receipt).not.toHaveProperty('help')
         const worker = await hydra.agent({ cwd: folder })
-        expect(parsed(await pnyx({
+        expect(parsed(await othrys({
           args,
           env: env(),
         })).task).toBe(receipt.task)
@@ -139,22 +139,22 @@ describe(
         expect(parsed(repeated).reply.reply).toBe(parsed(sent).reply.reply)
         expect(worker.received.filter(text => text.includes('Check the file input too'))).toHaveLength(1)
 
-        const scoped = await pnyx({
+        const scoped = await othrys({
           args: [
             'send',
             '--task',
             receipt.task,
             '--text',
             'Scoped worker message',
-            '--hydra',
+            '--titan',
             hydra.id,
             '--json',
           ],
           env: {
             ...env(),
-            PNYX_WORKER_HOME: process.env.PNYX_HOME,
-            PNYX_TASK: receipt.task,
-            PNYX_ACTOR: `worker:${receipt.task}`,
+            OTHRYS_WORKER_HOME: process.env.OTHRYS_HOME,
+            OTHRYS_TASK: receipt.task,
+            OTHRYS_ACTOR: `worker:${receipt.task}`,
           },
         })
         expect(scoped.status).toBe(0)
@@ -175,7 +175,7 @@ describe(
                 receipt.task,
                 '--file',
                 message,
-                '--hydra',
+                '--titan',
                 hydra.id,
                 '--json',
               ],
@@ -185,13 +185,13 @@ describe(
           },
         )
         expect(await direct.json()).toMatchObject({ exitCode: 2 })
-        const fromStdin = await pnyx({
+        const fromStdin = await othrys({
           args: [
             'send',
             '--task',
             receipt.task,
             '--file=-',
-            '--hydra',
+            '--titan',
             hydra.id,
             '--json',
           ],
@@ -220,14 +220,14 @@ describe(
         expect(oversized.status).toBe(2)
         expect(JSON.parse(oversized.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
 
-        const oversizedStdin = await pnyx({
+        const oversizedStdin = await othrys({
           args: [
             'send',
             '--task',
             receipt.task,
             '--file',
             '-',
-            '--hydra',
+            '--titan',
             hydra.id,
             '--json',
           ],
@@ -405,7 +405,7 @@ describe(
             attempts: [expect.objectContaining({ result: 'unknown' })],
           }))
         const log = join(
-          process.env.PNYX_HOME!,
+          process.env.OTHRYS_HOME!,
           'hydras',
           scope.id,
           'tasks',
@@ -430,24 +430,24 @@ describe(
           claim.session,
           '--generation',
           JSON.stringify(claim.generation),
-          '--hydra',
+          '--titan',
           scope.id,
           '--json',
         ]
         const workerEnv = {
           ...env(),
-          PNYX_ACTOR: `worker:${id}`,
-          PNYX_TASK: id,
+          OTHRYS_ACTOR: `worker:${id}`,
+          OTHRYS_TASK: id,
         }
         const acknowledgements = () => records().filter(record => record.event?.type === 'task.steering.handled')
         expect(acknowledgements()).toHaveLength(0)
-        const wrongActor = await pnyx({
+        const wrongActor = await othrys({
           args,
           env: env(),
         })
         expect(wrongActor.status).not.toBe(0)
         expect(JSON.parse(wrongActor.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
-        const actorOverride = await pnyx({
+        const actorOverride = await othrys({
           args: [
             ...args,
             '--actor',
@@ -457,17 +457,17 @@ describe(
         })
         expect(actorOverride.status).toBe(2)
         expect(JSON.parse(actorOverride.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
-        const otherWorker = await pnyx({
+        const otherWorker = await othrys({
           args,
           env: {
             ...workerEnv,
-            PNYX_ACTOR: 'worker:another-task',
-            PNYX_TASK: 'another-task',
+            OTHRYS_ACTOR: 'worker:another-task',
+            OTHRYS_TASK: 'another-task',
           },
         })
         expect(otherWorker.status).not.toBe(0)
         expect(JSON.parse(otherWorker.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
-        const permissionAttempt = await pnyx({
+        const permissionAttempt = await othrys({
           args: [
             ...args,
             '--choice',
@@ -478,7 +478,7 @@ describe(
         expect(permissionAttempt.status).toBe(2)
         expect(JSON.parse(permissionAttempt.stderr)).toMatchObject({ code: 'VALIDATION_ERROR' })
         const staleSession = args.map(value => value === claim.session ? 'claude:another-session' : value)
-        const refusedSession = await pnyx({
+        const refusedSession = await othrys({
           args: staleSession,
           env: workerEnv,
         })
@@ -486,14 +486,14 @@ describe(
         expect(JSON.parse(refusedSession.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
         const staleGeneration = args.map(value => value === JSON.stringify(claim.generation)
           ? JSON.stringify({ native: `${id}\u0000${queued.id}` }) : value)
-        const staleAssignment = await pnyx({
+        const staleAssignment = await othrys({
           args: staleGeneration,
           env: workerEnv,
         })
         expect(staleAssignment.status).not.toBe(0)
         expect(JSON.parse(staleAssignment.stderr)).toMatchObject({ code: 'STALE_CLAIM' })
         expect(acknowledgements()).toHaveLength(0)
-        const accepted = await pnyx({
+        const accepted = await othrys({
           args,
           env: workerEnv,
         })
@@ -507,13 +507,13 @@ describe(
         })
         const saved = acknowledgements()
         expect(saved).toHaveLength(1)
-        expect((await pnyx({
+        expect((await othrys({
           args,
           env: workerEnv,
         })).status).toBe(0)
         expect(acknowledgements()).toEqual(saved)
         await app.restart()
-        const retry = await pnyx({
+        const retry = await othrys({
           args,
           env: workerEnv,
         })
@@ -530,7 +530,7 @@ describe(
             id,
           ],
         })
-        const detached = await pnyx({
+        const detached = await othrys({
           args,
           env: workerEnv,
         })
@@ -541,7 +541,7 @@ describe(
     )
 
     it(
-      'sends to Hydra and answers a task question',
+      'sends to Titan and answers a task question',
       async () => {
         const sent = await run({
           args: [
@@ -554,8 +554,8 @@ describe(
         expect(sent.status).toBe(0)
         expect(parsed(sent).message).toEqual(expect.any(String))
         await until({
-          what: 'Hydra to receive the CLI message',
-          check: () => app.claude.sessions.some(session => session.env.PNYX_HYDRA === hydra.id
+          what: 'Titan to receive the CLI message',
+          check: () => app.claude.sessions.some(session => session.env.OTHRYS_TITAN === hydra.id
             && session.received.some(text => text.includes('Review these tasks'))),
         })
         const { worker } = await hydra.startTask({ key: 'plain-question' })
@@ -600,7 +600,7 @@ describe(
           [
             join(
               dirname(CLI),
-              'pnyx-axi.js',
+              'othrys-axi.js',
             ),
             'serve',
             '--port',
@@ -610,7 +610,7 @@ describe(
           {
             env: {
               ...env(),
-              PNYX_HOME: hydra.folder({ name: 'cli-serve-home' }),
+              OTHRYS_HOME: hydra.folder({ name: 'cli-serve-home' }),
             },
           },
         )
@@ -704,7 +704,7 @@ describe(
             'send',
             '--task=',
             '--text',
-            'This must stay out of Hydra chat',
+            'This must stay out of Titan chat',
           ],
           [
             'board',

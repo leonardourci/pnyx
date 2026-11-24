@@ -1,4 +1,4 @@
-import type { HydraProjectSummary } from '#app/server-hydras.ts'
+import type { TitanProjectSummary } from '#app/server-hydras.ts'
 import type { SearchFilters } from '#oracle/filters.ts'
 import type { ProjectGroup } from '#projects/groups.ts'
 import { columnLook } from '#web-tasks/view.ts'
@@ -24,12 +24,12 @@ const FILTER_TYPES: FilterType[] = [
 ]
 export const TYPE_LABELS: Record<FilterType, string> = {
   kind: 'Kind',
-  hydra: 'Hydra',
+  hydra: 'Titan',
   column: 'Column',
   project: 'Project',
   when: 'When',
 }
-// Which results a filter type can narrow; settings and actions pass a Hydra badge because they apply to every Hydra.
+// Which results a filter type can narrow; settings and actions pass a Titan badge because they apply to every Titan.
 export const APPLIES: Record<FilterType, ResultKind[]> = {
   kind: RESULT_KINDS,
   hydra: RESULT_KINDS,
@@ -61,7 +61,7 @@ export interface Filter {
   type: FilterType
   label: string
   icon: string
-  // What a result's own field must be: its kinds, a column id, a project's path and references, a Hydra id or a time window.
+  // What a result's own field must be: its kinds, a column id, a project's path and references, a Titan id or a time window.
   values: string[]
   // More words the menu finds it by.
   words?: string
@@ -153,7 +153,7 @@ export function filterOptions({
 }: {
   hydra: Filter
   columns: ProjectGroup[]
-  projects: HydraProjectSummary[]
+  projects: TitanProjectSummary[]
 }): Filter[] {
   return [
     ...KIND_FILTERS,
@@ -275,7 +275,7 @@ export const committedQuery = ({ query }: { query: string }) => {
   return text ? `${text} ` : ''
 }
 
-// Hydra badges lead the bar, the rest follow in the order typed.
+// Titan badges lead the bar, the rest follow in the order typed.
 export const addBadge = ({
   badges,
   filter,

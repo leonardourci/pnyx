@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 export const field = ({
   body,
@@ -16,7 +16,7 @@ export const field = ({
   }
 
   if (typeof value !== 'string' || !value.trim() || value.length > 32000) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${name} must be a string of 1 to 32000 characters`,
       code: 'VALIDATION_ERROR',
     })

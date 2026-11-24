@@ -10,7 +10,7 @@ import { PickerField, PickerShell, useModels, type CellMark } from './agent-pick
 import { modelOptions } from './model-options.ts'
 import { AccountModelPicker, type Selection } from './account-model-picker.tsx'
 import { AgentSettingsMenu, useFolded, type FastSetting, type SettingChoice } from './agent-settings-menu.tsx'
-import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
+import { hydraDefault, resolvedAccount, useTitanDispatch } from './heads-dispatch.ts'
 
 const PICKERS_CLASS = 'hydra-agent-pickers flex min-w-0 flex-1 flex-wrap items-center gap-0.5 in-[.settings-page]:gap-(--settings-column-gap) data-folded:relative in-[.settings-page]:[&_.fast-toggle]:w-(--agent-control-h) [&_.picker-field]:block [&_.picker-field]:min-w-0 [&_.picker-field]:text-meta [&_.picker-field>span]:hidden [&_.select]:min-w-0 [&_.select-menu]:absolute [&_.select-menu]:top-auto [&_.select-menu]:bottom-control-menu [&_.select>.button]:min-h-6.5 [&_.select>.button]:gap-0.75 [&_.select>.button]:border-0 [&_.select>.button]:bg-transparent [&_.select>.button]:px-1.25 [&_.select>.button]:py-0.5 [&_.select>.button]:text-meta [&_.select>.button]:text-muted [&_.select>.button>svg:not(:last-child)]:text-ink in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:min-h-(--agent-control-h) in-[.settings-page]:[&_:is(.select>.button,.account-model-picker>.button,.fast-toggle)]:text-ui [&_:is(.select>.button,.account-model-picker>.button,.fast-toggle):is(:hover,:focus-visible):not(:disabled)]:bg-hover [&[data-folded]>.agent-pickers-row]:pointer-events-none [&[data-folded]>.agent-pickers-row]:invisible [&[data-folded]>.agent-pickers-row]:absolute'
 
@@ -20,7 +20,7 @@ const ALL_FIELDS = [
   'fast',
 ] as const
 
-// The composer's model, effort, permission and Fast pickers for one agent; Hydra's composer and Settings both draw these.
+// The composer's model, effort, permission and Fast pickers for one agent; Titan's composer and Settings both draw these.
 export function AgentPickers({
   agent,
   inherited,
@@ -48,7 +48,7 @@ export function AgentPickers({
   disabled?: boolean
   label: string
   onChange({ next }: { next: AgentConfig }): void | Promise<unknown>
-  // What a model's pin does: save it as Hydra's default, only select it because these pickers already edit that default, or show no pin.
+  // What a model's pin does: save it as Titan's default, only select it because these pickers already edit that default, or show no pin.
   defaultAction?: 'save' | 'edit' | 'none'
   // The pickers shown beside the model; the routine helper has no permissions.
   fields?: readonly (typeof ALL_FIELDS)[number][]
@@ -68,8 +68,8 @@ export function AgentPickers({
   const {
     effective,
     error: dispatchError,
-    saveHydra,
-  } = useHeadsDispatch({ command })
+    saveTitan,
+  } = useTitanDispatch({ command })
   const [
     saveError,
     setSaveError,
@@ -149,7 +149,7 @@ export function AgentPickers({
     setSaveError('')
 
     try {
-      await saveHydra({
+      await saveTitan({
         patch: hydraDefault({
           rule: defaultAgent,
           next,

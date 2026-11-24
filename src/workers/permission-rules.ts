@@ -1,6 +1,6 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { PermissionRequest } from './model.ts'
 import { checkAnswer, type Prompt } from './answers.ts'
@@ -94,14 +94,14 @@ export function permissionAnswer({
   const prompt: Prompt | undefined = questions.length ? { kind: 'questions' } : request.form ? { kind: 'form' } : undefined
 
   if (!prompt) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${request.tool} takes allow or deny without an answer`,
       code: 'VALIDATION_ERROR',
     })
   }
 
   if (value === undefined) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${request.tool} needs an answer`,
       code: 'VALIDATION_ERROR',
       help: [prompt.kind === 'form' ? 'Pass --answer \'{"values":{"<field>":"<value>"}}\'' : 'Pass --answer \'{"answers":[{"pick":[1]}]}\' with one {"pick":[n,...]} or {"text":"..."} per question'],
@@ -125,7 +125,7 @@ export function permissionAnswer({
   })
 
   if ('error' in checked) {
-    throw new HydraError({
+    throw new TitanError({
       message: checked.error,
       code: 'VALIDATION_ERROR',
     })
@@ -167,12 +167,12 @@ export function permissionEvent({
   request,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   request: PermissionRequest
   meta: Meta
-}): Extract<HydraEvent, { type: 'task.permission' }> {
-  const event: Extract<HydraEvent, { type: 'task.permission' }> = {
+}): Extract<TitanEvent, { type: 'task.permission' }> {
+  const event: Extract<TitanEvent, { type: 'task.permission' }> = {
     v: EVENT_VERSION,
     seq: state.seq + 1,
     id: meta.id ?? `permission:${request.id}:${request.status}${request.delivery ? `:${request.delivery}` : ''}`,
@@ -195,8 +195,8 @@ export function applyPermission({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'task.permission') {
     return false

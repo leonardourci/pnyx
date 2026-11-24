@@ -1,8 +1,8 @@
 import { tmpdir } from 'node:os'
 import { base as eventBase } from '#app/command-meta.ts'
-import { eventReasons } from '#hydra/wake-reasons.ts'
+import { eventReasons } from '#titan/wake-reasons.ts'
 import { readChanges } from '#app/event-log.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { decideSessionFacts } from '#workers/session-facts.ts'
@@ -14,7 +14,7 @@ import { createServer, type Socket } from 'node:net'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
-import { parsed, operation, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { parsed, operation, startOthrys, until, type Othrys } from './setup/othrys.ts'
 import { git } from './setup/upgrade.ts'
 
 const HOOK = join(
@@ -22,7 +22,7 @@ const HOOK = join(
   '..',
   'setup',
   'hooks',
-  'pnyx-hook.sh',
+  'othrys-hook.sh',
 )
 const CONTEXT = join(
   import.meta.dirname,
@@ -34,10 +34,10 @@ const CONTEXT = join(
 // A hook that has not ended by itself after this long is stuck; the test then stops it and fails. It is no speed target.
 const HOOK_STUCK_MS = 30_000
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 // The installed hook as Claude Code runs it: from the session's folder, with the event's payload on stdin.
@@ -114,7 +114,7 @@ const sessionFacts = async ({
       'task',
       'sessions',
       '--full',
-      '--hydra',
+      '--titan',
       hydra,
     ],
     env: process.env,
@@ -131,7 +131,7 @@ const sessionFacts = async ({
 test(
   'outside hooks keep facts without an implicit card, and the assigned chat shows its typed prompt without a steering notice',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'settings',
@@ -150,7 +150,7 @@ test(
       args: [
         'task',
         'list',
-        '--hydra',
+        '--titan',
         'default',
       ],
       env: process.env,
@@ -184,12 +184,12 @@ test(
       base.transcript_path,
       [
         userLine({ content: 'Fix the flaky login test' }),
-        userLine({ content: `New instructions for task outside, in order (Pnyx inbox IDs ["earlier"]):\n\n${'Keep the retry loop bounded. '.repeat(60)}` }),
+        userLine({ content: `New instructions for task outside, in order (Othrys inbox IDs ["earlier"]):\n\n${'Keep the retry loop bounded. '.repeat(60)}` }),
       ].join(''),
     )
     const terminalEnv = {
       ...process.env,
-      TMUX: '/tmp/pnyx-hook-tmux,123,0',
+      TMUX: '/tmp/othrys-hook-tmux,123,0',
       TMUX_PANE: '%7',
       HERDR_SESSION: 'hook-session',
       HERDR_PANE_ID: 'hook-pane',
@@ -209,13 +209,13 @@ test(
       check: () => sessionFacts({ session: 'outside-1' }),
     })
     expect(started.terminal).toMatchObject({
-      tmux: '/tmp/pnyx-hook-tmux',
+      tmux: '/tmp/othrys-hook-tmux',
       tmuxPane: '%7',
       herdrSession: 'hook-session',
       herdrPane: 'hook-pane',
     })
     const sourceLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       'default',
       'hydra.log',
@@ -252,7 +252,7 @@ test(
       title: 'Fix the flaky login test',
       activity: 'working',
       terminal: {
-        tmux: '/tmp/pnyx-hook-tmux',
+        tmux: '/tmp/othrys-hook-tmux',
         tmuxPane: '%8',
         herdrSession: 'hook-session',
         herdrPane: 'prompt-pane',
@@ -336,7 +336,7 @@ test(
         'page',
         '--hidden',
         '--full',
-        '--hydra',
+        '--titan',
         'default',
       ],
       env: process.env,
@@ -376,17 +376,17 @@ test(
       args: [
         'task',
         'list',
-        '--hydra',
+        '--titan',
         'default',
       ],
       env: process.env,
     })
     expect(parsed(tasks).tasks).toEqual(beforeTasks)
-    const assignedHydra = await pnyx.hydra({
+    const assignedTitan = await othrys.hydra({
       id: 'default',
       create: false,
     })
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'task',
         'create',
@@ -397,7 +397,7 @@ test(
         '--no-start',
       ],
     })
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'push',
         '--key',
@@ -410,7 +410,7 @@ test(
         terminal: { tty: '/dev/ttys99999' },
       }),
     })
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'task',
         'attach',
@@ -419,7 +419,7 @@ test(
         working.id,
       ],
     })
-    const chat = await assignedHydra.owner({
+    const chat = await assignedTitan.owner({
       args: [
         'task',
         'chat',
@@ -437,7 +437,7 @@ test(
       ...working.agent,
       sessionId: 'outside-replacement',
     }
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'push',
         '--key',
@@ -451,7 +451,7 @@ test(
       }),
     })
     const replacementId = (await sessionFacts({ session: 'outside-replacement' })).id
-    const replaced = await assignedHydra.owner({
+    const replaced = await assignedTitan.owner({
       args: [
         'task',
         'attach',
@@ -461,8 +461,8 @@ test(
       ],
     })
     expect(replaced.notices).toBeDefined()
-    expect((await assignedHydra.task({ key: 'outside-hook-chat' })).worker).toBe(replacementId)
-    const sessions = await assignedHydra.owner({
+    expect((await assignedTitan.task({ key: 'outside-hook-chat' })).worker).toBe(replacementId)
+    const sessions = await assignedTitan.owner({
       args: [
         'task',
         'sessions',
@@ -472,15 +472,15 @@ test(
       id: working.id,
       task: 'none',
     }))
-    const project = assignedHydra.folder({ name: 'queued-attachment' })
-    await assignedHydra.owner({
+    const project = assignedTitan.folder({ name: 'queued-attachment' })
+    await assignedTitan.owner({
       args: [
         'project',
         'add',
         project,
       ],
     })
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'task',
         'rename',
@@ -489,7 +489,7 @@ test(
         project,
       ],
     })
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'task',
         'create',
@@ -502,7 +502,7 @@ test(
         project,
       ],
     })
-    await assignedHydra.owner({
+    await assignedTitan.owner({
       args: [
         'task',
         'queue',
@@ -511,8 +511,8 @@ test(
         'outside-hook-chat',
       ],
     })
-    expect((await assignedHydra.task({ key: 'queued-attachment' })).queue).toBeDefined()
-    const attached = await assignedHydra.owner({
+    expect((await assignedTitan.task({ key: 'queued-attachment' })).queue).toBeDefined()
+    const attached = await assignedTitan.owner({
       args: [
         'task',
         'attach',
@@ -522,8 +522,8 @@ test(
       ],
     })
     expect(attached.notices).toBeDefined()
-    expect((await assignedHydra.task({ key: 'queued-attachment' })).queue).toBeUndefined()
-    expect((await assignedHydra.task({ key: 'queued-attachment' })).worker).toBe(replacementId)
+    expect((await assignedTitan.task({ key: 'queued-attachment' })).queue).toBeUndefined()
+    expect((await assignedTitan.task({ key: 'queued-attachment' })).worker).toBe(replacementId)
 
     await flushLogs()
     const onLogs = logFiles().map(file => readFileSync(
@@ -647,7 +647,7 @@ test(
     )
     writeFileSync(
       join(
-        process.env.PNYX_HOME!,
+        process.env.OTHRYS_HOME!,
         'hydras',
         'default',
         'spool',
@@ -671,7 +671,7 @@ test(
       what: 'legacy hook clock to be observed',
       check: async () => (await sessionFacts({ session: 'legacy-clock' }))?.activity === 'working',
     })
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         writeFileSync(
           settingsTranscript,
@@ -736,7 +736,7 @@ test(
     expect(await sessionFacts({ session: 'legacy-clock' })).toMatchObject({ activity: 'finished' })
     const recovered = await sessionFacts({ session: 'outside-1' })
     expect(recovered.activityCursor.pos).toBe(Buffer.byteLength(readFileSync(base.transcript_path)))
-    await pnyx.restart()
+    await othrys.restart()
     expect(await sessionFacts({ session: 'outside-1' })).toMatchObject(recovered)
     await hook({
       event: 'SessionEnd',
@@ -841,7 +841,7 @@ test(
       expect((await operation({
         args: [
           ...args,
-          '--hydra',
+          '--titan',
           'default',
         ],
         env: process.env,
@@ -849,7 +849,7 @@ test(
     }
 
     mkdirSync(join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       'default',
       'tasks',
@@ -857,7 +857,7 @@ test(
     ))
     mkdirSync(
       join(
-        process.env.PNYX_HOME!,
+        process.env.OTHRYS_HOME!,
         'hydras',
         'default',
         'tasks',
@@ -905,24 +905,24 @@ test(
       'offline',
     )
     let offline: Awaited<ReturnType<typeof hook>> | undefined
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: async () => {
         offline = await hook({
           event: 'UserPromptSubmit',
           payload: {
             session_id: 'offline-1',
             cwd,
-            prompt: 'Written while Pnyx was down',
+            prompt: 'Written while Othrys was down',
           },
         })
         const envelopes = readdirSync(join(
-          process.env.PNYX_HOME!,
+          process.env.OTHRYS_HOME!,
           'hydras',
           'default',
           'spool',
         )).map(file => JSON.parse(readFileSync(
           join(
-            process.env.PNYX_HOME!,
+            process.env.OTHRYS_HOME!,
             'hydras',
             'default',
             'spool',
@@ -942,7 +942,7 @@ test(
     expect((await until({
       what: 'the spooled report to land',
       check: () => sessionFacts({ session: 'offline-1' }),
-    })).title).toBe('Written while Pnyx was down')
+    })).title).toBe('Written while Othrys was down')
   },
 )
 
@@ -985,7 +985,7 @@ test(
         },
         env: {
           ...process.env,
-          PNYX_HOME: home,
+          OTHRYS_HOME: home,
         },
       })
 
@@ -1006,9 +1006,9 @@ test(
 )
 
 test(
-  'an outside session reporting with PNYX_HYDRA set lands on that Hydra, not the default one',
+  'an outside session reporting with OTHRYS_TITAN set lands on that Titan, not the default one',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const cwd = join(
       process.env.TMPDIR!,
       'named',
@@ -1018,11 +1018,11 @@ test(
       payload: {
         session_id: 'named-1',
         cwd,
-        prompt: 'Reported to a named Hydra',
+        prompt: 'Reported to a named Titan',
       },
       env: {
         ...process.env,
-        PNYX_HYDRA: hydra.id,
+        OTHRYS_TITAN: hydra.id,
       },
     })
     expect(run).toMatchObject({
@@ -1030,17 +1030,17 @@ test(
       stdout: '',
     })
     expect((await until({
-      what: 'the session facts on its own Hydra',
+      what: 'the session facts on its own Titan',
       check: () => sessionFacts({
         session: 'named-1',
         hydra: hydra.id,
       }),
-    })).title).toBe('Reported to a named Hydra')
+    })).title).toBe('Reported to a named Titan')
   },
 )
 
 test(
-  'with the server down a hook keeps its event in the spool of its Hydra, in boards/ for one not yet moved, and drops an unknown Hydra without making a folder',
+  'with the server down a hook keeps its event in the spool of its Titan, in boards/ for one not yet moved, and drops an unknown Titan without making a folder',
   async () => {
     const home = join(
       process.env.TMPDIR!,
@@ -1091,8 +1091,8 @@ test(
         },
         env: {
           ...process.env,
-          PNYX_HOME: home,
-          PNYX_HYDRA: hydra,
+          OTHRYS_HOME: home,
+          OTHRYS_TITAN: hydra,
         },
       })).toMatchObject({
         status: 0,
@@ -1121,10 +1121,10 @@ test(
 )
 
 test(
-  'subagent hooks keep session facts and wake Hydra for a prompt on the attached task',
+  'subagent hooks keep session facts and wake Titan for a prompt on the attached task',
   async () => {
-    const hydra = await pnyx.hydra()
-    const first = pnyx.claude.plan({
+    const hydra = await othrys.hydra()
+    const first = othrys.claude.plan({
       hydra: hydra.id,
       text: 'Watch hook questions',
       hold: true,
@@ -1145,8 +1145,8 @@ test(
     const assigned = await hydra.task({ key: 'attached' })
     const env = {
       ...process.env,
-      PNYX_HYDRA: hydra.id,
-      PNYX_TASK: assigned.id,
+      OTHRYS_TITAN: hydra.id,
+      OTHRYS_TASK: assigned.id,
     }
     const base = {
       session_id: 'root-agent',
@@ -1259,7 +1259,7 @@ test(
       }),
     })
     expect((await hydra.task({ key: 'attached' })).status).toBe('needs you')
-    const stateAfterQuestion = loadHydra({ hydraId: hydra.id }).state
+    const stateAfterQuestion = loadTitan({ hydraId: hydra.id }).state
     const settingsEvent = readChanges({
       hydraId: hydra.id,
       seqs: [settingsOnly.event.seq],
@@ -1285,7 +1285,7 @@ test(
     )
     first.release()
     await until({
-      what: 'Hydra to hear the native question',
+      what: 'Titan to hear the native question',
       check: () => supervisor.received.some(text => text.includes('asked:') && text.includes('inspect-package')),
     })
     const history = await hydra.owner({
@@ -1314,7 +1314,7 @@ test(
 test(
   'outside recovery resets rotated snapshots and ignores rebound transcript batches',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'recovery-races' })
     const rotated = join(
       folder,
@@ -1446,7 +1446,7 @@ test(
       return tail
     })
     onTestFinished(() => spy.mockRestore())
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         writeFileSync(
           rotated,
@@ -1489,7 +1489,7 @@ test(
   async () => {
     const home = mkdtempSync(join(
       tmpdir(),
-      'pnyx-skill-conflict-',
+      'othrys-skill-conflict-',
     ))
     onTestFinished(() => rmSync(
       home,
@@ -1501,16 +1501,16 @@ test(
     const env = {
       ...process.env,
       HOME: home,
-      PNYX_HOME: join(
+      OTHRYS_HOME: join(
         home,
-        '.pnyx',
+        '.othrys',
       ),
     }
     const customSkill = join(
       home,
       '.agents',
       'skills',
-      'pnyx-cli',
+      'othrys-cli',
     )
     mkdirSync(
       customSkill,
@@ -1605,7 +1605,7 @@ test(
     expect(lstatSync(foreign).isSymbolicLink()).toBe(true)
     expect(parsed(installed).notices).toContainEqual(expect.objectContaining({
       reason: expect.stringContaining(customSkill),
-      clear: expect.stringContaining('pnyx setup skills'),
+      clear: expect.stringContaining('othrys setup skills'),
     }))
     expect(readFileSync(
       join(
@@ -1618,7 +1618,7 @@ test(
       home,
       '.agents',
       'skills',
-      'pnyx-report-progress',
+      'othrys-report-progress',
       'SKILL.md',
     ))).toBe(true)
   },

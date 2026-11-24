@@ -33,7 +33,7 @@ import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { CardState } from './card-state.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 
 const STATE_SOURCE = {
@@ -67,7 +67,7 @@ function ContextIndex({
       return
     }
 
-    // Only the panel scrolls; scrollIntoView would also move the column and the Hydra.
+    // Only the panel scrolls; scrollIntoView would also move the column and the Titan.
     panel.scrollTop += target.getBoundingClientRect().top - panel.getBoundingClientRect().top
   }
 
@@ -101,7 +101,7 @@ function ContextIndex({
 const CHAT_ONLY_LAYOUT = 'grid-cols-1 grid-rows-1 [&>.task-chat]:border-l-0'
 const DETAILS_AND_CHAT_LAYOUT = 'grid-cols-1 grid-rows-2 @task-details/task:grid-cols-2 @task-details/task:grid-rows-1'
 
-export const HydraCard = memo(function HydraCard({
+export const TitanCard = memo(function TitanCard({
   card,
   statusOverride,
   sortScope,
@@ -430,14 +430,14 @@ export const HydraCard = memo(function HydraCard({
     ],
   )
   const attachInline = useCallback(
-    // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
+    // eslint-disable-next-line othrys/object-params -- React supplies the ref node.
     (node: HTMLElement | null) => {
       inlineElement.current = node
     },
     [],
   )
   const attachModal = useCallback(
-    // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
+    // eslint-disable-next-line othrys/object-params -- React supplies the ref node.
     (node: HTMLElement | null) => {
       modalElement.current = node
     },

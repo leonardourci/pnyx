@@ -1,4 +1,4 @@
-import type { HydraState, SourceRef } from '#app/model.ts'
+import type { TitanState, SourceRef } from '#app/model.ts'
 import type { AgentSession } from '#workers/model.ts'
 import { sameSource, isStaleSource } from './events.ts'
 import { observesPresence, sessionId } from '#workers/session-attachments.ts'
@@ -47,7 +47,7 @@ export function applyObservation({
   state,
   observation,
 }: {
-  state: HydraState
+  state: TitanState
   observation: SourceObservation
 }): void {
   const {

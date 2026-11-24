@@ -1,6 +1,6 @@
 # Tests
 
-The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Pnyx server the way its users do: the owner and the agents through the built `pnyx`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome.
+The suite runs on [Vitest](https://vitest.dev). Most of it drives a real Othrys server the way its users do: the owner and the agents through the built `othrys`, the page through its resumed WebSocket. A few small browser checks open the real page in Chrome.
 
 ```text
 tests/
@@ -26,9 +26,9 @@ pnpm exec vitest run -t "outside hooks"         # tests whose name matches
 
 The tests run the built CLI and serve the built page, so run `pnpm run build` after changing code under `src/` or `web/` before a focused run. CI builds first.
 
-Set `PNYX_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes there before they are deleted; CI does this and uploads the folder when a run fails.
+Set `OTHRYS_KEEP_TEST_FILES=<folder>` to copy each run's scratch homes there before they are deleted; CI does this and uploads the folder when a run fails.
 
-Each test file runs in its own process with a scratch `HOME` and `PNYX_HOME`, native files, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
+Each test file runs in its own process with a scratch `HOME` and `OTHRYS_HOME`, native files, a `PATH` whose `claude`, `codex`, `gh`, `gh-axi`, `paseo`, `firstmate`, `herdr`, `tmux`, `quota-axi`, `launchctl`, `systemctl` and `brew` fail loudly, none of the calling shell's identity or settings, and a 1 GB heap for every Node process it starts. Integration files run on half the cores, longest first, leaving CPU and memory for their child processes. Browser checks run afterward on a quarter of the cores. The tests in each file run in a random order: the run prints its seed, and `--sequence.seed=<seed>` repeats that order. The tests in one file share its server, so each test sets up what it needs and must pass alone and in any order.
 
 ## Writing a test
 
@@ -38,31 +38,31 @@ Add to the area's file, or start a new `tests/<area>.test.ts` for a new area. A 
 
 ```ts
 import { beforeAll, expect, test } from 'vitest'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test('a reply reaches the worker once', async () => {
-  const hydra = await pnyx.hydra()                       // a Hydra of its own
+  const hydra = await othrys.hydra()                       // a Titan of its own
   const folder = hydra.folder({ name: 'app' })
   await hydra.owner({ args: ['task', 'create', '--title', 'Ship it', '--key', 'ship', '--folder', folder] })
   await hydra.owner({ args: ['task', 'start', 'ship'] })
-  const worker = await hydra.agent({ cwd: folder })       // the fake agent Pnyx started there
+  const worker = await hydra.agent({ cwd: folder })       // the fake agent Othrys started there
   await hydra.owner({ args: ['reply', 'ship', '--text', 'Update the install guide'] })
   await until({ what: 'the reply', check: () => worker.received.some(text => text.includes('Update the install guide')) })
 })
 ```
 
 - `hydra.task({ key })` reads a task as `task show` prints it, and `hydra.startTask({ key, harness })` creates a task, starts its worker and waits for the worker's first turn.
-- `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Pnyx gave that agent.
-- `hydra.chat({ text })` is the owner writing in Hydra's chat; it resolves with Hydra's session once Hydra heard it. `hydra.agent({ cwd })` waits for the worker Pnyx started in a folder.
+- `hydra.owner({ args, input })` calls internal server operations as the owner and returns their structured receipts; `hydra.ownerRefused` returns a refusal's `code` and `error`. `hydra.as({ session }).run` and `.refused` call them with the identity Othrys gave that agent.
+- `hydra.chat({ text })` is the owner writing in Titan's chat; it resolves with Titan's session once Titan heard it. `hydra.agent({ cwd })` waits for the worker Othrys started in a folder.
 - `hydra.page()` opens the owner's page socket; `page.send({ name, args })` sends a command as the page does and resolves with its receipt or error.
-- Check persistence by restarting and reading through the CLI or page. Page assertions read `pnyx.home()` or `openHomePage` through the real home socket.
-- `pnyx.restart({ whileStopped })` stops the server and starts it again on the same home and port.
+- Check persistence by restarting and reading through the CLI or page. Page assertions read `othrys.home()` or `openHomePage` through the real home socket.
+- `othrys.restart({ whileStopped })` stops the server and starts it again on the same home and port.
 
 Rules:
 
@@ -81,21 +81,21 @@ Rules:
 
 ## The fakes
 
-`setup/agents.ts` replays one real recorded turn of Claude Code (through the Agent SDK) and Codex (its app-server) from `setup/fixtures/agents/`, so Pnyx's provider code runs over what the agents really send. `pnyx.claude.plan({ hydra, text, reply, partial, hold })` shapes the next turn whose prompt ends with `text` (or the one `match` accepts): its reply, a streamed prefix and whether it waits for `release()`. `pnyx.codex.plan` also takes `refuse`, which makes the app-server answer that turn's start with an error, so Pnyx sees the agent refuse the message. `compactTo` compacts a turn to that many tokens: a Claude turn planned with `compacting` finishes the compaction at once and ends as `/compact` does once released, and a Codex turn compacts just before it ends. A Claude plan's `window` is the context window Claude Code reports from that turn on, as after a model switch. `pnyx.claude.context` and `pnyx.codex.context` hold the context the recorded turn reports. A held Claude turn also ends when Pnyx stops it. A fake Claude session's `useTool({ tool, input })` asks for a tool's permission as Claude Code does mid-turn, and a Claude plan's `tool` makes the turn call that tool first and keep running it until the turn's release. `setup/transcripts.ts` appends records to a Claude session's transcript, as Claude Code writes them. After upgrading the Agent SDK or Codex, run `pnpm refresh-agent-fixtures` to record a fresh turn of each.
+`setup/agents.ts` replays one real recorded turn of Claude Code (through the Agent SDK) and Codex (its app-server) from `setup/fixtures/agents/`, so Othrys's provider code runs over what the agents really send. `othrys.claude.plan({ hydra, text, reply, partial, hold })` shapes the next turn whose prompt ends with `text` (or the one `match` accepts): its reply, a streamed prefix and whether it waits for `release()`. `othrys.codex.plan` also takes `refuse`, which makes the app-server answer that turn's start with an error, so Othrys sees the agent refuse the message. `compactTo` compacts a turn to that many tokens: a Claude turn planned with `compacting` finishes the compaction at once and ends as `/compact` does once released, and a Codex turn compacts just before it ends. A Claude plan's `window` is the context window Claude Code reports from that turn on, as after a model switch. `othrys.claude.context` and `othrys.codex.context` hold the context the recorded turn reports. A held Claude turn also ends when Othrys stops it. A fake Claude session's `useTool({ tool, input })` asks for a tool's permission as Claude Code does mid-turn, and a Claude plan's `tool` makes the turn call that tool first and keep running it until the turn's release. `setup/transcripts.ts` appends records to a Claude session's transcript, as Claude Code writes them. After upgrading the Agent SDK or Codex, run `pnpm refresh-agent-fixtures` to record a fresh turn of each.
 
-`setup/fixtures/gh-axi.mjs` stands in for `gh-axi`: set `PNYX_GH_AXI` to it and `PNYX_FAKE_GITHUB` to a folder holding `<owner>/<repo>/<number>.json` pull requests (`state`, `checks`, `head`, `draft` and `mergeBehavior`, `merged` or `queued`). It answers merge requests too and logs every call in `calls.jsonl`. The quota fake reports a login folder holding a file named `exhausted` as out of quota, and a missing folder as signed out. `setup/upgrade.ts` makes a throwaway Pnyx folder with its own origin, whose commits decide whether install or build fails.
+`setup/fixtures/gh-axi.mjs` stands in for `gh-axi`: set `OTHRYS_GH_AXI` to it and `OTHRYS_FAKE_GITHUB` to a folder holding `<owner>/<repo>/<number>.json` pull requests (`state`, `checks`, `head`, `draft` and `mergeBehavior`, `merged` or `queued`). It answers merge requests too and logs every call in `calls.jsonl`. The quota fake reports a login folder holding a file named `exhausted` as out of quota, and a missing folder as signed out. `setup/upgrade.ts` makes a throwaway Othrys folder with its own origin, whose commits decide whether install or build fails.
 
 ## What each file covers
 
-- `access.test.ts`: agent command notices, the guard against self-approval, Hydra's own permission requests, the page's token, socket, `/api/run` and image files.
+- `access.test.ts`: agent command notices, the guard against self-approval, Titan's own permission requests, the page's token, socket, `/api/run` and image files.
 - `socket-state.test.ts`: ordered home changes, snapshot fallback, unchanged card identity and exclusion of private steering.
-- `chat.test.ts`: Hydra's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Hydra's folder holds the shipped skills.
+- `chat.test.ts`: Titan's chat, the queue, the routine helper's task lease, Stop, once-only delivery, resuming after a restart, and that Titan's folder holds the shipped skills.
 - `hooks.test.ts`: outside sessions reporting through the installed hook, with the server up or down.
 - `oracle.test.ts`: search, its project and date filters and what it never reads.
 - `paging.test.ts`: chat pages and a card's Activity pages.
 - `projects.test.ts`: task copies, both landing rules and the merge gate.
 - `handoffs.test.ts`: queued worker handoffs, checkout refusals and crash recovery in a separate scratch home.
-- `settings.test.ts`: the settings every Hydra shares.
+- `settings.test.ts`: the settings every Titan shares.
 - `native-store.test.ts`: durable receipts, task folder moves, corrupt logs, permission recovery and read-only setup.
 - `tasks.test.ts`: the board, dependencies, holds, undo and `apply`.
 - `upgrade.test.ts`: `/upgrade`, its checkout notices, its rollback and its restart.
@@ -106,4 +106,4 @@ Rules:
 - `ui-metrics.test.ts`: the page's bounded, aggregated performance measurements and Logs Off.
 - `browser/chat.test.ts`: both chats interrupt and deliver sends through either provider, retain sent bubbles through held operations and refused deliveries, retry the same message, render task references as live chips, and keep Stop silent. They open on their latest row and retain the visible rows through older-page loading and Retry. Focus mode keeps tool names out of the working line, and a card's status never names one.
 - `browser/cards.test.ts`: every column and card stays mounted through horizontal and vertical scrolling at desktop and phone widths, project requests reveal their column, Activity loads and retains all update rows and receives live changes, an open card fills its column after a viewport resize, and starting its worker keeps one stored card and the same DOM node.
-- `browser/status.test.ts`: Independent first-send flows for Hydra and a task without an attached worker show Starting… on the first animation frame after Send, Thinking at turn start, Working through tools and Idle at turn end. The worker pill and chat agree on each sampled frame. A refused first start shows its server error; later in-place turns follow live lifecycle facts. Refused turns show their error, later turns clear stale failures, outside delivery errors replace pending badges, and Oracle preserves status on tasks with a retention deadline.
+- `browser/status.test.ts`: Independent first-send flows for Titan and a task without an attached worker show Starting… on the first animation frame after Send, Thinking at turn start, Working through tools and Idle at turn end. The worker pill and chat agree on each sampled frame. A refused first start shows its server error; later in-place turns follow live lifecycle facts. Refused turns show their error, later turns clear stale failures, outside delivery errors replace pending badges, and Oracle preserves status on tasks with a retention deadline.

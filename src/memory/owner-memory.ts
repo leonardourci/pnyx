@@ -7,13 +7,13 @@ import { archiveRemoved, dateLearnings, informReinforcement, learningText, type 
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { pnyxHome, privateDir, withRegistryLock, withAsyncRegistryLock, writeDurably } from '#store/storage.ts'
+import { othrysHome, privateDir, withRegistryLock, withAsyncRegistryLock, writeDurably } from '#store/storage.ts'
 
 export interface OwnerMeta extends Meta {
   ifPolis?: string
@@ -28,7 +28,7 @@ interface OwnerLog {
 }
 
 const ownerDir = () => join(
-  pnyxHome(),
+  othrysHome(),
   'owner',
 )
 const migratedPath = () => join(
@@ -116,7 +116,7 @@ function checkOwnerRevision({
   }
 
   if (meta.ifRevision !== revision || (meta.ifPolis ?? 'shared') !== polis) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Owner memory changed; read its writable documents again before saving',
       code: 'REVISION_CONFLICT',
       help: ['Read the saved owner memory logs, merge your change into the current text and save again'],
@@ -149,7 +149,7 @@ function append({
   const log = readLog({ polis })
 
   if (log.corrupt) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Owner memory has an unreadable line; inspect its log before writing',
       code: 'LOG_CORRUPT',
       help: [`Inspect ${logPath({ polis })}`],
@@ -171,7 +171,7 @@ function append({
   })
 
   if ((confirmed !== undefined || learning !== undefined) && key !== 'learnings') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Only learnings need reconfirmation',
       code: 'VALIDATION_ERROR',
     })
@@ -268,10 +268,10 @@ function mergeLines({ texts }: { texts: string[] }): string {
     .join('\n')
 }
 
-// Owner preferences and learnings used to live in each Hydra. The first run after the move merges them
-// into owner memory and forgets them in each Hydra, whose event log keeps the old text. The marker is
-// written last, so a run cut short, or one a Hydra failed in, repeats and the merge drops lines it already moved.
-// ponytail: a Hydra that keeps failing (a held lock, a torn log) makes every owner read retry and wait on its lock.
+// Owner preferences and learnings used to live in each Titan. The first run after the move merges them
+// into owner memory and forgets them in each Titan, whose event log keeps the old text. The marker is
+// written last, so a run cut short, or one a Titan failed in, repeats and the merge drops lines it already moved.
+// ponytail: a Titan that keeps failing (a held lock, a torn log) makes every owner read retry and wait on its lock.
 export async function migrateOwnerMemory(): Promise<void> {
   if (existsSync(migratedPath())) {
     return
@@ -291,7 +291,7 @@ export async function migrateOwnerMemory(): Promise<void> {
 
       for (const hydraId of hydraIds()) {
         try {
-          const memory = loadHydra({ hydraId }).state.hydraMemory ?? {}
+          const memory = loadTitan({ hydraId }).state.hydraMemory ?? {}
 
           if (Object.keys(OWNER_DOCUMENTS).some(key => Object.hasOwn(
             memory,
@@ -308,10 +308,10 @@ export async function migrateOwnerMemory(): Promise<void> {
       }
 
       if (failed.length) {
-        throw new HydraError({
+        throw new TitanError({
           message: `Owner memory could not move from ${failed.join('; ')}`,
           code: 'MIGRATION_INCOMPLETE',
-          help: ['Fix the error named for those Hydras; the next read retries the move'],
+          help: ['Fix the error named for those Titans; the next read retries the move'],
         })
       }
 
@@ -352,14 +352,14 @@ async function move({
           }),
           meta: {
             ...meta,
-            reason: `Moved ${key} from Hydra ${hydraId}`,
+            reason: `Moved ${key} from Titan ${hydraId}`,
           },
         })
         const forget = hydraEvent({
           state: writer.state,
           meta: {
             ...meta,
-            reason: 'Moved to the Pnyx-wide owner memory',
+            reason: 'Moved to the Othrys-wide owner memory',
           },
           cardId: '$board',
           change: {
@@ -380,7 +380,7 @@ async function move({
   })
 }
 
-// The documents stay in their Hydra's digest until the move succeeds, so a failed move only reports.
+// The documents stay in their Titan's digest until the move succeeds, so a failed move only reports.
 async function tryMigrate(): Promise<void> {
   try {
     await migrateOwnerMemory()
@@ -477,7 +477,7 @@ export function writableOwnerMemory({
   hydraId: string
   logs?: ReturnType<typeof readOwnerLogs>
 }) {
-  const writablePolis = ownerPolis({ state: loadHydra({ hydraId }).state })
+  const writablePolis = ownerPolis({ state: loadTitan({ hydraId }).state })
 
   const log = readLog({
     polis: writablePolis,
@@ -512,7 +512,7 @@ export async function saveOwnerMemory({
 
   return withRegistryLock({
     fn: () => {
-      const polis = ownerPolis({ state: loadHydra({ hydraId }).state })
+      const polis = ownerPolis({ state: loadTitan({ hydraId }).state })
       const entry = append({
         polis,
         key,
@@ -552,7 +552,7 @@ export async function moveOwnerLearning({
 
   return withRegistryLock({
     fn: () => {
-      const polis = ownerPolis({ state: loadHydra({ hydraId }).state })
+      const polis = ownerPolis({ state: loadTitan({ hydraId }).state })
       const owner = readLog({ polis })
 
       checkOwnerRevision({
@@ -565,7 +565,7 @@ export async function moveOwnerLearning({
       const lines = before.split('\n')
 
       if (!text.trim() || text.includes('\n') || !lines.includes(text)) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Move one existing owner learning line exactly',
           code: 'VALIDATION_ERROR',
         })
@@ -577,7 +577,7 @@ export async function moveOwnerLearning({
       })
 
       if (ifDestinationRevision !== undefined && project.revision !== ifDestinationRevision) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Destination memory changed; read it again before moving',
           code: 'REVISION_CONFLICT',
         })
@@ -654,7 +654,7 @@ export async function moveOwnerPolis({
   meta: OwnerMeta
 }) {
   if (!POLIS_NAME.test(destination)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Invalid destination polis name',
       code: 'VALIDATION_ERROR',
     })
@@ -664,7 +664,7 @@ export async function moveOwnerPolis({
 
   return withRegistryLock({
     fn: () => {
-      const polis = ownerPolis({ state: loadHydra({ hydraId }).state })
+      const polis = ownerPolis({ state: loadTitan({ hydraId }).state })
       const logs = readOwnerLogs()
       const source = readLog({
         polis,
@@ -684,14 +684,14 @@ export async function moveOwnerPolis({
       })
 
       if (ifDestinationRevision !== undefined && target.revision !== ifDestinationRevision) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Destination memory changed; read it again before moving',
           code: 'REVISION_CONFLICT',
         })
       }
 
       if (source.corrupt || target.corrupt) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Memory log is unreadable',
           code: 'LOG_CORRUPT',
         })
@@ -704,7 +704,7 @@ export async function moveOwnerPolis({
       const text = source.memory[key]?.text
 
       if (text === undefined) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Memory is unavailable',
           code: 'NOT_FOUND',
         })

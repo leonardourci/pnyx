@@ -10,12 +10,11 @@ import { useSmoothScroll, scrollBehavior } from '#web-shared/ui/smooth-scroll.ts
 import { afterSteadyLayout } from '#web-tasks/scroll-task.ts'
 import { projectColumns, compareTasks, nextSibling } from '#web-tasks/project-view.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
-import { useHydra } from './connection.ts'
-import { useHydraEdits } from './hydra-edits.ts'
-import { useHydraFavicon } from './hydra-favicon.ts'
+import { useTitan } from './connection.ts'
+import { useTitanEdits } from './hydra-edits.ts'
 import { placements } from './hydra-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
-import { HydraView } from './workspace.tsx'
+import { TitanView } from './workspace.tsx'
 
 const SCROLL_EDGE_EPSILON = 1
 
@@ -24,13 +23,13 @@ const WorkspaceInstance = memo(function WorkspaceInstance({
   workspace,
   navigate,
   ...props
-}: Omit<ComponentProps<typeof HydraView>, 'hydra'> & {
-  hydra: ReturnType<typeof useHydra>
-  workspace: ReturnType<typeof useHydra>['workspaces'][number]
-  navigate: ReturnType<typeof useHydra>['navigate']
+}: Omit<ComponentProps<typeof TitanView>, 'hydra'> & {
+  hydra: ReturnType<typeof useTitan>
+  workspace: ReturnType<typeof useTitan>['workspaces'][number]
+  navigate: ReturnType<typeof useTitan>['navigate']
 }) {
   return (
-    <HydraView
+    <TitanView
       {...props}
       hydra={{
         ...hydra,
@@ -44,7 +43,7 @@ const WorkspaceInstance = memo(function WorkspaceInstance({
 
 export function App() {
   const duration = useMotionDuration()
-  const hydra = useHydra()
+  const hydra = useTitan()
 
   const [
     polisFilter,
@@ -78,12 +77,12 @@ export function App() {
     ({ text }: { text: string }) => setRootError(text),
     [],
   )
-  const edits = useHydraEdits({
+  const edits = useTitanEdits({
     hydras: hydra.navigation.hydras,
     command: hydra.command,
     notify: rootNotify,
   })
-  const orderedHydras = preview?.kind === 'hydra' ? movedOrder({
+  const orderedTitans = preview?.kind === 'hydra' ? movedOrder({
     items: edits.hydras,
     ...preview,
     key: ({ item }) => item.id,
@@ -91,21 +90,21 @@ export function App() {
   const shownEdits = useMemo(
     () => ({
       ...edits,
-      hydras: orderedHydras,
+      hydras: orderedTitans,
     }),
     [
       edits,
-      orderedHydras,
+      orderedTitans,
     ],
   )
   const workspaces = [...hydra.workspaces].sort((
     a,
     b,
   ) =>
-    orderedHydras.findIndex(item => item.id === a.navigation.hydraId)
-    - orderedHydras.findIndex(item => item.id === b.navigation.hydraId))
+    orderedTitans.findIndex(item => item.id === a.navigation.hydraId)
+    - orderedTitans.findIndex(item => item.id === b.navigation.hydraId))
 
-  const currentPolis = orderedHydras.find(item => item.id === current)?.polis ?? 'shared'
+  const currentPolis = orderedTitans.find(item => item.id === current)?.polis ?? 'shared'
   const shownFilter = currentPolis === polisFilter ? polisFilter : undefined
   useEffect(
     () => {
@@ -119,7 +118,7 @@ export function App() {
     ],
   )
   const visibleWorkspaces = workspaces.filter(workspace => !shownFilter
-    || (orderedHydras.find(item => item.id === workspace.navigation.hydraId)?.polis ?? 'shared') === shownFilter)
+    || (orderedTitans.find(item => item.id === workspace.navigation.hydraId)?.polis ?? 'shared') === shownFilter)
 
   const drop = ({ preview }: { preview: SortMove }) => {
     const commit = async () => {
@@ -552,8 +551,6 @@ export function App() {
     ],
   )
 
-  useHydraFavicon({ icon: hydra.navigation.hydras.find(item => item.id === current)?.icon })
-
   const navigate = useCallback(
     async ({
       url,
@@ -615,7 +612,7 @@ export function App() {
   )
 
   const choosePolis = async ({ polis }: { polis?: string }) => {
-    const destination = orderedHydras.find(item => (item.polis ?? 'shared') === polis)
+    const destination = orderedTitans.find(item => (item.polis ?? 'shared') === polis)
 
     if (polis && currentPolis !== polis && destination) {
       try {
@@ -651,7 +648,7 @@ export function App() {
               ref={axis}
               className="workspace-axis group/axis flex h-dvh snap-x snap-proximity scroll-px-3 items-stretch gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain scroll-smooth px-3 pt-workspace-axis-top pb-3 data-[dragging]:cursor-grabbing data-[page=settings]:overflow-hidden motion-reduce:scroll-auto max-phone:scroll-px-1.5 max-phone:gap-2 max-phone:px-1.5 max-phone:pt-workspace-axis-phone-top max-phone:pb-1.5 [&.lenis]:snap-none [&.lenis]:scroll-auto [&[data-dragging]_*]:cursor-grabbing! [&[data-dragging]_*]:select-none! [@media(pointer:coarse)]:[&.lenis]:snap-x"
               data-page={hydra.navigation.page}
-              aria-label="Hydras"
+              aria-label="Titans"
             >
               <div ref={track} data-sort-surface="hydra-axis" className="workspace-track relative flex h-full w-max items-stretch gap-3 group-data-[page=settings]/axis:invisible">
                 {rootError && (

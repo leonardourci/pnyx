@@ -1,10 +1,11 @@
 # Third-party notices
 
-Pnyx is licensed under [Apache-2.0](LICENSE). It bundles the following third-party assets, each under its own license.
+Othrys is licensed under [Apache-2.0](LICENSE). It bundles the following third-party assets, each under its own license.
 
 | Asset | Author or source | License |
 | --- | --- | --- |
-| [Identity icons by Lorc](web/src/shared/ui/icons/identity.ts) (including the Hydra mark) | [Lorc on game-icons.net](https://game-icons.net/); each icon's source is in the registry | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); drawn in the theme’s colors |
+| [Identity icons by Lorc](web/src/shared/ui/icons/identity.ts) (including the Titan mark) | [Lorc on game-icons.net](https://game-icons.net/); each icon's source is in the registry | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); drawn in the theme’s colors |
+| [Othrys mark](web/public/favicon.svg): Peaks by Lorc, the favicon and app mark | [Lorc on game-icons.net](https://game-icons.net/1x1/lorc/peaks.html) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); placed on a tile in the theme’s colors |
 | [Identity icons by Delapouite](web/src/shared/ui/icons/identity.ts) | [Delapouite on game-icons.net](https://game-icons.net/); each icon's source is in the registry | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); drawn in the theme’s colors |
 | [Identity icon by Caro Asercion](web/src/shared/ui/icons/identity.ts): the In progress column | [Caro Asercion on game-icons.net](https://game-icons.net/1x1/caro-asercion/spinning-wheel.html) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/); drawn in the theme’s colors |
 | GFS Neohellenic font | Greek Font Society | [SIL Open Font License 1.1](web/public/fonts/gfs-neohellenic/OFL.txt) |

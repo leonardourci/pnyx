@@ -6,8 +6,8 @@ import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '#memory/learnings.ts'
-import type { HydraState } from '#app/model.ts'
-import type { HydraProject } from './model.ts'
+import type { TitanState } from '#app/model.ts'
+import type { TitanProject } from './model.ts'
 import { projectMemoryLogPath, PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, readableProjectMemory } from '#memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
@@ -32,7 +32,7 @@ export async function projectDigest({
   readable,
 }: {
   hydraId: string
-  readable: HydraProject[]
+  readable: TitanProject[]
 }): Promise<string[]> {
   const projects = readable.filter(project => !project.detached)
 
@@ -79,7 +79,7 @@ export async function projectWorkerContext({
   project: ref,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   project?: string
 }): Promise<{
   context: string

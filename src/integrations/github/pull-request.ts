@@ -74,7 +74,7 @@ export async function pullRequestNote({ url }: { url: string }): Promise<SourceN
     number,
   ] = pr
   const result = await runProcess({
-    command: process.env.PNYX_GH_AXI || 'gh-axi',
+    command: process.env.OTHRYS_GH_AXI || 'gh-axi',
     args: [
       'pr',
       'view',
@@ -168,7 +168,7 @@ function landingFromDetails({ details }: {
 
 export async function githubApi({ args }: { args: string[] }): Promise<unknown> {
   const { stdout } = await runFile({
-    command: process.env.PNYX_GH_AXI || 'gh-axi',
+    command: process.env.OTHRYS_GH_AXI || 'gh-axi',
     args: [
       'api',
       ...args,
@@ -294,7 +294,7 @@ export async function pullRequestStatus(
   }
 
   const { stdout } = await runFile({
-    command: process.env.PNYX_GH_AXI || 'gh-axi',
+    command: process.env.OTHRYS_GH_AXI || 'gh-axi',
     args: [
       'pr',
       'view',

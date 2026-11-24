@@ -1,6 +1,6 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import type { CurrentAction } from '#titan/calls.ts'
 import { rankOf, knownCards } from '#tasks/select.ts'
 import { projectGroup } from '#projects/groups.ts'
 import { taskProjectGroup } from '#tasks/order.ts'
@@ -22,18 +22,18 @@ interface Rollup {
   children: Card[]
   done: number
 }
-const rollups = new WeakMap<HydraState, {
+const rollups = new WeakMap<TitanState, {
   actions: Record<string, CurrentAction>
   children: Map<string, Card[]>
   tasks: Map<string, Rollup>
 }>()
 
-/* eslint-disable pnyx/object-params -- Array sort comparator contract. */
+/* eslint-disable othrys/object-params -- Array sort comparator contract. */
 export function compareTasks({
   state,
   actions,
 }: {
-  state: HydraState
+  state: TitanState
   actions: Record<string, CurrentAction>
 }) {
   return (
@@ -55,7 +55,7 @@ export function compareTasks({
     })
     || rankOf({ card: a }) - rankOf({ card: b })
 }
-/* eslint-enable pnyx/object-params */
+/* eslint-enable othrys/object-params */
 
 export function nextSibling({
   state,
@@ -63,7 +63,7 @@ export function nextSibling({
   card,
   cards,
 }: {
-  state: HydraState
+  state: TitanState
   actions: Record<string, CurrentAction>
   card: Card
   cards: Card[]
@@ -91,7 +91,7 @@ export function taskRollup({
   card,
   actions,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   actions: Record<string, CurrentAction>
 }) {
@@ -239,7 +239,7 @@ export function projectColumns({
   actions,
   order,
 }: {
-  state: HydraState
+  state: TitanState
   cards: Card[]
   actions: Record<string, CurrentAction>
   order: string[]

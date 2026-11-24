@@ -1,6 +1,6 @@
 ---
 name: follow-conventions
-description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors, installed-version APIs and one-line Markdown paragraphs. Read before writing or reviewing Pnyx code or docs.
+description: Coding conventions for Othrys code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, TitanError failures, one decision in one place, behavior-preserving refactors, installed-version APIs and one-line Markdown paragraphs. Read before writing or reviewing Othrys code or docs.
 ---
 
 # Follow conventions
@@ -21,7 +21,7 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 - In new code, avoid nesting ternaries: a second level of branching reads better as a small named helper.
 - Write conditions in their positive form. A `const skip = !known` flag feeding an inverted branch makes the reader flip it twice.
 - Delete dead branches: an arm an earlier guard handled, a check on an already narrowed value, a fallback no caller can reach.
-- Give every wait a deadline or attempt limit that fails with the last observed state. No `for (;;)` or `while (true)` polling without one; tests wait with `until` from `tests/setup/pnyx.ts`.
+- Give every wait a deadline or attempt limit that fails with the last observed state. No `for (;;)` or `while (true)` polling without one; tests wait with `until` from `tests/setup/othrys.ts`.
 
 ## Imports
 
@@ -38,7 +38,7 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 ## Decisions and errors
 
 - Write a rule the code checks in more than one place once, as a named helper every site imports.
-- Throw a `HydraError` with its code at the failure site; `guard()` turns it into the CLI's structured error. A `catch` that doesn't recognize an error rethrows it.
+- Throw a `TitanError` with its code at the failure site; `guard()` turns it into the CLI's structured error. A `catch` that doesn't recognize an error rethrows it.
 - Never drop an error to make code tidy. Give a deliberate fire-and-forget a helper or named step whose name says losing its failure is safe.
 - A derived cache that several processes read, such as the Oracle's `oracle.db` read by the server and its search workers, resolves corrections and deletions against the saved event log and cursors, never against one process's memory.
 

@@ -1,4 +1,4 @@
-import type { HydraProject } from '#projects/model.ts'
+import type { TitanProject } from '#projects/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { EventBase } from '#store/events.ts'
 
@@ -74,7 +74,7 @@ export const LANDINGS = [
 
 export type Landing = (typeof LANDINGS)[number]
 
-// Who merges a project's pull requests: the owner, or Hydra once every check is green.
+// Who merges a project's pull requests: the owner, or Titan once every check is green.
 export const MERGERS = [
   'owner',
   'hydra',
@@ -92,7 +92,7 @@ const DEFAULT_LANDING: Landing = 'pr'
 const DEFAULT_MERGER: Merger = 'owner'
 
 // A project saved before landing rules lands through a pull request the owner merges.
-export function landingRule({ project }: { project: Pick<HydraProject, 'landing' | 'merge'> }): LandingRule {
+export function landingRule({ project }: { project: Pick<TitanProject, 'landing' | 'merge'> }): LandingRule {
   return {
     landing: project.landing ?? DEFAULT_LANDING,
     merge: project.merge ?? DEFAULT_MERGER,
@@ -105,7 +105,7 @@ export function cardLanding({
   projects,
 }: {
   card: Card
-  projects: HydraProject[]
+  projects: TitanProject[]
 }): LandingRule | undefined {
   if (card.landing) {
     return card.landing

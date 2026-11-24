@@ -1,8 +1,9 @@
-import { IDENTITY_ICONS, PNYX_AUTHOR } from './identity.ts'
+import { IDENTITY_ICONS, OTHRYS_AUTHOR } from './identity.ts'
 
 const CC_BY = 'https://creativecommons.org/licenses/by/3.0/'
+const MARK_SOURCE = 'https://game-icons.net/1x1/lorc/peaks.html'
 const AUTHORS = [...new Set(IDENTITY_ICONS.map(icon => icon.author))]
-  .filter(author => author !== PNYX_AUTHOR)
+  .filter(author => author !== OTHRYS_AUTHOR)
 
 function AuthorCredit({ author }: { author: string }) {
   const drawn = IDENTITY_ICONS.filter(icon => icon.author === author)
@@ -26,8 +27,9 @@ function AuthorCredit({ author }: { author: string }) {
 export function IdentityCredits() {
   return (
     <>
-      <p>Hydra, column and composer icons from game-icons.net, drawn in the theme’s colors:</p>
+      <p>Titan, column and composer icons from game-icons.net, drawn in the theme’s colors:</p>
       {AUTHORS.map(author => <AuthorCredit key={author} author={author} />)}
+      <p>The Othrys mark is <a href={MARK_SOURCE} target="_blank" rel="noreferrer">Peaks</a> by Lorc on game-icons.net, licensed under <a href={CC_BY} target="_blank" rel="noreferrer">CC BY 3.0</a>.</p>
     </>
   )
 }

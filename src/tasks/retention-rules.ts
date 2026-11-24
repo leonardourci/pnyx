@@ -1,6 +1,6 @@
 import { ownerGates } from './owner-gates.ts'
 import { openAsks } from './ask-state.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 import { isManagedTask } from './select.ts'
@@ -27,7 +27,7 @@ export function refreshDone({
   state,
   at,
 }: {
-  state: HydraState
+  state: TitanState
   at: string
 }): void {
   const children = new Map<string, Card[]>()
@@ -137,7 +137,7 @@ export function doneDeadline({
   state,
   hours,
 }: {
-  state: HydraState
+  state: TitanState
   hours: DoneAfterHours
 }): number | undefined {
   let next: number | undefined

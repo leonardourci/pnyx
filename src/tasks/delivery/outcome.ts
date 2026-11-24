@@ -1,5 +1,5 @@
 import { inform } from '#app/command-notices.ts'
-import type { HydraState, Decision } from '#app/model.ts'
+import type { TitanState, Decision } from '#app/model.ts'
 import type { Outcome } from './model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -15,7 +15,7 @@ export function decideOutcome(
     meta,
     source,
   }: {
-    state: HydraState
+    state: TitanState
     ref: string
     outcome: Outcome | null
     meta: Meta

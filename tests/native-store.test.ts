@@ -4,23 +4,23 @@ import filesystem, { appendFileSync, existsSync, readFileSync, rmSync, renameSyn
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
 import { readEvents } from '#app/event-log.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { nativeHome } from '#app/native-home.ts'
-import { readNativeHydra } from '#app/native-read.ts'
+import { readNativeTitan } from '#app/native-read.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
-import { operationEvent } from '#hydra/operations.ts'
+import { operationEvent } from '#titan/operations.ts'
 import { base } from '#app/command-meta.ts'
 import { askHost, infoPath } from '#app/server-state.ts'
 import { COPY_LEASE_PREFIX, dropCopyLeases, taskLease, taskLeasePresent } from '#routine-helper/leases.ts'
 import { appendRecords } from './setup/transcripts.ts'
-import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { pnyx as runPnyx, parsed, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import type { ThreadPage } from '#titan/transcripts-read.ts'
+import { othrys as runOthrys, parsed, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test.each([
@@ -29,7 +29,7 @@ test.each([
 ] as const)(
   'receiptless compaction and $phase child inscribe keep their file-only cutoff and recovery bounds',
   async ({ phase }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const boundary = readEvents({ hydraId: hydra.id }).at(-1)!.id
     await withWriter({
       hydraId: hydra.id,
@@ -92,7 +92,7 @@ test.each([
         })
       },
     })
-    const saved = readNativeHydra({ hydraId: hydra.id }).state
+    const saved = readNativeTitan({ hydraId: hydra.id }).state
     const through = saved.eventIds[boundary]
     expect(saved.hydraOperation).toMatchObject({
       id: 'cutoff-compaction',
@@ -136,8 +136,8 @@ test.each([
       })
     }
 
-    await pnyx.restart()
-    const recovered = readNativeHydra({ hydraId: hydra.id }).state
+    await othrys.restart()
+    const recovered = readNativeTitan({ hydraId: hydra.id }).state
     const restoredThrough = recovered.eventIds[boundary]
     expect(recovered.hydraOperation).toBeUndefined()
     expect(readEvents({
@@ -183,7 +183,7 @@ test(
       "import {join} from 'node:path'",
       "import {commitChange, savedDocument} from '#workers/dispatch-config.ts'",
       "import {startServer} from '#app/server-daemon.ts'",
-      'const home = process.env.PNYX_HOME',
+      'const home = process.env.OTHRYS_HOME',
       'const document = {rules: {}, default: [], workers: {}, projects: {}, accounts: {}}',
       "commitChange({entry: {v: 1, id: 'dispatch-before-start', at: new Date().toISOString(), actor: 'web', document}})",
       "const mirror = join(home, 'config', 'hydra-heads-dispatch.json')",
@@ -206,7 +206,7 @@ test(
         encoding: 'utf8',
         env: {
           ...process.env,
-          PNYX_HOME: home,
+          OTHRYS_HOME: home,
         },
         timeout: 30_000,
       },
@@ -217,7 +217,7 @@ test(
 test(
   'batch previews refuse an event id already accepted by an individual command',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const id = 'individual-command-id'
     await hydra.owner({
       args: [
@@ -263,7 +263,7 @@ test(
 test(
   'task leases use one identity through a symlinked home',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const created = await hydra.owner({
       args: [
         'task',
@@ -273,7 +273,7 @@ test(
         'Leased task',
       ],
     })
-    const original = process.env.PNYX_HOME!
+    const original = process.env.OTHRYS_HOME!
     const alias = join(
       process.env.TMPDIR!,
       `lease-alias-${hydra.id}`,
@@ -285,25 +285,25 @@ test(
     let release: (() => void) | undefined
 
     try {
-      process.env.PNYX_HOME = alias
+      process.env.OTHRYS_HOME = alias
       release = taskLease({
         hydraId: hydra.id,
         task: created.card.id,
         actor: `${COPY_LEASE_PREFIX}test`,
       })
-      process.env.PNYX_HOME = original
+      process.env.OTHRYS_HOME = original
       expect(taskLeasePresent({
         hydraId: hydra.id,
         task: created.card.id,
       })).toBe(true)
       dropCopyLeases({ hydraId: hydra.id })
-      process.env.PNYX_HOME = alias
+      process.env.OTHRYS_HOME = alias
       expect(taskLeasePresent({
         hydraId: hydra.id,
         task: created.card.id,
       })).toBe(false)
     } finally {
-      process.env.PNYX_HOME = original
+      process.env.OTHRYS_HOME = original
       release?.()
       rmSync(alias)
     }
@@ -313,11 +313,11 @@ test(
 test(
   'a permission answered while its request commits reaches the registered waiter',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'answer-during-write' })
     const task = await hydra.task({ key: 'answer-during-write' })
     const path = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -330,7 +330,7 @@ test(
     const command = 'echo answer-before-publication'
     let answering: Promise<Record<string, unknown>> | undefined
 
-    // eslint-disable-next-line pnyx/object-params -- Node owns the sync signature.
+    // eslint-disable-next-line othrys/object-params -- Node owns the sync signature.
     filesystem.fdatasyncSync = fd => {
       sync(fd)
 
@@ -387,12 +387,12 @@ test(
 )
 
 test(
-  'a corrupt optional Hydra does not prevent healthy Hydras from starting',
+  'a corrupt optional Titan does not prevent healthy Titans from starting',
   async () => {
-    const healthy = await pnyx.hydra()
-    const broken = await pnyx.hydra()
+    const healthy = await othrys.hydra()
+    const broken = await othrys.hydra()
     const path = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       broken.id,
       'hydra.log',
@@ -403,7 +403,7 @@ test(
     )
 
     try {
-      await pnyx.restart({
+      await othrys.restart({
         whileStopped: () => writeFileSync(
           path,
           `invalid frame\n${contents}`,
@@ -441,11 +441,11 @@ test(
         ],
       })
       await until({
-        what: 'a new healthy Hydra to mount after the corrupt Hydra in discovery',
-        check: () => pnyx.home().scopes[discoveredId]?.queue,
+        what: 'a new healthy Titan to mount after the corrupt Titan in discovery',
+        check: () => othrys.home().scopes[discoveredId]?.queue,
       })
     } finally {
-      await pnyx.restart({
+      await othrys.restart({
         whileStopped: () => writeFileSync(
           path,
           contents,
@@ -458,16 +458,16 @@ test(
 test(
   'a failed optional mount releases its home before the next restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const spool = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'spool',
     )
 
     try {
-      await pnyx.restart({
+      await othrys.restart({
         whileStopped: () => {
           rmSync(
             spool,
@@ -482,9 +482,9 @@ test(
           )
         },
       })
-      const failedMountEpoch = pnyx.cursor().epoch
-      await pnyx.restart({ whileStopped: () => rmSync(spool) })
-      expect(pnyx.cursor().epoch).not.toBe(failedMountEpoch)
+      const failedMountEpoch = othrys.cursor().epoch
+      await othrys.restart({ whileStopped: () => rmSync(spool) })
+      expect(othrys.cursor().epoch).not.toBe(failedMountEpoch)
       const created = await hydra.owner({
         args: [
           'task',
@@ -498,7 +498,7 @@ test(
     } finally {
       if (existsSync(spool) && statSync(spool).isFile()) {
         rmSync(spool)
-        await pnyx.restart()
+        await othrys.restart()
       }
     }
   },
@@ -516,10 +516,10 @@ test(
       "import {mkdirSync, writeFileSync, rmSync} from 'node:fs'",
       "import {join} from 'node:path'",
       "import {startServer} from '#app/server-daemon.ts'",
-      'const home = process.env.PNYX_HOME',
+      'const home = process.env.OTHRYS_HOME',
       'mkdirSync(home, {recursive: true})',
       "const hydras = join(home, 'hydras')",
-      "writeFileSync(hydras, 'not a Hydra directory')",
+      "writeFileSync(hydras, 'not a Titan directory')",
       "await assert.rejects(startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')}))",
       'rmSync(hydras)',
       "const server = await startServer({port: 0, upgradeRoot: join(home, 'no-upgrade')})",
@@ -538,7 +538,7 @@ test(
         encoding: 'utf8',
         env: {
           ...process.env,
-          PNYX_HOME: home,
+          OTHRYS_HOME: home,
         },
         timeout: 30_000,
       },
@@ -547,9 +547,9 @@ test(
 )
 
 test(
-  'Hydra memory can replace and forget a key named constructor across restarts',
+  'Titan memory can replace and forget a key named constructor across restarts',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
 
     for (const text of [
       'First memory',
@@ -566,7 +566,7 @@ test(
           text,
         ],
       })
-      await pnyx.restart()
+      await othrys.restart()
       expect((await hydra.owner({
         args: [
           'hydra',
@@ -590,21 +590,21 @@ test(
         'constructor',
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     expect((await hydra.owner({
       args: [
         'hydra',
         'memory',
         'list',
       ],
-    })).memory).toBe('none: no Hydra memory yet')
+    })).memory).toBe('none: no Titan memory yet')
   },
 )
 
 test(
   'a caught reducer failure leaves its event id available for a corrected append',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const failure = new Error('Injected reducer failure')
     const id = 'corrected-after-reducer-failure'
     await withWriter({
@@ -666,7 +666,7 @@ test(
         })
       },
     })
-    await pnyx.restart()
+    await othrys.restart()
     expect((await hydra.owner({
       args: [
         'hydra',
@@ -690,7 +690,7 @@ test(
 test(
   'offline configuration reads retain the canonical sequence and accepted event ids',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'hydra',
@@ -700,12 +700,12 @@ test(
       ],
     })
     let ids: string[] = []
-    let offline: ReturnType<typeof readNativeHydra>['state'] | undefined
-    await pnyx.restart({
+    let offline: ReturnType<typeof readNativeTitan>['state'] | undefined
+    await othrys.restart({
       whileStopped: () => {
         const entries = readFileSync(
           join(
-            process.env.PNYX_HOME!,
+            process.env.OTHRYS_HOME!,
             'hydras',
             hydra.id,
             'hydra.log',
@@ -716,7 +716,7 @@ test(
           .split('\n')
           .map(line => JSON.parse(line) as { id: string })
         ids = entries.map(entry => entry.id)
-        offline = readNativeHydra({ hydraId: hydra.id }).state
+        offline = readNativeTitan({ hydraId: hydra.id }).state
       },
     })
     expect(offline?.seq).toBe(ids.length)
@@ -737,7 +737,7 @@ test.each([
 ])(
   'an acknowledged task decision survives restart with receipt $eventId',
   async ({ eventId }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const args = [
       'task',
       'create',
@@ -754,7 +754,7 @@ test.each([
     const created = await hydra.owner({ args })
     const task = created.card.id as string
     const folder = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -783,7 +783,7 @@ test.each([
       hydraId: hydra.id,
       cardId: task,
     }).map(event => event.id)
-    await pnyx.restart()
+    await othrys.restart()
     expect((await hydra.task({ key: 'saved' })).title).toBe('Saved locally')
     expect((await hydra.owner({ args })).card.id).toBe(task)
     expect(readEvents({
@@ -798,20 +798,20 @@ test.each([
       'utf8',
     )).toBe(log)
     expect(existsSync(join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'snapshot.json',
     ))).toBe(true)
-    expect(loadHydra({ hydraId: hydra.id }).state.cards[task]?.brief).toBe('Keep this intent')
+    expect(loadTitan({ hydraId: hydra.id }).state.cards[task]?.brief).toBe('Keep this intent')
   },
 )
 
 test(
   'moving a task renames its folder while its captured report path keeps the same file',
   async () => {
-    const source = await pnyx.hydra()
-    const destination = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const destination = await othrys.hydra()
     const created = await source.owner({
       args: [
         'task',
@@ -825,14 +825,14 @@ test(
     })
     const task = created.card.id as string
     const sourceFolder = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       source.id,
       'tasks',
       task,
     )
     const before = statSync(sourceFolder)
-    const card = loadHydra({ hydraId: source.id }).state.cards[task]!
+    const card = loadTitan({ hydraId: source.id }).state.cards[task]!
     const report = join(
       card.workerLogDir!,
       'worker.log',
@@ -848,7 +848,7 @@ test(
       ],
     })
     const destinationFolder = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       destination.id,
       'tasks',
@@ -861,7 +861,7 @@ test(
       'worker.log',
     )).ino).toBe(reportBefore.ino)
     expect(statSync(report).ino).toBe(reportBefore.ino)
-    await pnyx.restart()
+    await othrys.restart()
     expect((await destination.task({ key: task })).title).toBe('Keep the folder')
     expect(readEvents({
       hydraId: destination.id,
@@ -873,10 +873,10 @@ test(
 test(
   'a later owner message adds only its own words and both messages recover after restart',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.chat({ text: 'FIRST-NATIVE-WORDS-TO-KEEP' })
     const path = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'hydra.log',
@@ -892,7 +892,7 @@ test(
     ).slice(prefix.length)
     expect(suffix).toContain('SECOND-NATIVE-WORDS-TO-KEEP')
     expect(suffix).not.toContain('FIRST-NATIVE-WORDS-TO-KEEP')
-    await pnyx.restart()
+    await othrys.restart()
     const saved = (await hydra.owner({
       args: [
         'hydra',
@@ -909,7 +909,7 @@ test(
 test(
   'a corrupt task remains visible while another task can still save and recover',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const bad = await hydra.owner({
       args: [
         'task',
@@ -950,10 +950,10 @@ test(
         'Last saved title',
       ],
     })
-    await pnyx.restart({
+    await othrys.restart({
       whileStopped: () => {
         const folder = join(
-          process.env.PNYX_HOME!,
+          process.env.OTHRYS_HOME!,
           'hydras',
           hydra.id,
         )
@@ -1001,7 +1001,7 @@ test(
         'Still saved locally',
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     expect((await hydra.task({ key: 'healthy' })).title).toBe('Still saved locally')
   },
 )
@@ -1009,7 +1009,7 @@ test(
 test(
   'a refused decision preserves live observations without writing them',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -1051,7 +1051,7 @@ test(
     })).task
     expect((await task()).attention).toContainEqual(expect.objectContaining({ key: 'volatile' }))
     const folder = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
     )
@@ -1087,11 +1087,11 @@ test(
 test(
   'a permission cancelled during its write resolves after the committed view is published',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'cancel-during-write' })
     const task = await hydra.task({ key: 'cancel-during-write' })
     const taskLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -1111,7 +1111,7 @@ test(
     }
     let cancelledAtSync = false
 
-    // eslint-disable-next-line pnyx/object-params -- Node owns the sync signature.
+    // eslint-disable-next-line othrys/object-params -- Node owns the sync signature.
     filesystem.fdatasyncSync = fd => {
       sync(fd)
 
@@ -1152,7 +1152,7 @@ test(
           input: { command?: string }
         }) => request.input.command === command && request.status === 'expired'),
     })
-    await pnyx.restart()
+    await othrys.restart()
     const restored = (await hydra.owner({
       args: [
         'task',
@@ -1169,10 +1169,10 @@ test(
 )
 
 test(
-  'a moved worker resumes once across different Hydra histories and receives the next owner message',
+  'a moved worker resumes once across different Titan histories and receives the next owner message',
   async () => {
-    const source = await pnyx.hydra()
-    const destination = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const destination = await othrys.hydra()
 
     for (let index = 0; index < 12; index++) {
       await destination.owner({
@@ -1186,9 +1186,9 @@ test(
       })
     }
 
-    pnyx.claude.plan({
+    othrys.claude.plan({
       hydra: source.id,
-      match: ({ text }) => text.includes('<pnyx-worker'),
+      match: ({ text }) => text.includes('<othrys-worker'),
       reply: 'Moved work finished',
       partial: 'Moving work',
       hold: true,
@@ -1249,13 +1249,14 @@ test(
     }) as unknown as { thread: ThreadPage }
     expect(afterMove.thread.entries.find(entry => entry.id === saved.id)?.text).toBe('Saved before moving')
     destinationPage.close()
-    await pnyx.restart()
+    await othrys.restart()
     const resumed = await until({
       what: 'the moved worker resumes its saved turn in the destination',
-      check: () => pnyx.claude.sessions.find(session => session.cwd === folder && session.resumed),
+      check: () => othrys.claude.sessions.find(session =>
+        session.cwd === folder && session.resumed),
     })
     expect(resumed.id).toBe(worker.id)
-    const resumedSessions = pnyx.claude.sessions.filter(session =>
+    const resumedSessions = othrys.claude.sessions.filter(session =>
       session.cwd === folder && session.resumed)
     expect(resumedSessions).toHaveLength(1)
     await destination.owner({
@@ -1278,7 +1279,7 @@ test(
 test(
   'history reads only acknowledged bytes and leaves an unfinished native tail untouched',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const created = await hydra.owner({
       args: [
         'task',
@@ -1321,7 +1322,7 @@ test(
       decide: () => [fact],
     })
     const path = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'tasks',
@@ -1365,8 +1366,8 @@ test(
 test(
   "a local setup check leaves another daemon's unfinished logs and pending task move untouched",
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const created = await source.owner({
       args: [
         'task',
@@ -1378,14 +1379,14 @@ test(
     })
     const task = created.card.id as string
     const folder = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       source.id,
       'tasks',
       task,
     )
     const destination = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       target.id,
       'tasks',
@@ -1432,11 +1433,11 @@ test(
     }
 
     onTestFinished(restore)
-    await runPnyx({
+    await runOthrys({
       args: [
         'setup',
         'check',
-        '--hydra',
+        '--titan',
         source.id,
         '--json',
       ],
@@ -1449,11 +1450,11 @@ test(
       'utf8',
     )).toBe(untouched)
     restore()
-    const checked = await runPnyx({
+    const checked = await runOthrys({
       args: [
         'setup',
         'check',
-        '--hydra',
+        '--titan',
         source.id,
         '--json',
       ],
@@ -1464,10 +1465,10 @@ test(
 )
 
 test(
-  'retained batch receipts stay with their Hydra across restart and task moves, including no-ops',
+  'retained batch receipts stay with their Titan across restart and task moves, including no-ops',
   async () => {
-    const source = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const source = await othrys.hydra()
+    const target = await othrys.hydra()
     const document = {
       version: 1,
       changes: [
@@ -1521,7 +1522,7 @@ test(
       input: noopInput,
     })
     const rootLog = join(
-      process.env.PNYX_HOME!,
+      process.env.OTHRYS_HOME!,
       'hydras',
       source.id,
       'hydra.log',
@@ -1530,7 +1531,7 @@ test(
       rootLog,
       'utf8',
     )
-    await pnyx.restart()
+    await othrys.restart()
     expect(await source.owner({
       args,
       input,
@@ -1560,7 +1561,7 @@ test(
         target.id,
       ],
     })
-    await pnyx.restart()
+    await othrys.restart()
     const movedLog = readFileSync(
       rootLog,
       'utf8',

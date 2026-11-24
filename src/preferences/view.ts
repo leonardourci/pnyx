@@ -1,6 +1,6 @@
 import { DEFAULT_WORKSPACE, patchWorkspace, workspaceLayout } from './workspace.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
 
 const DEFAULT_WIDTHS = {
@@ -137,17 +137,17 @@ const knownViewFields = ({ view }: { view?: Partial<ViewPreferences> }): Partial
     key,
   )))
 
-// Shared settings, when given, win over the Hydra's own copy of the same preferences.
+// Shared settings, when given, win over the Titan's own copy of the same preferences.
 export const viewFor = ({
   state,
   settings,
 }: {
-  state: Pick<HydraState, 'view' | 'config'>
+  state: Pick<TitanState, 'view' | 'config'>
   settings?: Partial<ViewPreferences>
 }): ViewPreferences => {
   const own = structuredClone(knownViewFields({ view: state.view }))
 
-  // Only a Hydra's own view from older releases can hold their saved default widths; shared values are literal.
+  // Only a Titan's own view from older releases can hold their saved default widths; shared values are literal.
   if (own.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
     delete own.defaultHydraWidth
   }
@@ -243,7 +243,7 @@ export function resizeViewPatch({
 }
 
 const invalid = ({ detail }: { detail: string }): never => {
-  throw new HydraError({
+  throw new TitanError({
     message: `invalid view preference: ${detail}`,
     code: 'VALIDATION_ERROR',
   })
@@ -284,9 +284,9 @@ export function patchView({
   input: rawInput,
   settings,
 }: {
-  state: HydraState
+  state: TitanState
   input: unknown
-  // Shared settings to patch instead of the Hydra's own view.
+  // Shared settings to patch instead of the Titan's own view.
   settings?: Partial<ViewPreferences>
 }): ViewPreferences {
   const input = record({ value: rawInput })

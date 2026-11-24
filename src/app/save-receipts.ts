@@ -1,4 +1,5 @@
-import type { HydraState } from './model.ts'
+import { canonicalCommandName } from './command-aliases.ts'
+import type { TitanState } from './model.ts'
 
 export interface SaveCommand {
   type: 'command'
@@ -12,7 +13,7 @@ export function saveEventId({ command }: { command: SaveCommand }): string | und
     return command.id
   }
 
-  if (command.name !== 'hydra' || command.args[0] !== 'send') {
+  if (canonicalCommandName({ name: command.name }) !== 'hydra' || command.args[0] !== 'send') {
     return
   }
 
@@ -35,7 +36,7 @@ export function savedReply({
   state,
 }: {
   command: SaveCommand
-  state: HydraState
+  state: TitanState
 }): Record<string, unknown> | undefined {
   if (![
     'reply',
@@ -65,13 +66,13 @@ export function savedReply({
   }
 }
 
-// A Hydra message or agent change the log already holds; only the server keeps event ids.
+// A Titan message or agent change the log already holds; only the server keeps event ids.
 export function savedEvent({
   command,
   state,
 }: {
   command: SaveCommand
-  state: HydraState
+  state: TitanState
 }): Record<string, unknown> | undefined {
   const id = saveEventId({ command })
   const seq = id && state.eventIds[id]
@@ -91,7 +92,7 @@ export function savedEvent({
     },
   }
 
-  if (command.name === 'hydra') {
+  if (canonicalCommandName({ name: command.name }) === 'hydra') {
     receipt.state = 'queued'
     receipt.message = id
     receipt.event = {

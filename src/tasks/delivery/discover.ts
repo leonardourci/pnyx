@@ -3,13 +3,13 @@ import { resolve } from 'node:path'
 import { git } from '#projects/git.ts'
 import { githubRepository } from './proof.ts'
 import { githubApi } from '#integrations/github/pull-request.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { liveTask } from '#tasks/select.ts'
 import { decideLink, parseLink } from './links.ts'
 import { applyDecision } from '#app/decision.ts'
 import { workingTask, IDLE_FOLLOW_MULTIPLIER } from './follow-schedule.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { log } from '#app/diagnostics.ts'
 
 const DISCOVERY_LIMIT = 100
@@ -36,7 +36,7 @@ function discoveryFolder({ card }: { card: import('#tasks/model.ts').Card }): st
   return canonical({ path: folder }) === canonical({ path: card.copy.path }) ? undefined : folder
 }
 
-export function discoverableTasks({ state }: { state: HydraState }) {
+export function discoverableTasks({ state }: { state: TitanState }) {
   return Object.values(state.cards).filter(card => liveTask({ card }) && !card.doneAt
     && Boolean(card.copy?.state === 'active' || card.agent || card.launch || card.branches?.length))
 }
@@ -52,7 +52,7 @@ export async function discoverPullRequests({
   checked: Map<string, number>
   active(): boolean
 }): Promise<void> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   for (const card of discoverableTasks({ state })) {
     const delay = workingTask({ card }) ? interval : interval * IDLE_FOLLOW_MULTIPLIER

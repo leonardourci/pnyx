@@ -22,7 +22,7 @@ import {
   IconDatabase, IconFileAnalytics, IconHistory,
 } from '@tabler/icons-react'
 
-// Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
+// Interface icons: every Othrys control and status that is not an identity icon draws from Tabler.
 export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   search: IconSearch,
   fold_columns: IconFold,

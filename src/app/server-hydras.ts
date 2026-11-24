@@ -1,23 +1,23 @@
 import { commands } from './cli.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { hydraIds } from './home-migration.ts'
-import { loadHydra } from './store.ts'
+import { loadTitan } from './store.ts'
 import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.ts'
 import { homeScoped } from '#store/paths.ts'
-import type { HydraState } from './model.ts'
+import type { TitanState } from './model.ts'
 import { readEvents } from './event-log.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
-import { pickName } from '#hydra/hydra-names.ts'
-import { otherHydraNames } from '#hydra/taken-names.ts'
+import { pickName } from '#titan/titan-names.ts'
+import { otherTitanNames } from '#titan/taken-names.ts'
 import { inListOrder } from './hydra-list-order.ts'
 
-export interface HydraProjectSummary {
+export interface TitanProjectSummary {
   name: string
   path: string
   live: number
   asks: number
 }
-export interface HydraSummary {
+export interface TitanSummary {
   asks?: number
   polis?: string
   creationAttempt?: string
@@ -25,28 +25,28 @@ export interface HydraSummary {
   id: string
   name: string
   icon?: string
-  // Position in the Hydra list: the set position, else creation time in ms.
+  // Position in the Titan list: the set position, else creation time in ms.
   order: number
   hydra: string
-  // Its agent is running a turn now; absent for a Hydra whose agent Pnyx does not run.
+  // Its agent is running a turn now; absent for a Titan whose agent Othrys does not run.
   working?: boolean
-  projects: HydraProjectSummary[]
+  projects: TitanProjectSummary[]
 }
 
 type Cached = {
   log: string
-  summary: HydraSummary
+  summary: TitanSummary
 }
 const summaries = new Map<string, Cached>()
 
-// Unreadable Hydras remain reachable so opening one reports the error.
-export function listHydras(): HydraSummary[] {
+// Unreadable Titans remain reachable so opening one reports the error.
+export function listTitans(): TitanSummary[] {
   return inListOrder({
     hydras: hydraIds().map(id => {
-      let state: HydraState
+      let state: TitanState
 
       try {
-        state = loadHydra({ hydraId: id }).state
+        state = loadTitan({ hydraId: id }).state
       } catch {
         return unreadableSummary({ id })
       }
@@ -78,7 +78,7 @@ export function listHydras(): HydraSummary[] {
 
 const creationEventId = ({ attempt }: { attempt: string }) => `${CREATION_PREFIX}${attempt}`
 
-export async function createHydra({
+export async function createTitan({
   name,
   icon,
   attempt,
@@ -146,7 +146,7 @@ export async function createHydra({
   })
 }
 
-export async function editHydra({
+export async function editTitan({
   id,
   name,
   icon,
@@ -159,7 +159,7 @@ export async function editHydra({
 }): Promise<void> {
   const args = [
     'set',
-    '--hydra',
+    '--titan',
     id,
     '--actor',
     'web',
@@ -189,7 +189,7 @@ export async function editHydra({
   await commands.hydra(args)
 }
 
-export async function nameUnnamedHydras(): Promise<void> {
+export async function nameUnnamedTitans(): Promise<void> {
   await withAsyncRegistryLock({
     fn: async () => {
       for (const id of hydraIds()) {
@@ -199,10 +199,10 @@ export async function nameUnnamedHydras(): Promise<void> {
           continue
         }
 
-        const picked = pickName({ taken: otherHydraNames({ id }) })
+        const picked = pickName({ taken: otherTitanNames({ id }) })
         await commands.hydra([
           'set',
-          '--hydra',
+          '--titan',
           id,
           '--name',
           picked.name,
@@ -219,7 +219,7 @@ export async function nameUnnamedHydras(): Promise<void> {
 function readableConfig({ id }: { id: string }) {
   try {
     return hydraConfig({
-      state: loadHydra({ hydraId: id }).state,
+      state: loadTitan({ hydraId: id }).state,
       id,
     })
   } catch {

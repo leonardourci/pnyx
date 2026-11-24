@@ -2,17 +2,17 @@ import { inform } from '#app/command-notices.ts'
 import { randomUUID } from 'node:crypto'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { SteeringAck, SteeringAttempt, SteeringClaim, SteeringMessage } from './model.ts'
 import type { Writer } from '#app/writer.ts'
 import { pendingSteering, sameClaim, steeringClaim, steeringWorkerIdentity } from './steering.ts'
 
 function invalid({ message }: { message: string }): never {
-  throw new HydraError({
+  throw new TitanError({
     message,
     code: 'VALIDATION_ERROR',
   })
@@ -30,7 +30,7 @@ export function inboxTask({
     ref,
   })
 
-  if (card.id === HYDRA_CARD) {
+  if (card.id === TITAN_CARD) {
     invalid({ message: 'Choose a native task for its steering inbox' })
   }
 
@@ -51,7 +51,7 @@ export function requireSteeringWorker({
   actor,
   worker,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   actor: string
   worker?: string
@@ -72,7 +72,7 @@ export function requireSteeringWorker({
     state,
     card,
   }))) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'This worker launch no longer owns the task’s inbox',
       code: 'STALE_CLAIM',
     })
@@ -181,7 +181,7 @@ function requireClaim({
     current: steeringClaim({ card }),
     claim,
   })) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Steering claim is not the task’s active session and generation',
       code: 'STALE_CLAIM',
     })
@@ -326,7 +326,7 @@ export function acknowledgeSteering({
     }
   }
 
-  const event: Extract<HydraEvent, { type: 'task.steering.handled' }> = {
+  const event: Extract<TitanEvent, { type: 'task.steering.handled' }> = {
     ...eventBase({
       writer,
       card,

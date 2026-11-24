@@ -8,7 +8,7 @@ import { AskPanel } from './ask.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { genericPrompts } from './view.ts'
 import { AnsweredQuestions, recordedAnswers } from './answered-questions.tsx'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { taskQuestions } from './task-question.ts'
 import { ReviewReadiness } from './review-readiness.tsx'
 import { useLinkRefresh } from './link-refresh.ts'
@@ -22,7 +22,7 @@ export function TaskQuestion({
   answer,
 }: {
   card: Card
-  state?: HydraState
+  state?: TitanState
   connected: boolean
   command: Command
   notify({ text }: { text: string }): void

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { appendNote } from '#integrations/hooks/harvest.ts'
 import { ownerActor } from '#app/actors.ts'
 import { liveTask } from '#tasks/select.ts'
-import { taggedParagraphs, taskMentions } from '#hydra/mentions.ts'
+import { taggedParagraphs, taskMentions } from '#titan/mentions.ts'
 import { redact } from '#oracle/text.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -16,7 +16,7 @@ export function copyTagged({
 }: {
   writer: Writer
   texts: string[]
-  // Ids of the Hydra messages this turn answered.
+  // Ids of the Titan messages this turn answered.
   asks: string[]
   at: string
   turn?: string
@@ -49,7 +49,7 @@ export function copyTagged({
   for (const id of asks) {
     const message = writer.state.hydraMessages?.find(item => item.id === id)
 
-    // Workers and Pnyx also write Hydra messages; only the owner's chat counts as an ask.
+    // Workers and Othrys also write Titan messages; only the owner's chat counts as an ask.
     if (!message || message.action !== 'send' || !ownerActor({ actor: message.actor })) {
       continue
     }

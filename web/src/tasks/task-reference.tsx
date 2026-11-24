@@ -1,8 +1,8 @@
 import { createContext, Fragment, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { InlineButton } from '#web-shared/ui/controls.tsx'
-import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
-import { CHIP_SPACE } from '#web-hydra/draft.ts'
-import { CHIP_SOURCE } from '#web-hydra/message-selection.ts'
+import { ReferenceBadge } from '#web-titan/reference-badge.tsx'
+import { CHIP_SPACE } from '#web-titan/draft.ts'
+import { CHIP_SOURCE } from '#web-titan/message-selection.ts'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 
 const stateIcons: Record<string, string> = {

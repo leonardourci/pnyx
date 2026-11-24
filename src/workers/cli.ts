@@ -1,9 +1,9 @@
 import { OVERRIDE_FIELDS, overrideOf, type Override } from './dispatch.ts'
-import { HydraError } from '#store/errors.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { sendReply } from './reply.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { selfSession } from './session-attachments.ts'
@@ -17,7 +17,7 @@ export function startOverride({
   const { fast } = values
 
   if (fast !== undefined && fast !== 'on' && fast !== 'off') {
-    throw new HydraError({
+    throw new TitanError({
       message: '--fast takes on or off',
       code: 'VALIDATION_ERROR',
     })
@@ -27,7 +27,7 @@ export function startOverride({
   const empty = named.find(name => !String(values[name]).trim())
 
   if (empty) {
-    throw new HydraError({
+    throw new TitanError({
       message: `--${empty} needs a value`,
       code: 'VALIDATION_ERROR',
     })
@@ -80,7 +80,7 @@ export function startFlags({ values }: { values: Record<string, unknown> }) {
   }
 }
 
-type Attachment = Extract<HydraEvent, { type: 'task.session' }>
+type Attachment = Extract<TitanEvent, { type: 'task.session' }>
 
 // Attachment is durable even when delivery fails.
 export async function afterAttach({
@@ -98,7 +98,7 @@ export async function afterAttach({
     return result
   }
 
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   try {
     const brief = await sendReply({
@@ -135,7 +135,7 @@ export function sessionRef({
   state,
   ref,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
 }): string {
   return ref === 'self'

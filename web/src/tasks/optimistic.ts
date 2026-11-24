@@ -1,10 +1,10 @@
 import { taskRank } from '#tasks/order.ts'
-import { HydraError } from '#store/errors.ts'
-import type { HydraState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card, TaskReminder } from '#tasks/model.ts'
 import { reminderRepeat } from '#tasks/reminders.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { hideAfterHours } from '#tasks/retention-rules.ts'
 import { patchView } from '#preferences/view.ts'
 
@@ -33,9 +33,9 @@ export function optimisticState({
     args,
   },
 }: {
-  state: HydraState
+  state: TitanState
   edit: Edit
-}): HydraState {
+}): TitanState {
   const option = ({ flag }: { flag: string }) => argument({
     args,
     flag,
@@ -119,7 +119,7 @@ export function optimisticState({
           before,
         })
       } catch (error) {
-        if (error instanceof HydraError) {
+        if (error instanceof TitanError) {
           return state
         }
 
@@ -321,7 +321,7 @@ export function currentRevision({
   state,
   edit,
 }: {
-  state: HydraState
+  state: TitanState
   edit: Edit
 }): string[] {
   const args = [...edit.args], index = args.indexOf('--if-revision')

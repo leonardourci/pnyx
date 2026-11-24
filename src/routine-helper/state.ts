@@ -1,5 +1,5 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
-import { taskMention } from '#hydra/mentions.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
+import { taskMention } from '#titan/mentions.ts'
 import type { AgentConfig, AgentRef } from '#workers/model.ts'
 
 export type HelperAgent = AgentConfig & Pick<AgentRef, 'loginFolder'>
@@ -78,8 +78,8 @@ export function applyHelper({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'hydra.helper-started' && event.type !== 'hydra.helper-finished'
     && event.type !== 'hydra.helper-acknowledged') {
@@ -161,17 +161,17 @@ export function applyHelper({
 
 export const handbackId = ({ id }: { id: string }) => `helper-handback:${id}`
 
-export function ownerOutcomes({ state }: { state: HydraState }): HelperOutcome[] {
+export function ownerOutcomes({ state }: { state: TitanState }): HelperOutcome[] {
   return (state.helper?.outcomes ?? [])
     .filter(outcome => needsMain({ outcome }) && outcome.seq > (state.helper?.delivered ?? 0))
 }
 
 // Batches the helper handed back with an error; their tasks are main's until it has seen them.
-export function failedBatches({ state }: { state: HydraState }): HelperBatch[] {
+export function failedBatches({ state }: { state: TitanState }): HelperBatch[] {
   return Object.values(state.helper?.runs ?? {}).filter(batch => batch.error)
 }
 
-export function outcomeLines({ state }: { state: HydraState }): string[] {
+export function outcomeLines({ state }: { state: TitanState }): string[] {
   return ownerOutcomes({ state })
     .map(outcome => `- ${taskMention({
       id: outcome.task,
@@ -183,16 +183,16 @@ export const wakeHandled = ({
   state,
   id,
 }: {
-  state: HydraState
+  state: TitanState
   id: string
 }) =>
   `${id}:hosted` in state.eventIds || (state.helper?.wakes ?? []).includes(id)
 
-export function activeHelperBatches({ state }: { state: HydraState }): HelperBatch[] {
+export function activeHelperBatches({ state }: { state: TitanState }): HelperBatch[] {
   return Object.values(state.helper?.runs ?? {}).filter(batch => !batch.error)
 }
 
-export function helperLeases({ state }: { state: HydraState }): string[] {
+export function helperLeases({ state }: { state: TitanState }): string[] {
   const batches = activeHelperBatches({ state })
 
   if (!batches.length) {

@@ -1,13 +1,13 @@
-import { emptyHydra } from '#app/reducer.ts'
-import type { HydraSummary } from '#app/server-hydras.ts'
-import { moveHydraStorage } from '#web-hydra/outbox.ts'
-import { pendingHydra } from './pending-state.ts'
+import { emptyTitan } from '#app/reducer.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
+import { moveTitanStorage } from '#web-titan/outbox.ts'
+import { pendingTitan } from './pending-state.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { save, stored } from './connection-storage.ts'
-import type { Creation, Scope, Request, HydraListResource } from './connection-model.ts'
+import type { Creation, Scope, Request, TitanListResource } from './connection-model.ts'
 import type { Receipt } from './connection.ts'
 
-export function createHydraCreation({
+export function createTitanCreation({
   connection,
   scopes,
   requests,
@@ -29,7 +29,7 @@ export function createHydraCreation({
   scopes: Map<string, Scope>
   requests: Map<string, Request>
   creations: Map<string, Creation>
-  hydras: HydraListResource
+  hydras: TitanListResource
   namespace: string
   creationKey: string
   selectedKey: string
@@ -59,7 +59,7 @@ export function createHydraCreation({
     canonical,
   }: {
     scope: Scope
-    canonical: HydraSummary
+    canonical: TitanSummary
   }) => {
     if (scope.id === canonical.id) {
       return
@@ -71,19 +71,19 @@ export function createHydraCreation({
     scopes.delete(scope.id)
     scope.id = canonical.id
     scope.identity = canonical.identity ?? canonical.id
-    moveHydraStorage({
+    moveTitanStorage({
       storage: sessionStorage,
       from: previousIdentity,
       to: scope.identity,
     })
-    moveHydraStorage({
+    moveTitanStorage({
       storage: localStorage,
       from: previousId,
       to: canonical.id,
     })
-    scope.resource = pendingHydra({
+    scope.resource = pendingTitan({
       scope: `${namespace}/hydra/${canonical.id}/`,
-      confirmed: emptyHydra(),
+      confirmed: emptyTitan(),
     })
     scopes.set(
       canonical.id,
@@ -112,7 +112,7 @@ export function createHydraCreation({
     subscribe({ scope })
   }
 
-  const updateHydras = ({ rows }: { rows: HydraSummary[] }) => {
+  const updateTitans = ({ rows }: { rows: TitanSummary[] }) => {
     connection.listed = true
     hydras.confirm({ state: rows })
 
@@ -197,7 +197,7 @@ export function createHydraCreation({
           icon: creation.icon,
           // Created now, so it sorts last until the server's summary arrives.
           order: Date.now(),
-          hydra: 'Hydra',
+          hydra: 'Titan',
           projects: [],
           creationAttempt: creation.attempt,
         },
@@ -264,7 +264,7 @@ export function createHydraCreation({
         creation: creation.attempt,
       })
       const outcome = receipt.creation as { hydraId: string }
-      const canonical = (receipt.hydras as HydraSummary[])
+      const canonical = (receipt.hydras as TitanSummary[])
         .find(hydra => hydra.id === outcome.hydraId)!
       promote({
         scope,
@@ -351,7 +351,7 @@ export function createHydraCreation({
   return {
     saveCreations,
     promote,
-    updateHydras,
+    updateTitans,
     attemptCreation,
     create,
     restoreCreations,

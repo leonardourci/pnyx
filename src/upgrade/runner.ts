@@ -5,7 +5,7 @@ import { runFile } from '#app/run-process.ts'
 import { replaceFile } from '#store/storage.ts'
 import type { UpgradeOperation, UpgradeStep, UpgradeStepName } from './model.ts'
 
-export const PNYX_ROOT = join(
+export const OTHRYS_ROOT = join(
   import.meta.dirname,
   '..',
   '..',
@@ -112,7 +112,7 @@ const remoteMain = async ({ root }: { root: string }) => (await git({
 })).split(/\s/)[0] || undefined
 
 // Whether there is something to upgrade: a newer origin main, or a cut upgrade that already pulled; undefined when origin cannot be read.
-export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } = {}) {
+export async function upgradeAvailable({ root = OTHRYS_ROOT }: { root?: string } = {}) {
   try {
     const head = await git({
       root,
@@ -182,7 +182,7 @@ async function upgradeFacts({ root }: { root: string }): Promise<string[]> {
   })
 
   if (branch === undefined) {
-    return ['The Pnyx folder is not a git checkout.']
+    return ['The Othrys folder is not a git checkout.']
   }
 
   const changed = (await git({
@@ -262,7 +262,7 @@ let busy = false
 // The caller restarts the server, and only after this reports upgraded.
 // The busy flag guards one process: a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
-  root = PNYX_ROOT,
+  root = OTHRYS_ROOT,
   progress = () => {},
   signal,
 }: {
@@ -344,7 +344,7 @@ async function upgrade({
   const savedStashes = previousAttempt?.stashes ?? []
 
   for (const saved of savedStashes) {
-    reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Pnyx folder to restore it.`)
+    reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Othrys folder to restore it.`)
   }
 
   const cut = began !== undefined
@@ -432,7 +432,7 @@ async function upgrade({
               'push',
               '--include-untracked',
               '-m',
-              'Pnyx upgrade saved local work',
+              'Othrys upgrade saved local work',
             ],
           })
           const saved = await git({
@@ -450,7 +450,7 @@ async function upgrade({
               stashes: savedStashes,
             }),
           })
-          reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Pnyx folder to restore it.`)
+          reasons.push(`Saved local work as ${saved}. Use git stash apply ${saved} in the Othrys folder to restore it.`)
         }
 
         await git({

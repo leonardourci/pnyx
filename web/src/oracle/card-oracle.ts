@@ -3,7 +3,7 @@ import type { ScopedHit as Hit } from './workspaces.ts'
 import type { SearchFilters } from '#oracle/filters.ts'
 import type { Command } from '#web-app/connection.ts'
 
-// Typing waits this long before searching; a Hydra event refreshes the results at most this often.
+// Typing waits this long before searching; a Titan event refreshes the results at most this often.
 const SEARCH_DELAY = 180
 const REFRESH_DELAY = 2000
 

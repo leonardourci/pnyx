@@ -1,11 +1,11 @@
 import { ownerGates } from '#tasks/owner-gates.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { openDecisions } from '#tasks/decisions.ts'
-import { hydraCandidate } from '#hydra/agent-choice.ts'
-import { effectiveDispatch, type HeadsDispatch } from '#workers/dispatch-config.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import { hydraCandidate } from '#titan/agent-choice.ts'
+import { effectiveDispatch, type TitanDispatch } from '#workers/dispatch-config.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { eventReasons, type WakeKind } from '#hydra/wake-reasons.ts'
+import { eventReasons, type WakeKind } from '#titan/wake-reasons.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { readSettings } from '#settings/store.ts'
 import { HELPER_MODELS, type HelperSetting } from '#settings/model.ts'
@@ -71,9 +71,9 @@ export function helperAgent({
   state,
   dispatch,
 }: {
-  state: HydraState
+  state: TitanState
   // The dispatch the caller already read; the saved one otherwise.
-  dispatch?: HeadsDispatch
+  dispatch?: TitanDispatch
 }): AgentConfig | undefined {
   const helper = helperChoice()
 
@@ -96,7 +96,7 @@ export function helperScope({
   state,
   task,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
 }): HelperScope | undefined {
   const card = state.cards[task]
@@ -117,7 +117,7 @@ export function helperReason({
   task,
   kind,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
   kind: WakeKind
 }): boolean {
@@ -139,8 +139,8 @@ export function helperEvent({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): string | undefined {
   const task = event.type === 'hydra.message' ? event.data.task : event.cardId
 
@@ -220,7 +220,7 @@ export function helperGrant({
   actor,
   action,
 }: {
-  state: HydraState
+  state: TitanState
   task: string
   actor: string
   action?: HelperAction

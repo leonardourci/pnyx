@@ -69,7 +69,7 @@ function SortableTaskCard({
   const sortableNode = sort.setNodeRef
   const hoverNode = hover.setNodeRef
   const attach = useCallback(
-    // eslint-disable-next-line pnyx/object-params -- React supplies the ref node.
+    // eslint-disable-next-line othrys/object-params -- React supplies the ref node.
     (node: HTMLElement | null) => {
       elementRef(node)
       hoverNode(node)
@@ -106,7 +106,7 @@ function SortableTaskCard({
   const pointerDown = sort.pointerDown
   const selected = props.selected
   const onPointerDown = useCallback(
-    // eslint-disable-next-line pnyx/object-params -- React supplies the pointer event.
+    // eslint-disable-next-line othrys/object-params -- React supplies the pointer event.
     (event: PointerEvent<HTMLElement>) => {
       const target = event.target
       const header = target instanceof Element && target.closest('[data-card-header], [data-drag-handle]')

@@ -1,12 +1,12 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { SavedLabelColor } from './model.ts'
 
 export function labelsForEvent({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): string[] {
   const labels = Object.values(state.cards)
     .flatMap(card => [
@@ -45,7 +45,7 @@ export function applyLabelColors({
   state,
   colors,
 }: {
-  state: HydraState
+  state: TitanState
   colors?: SavedLabelColor[]
 }): void {
   if (!colors?.length) {

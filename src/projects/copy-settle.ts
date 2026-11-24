@@ -8,12 +8,12 @@ import { background } from '#app/background.ts'
 import { askHost } from '#app/server-state.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraConfig } from '#titan/config.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TitanError } from '#store/errors.ts'
 import type { TaskCopy } from './model.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
 import { checkCopy, removeCopy, type CopyCheck } from './copy-check.ts'
@@ -58,7 +58,7 @@ export async function settleCopy({
   copy: TaskCopy | null
   check?: CopyCheck
 }> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = findCard({
     state,
     ref,
@@ -93,7 +93,7 @@ export async function settleCopy({
 
     const requireSafe = () => {
       if (mode === 'discard' && (!check.clean || !check.landed)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `The copy of ${card.id} contains unlanded work`,
           code: 'CONFLICT',
           help: ['Land its current work before removing the copy'],
@@ -101,7 +101,7 @@ export async function settleCopy({
       }
 
       if (mode === 'safe' && copy.via === 'worktree' && (!check.clean || !check.landed)) {
-        throw new HydraError({
+        throw new TitanError({
           message: `the copy of ${card.id} has uncommitted changes or unproved work, so it is not safe to remove`,
           code: 'CONFLICT',
           help: ['Land the current work first'],
@@ -123,7 +123,7 @@ export async function settleCopy({
       })
 
       if (released.busy) {
-        throw new HydraError({
+        throw new TitanError({
           message: `Cannot release a copy while its worker is ${String(released.busy)}`,
           code: 'CONFLICT',
         })
@@ -152,7 +152,7 @@ export async function settleCopy({
         state,
         copy,
       })
-      // The project's copy tool owns the folders it makes, so Pnyx only lets them go.
+      // The project's copy tool owns the folders it makes, so Othrys only lets them go.
       const failed = copy.via === 'command' || pooled ? undefined : await removeCopy({
         copy,
         force: false,
@@ -262,14 +262,14 @@ export async function settleCopy({
     background({
       name: 'copy settlement replies',
       run: async () => {
-        const saved = loadHydra({ hydraId }).state.cards[card.id]
+        const saved = loadTitan({ hydraId }).state.cards[card.id]
 
         if (!saved) {
           return
         }
 
         for (const message of pendingSteering({ card: saved })) {
-          const latest = loadHydra({ hydraId }).state.cards[card.id]
+          const latest = loadTitan({ hydraId }).state.cards[card.id]
           const current = latest?.steering?.find(item => item.id === message.id)
 
           if (!current || current.ack || !current.attempts.every(attempt => attempt.result === 'deferred')) {

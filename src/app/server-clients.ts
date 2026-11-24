@@ -1,8 +1,8 @@
 import { pageShows, type PageInterest } from './page-state.ts'
-import { hydraChatQueue } from '#hydra/chat-queue.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
-import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
+import { hydraChatQueue } from '#titan/chat-queue.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { CurrentAction } from '#titan/calls.ts'
+import { threadPath, type LatestMessage } from '#titan/transcripts-read.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { traces } from '#preferences/view.ts'
 import { effectiveView } from '#settings/store.ts'
@@ -13,9 +13,9 @@ import { spendCounter } from '#workers/spend-counter.ts'
 import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
 import { scanEvents } from './event-log.ts'
 import type { createHost } from './host.ts'
-import type { HydraEvent, HydraState } from './model.ts'
-import type { HydraClient, ServerMessage } from './server-transport.ts'
-import { changesHydraThread, type Subscription } from './thread-subscriptions.ts'
+import type { TitanEvent, TitanState } from './model.ts'
+import type { TitanClient, ServerMessage } from './server-transport.ts'
+import { changesTitanThread, type Subscription } from './thread-subscriptions.ts'
 
 // A tab that opened no cards and did not ask for hidden ones.
 const NO_INTEREST: PageInterest = {
@@ -51,25 +51,25 @@ export function createServerClients({
   feed,
 }: {
   hydraId: string
-  state(): HydraState
+  state(): TitanState
   agents(): Pick<ReturnType<typeof createHost>, 'queue' | 'usageViews'>
-  threadSubscriptions(): Map<HydraClient, Subscription>[]
+  threadSubscriptions(): Map<TitanClient, Subscription>[]
   bindThread({
     ws,
     card,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     card: Card
   }): void
-  refreshThread({ ws }: { ws: HydraClient }): void
+  refreshThread({ ws }: { ws: TitanClient }): void
   feed(): {
     latest: Record<string, LatestMessage>
     actions: Record<string, CurrentAction>
   }
 }) {
-  const clients = new Set<HydraClient>()
-  const interests = new WeakMap<HydraClient, PageInterest>()
-  const interestFor = ({ ws }: { ws: HydraClient }) => interests.get(ws) ?? NO_INTEREST
+  const clients = new Set<TitanClient>()
+  const interests = new WeakMap<TitanClient, PageInterest>()
+  const interestFor = ({ ws }: { ws: TitanClient }) => interests.get(ws) ?? NO_INTEREST
   const liveCardIds = () => new Set(Object.values(state().cards).filter(card => liveTask({ card }))
     .map(card => card.id))
   // The cards a tab shows without interests, so a card an event brings back gets its cached latest.
@@ -87,13 +87,13 @@ export function createServerClients({
   }
 
   type Latest = Extract<ServerMessage, { type: 'latest' }>
-  const closedClients = new WeakSet<HydraClient>()
+  const closedClients = new WeakSet<TitanClient>()
 
   const visibleLatest = ({
     ws,
     message,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     message: Latest
   }): Latest => {
     const interest = interestFor({ ws })
@@ -124,7 +124,7 @@ export function createServerClients({
     message,
     snapshot,
   }: {
-    ws: HydraClient
+    ws: TitanClient
     message: ServerMessage
     snapshot?: boolean
   }): boolean => {
@@ -157,7 +157,7 @@ export function createServerClients({
   }
 
   // Every card's latest message, action, spend and usage the tab may see, as one batch.
-  const sendLatest = ({ ws }: { ws: HydraClient }) => send({
+  const sendLatest = ({ ws }: { ws: TitanClient }) => send({
     ws,
     snapshot: true,
     message: {
@@ -172,12 +172,12 @@ export function createServerClients({
     },
   })
 
-  const broadcast = ({ event }: { event: HydraEvent }) => {
+  const broadcast = ({ event }: { event: TitanEvent }) => {
     const live = liveCardIds()
     const returned = [...live].filter(id => knownCards.has(id) && !liveCards.has(id))
     liveCards = live
     knownCards = new Set(Object.keys(state().cards))
-    // Hydra taking a task message is filed under Hydra's card but changes that task's thread.
+    // Titan taking a task message is filed under Titan's card but changes that task's thread.
     const receivedTask = event.type === 'hydra.received'
       ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
       : undefined
@@ -209,7 +209,7 @@ export function createServerClients({
         const sub = map.get(ws)
 
         // A view change that switches this card's traces on or off changes its page.
-        if (sub && ((sub.card === HYDRA_CARD && changesHydraThread({
+        if (sub && ((sub.card === TITAN_CARD && changesTitanThread({
           event,
           sub,
           state: state(),
@@ -297,7 +297,7 @@ export function createServerClients({
       ws,
       interest,
     }: {
-      ws: HydraClient
+      ws: TitanClient
       interest: PageInterest
     }) {
       interests.set(
@@ -309,7 +309,7 @@ export function createServerClients({
       ws,
       interest,
     }: {
-      ws: HydraClient
+      ws: TitanClient
       interest: PageInterest
     }) {
       const before = interestFor({ ws })
@@ -331,7 +331,7 @@ export function createServerClients({
     },
     broadcast,
     spend,
-    closeClient({ ws }: { ws: HydraClient }) {
+    closeClient({ ws }: { ws: TitanClient }) {
       closedClients.add(ws)
     },
     close() {

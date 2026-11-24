@@ -1,11 +1,11 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { findCard } from '#tasks/push-rules.ts'
 import { KEY_LABEL, confirms, findOption, harnessControls, inputReason } from './controls.ts'
 import { replyRoute } from './reply-route.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { askHost } from '#app/server-state.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
@@ -24,7 +24,7 @@ function agentSummary({
   ref: string
 }): Output {
   const card = findCard({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     ref,
   })
   const provider = card.agent?.provider
@@ -59,7 +59,7 @@ function agentSummary({
     return {
       agent,
       controls: [],
-      help: [provider ? `Pnyx changes settings only for Claude Code and Codex sessions, not ${provider}` : 'This card has no agent session joined yet, so there is nothing to change'],
+      help: [provider ? `Othrys changes settings only for Claude Code and Codex sessions, not ${provider}` : 'This card has no agent session joined yet, so there is nothing to change'],
     }
   }
 
@@ -96,7 +96,7 @@ export const agent = guard({
 
     if (values['cancel-compact']) {
       if (positionals.length !== 1) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'Compaction controls take only the card ID',
           code: 'VALIDATION_ERROR',
         })
@@ -114,7 +114,7 @@ export const agent = guard({
 
     if (positionals.length < 3) {
       if (positionals.length === 2) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'give a setting and a value',
           code: 'VALIDATION_ERROR',
           help: ['Read the worker settings in the task UI'],
@@ -132,7 +132,7 @@ export const agent = guard({
       value,
     ] = positionals as [string, string, string]
     const card = findCard({
-      state: loadHydra({ hydraId }).state,
+      state: loadTitan({ hydraId }).state,
       ref,
     })
     const provider = card.agent?.provider
@@ -145,7 +145,7 @@ export const agent = guard({
     })
 
     if (!picked) {
-      throw new HydraError({
+      throw new TitanError({
         message: `card ${card.id} offers no ${setting} ${value}`,
         code: 'VALIDATION_ERROR',
         help: ['Read the worker settings and values in the task UI'],
@@ -236,7 +236,7 @@ export const agent = guard({
     } else if (receipt.state !== 'delivered') {
       out.help = [`The change may have landed${receipt.detail ? ` (${receipt.detail})` : ''}; check the session before sending again`]
     } else if (!confirmed) {
-      out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`pnyx card ${card.id}\` to check`]
+      out.help = [`The session has not reported its new ${setting} yet; it does on its next hook or turn. Run \`othrys card ${card.id}\` to check`]
     }
 
     return out

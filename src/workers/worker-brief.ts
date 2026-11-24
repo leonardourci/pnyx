@@ -1,4 +1,4 @@
-import { recordContext } from '#hydra/file-context.ts'
+import { recordContext } from '#titan/file-context.ts'
 import { workerTaskDir } from './worker-log.ts'
 import { runForClient, requestEnv, requestCwd } from '#app/request-context.ts'
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL } from '#setup/skill-names.ts'
@@ -9,9 +9,9 @@ import { READINESS_INSTRUCTIONS, taskStops } from '#tasks/delivery/rule.ts'
 import { dirname, join } from 'node:path'
 import { currentState } from '#tasks/card-status.ts'
 import type { Card } from '#tasks/model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 
-const HYDRA_SKILL = join(
+const TITAN_SKILL = join(
   import.meta.dirname,
   '..',
   '..',
@@ -30,15 +30,15 @@ function workerPrompt({
   title: string
 }): string {
   return [
-    `You are the Pnyx worker for task ${id} "${title}" on Hydra ${hydraId}. Follow the ${REPORT_PROGRESS_SKILL} skill when it is installed.`,
+    `You are the Othrys worker for task ${id} "${title}" on Titan ${hydraId}. Follow the ${REPORT_PROGRESS_SKILL} skill when it is installed.`,
     `Append one line to "${workerTaskDir({
       hydraId,
       task: id,
-    })}/worker.log" using needs-you: <question>, blocked: <why>, done: <summary>, link: <url> <label>, or note: <progress>. Pnyx observes running and idle automatically.`,
+    })}/worker.log" using needs-you: <question>, blocked: <why>, done: <summary>, link: <url> <label>, or note: <progress>. Othrys observes running and idle automatically.`,
   ].join(' ')
 }
 
-// Every worker Pnyx starts opens with the same scope and authority, then where its job stops.
+// Every worker Othrys starts opens with the same scope and authority, then where its job stops.
 function workerHeader({
   hydraId,
   id,
@@ -65,21 +65,21 @@ function workerHeader({
   ] : []
 
   return [
-    `<pnyx-worker task="${id}" hydra="${hydraId}">`,
-    `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report through this task’s worker.log.`,
+    `<othrys-worker task="${id}" hydra="${hydraId}">`,
+    `You are a worker that Titan supervises on Othrys Titan ${hydraId}, for task ${id} only. Report through this task’s worker.log.`,
     recordContext({
       hydraId,
       task: id,
     }),
-    'When an ID-only steering notice arrives, read the full instruction in these files, then use its supplied pnyx task ack action for each exact ID and assignment. Acknowledge only what you read; keep the same IDs on retries. A read receipt never means completed work or permission approval.',
+    'When an ID-only steering notice arrives, read the full instruction in these files, then use its supplied othrys task ack action for each exact ID and assignment. Acknowledge only what you read; keep the same IDs on retries. A read receipt never means completed work or permission approval.',
     "Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under .agents/skills, .claude/skills and skills/. Follow them over generic habits, and use the project's skills for the jobs they cover.",
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking. Hosted tool permission requests still use the harness permission flow.',
-    'Ask Hydra, never the owner, by appending `needs-you: <question>` to worker.log about procedural questions your project\'s instructions leave open, product or architecture choices the owner\'s ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.',
+    'Ask Titan, never the owner, by appending `needs-you: <question>` to worker.log about procedural questions your project\'s instructions leave open, product or architecture choices the owner\'s ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.',
     READINESS_INSTRUCTIONS,
     ...stops,
     ...standing,
-    '</pnyx-worker>',
+    '</othrys-worker>',
   ].join('\n')
 }
 
@@ -116,9 +116,9 @@ export async function taskPrompt({
   return runForClient({
     identity: {
       ...requestEnv(),
-      PNYX_ACTOR: `worker:${card.id}`,
-      PNYX_HYDRA: hydraId,
-      PNYX_TASK: card.id,
+      OTHRYS_ACTOR: `worker:${card.id}`,
+      OTHRYS_TITAN: hydraId,
+      OTHRYS_TASK: card.id,
     },
     cwd: requestCwd(),
     run: async () => {
@@ -128,7 +128,7 @@ export async function taskPrompt({
         title: card.title,
       })
       const ownerNotes = (await ownerMemory({})).workers?.text
-      const state = loadHydra({ hydraId }).state
+      const state = loadTitan({ hydraId }).state
       const project = await projectWorkerContext({
         hydraId,
         state,
@@ -168,5 +168,5 @@ export async function taskPrompt({
 }
 
 export const hydraPrompt = ({ hydraId }: { hydraId: string }) =>
-  `You are Hydra, the orchestrator of the Pnyx Hydra "${hydraId}". Read ${HYDRA_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(HYDRA_SKILL))}. `
+  `You are Titan, the orchestrator of the Othrys Titan "${hydraId}". Read ${TITAN_SKILL} and follow it; the skills it names are beside it in ${dirname(dirname(TITAN_SKILL))}. `
   + recordContext({ hydraId })

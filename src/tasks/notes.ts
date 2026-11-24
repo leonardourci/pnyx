@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { HydraState, Decision } from '#app/model.ts'
+import type { TitanState, Decision } from '#app/model.ts'
 import { NOTE_KINDS, type Note } from './model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
@@ -31,7 +31,7 @@ export function decideNote(
     note,
     meta,
   }: {
-    state: HydraState
+    state: TitanState
     ref: string
     note: Note
     meta: Meta & {

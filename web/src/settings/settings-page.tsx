@@ -1,8 +1,8 @@
-import { HydraRemoval } from './hydra-removal.tsx'
+import { TitanRemoval } from './hydra-removal.tsx'
 import { Chip } from '#web-shared/ui/chip.tsx'
 import { applyRuntimeStyle } from '#web-shared/ui/runtime-style.ts'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_VIEW, VIEW_SIZE_LIMITS, patchView, resizeViewPatch } from '#preferences/view.ts'
 import type { Settings } from '#settings/model.ts'
@@ -10,7 +10,7 @@ import { DEFAULT_LOG_DAYS, DEFAULT_LOG_MAX_MB, DEFAULT_SETTINGS, MAX_LOG_DAYS, M
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
-import type { HydraSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
 import { SettingsFrame, SettingsSearch, SettingsSection } from './settings-frame.tsx'
 import { RepositoryOwnership } from '#web-projects/ownership.tsx'
 import { About } from '#web-app/about.tsx'
@@ -20,7 +20,7 @@ import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SettingRow, SettingStack, SettingsRows } from '#web-shared/ui/setting-row.tsx'
 import { useSharedSettings } from './shared-settings.ts'
-import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { useTitanDispatch } from '#web-workers/heads-dispatch.ts'
 import { AccountSettings } from '#web-workers/account-settings.tsx'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, LogDaysPreview, LogLinesPreview, LogSizePreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
@@ -112,7 +112,7 @@ interface Saving {
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
 }
 
-interface Hydra {
+interface Titan {
   settings: Settings
   rule?: AgentConfig
   dispatchError?: string
@@ -145,9 +145,9 @@ export function SettingPreview({
   save,
   settings,
   rule,
-}: Saving & Hydra & {
+}: Saving & Titan & {
   entry: CatalogEntry
-  state: HydraState
+  state: TitanState
 }): ReactNode {
   switch (entry.id) {
     case 'theme':
@@ -248,7 +248,7 @@ function ResetWidths({
   }
 
   return (
-    <Button onClick={reset}>Reset widths in every Hydra</Button>
+    <Button onClick={reset}>Reset widths in every Titan</Button>
   )
 }
 
@@ -264,19 +264,19 @@ export function SettingControl({
   settings,
   rule,
   connected,
-  saveHydra,
+  saveTitan,
   dispatchError,
   accountSetup,
-}: Saving & Hydra & {
+}: Saving & Titan & {
   entry: CatalogEntry
-  state: HydraState
+  state: TitanState
   slide: Slide
   command: Command
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
   connected: boolean
-  saveHydra({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
+  saveTitan({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }): ReactNode {
   if ((entry.id === 'helper' || entry.id === 'hydraAgent') && !rule) {
     return <DispatchStatus error={dispatchError} />
@@ -413,7 +413,7 @@ export function SettingControl({
             rule={rule}
             command={command}
             connected={connected}
-            saveHydra={({ patch }) => saveHydra({ patch })
+            saveTitan={({ patch }) => saveTitan({ patch })
               .catch((error: Error) => notify({ text: error.message }))}
           />
         )
@@ -467,9 +467,9 @@ export function SettingsPage({
   accountSetup,
   hidden = false,
 }: Saving & {
-  hydras: HydraSummary[]
+  hydras: TitanSummary[]
   commandFor({ id }: { id: string }): Command
-  state: HydraState
+  state: TitanState
   connected: boolean
   command: Command
   notify({ text }: { text: string }): void
@@ -496,9 +496,9 @@ export function SettingsPage({
   const settings = useSharedSettings() ?? DEFAULT_SETTINGS
   const {
     effective,
-    saveHydra,
+    saveTitan,
     error: dispatchError,
-  } = useHeadsDispatch({ command })
+  } = useTitanDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   // Previews draw what a slider shows while it moves, before the value saves.
   const shownView = patchView({
@@ -596,7 +596,7 @@ export function SettingsPage({
 
   return (
     <SettingsFrame ref={surface} hidden={hidden}>
-      <HydraRemoval
+      <TitanRemoval
         hydras={hydras}
         command={command}
         connected={connected}
@@ -663,13 +663,13 @@ export function SettingsPage({
                   settings={settings}
                   rule={rule}
                   connected={connected}
-                  saveHydra={saveHydra}
+                  saveTitan={saveTitan}
                   dispatchError={dispatchError}
                   accountSetup={accountSetup}
                 />
               )
 
-              // Heads dispatch and Accounts are whole editors, so they fill the box instead of sitting in a row.
+              // Titan dispatch and Accounts are whole editors, so they fill the box instead of sitting in a row.
               if (match.entry.id === 'headsDispatch' || match.entry.id === 'accounts') {
                 return <div key={match.entry.id} className="settings-wide min-w-0 px-5 py-4 has-[>.account-settings]:p-0">{control}</div>
               }

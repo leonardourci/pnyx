@@ -1,12 +1,12 @@
-export const ORCHESTRATE_SKILL = 'pnyx-orchestrate'
-const ARRANGE_COLUMNS_SKILL = 'pnyx-arrange-columns'
-export const MANAGE_WORKERS_SKILL = 'pnyx-manage-workers'
-export const SET_UP_SKILL = 'pnyx-set-up'
+export const ORCHESTRATE_SKILL = 'othrys-orchestrate'
+const ARRANGE_COLUMNS_SKILL = 'othrys-arrange-columns'
+export const MANAGE_WORKERS_SKILL = 'othrys-manage-workers'
+export const SET_UP_SKILL = 'othrys-set-up'
 export const INSCRIBE_SKILL = 'inscribe'
-export const REPORT_PROGRESS_SKILL = 'pnyx-report-progress'
-export const CLI_SKILL = 'pnyx-cli'
+export const REPORT_PROGRESS_SKILL = 'othrys-report-progress'
+export const CLI_SKILL = 'othrys-cli'
 
-export const HYDRA_SKILLS = [
+export const TITAN_SKILLS = [
   ORCHESTRATE_SKILL,
   MANAGE_WORKERS_SKILL,
   ARRANGE_COLUMNS_SKILL,

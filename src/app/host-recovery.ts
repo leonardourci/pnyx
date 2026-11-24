@@ -5,16 +5,16 @@ import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { scanEvents } from './event-log.ts'
 import type { Host, Live } from './host-types.ts'
-import { loadHydra } from './store.ts'
+import { loadTitan } from './store.ts'
 import type { Writer } from './writer.ts'
-import { hostedHydra, pnyxRunsHydra } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraAgentChange } from '#hydra/model.ts'
-import { operationEvent, type createHydraOperations, type createHydraOutage } from '#hydra/operations.ts'
-import type { createWakeQueue } from '#hydra/wake-queue.ts'
-import { wakeReasons } from '#hydra/wake-reasons.ts'
-import { findHydraTurnToResume, wakeCursor, wakesThrough } from '#hydra/wakes.ts'
-import { WAKE_TURN } from '#hydra/wake-ids.ts'
+import { hostedTitan, othrysRunsTitan } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanAgentChange } from '#titan/model.ts'
+import { operationEvent, type createTitanOperations, type createTitanOutage } from '#titan/operations.ts'
+import type { createWakeQueue } from '#titan/wake-queue.ts'
+import { wakeReasons } from '#titan/wake-reasons.ts'
+import { findTitanTurnToResume, wakeCursor, wakesThrough } from '#titan/wakes.ts'
+import { WAKE_TURN } from '#titan/wake-ids.ts'
 import type { createRoutineHelper } from '#routine-helper/runner.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { upgradeQueue } from '#upgrade/queue.ts'
@@ -68,13 +68,13 @@ export function createHostRecovery({
     note: string
     resumeAttemptId?: string
   }): void
-  changeAgent({ change }: { change: HydraAgentChange }): Promise<void>
-  endOperation: ReturnType<typeof createHydraOperations>['endOperation']
+  changeAgent({ change }: { change: TitanAgentChange }): Promise<void>
+  endOperation: ReturnType<typeof createTitanOperations>['endOperation']
   expireOrphans: ReturnType<typeof createPermissionBridge>['expireOrphans']
   send: ReturnType<typeof createHostedDelivery>['send']
   helper: ReturnType<typeof createRoutineHelper>
   releaseCompact: ReturnType<typeof createCompactionControl>['releaseCompact']
-  planRetry: ReturnType<typeof createHydraOutage>['planRetry']
+  planRetry: ReturnType<typeof createTitanOutage>['planRetry']
   startFrom: ReturnType<typeof createWakeQueue>['startFrom']
   host(): Host
 }) {
@@ -87,7 +87,7 @@ export function createHostRecovery({
     fenced = await children.sweep()
     fenced = await sweepTaskProcesses({
       hydraId,
-      state: loadHydra({ hydraId }).state,
+      state: loadTitan({ hydraId }).state,
     }) && fenced
     await upgrades.recover()
 
@@ -95,8 +95,8 @@ export function createHostRecovery({
       await recoverHandoffs({ hydraId })
     }
 
-    // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
-    // the stop cut, ends here, and Hydra gets the recap and its queue.
+    // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Titan
+    // the stop cut, ends here, and Titan gets the recap and its queue.
     await note({
       fn: ({ writer }) => {
         for (const pass of writer.state.historyMilestones ?? []) {
@@ -117,7 +117,7 @@ export function createHostRecovery({
                   parent: pass.parent,
                   blocking: pass.blocking,
                   state: 'failed',
-                  error: `Pnyx restarted during ${pass.kind}`,
+                  error: `Othrys restarted during ${pass.kind}`,
                 },
               }),
             })
@@ -126,15 +126,15 @@ export function createHostRecovery({
       },
     })
 
-    const cut = loadHydra({ hydraId }).state.hydraOperation
-    const cutChange = loadHydra({ hydraId }).state.hydraAgentChange
+    const cut = loadTitan({ hydraId }).state.hydraOperation
+    const cutChange = loadTitan({ hydraId }).state.hydraAgentChange
 
     if (cutChange?.state === 'running') {
       await changeAgent({
         change: {
           ...cutChange,
           state: 'failed',
-          error: 'Pnyx restarted while preparing this agent change. Choose again to retry.',
+          error: 'Othrys restarted while preparing this agent change. Choose again to retry.',
         },
       })
     }
@@ -142,11 +142,11 @@ export function createHostRecovery({
     if (cut) {
       endOperation({
         id: cut.id,
-        error: `Pnyx restarted during the ${cut.kind}`,
+        error: `Othrys restarted during the ${cut.kind}`,
       })
     }
 
-    let cutHydraTurn: {
+    let cutTitanTurn: {
       resumeAttemptId: string
       resumeMessage: string
       wakeThrough: number
@@ -177,7 +177,7 @@ export function createHostRecovery({
                   ...operation,
                   state: 'failed',
                   endedAt: at(),
-                  error: 'Pnyx restarted during compaction',
+                  error: 'Othrys restarted during compaction',
                 },
               },
             })
@@ -196,19 +196,19 @@ export function createHostRecovery({
           let resumeAttemptId: string | undefined
           const task = session.taskId ? writer.state.cards[session.taskId] : undefined
 
-          const isHydra = session.id === writer.state.config?.hydra.session
+          const isTitan = session.id === writer.state.config?.hydra.session
 
           const resumable = fenced && !cutCompactions.has(session.id)
 
-          if (resumable && isHydra && hostedHydra({ state: writer.state })) {
-            cutHydraTurn = findHydraTurnToResume({
+          if (resumable && isTitan && hostedTitan({ state: writer.state })) {
+            cutTitanTurn = findTitanTurnToResume({
               hydraId,
               state: writer.state,
               agent: session.agent,
             })
 
-            if (cutHydraTurn) {
-              resumeAttemptId = cutHydraTurn.resumeAttemptId
+            if (cutTitanTurn) {
+              resumeAttemptId = cutTitanTurn.resumeAttemptId
             }
           } else if (resumable && task && liveTask({ card: task })
             && !handoffPending({
@@ -238,7 +238,7 @@ export function createHostRecovery({
           interrupt({
             writer,
             agent: session.agent,
-            note: 'Pnyx stopped during this turn. Send a message to continue it.',
+            note: 'Othrys stopped during this turn. Send a message to continue it.',
             resumeAttemptId,
           })
         }
@@ -246,13 +246,13 @@ export function createHostRecovery({
     })
 
     // Startup never waits on an agent reopening; each resumes on its own and a failure stays on its card.
-    if (cutHydraTurn) {
-      const resume = cutHydraTurn
+    if (cutTitanTurn) {
+      const resume = cutTitanTurn
       background({
-        name: 'Hydra resume',
+        name: 'Titan resume',
         context: {
           hydraId,
-          taskId: HYDRA_CARD,
+          taskId: TITAN_CARD,
           correlationId: resume.resumeAttemptId,
         },
         run: () => host().hydra({
@@ -263,7 +263,7 @@ export function createHostRecovery({
       })
     }
 
-    // A worker the restart cut continues once; one that cannot stays interrupted for Hydra or the owner.
+    // A worker the restart cut continues once; one that cannot stays interrupted for Titan or the owner.
     for (const cut of cutWorkerTurns) {
       try {
         await send({
@@ -291,7 +291,7 @@ export function createHostRecovery({
               interrupt({
                 writer,
                 agent,
-                note: `Pnyx stopped during this turn and could not resume it: ${message}. Send a message to continue it.`,
+                note: `Othrys stopped during this turn and could not resume it: ${message}. Send a message to continue it.`,
               })
             }
           },
@@ -299,8 +299,8 @@ export function createHostRecovery({
       }
     }
 
-    for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
-      if (card.id === HYDRA_CARD || !liveTask({ card }) || card.agent?.host !== 'pnyx' || steeringHeld({ card })
+    for (const card of Object.values(loadTitan({ hydraId }).state.cards)) {
+      if (card.id === TITAN_CARD || !liveTask({ card }) || card.agent?.host !== 'pnyx' || steeringHeld({ card })
         || handoffPending({
           hydraId,
           task: card.id,
@@ -333,7 +333,7 @@ export function createHostRecovery({
       }
     }
 
-    // A direct message handed to an agent the restart stopped may or may not have arrived; Pnyx never sends it again by itself.
+    // A direct message handed to an agent the restart stopped may or may not have arrived; Othrys never sends it again by itself.
     await note({
       fn: ({ writer }) => {
         for (const card of Object.values(writer.state.cards)) {
@@ -347,7 +347,7 @@ export function createHostRecovery({
           ])
 
           for (const reply of card.replies ?? []) {
-            // The card's agent is Pnyx-hosted, so a reply still queued for it went the Pnyx route.
+            // The card's agent is Othrys-hosted, so a reply still queued for it went the Othrys route.
             // A card send not yet handed to a session stays queued for its own reconcile.
             if (reply.state !== 'queued' || held.has(reply.id) || waitingCardInput({ reply })) {
               continue
@@ -362,7 +362,7 @@ export function createHostRecovery({
                   reply: reply.id,
                   state: 'delivery_unknown',
                   route: 'pnyx',
-                  detail: 'Pnyx restarted before the agent confirmed this message; send it again if it did not arrive',
+                  detail: 'Othrys restarted before the agent confirmed this message; send it again if it did not arrive',
                 },
                 meta: {
                   at: at(),
@@ -378,13 +378,13 @@ export function createHostRecovery({
 
     await helper.recover()
 
-    for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
+    for (const card of Object.values(loadTitan({ hydraId }).state.cards)) {
       if (card.compaction?.inputs.length) {
         releaseCompact({ card: card.id })
       }
     }
 
-    const pendingTools = loadHydra({ hydraId }).state
+    const pendingTools = loadTitan({ hydraId }).state
 
     for (const card of Object.values(pendingTools.cards)) {
       if (fenced && toolApplicationReady({
@@ -395,10 +395,10 @@ export function createHostRecovery({
       }
     }
 
-    // Changes made while the server was stopped wake Hydra once it is back.
-    const state = loadHydra({ hydraId }).state
+    // Changes made while the server was stopped wake Titan once it is back.
+    const state = loadTitan({ hydraId }).state
 
-    if (pnyxRunsHydra({ state })) {
+    if (othrysRunsTitan({ state })) {
       if (state.hydraStatus?.state === 'down') {
         planRetry()
       }
@@ -427,11 +427,11 @@ export function createHostRecovery({
           state,
           fallback: unhandled,
         }),
-        cutHydraTurn?.wakeThrough ?? 0,
+        cutTitanTurn?.wakeThrough ?? 0,
       )
 
-      // A Hydra that never ran has no cursor yet; its first missed report sets one.
-      if (hostedHydra({ state })) {
+      // A Titan that never ran has no cursor yet; its first missed report sets one.
+      if (hostedTitan({ state })) {
         startFrom({ after })
       }
 

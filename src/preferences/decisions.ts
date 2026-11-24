@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState, Decision } from '#app/model.ts'
+import type { TitanState, Decision } from '#app/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { viewFor, patchView } from './view.ts'
 
 export function decideView({
@@ -9,7 +9,7 @@ export function decideView({
   patch,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   patch: unknown
   meta: Meta
 }): Decision {
@@ -21,7 +21,7 @@ export function decideView({
   }
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'view preferences changed; reload and retry',
       code: 'REVISION_CONFLICT',
     })

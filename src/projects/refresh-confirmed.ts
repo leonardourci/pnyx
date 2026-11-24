@@ -1,9 +1,9 @@
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import type { HydraState } from '#app/model.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Link } from '#tasks/delivery/model.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { projectsFor } from './read.ts'
 import { refreshProject } from './refresh.ts'
@@ -15,7 +15,7 @@ export function refreshTarget({
   card,
   link,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   link: Link
 }): string | undefined {
@@ -42,7 +42,7 @@ async function recordRefresh({
   url: string
   proof: NonNullable<Link['mergeProof']>
 }): Promise<void> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = state.cards[cardId]
   const link = card?.links.find(link => link.url === url)
 
@@ -65,7 +65,7 @@ async function recordRefresh({
     url,
     merge: proof.commit,
     isPending: () => {
-      const latest = loadHydra({ hydraId }).state
+      const latest = loadTitan({ hydraId }).state
       const current = latest.cards[cardId]
       const confirmed = current?.links.find(link => link.url === url)
 

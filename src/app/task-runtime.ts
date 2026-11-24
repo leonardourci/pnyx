@@ -1,13 +1,13 @@
 import { trackChildren } from '#workers/children.ts'
 import { moveAgentMemory } from '#workers/agent-memory.ts'
 import { isManagedTask } from '#tasks/select.ts'
-import type { HydraState } from './model.ts'
-import { pnyxHome } from '#store/storage.ts'
+import type { TitanState } from './model.ts'
+import { othrysHome } from '#store/storage.ts'
 import { canonical, taskRuntimeDir } from '#store/paths.ts'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { HydraError } from '#store/errors.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TitanError } from '#store/errors.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import type { Card } from '#tasks/model.ts'
 import type { PermissionDecision, HostedUsage } from '#workers/provider.ts'
 import type { LiveSessionScope } from '#workers/live-sessions.ts'
@@ -80,7 +80,7 @@ interface HomeRuntime {
 const homes = new Map<string, HomeRuntime>()
 
 function runtimeHome(): string {
-  const path = resolve(pnyxHome())
+  const path = resolve(othrysHome())
 
   return canonical({ path }) ?? path
 }
@@ -110,9 +110,9 @@ export function registerTaskHost({ owner }: { owner: TaskSessionOwner }): () => 
   const current = runtime({ home })
 
   if (current.hosts.has(owner.hydraId)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'CONFLICT',
-      message: `A task host already serves Hydra ${owner.hydraId}`,
+      message: `A task host already serves Titan ${owner.hydraId}`,
     })
   }
 
@@ -144,7 +144,7 @@ export function trackTaskSession({
 }): void {
   entry.owner = owner
 
-  if (entry.task === HYDRA_CARD) {
+  if (entry.task === TITAN_CARD) {
     return
   }
 
@@ -152,7 +152,7 @@ export function trackTaskSession({
   const previous = current.tasks.get(entry.task)
 
   if (previous && previous.entry !== entry) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'SESSION_CONFLICT',
       message: `Task ${entry.task} already has a native runtime`,
     })
@@ -194,7 +194,7 @@ export function taskUsages({ hydraId }: { hydraId: string }): Map<string, Omit<H
   return empty
 }
 
-export function taskHydra({ task }: { task: string }): string | undefined {
+export function taskTitan({ task }: { task: string }): string | undefined {
   const current = runtime()
 
   return current.tasks.get(task)?.entry.owner?.hydraId ?? current.processes.get(task)?.hydraId
@@ -260,7 +260,7 @@ export const taskChildren = ({
   task,
 }).children
 
-export function abortHydraTasks({ hydraId }: { hydraId: string }): void {
+export function abortTitanTasks({ hydraId }: { hydraId: string }): void {
   for (const owned of runtime().processes.values()) {
     if (owned.hydraId === hydraId) {
       owned.controller.abort()
@@ -293,7 +293,7 @@ export async function sweepTaskProcesses({
   state,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
 }): Promise<boolean> {
   let ready = true
 
@@ -339,16 +339,16 @@ export function prepareTaskRuntimeMove({
   const target = current.hosts.get(to)
 
   if (!source || source.hydraId !== from || !target || source.closing() || target.closing()) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'CONFLICT',
-      message: `Task ${task} needs both Hydra runtimes ready before moving`,
+      message: `Task ${task} needs both Titan runtimes ready before moving`,
     })
   }
 
   if (active && target.live.has(active.key)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'SESSION_CONFLICT',
-      message: `The destination Hydra already runs session ${active.key}`,
+      message: `The destination Titan already runs session ${active.key}`,
     })
   }
 

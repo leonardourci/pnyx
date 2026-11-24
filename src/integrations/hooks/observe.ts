@@ -22,7 +22,7 @@ export interface HookEnvelope {
   harness: Harness
   event: string
   terminal?: unknown
-  // PNYX_TASK of a session Pnyx started: its task id, or $hydra for the Hydra.
+  // OTHRYS_TASK of a session Othrys started: its task id, or $hydra for the Titan.
   task?: unknown
   payload: unknown
 }
@@ -409,7 +409,7 @@ export function attend({
   ]
 }
 
-// Returns no observations for a payload without a session id or an event Pnyx does
+// Returns no observations for a payload without a session id or an event Othrys does
 // not report. A subagent's events go to its own card, keyed under its parent
 // session, after making sure the parent card exists. A subagent's permission prompt
 // notifies on the parent card, so a subagent event that ends its requests also

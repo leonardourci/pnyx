@@ -10,25 +10,25 @@ paths:
 [follow-conventions](../follow-conventions/SKILL.md) applies here too; this skill adds what is specific to `web/`.
 
 - Build UI from the primitives in `web/src/shared/ui/`. When one is missing, add it there and extend it; do not inline a one-off control.
-- Never use native-styled controls (`<select>`, `<input type="checkbox">` and friends as the browser draws them) or a third-party styled kit such as DaisyUI. Pnyx has one look in every browser.
+- Never use native-styled controls (`<select>`, `<input type="checkbox">` and friends as the browser draws them) or a third-party styled kit such as DaisyUI. Othrys has one look in every browser.
 - Design values come from Tailwind's `@theme` in `web/src/index.css`: colors, spacing, sizes, radii, typography and shadows. Reuse a token before adding one; collapse near-duplicates and record the change in the PR.
 - Shared controls own repeated class lists. Screens compose those controls and keep their own class lists short. Add a shared component only for a pattern used in several places.
 - ESLint rejects arbitrary utility values and inline styles and sorts classes. Fixed values belong in tokens. Measured geometry and owner-selected sizes use the closed `runtimeStyle` and `applyRuntimeStyle` mechanism described in [Development](../../../docs/development.md#build-and-test); keep the marked chat exception scoped to its rebuild.
 - Reuse before building. Search `web/src/shared/ui/` and the feature folders under `web/src/` for a component, hook or formatter that already does the job; build a new one only when nothing composes into it.
 - Keep components small: one job each, composed from primitives. A screen reads as a list of named pieces, not one block of JSX. A piece used by one file sits above the exported component in that file; a generic piece several features use moves to `web/src/shared/ui/`. A component that looks generic but carries one feature's logic stays in that feature's folder; when a file comes to hold unrelated concerns, split it along them inside that folder ([follow-conventions](../follow-conventions/SKILL.md#files-and-concerns)).
 - Put derived values (labels, classes, formatted text) and compound conditions in named constants above the `return`, not inline in the JSX.
-- Read Hydra data from the connection store, which receives snapshots and ordered changes over the same resumed WebSocket as live agent activity and chat pages. Don't keep a second copy of either in component state.
+- Read Titan data from the connection store, which receives snapshots and ordered changes over the same resumed WebSocket as live agent activity and chat pages. Don't keep a second copy of either in component state.
 - Use the installed React, Vite and Tailwind versions' current APIs, checked against their types or docs, not deprecated props or callbacks.
 - Keep accessible names, `aria-label` and `data-*` state attributes stable when you move or rename a component; assistive technology relies on them.
 - Chat tokens (commands, skills and task mentions) share one rendering between the composer and sent messages, including their icons, colors and task navigation. Keep surrounding text normal and unknown command or skill names literal.
-- Prefer inline creation and editing over modals and dialogs: a new column is created inline at the end of the Hydra, card fields edit in place. Reserve overlays for things that truly need them (command palette, confirming a destructive action).
+- Prefer inline creation and editing over modals and dialogs: a new column is created inline at the end of the Titan, card fields edit in place. Reserve overlays for things that truly need them (command palette, confirming a destructive action).
 
 ## Written text
 
 Text people write goes through two shared components, so a new screen gets chips, mentions, skills and images by using them:
 
 - `RichText` (`web/src/shared/ui/rich-text.tsx`) shows agent- or owner-written text: questions, notes, briefs, reports, comments and chat. It renders task, column and skill chips, and every Markdown image, image token and image path as the composer's image chip. Images use the restricted source and viewer. `CollapsibleText` is `RichText` behind "Show more". A one-line summary inside a control uses `markdownText`.
-- `ComposerField` (`web/src/hydra/composer-field.tsx`) is the composer for owner-written prose: the Hydra composer, comment notes, answers, asks and briefs, and any new one. On its own it is a compact box that grows with its text, without the + menu. It handles @ mentions, / skills and commands, chips, images pasted or dropped at the caret, and copies that keep their references. The app provides its tasks, projects, columns and skills once through `ComposerSourcesProvider`. Hydra and worker composers share harness, model and effort controls; mode and Fast stay on the Hydra composer. A single-line title stays an `Input`.
+- `ComposerField` (`web/src/titan/composer-field.tsx`) is the composer for owner-written prose: the Titan composer, comment notes, answers, asks and briefs, and any new one. On its own it is a compact box that grows with its text, without the + menu. It handles @ mentions, / skills and commands, chips, images pasted or dropped at the caret, and copies that keep their references. The app provides its tasks, projects, columns and skills once through `ComposerSourcesProvider`. Titan and worker composers share harness, model and effort controls; mode and Fast stay on the Titan composer. A single-line title stays an `Input`.
 
 ```tsx
 <RichText text={card.intent} />
@@ -39,7 +39,7 @@ Text people write goes through two shared components, so a new screen gets chips
 
 For reversible edits, publish the result through the shared optimistic resource as soon as the owner acts, then confirm it with the server in the background. Allocate a stable attempt/event ID before sending and retain it across uncertain delivery and retry. Key a created item by its client key, map that key to the confirmed ID, and update its fields in place. Confirmation must keep the same React element and DOM node: no refetch-driven remount, collapse or blink.
 
-On a definite refusal, remove the refused preview and show the server's reason. Restore the draft when useful without replacing a newer edit. A message sent in Hydra's chat is the exception: the refused message stays in the chat marked Not sent with the server's reason, and Retry sends it again under the same event ID. While delivery is unconfirmed, retain the preview and show “Checking…”; a timeout or disconnect does not mean the edit failed. Use the shared pending state for these outcomes instead of inventing a second local saved state. Destructive or irreversible actions stay confirm-first; preview the result only after explicit confirmation.
+On a definite refusal, remove the refused preview and show the server's reason. Restore the draft when useful without replacing a newer edit. A message sent in Titan's chat is the exception: the refused message stays in the chat marked Not sent with the server's reason, and Retry sends it again under the same event ID. While delivery is unconfirmed, retain the preview and show “Checking…”; a timeout or disconnect does not mean the edit failed. Use the shared pending state for these outcomes instead of inventing a second local saved state. Destructive or irreversible actions stay confirm-first; preview the result only after explicit confirmation.
 
 Bad: the editor waits for the server before showing the edit.
 
@@ -68,6 +68,6 @@ Run `pnpm verify` and follow [Testing](../../../docs/testing.md) for behavior te
 
 ## Pull requests with visible changes
 
-Capture each changed view in an isolated headless browser at desktop and phone widths in light and dark themes. Show before and after screenshots side by side in a `Before | After` table at a reduced width (`<img src="..." width="360">`). Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/` and link it as `https://github.com/leonardourci/pnyx/blob/pr-media/pr-<number>/<file>?raw=true`.
+Capture each changed view in an isolated headless browser at desktop and phone widths in light and dark themes. Show before and after screenshots side by side in a `Before | After` table at a reduced width (`<img src="..." width="360">`). Add a short GIF when motion or interaction is the point. Host media on the `pr-media` branch under `pr-<number>/` and link it as `https://github.com/leonardourci/othrys/blob/pr-media/pr-<number>/<file>?raw=true`.
 
-Nothing on the page is windowed: every Hydra, project column, card, chat row and task update stays mounted while it scrolls, and project columns and cards render normally without paint skipping. Chat rows and update rows use `content-visibility: auto` so the browser skips painting those rows off screen. Chats render through the one `Chat` component, which owns their scroll position.
+Nothing on the page is windowed: every Titan, project column, card, chat row and task update stays mounted while it scrolls, and project columns and cards render normally without paint skipping. Chat rows and update rows use `content-visibility: auto` so the browser skips painting those rows off screen. Chats render through the one `Chat` component, which owns their scroll position.

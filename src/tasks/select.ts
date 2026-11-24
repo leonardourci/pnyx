@@ -1,7 +1,7 @@
 import type { Card } from './model.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { cardStatus } from './card-status.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 
 const known = new WeakMap<Record<string, Card>, {
   references: Record<string, Card>
@@ -9,11 +9,11 @@ const known = new WeakMap<Record<string, Card>, {
 }>()
 
 export function isManagedTask({ card }: { card: Card }): boolean {
-  return card.id === HYDRA_CARD
+  return card.id === TITAN_CARD
 }
 
 // Every card a lookup by id may name. On the page, this includes the reference copies of hidden tasks.
-export function knownCards({ state }: { state: HydraState }): Record<string, Card> {
+export function knownCards({ state }: { state: TitanState }): Record<string, Card> {
   const references = state.references
 
   if (!references) {
@@ -49,7 +49,7 @@ export function taskDone({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }): boolean {
   const hasChildren = Object.values(knownCards({ state })).some(child => child.parentId === card.id)

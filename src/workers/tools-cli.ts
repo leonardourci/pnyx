@@ -1,5 +1,5 @@
 import { BROWSER_TOOL, recordTools } from './tools.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { askHost } from '#app/server-state.ts'
 import { required } from '#app/cli-support.ts'
@@ -20,7 +20,7 @@ export async function toolsCommand({
     value: ref,
     what: 'task id',
   })
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const card = findCard({
     state,
     ref: task,
@@ -44,7 +44,7 @@ export async function toolsCommand({
       task: card.id,
       selection,
       tools: card.tools ?? [],
-      help: ['Ask Hydra with task ask for an isolated browser'],
+      help: ['Ask Titan with task ask for an isolated browser'],
     }
   }
 
@@ -71,11 +71,11 @@ export async function toolsCommand({
     ...delivery,
   }
 
-  // Another launch route cannot enforce the selection, so it waits for a Pnyx-hosted start.
+  // Another launch route cannot enforce the selection, so it waits for an Othrys-hosted start.
   if (result.changed && card.agent && card.agent.host !== 'pnyx') {
     return {
       ...output,
-      help: ['This agent runs outside Pnyx, so the selection applies from its next Pnyx-hosted start'],
+      help: ['This agent runs outside Othrys, so the selection applies from its next Othrys-hosted start'],
     }
   }
 

@@ -1,5 +1,5 @@
 import { sessionId } from '#workers/session-attachments.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { touch } from '#tasks/touch.ts'
 
@@ -13,8 +13,8 @@ export function applyCompaction({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type !== 'session.compaction') {
     return false

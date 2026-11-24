@@ -69,11 +69,11 @@ function askBlocker({
   const owner = ask.audience === 'owner'
   const choice = ask.kind ? ` --choice ${QUESTION_CHOICES[ask.kind]}` : ''
   const answer = owner
-    ? `Run \`pnyx answer ${card.id} ${ask.id}${choice} --from-message <owner-message-id> --reason "<why>"\` once the owner answers`
-    : `Run \`pnyx answer ${card.id} ${ask.id} --text "<answer>" --reason "<why>"\``
+    ? `Run \`othrys answer ${card.id} ${ask.id}${choice} --from-message <owner-message-id> --reason "<why>"\` once the owner answers`
+    : `Run \`othrys answer ${card.id} ${ask.id} --text "<answer>" --reason "<why>"\``
 
   return {
-    reason: `waiting for ${owner ? 'the owner' : 'Hydra'} to answer question ${ask.id}: ${ask.question}`,
+    reason: `waiting for ${owner ? 'the owner' : 'Titan'} to answer question ${ask.id}: ${ask.question}`,
     clear: answer,
   }
 }

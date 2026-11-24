@@ -1,15 +1,15 @@
 import { beforeAll, expect, test } from 'vitest'
 import { applyPageChanges, pageChanges } from '#app/socket-state.ts'
-import { startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
 import { openHomePage } from './setup/home-page.ts'
 
 const REPLAY_BRIEF_LENGTH = 23_997
 const REPLAY_EDIT_COUNT = 50
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test(
@@ -69,9 +69,9 @@ test(
 )
 
 test(
-  'one socket reads Hydra state and resumes changes after a disconnect without private steering',
+  'one socket reads Titan state and resumes changes after a disconnect without private steering',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
 
     for (const key of [
       'changed',
@@ -102,7 +102,7 @@ test(
       ],
     })
     const page = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const before = page.read()
@@ -133,7 +133,7 @@ test(
       ],
     })
     const resumed = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
       previous: before,
     })
@@ -167,12 +167,12 @@ test(
 )
 
 test(
-  'a cursor from another daemon falls back to a snapshot and the Hydra list excludes removed Hydras',
+  'a cursor from another daemon falls back to a snapshot and the Titan list excludes removed Titans',
   async () => {
-    const caller = await pnyx.hydra()
-    const target = await pnyx.hydra()
+    const caller = await othrys.hydra()
+    const target = await othrys.hydra()
     const initial = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: caller.id,
     })
     const previous = initial.read()
@@ -185,7 +185,7 @@ test(
       ],
     })
     const page = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: caller.id,
       previous: {
         ...previous,
@@ -209,9 +209,9 @@ test(
 test(
   'the removed database setting is refused without publishing a home change',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const page = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
     })
 
@@ -230,7 +230,7 @@ test(
       expect(page.read().home.settings.settings).not.toHaveProperty('postgresUrl')
       expect(JSON.stringify(page.frames)).not.toContain('PRIVATE-DATABASE-PASSWORD')
       const snapshot = await openHomePage({
-        port: pnyx.port(),
+        port: othrys.port(),
         hydraId: hydra.id,
       })
 
@@ -249,7 +249,7 @@ test(
 test(
   'a reconnect with more retained changes than its outgoing budget receives the latest snapshot',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const created = await hydra.owner({
       args: [
         'task',
@@ -263,7 +263,7 @@ test(
     })
     const task = created.card.id
     const initial = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const previous = initial.read()
@@ -286,12 +286,12 @@ test(
       })
       await until({
         what: 'the changed brief to reach the home feed',
-        check: () => pnyx.home().scopes[hydra.id]?.state.cards[task]?.brief === brief,
+        check: () => othrys.home().scopes[hydra.id]?.state.cards[task]?.brief === brief,
       })
     }
 
     const resumed = await openHomePage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
       previous,
     })

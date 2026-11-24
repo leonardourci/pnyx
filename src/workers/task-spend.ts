@@ -1,7 +1,7 @@
 import { isAbsolute } from 'node:path'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { readUsage, usageReader, type RecordedUsage, type UsageReader } from '#integrations/hooks/usage.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { UsageReading } from './provider.ts'
 import type { AgentRef } from './model.ts'
 import { readTranscript } from '#workers/transcript-read.ts'
@@ -11,10 +11,10 @@ export interface TaskSpend {
   hydra?: number
   total?: number
   unavailable: number
-  sharedHydra: boolean
+  sharedTitan: boolean
 }
 
-// Only what attribution reads from the Hydra, small enough to hand to the spend worker.
+// Only what attribution reads from the Titan, small enough to hand to the spend worker.
 export interface SpendInputs {
   tasks: string[]
   hydraSession?: string
@@ -89,8 +89,8 @@ function transcriptUsage({ agent }: { agent: SpendInputs['sessions'][number]['ag
   }
 }
 
-const taskIds = ({ state }: { state: HydraState }) => Object.values(state.cards)
-  .filter(card => card.id !== HYDRA_CARD)
+const taskIds = ({ state }: { state: TitanState }) => Object.values(state.cards)
+  .filter(card => card.id !== TITAN_CARD)
   .map(card => card.id)
 
 export function spendInputs({
@@ -98,8 +98,8 @@ export function spendInputs({
   events,
   tasks = taskIds({ state }),
 }: {
-  state: HydraState
-  events: Iterable<HydraEvent>
+  state: TitanState
+  events: Iterable<TitanEvent>
   tasks?: string[]
 }): SpendInputs {
   const configurations: SpendInputs['configurations'] = []
@@ -138,13 +138,13 @@ export function spendInputs({
 }
 
 // One pass over the sessions for every task at once: each transcript is attributed row by row,
-// a row to the task its session was assigned to at that moment, or to the tasks a Hydra report names.
+// a row to the task its session was assigned to at that moment, or to the tasks a Titan report names.
 export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, TaskSpend> {
   const result: Record<string, TaskSpend> = Object.fromEntries(inputs.tasks.map(task => [
     task,
     {
       unavailable: 0,
-      sharedHydra: false,
+      sharedTitan: false,
     },
   ]))
   const configurations = inputs.configurations.map(configuration => ({
@@ -187,10 +187,10 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
       tasks.add(session.taskId)
     }
 
-    const wasHydra = hydraSessions.has(session.id)
+    const wasTitan = hydraSessions.has(session.id)
     const identity = session.agent.transcriptPath ?? session.id
     // A transcript shared by several sessions counts once per task.
-    const candidates = wasHydra ? inputs.tasks : inputs.tasks.filter(task => tasks.has(task))
+    const candidates = wasTitan ? inputs.tasks : inputs.tasks.filter(task => tasks.has(task))
     const counted = new Set(candidates.filter(task => {
       const known = seen.get(task) ?? new Set()
 
@@ -223,7 +223,7 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
     for (const row of rows) {
       const time = row.at ? Date.parse(row.at) : undefined
 
-      if (wasHydra) {
+      if (wasTitan) {
         let hydraSession = configurations.length ? undefined : inputs.hydraSession
 
         if (time !== undefined) {
@@ -238,7 +238,7 @@ export function spendFor({ inputs }: { inputs: SpendInputs }): Record<string, Ta
           for (const task of row.tasks) {
             if (counted.has(task)) {
               result[task]!.hydra = (result[task]!.hydra ?? 0) + row.tokens
-              result[task]!.sharedHydra ||= row.tasks.length > 1
+              result[task]!.sharedTitan ||= row.tasks.length > 1
             }
           }
 
@@ -282,8 +282,8 @@ export function taskSpend({
   events,
   task,
 }: {
-  state: HydraState
-  events: Iterable<HydraEvent>
+  state: TitanState
+  events: Iterable<TitanEvent>
   task: string
 }): TaskSpend {
   return spendFor({

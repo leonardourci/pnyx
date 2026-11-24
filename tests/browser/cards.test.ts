@@ -1,9 +1,9 @@
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import { beforeAll, expect, onTestFinished, test } from 'vitest'
-import { openHydra } from './page.ts'
+import { openTitan } from './page.ts'
 import { chrome } from './chrome.ts'
-import { startPnyx, until, type Hydra, type Pnyx } from '../setup/pnyx.ts'
+import { startOthrys, until, type Titan, type Othrys } from '../setup/othrys.ts'
 
 const COLUMN_TASKS = 61
 const PROJECTS = 8
@@ -12,13 +12,13 @@ const REVEAL_PROJECTS = 4
 const REVEAL_FRAMES = 120
 const SCROLL_INPUT_FRAMES = 90
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
-async function addRevealProjects({ hydra }: { hydra: Hydra }) {
+async function addRevealProjects({ hydra }: { hydra: Titan }) {
   const projects: string[] = []
 
   for (let index = 0; index < REVEAL_PROJECTS; index++) {
@@ -39,11 +39,11 @@ async function addRevealProjects({ hydra }: { hydra: Hydra }) {
 test(
   'a pending project reveal resumes when its column arrives',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await addRevealProjects({ hydra })
     const arriving = hydra.folder({ name: 'Arriving project' })
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
@@ -58,7 +58,7 @@ test(
       ) => {
         element.closest<HTMLElement>('.workspace-axis')!.scrollLeft = 0
         dispatchEvent(new CustomEvent(
-          'pnyx:workspace-target',
+          'othrys:workspace-target',
           { detail },
         ))
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
@@ -90,14 +90,14 @@ test(
 )
 
 test(
-  'an inactive Hydra cannot finish a project reveal over the selected Hydra',
+  'an inactive Titan cannot finish a project reveal over the selected Titan',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const projects = await addRevealProjects({ hydra })
-    const other = await pnyx.hydra()
+    const other = await othrys.hydra()
     const project = projects.at(-1)!
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
@@ -134,7 +134,7 @@ test(
           `button[data-sort-kind="hydra"][data-sort-id="${CSS.escape(detail.other)}"]`,
         )!
         dispatchEvent(new CustomEvent(
-          'pnyx:workspace-target',
+          'othrys:workspace-target',
           {
             detail: {
               hydra: detail.hydra,
@@ -208,7 +208,7 @@ test(
 test(
   'scrolling across projects and a full column keeps every column and task mounted without gaps',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'apply',
@@ -266,12 +266,12 @@ test(
         'brief',
         referring.id,
         '--brief',
-        `Open [@Project task 6](pnyx-task:${referenced.id})`,
+        `Open [@Project task 6](othrys-task:${referenced.id})`,
       ],
     })
 
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const workspace = page.locator(`[data-hydra-workspace="${hydra.id}"]`)
@@ -579,7 +579,7 @@ test(
     await workspace.getByRole(
       'button',
       {
-        name: 'Fold Hydra',
+        name: 'Fold Titan',
         exact: true,
       },
     ).click()
@@ -673,7 +673,7 @@ test(
         const column = workspace.querySelector<HTMLElement>(`[data-column="${CSS.escape(project)}"]`)!
         const foldedWidth = column.getBoundingClientRect().width
         dispatchEvent(new CustomEvent(
-          'pnyx:workspace-target',
+          'othrys:workspace-target',
           {
             detail: {
               hydra,
@@ -690,7 +690,7 @@ test(
 
           if (width > foldedWidth + 1 && outside) {
             dispatchEvent(new CustomEvent(
-              'pnyx:workspace-target',
+              'othrys:workspace-target',
               {
                 detail: {
                   hydra,
@@ -730,7 +730,7 @@ test(
 test(
   'Activity loads every update before scrolling and retains its rows while scrolling and receiving changes',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const { card } = await hydra.owner({
       args: [
         'task',
@@ -767,8 +767,8 @@ test(
     await applyHistory({ label: 'Recent history' })
     let refuseOlder = true
     let failOlder: (() => void) | undefined
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
       beforeLoad: async ({ page }) => {
         await page.routeWebSocket(
@@ -937,7 +937,7 @@ test(
 test(
   'an open task fills its column height and follows a viewport resize',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const created = await hydra.owner({
       args: [
         'task',
@@ -955,8 +955,8 @@ test(
         JSON.stringify({ cardHeights: { [created.card.id]: 440 } }),
       ],
     })
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     await page.getByRole(
@@ -1018,7 +1018,7 @@ test(
 test(
   'starting a task attaches its worker without creating a second card',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const folder = hydra.folder({ name: 'single-task' })
     const created = await hydra.owner({
       args: [
@@ -1032,8 +1032,8 @@ test(
       ],
     })
     const task = created.card.id as string
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const taskCard = page.locator(`[data-task="${task}"]`)
@@ -1052,7 +1052,7 @@ test(
       what: 'the worker first turn',
       check: () => worker.answered > 0,
     })
-    expect(Object.values(loadHydra({
+    expect(Object.values(loadTitan({
       hydraId: hydra.id,
     }).state.cards).filter(card => card.title === 'One task, one card')
       .map(card => ({ id: card.id }))).toEqual([{ id: task }])
@@ -1071,7 +1071,7 @@ test(
 test(
   'command notices remain visible after reload and clear after a clean write',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await hydra.owner({
       args: [
         'task',
@@ -1084,8 +1084,8 @@ test(
       ],
     })
     const task = (await hydra.task({ key: 'notice-card' })).id
-    const page = await openHydra({
-      port: pnyx.port(),
+    const page = await openTitan({
+      port: othrys.port(),
       hydraId: hydra.id,
     })
     const taskCard = page.locator(`[data-task="${task}"]`)
@@ -1139,7 +1139,7 @@ test(
 test(
   'closing a task keeps workspace wheel scrolling available',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     await addRevealProjects({ hydra })
     await hydra.owner({
       args: [
@@ -1152,7 +1152,7 @@ test(
     })
     await chrome({
       script: `
-    await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});
+    await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card-open');
     await page.click('[data-hydra-workspace="${hydra.id}"] .card-open');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .card.selected');
@@ -1189,10 +1189,10 @@ test(
 )
 
 test(
-  'Hydra names and chat drafts keep pasted text readable in a narrow workspace',
+  'Titan names and chat drafts keep pasted text readable in a narrow workspace',
   async () => {
-    const hydra = await pnyx.hydra()
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    const hydra = await othrys.hydra()
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});` })
     await chrome({
       args: [
         'emulate',
@@ -1210,10 +1210,10 @@ test(
     ].join('\n')
     const result = JSON.parse(await chrome({
       script: `
-    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
+    await page.wait('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]');
     await page.click('[data-hydra-workspace="${hydra.id}"] .hydra-title');
     const renameAtEmojiBoundary = await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]');
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Titan name"]');
       field.select();
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', ${JSON.stringify(`${name.slice(1)}\n🐉`)});
@@ -1221,25 +1221,25 @@ test(
       return field.value;
     });
     await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]');
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Titan name"]');
       field.select();
       const clipboardData = new DataTransfer();
       clipboardData.setData('text/plain', ${JSON.stringify(name.split('').join('\n'))});
       field.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
     });
-    const renameFits = await page.eval(() => { const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Hydra name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
+    const renameFits = await page.eval(() => { const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Titan name"]'); return field.scrollWidth <= field.clientWidth + 1 && field.scrollHeight <= field.clientHeight + 1; });
     await page.press('Enter');
     await page.wait('[data-hydra-workspace="${hydra.id}"] .hydra-title[aria-label="Edit ${name}"]');
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', ${JSON.stringify(prose)});
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]', ${JSON.stringify(prose)});
     await page.press('Shift+Enter');
     const chatDraft = await page.eval(() => {
-      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]');
+      const field = document.querySelector('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]');
       return {
         bounded: field.scrollHeight > field.clientHeight && ['auto', 'scroll'].includes(getComputedStyle(field).overflowY) && field.getBoundingClientRect().height <= Math.min(innerHeight / 2, 480),
         text: field.value,
       };
     });
-    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Hydra"]', '');
+    await page.fill('[data-hydra-workspace="${hydra.id}"] [aria-label="Reply to Titan"]', '');
     console.log(JSON.stringify({ renameAtEmojiBoundary, renameFits, chatDraft }));
   `,
     }))
@@ -1257,8 +1257,8 @@ test(
 test(
   'saving a task leaves its card closed and its writing fields readable',
   async () => {
-    const hydra = await pnyx.hydra()
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    const hydra = await othrys.hydra()
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});` })
     await chrome({
       args: [
         'emulate',
@@ -1434,7 +1434,7 @@ test(
         repositories[0]!,
       ],
     })
-    const group = loadHydra({ hydraId: hydra.id }).state.projects![0]!.group!.id
+    const group = loadTitan({ hydraId: hydra.id }).state.projects![0]!.group!.id
     await chrome({
       script: `
     await page.click('[data-hydra-workspace="${hydra.id}"] [aria-label="New task in Export"]');
@@ -1459,9 +1459,9 @@ test.each([
   { viewport: '1440x900' },
   { viewport: '390x844' },
 ])(
-  'folded Hydras and project columns keep one aligned vertical strip at $viewport',
+  'folded Titans and project columns keep one aligned vertical strip at $viewport',
   async ({ viewport }) => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const projects = await addRevealProjects({ hydra })
 
     for (const key of [
@@ -1496,7 +1496,7 @@ test.each([
         'Which option?',
       ],
     })
-    const turn = pnyx.claude.plan({
+    const turn = othrys.claude.plan({
       hydra: hydra.id,
       hold: true,
     })
@@ -1513,7 +1513,7 @@ test.each([
         '--in-place',
       ],
     })
-    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${pnyx.port()}/hydra/${hydra.id}/`)});` })
+    await chrome({ script: `await page.open(${JSON.stringify(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/`)});` })
     await chrome({
       args: [
         'emulate',
@@ -1536,7 +1536,7 @@ test.each([
       const projects = workspace.querySelector('.project-chips');
       const bar = workspace.querySelector('.hydra-workspace-bar');
       const add = bar.querySelector('[aria-label="Add project"]');
-      const controls = [bar.querySelector('[aria-label="Fold Hydra"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.hydra-drag-name'), add].filter(Boolean);
+      const controls = [bar.querySelector('[aria-label="Fold Titan"]'), bar.querySelector('[aria-label="Fold all projects"]'), bar.querySelector('.hydra-drag-name'), add].filter(Boolean);
       const naturalPositions = controls.map(control => control.getBoundingClientRect());
       const naturalProjectsLeft = projects.getBoundingClientRect().left;
       projects.style.maxWidth = '100px';
@@ -1557,7 +1557,7 @@ test.each([
       projects.style.removeProperty('max-width');
       projects.scrollLeft = 0;
       const expandedWorkspaceWidth = workspace.getBoundingClientRect().width;
-      workspace.querySelector('[aria-label="Fold Hydra"]').click();
+      workspace.querySelector('[aria-label="Fold Titan"]').click();
       await new Promise(requestAnimationFrame);
       projects.style.maxHeight = '100px';
       const box = workspace.getBoundingClientRect();
@@ -1574,7 +1574,7 @@ test.each([
         stacked: chips.length === 5 && chips.every((chip, index) => !index || chip.top >= chips[index - 1].bottom),
       };
       projects.style.removeProperty('max-height');
-      workspace.querySelector('[aria-label="Unfold Hydra"]').click();
+      workspace.querySelector('[aria-label="Unfold Titan"]').click();
       await new Promise(requestAnimationFrame);
       const workspaceUnfolded = workspace.getBoundingClientRect().width === expandedWorkspaceWidth
         && workspace.querySelector('main').getClientRects().length > 0;
@@ -1604,7 +1604,7 @@ test.each([
       add?.click();
       await new Promise(requestAnimationFrame);
       const composer = workspace.querySelector('.hydra-chat .composer textarea');
-      const attachRequested = composer?.value.includes(' to this Hydra') && document.activeElement === composer;
+      const attachRequested = composer?.value.includes(' to this Titan') && document.activeElement === composer;
       return JSON.stringify({ topbar, strip, workspaceUnfolded, folded, columnCountsUpright, unfolded, attachRequested: !!attachRequested });
     }));
     `,

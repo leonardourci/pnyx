@@ -1,30 +1,33 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { INHERITED } from '#workers/host.ts'
 import { AUTH_ENV } from '#workers/dispatch.ts'
 import { IDENTITY } from '#app/request-context.ts'
 import { infoPath, processStart, startupRevision, type ServerInfo } from '#app/server-state.ts'
-import { PNYX_ROOT } from './runner.ts'
+import { OTHRYS_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { serviceFile, startService } from '#setup/service.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
 
+// A server from before the rename imports this name when its /upgrade or /restart starts the new build.
+export { restartOthrys as restartPnyx }
+
 export const RESTART_SIGNAL = 'SIGUSR2'
 
-// A server Pnyx starts never takes the caller's Pnyx or terminal identity, nor a worker's or Hydra's login,
+// A server Othrys starts never takes the caller's Othrys or terminal identity, nor a worker's or Titan's login,
 // so its agents get the owner's environment plus what their card names.
 function serverEnvironment(): NodeJS.ProcessEnv {
-  const actor = process.env.PNYX_ACTOR ?? ''
-  const agent = /^(worker:|helper:|hydra$)/.test(actor) || process.env.PNYX_HOSTED !== undefined
-    || process.env.PNYX_TASK !== undefined
+  const actor = process.env.OTHRYS_ACTOR ?? ''
+  const agent = /^(worker:|helper:|hydra$)/.test(actor) || process.env.OTHRYS_HOSTED !== undefined
+    || process.env.OTHRYS_TASK !== undefined
 
-  // Pnyx's own settings, such as PNYX_HOME, stay; only who the caller is and its terminal go.
+  // Othrys's own settings, such as OTHRYS_HOME, stay; only who the caller is and its terminal go.
   const identity = ({ name }: { name: string }) => INHERITED.test(name)
-    && (!name.startsWith('PNYX_') || (IDENTITY as readonly string[]).includes(name))
+    && (!/^(?:OTHRYS|PNYX)_/.test(name) || (IDENTITY as readonly string[]).includes(name))
 
   return Object.fromEntries(Object.entries(process.env)
     .filter(([name]) => !identity({ name }) && !(agent && AUTH_ENV.test(name))))
@@ -56,7 +59,7 @@ function running(): Running | undefined {
   }
 
   if (!Number.isSafeInteger(info.pid) || info.pid <= 0 || info.pid === process.pid) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'The application process identity is not verifiable',
       code: 'SERVER_UNAVAILABLE',
     })
@@ -76,20 +79,20 @@ function running(): Running | undefined {
   try {
     claim = JSON.parse(readFileSync(
       join(
-        pnyxHome(),
+        othrysHome(),
         'server.lock',
       ),
       'utf8',
     ))
   } catch {
-    throw new HydraError({
+    throw new TitanError({
       message: 'The application process identity is not verifiable',
       code: 'SERVER_UNAVAILABLE',
     })
   }
 
   if (claim.pid !== info.pid || claim.processStart !== start) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'The application process identity is not verifiable',
       code: 'SERVER_UNAVAILABLE',
     })
@@ -134,7 +137,7 @@ async function waitFor({
 function launch({ args }: { args: string[] }) {
   const log = openSync(
     join(
-      pnyxHome(),
+      othrysHome(),
       'service.log',
     ),
     'a',
@@ -146,8 +149,8 @@ function launch({ args }: { args: string[] }) {
       process.execPath,
       [
         join(
-          PNYX_ROOT,
-          'dist/cli/pnyx.js',
+          OTHRYS_ROOT,
+          'dist/cli/othrys.js',
         ),
         ...args,
       ],
@@ -155,7 +158,7 @@ function launch({ args }: { args: string[] }) {
         detached: true,
         env: {
           ...serverEnvironment(),
-          PNYX_ACTOR: 'cli',
+          OTHRYS_ACTOR: 'cli',
         },
         stdio: [
           'ignore',
@@ -166,7 +169,7 @@ function launch({ args }: { args: string[] }) {
     )
     child.on(
       'error',
-      error => process.stderr.write(`Pnyx start failed: ${error.message}\n`),
+      error => process.stderr.write(`Othrys start failed: ${error.message}\n`),
     )
     child.unref()
   } finally {
@@ -174,10 +177,10 @@ function launch({ args }: { args: string[] }) {
   }
 }
 
-export function requestRestart({ root = PNYX_ROOT }: { root?: string } = {}) {
+export function requestRestart({ root = OTHRYS_ROOT }: { root?: string } = {}) {
   const log = openSync(
     join(
-      pnyxHome(),
+      othrysHome(),
       'service.log',
     ),
     'a',
@@ -191,7 +194,7 @@ export function requestRestart({ root = PNYX_ROOT }: { root?: string } = {}) {
       [
         '--input-type=module',
         '--eval',
-        'const { restartPnyx } = await import(process.argv[1]); await restartPnyx()',
+        'const { restartOthrys } = await import(process.argv[1]); await restartOthrys()',
         pathToFileURL(join(
           root,
           'dist/upgrade/restart.js',
@@ -201,7 +204,7 @@ export function requestRestart({ root = PNYX_ROOT }: { root?: string } = {}) {
         detached: true,
         env: {
           ...serverEnvironment(),
-          PNYX_ACTOR: 'cli',
+          OTHRYS_ACTOR: 'cli',
         },
         stdio: [
           'ignore',
@@ -249,7 +252,7 @@ export function requestRestart({ root = PNYX_ROOT }: { root?: string } = {}) {
   })
 }
 
-export async function restartPnyx() {
+export async function restartOthrys() {
   const found = running()
   const unique = found ? [found] : []
   const target = found
@@ -285,7 +288,7 @@ export async function restartPnyx() {
       check: stopped,
       timeout: STOP_MS,
     })) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'The application did not stop',
         code: 'SERVER_UNAVAILABLE',
       })
@@ -349,10 +352,10 @@ export async function restartPnyx() {
   })
 
   if (!started) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'The application did not become ready after restart',
       code: 'SERVER_UNAVAILABLE',
-      help: ['Read service.log in PNYX_HOME'],
+      help: ['Read service.log in OTHRYS_HOME'],
     })
   }
 

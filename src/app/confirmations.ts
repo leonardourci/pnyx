@@ -1,16 +1,17 @@
+import { canonicalCommandName } from './command-aliases.ts'
 import { ownerActor } from './actors.ts'
 import { inform } from './command-notices.ts'
 import { createHash } from 'node:crypto'
-import { parseArgs } from 'node:util'
+import { parseCommandArgs as parseArgs } from './command-aliases.ts'
 import { WRITE, guard, meta, parse, required } from './cli-support.ts'
 import { effectiveDispatch, type EffectiveDispatch } from '#workers/dispatch-config.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraState } from './model.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import type { TitanState } from './model.ts'
+import { TitanError } from '#store/errors.ts'
 import { withWriter } from './writer.ts'
-import { loadHydra } from './store.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { loadTitan } from './store.ts'
+import { othrysHome } from '#store/storage.ts'
 import { commands } from './cli.ts'
 import { project } from '#projects/cli.ts'
 import { agent } from '#workers/agent-cli.ts'
@@ -24,7 +25,7 @@ interface Target {
   removalWork?: Record<string, string>
 }
 
-// Read before taking a Hydra writer, so the shared registry lock is never taken inside one.
+// Read before taking a Titan writer, so the shared registry lock is never taken inside one.
 const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' || target.name === 'account'
   ? effectiveDispatch()
   : undefined
@@ -35,7 +36,7 @@ function context({
   dispatch,
   removalSeq,
 }: {
-  state: HydraState
+  state: TitanState
   target: Target
   dispatch?: EffectiveDispatch
   removalSeq?: number
@@ -44,7 +45,7 @@ function context({
     name,
     args,
   } = target
-  let ref = HYDRA_CARD
+  let ref = TITAN_CARD
 
   if (name === 'agent') {
     ref = args[0] ?? ''
@@ -55,11 +56,11 @@ function context({
   }
 
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
-  const removalId = name === 'hydra' && args[0] === 'remove' ? args[1] : undefined
-  const removal = removalId ? removalSeq ?? loadHydra({ hydraId: removalId }).state.seq : undefined
+  const removalId = canonicalCommandName({ name }) === 'hydra' && args[0] === 'remove' ? args[1] : undefined
+  const removal = removalId ? removalSeq ?? loadTitan({ hydraId: removalId }).state.seq : undefined
 
   return createHash('sha256').update(JSON.stringify({
-    config: name === 'hydra' || name === 'setup' ? state.config : undefined,
+    config: canonicalCommandName({ name }) === 'hydra' || name === 'setup' ? state.config : undefined,
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     removal,
@@ -103,13 +104,13 @@ export const approval = guard({
     })
 
     if (action !== 'confirm' && action !== 'dismiss') {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Use approval confirm|dismiss <token>',
         code: 'VALIDATION_ERROR',
       })
     }
 
-    const asked = loadHydra({ hydraId }).state.dispatchProposals?.find(p => p.token === token)
+    const asked = loadTitan({ hydraId }).state.dispatchProposals?.find(p => p.token === token)
     const confirming = action === 'confirm' && asked?.kind === 'command'
       ? JSON.parse(asked.value) as Target : undefined
     const dispatch = confirming ? dispatchFor({ target: confirming }) : undefined
@@ -123,7 +124,7 @@ export const approval = guard({
         }
 
         if (proposal.status === 'applying') {
-          throw new HydraError({
+          throw new TitanError({
             message: 'This approved action is already applying; it cannot be confirmed or dismissed',
             code: 'CONFLICT',
           })
@@ -150,7 +151,7 @@ export const approval = guard({
         const decision = hydraEvent({
           state: writer.state,
           meta: actor,
-          cardId: HYDRA_CARD,
+          cardId: TITAN_CARD,
           change: action === 'confirm' ? {
             type: 'hydra.dispatch-progress',
             data: {
@@ -194,7 +195,7 @@ export const approval = guard({
       delete ownerEnv[name]
     }
 
-    ownerEnv.PNYX_HOME = pnyxHome()
+    ownerEnv.OTHRYS_HOME = othrysHome()
     const caller = requestEnv()
     const fromAgent = !ownerActor({ actor: actor.actor }) || agentRequest()
 
@@ -206,11 +207,11 @@ export const approval = guard({
       }
     }
 
-    ownerEnv.PNYX_ACTOR = fromAgent ? caller.PNYX_ACTOR ?? actor.actor : 'web'
+    ownerEnv.OTHRYS_ACTOR = fromAgent ? caller.OTHRYS_ACTOR ?? actor.actor : 'web'
 
-    const removesHydra = target.name === 'hydra' && target.args[0] === 'remove'
+    const removesTitan = canonicalCommandName({ name: target.name }) === 'hydra' && target.args[0] === 'remove'
 
-    if (removesHydra) {
+    if (removesTitan) {
       target.args.push(
         '--confirm',
         token,
@@ -230,13 +231,13 @@ export const approval = guard({
       ) ? handlers[target.name as keyof typeof handlers] : undefined
 
       if (typeof handler !== 'function') {
-        throw new HydraError({
+        throw new TitanError({
           message: `Unknown saved command ${target.name}`,
           code: 'NOT_FOUND',
         })
       }
 
-      const allHydras = target.name === 'setup' && parseArgs({
+      const allTitans = target.name === 'setup' && parseArgs({
         args: target.args,
         options: {
           ...WRITE,
@@ -247,12 +248,12 @@ export const approval = guard({
       }).positionals.length === 0
       const commandArgs = [...target.args]
 
-      if (!allHydras) {
+      if (!allTitans) {
         const separator = commandArgs.indexOf('--')
         commandArgs.splice(
           separator === -1 ? commandArgs.length : separator,
           0,
-          '--hydra',
+          '--titan',
           hydraId,
         )
       }
@@ -276,7 +277,7 @@ export const approval = guard({
           const decision = hydraEvent({
             state: writer.state,
             meta: actor,
-            cardId: HYDRA_CARD,
+            cardId: TITAN_CARD,
             change: {
               type: 'hydra.dispatch-progress',
               data: {
@@ -302,7 +303,7 @@ export const approval = guard({
         const decision = hydraEvent({
           state: writer.state,
           meta: actor,
-          cardId: HYDRA_CARD,
+          cardId: TITAN_CARD,
           change: {
             type: 'hydra.dispatch-resolved',
             data: {
@@ -327,7 +328,7 @@ export const approval = guard({
 })
 
 export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Promise<void> {
-  const { state } = loadHydra({ hydraId })
+  const { state } = loadTitan({ hydraId })
 
   if (state.config?.removed || state.config?.removing || !state.dispatchProposals?.some(proposal => proposal.kind === 'command' && proposal.status === 'applying')) {
     return
@@ -346,7 +347,7 @@ export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Pr
             actor: 'pnyx',
             at: new Date().toISOString(),
           },
-          cardId: HYDRA_CARD,
+          cardId: TITAN_CARD,
           change: {
             type: 'hydra.dispatch-progress',
             data: {

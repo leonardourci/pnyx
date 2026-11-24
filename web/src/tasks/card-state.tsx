@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { statusLabel } from '#tasks/card-status.ts'
 import type { Card, SavedLabelColor } from '#tasks/model.ts'
-import { WorkingDots } from '#web-hydra/streaming.tsx'
+import { WorkingDots } from '#web-titan/streaming.tsx'
 import { projectTitle } from '#web-projects/view.ts'
 import { Label } from '#web-shared/ui/label.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'

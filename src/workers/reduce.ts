@@ -1,4 +1,4 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { refreshTasks } from '#tasks/refresh.ts'
 import { touch } from '#tasks/touch.ts'
@@ -11,8 +11,8 @@ export function applyDispatchProposal({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type === 'hydra.dispatch-proposed') {
     state.dispatchProposals = [
@@ -48,8 +48,8 @@ export function applyLaunch({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type === 'task.launched' || event.type === 'task.copy') {
     const card = state.cards[event.cardId]
@@ -82,8 +82,8 @@ export function applySessionMove({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   const card = state.cards[event.cardId]
 
@@ -139,9 +139,9 @@ export function applyReplyReceipt({
   card,
   event,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
-  event: Extract<HydraEvent, { type: 'card.replied' }>
+  event: Extract<TitanEvent, { type: 'card.replied' }>
 }): void {
   const answers = event.data.answers
   const previous = card.replies?.find(r => r.id === event.data.reply)
@@ -199,7 +199,7 @@ export function applyReplyReceipt({
   // A task shows its session's requests, which hooks read back from the
   // session's own card, so the answer is marked on all of them.
   if (answers && event.data.state === 'delivered') {
-    // Lifts no hold: a go question is always Hydra's, and an answer to Hydra's question arrives as a Hydra message, which applyAsk handles.
+    // Lifts no hold: a go question is always Titan's, and an answer to Titan's question arrives as a Titan message, which applyAsk handles.
     if (card.asks && !reply.accepted) {
       card.asks = card.asks.map(ask => {
         const sameRound = ask.answerRound === decision?.answerRound

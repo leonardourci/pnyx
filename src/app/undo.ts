@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraEvent, HydraState, Decision } from './model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanEvent, TitanState, Decision } from './model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Card, PushFields } from '#tasks/model.ts'
 import { pushedValue, checkRevision, findCard } from '#tasks/push-rules.ts'
 import { decideSession } from '#workers/sessions.ts'
@@ -12,7 +12,7 @@ import { decided } from './decision.ts'
 import { currentHolder } from '#tasks/move.ts'
 import { sessionTaskFields } from '#workers/session-facts.ts'
 
-function editBefore({ target }: { target: Extract<HydraEvent, { type: 'task.edited' }> }): PushFields {
+function editBefore({ target }: { target: Extract<TitanEvent, { type: 'task.edited' }> }): PushFields {
   const fields = target.data.before ?? {}
 
   return !target.undoes && target.data.agent
@@ -24,7 +24,7 @@ function currentValue({
   target,
 }: {
   card: Card
-  target: Exclude<HydraEvent, { type: 'board.view' }>
+  target: Exclude<TitanEvent, { type: 'board.view' }>
 }): unknown {
   if (target.type === 'task.edited') {
     return Object.fromEntries(
@@ -45,7 +45,7 @@ function currentValue({
   return card.outcome ?? null
 }
 
-function afterValue({ target }: { target: HydraEvent }): unknown {
+function afterValue({ target }: { target: TitanEvent }): unknown {
   if (target.type === 'card.replied' || target.type === 'card.noted') {
     return null
   }
@@ -79,15 +79,15 @@ export function decideUndo({
   target,
   meta,
 }: {
-  state: HydraState
-  target: HydraEvent
+  state: TitanState
+  target: TitanEvent
   meta: Meta
 }): Decision {
   if (target.transaction) {
     throw notUndoable({ message: `${target.id} belongs to apply ${target.transaction}; append a correction with apply` })
   }
 
-  // Each side's boardId is the Hydra that wrote it; the task may have moved on since, so follow it to its holder.
+  // Each side's boardId is the Titan that wrote it; the task may have moved on since, so follow it to its holder.
   if (target.type === 'task.moved-in' || target.type === 'task.moved-out') {
     const back = target.type === 'task.moved-in' ? target.data.from : target.boardId
     const holder = target.boardId && currentHolder({
@@ -97,14 +97,14 @@ export function decideUndo({
     })
 
     if (!holder) {
-      throw notUndoable({ message: `a move between Hydras is undone by moving the task back; find where ${target.cardId} is now with \`pnyx oracle ${target.cardId}\`` })
+      throw notUndoable({ message: `a move between Titans is undone by moving the task back; find where ${target.cardId} is now with \`othrys oracle ${target.cardId}\`` })
     }
 
     if (holder === back) {
-      throw notUndoable({ message: `the task is already back on Hydra ${back}` })
+      throw notUndoable({ message: `the task is already back on Titan ${back}` })
     }
 
-    throw notUndoable({ message: `Move task ${target.cardId} from Hydra ${holder} back to Hydra ${back} in the UI` })
+    throw notUndoable({ message: `Move task ${target.cardId} from Titan ${holder} back to Titan ${back} in the UI` })
   }
 
   if ([
@@ -144,7 +144,7 @@ export function decideUndo({
     })
 
     if (state.undone[target.id] || session.taskId !== target.data.after) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'session attachment changed since this event',
         code: 'CONFLICT',
       })
@@ -190,14 +190,14 @@ export function decideUndo({
         }),
       )
     ) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'preferences changed since this event',
         code: 'CONFLICT',
       })
     }
 
     if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'view preferences changed',
         code: 'REVISION_CONFLICT',
       })
@@ -266,7 +266,7 @@ export function decideUndo({
 
   if (latest) {
     const redone = chain.length % 2 === 0
-    throw new HydraError({
+    throw new TitanError({
       message: `${target.id} was already ${redone ? 'redone' : 'undone'} by ${latest}`,
       code: 'CONFLICT',
       help: ['Review the event history and correct the task in the UI'],
@@ -289,7 +289,7 @@ export function decideUndo({
     }),
     afterValue({ target }),
   )) {
-    throw new HydraError({
+    throw new TitanError({
       message: `${target.id} no longer matches card ${card.id}: it changed since`,
       code: 'CONFLICT',
       help: [`Read tasks/${card.id}/task.log to see the later change`],

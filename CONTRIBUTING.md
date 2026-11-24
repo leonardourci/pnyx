@@ -1,19 +1,19 @@
-# Contributing to Pnyx
+# Contributing to Othrys
 
 An issue is where a change gets talked through and its decisions are recorded, so start there for anything worth discussing: say what should change and why. Typos, small doc fixes and hotfixes have little to discuss, so they can go straight to a pull request whose description records what changed and why; open an issue anyway if you want to talk it through. For a bigger change, also describe the approach in the issue. You don't need to wait for a reply before opening the pull request. Report vulnerabilities privately through [SECURITY.md](SECURITY.md) instead of an issue.
 
 Fork the repository, then clone your fork and create a branch:
 
 ```sh
-git clone https://github.com/<your-user>/pnyx.git
-cd pnyx
-git remote add upstream https://github.com/leonardourci/pnyx.git
+git clone https://github.com/<your-user>/othrys.git
+cd othrys
+git remote add upstream https://github.com/leonardourci/othrys.git
 git switch -c your-change
 pnpm install
 pnpm run build
 ```
 
-Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in `package.json`. Run owner-facing trials with an isolated `PNYX_HOME` under portless when installed: `PNYX_HOME=<dir> portless <name>.pnyx pnyx serve`. Choose a unique name, leave `--port` unset and share the URL portless prints. Without portless, use `--port 0`; automated tests keep random ports. See [Development](docs/development.md#owner-facing-trials). Follow [AGENTS.md](AGENTS.md) and the [follow-conventions skill](.agents/skills/follow-conventions/SKILL.md) for code conventions, including when to split a file, and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
+Use Node 22.13 or newer (22.18 for `pnpm deslop`) and the pnpm version pinned in `package.json`. Run owner-facing trials with an isolated `OTHRYS_HOME` under portless when installed: `OTHRYS_HOME=<dir> portless <name>.othrys othrys serve`. Choose a unique name, leave `--port` unset and share the URL portless prints. Without portless, use `--port 0`; automated tests keep random ports. See [Development](docs/development.md#owner-facing-trials). Follow [AGENTS.md](AGENTS.md) and the [follow-conventions skill](.agents/skills/follow-conventions/SKILL.md) for code conventions, including when to split a file, and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
 
 ## Pull requests and checks
 
@@ -25,9 +25,9 @@ Both required checks, `deslop` and `Lint, build and tests`, must pass. The latte
 
 ## CodeRabbit challenger review
 
-Limit CodeRabbit to one review per PR, even after fixes. Once the PR is ready for review and both required checks pass, only the owner or Hydra may request the review by commenting `@coderabbitai review`. CodeRabbit replaces the separate agent challenger before merge, and the configured review skills still apply. `pnpm deslop` neither requests nor requires CodeRabbit.
+Limit CodeRabbit to one review per PR, even after fixes. Once the PR is ready for review and both required checks pass, only the owner or Titan may request the review by commenting `@coderabbitai review`. CodeRabbit replaces the separate agent challenger before merge, and the configured review skills still apply. `pnpm deslop` neither requests nor requires CodeRabbit.
 
-If CodeRabbit refuses the request because of its quota, the owner or Hydra may retry once after waiting as long as CodeRabbit specifies. If CodeRabbit refuses the retry, the PR can merge without a CodeRabbit review once both required checks pass and all review threads are resolved.
+If CodeRabbit refuses the request because of its quota, the owner or Titan may retry once after waiting as long as CodeRabbit specifies. If CodeRabbit refuses the retry, the PR can merge without a CodeRabbit review once both required checks pass and all review threads are resolved.
 
 If CodeRabbit reviews the PR, fix each finding or reply with a reason. After any fixes, update the PR description and rerun verification.
 
@@ -35,4 +35,4 @@ CodeRabbit reviews as a challenger, on the same three parts as every review (bug
 
 ## Reporting bugs
 
-For bugs, include the Pnyx version, OS, harness, reproduction steps, expected behavior and actual behavior. Use made-up tasks and an isolated home for a reproduction; remove private paths, transcripts, tokens and account details from logs.
+For bugs, include the Othrys version, OS, harness, reproduction steps, expected behavior and actual behavior. Use made-up tasks and an isolated home for a reproduction; remove private paths, transcripts, tokens and account details from logs.

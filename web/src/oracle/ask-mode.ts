@@ -7,7 +7,7 @@ import { movedId } from './keys.ts'
 export const ASK_BADGE = 'ask'
 
 export interface Asking {
-  // The Hydra named with ask:<name>; without one, Enter shows the picker.
+  // The Titan named with ask:<name>; without one, Enter shows the picker.
   target?: string
   picking: boolean
   picked?: string
@@ -97,7 +97,7 @@ export function useAskMode({
         event: sending.id,
         onChecking: () => {
           if (attempt.current === sending) {
-            // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+            // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
             setAsk(value => value && {
               ...value,
               checking: true,
@@ -125,7 +125,7 @@ export function useAskMode({
         notify({ text: sent ? `Sent to ${to.name}` : `Ask ${to.name}: ${problem}` })
         break
       case 'show-error':
-        // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+        // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
         setAsk(value => value && {
           ...value,
           sending: false,

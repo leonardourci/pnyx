@@ -2,7 +2,7 @@ import { readProjectMemory } from '#memory/project-memory.ts'
 import { projectIdentity } from '#projects/sources.ts'
 import { projectsFor } from '#projects/read.ts'
 import { parentPort, workerData } from 'node:worker_threads'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { SearchAnswer, SearchWork } from './search-background.ts'
 import { search } from './search.ts'
 
@@ -33,8 +33,8 @@ try {
   parentPort?.postMessage({
     error: {
       message: error instanceof Error ? error.message : String(error),
-      code: error instanceof HydraError ? error.code : 'UNKNOWN',
-      help: error instanceof HydraError ? error.help : undefined,
+      code: error instanceof TitanError ? error.code : 'UNKNOWN',
+      help: error instanceof TitanError ? error.help : undefined,
     },
   } satisfies SearchAnswer)
 }

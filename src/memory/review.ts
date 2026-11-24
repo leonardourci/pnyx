@@ -3,7 +3,7 @@ import { projectsFor } from '#projects/read.ts'
 import { learningDigest, staleLearnings } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { ownerMemory } from './owner-memory.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { readableProjectMemory } from './project-memory.ts'
 
 export async function memoryReview({
@@ -13,7 +13,7 @@ export async function memoryReview({
   hydraId: string
   now: string
 }) {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const conditions = memoryConditions()
   const attached = (projectsFor({ state })).filter(project => !project.detached)
   const projectLayers = await Promise.all(attached.map(async project => ({

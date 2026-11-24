@@ -1,14 +1,14 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraEvent, HydraState } from './model.ts'
-import { emptyHydra } from './reducer.ts'
+import type { TitanEvent, TitanState } from './model.ts'
+import { emptyTitan } from './reducer.ts'
 import { recordEventId } from './command-meta.ts'
 import { projectSession } from '#workers/session-attachments.ts'
-import { applyHistory } from '#hydra/history.ts'
-import { applyHydra } from '#hydra/reduce.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { applyHistory } from '#titan/history.ts'
+import { applyTitan } from '#titan/reduce.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from '#workers/model.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { plainJson, type LogEntry, type LogFact } from '#store/log.ts'
 import type { Output } from './cli-support.ts'
 
@@ -26,13 +26,13 @@ interface Inscription {
   parent?: string
   blocking?: false
   error?: string
-  notices?: HydraEvent['notices']
+  notices?: TitanEvent['notices']
 }
 
-type HydraFields = Omit<HydraState, 'cards' | 'sessions' | 'keys' | 'eventIds' | 'undone' | 'seq' | 'movedOut'>
+type TitanFields = Omit<TitanState, 'cards' | 'sessions' | 'keys' | 'eventIds' | 'undone' | 'seq' | 'movedOut'>
 
 export interface NativeState {
-  fields?: Partial<HydraFields>
+  fields?: Partial<TitanFields>
   card?: Card
   sessions?: Record<string, AgentSession>
   undone?: Record<string, string>
@@ -64,7 +64,7 @@ export interface NativeChange {
 
 export interface NativeFact extends LogFact {
   inscribe?: Omit<Inscription, 'id' | 'at'>
-  event?: Omit<HydraEvent, 'seq' | 'id' | 'at'>
+  event?: Omit<TitanEvent, 'seq' | 'id' | 'at'>
   change?: NativeChange[]
   receipt?: {
     id: string
@@ -374,7 +374,7 @@ export function reduceNative({
   let next = state as Record<string, unknown>
 
   if (fact.change !== undefined && !Array.isArray(fact.change)) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'INVALID_EVENT',
       message: 'native changes must be an array',
     })
@@ -383,7 +383,7 @@ export function reduceNative({
   for (const change of fact.change ?? []) {
     if (!change || !Array.isArray(change.path) || change.path.length > MAX_PATH_DEPTH
       || change.path.some(key => typeof key !== 'string')) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_EVENT',
         message: 'invalid native change path',
       })
@@ -393,7 +393,7 @@ export function reduceNative({
       const replacement = record({ value: change.value })
 
       if (!replacement || change.remove) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'INVALID_EVENT',
           message: 'native state must be an object',
         })
@@ -434,7 +434,7 @@ export function reduceNative({
       if (!Array.isArray(array) || !Number.isInteger(splice.at) || !Number.isInteger(splice.remove)
         || splice.at < 0 || splice.remove < 0 || splice.at + splice.remove > array.length
         || !Array.isArray(splice.values)) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'INVALID_EVENT',
           message: 'invalid native array change',
         })
@@ -469,7 +469,7 @@ export function reduceNative({
         'failed',
       ].includes(fact.inscribe.phase)
       || !Number.isSafeInteger(fact.inscribe.acknowledged) || fact.inscribe.acknowledged < 1) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_EVENT',
         message: 'invalid native inscribe decision',
       })
@@ -497,7 +497,7 @@ export function reduceNative({
   if (fact.receipt) {
     if (typeof fact.receipt.id !== 'string' || typeof fact.receipt.digest !== 'string'
       || !record({ value: fact.receipt.value })) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_EVENT',
         message: 'invalid native command receipt',
       })
@@ -516,9 +516,9 @@ export function reduceNative({
 
   if (fact.t === 'moved') {
     if (typeof fact.from !== 'string' || typeof fact.to !== 'string') {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_EVENT',
-        message: 'native move needs both Hydras',
+        message: 'native move needs both Titans',
       })
     }
 
@@ -654,7 +654,7 @@ export function nativeReferences({
     const plain = prototype === Object.prototype || prototype === null
 
     if (fields && (!plain || Object.getOwnPropertySymbols(fields).length > 0)) {
-      throw new HydraError({
+      throw new TitanError({
         code: 'INVALID_EVENT',
         message: 'native decision values must be plain objects',
       })
@@ -696,17 +696,17 @@ export function projectNative({
   task,
   ids = new Map(Object.entries(state.eventIds)),
 }: {
-  state: HydraState
+  state: TitanState
   task?: string
   ids?: ReadonlyMap<string, number>
 }): NativeState {
-  const card = state.cards[task ?? HYDRA_CARD]
+  const card = state.cards[task ?? TITAN_CARD]
   const sessions = Object.fromEntries(Object.entries(state.sessions ?? {}).filter(([
     , session,
   ]) => {
     const owner = session.taskId ?? session.originCardId
 
-    return task === undefined ? owner === HYDRA_CARD || !state.cards[owner] : owner === task
+    return task === undefined ? owner === TITAN_CARD || !state.cards[owner] : owner === task
   }))
   const projected: NativeState = { sessions }
 
@@ -725,7 +725,7 @@ export function projectNative({
   }) as NativeState
 }
 
-function factType({ event }: { event: HydraEvent }): string {
+function factType({ event }: { event: TitanEvent }): string {
   switch (event.type) {
     case 'task.created': return 'created'
     case 'task.brief': return 'brief'
@@ -768,7 +768,7 @@ export function nativeInscribe({
   basis,
   beforeSeq,
 }: {
-  event: Extract<HydraEvent, { type: 'hydra.operation' }>
+  event: Extract<TitanEvent, { type: 'hydra.operation' }>
   ids: ReadonlyMap<string, number>
   basis: NativeState
   beforeSeq: number
@@ -809,7 +809,7 @@ export function nativeSessionSource({
 }: {
   session: AgentSession
   previous?: AgentSession
-  event: HydraEvent
+  event: TitanEvent
 }): NativeFact | undefined {
   const agent = nativeJson({ value: session.agent })
 
@@ -858,7 +858,7 @@ export function nativeDecision({
   event,
   ids,
 }: {
-  event: HydraEvent
+  event: TitanEvent
   ids: ReadonlyMap<string, number>
 }): NativeFact['event'] {
   const decision = Object.fromEntries(Object.entries(event).filter(([key]) => ![
@@ -882,9 +882,9 @@ export function nativeFact({
   ids,
   basis,
 }: {
-  event: HydraEvent
-  before: HydraState
-  after: HydraState
+  event: TitanEvent
+  before: TitanState
+  after: TitanState
   task?: string
   ids?: ReadonlyMap<string, number>
   basis?: NativeState
@@ -944,7 +944,7 @@ export function nativeEvent({
   entry: LogEntry
   ids: ReadonlyMap<string, number>
   scope: string
-}): HydraEvent | undefined {
+}): TitanEvent | undefined {
   const fact = entry as NativeFact
 
   return fact.event ? {
@@ -953,7 +953,7 @@ export function nativeEvent({
       value: fact.event,
       ids,
       restore: true,
-    }) as HydraEvent,
+    }) as TitanEvent,
     id: entry.id,
     at: entry.at,
     seq: ids.get(nativeId({
@@ -971,27 +971,27 @@ export function assembleNative({
   hydra?: NativeState
   tasks: Iterable<[string, NativeState]>
   positions?: ReadonlyMap<string, number>
-}): HydraState {
+}): TitanState {
   const state = {
-    ...emptyHydra(),
+    ...emptyTitan(),
     ...hydra?.fields,
   }
 
   if (hydra?.card) {
-    state.cards[HYDRA_CARD] = hydra.card
+    state.cards[TITAN_CARD] = hydra.card
   }
 
   state.sessions = { ...hydra?.sessions }
   state.undone = { ...hydra?.undone }
 
   for (const inscription of hydra?.inscriptions ?? []) {
-    const event: Extract<HydraEvent, { type: 'hydra.operation' }> = {
+    const event: Extract<TitanEvent, { type: 'hydra.operation' }> = {
       v: 1,
       id: inscription.id,
       seq: inscription.seq,
       at: inscription.at,
       actor: inscription.actor,
-      cardId: HYDRA_CARD,
+      cardId: TITAN_CARD,
       type: 'hydra.operation',
       data: {
         id: inscription.key,
@@ -1010,7 +1010,7 @@ export function assembleNative({
       state,
       event,
     })
-    applyHydra({
+    applyTitan({
       state,
       event,
     })

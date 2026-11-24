@@ -1,11 +1,11 @@
 import { readInput } from '#app/request-context.ts'
-import type { HydraState, HydraEvent } from '#app/model.ts'
+import type { TitanState, TitanEvent } from '#app/model.ts'
 import { projectsFor } from '#projects/read.ts'
 import { MAX_BRIEF_LENGTH, type Card } from './model.ts'
 import { clip, guard, parse, COMMON, WRITE, meta, required, commit, HISTORY_MAX, summarize, TEXT_CUT, type Output } from '#app/cli-support.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { decidePush } from './push.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { findCard } from './push-rules.ts'
 import { taskSessions } from '#workers/session-history.ts'
 import { tagsTask } from './updates.ts'
@@ -19,7 +19,7 @@ function projectName({
   state,
   project,
 }: {
-  state: HydraState
+  state: TitanState
   project?: string | null
 }): string {
   return project ? projectsFor({ state }).find(p => p.path === project)?.name ?? project : 'none'
@@ -35,7 +35,7 @@ export function cardRow({
   state,
   card,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
 }) {
   return {
@@ -53,7 +53,7 @@ function cardDetail({
   card,
   full,
 }: {
-  state: HydraState
+  state: TitanState
   card: Card
   full: boolean
 }): Output {
@@ -151,7 +151,7 @@ export const push = guard({
     try {
       input = JSON.parse(readInput({ file: file }))
     } catch (error) {
-      throw new HydraError({
+      throw new TitanError({
         message: `cannot read card JSON from ${file}: ${(error as Error).message}`,
         code: 'VALIDATION_ERROR',
       })
@@ -192,7 +192,7 @@ export function taskFields({ value }: { value?: string }): TaskField[] {
   const unknown = fields.filter(field => !TASK_FIELDS.includes(field as TaskField))
 
   if (unknown.length) {
-    throw new HydraError({
+    throw new TitanError({
       message: `unknown field: ${unknown.join(', ')}`,
       code: 'VALIDATION_ERROR',
       help: [`Use --fields with any of ${TASK_FIELDS.join(', ')}`],
@@ -202,7 +202,7 @@ export function taskFields({ value }: { value?: string }): TaskField[] {
   return fields as TaskField[]
 }
 
-export type TaskCreated = Extract<HydraEvent, { type: 'task.created' }>
+export type TaskCreated = Extract<TitanEvent, { type: 'task.created' }>
 
 export function taskBrief({ value }: { value: unknown }): string | undefined {
   if (value === undefined) {
@@ -210,7 +210,7 @@ export function taskBrief({ value }: { value: unknown }): string | undefined {
   }
 
   if (typeof value !== 'string' || value.length > MAX_BRIEF_LENGTH) {
-    throw new HydraError({
+    throw new TitanError({
       message: `a brief must be text of up to ${MAX_BRIEF_LENGTH} characters`,
       code: 'VALIDATION_ERROR',
     })
@@ -225,7 +225,7 @@ export function taskIntent({ value }: { value: unknown }): string | undefined {
   }
 
   if (typeof value !== 'string' || !value.trim() || value.length > INTENT_LIMIT) {
-    throw new HydraError({
+    throw new TitanError({
       message: `an intent must be text of 1 to ${INTENT_LIMIT} characters`,
       code: 'VALIDATION_ERROR',
     })
@@ -248,13 +248,13 @@ export function taskHistory({
   full: boolean
 }): Output {
   if (limit < 1 || limit > HISTORY_MAX) {
-    throw new HydraError({
+    throw new TitanError({
       message: `limit must be 1–${HISTORY_MAX}`,
       code: 'VALIDATION_ERROR',
     })
   }
 
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
   const task = findCard({
     state,
     ref,
@@ -304,7 +304,7 @@ export function taskHistory({
   }
 
   if (more && last) {
-    // A cursor on this Hydra stays a plain seq; one on an earlier Hydra names it.
+    // A cursor on this Titan stays a plain seq; one on an earlier Titan names it.
     const next = last.hydra === hydraId ? last.event.seq : `${last.hydra}:${last.event.seq}`
     out.next = next
   }
@@ -312,7 +312,7 @@ export function taskHistory({
   return out
 }
 
-// Only a moved task's rows name their Hydra, so every other history keeps its columns.
+// Only a moved task's rows name their Titan, so every other history keeps its columns.
 function historyRow({
   entry,
   moved,
@@ -356,7 +356,7 @@ function historyRow({
   return row
 }
 
-// --before takes a seq on this Hydra, or <hydra>:<seq> for the events a moved task had on an earlier Hydra.
+// --before takes a seq on this Titan, or <hydra>:<seq> for the events a moved task had on an earlier Titan.
 function historyStart({
   history,
   hydraId,
@@ -383,13 +383,13 @@ function historyStart({
   const at = Number(seq)
 
   if (!/^\d+$/.test(seq ?? '') || !Number.isSafeInteger(at)) {
-    throw new HydraError({
+    throw new TitanError({
       message: '--before takes a seq or <hydra>:<seq>',
       code: 'VALIDATION_ERROR',
     })
   }
 
-  // The cursor names the last row shown, so paging continues right after it, even into another Hydra's rows.
+  // The cursor names the last row shown, so paging continues right after it, even into another Titan's rows.
   const shown = history.findIndex(entry => entry.hydra === hydra && entry.event.seq === at)
 
   if (shown !== -1) {
@@ -424,7 +424,7 @@ function cardNotes({
   cut: boolean
 } {
   const ids = new Set((card.notes ?? []).map(n => n.id))
-  // A moved task's notes stay in the logs of the Hydras it came from.
+  // A moved task's notes stay in the logs of the Titans it came from.
   const events = ids.size ? movedHistory({
     hydraId,
     task: card.id,
@@ -493,7 +493,7 @@ export const card = guard({
       },
       positionals: 1,
     })
-    const { state } = loadHydra({ hydraId })
+    const { state } = loadTitan({ hydraId })
     const found = findCard({
       state,
       ref: required({
@@ -512,7 +512,7 @@ export const card = guard({
     const help = [`Read tasks/${found.id}/task.log for its events`]
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
-      help.unshift(`Read tasks/${found.id}/task.log in Hydra ${hydraId} for the full brief and notes. For a moved task, follow its move records to earlier Hydra task logs for older notes`)
+      help.unshift(`Read tasks/${found.id}/task.log in Titan ${hydraId} for the full brief and notes. For a moved task, follow its move records to earlier Titan task logs for older notes`)
     }
 
     return {

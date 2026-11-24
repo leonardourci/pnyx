@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// gh-axi for tests: reads each pull request from $PNYX_FAKE_GITHUB/<owner>/<repo>/<n>.json and logs every call.
+// gh-axi for tests: reads each pull request from $OTHRYS_FAKE_GITHUB/<owner>/<repo>/<n>.json and logs every call.
 // A pull request file may set head, branch, checks, draft, title, comments and mergeBehavior ('merged' by default, or 'queued').
 import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync, watch, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
 const args = process.argv.slice(2)
-const root = process.env.PNYX_FAKE_GITHUB
+const root = process.env.OTHRYS_FAKE_GITHUB
 appendFileSync(
   join(
     root,

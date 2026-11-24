@@ -23,7 +23,7 @@ export type SharedView = Pick<ViewPreferences, SharedViewKey>
 
 // off keeps Done cards on the board; a number of hours hides them after that long in Done, 0 right away.
 export type DoneAfterHours = number | 'off'
-// auto picks a lighter model on Hydra's harness; off sends every wake to Hydra.
+// auto picks a lighter model on Titan's harness; off sends every wake to Titan.
 export type HelperSetting = 'auto' | 'off' | AgentConfig
 
 // The lighter model auto picks on each harness, and the one a chosen harness starts from.
@@ -36,9 +36,9 @@ export interface Settings extends SharedView {
   doneAfterHours: DoneAfterHours
   reviewMinutes: number
   helper: HelperSetting
-  // The Oracle opens with the filters it last had instead of only the current Hydra's.
+  // The Oracle opens with the filters it last had instead of only the current Titan's.
   oracleRememberFilters: boolean
-  // The Hydra list's order as Hydra ids; the Hydra list decides where ids it does not name go.
+  // The Titan list's order as Titan ids; the Titan list decides where ids it does not name go.
   hydraOrder: string[]
   hiddenHydras: string[]
   logs: LogMode

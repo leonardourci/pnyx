@@ -1,22 +1,22 @@
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import { effectiveDispatch, loginFolder, type Harness } from './dispatch-config.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import { modelIds, type HostedSession, type ModelOption, type Provider } from './provider.ts'
 import { HARNESSES, harnessOf, providerIdOf, type ProviderId } from './providers.ts'
 import type { Host } from '#app/host-types.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { accountEnv } from './dispatch.ts'
 import { accountFor } from './account-choice.ts'
 import { sessionId } from './session-attachments.ts'
 
 const modelsPath = () => join(
-  pnyxHome(),
+  othrysHome(),
   'harness-models.json',
 )
 
-// "<harness>:<login folder>" -> the harness's model list, shared by every Hydra.
+// "<harness>:<login folder>" -> the harness's model list, shared by every Titan.
 function readModels(): Record<string, unknown> {
   try {
     const value = JSON.parse(readFileSync(
@@ -131,11 +131,11 @@ export function createCatalogs({
     ])
 
     const retained = () => {
-      const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
+      const saved = loadTitan({ hydraId }).state.cards[card.id]?.compaction?.catalogs
       const commands = commandCatalogs.get(cacheKey) ?? saved?.[cacheKey] ?? []
       const matches = card.agent?.provider === harness
       const session = matches && card.agent ? sessionId({ agent: card.agent }) : undefined
-      const operation = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.operations
+      const operation = loadTitan({ hydraId }).state.cards[card.id]?.compaction?.operations
         .findLast(operation => operation.session === session)
       const unavailable = operation?.state === 'failed' && operation.unsupported ? operation.error : undefined
       const native = commands.some(item => item.command === '/compact') || !providers[harness].compact ? commands : [
@@ -179,7 +179,7 @@ export function createCatalogs({
             cacheKey,
             found,
           )
-          const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
+          const saved = loadTitan({ hydraId }).state.cards[card.id]?.compaction?.catalogs
           const previous = saved?.[cacheKey]
 
           if (JSON.stringify(previous) !== JSON.stringify(found)) {

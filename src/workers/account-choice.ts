@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { Account, EffectiveDispatch, Harness } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
 
@@ -60,7 +60,7 @@ export function harnessAccount({
     !!name && effective.accounts[name]?.provider === harness
 
   if (prefer && !ours({ name: prefer })) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'NO_ACCOUNTS',
       message: `account ${prefer} is not registered for ${harness}`,
     })

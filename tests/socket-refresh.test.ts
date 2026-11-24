@@ -1,6 +1,6 @@
 import { beforeAll, expect, test, vi } from 'vitest'
 import type { ServerMessage } from '#app/server-transport.ts'
-import { openPage, startPnyx, until, type Pnyx } from './setup/pnyx.ts'
+import { openPage, startOthrys, until, type Othrys } from './setup/othrys.ts'
 
 const QUEUE_BYTES = 1_024
 const PREVIEW_CARDS = 4
@@ -88,21 +88,21 @@ vi.mock(
   },
 )
 
-let pnyx: Pnyx
+let othrys: Othrys
 
 beforeAll(async () => {
-  pnyx = await startPnyx()
+  othrys = await startOthrys()
 })
 
 test(
   'a page interest refresh during paced activity preserves the handshake, previews and receipt',
   async () => {
-    const hydra = await pnyx.hydra()
+    const hydra = await othrys.hydra()
     const cards = new Set<string>()
 
     for (let i = 0; i < PREVIEW_CARDS; i += 1) {
       const key = `paced-${i}`
-      pnyx.claude.plan({
+      othrys.claude.plan({
         hydra: hydra.id,
         match: ({ text }) => text.includes(`Brief for ${key}`),
         reply: PREVIEW,
@@ -110,14 +110,14 @@ test(
       await hydra.startTask({ key })
       const id = await until({
         what: 'the task to reach the home feed',
-        check: () => pnyx.home().scopes[hydra.id]?.state.keys[key],
+        check: () => othrys.home().scopes[hydra.id]?.state.keys[key],
       })
       cards.add(id)
     }
 
     const warmed: Record<string, string> = {}
     const warm = await openPage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
       receive({ message }) {
         if (message.type === 'latest') {
@@ -146,7 +146,7 @@ test(
     pressure.cards = [...cards]
     pressure.active = true
     const page = await openPage({
-      port: pnyx.port(),
+      port: othrys.port(),
       hydraId: hydra.id,
       home: true,
       receive: ({ message }) => frames.push(message),

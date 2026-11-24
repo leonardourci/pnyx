@@ -1,19 +1,19 @@
 import { appendFileSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { until, type Hydra } from './pnyx.ts'
+import { until, type Titan } from './othrys.ts'
 
 export async function workerLine({
   hydra,
   key,
   line,
 }: {
-  hydra: Hydra
+  hydra: Titan
   key: string
   line: string
 }) {
   const task = await hydra.task({ key })
   const dir = join(
-    process.env.PNYX_HOME!,
+    process.env.OTHRYS_HOME!,
     'runtime',
     'tasks',
     task.id,

@@ -1,21 +1,21 @@
 import { inform } from '#app/command-notices.ts'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { Decision, TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
-import { HydraError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_ACTOR, ownerActor } from '#app/actors.ts'
+import { TitanError } from '#store/errors.ts'
 import { isManagedTask } from './select.ts'
 import { requireNoDependencyCycle } from './dependencies.ts'
 import type { Card } from './model.ts'
 
-const TASK_CARDS_ONLY = 'dependencies must name task cards in this Hydra'
+const TASK_CARDS_ONLY = 'dependencies must name task cards in this Titan'
 
 export function prerequisiteCards({
   state,
   prerequisites,
 }: {
-  state: HydraState
+  state: TitanState
   prerequisites: string[]
 }): Card[] {
   const targets = prerequisites.map(ref => findCard({
@@ -24,7 +24,7 @@ export function prerequisiteCards({
   }))
 
   if (targets.some(task => isManagedTask({ card: task }))) {
-    throw new HydraError({
+    throw new TitanError({
       message: TASK_CARDS_ONLY,
       code: 'VALIDATION_ERROR',
     })
@@ -40,7 +40,7 @@ export function decideDependencies({
   remove,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   prerequisites: string[]
   remove: boolean
@@ -56,13 +56,13 @@ export function decideDependencies({
   })
 
   if (isManagedTask({ card })) {
-    throw new HydraError({
+    throw new TitanError({
       message: TASK_CARDS_ONLY,
       code: 'VALIDATION_ERROR',
     })
   }
 
-  if (!ownerActor({ actor: meta.actor }) && meta.actor !== HYDRA_ACTOR) {
+  if (!ownerActor({ actor: meta.actor }) && meta.actor !== TITAN_ACTOR) {
     inform({
       task: card.id,
       reason: 'Prerequisites changed by an agent',

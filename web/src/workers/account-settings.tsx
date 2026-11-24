@@ -8,7 +8,7 @@ import { ICON_SIZE, Icon } from '#web-shared/icons.tsx'
 import { SettingRow, SettingsRows, SettingField, SETTING_STACK } from '#web-shared/ui/setting-row.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { PROVIDERS } from './account-model-picker.tsx'
-import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
+import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useTitanDispatch } from './heads-dispatch.ts'
 
 interface Draft {
   id: string
@@ -31,7 +31,7 @@ export function AccountSettings({
     snapshot,
     resource,
   } = useDispatchDocument({ command })
-  const { effective } = useHeadsDispatch({ command })
+  const { effective } = useTitanDispatch({ command })
   const [
     draft,
     setDraft,

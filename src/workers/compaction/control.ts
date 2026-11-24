@@ -3,13 +3,13 @@ import { log } from '#app/diagnostics.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import { reportActor } from '#hydra/hydra.ts'
-import { hydraDeliveryId } from '#hydra/received.ts'
-import type { HydraState } from '#app/model.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
+import { reportActor } from '#titan/titan.ts'
+import { hydraDeliveryId } from '#titan/received.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { sessionId } from '#workers/session-attachments.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import type { Host } from '#app/host-types.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -31,7 +31,7 @@ export interface CompactionHandoff {
 export function createCompactionControl({
   hydraId,
   compactionDelay,
-  queuedHydra,
+  queuedTitan,
   closing,
   at,
   write,
@@ -43,7 +43,7 @@ export function createCompactionControl({
 }: {
   hydraId: string
   compactionDelay: number
-  queuedHydra: Set<string>
+  queuedTitan: Set<string>
   closing(): boolean
   at(): string
   write<T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): Promise<T>
@@ -66,7 +66,7 @@ export function createCompactionControl({
   }): unknown
   host(): Host
   helperPending(): boolean
-  // A compaction's status changed; for Hydra's own it starts or ends the operation that stops Hydra.
+  // A compaction's status changed; for Titan's own it starts or ends the operation that stops Titan.
   statusChanged({
     card,
     operation,
@@ -136,7 +136,7 @@ export function createCompactionControl({
                 return
               }
 
-              const { cards } = loadHydra({ hydraId }).state
+              const { cards } = loadTitan({ hydraId }).state
               const card = Object.values(cards).find(candidate => candidate.compaction?.operations
                 .some(known => known.id === operation.id && known.state === 'running'))
 
@@ -241,13 +241,13 @@ export function createCompactionControl({
     session,
     fallback,
   }: {
-    state: HydraState
+    state: TitanState
     session: string
     fallback: string
   }) => state.cards[session === state.config?.hydra.session
-    ? HYDRA_CARD : state.sessions?.[session]?.taskId ?? fallback]
+    ? TITAN_CARD : state.sessions?.[session]?.taskId ?? fallback]
 
-  const syncCompactions = async ({ state }: { state: HydraState }) => {
+  const syncCompactions = async ({ state }: { state: TitanState }) => {
     for (const card of Object.values(state.cards)) {
       for (const operation of card.compaction?.operations ?? []) {
         if (operation.state !== 'running') {
@@ -304,7 +304,7 @@ export function createCompactionControl({
     setTimeout(
       () => {
         void (async () => {
-          const card = loadHydra({ hydraId }).state.cards[id]
+          const card = loadTitan({ hydraId }).state.cards[id]
 
           if (!card || compactionBusy({ card })) {
             return
@@ -322,7 +322,7 @@ export function createCompactionControl({
               return
             }
 
-            if (compactionBusy({ card: loadHydra({ hydraId }).state.cards[id] })) {
+            if (compactionBusy({ card: loadTitan({ hydraId }).state.cards[id] })) {
               return
             }
 
@@ -336,14 +336,14 @@ export function createCompactionControl({
                 selected: input.agent,
               })
 
-              while (!closing() && queuedHydra.has(input.id)) {
+              while (!closing() && queuedTitan.has(input.id)) {
                 await new Promise(resolve => setTimeout(
                   resolve,
                   20,
                 ))
               }
 
-              const state = loadHydra({ hydraId }).state
+              const state = loadTitan({ hydraId }).state
               const message = state.hydraMessages?.find(message => message.id === input.id)
               const marker = hydraDeliveryId({
                 message: message ?? { id: input.id },
@@ -369,7 +369,7 @@ export function createCompactionControl({
               })
 
               if (input.route === 'direct') {
-                while (!closing() && loadHydra({ hydraId }).state.cards[id]?.compaction?.inputs
+                while (!closing() && loadTitan({ hydraId }).state.cards[id]?.compaction?.inputs
                   .some(queued => queued.id === input.id)) {
                   await new Promise(resolve => setTimeout(
                     resolve,
@@ -409,7 +409,7 @@ export function createCompactionControl({
               return
             }
 
-            const current = loadHydra({ hydraId }).state.cards[id]
+            const current = loadTitan({ hydraId }).state.cards[id]
 
             if (advanced && current?.compaction?.inputs.length
               && !compactionBusy({ card: current })) {

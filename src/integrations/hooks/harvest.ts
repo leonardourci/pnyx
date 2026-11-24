@@ -59,7 +59,7 @@ function writeCursors({
   )
 }
 
-// A task moving to another Hydra reads its transcripts on from where this Hydra stopped,
+// A task moving to another Titan reads its transcripts on from where this Titan stopped,
 // so no note is recorded twice.
 export function carryCursors({
   from,
@@ -109,7 +109,7 @@ export function appendNote(
     ref,
   })
 
-  // A card moved in keeps the notes its old Hydra harvested, under the same ids.
+  // A card moved in keeps the notes its old Titan harvested, under the same ids.
   if (card.notes?.some(held => held.id === id)) {
     return 0
   }

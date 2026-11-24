@@ -2,25 +2,25 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { eventsOrLegacy } from '#app/event-log.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
-import { HydraError } from '#store/errors.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { TitanError } from '#store/errors.ts'
+import { othrysHome } from '#store/paths.ts'
 import { withRegistryLock, withAsyncRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type PageSettings, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView, withDefaults } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
-import { settingsNotice } from '#hydra/settings-notice.ts'
+import { settingsNotice } from '#titan/settings-notice.ts'
 
 export const settingsLogPath = () => join(
-  pnyxHome(),
+  othrysHome(),
   'settings',
   'events.jsonl',
 )
@@ -112,7 +112,7 @@ function append({
   return entry
 }
 
-type ConfiguredEvent = HydraEvent & { type: 'board.configured' }
+type ConfiguredEvent = TitanEvent & { type: 'board.configured' }
 
 const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
   .toSorted((
@@ -123,7 +123,7 @@ const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
 
 type Legacy = 'doneAfterHours' | 'reviewMinutes' | 'helper'
 
-// A Hydra's last change to an old value; an old reset removed the value, so a removal counts as a change too.
+// A Titan's last change to an old value; an old reset removed the value, so a removal counts as a change too.
 function lastChange<K extends Legacy>({
   events,
   key,
@@ -159,7 +159,7 @@ function lastChange<K extends Legacy>({
   return change
 }
 
-// Old per-Hydra values: each one comes from the Hydra that changed it last, and an old Hide Done 0 meant off.
+// Old per-Titan values: each one comes from the Titan that changed it last, and an old Hide Done 0 meant off.
 function migrate(): void {
   if (existsSync(settingsLogPath())) {
     return
@@ -223,7 +223,7 @@ function migrate(): void {
     meta: {
       at: new Date().toISOString(),
       actor: 'pnyx',
-      reason: 'Moved from each Hydra when settings became shared by every Hydra',
+      reason: 'Moved from each Titan when settings became shared by every Titan',
     },
   })
 }
@@ -281,7 +281,7 @@ export async function saveSettings({
 }: {
   patch: unknown
   meta: Meta
-  // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Hydra only when the shared write goes ahead.
+  // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Titan only when the shared write goes ahead.
   beforeSave?(): void | Promise<void>
   hydraId?: string
 }): Promise<SettingsSave> {
@@ -312,7 +312,7 @@ export async function saveSettings({
       }
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== current.revision) {
-        throw new HydraError({
+        throw new TitanError({
           message: 'settings changed; reload and retry',
           code: 'REVISION_CONFLICT',
         })
@@ -381,7 +381,7 @@ export function pageSettings({ settings }: { settings: Settings }): PageSettings
 
 export const shownSettings = ({ settings }: { settings: Settings }): Settings => ({ ...settings })
 
-// A command that also writes a Hydra checks its shared part first and saves it only once that write succeeds.
+// A command that also writes a Titan checks its shared part first and saves it only once that write succeeds.
 export function checkSettings({ patch }: { patch: unknown }): void {
   const current = readSettings().settings
   const after = patchSettings({
@@ -416,12 +416,12 @@ export function settingsReceipt({ saved }: { saved: SettingsSave }): Output {
   }
 }
 
-// A caller about to take a Hydra writer passes settings it read first, so the shared lock is never taken inside it.
+// A caller about to take a Titan writer passes settings it read first, so the shared lock is never taken inside it.
 export function effectiveView({
   state,
   settings = readSettings().settings,
 }: {
-  state: Pick<HydraState, 'view' | 'config'>
+  state: Pick<TitanState, 'view' | 'config'>
   settings?: Settings
 }) {
   return viewFor({

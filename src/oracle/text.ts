@@ -1,4 +1,4 @@
-import type { HydraEvent } from '#app/model.ts'
+import type { TitanEvent } from '#app/model.ts'
 import type { Attention } from '#workers/model.ts'
 
 // About 256 tokens at 3 characters a token.
@@ -35,6 +35,10 @@ const INJECTED_TAGS = [
   'pnyx-digest',
   'pnyx-context',
   'pnyx-worker',
+  'othrys-wake',
+  'othrys-digest',
+  'othrys-context',
+  'othrys-worker',
 ]
 const INJECTED = new RegExp(
   String.raw`(?:# AGENTS\.md instructions for [^\n]*\s*)?<(${INJECTED_TAGS.join('|')})(?:\s[^>]*)?>[\s\S]*?<\/\1>`,
@@ -68,7 +72,7 @@ export function wakeInput({ text }: { text: string }): boolean {
       return false
     }
 
-    if (block[1] === 'pnyx-wake') {
+    if (block[1] === 'othrys-wake' || block[1] === 'pnyx-wake') {
       return true
     }
 
@@ -266,7 +270,7 @@ export function chunk({ text }: { text: string }): string[] {
 
 const attentionText = ({ list }: { list: Attention[] | undefined }) => (list ?? []).map(a => a.text)
 
-export function eventText({ event }: { event: HydraEvent }): string {
+export function eventText({ event }: { event: TitanEvent }): string {
   const parts: (string | undefined)[] = [event.reason]
 
   switch (event.type) {

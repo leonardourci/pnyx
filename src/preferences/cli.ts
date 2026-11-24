@@ -1,11 +1,11 @@
 import { guard, parse, WRITE, required, meta, commit, integer, type Output } from '#app/cli-support.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import { isSharedViewKey } from '#settings/model.ts'
 import { DEFAULT_VIEW, resetLayoutWidths, resizeViewPatch } from './view.ts'
 import { decideView } from './decisions.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 export const view = guard({
   handler: async ({ args }) => {
@@ -26,7 +26,7 @@ export const view = guard({
     })
 
     if (sub === 'show') {
-      const { state } = loadHydra({ hydraId })
+      const { state } = loadTitan({ hydraId })
 
       return {
         view: effectiveView({ state }),
@@ -43,7 +43,7 @@ export const view = guard({
     }
 
     if (sub !== 'set') {
-      throw new HydraError({
+      throw new TitanError({
         message: 'use view show, schema or set',
         code: 'VALIDATION_ERROR',
       })
@@ -57,14 +57,14 @@ export const view = guard({
         what: '--json',
       }))
     } catch {
-      throw new HydraError({
+      throw new TitanError({
         message: '--json must contain a preference object',
         code: 'VALIDATION_ERROR',
       })
     }
 
     if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
-      throw new HydraError({
+      throw new TitanError({
         message: '--json must contain a preference object',
         code: 'VALIDATION_ERROR',
       })
@@ -139,7 +139,7 @@ export const layout = guard({
     })
 
     if (positionals[0] === 'show') {
-      const view = effectiveView({ state: loadHydra({ hydraId }).state })
+      const view = effectiveView({ state: loadTitan({ hydraId }).state })
 
       return {
         widths: {
@@ -153,7 +153,7 @@ export const layout = guard({
     }
 
     if (positionals[0] !== 'reset') {
-      throw new HydraError({
+      throw new TitanError({
         message: 'use layout show or reset',
         code: 'VALIDATION_ERROR',
       })
@@ -186,8 +186,8 @@ export const layout = guard({
     }
 
     if (m.ifRevision !== undefined) {
-      throw new HydraError({
-        message: '--if-revision names one Hydra\'s view; drop it with --all',
+      throw new TitanError({
+        message: '--if-revision names one Titan\'s view; drop it with --all',
         code: 'VALIDATION_ERROR',
       })
     }
@@ -219,7 +219,7 @@ export async function hydraResize({
   })
 
   if (width === undefined) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'pass --width <pixels>',
       code: 'VALIDATION_ERROR',
     })

@@ -4,12 +4,12 @@ import { log } from '#app/diagnostics.ts'
 import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
 import type { Query, SearchSnapshot } from './model.ts'
 import { nativeHome } from '#app/native-home.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { hydraFiles } from '#store/file-home.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
 import { join } from 'node:path'
 import type { search } from './search.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 const WORKER = new URL(
   import.meta.url.endsWith('.ts') ? './search-worker.ts' : './search-worker.js',
@@ -33,13 +33,13 @@ function searchSnapshot({ hydraId }: { hydraId: string }): Promise<SearchSnapsho
       const view = home.files.positions({ hydra: hydraId })
 
       if (!view || view.issue) {
-        throw view?.issue ?? new HydraError({
+        throw view?.issue ?? new TitanError({
           code: 'NOT_FOUND',
-          message: `unknown Hydra: ${hydraId}`,
+          message: `unknown Titan: ${hydraId}`,
         })
       }
 
-      const state = loadHydra({ hydraId }).state
+      const state = loadTitan({ hydraId }).state
 
       const sources: SearchSnapshot['sources'] = [
         {
@@ -96,7 +96,7 @@ export type SearchAnswer = { result: ReturnType<typeof search> } | {
 
 function requireSearchActive({ signal }: { signal?: AbortSignal }): void {
   if (signal?.aborted) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Oracle search cancelled',
       code: 'CANCELLED',
     })
@@ -205,7 +205,7 @@ async function searchInWorker({
         )
 
         if (signal?.aborted) {
-          reject(new HydraError({
+          reject(new TitanError({
             message: 'Oracle search cancelled',
             code: 'CANCELLED',
           }))
@@ -226,7 +226,7 @@ async function searchInWorker({
         }
 
         if ('error' in answer) {
-          reject(new HydraError(answer.error))
+          reject(new TitanError(answer.error))
 
           return
         }

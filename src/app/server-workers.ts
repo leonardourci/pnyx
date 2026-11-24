@@ -2,7 +2,7 @@ import type { ReplyState } from '#workers/model.ts'
 import { log } from './diagnostics.ts'
 import { runPageCommand } from './page-command.ts'
 
-// The commands one mounted Hydra runs for its pages and its scheduler.
+// The commands one mounted Titan runs for its pages and its scheduler.
 export function createServerWorkers({
   hydraId,
   closed,
@@ -27,10 +27,10 @@ export function createServerWorkers({
   }) => {
     if (closed()) {
       done({
-        error: new Error('Pnyx is shutting down'),
+        error: new Error('Othrys is shutting down'),
         stdout: JSON.stringify({
           error: {
-            message: 'Pnyx is shutting down',
+            message: 'Othrys is shutting down',
             code: 'UNAVAILABLE',
           },
         }),
@@ -60,7 +60,7 @@ export function createServerWorkers({
     reject,
   ) => {
     if (closed()) {
-      return reject(new Error('Pnyx is shutting down'))
+      return reject(new Error('Othrys is shutting down'))
     }
 
     startWorker({
@@ -98,7 +98,7 @@ export function createServerWorkers({
           `--text=${text}`,
           '--idempotency-key',
           retry,
-          '--hydra',
+          '--titan',
           hydraId,
           '--actor',
           'pnyx',

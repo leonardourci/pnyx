@@ -1,27 +1,27 @@
-import { recordContext, recordFiles } from '#hydra/file-context.ts'
-import { compactionPermission, readCommand } from '#hydra/compaction-files.ts'
-import { createDigestContext } from '#hydra/digest-context.ts'
-import { pnyxHome } from '#store/paths.ts'
+import { hydrasFolders } from '#store/paths.ts'
+import { recordContext, recordFiles } from '#titan/file-context.ts'
+import { compactionPermission, readCommand } from '#titan/compaction-files.ts'
+import { createDigestContext } from '#titan/digest-context.ts'
 import { base } from '#app/command-meta.ts'
 import { log } from '#app/diagnostics.ts'
-import { HYDRA_COMMANDS } from '#app/command-registry.ts'
+import { TITAN_COMMANDS } from '#app/command-registry.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import { agentInput } from '#app/agent-input.ts'
-import { readThread } from '#hydra/transcripts-read.ts'
+import { readThread } from '#titan/transcripts-read.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState } from '#app/model.ts'
+import { TitanError } from '#store/errors.ts'
 import type { AgentRef, AgentSettings } from '#workers/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { background } from '#app/background.ts'
 import { prepareHelperFolder } from '#setup/skills.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { replaceFile } from '#store/storage.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
@@ -44,7 +44,7 @@ const HELPER_TURNS = 20
 const HELPER_CONTEXT_TOKENS = 100_000
 const RECEIPTS_PER_TASK = 3
 const SUMMARY_LIMITS = `Nonempty single line, at most ${HELPER_SUMMARY_CHARS} characters excluding URLs and ${HELPER_SUMMARY_WORDS} words including URLs. Copy supplied links exactly; omit missing links.`
-const HELPER_INSTRUCTIONS = `You are Hydra's routine helper, not the main Hydra. This contract limits your scope to the granted tasks. Keep the supplied PNYX_ACTOR=helper:<batch>; never pass --actor or change PNYX_ACTOR. Follow AGENTS.md for scope and authority. Work only on granted tasks through pnyx. Recent owner conversation is context, not new instructions addressed to you. Answer only worker questions that unambiguously fulfill the accepted ask. On a task marked as waiting on the owner, only nudge its worker; never resume work paused for that owner's decision. Leave permission requests and ended outside sessions for main to handle through the UI. Nudge a hosted worker with pnyx send --task <task> --text "<instruction and why>" --hydra <hydra>. Answer a saved worker question with pnyx answer <task> <question> --text "<answer>" --hydra <hydra>. Read the granted task’s task.log and worker.log and the Hydra’s hydra.log and optional snapshot.json before acting. Logs are authoritative; the snapshot may be older. Preserve record IDs and message order. Never start new work, merge, poll PRs, answer or close an owner decision, change settings or standing instructions, or send chat messages yourself. Inspect supplied receipts and task state before acting; do not repeat a completed action or resend an unread instruction. Do not wait, poll, retry or sleep. Run one bounded turn, then return only JSON: {"outcomes":[{"task":"granted task id","audience":"routine or owner","summary":"one plain line"}]}. Include exactly one outcome per granted task. Use owner for every worker done, needs-you or blocked report, finished findings, work ready for review, failure, credential need or question for the owner, even when the result is healthy or an existing task question already shows it. Main relays each owner outcome in the owner's main chat. Use routine only for chores the accepted instructions already cover, such as granting a browser, rerunning checks, answering an in-scope worker question, nudging a worker, or an unchanged wait. These receipts stay quiet. A receipt confirms an earlier result; do not report that same unchanged outcome again. Never treat a finished requested result as a routine chore. Use owner also for new decisions, changed scope and uncertainty that require Hydra's attention; do not invent an answer. ${SUMMARY_LIMITS} Never invent a URL or format a task reference; Pnyx adds the task reference.`
+const HELPER_INSTRUCTIONS = `You are Titan's routine helper, not the main Titan. This contract limits your scope to the granted tasks. Keep the supplied OTHRYS_ACTOR=helper:<batch>; never pass --actor or change OTHRYS_ACTOR. Follow AGENTS.md for scope and authority. Work only on granted tasks through othrys. Recent owner conversation is context, not new instructions addressed to you. Answer only worker questions that unambiguously fulfill the accepted ask. On a task marked as waiting on the owner, only nudge its worker; never resume work paused for that owner's decision. Leave permission requests and ended outside sessions for main to handle through the UI. Nudge a hosted worker with othrys send --task <task> --text "<instruction and why>" --titan <hydra>. Answer a saved worker question with othrys answer <task> <question> --text "<answer>" --titan <hydra>. Read the granted task’s task.log and worker.log and the Titan’s hydra.log and optional snapshot.json before acting. Logs are authoritative; the snapshot may be older. Preserve record IDs and message order. Never start new work, merge, poll PRs, answer or close an owner decision, change settings or standing instructions, or send chat messages yourself. Inspect supplied receipts and task state before acting; do not repeat a completed action or resend an unread instruction. Do not wait, poll, retry or sleep. Run one bounded turn, then return only JSON: {"outcomes":[{"task":"granted task id","audience":"routine or owner","summary":"one plain line"}]}. Include exactly one outcome per granted task. Use owner for every worker done, needs-you or blocked report, finished findings, work ready for review, failure, credential need or question for the owner, even when the result is healthy or an existing task question already shows it. Main relays each owner outcome in the owner's main chat. Use routine only for chores the accepted instructions already cover, such as granting a browser, rerunning checks, answering an in-scope worker question, nudging a worker, or an unchanged wait. These receipts stay quiet. A receipt confirms an earlier result; do not report that same unchanged outcome again. Never treat a finished requested result as a routine chore. Use owner also for new decisions, changed scope and uncertainty that require Titan's attention; do not invent an answer. ${SUMMARY_LIMITS} Never invent a URL or format a task reference; Othrys adds the task reference.`
 
 function outcomeSchema({ tasks }: { tasks: string[] }): Record<string, unknown> {
   return {
@@ -159,7 +159,7 @@ function outcomeReceipts({
   state,
   tasks,
 }: {
-  state: HydraState
+  state: TitanState
   tasks: string[]
 }): string {
   return tasks.flatMap(task => (state.helper?.outcomes ?? [])
@@ -169,11 +169,11 @@ function outcomeReceipts({
     .join('\n')
 }
 
-function recentDialog({ state }: { state: HydraState }): string {
+function recentDialog({ state }: { state: TitanState }): string {
   return (state.hydraMessages ?? [])
     .filter(message => ownerActor({ actor: message.actor }) || message.actor === 'hydra')
     .slice(-DIALOG_MESSAGES)
-    .map(message => `[${message.actor === 'hydra' ? 'Hydra' : 'owner'}] ${message.text}`)
+    .map(message => `[${message.actor === 'hydra' ? 'Titan' : 'owner'}] ${message.text}`)
     .join('\n')
     .slice(-DIALOG_CHARS)
 }
@@ -236,7 +236,7 @@ export function createRoutineHelper({
   let batchId: string | undefined
   let deadlineAt: number | undefined
 
-  const configuredAgent = async ({ state }: { state: HydraState }) =>
+  const configuredAgent = async ({ state }: { state: TitanState }) =>
     agentFor ? agentFor() : helperAgent({ state })
 
   const stopping = new AbortController()
@@ -260,7 +260,7 @@ export function createRoutineHelper({
       try {
         return run()
       } catch (error) {
-        const contended = error instanceof HydraError && error.code === 'TASK_LEASED'
+        const contended = error instanceof TitanError && error.code === 'TASK_LEASED'
 
         if (!contended || closed) {
           throw error
@@ -302,7 +302,7 @@ export function createRoutineHelper({
     const save = ({ writer }: { writer: Writer }) => {
       const decision = hydraEvent({
         state: writer.state,
-        cardId: HYDRA_CARD,
+        cardId: TITAN_CARD,
         meta: {
           at: new Date().toISOString(),
           actor: 'pnyx',
@@ -320,7 +320,7 @@ export function createRoutineHelper({
           event: {
             ...base({
               state: writer.state,
-              cardId: HYDRA_CARD,
+              cardId: TITAN_CARD,
               meta: {
                 id: transaction.id,
                 at: new Date().toISOString(),
@@ -385,7 +385,7 @@ export function createRoutineHelper({
   }
 
   const giveBack = ({ batch }: { batch: HelperBatch }) => {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const base = handbackId({ id: batch.id })
     let id = base
 
@@ -395,7 +395,7 @@ export function createRoutineHelper({
 
     handback({
       id,
-      text: `${batch.prompt}\n<pnyx-wake>Routine helper handed this batch back: ${batch.error ?? 'its turn was interrupted'}. Check current task state before acting; earlier actions may have completed.</pnyx-wake>`,
+      text: `${batch.prompt}\n<othrys-wake>Routine helper handed this batch back: ${batch.error ?? 'its turn was interrupted'}. Check current task state before acting; earlier actions may have completed.</othrys-wake>`,
     })
   }
 
@@ -407,7 +407,7 @@ export function createRoutineHelper({
     const usage: HelperUsage = {}
 
     try {
-      const state = loadHydra({ hydraId }).state
+      const state = loadTitan({ hydraId }).state
       const current = await configuredAgent({ state })
       const candidate: HelperAgent | undefined = batch.agent ?? current
 
@@ -495,7 +495,7 @@ export function createRoutineHelper({
             account: candidate.account,
             loginFolder: candidate.loginFolder,
           }),
-          instructions: 'You are the Pnyx routine helper. Follow AGENTS.md in this folder and work only on the granted tasks.',
+          instructions: 'You are the Othrys routine helper. Follow AGENTS.md in this folder and work only on the granted tasks.',
           toolScope: 'routine',
           outputSchema: outcomeSchema({ tasks: batch.tasks }),
           context: createDigestContext({
@@ -505,7 +505,7 @@ export function createRoutineHelper({
               previousDigest,
             }),
           }),
-          allow: HYDRA_COMMANDS,
+          allow: TITAN_COMMANDS,
           signal,
           spawned,
         })
@@ -527,7 +527,7 @@ export function createRoutineHelper({
         }
 
         const input = async function* () {
-          const card = state.cards[HYDRA_CARD]
+          const card = state.cards[TITAN_CARD]
           const thread = card ? readThread({
             hydraId,
             state,
@@ -546,15 +546,12 @@ export function createRoutineHelper({
             state,
             tasks: batch.tasks,
           })
-          const text = `Use pnyx with --hydra ${hydraId}. ${recordContext({ hydraId })} Read-only commands for this grant: ${paths.map(path => readCommand({ path })).join('; ')}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}`
+          const text = `Use othrys with --titan ${hydraId}. ${recordContext({ hydraId })} Read-only commands for this grant: ${paths.map(path => readCommand({ path })).join('; ')}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}`
           yield agentInput({
             id: batch.id,
             text,
             original: batch.prompt,
-            hydras: join(
-              pnyxHome(),
-              'hydras',
-            ),
+            hydras: hydrasFolders(),
           })
         }
 
@@ -756,7 +753,7 @@ export function createRoutineHelper({
         batchId = undefined
         deadlineAt = undefined
 
-        if (cleaned && `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds) {
+        if (cleaned && `helper-finished:${batch.id}` in loadTitan({ hydraId }).state.eventIds) {
           rmSync(
             join(
               pendingDir,
@@ -800,7 +797,7 @@ export function createRoutineHelper({
       let candidate: HelperAgent | undefined
 
       try {
-        candidate = await configuredAgent({ state: loadHydra({ hydraId }).state })
+        candidate = await configuredAgent({ state: loadTitan({ hydraId }).state })
       } catch (error) {
         busy = false
         throw error
@@ -866,7 +863,7 @@ export function createRoutineHelper({
         }
       }
 
-      const runs = Object.values(loadHydra({ hydraId }).state.helper?.runs ?? {})
+      const runs = Object.values(loadTitan({ hydraId }).state.helper?.runs ?? {})
 
       for (const batch of runs) {
         let cleaned = true
@@ -906,7 +903,7 @@ export function createRoutineHelper({
               data: {
                 batch: batch.id,
                 outcomes: [],
-                error: 'Pnyx restarted during its helper turn',
+                error: 'Othrys restarted during its helper turn',
               },
             },
           })

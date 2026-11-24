@@ -1,7 +1,7 @@
 import { asRecord } from '#app/command-validation.ts'
 import { log, logMode, writeLine, type LogLine } from '#app/diagnostics.ts'
 import { logged, PAGE_LINES_MAX, PAGE_NUMBER_FIELDS, PAGE_TEXT_FIELDS, STACK_MAX, TEXT_MAX } from '#app/log-line.ts'
-import { HYDRA_ID } from '#hydra/identity.ts'
+import { TITAN_ID } from '#titan/identity.ts'
 
 const PAGE_OPERATION = /^page\.[a-z][a-z-]{0,40}$/
 // A page line says how long ago it happened on the page's own clock; one older than this, or from the future, takes the time it arrives.
@@ -45,9 +45,9 @@ function pageLine({ value }: { value: unknown }): LogLine | undefined {
   const operation = text({ value: record?.operation })
   const hydraId = text({ value: record?.hydraId })
 
-  const knownHydra = hydraId === undefined || HYDRA_ID.test(hydraId)
+  const knownTitan = hydraId === undefined || TITAN_ID.test(hydraId)
 
-  if (!record || !operation || !PAGE_OPERATION.test(operation) || !knownHydra) {
+  if (!record || !operation || !PAGE_OPERATION.test(operation) || !knownTitan) {
     return undefined
   }
 

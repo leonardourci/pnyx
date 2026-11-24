@@ -5,9 +5,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { join } from 'node:path'
 import { hydraDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
-import { pnyxHome, replaceFile } from '#store/storage.ts'
+import { othrysHome, replaceFile } from '#store/storage.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 
 const OLD_HOST_STOP_MS = 30_000
 // How long the start waits for an earlier server's agents and their tools to be gone.
@@ -113,7 +113,7 @@ const read = ({
     const missing = error instanceof Error && 'code' in error && error.code === 'ENOENT'
 
     if (strict && !missing) {
-      throw new HydraError({
+      throw new TitanError({
         message: `Cannot verify recorded processes: ${path}`,
         code: 'AGENT_STOP_FAILED',
       })
@@ -192,7 +192,7 @@ export function trackChildren({
         const pids = alive().map(child => child.pid)
           .join(', ')
 
-        throw new HydraError({
+        throw new TitanError({
           message: `Agent process groups for ${task} did not stop: ${pids}`,
           code: 'AGENT_STOP_FAILED',
           help: [`Stop processes ${pids} yourself, then retry the cleanup`],
@@ -317,7 +317,7 @@ export function trackChildren({
         )
       }
 
-      // A durable write per Hydra adds up across a server start, so an unchanged record is left as it is.
+      // A durable write per Titan adds up across a server start, so an unchanged record is left as it is.
       if (live.size !== recorded.length) {
         save()
       }
@@ -358,7 +358,7 @@ export function trackChildren({
 // its own agents, which it started in their own process groups.
 export async function stopOldHost() {
   const path = join(
-    pnyxHome(),
+    othrysHome(),
     'native/owner.json',
   )
   let owner: unknown

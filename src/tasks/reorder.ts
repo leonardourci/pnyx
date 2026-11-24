@@ -1,4 +1,4 @@
-import type { HydraState, Decision } from '#app/model.ts'
+import type { TitanState, Decision } from '#app/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { decided } from '#app/decision.ts'
 import { findCard } from './push-rules.ts'
@@ -11,7 +11,7 @@ export function reorderTask({
   before,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   before?: string
   meta: Meta

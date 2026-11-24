@@ -3,21 +3,21 @@ import { projectsFor } from '#projects/read.ts'
 import { SET_UP_SKILL } from './skill-names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
-import type { HydraProject } from '#projects/model.ts'
+import { TEMPLATE_NUDGE } from '#titan/digest.ts'
+import type { TitanProject } from '#projects/model.ts'
 import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
 import { readableProjectMemory } from '#memory/project-memory.ts'
-import { sharingHydras } from '#projects/read.ts'
+import { sharingTitans } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { recordExitCode } from '#app/request-context.ts'
 
 export interface SetupItem {
   name: string
   missing: string
-  // Hydra runs a hydra fix itself; an owner fix becomes a question card or a one-line ask in chat.
+  // Titan runs a hydra fix itself; an owner fix becomes a question card or a one-line ask in chat.
   by: 'hydra' | 'owner'
   fix: string
 }
@@ -38,7 +38,7 @@ export async function setupCheck({
   readable,
 }: {
   hydraId: string
-  readable: HydraProject[]
+  readable: TitanProject[]
 }): Promise<SetupItem[]> {
   const items: SetupItem[] = []
 
@@ -116,7 +116,7 @@ export async function setupCheck({
         name: 'hooks',
         missing: script === 'current' ? `reporting hooks not installed in ${missing.join(', ')}` : `hook script ${script}`,
         by: 'owner',
-        fix: `pnyx setup hooks --hydra ${hydraId}`,
+        fix: `othrys setup hooks --titan ${hydraId}`,
       })
     }
   } catch (error) {
@@ -124,7 +124,7 @@ export async function setupCheck({
       name: 'hooks',
       missing: (error as Error).message,
       by: 'owner',
-      fix: 'fix that config by hand, then run `pnyx setup hooks`',
+      fix: 'fix that config by hand, then run `othrys setup hooks`',
     })
   }
 
@@ -135,7 +135,7 @@ export async function setupCheck({
       name: 'skills',
       missing: skills,
       by: 'owner',
-      fix: skills.startsWith('conflict') ? 'move that skill aside, then run `pnyx setup skills`' : `pnyx setup skills --hydra ${hydraId}`,
+      fix: skills.startsWith('conflict') ? 'move that skill aside, then run `othrys setup skills`' : `othrys setup skills --titan ${hydraId}`,
     })
   }
 
@@ -152,9 +152,9 @@ export async function setupCheck({
   if ((process.platform === 'darwin' || process.platform === 'linux') && !existsSync(serviceFile().path)) {
     items.push({
       name: 'service',
-      missing: 'no login service, so Hydras stop when this server stops',
+      missing: 'no login service, so Titans stop when this server stops',
       by: 'owner',
-      fix: 'pnyx setup',
+      fix: 'othrys setup',
     })
   }
 
@@ -171,7 +171,7 @@ export async function setupCheck({
     project,
     status,
   } of profiles) {
-    const duplicates = sharingHydras({
+    const duplicates = sharingTitans({
       hydraId,
       path: project.path,
     })
@@ -183,7 +183,7 @@ export async function setupCheck({
       ].sort().join(', ')
       items.push({
         name: `project-owner:${project.path}`,
-        missing: `repository ${project.path} is attached to Hydras ${hydras}`,
+        missing: `repository ${project.path} is attached to Titans ${hydras}`,
         by: 'owner',
         fix: `Choose a keeper for ${project.path} in the UI`,
       })
@@ -208,7 +208,7 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
 ] : []
 
 export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  const loaded = loadHydra({ hydraId }).state
+  const loaded = loadTitan({ hydraId }).state
   const items = await setupCheck({
     hydraId,
     readable: projectsFor({state: loaded}),
@@ -226,6 +226,6 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
   return {
     hydraId,
     missing: items,
-    help: [`Hydra runs setup commands directly; login rows need the owner’s credentials; see the ${SET_UP_SKILL} skill`],
+    help: [`Titan runs setup commands directly; login rows need the owner’s credentials; see the ${SET_UP_SKILL} skill`],
   }
 }

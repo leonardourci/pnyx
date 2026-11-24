@@ -3,16 +3,16 @@ import { join, resolve } from 'node:path'
 import { matchesProject, sameProjectPath } from './identity.ts'
 import { commonDir, git, onBranch } from './git.ts'
 import { checkCopy, removeCopy } from './copy-check.ts'
-import type { HydraProject, TaskCopy } from './model.ts'
+import type { TitanProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { othrysHome } from '#store/storage.ts'
 import { canonical, within } from '#store/paths.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { isFolder } from '#workers/folders.ts'
 
 const claims = new Map<string, {
@@ -23,13 +23,13 @@ const POOL_IDLE = 2
 
 export const liveCopy = ({ card }: { card: Card }) => (card.copy?.state === 'removed' ? undefined : card.copy)
 
-// An unnamed Hydra names its task branches after its id.
-export const branchHydraName = ({
+// An unnamed Titan names its task branches after its id.
+export const branchTitanName = ({
   hydraId,
   state,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
 }) => state.config?.name || hydraId
 
 export function recordedBranches({
@@ -38,13 +38,13 @@ export function recordedBranches({
   project,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   project: string
 }): string[] {
   const branches = new Set<string>()
 
   for (const id of hydraIds()) {
-    const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
+    const current = id === hydraId ? state : loadTitan({ hydraId: id }).state
 
     for (const { copy } of Object.values(current.cards)) {
       if (copy?.branch && sameProjectPath({
@@ -60,7 +60,7 @@ export function recordedBranches({
 }
 
 export function copiesDir(): string {
-  const home = resolve(pnyxHome())
+  const home = resolve(othrysHome())
 
   return join(
     canonical({ path: home }) ?? home,
@@ -73,7 +73,7 @@ export function requireUnlinkedCopyFolder({ path }: { path: string }): void {
     path,
     { throwIfNoEntry: false },
   )?.isSymbolicLink()) {
-    throw new HydraError({
+    throw new TitanError({
       message: `Copies folder is a symbolic link: ${path}`,
       code: 'CONFLICT',
     })
@@ -83,7 +83,7 @@ export function requireUnlinkedCopyFolder({ path }: { path: string }): void {
 export function slots({
   project,
 }: {
-  project: HydraProject
+  project: TitanProject
 }): string[] {
   const dir = copiesDir()
   const prefix = `${project.name}-`
@@ -109,7 +109,7 @@ const runsIn = ({
   state,
   path,
 }: {
-  state: HydraState
+  state: TitanState
   path: string
 }) =>
   Object.values(state.cards).some(card => {
@@ -126,7 +126,7 @@ const holds = ({
   path,
   except,
 }: {
-  state: HydraState
+  state: TitanState
   path: string
   except?: string
 }) =>
@@ -142,7 +142,7 @@ const idle = ({
   path: string
   except?: string
 }) => hydraIds().every(id => {
-  const state = loadHydra({ hydraId: id }).state
+  const state = loadTitan({ hydraId: id }).state
 
   return !runsIn({
     state,
@@ -165,7 +165,7 @@ export function releasedCopyOwner({
   card: Card
 } | undefined {
   for (const hydraId of hydraIds()) {
-    const owner = Object.values(loadHydra({ hydraId }).state.cards).find(card =>
+    const owner = Object.values(loadTitan({ hydraId }).state.cards).find(card =>
       card.copy?.state === 'removed' && card.copy.branch === branch && canonical({ path: card.copy.path }) === path)
 
     if (owner) {
@@ -325,7 +325,7 @@ export async function freshSlot({
 }: {
   hydraId: string
   task: string
-  project: HydraProject
+  project: TitanProject
 }): Promise<string> {
   const pool = copiesDir()
 
@@ -352,7 +352,7 @@ export async function staysInPool({
   copy,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   copy: TaskCopy
 }): Promise<boolean> {
   const project = projectsFor({ state }).find(p => !p.detached && matchesProject({
@@ -393,7 +393,7 @@ export async function staysInPool({
 }
 
 export async function trimPool({ hydraId }: { hydraId: string }): Promise<void> {
-  const state = loadHydra({ hydraId }).state
+  const state = loadTitan({ hydraId }).state
 
   for (const project of projectsFor({ state }).filter(p => !p.detached)) {
     const pooled = slots({

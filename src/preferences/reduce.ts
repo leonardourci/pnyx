@@ -1,12 +1,12 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { workspaceLayout } from './workspace.ts'
 
 export function applyView({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (event.type === 'board.view') {
     state.view = structuredClone(event.data.after)

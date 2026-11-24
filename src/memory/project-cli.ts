@@ -3,8 +3,8 @@ import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from './conditions.ts'
 import { learningChange, staleLearnings } from './learnings.ts'
 import { explained, meta, parse, required, WRITE, type Output } from '#app/cli-support.ts'
-import { HydraError } from '#store/errors.ts'
-import { loadHydra } from '#app/store.ts'
+import { TitanError } from '#store/errors.ts'
+import { loadTitan } from '#app/store.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView, writeProjectMemory, type ProjectMemoryKey } from './project-memory.ts'
 
 export async function projectMemoryCommand({ args }: { args: string[] }): Promise<Output> {
@@ -28,7 +28,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   })
   const action = positionals[0] ?? 'list'
   const project = findProject({
-    state: loadHydra({ hydraId }).state,
+    state: loadTitan({ hydraId }).state,
     ref: required({
       value: values.project as string | undefined,
       what: '--project <name|path>',
@@ -102,7 +102,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
     const duplicate = view.events.some(event => event.id === change.id)
 
     if (!duplicate && change.ifRevision !== undefined && change.ifRevision !== view.revision) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Project memory changed. Read it again before confirming the learning.',
         code: 'REVISION_CONFLICT',
       })
@@ -133,7 +133,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
     PROJECT_MEMORY_DOCUMENTS,
     key,
   )) {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Use project memory list|set|forget|confirm|save|archive --project <name|path>; keys are profile, preferences, learnings and workers',
       code: 'VALIDATION_ERROR',
     })
@@ -145,7 +145,7 @@ export async function projectMemoryCommand({ args }: { args: string[] }): Promis
   }).trim()
 
   if (after === '') {
-    throw new HydraError({
+    throw new TitanError({
       message: 'Project memory text must not be empty',
       code: 'VALIDATION_ERROR',
     })

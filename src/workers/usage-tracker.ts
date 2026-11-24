@@ -7,15 +7,15 @@ import { mergeWindows, type HostedUsage } from './provider.ts'
 import { harnessOf } from './providers.ts'
 import { sessionId } from './session-attachments.ts'
 import { usageFor } from './usage.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import type { Host } from '#app/host-types.ts'
 
 const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
 const planReads = new Map<string, number>()
 let nextPlanRead = 0
-// Each Hydra's usage views, rebuilt when a login's plan limits change.
+// Each Titan's usage views, rebuilt when a login's plan limits change.
 const trackers = new Set<() => void>()
 
 // What each hosted session and login reported about its usage, and the usage views built from it.
@@ -27,7 +27,7 @@ export function createUsageTracker({
 }: {
   hydraId: string
   streamed({ session }: { session: string }): void
-  // Rebuilds and pushes the usage of every session in the Hydra, once for all of them.
+  // Rebuilds and pushes the usage of every session in the Titan, once for all of them.
   usageChanged(): void
   usages?: Map<string, Omit<HostedUsage, 'type'>>
 }) {
@@ -97,7 +97,7 @@ export function createUsageTracker({
     spend = {},
     readings = {},
   }) => {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const effective = effectiveDispatch()
 
     return Object.fromEntries(Object.values(state.cards).flatMap(card => {
@@ -124,7 +124,7 @@ export function createUsageTracker({
             plan: plans.get(account.key),
             account: account.name,
             spend: spend[card.id],
-            helper: card.id === HYDRA_CARD ? state.helper?.usage : undefined,
+            helper: card.id === TITAN_CARD ? state.helper?.usage : undefined,
           }),
         ],
       ]
@@ -136,15 +136,15 @@ export function createUsageTracker({
     spend = {},
     readings = {},
   } = {}) => {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = ref ? findCard({
       state,
       ref,
-    }) : state.cards[HYDRA_CARD]
+    }) : state.cards[TITAN_CARD]
     const agent = card?.agent
 
     if (!agent) {
-      return { usage: ref ? 'none: task has no agent session' : 'none: Hydra has not started a session' }
+      return { usage: ref ? 'none: task has no agent session' : 'none: Titan has not started a session' }
     }
 
     const key = sessionId({ agent })
@@ -158,7 +158,7 @@ export function createUsageTracker({
       transcript: readings[key],
       plan: plans.get(account.key),
       spend: spend[card.id],
-      helper: card.id === HYDRA_CARD ? state.helper?.usage : undefined,
+      helper: card.id === TITAN_CARD ? state.helper?.usage : undefined,
     })
   }
 
@@ -166,11 +166,11 @@ export function createUsageTracker({
     card: ref,
     force = false,
   }) => {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = ref ? findCard({
       state,
       ref,
-    }) : state.cards[HYDRA_CARD]
+    }) : state.cards[TITAN_CARD]
 
     if (!card?.agent) {
       return { refreshed: 'none: no agent session' }

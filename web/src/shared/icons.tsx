@@ -33,7 +33,7 @@ export const ICON_SIZE = {
   brand: 24,
 } as const
 
-export const identityGlyph = ({ name }: { name: string }) => {
+const identityGlyph = ({ name }: { name: string }) => {
   const icon = identityIcon({ id: name })
   const file = icon && IDENTITY_FILES[`./ui/icons/identity/${icon.file}`]
   const path = file?.match(PATH_DATA)?.[1]
@@ -99,7 +99,7 @@ export function Icon({
     )
   }
 
-  if (name === 'pnyx') {
+  if (name === 'othrys') {
     return (
       <img
         aria-hidden="true"

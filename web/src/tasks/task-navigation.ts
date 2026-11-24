@@ -3,7 +3,7 @@ import { taskProjectGroup } from '#tasks/order.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { showingPage, type PageView } from '#web-app/restore.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { focusElement } from '#web-shared/ui/focus.ts'
@@ -23,7 +23,7 @@ export function useTaskNavigation({
   view,
   setView,
 }: {
-  state: HydraState
+  state: TitanState
   hydraId: string
   command: Command
   connected: boolean
@@ -138,7 +138,7 @@ export function useTaskNavigation({
           const unavailable = Array.isArray(receipt.unavailable) ? receipt.unavailable : []
 
           if (active && unavailable.length) {
-            // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+            // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
             setView(current => ({
               ...current,
               expanded: current.expanded.filter(id => !unavailable.includes(id)),
@@ -190,7 +190,7 @@ export function useTaskNavigation({
   )
 
   const clearSelection = () => {
-    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     cancelOpen(); setView(current => ({
       ...current,
       selected: null,
@@ -220,7 +220,7 @@ export function useTaskNavigation({
         return
       }
 
-      // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+      // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
       setView(current => {
         const ids = current.expanded
         const next = expandedByColumn({
@@ -270,7 +270,7 @@ export function useTaskNavigation({
   useEffect(
     () => {
       if (revealed.scope && revealed.scope !== filterScope) {
-        // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+        // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
         setView(current => ({
           ...current,
           revealed: {
@@ -312,8 +312,8 @@ export function useTaskNavigation({
     ],
   )
 
-  const openHydra = () => {
-    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+  const openTitan = () => {
+    // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     cancelOpen(); setView(current => showingPage({
       view: current,
       page: 'hydra',
@@ -325,7 +325,7 @@ export function useTaskNavigation({
     const card = currentCards.current[id]
 
     if (card && liveTask({ card }) && !filteredCards.some(card => card.id === id)) {
-      // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+      // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
       setView(current => {
         const kept = current.revealed.scope === filterScope ? current.revealed.ids : []
 
@@ -347,7 +347,7 @@ export function useTaskNavigation({
 
   const expand = ({ id }: { id: string }) => {
     keepRevealed({ id })
-    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     setView(current => ({
       ...current,
       expanded: expandedByColumn({
@@ -402,7 +402,7 @@ export function useTaskNavigation({
     cancelOpen()
 
     if (id === '$board') {
-      openHydra()
+      openTitan()
 
       return true
     }
@@ -410,7 +410,7 @@ export function useTaskNavigation({
     const controller = new AbortController()
     const { signal } = controller
     pendingOpen.current = controller
-    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     setView(current => showingPage({
       view: current,
       page: 'hydra',
@@ -432,7 +432,7 @@ export function useTaskNavigation({
         const missing = Array.isArray(receipt.unavailable) && receipt.unavailable.includes(id)
 
         if (!signal.aborted && missing) {
-          notify({ text: 'Task unavailable in this Hydra' })
+          notify({ text: 'Task unavailable in this Titan' })
 
           return false
         }
@@ -584,7 +584,7 @@ export function useTaskNavigation({
     }) === project)
     const target = closing && liveTask({ card: closing }) ? closing
       : nextInProject ?? filteredCards[0]
-    // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+    // eslint-disable-next-line othrys/object-params -- React state setter callback contract.
     setView(current => ({
       ...current,
       expanded: remaining,
@@ -606,6 +606,6 @@ export function useTaskNavigation({
     open,
     revealTask,
     close,
-    openHydra,
+    openTitan,
   }
 }

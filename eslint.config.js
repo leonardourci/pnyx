@@ -24,7 +24,7 @@ const IMPORT_RESTRICTIONS = [
 const STYLED_WEB = ['web/**/*.{ts,tsx}']
 
 // Chat rebuild removes this temporary styling exception and its scoped file list.
-const CHAT_STYLES = ['web/src/hydra/**/*.{ts,tsx}']
+const CHAT_STYLES = ['web/src/titan/**/*.{ts,tsx}']
 
 const FIXED_STYLE_VALUE = ':matches([value.type="Literal"], [value.type="UnaryExpression"][value.argument.type="Literal"], [value.type="TemplateLiteral"][value.expressions.length=0])'
 const STYLE_RESTRICTIONS = [
@@ -133,7 +133,7 @@ export default tseslint.config(
   {
     plugins: {
       '@stylistic': stylistic,
-      pnyx: {
+      othrys: {
         rules: {
           'object-params': objectParams,
           'item-newline': itemNewline,
@@ -142,7 +142,7 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
-      'pnyx/object-params': 'error',
+      'othrys/object-params': 'error',
       'curly': [
         'error',
         'all',
@@ -318,7 +318,7 @@ export default tseslint.config(
         'error',
         'always',
       ],
-      'pnyx/item-newline': 'error',
+      'othrys/item-newline': 'error',
     },
   },
   {

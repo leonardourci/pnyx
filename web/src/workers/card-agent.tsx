@@ -1,4 +1,4 @@
-import { ComposerSettings } from '#web-hydra/composer-ui.tsx'
+import { ComposerSettings } from '#web-titan/composer-ui.tsx'
 import { useSessionView, sessionViewKey } from '#web-app/session-view.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -6,7 +6,7 @@ import { DEFAULT_HARNESS, harnessOf } from '#workers/providers.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Select } from '#web-shared/ui/controls.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
-import { useHeadsDispatch } from './heads-dispatch.ts'
+import { useTitanDispatch } from './heads-dispatch.ts'
 
 export interface RepositoryOption {
   value: string
@@ -48,7 +48,7 @@ export function useCardAgent({
   command: Command
   connected: boolean
 }) {
-  const { effective } = useHeadsDispatch({ command })
+  const { effective } = useTitanDispatch({ command })
   const [
     chosen,
     choose,

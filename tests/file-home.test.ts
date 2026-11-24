@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import { appendLog, type LogFact } from '#store/log.ts'
-import { createHydraFiles, createTaskFiles, moveTaskFiles, readHomeFiles, readHydraFiles, taskFiles } from '#store/file-home.ts'
+import { createTitanFiles, createTaskFiles, moveTaskFiles, readHomeFiles, readTitanFiles, taskFiles } from '#store/file-home.ts'
 import { writeSnapshot } from '#store/snapshot.ts'
 
 const AT = '2026-11-21T03:00:00.000Z'
 const homeFolder = () => mkdtempSync(join(
   tmpdir(),
-  'pnyx-home-files-',
+  'othrys-home-files-',
 ))
 const created = ({ id }: { id: string }): LogFact => ({
   at: AT,
@@ -26,14 +26,14 @@ const configured = (): LogFact => ({
   by: 'owner',
   t: 'config',
   id: 'hydra-config',
-  name: 'Hydra',
+  name: 'Titan',
 })
 
 test(
   'task directory membership overrides old snapshots and new tasks are read from their first native line',
   () => {
     const home = homeFolder()
-    const hydra = createHydraFiles({
+    const hydra = createTitanFiles({
       home,
       hydra: 'a',
       entries: [configured()],
@@ -98,7 +98,7 @@ test(
         },
       ],
     })
-    const files = readHydraFiles({
+    const files = readTitanFiles({
       home,
       hydra: 'a',
     })
@@ -120,12 +120,12 @@ test(
       true,
     ]) {
       const home = homeFolder()
-      createHydraFiles({
+      createTitanFiles({
         home,
         hydra: 'a',
         entries: [configured()],
       })
-      createHydraFiles({
+      createTitanFiles({
         home,
         hydra: 'b',
         entries: [configured()],
@@ -216,11 +216,11 @@ test(
         }))).toBe(true)
       }
 
-      expect(readHydraFiles({
+      expect(readTitanFiles({
         home,
         hydra: 'a',
       }).tasks).toEqual({})
-      const destination = readHydraFiles({
+      const destination = readTitanFiles({
         home,
         hydra: 'b',
       }).tasks.moving!
@@ -249,7 +249,7 @@ test(
         'utf8',
       )).toBe('note: still working\n')
       expect(existsSync(source)).toBe(false)
-      expect(readHydraFiles({
+      expect(readTitanFiles({
         home,
         hydra: 'b',
       }).tasks.moving?.position.n).toBe(3)
@@ -261,7 +261,7 @@ test(
   'one corrupt task is quarantined while healthy task logs remain readable',
   () => {
     const home = homeFolder()
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'a',
       entries: [configured()],
@@ -298,7 +298,7 @@ test(
       })}\n`,
     )
     const before = readFileSync(path)
-    const files = readHydraFiles({
+    const files = readTitanFiles({
       home,
       hydra: 'a',
     })
@@ -313,12 +313,12 @@ test(
   'home recovery reloads a destination that was read before the interrupted move',
   () => {
     const home = homeFolder()
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'a',
       entries: [configured()],
     })
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'z',
       entries: [configured()],
@@ -363,12 +363,12 @@ test(
   'a conflicting task folder refuses a move before changing either log',
   () => {
     const home = homeFolder()
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'a',
       entries: [configured()],
     })
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'b',
       entries: [configured()],
@@ -446,7 +446,7 @@ test(
       old,
       'Old data is not imported or rewritten\n',
     )
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'a',
       entries: [configured()],
@@ -491,7 +491,7 @@ test(
     )).toBe('Old data is not imported or rewritten\n')
 
     const unexpected = homeFolder()
-    createHydraFiles({
+    createTitanFiles({
       home,
       hydra: 'b',
       entries: [configured()],

@@ -1,6 +1,6 @@
 import type { Snippet, SnippetPart } from '#oracle/model.ts'
 import { MATCH_END, MATCH_START, markedParts } from '#oracle/snippet.ts'
-import { markdownText } from '#web-hydra/markdown-text.ts'
+import { markdownText } from '#web-titan/markdown-text.ts'
 
 // The marks go back into the text so Markdown stripping keeps the server's match boundaries.
 export function snippetText({ snippet }: { snippet: Snippet }): SnippetPart[] {

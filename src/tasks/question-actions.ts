@@ -1,15 +1,15 @@
 import { inform } from '#app/command-notices.ts'
 import { ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { HydraError } from '#store/errors.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { TitanError } from '#store/errors.ts'
+import { hydraEvent } from '#titan/titan.ts'
+import { hydraConfig } from '#titan/config.ts'
 import { findCard } from './push-rules.ts'
 import { openAsks, pendingAnswer } from './ask-state.ts'
 import { reminderTime } from './time.ts'
 import type { AnswerMessage } from './model.ts'
-import type { HydraMessage } from '#hydra/model.ts'
+import type { TitanMessage } from '#titan/model.ts'
 
 export function clarificationText({ text }: { text: string }): boolean {
   const value = text.trim()
@@ -19,7 +19,7 @@ export function clarificationText({ text }: { text: string }): boolean {
   return shortRequest || (value.endsWith('?') && startsClarification)
 }
 
-export const clarificationMessage = ({ message }: { message: Pick<HydraMessage, 'text' | 'discusses'> }) =>
+export const clarificationMessage = ({ message }: { message: Pick<TitanMessage, 'text' | 'discusses'> }) =>
   !!message.discusses || clarificationText({ text: message.text })
 
 export function decideQuestionAction({
@@ -31,7 +31,7 @@ export function decideQuestionAction({
   fromMessage,
   meta,
 }: {
-  state: HydraState
+  state: TitanState
   ref: string
   id: string
   until?: string
@@ -49,7 +49,7 @@ export function decideQuestionAction({
   }).find(ask => ask.id === id)
 
   if (!ask) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'ASK_CLOSED',
       message: 'This question is not waiting for the owner',
     })
@@ -63,7 +63,7 @@ export function decideQuestionAction({
     const newer = message && Date.parse(message.at) > Date.parse(askedAt)
 
     if (!message) {
-      throw new HydraError({
+      throw new TitanError({
         message: 'Saved message not found',
         code: 'NOT_FOUND',
       })
@@ -127,7 +127,7 @@ export function decideQuestionAction({
   const discussion = text?.trim()
 
   if (!discussion) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'VALIDATION_ERROR',
       message: 'Discuss a question with the owner’s own --text',
     })

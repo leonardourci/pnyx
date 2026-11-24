@@ -1,4 +1,4 @@
-/* eslint-disable pnyx/object-params -- These fakes implement browser-owned callback and constructor signatures. */
+/* eslint-disable othrys/object-params -- These fakes implement browser-owned callback and constructor signatures. */
 import { afterEach, expect, test, vi } from 'vitest'
 import { recordUIRender, setUIMetricsEnabled, startUIMetrics, timeUIFlow, trackUIDrag, UI_METRICS_INTERVAL_MS } from '../web/src/app/ui-metrics.ts'
 import type { PageLine } from '#app/log-line.ts'

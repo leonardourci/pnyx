@@ -2,14 +2,14 @@ import { collectingNotices, commandNotices, inform } from './command-notices.ts'
 import { applyObservation, type SourceObservation } from '#tasks/observations.ts'
 import type { Output } from './cli-support.ts'
 import { transactionReceipt } from './transactions.ts'
-import type { HydraState, HydraEvent } from './model.ts'
-import { HydraError } from '#store/errors.ts'
+import type { TitanState, TitanEvent } from './model.ts'
+import { TitanError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
-import { requireHydra, writableHydra, reloadHydra } from './store.ts'
+import { requireTitan, writableTitan, reloadTitan } from './store.ts'
 import { nativeHome, bindNativeTask, type NativeHeld } from './native-home.ts'
 import { nativeChanges, nativeDecision, nativeFact, nativeInscribe, nativeSessionSource, nativeJson, nativeReferences, nativeId, projectNative, reduceNative, type NativeFact, type NativeState } from './native-state.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
-import { agentActor } from '#hydra/hydra.ts'
+import { agentActor } from '#titan/titan.ts'
 import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/leases.ts'
 import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
@@ -20,7 +20,7 @@ import { reconcileAsks, retireableReviewQuestions } from '#tasks/delivery/merge-
 import { log } from './diagnostics.ts'
 import { durableEvent } from './event-policy.ts'
 import { enqueueSteering } from '#workers/inbox.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
+import { TITAN_CARD } from '#titan/identity.ts'
 import { sessionFields } from '#workers/session-facts.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { requireHandoffAvailable } from '#workers/handoff-checkout.ts'
@@ -33,7 +33,7 @@ const MESSAGE_EVENTS = new Set<string>([
 ])
 
 export interface Writer {
-  readonly state: HydraState
+  readonly state: TitanState
   readonly dir: string
   observe({ observation }: { observation: SourceObservation }): void
   afterCommit({ run }: { run(): void }): void
@@ -42,7 +42,7 @@ export interface Writer {
     effects,
     receipt,
   }: {
-    event: HydraEvent
+    event: TitanEvent
     effects?: boolean
     receipt?: boolean
   }): void
@@ -70,9 +70,9 @@ interface WriterOptions<T> {
 interface Stage {
   id: string
   held: NativeHeld
-  initial: HydraState
+  initial: TitanState
   writer: Writer
-  pending: HydraEvent[]
+  pending: TitanEvent[]
   committed: (() => void)[]
   facts: Map<string, NativeFact[]>
   incoming: Map<string, NativeState>
@@ -104,11 +104,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
       } = options
 
       if (!create) {
-        requireHydra({ hydraId })
+        requireTitan({ hydraId })
       }
 
       await home.ensure({ hydra: hydraId })
-      const initial = writableHydra({ hydraId })
+      const initial = writableTitan({ hydraId })
 
       if (transaction) {
         const previous = transactionReceipt({
@@ -128,20 +128,20 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           ...also,
         ]),
       ].sort().map(id => {
-        requireHydra({ hydraId: id })
-        const held = writableHydra({ hydraId: id })
+        requireTitan({ hydraId: id })
+        const held = writableTitan({ hydraId: id })
 
         if (held.state.config?.removing && !removal) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'CONFLICT',
-            message: `Hydra removal is pending: ${id}`,
+            message: `Titan removal is pending: ${id}`,
           })
         }
 
         if (held.state.config?.removed) {
-          throw new HydraError({
+          throw new TitanError({
             code: 'NOT_FOUND',
-            message: `Hydra was removed: ${id}`,
+            message: `Titan was removed: ${id}`,
           })
         }
 
@@ -163,7 +163,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           if (!current) {
             current = home.files.value({
               hydra: id,
-              task: scope === HYDRA_CARD ? undefined : scope,
+              task: scope === TITAN_CARD ? undefined : scope,
             })?.state ?? {}
             stage.projections.set(
               scope,
@@ -229,7 +229,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
               if (session && session.agent.host !== 'pnyx') {
                 const owner = session.taskId ?? session.originCardId
-                const scope = after.cards[owner] ? owner : HYDRA_CARD
+                const scope = after.cards[owner] ? owner : TITAN_CARD
                 const source = nativeSessionSource({
                   session,
                   previous: basis({ scope }).sessions?.[session.id],
@@ -247,11 +247,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
             if (event.type === 'hydra.operation' && event.data.kind === 'inscribe') {
               add({
-                scope: HYDRA_CARD,
+                scope: TITAN_CARD,
                 fact: nativeInscribe({
                   event,
                   ids: home.references({ hydra: id }),
-                  basis: basis({ scope: HYDRA_CARD }),
+                  basis: basis({ scope: TITAN_CARD }),
                   beforeSeq: before.seq,
                 }),
               })
@@ -268,11 +268,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               before,
               after,
               ids: home.references({ hydra: id }),
-              basis: basis({ scope: HYDRA_CARD }),
+              basis: basis({ scope: TITAN_CARD }),
             })
             const scoped = before.cards[event.cardId] ?? after.cards[event.cardId]
             const hydraEvent = event.type.startsWith('hydra.') || event.type.startsWith('board.')
-            || event.cardId === HYDRA_CARD || !scoped
+            || event.cardId === TITAN_CARD || !scoped
 
             if (metadata.change?.length || hydraEvent) {
               if (!hydraEvent) {
@@ -282,7 +282,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               }
 
               add({
-                scope: HYDRA_CARD,
+                scope: TITAN_CARD,
                 fact: metadata,
               })
             }
@@ -345,11 +345,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               }
             }
 
-            if (scoped && event.cardId !== HYDRA_CARD) {
+            if (scoped && event.cardId !== TITAN_CARD) {
               tasks.add(event.cardId)
             }
 
-            tasks.delete(HYDRA_CARD)
+            tasks.delete(TITAN_CARD)
 
             for (const task of tasks) {
               if (task === event.cardId && (event.type === 'task.moved-in' || event.type === 'task.moved-out')) {
@@ -447,8 +447,8 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           return [
             {
               hydra: stage.id,
-              task: scope === HYDRA_CARD ? undefined : scope,
-              create: scope !== HYDRA_CARD && !home.files.locateTask({ task: scope }),
+              task: scope === TITAN_CARD ? undefined : scope,
+              create: scope !== TITAN_CARD && !home.files.locateTask({ task: scope }),
               facts,
             },
           ]
@@ -468,7 +468,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           const after = stage.incoming.get(event.cardId)
 
           if (!before || !after) {
-            throw new HydraError({
+            throw new TitanError({
               code: 'INVALID_MOVE',
               message: 'task move has no matching source and destination',
             })
@@ -523,7 +523,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             ids: home.references({ hydra: hydraId }),
             kind: 'receipt',
           }) as Output
-          await home.files.changeHydra({
+          await home.files.changeTitan({
             hydra: hydraId,
             decide: () => [
               {
@@ -571,7 +571,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             task,
             facts,
           ] of stage.facts) {
-            if (task !== HYDRA_CARD && state.cards[task] && facts.length) {
+            if (task !== TITAN_CARD && state.cards[task] && facts.length) {
               bindNativeTask({
                 home: home.path,
                 hydra: stage.id,
@@ -614,7 +614,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
           const pending = stage.held.pending
           const changes = stage.held.changes
-          reloadHydra({ hydraId: stage.id })
+          reloadTitan({ hydraId: stage.id })
           stage.held.state.eventIds = {
             ...stage.initial.eventIds,
             ...stage.held.state.eventIds,
@@ -669,7 +669,7 @@ export function eventWriter({
   onAppend,
   onApplied,
 }: {
-  state: HydraState
+  state: TitanState
   dir: string
   hydraId: string
   transaction?: string
@@ -678,7 +678,7 @@ export function eventWriter({
     event,
     receipt,
   }: {
-    event: HydraEvent
+    event: TitanEvent
     receipt?: boolean
   }): void
   onApplied?({
@@ -687,14 +687,14 @@ export function eventWriter({
     after,
     receipt,
   }: {
-    event: HydraEvent
-    before: HydraState
-    after: HydraState
+    event: TitanEvent
+    before: TitanState
+    after: TitanState
     receipt: boolean
   }): void
 }): Writer {
   let state = { ...initial }
-  let ownedIds: HydraState['eventIds'] | undefined
+  let ownedIds: TitanState['eventIds'] | undefined
   const writer: Writer = {
     dir,
     observe({ observation }) {
@@ -734,7 +734,7 @@ export function eventWriter({
         }
       }
 
-      // What a worker's transcript recorded is an observation, never another Hydra session's change, so a lease never refuses it.
+      // What a worker's transcript recorded is an observation, never another Titan session's change, so a lease never refuses it.
       const harvested = event.actor === 'harvest'
       // A message to a task's agent is never refused for the routine helper's lease; it queues like any message.
       const message = !isHelper({ actor: event.actor })
@@ -780,7 +780,7 @@ export function eventWriter({
       )
 
       if (transaction && known) {
-        throw new HydraError({
+        throw new TitanError({
           message: `event id ${event.id} already exists`,
           code: 'IDEMPOTENCY_CONFLICT',
         })
@@ -811,7 +811,7 @@ export function eventWriter({
       }
 
       if (event.seq !== state.seq + 1) {
-        throw new HydraError({
+        throw new TitanError({
           code: 'INVALID_EVENT',
           message: `append out of sequence: ${event.seq} after ${state.seq}`,
         })
@@ -862,7 +862,7 @@ export function eventWriter({
       }
 
       let observedSession = session
-      const envelope: Partial<HydraEvent> = {
+      const envelope: Partial<TitanEvent> = {
         boardId: hydraId,
         commandId: event.id,
       }

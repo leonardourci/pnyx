@@ -1,5 +1,5 @@
 import { COMMON, integer, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { steeringClaim } from '#workers/steering.ts'
 import { armLavish } from './lavish.ts'
@@ -49,10 +49,10 @@ export async function sourceCommand({ args }: { args: string[] }): Promise<Outpu
     what: 'task',
   })
   const actor = meta({ values })
-  const worker = requestEnv().PNYX_STEERING_WORKER
+  const worker = requestEnv().OTHRYS_STEERING_WORKER
 
   if (action === 'list' || action === 'read') {
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const card = sourceTask({
       writer: { state },
       ref: task,

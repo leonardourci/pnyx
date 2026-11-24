@@ -1,0 +1,438 @@
+import { messageLookupCommand } from '#titan/message-reference.ts'
+import { taskMention } from '#titan/mentions.ts'
+import type { TitanStatus } from '#titan/model.ts'
+import type { ThreadEntry } from '#titan/transcripts-read.ts'
+import type { Compaction } from '#workers/compaction/model.ts'
+
+export interface ChatComment {
+  id: string
+  messageId: string
+  reference?: string
+  block: number
+  offset: number
+  start?: number
+  end?: {
+    offset: number
+    position: number
+  }
+  quote: string
+  text: string
+  paragraph?: string
+  at?: string
+  images?: string[]
+}
+
+const SHORT_QUOTE_WORDS = 3
+
+// Edits read the newest list and write through, so a removed comment stays removed and back-to-back edits all land.
+export function commentUpdates({
+  read,
+  write,
+}: {
+  read(): ChatComment[]
+  write({ items }: { items: ChatComment[] }): void
+}) {
+  const edit = ({
+    id,
+    update,
+  }: {
+    id: string
+    update({ text }: { text: string }): string
+  }) => write({
+    items: read().map(comment => comment.id === id ? {
+      ...comment,
+      text: update({ text: comment.text }),
+    } : comment),
+  })
+
+  return {
+    edit,
+    remove: ({ id }: { id: string }) => write({
+      items: read().filter(comment => comment.id !== id),
+    }),
+  }
+}
+
+export const sendableComment = ({ comment }: { comment: ChatComment }) =>
+  !!comment.text.trim() || !!comment.images?.length
+
+// A quote of three words or fewer travels with its paragraph, so the agent can place it.
+export const commentContext = ({
+  comment: {
+    quote,
+    paragraph,
+  },
+}: { comment: Pick<ChatComment, 'quote' | 'paragraph'> }) =>
+  quote.trim().split(/\s+/).length <= SHORT_QUOTE_WORDS && paragraph && paragraph !== quote
+    ? paragraph : undefined
+
+export function quoteStart({
+  text,
+  quote,
+  start,
+  positions,
+}: {
+  text: string
+  quote: string
+  start?: number
+  positions?: number[]
+}) {
+  let at = quote ? text.indexOf(quote) : -1
+
+  if (at < 0 || start === undefined) {
+    return at
+  }
+
+  for (let next = text.indexOf(
+    quote,
+    at + 1,
+  ); next >= 0; next = text.indexOf(
+      quote,
+      next + 1,
+    )) {
+    if (Math.abs((positions?.[next] ?? next) - start) < Math.abs((positions?.[at] ?? at) - start)) {
+      at = next
+    }
+  }
+
+  return at
+}
+
+export function quoteSnippet({
+  quote,
+  context = '',
+  start,
+}: {
+  quote: string
+  context?: string
+  start?: number
+}) {
+  const at = quoteStart({
+    text: context,
+    quote,
+    start,
+  })
+
+  return at < 0 ? {
+    before: '',
+    match: quote,
+    after: '',
+  } : {
+    before: context.slice(
+      0,
+      at,
+    ),
+    match: quote,
+    after: context.slice(at + quote.length),
+  }
+}
+
+const markdownQuote = ({ text }: { text: string }) => text.split('\n')
+  .map(line => `> ${line}`.trimEnd())
+  .join('\n')
+
+// A comment line that would read as a quote or heading is escaped, so it can't pass for the format.
+const commentLines = ({ text }: { text: string }) => text.split('\n')
+  .map(line => line.replace(
+    /^(\s*)(>|#)/,
+    '$1\\$2',
+  ))
+  .join('\n')
+
+// A short quote's paragraph follows it as a nested quote, so the quote stays every `>` line before the comment.
+const quotedComment = ({
+  comment,
+  number,
+}: {
+  comment: ChatComment
+  number: number
+}) => {
+  const paragraph = commentContext({ comment })
+  const quote = markdownQuote({ text: comment.quote })
+  const words = [
+    commentLines({ text: comment.text.trim() }),
+    ...comment.images ?? [],
+  ].filter(Boolean).join('\n')
+
+  const quoted = paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote
+
+  return `### Comment ${number}\n${quoted}\n\n${words}`
+}
+
+export function orderedComments({ comments }: { comments: ChatComment[] }) {
+  const replies = [...new Set(comments.map(comment => comment.messageId))].map(id => ({
+    id,
+    at: comments.find(comment => comment.messageId === id && comment.at)?.at || '',
+  }))
+
+  // Dated replies come first by time; a reply without a time follows them by its id (transcript line numbers,
+  // compared as numbers), never by storage order.
+  replies.sort((
+    a,
+    b,
+  ) => Number(!a.at) - Number(!b.at) || a.at.localeCompare(b.at) || a.id.localeCompare(
+    b.id,
+    undefined,
+    { numeric: true },
+  ))
+
+  const positions = new Map(replies.map((
+    reply,
+    index,
+  ) => [
+    reply.id,
+    index,
+  ]))
+  const start = ({ comment }: { comment: ChatComment }) => comment.start
+    ?? Math.max(
+      0,
+      comment.paragraph?.indexOf(comment.quote) ?? 0,
+    )
+  const end = ({ comment }: { comment: ChatComment }) => comment.end ?? {
+    offset: comment.offset,
+    position: start({ comment }) + comment.quote.length,
+  }
+
+  // Ties end on the id, so storage order never renumbers comments between reloads or tabs.
+  return [...comments].sort((
+    a,
+    b,
+  ) => {
+    if (a.messageId !== b.messageId) {
+      return positions.get(a.messageId)! - positions.get(b.messageId)!
+    }
+
+    return a.offset - b.offset || start({ comment: a }) - start({ comment: b })
+      || end({ comment: a }).offset - end({ comment: b }).offset
+      || end({ comment: a }).position - end({ comment: b }).position
+      || a.id.localeCompare(b.id)
+  })
+}
+
+export function groupComments({ comments }: { comments: ChatComment[] }) {
+  const replies = new Map<string, ChatComment[]>()
+
+  for (const comment of orderedComments({ comments })) {
+    const reply = comment.messageId
+    const group = replies.get(reply) ?? []
+    group.push(comment); replies.set(
+      reply,
+      group,
+    )
+  }
+
+  return replies
+}
+
+export function commentReply({
+  draft,
+  comments,
+  hydraId,
+  card,
+}: {
+  draft: string
+  comments: ChatComment[]
+  hydraId?: string
+  card?: string
+}): string {
+  const replies = groupComments({
+    comments: comments.filter(comment => sendableComment({ comment })),
+  })
+
+  if (!replies.size) {
+    return draft
+  }
+
+  const sections = [...replies.values()].map(items => {
+    const first = items[0]
+    const command = messageLookupCommand({
+      reference: first.reference,
+      at: first.at,
+      hydraId,
+      card,
+    })
+    const reference = first.reference ? `Message reference: ${first.reference}\n` : ''
+    const lookup = command ? `\n\n${reference}Read surrounding messages: \`${command}\`` : ''
+
+    return `## Comments on your reply from ${first.at ?? first.messageId}${lookup}\n\n${items.map((
+      comment,
+      index,
+    ) => quotedComment({
+      comment,
+      number: index + 1,
+    })).join('\n\n')}`
+  })
+
+  if (draft.trim()) {
+    sections.push(`## Message\n${draft}`)
+  }
+
+  return sections.join('\n\n')
+}
+
+export function quoteInto({
+  draft,
+  text,
+}: {
+  draft: string
+  text: string
+}): string {
+  return [
+    draft.trimEnd(),
+    markdownQuote({ text: text.trim() }),
+  ]
+    .filter(Boolean).join('\n\n') + '\n\n'
+}
+
+// A copied message keeps the task chip it opens with, as the reference a draft turns back into the chip.
+export const copiedText = ({
+  text,
+  task,
+  title,
+}: {
+  text: string
+  task?: string
+  title?: string
+}) => task ? `${taskMention({
+  id: task,
+  title: title ?? 'Task',
+})} ${text}` : text
+
+export function duration({ ms }: { ms: number }) {
+  const seconds = Math.max(
+    0,
+    Math.round(ms / 1000),
+  )
+
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+  }
+
+  return `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m`
+}
+
+export const clock = (() => {
+  const options: Intl.DateTimeFormatOptions = {
+    hour: 'numeric',
+    minute: '2-digit',
+  }
+  const minutes = new Intl.DateTimeFormat(
+    [],
+    options,
+  )
+  const seconds = new Intl.DateTimeFormat(
+    [],
+    {
+      ...options,
+      second: '2-digit',
+    },
+  )
+
+  return ({
+    at,
+    seconds: showSeconds = false,
+  }: {
+    at: string
+    seconds?: boolean
+  }) => {
+    const date = new Date(at)
+
+    if (Number.isNaN(date.getTime())) {
+      return date.toLocaleTimeString()
+    }
+
+    return (showSeconds ? seconds : minutes).format(date)
+  }
+})()
+
+// Shown in the header only while Titan cannot start: nothing else can happen until a start works.
+export const hydraDown = ({ status }: { status?: TitanStatus }) => status?.state === 'down'
+  ? `Down since ${clock({ at: status.since })} · retrying`
+  : undefined
+
+// The server orders the conversation's rows; a late owner message may carry an earlier time than the row before it.
+export function withTimedRows<Row extends Pick<ThreadEntry, 'at'>>({
+  rows,
+  timed,
+}: {
+  rows: Row[]
+  timed: Row[]
+}): Row[] {
+  const pending = timed.toSorted((
+    a,
+    b,
+  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  const merged: Row[] = []
+
+  for (const row of rows) {
+    const later = pending.findIndex(item => (item.at ?? '') >= (row.at ?? ''))
+    const earlier = later === -1 ? pending.length : later
+    merged.push(
+      ...pending.splice(
+        0,
+        earlier,
+      ),
+      row,
+    )
+  }
+
+  return [
+    ...merged,
+    ...pending,
+  ]
+}
+
+// Othrys's notices sit in the timeline at their moment, so one older than the loaded rows waits until its page loads.
+export function noticesInTimeline<Notice>({
+  notices,
+  at,
+  rows,
+  older,
+}: {
+  notices: Notice[]
+  at({ notice }: { notice: Notice }): string
+  rows: Pick<ThreadEntry, 'at'>[]
+  older: boolean
+}): Notice[] {
+  const oldest = rows[0]?.at
+
+  if (!older) {
+    return notices
+  }
+
+  return notices.filter(notice => oldest !== undefined && at({ notice }) >= oldest)
+}
+
+// Compactions between the same two rows form one run; one still running stays on its own line.
+export function compactionRuns({
+  operations,
+  rows,
+}: {
+  operations: Compaction[]
+  rows: Pick<ThreadEntry, 'at'>[]
+}): Compaction[][] {
+  const runs: Compaction[][] = []
+  let gap: number | undefined
+  let settled = false
+
+  for (const operation of operations) {
+    const later = rows.findIndex(row => (row.at ?? '') > operation.startedAt)
+    const here = later === -1 ? rows.length : later
+    const done = operation.state !== 'running'
+
+    if (here === gap && done && settled) {
+      runs.at(-1)!.push(operation)
+    } else {
+      runs.push([operation])
+    }
+
+    gap = here
+    settled = done
+  }
+
+  return runs
+}

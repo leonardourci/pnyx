@@ -1,15 +1,15 @@
 import { log } from '#app/diagnostics.ts'
 import { learningConditions } from './learnings.ts'
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 
 export function memoryConditions() {
-  const states: Record<string, HydraState> = {}
+  const states: Record<string, TitanState> = {}
 
   for (const hydraId of hydraIds()) {
     try {
-      states[hydraId] = loadHydra({ hydraId }).state
+      states[hydraId] = loadTitan({ hydraId }).state
     } catch (error) {
       log({
         level: 'warn',

@@ -1,16 +1,16 @@
 import { ICON_SIZE } from '#web-shared/icons.tsx'
 import { useState } from 'react'
-import type { HydraSummary } from '#app/server-hydras.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { HydraLabel } from '#web-hydra/hydra-title.tsx'
+import { TitanLabel } from '#web-titan/hydra-title.tsx'
 
 export function RepositoryOwnership({
   hydras,
   commandFor,
   connected,
 }: {
-  hydras: HydraSummary[]
+  hydras: TitanSummary[]
   commandFor({ id }: { id: string }): Command
   connected: boolean
 }) {
@@ -20,7 +20,7 @@ export function RepositoryOwnership({
   ] = useState('')
   const repositories = new Map<string, {
     name: string
-    hydras: HydraSummary[]
+    hydras: TitanSummary[]
   }>()
 
   for (const hydra of hydras) {
@@ -58,7 +58,7 @@ export function RepositoryOwnership({
           <div className="row">
             {repository.hydras.map(hydra => (
               <div key={hydra.id} className="flex items-center gap-2">
-                <HydraLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
+                <TitanLabel name={hydra.name} icon={hydra.icon} size={ICON_SIZE.control} />
                 <Button
                   aria-label={`Keep ${repository.name} in ${hydra.name || hydra.id}`}
                   disabled={!connected}

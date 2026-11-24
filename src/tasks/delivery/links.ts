@@ -1,6 +1,6 @@
 import { LINK_KINDS, LINK_STATES, type Link } from './model.ts'
 import { invalid } from '#app/command-validation.ts'
-import type { HydraState, Decision } from '#app/model.ts'
+import type { TitanState, Decision } from '#app/model.ts'
 import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { isStaleLink } from './events.ts'
@@ -93,7 +93,7 @@ export function decideLink(
     link,
     meta,
   }: {
-    state: HydraState
+    state: TitanState
     ref: string
     url: string
     link: Link | null

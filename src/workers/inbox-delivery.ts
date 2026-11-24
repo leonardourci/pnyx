@@ -1,13 +1,13 @@
 import { handoffPending } from './handoff-checkout.ts'
 import { taskLease } from '#routine-helper/leases.ts'
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import { copySettling } from '#projects/copy-lease.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { replyRoute } from './reply-route.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { terminalNotice, typeInto } from '#integrations/hooks/terminal.ts'
 import { askHost } from '#app/server-state.ts'
-import { loadHydra } from '#app/store.ts'
+import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { recordSteeringAttempt } from './inbox.ts'
 import { steeringNotice, type NotificationResult } from './inbox-notice.ts'
@@ -26,7 +26,7 @@ export async function notifySteering({
   attempt: string
   now?: number
 }): Promise<NotificationResult> {
-  const card = loadHydra({ hydraId }).state.cards[cardId]
+  const card = loadTitan({ hydraId }).state.cards[cardId]
   const message = card?.steering?.find(message => message.id === messageId)
   const claim = card && steeringClaim({ card })
 
@@ -43,7 +43,7 @@ export async function notifySteering({
   })) {
     return {
       result: 'deferred',
-      detail: 'task has an unresolved handoff; restart Pnyx to recover its checkout',
+      detail: 'task has an unresolved handoff; restart Othrys to recover its checkout',
     }
   }
 
@@ -90,7 +90,7 @@ export async function notifySteering({
       message: true,
     })
   } catch (error) {
-    if (!(error instanceof HydraError) || error.code !== 'TASK_LEASED') {
+    if (!(error instanceof TitanError) || error.code !== 'TASK_LEASED') {
       throw error
     }
 

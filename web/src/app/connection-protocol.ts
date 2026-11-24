@@ -1,4 +1,4 @@
-import type { HydraState } from '#app/model.ts'
+import type { TitanState } from '#app/model.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 
 export { commandTimeout, retryable } from '#app/server-protocol.ts'
@@ -18,8 +18,8 @@ export function retainedReadings<Value>({
   after,
 }: {
   current: Record<string, Value>
-  before: HydraState
-  after: HydraState
+  before: TitanState
+  after: TitanState
 }): Record<string, Value> {
   const entries = Object.entries(current)
   const retained = entries.filter(([id]) => {

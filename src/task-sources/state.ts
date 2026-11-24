@@ -1,8 +1,8 @@
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { touch } from '#tasks/touch.ts'
 
-export function sourceDeadline({ state }: { state: HydraState }): number | undefined {
+export function sourceDeadline({ state }: { state: TitanState }): number | undefined {
   const deadlines = Object.values(state.cards).flatMap(card =>
     (card.externalSources ?? []).filter(source => source.state === 'registered')
       .map(source => Date.parse(source.expiresAt)))
@@ -18,8 +18,8 @@ export function applyExternalSource({
   state,
   event,
 }: {
-  state: HydraState
-  event: HydraEvent
+  state: TitanState
+  event: TitanEvent
 }): boolean {
   if (!event.type.startsWith('task.source.')) {
     return false

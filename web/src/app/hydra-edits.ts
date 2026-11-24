@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { HydraSummary } from '#app/server-hydras.ts'
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
+import type { TitanSummary } from '#app/server-hydras.ts'
+import { TITAN_MARK } from '#titan/titan-names.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from './connection.ts'
 import { inListOrder } from '#app/hydra-list-order.ts'
@@ -10,7 +10,7 @@ type Edit = {
   icon: string
 }
 
-const iconOf = ({ hydra }: { hydra: HydraSummary }) => hydra.icon ?? HYDRA_MARK
+const iconOf = ({ hydra }: { hydra: TitanSummary }) => hydra.icon ?? TITAN_MARK
 
 // A refused change goes back; one whose outcome is unknown may have been saved, so it keeps showing
 // until the server's summary settles it.
@@ -20,17 +20,17 @@ const applied = ({
   hydra,
   edit,
 }: {
-  hydra: HydraSummary
+  hydra: TitanSummary
   edit: Edit
 }) => hydra.name === edit.name && iconOf({ hydra }) === edit.icon
 
-// A Hydra's new name, icon and place show at once in the panel and the header; the server's summary replaces them once it agrees.
-export function useHydraEdits({
+// A Titan's new name, icon and place show at once in the panel and the header; the server's summary replaces them once it agrees.
+export function useTitanEdits({
   hydras,
   command,
   notify,
 }: {
-  hydras: HydraSummary[]
+  hydras: TitanSummary[]
   command: Command
   notify({ text }: { text: string }): void
 }) {

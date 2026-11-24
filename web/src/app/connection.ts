@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
-import { createHydraConnection } from './connection-store.ts'
+import { createTitanConnection } from './connection-store.ts'
 
 export type Receipt = Record<string, unknown>
 export type Command = (({
@@ -12,8 +12,8 @@ export type Command = (({
   onChecking?(): void
 }) => Promise<Receipt>) & { retain?(): () => void }
 
-export function useHydra() {
-  const [connection] = useState(createHydraConnection)
+export function useTitan() {
+  const [connection] = useState(createTitanConnection)
   const snapshot = useSyncExternalStore(
     connection.subscribe,
     connection.snapshot,
@@ -28,11 +28,11 @@ export function useHydra() {
       ...snapshot,
       workspaces: connection.workspaces(),
       command: connection.commandFor({ id: snapshot.navigation.hydraId }),
-      // Another Hydra's command, over the same connection; the Oracle sends requests to any Hydra.
+      // Another Titan's command, over the same connection; the Oracle sends requests to any Titan.
       commandFor: connection.commandFor,
       navigate: connection.navigate,
-      createHydra: connection.create,
-      retryHydra: connection.retry,
+      createTitan: connection.create,
+      retryTitan: connection.retry,
       dismissError: connection.dismissError,
     }),
     [

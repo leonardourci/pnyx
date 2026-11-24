@@ -34,7 +34,7 @@ export const SETTINGS_SECTIONS = [
     id: 'layout',
     label: 'Layout',
     icon: 'columns',
-    note: 'Save widths and resize this Hydra.',
+    note: 'Save widths and resize this Titan.',
   },
   {
     id: 'cards',
@@ -43,14 +43,14 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: 'hydra',
-    label: 'Hydra',
+    label: 'Titan',
     icon: 'hydra',
   },
   {
     id: 'accounts',
     label: 'Accounts',
     icon: 'you',
-    note: 'Claude Code and Codex logins from homes you already use. Hydra can also add one for you.',
+    note: 'Claude Code and Codex logins from homes you already use. Titan can also add one for you.',
   },
   {
     id: 'routine',
@@ -59,27 +59,27 @@ export const SETTINGS_SECTIONS = [
   },
   {
     id: 'reviews',
-    label: 'Main Hydra reviews',
+    label: 'Main Titan reviews',
     icon: 'reminder',
-    note: 'The helper handles routine worker events as they arrive. Periodic reviews are separate checks by the main Hydra.',
+    note: 'The helper handles routine worker events as they arrive. Periodic reviews are separate checks by the main Titan.',
   },
   {
     id: 'agent',
-    label: 'Hydra’s defaults',
+    label: 'Titan’s defaults',
     icon: 'model',
     note: 'Defaults for new sessions. Existing sessions and explicit worker dispatch retain their choices.',
   },
   {
     id: 'dispatch',
-    label: 'Heads dispatch',
+    label: 'Titan dispatch',
     icon: 'dispatch',
-    note: 'Which agent and which login each worker gets. Hydra can update these settings and records each change in chat.',
+    note: 'Which agent and which login each worker gets. Titan can update these settings and records each change in chat.',
   },
   {
     id: 'logs',
     label: 'Logs',
     icon: 'logs',
-    note: 'Timestamped lines on this machine for debugging Pnyx: what each action did, how long it took and how much memory the server used. Read them from the home’s logs folder.',
+    note: 'Timestamped lines on this machine for debugging Othrys: what each action did, how long it took and how much memory the server used. Read them from the home’s logs folder.',
   },
   {
     id: 'about',
@@ -145,7 +145,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'chatFontSize',
     section: 'appearance',
     label: 'Chat text size',
-    description: 'Messages in Hydra’s chat and in task conversations. Task mentions, skills, commands, links and images scale with the text.',
+    description: 'Messages in Titan’s chat and in task conversations. Task mentions, skills, commands, links and images scale with the text.',
     related: TEXT_SIZE,
   },
   {
@@ -161,8 +161,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'defaultHydraWidth',
     section: 'layout',
-    label: 'Hydra chat width',
-    description: 'Resize this Hydra’s chat and save the width for new Hydras.',
+    label: 'Titan chat width',
+    description: 'Resize this Titan’s chat and save the width for new Titans.',
     related: [
       'wide',
       'narrow',
@@ -174,7 +174,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'resetWidths',
     section: 'layout',
     label: 'Reset widths',
-    description: 'Restore saved widths in every Hydra.',
+    description: 'Restore saved widths in every Titan.',
     related: [
       'restore',
       'default',
@@ -242,7 +242,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'reviewMinutes',
     section: 'reviews',
     label: 'Review interval',
-    description: 'How often the main Hydra reviews open work. This interval does not schedule the helper.',
+    description: 'How often the main Titan reviews open work. This interval does not schedule the helper.',
     related: [
       'timer',
       'interval',
@@ -255,7 +255,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'helper',
     section: 'routine',
     label: 'Routine helper',
-    description: 'A lower-cost agent handles routine worker updates and passes decisions to the main Hydra, so the main Hydra spends its quota on your messages and decisions.',
+    description: 'A lower-cost agent handles routine worker updates and passes decisions to the main Titan, so the main Titan spends its quota on your messages and decisions.',
     values: [
       'Automatic',
       'Off',
@@ -287,7 +287,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'accounts',
     section: 'accounts',
     label: 'Accounts',
-    description: 'Claude Code and Codex logins from homes you already use. Hydra can also add one for you.',
+    description: 'Claude Code and Codex logins from homes you already use. Titan can also add one for you.',
     related: [
       'login',
       'provider',
@@ -301,8 +301,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'headsDispatch',
     section: 'dispatch',
-    label: 'Heads dispatch',
-    description: 'Which agent and which login each worker gets. Hydra can update these settings and records each change in chat.',
+    label: 'Titan dispatch',
+    description: 'Which agent and which login each worker gets. Titan can update these settings and records each change in chat.',
     related: [
       'rules',
       'workers',
@@ -367,7 +367,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'version',
     section: 'about',
     label: 'Version and upgrade',
-    description: 'The running build and whether a newer Pnyx is available.',
+    description: 'The running build and whether a newer Othrys is available.',
     related: [
       'update',
       'release',

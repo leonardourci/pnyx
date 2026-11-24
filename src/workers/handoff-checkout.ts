@@ -1,4 +1,4 @@
-import { HydraError } from '#store/errors.ts'
+import { TitanError } from '#store/errors.ts'
 import type { AgentSession } from './model.ts'
 import { createHash } from 'node:crypto'
 import { realpathSync, readdirSync, readFileSync, rmSync, existsSync } from 'node:fs'
@@ -7,9 +7,9 @@ import { git as projectGit } from '#projects/git.ts'
 import { sameProjectPath } from '#projects/identity.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { log } from '#app/diagnostics.ts'
-import { loadHydra, reloadHydra } from '#app/store.ts'
+import { loadTitan, reloadTitan } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { TitanEvent, TitanState } from '#app/model.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { nativeFact, nativeReferences, reduceNative, type NativeState } from '#app/native-state.ts'
@@ -172,10 +172,10 @@ export const otherWorkers = ({
   session,
 }: {
   hydraId: string
-  state: HydraState
+  state: TitanState
   session: AgentSession
 }) => hydraIds().flatMap(id => {
-  const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
+  const current = id === hydraId ? state : loadTitan({ hydraId: id }).state
 
   return Object.values(current.sessions ?? {})
     .filter(s => (id !== hydraId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
@@ -303,10 +303,10 @@ export function requireHandoffAvailable({
     hydraId,
     task,
   })) {
-    throw new HydraError({
+    throw new TitanError({
       code: 'CONFLICT',
-      message: `Task ${task} has an unresolved handoff; inspect its checkout and restart Pnyx before delivering more work`,
-      help: [`Inspect the copy of ${task} for changed work, then use /restart in Hydra chat to settle the handoff`],
+      message: `Task ${task} has an unresolved handoff; inspect its checkout and restart Othrys before delivering more work`,
+      help: [`Inspect the copy of ${task} for changed work, then use /restart in Titan chat to settle the handoff`],
     })
   }
 }
@@ -318,7 +318,7 @@ async function completeHandoff({
 }: {
   hydraId: string
   intent: HandoffIntent
-  event: Extract<HydraEvent, { type: 'task.session' }>
+  event: Extract<TitanEvent, { type: 'task.session' }>
 }): Promise<void> {
   const home = nativeHome()
   await home.run({
@@ -337,7 +337,7 @@ async function completeHandoff({
         return
       }
 
-      const before = structuredClone(loadHydra({ hydraId }).state)
+      const before = structuredClone(loadTitan({ hydraId }).state)
       const positions = home.files.positions({ hydra: hydraId })
       const ids = home.references({ hydra: hydraId })
 
@@ -425,7 +425,7 @@ async function completeHandoff({
         })
       }
 
-      reloadHydra({ hydraId })
+      reloadTitan({ hydraId })
     },
   })
 }
@@ -454,7 +454,7 @@ export async function recoverHandoffs({ hydraId }: { hydraId: string }): Promise
       })
     }
 
-    const state = loadHydra({ hydraId }).state
+    const state = loadTitan({ hydraId }).state
     const assigned = state.sessions?.[intent.session]
     const expectedTask = committed ? intent.target : intent.source
     const copy = state.cards[expectedTask]?.copy
@@ -519,8 +519,8 @@ export function readHandoffEvent({
 }: {
   hydraId: string
   eventId: string
-}): HydraEvent | undefined {
-  reloadHydra({ hydraId })
+}): TitanEvent | undefined {
+  reloadTitan({ hydraId })
 
   return readEvents({
     hydraId,
