@@ -308,7 +308,7 @@ test(
 
     expect(await hydra.owner({ args: start })).toMatchObject({ event: 'none: duplicate' })
     expect(worker.received).toHaveLength(1)
-    expect(await notes()).toEqual([expect.objectContaining({ source: 'othrys:start' })])
+    expect(await notes()).toEqual([expect.objectContaining({ source: 'pnyx:start' })])
   },
 )
 
@@ -1000,7 +1000,7 @@ test(
         sketch.id,
         '--full',
       ],
-    })).task.notes).toEqual([expect.objectContaining({ source: 'othrys:create' })])
+    })).task.notes).toEqual([expect.objectContaining({ source: 'pnyx:create' })])
   },
 )
 

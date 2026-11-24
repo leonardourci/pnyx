@@ -397,7 +397,7 @@ async function noteOpen({
   await noteOnce({
     hydraId,
     task,
-    source: 'othrys:start',
+    source: 'pnyx:start',
     text: [
       'Started with these still open:',
       ...open.map(item => `- ${item.reason}. ${item.clear}`),
