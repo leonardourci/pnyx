@@ -1866,11 +1866,13 @@ test(
       'worker.log',
     )
     const transcript = loadTitan({ hydraId: hydra.id }).state.cards[task.id]!.agent!.transcriptPath!
+
     const savedOnEarlierMount = ({ path }: { path: string }) => {
       const file = statSync(path)
 
       return `${file.dev + 1}:${file.ino}`
     }
+
     const read = readTranscript({
       cursor: {
         source: transcript,
