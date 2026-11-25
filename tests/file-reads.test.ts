@@ -1,16 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
-import { emptyTitan, replayOwned } from '#app/reducer.ts'
-import { compactionFiles, compactionPermission, readCommand } from '#titan/compaction-files.ts'
+import { readGrant, readCommand } from '#titan/read-grant.ts'
 import { recordContext } from '#titan/file-context.ts'
-import { TITAN_CARD } from '#titan/identity.ts'
-import { hydraConfig } from '#titan/config.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
 
 test(
-  'compaction reads native records and recorded transcripts without repairing files or granting other tools',
+  'a read grant allows the supplied record and transcript files without repairing them or granting other tools',
   ({ onTestFinished }) => {
     const home = join(
       process.env.OTHRYS_HOME!,
@@ -77,73 +74,12 @@ test(
         'outside',
       ),
     )
-    const state = emptyTitan()
-    replayOwned({
-      state,
-      events: [
-        {
-          v: 1,
-          seq: 1,
-          id: 'configured',
-          at: '2026-11-22T00:00:00Z',
-          actor: 'owner',
-          cardId: TITAN_CARD,
-          type: 'board.configured',
-          data: hydraConfig({
-            state,
-            id: 'file-reads',
-          }),
-        },
-      ],
-    })
-    state.hydraSessions = ['claude:recorded-agent']
-    state.sessions = {
-      'claude:recorded-agent': {
-        id: 'claude:recorded-agent',
-        originCardId: TITAN_CARD,
-        taskId: TITAN_CARD,
-        attention: [],
-        sourceRefs: [],
-        agent: {
-          provider: 'claude',
-          sessionId: 'recorded-agent',
-          transcriptPath: transcript,
-        },
-      },
-    }
-    mkdirSync(join(
-      dir,
-      'tasks',
-      'old export',
-    ))
-    mkdirSync(join(
-      dir,
-      'tasks',
-      '.pending-task',
-    ))
-    const unpublishedTask = join(
-      dir,
-      'tasks',
-      'unpublished-task',
-    )
-    mkdirSync(unpublishedTask)
-    writeFileSync(
-      join(
-        unpublishedTask,
-        'worker.log',
-      ),
-      'note: Unpublished task\n',
-    )
-    const paths = compactionFiles({
-      hydraId: 'file-reads',
-      state,
-    })
-    expect(paths).toEqual([
+    const paths = [
       hydraLog,
       taskLog,
       workerLog,
       transcript,
-    ])
+    ]
     const command = readCommand({ path: hydraLog })
     const allow = ({
       tool,
@@ -151,7 +87,7 @@ test(
     }: {
       tool: string
       input: Record<string, unknown>
-    }) => compactionPermission({
+    }) => readGrant({
       paths,
       tool,
       input,
@@ -242,52 +178,11 @@ test(
       'utf8',
     )).toBe(content)
 
-    const snapshot = join(
-      dir,
-      'snapshot.json',
-    )
-    symlinkSync(
-      transcript,
-      snapshot,
-    )
-    expect(compactionFiles({
-      hydraId: 'file-reads',
-      state,
-    })).not.toContain(snapshot)
-    unlinkSync(snapshot)
-    writeFileSync(
-      snapshot,
-      '{"v":1,"at":"2026-11-21T00:00:00Z"}\n',
-    )
-    expect(compactionFiles({
-      hydraId: 'file-reads',
-      state,
-    })).toContain(snapshot)
     const context = recordContext({
       hydraId: 'file-reads',
       task: 'task-one',
     })
     expect(context).toContain(taskLog)
     expect(context).toContain(workerLog)
-    const tasks = join(
-      dir,
-      'tasks',
-    )
-    const relocated = join(
-      dir,
-      'relocated',
-    )
-    renameSync(
-      tasks,
-      relocated,
-    )
-    symlinkSync(
-      relocated,
-      tasks,
-    )
-    expect(compactionFiles({
-      hydraId: 'file-reads',
-      state,
-    })).not.toContain(taskLog)
   },
 )
