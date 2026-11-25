@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { readGrant, readCommand } from '#routine-helper/read-grant.ts'
@@ -65,14 +65,6 @@ test(
     writeFileSync(
       transcript,
       '{"type":"assistant","message":{"content":"Recorded reply"}}\n',
-    )
-    symlinkSync(
-      process.env.TMPDIR!,
-      join(
-        dir,
-        'tasks',
-        'outside',
-      ),
     )
     const paths = [
       hydraLog,
@@ -166,9 +158,7 @@ test(
         command: readCommand({
           path: join(
             dir,
-            'tasks',
-            'outside',
-            'unrelated',
+            'snapshot.json',
           ),
         }),
       },

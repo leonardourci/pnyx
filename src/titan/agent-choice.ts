@@ -1,4 +1,5 @@
 import type { TitanState } from '#app/model.ts'
+import { log } from '#app/diagnostics.ts'
 import { modelOption, type ModelOption } from '#workers/provider.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { effectiveDispatch, type TitanDispatch, type Candidate } from '#workers/dispatch-config.ts'
@@ -6,10 +7,7 @@ import type { AgentConfig, AgentSettings } from '#workers/model.ts'
 import { DEFAULT_HARNESS, harnessOf } from '#workers/providers.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 import { TITAN_CARD } from './identity.ts'
-import { recordContext } from './file-context.ts'
-import { compactionContext } from './history.ts'
 
-// After an older version's agent-change compaction, Titan's next turn opens a new session from the summary, so no session holds context a change of agent would lose.
 export function startsFromSummary({ state }: { state: TitanState }): boolean {
   const agent = state.cards[TITAN_CARD]?.agent
 
@@ -58,8 +56,7 @@ export function agentSettings({ agent }: { agent: Partial<AgentConfig> }): Agent
     ]))
 }
 
-// A model or effort left unnamed is the harness default, and a model alias is the model it stands for, so naming what the session already runs with changes nothing.
-export async function agentChanges({
+export async function runsDifferently({
   previous,
   next,
   models,
@@ -76,8 +73,15 @@ export async function agentChanges({
     return false
   }
 
-  // A catalog that cannot load compares the names as they are.
-  const offered = await models().catch(() => [])
+  const offered = await models().catch((error: unknown) => {
+    log({
+      level: 'warn',
+      operation: 'titan.model-catalog',
+      error,
+    })
+
+    return []
+  })
 
   const runs = ({ agent }: { agent: AgentConfig }) => {
     const option = modelOption({
@@ -95,21 +99,4 @@ export async function agentChanges({
   const now = runs({ agent: next })
 
   return was.model !== now.model || was.effort !== now.effort
-}
-
-// Only Othrys's recorded conversation crosses provider and account boundaries.
-export function conversationContext({
-  hydraId,
-  state,
-}: {
-  hydraId: string
-  state: TitanState
-}): string {
-  const context = compactionContext({ state })
-
-  return [
-    context.summary,
-    recordContext({ hydraId }),
-    'Read the recorded conversation after the saved summary before acting. Preserve message identities and order.',
-  ].filter(Boolean).join('\n\n')
 }

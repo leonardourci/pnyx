@@ -82,9 +82,7 @@ export interface TitanOperation {
   // The last log position covered, fixed before the operation starts reading.
   through?: number
   historySince?: string
-  // An older version's inscribe pass within an agent change shares its compaction's chat divider.
   parent?: string
-  // Older versions recorded overlapping operations as milestones that did not take over the existing stop.
   blocking?: false
 }
 
@@ -106,7 +104,6 @@ export type ChatEvent = EventBase & {
   }
 }
 
-// Recorded by older versions when the owner changed Titan's agent; kept so their logs still load.
 export interface TitanAgentChange {
   id: string
   previous: AgentConfig

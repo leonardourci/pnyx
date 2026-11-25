@@ -8,9 +8,8 @@ import type { Host, Live } from './host-types.ts'
 import { loadTitan } from './store.ts'
 import type { Writer } from './writer.ts'
 import { hostedTitan, hydraDelivery, hydraEvent, othrysRunsTitan } from '#titan/titan.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { isRoutineMessage } from '#titan/model.ts'
-import { hydraInputDispatched } from '#titan/received.ts'
+import { undeliveredMessagesSince } from '#titan/chat-queue.ts'
+import type { TitanMessage } from '#titan/model.ts'
 import { ownerActor } from './actors.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { operationEvent, type createTitanOperations, type createTitanOutage } from '#titan/operations.ts'
@@ -81,6 +80,54 @@ export function createHostRecovery({
 }) {
   let fenced = true
 
+  const withdrawLegacyAgentChange = async ({ recapAfter }: { recapAfter?: number }) => {
+    const state = loadTitan({ hydraId }).state
+    const change = state.hydraAgentChange
+
+    if (!change) {
+      return
+    }
+
+    const changeAfter = (state.eventIds[change.id] ?? 1) - 1
+    const carriedByRecap = ({ message }: { message: TitanMessage }) => recapAfter !== undefined
+      && (state.eventIds[message.id] ?? 0) > recapAfter
+    const held = undeliveredMessagesSince({
+      state,
+      after: changeAfter,
+    }).filter(message => ownerActor({ actor: message.actor }) && !carriedByRecap({ message }))
+    await write({
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: hydraEvent({
+          state: writer.state,
+          cardId: TITAN_CARD,
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+          },
+          change: {
+            type: 'hydra.agent-change',
+            data: {
+              ...change,
+              state: 'cancelled',
+            },
+          },
+        }),
+      }),
+    })
+
+    for (const message of held) {
+      background({
+        name: 'Titan held message',
+        run: () => host().hydra({
+          id: message.id,
+          text: hydraDelivery({ message }),
+          actor: message.actor,
+        }),
+      })
+    }
+  }
+
   const recover: Host['recover'] = async () => {
     await restoreSessionActivity({ hydraId })
     // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
@@ -128,52 +175,6 @@ export function createHostRecovery({
     })
 
     const cut = loadTitan({ hydraId }).state.hydraOperation
-    const unsettled = loadTitan({ hydraId }).state.hydraAgentChange
-
-    // An older version held owner messages behind an agent change waiting for a choice; a cut operation's recap already carries them.
-    if (unsettled) {
-      const state = loadTitan({ hydraId }).state
-      const after = (state.eventIds[unsettled.id] ?? 1) - 1
-      const hydra = hydraConfig({ state }).hydra.id
-      const held = cut ? [] : (state.hydraMessages ?? []).filter(message => message.hydra === hydra
-        && ownerActor({ actor: message.actor }) && (state.eventIds[message.id] ?? 0) > after
-        && !message.stopped && !message.failure && !isRoutineMessage({ message })
-        && !hydraInputDispatched({
-          state,
-          message,
-        }))
-      await write({
-        fn: ({ writer }) => applyDecision({
-          writer,
-          decision: hydraEvent({
-            state: writer.state,
-            cardId: TITAN_CARD,
-            meta: {
-              at: at(),
-              actor: 'pnyx',
-            },
-            change: {
-              type: 'hydra.agent-change',
-              data: {
-                ...unsettled,
-                state: 'cancelled',
-              },
-            },
-          }),
-        }),
-      })
-
-      for (const message of held) {
-        background({
-          name: 'Titan held message',
-          run: () => host().hydra({
-            id: message.id,
-            text: hydraDelivery({ message }),
-            actor: message.actor,
-          }),
-        })
-      }
-    }
 
     if (cut) {
       endOperation({
@@ -181,6 +182,8 @@ export function createHostRecovery({
         error: `Othrys restarted during the ${cut.kind}`,
       })
     }
+
+    await withdrawLegacyAgentChange({ recapAfter: cut?.seq })
 
     let cutTitanTurn: {
       resumeAttemptId: string

@@ -34,7 +34,6 @@ export function applyTitan({
     return true
   }
 
-  // Only older versions recorded agent changes; recovery withdraws one they left unsettled.
   if (event.type === 'hydra.agent-change') {
     const change = event.data
 
