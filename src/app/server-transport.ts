@@ -172,15 +172,18 @@ const localOrigin = new RegExp(
   'i',
 )
 
+// A name in the allowedHosts setting passes as Host and as its https Origin, which tailscale serve keeps when it proxies.
 export const allowedRequest = ({
   host = '',
   origin,
   hosts,
   origins,
+  named,
 }: {
   host?: string
   origin?: string
   hosts: Set<string>
   origins: Set<string>
-}) => (hosts.has(host) || localHost.test(host))
-  && (origin === undefined || origins.has(origin) || localOrigin.test(origin))
+  named: string[]
+}) => (hosts.has(host) || localHost.test(host) || named.includes(host.toLowerCase()))
+  && (origin === undefined || origins.has(origin) || localOrigin.test(origin) || named.some(name => origin === `https://${name}`))
