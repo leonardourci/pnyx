@@ -326,7 +326,8 @@ export function createTitanTurns({
           compacted,
         }) => {
           const state = loadTitan({ hydraId }).state
-          const conversation = compacted || (opensNewSession && !contextSent) ? conversationContext({
+          const sendsConversation = compacted || (opensNewSession && !contextSent)
+          const conversation = sendsConversation ? conversationContext({
             hydraId,
             state,
           }) : ''
