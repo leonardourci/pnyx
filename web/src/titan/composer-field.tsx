@@ -638,8 +638,6 @@ export function ComposerField({
     <div
       className={`composer-field group/composer-field [&.comment-note]:flex-1 ${standalone ? 'composer-compact relative min-w-0 rounded-md border border-control bg-surface focus-within:border-gold-line' : 'contents'} ${className}`}
       data-standalone={standalone}
-      // Inside the chat's caret host the field edits only its own text.
-      contentEditable={false}
       // Focus moving to the field's own chips stays inside it; only leaving the whole field counts as a blur.
       onBlur={event => {
         if (!event.currentTarget.contains(event.relatedTarget)) {

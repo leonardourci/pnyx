@@ -46,7 +46,7 @@ export function AttachmentCard({
   )
 
   return (
-    <span className={`attachment-card group/attachment relative -top-(--spacing-attachment-top) inline-flex h-(--chip-h) max-w-full select-none items-stretch overflow-hidden rounded-(--spacing-attachment-gap) border font-sans leading-none whitespace-nowrap align-middle data-[tone=reference]:border-dashed data-[tone=reference]:bg-transparent ${toneClass} ${tone ?? ''}`} data-tone={tone} contentEditable={false}>
+    <span className={`attachment-card group/attachment relative -top-(--spacing-attachment-top) inline-flex h-(--chip-h) max-w-full select-none items-stretch overflow-hidden rounded-(--spacing-attachment-gap) border font-sans leading-none whitespace-nowrap align-middle data-[tone=reference]:border-dashed data-[tone=reference]:bg-transparent ${toneClass} ${tone ?? ''}`} data-tone={tone}>
       {open ? (
         <Button
           className={`${button} ${mainClass}`}
