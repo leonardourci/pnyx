@@ -1,4 +1,5 @@
 import { openSync, fstatSync, readSync, closeSync } from 'node:fs'
+import { fileIdentity, sameFile } from '#store/file-identity.ts'
 
 export interface TranscriptRead {
   size: number
@@ -12,8 +13,8 @@ export interface TranscriptRead {
   end: number
 }
 
-// Complete JSONL lines after the cursor. A replaced file (another device and
-// inode) or one shorter than the cursor is read again from the start. Null when
+// Complete JSONL lines after the cursor. A replaced file (another inode)
+// or one shorter than the cursor is read again from the start. Null when
 // the file is missing or unreadable, so the cursor waits for it.
 // ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
 export function readTranscript({
@@ -42,8 +43,11 @@ export function readTranscript({
 
   try {
     const stat = fstatSync(fd)
-    const identity = `${stat.dev}:${stat.ino}`
-    const reset = (cursor.identity !== '' && cursor.identity !== identity) || stat.size < cursor.pos
+    const identity = fileIdentity({ stat })
+    const reset = (cursor.identity !== '' && !sameFile({
+      known: cursor.identity,
+      identity,
+    })) || stat.size < cursor.pos
     const from = reset ? 0 : cursor.pos
     const admittedEnd = through ?? stat.size
     const available = Math.max(

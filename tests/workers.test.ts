@@ -2,6 +2,7 @@ import { loadTitan } from '#app/store.ts'
 import { taskChildren } from '#app/task-runtime.ts'
 import { localToken } from '#app/server-state.ts'
 import { foldWorkerLog } from '#workers/worker-log.ts'
+import { readTranscript } from '#workers/transcript-read.ts'
 import { withWriter } from '#app/writer.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -9,7 +10,7 @@ import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { WAIT_MS } from './setup/until.ts'
 import { once } from 'node:events'
-import { constants, openSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { constants, openSync, fstatSync, statSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
@@ -40,6 +41,7 @@ vi.mock(
     return {
       ...filesystem,
       openSync: vi.fn(filesystem.openSync),
+      fstatSync: vi.fn(filesystem.fstatSync),
     }
   },
 )
@@ -1777,6 +1779,107 @@ test(
       sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
       text: 'Keep this instruction unread',
     })).toBe(1)
+  },
+)
+
+test(
+  'a worker.log and a transcript keep their read positions when a reboot renumbers their disk, including positions an older Othrys saved',
+  async () => {
+    const hydra = await othrys.hydra()
+    const { worker } = await hydra.startTask({ key: 'renumbered' })
+    const task = await workerLine({
+      hydra,
+      key: 'renumbered',
+      line: 'done: shipped before the reboot',
+    })
+    const log = join(
+      worker.env.OTHRYS_TASK_DIR!,
+      'worker.log',
+    )
+    const transcript = loadTitan({ hydraId: hydra.id }).state.cards[task.id]!.agent!.transcriptPath!
+    const logFile = statSync(log)
+    const transcriptFile = statSync(transcript)
+    const saved = readTranscript({
+      cursor: {
+        source: transcript,
+        identity: '',
+        pos: 0,
+      },
+    })!
+    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
+    // eslint-disable-next-line othrys/object-params -- Node owns fstatSync's positional signature.
+    vi.mocked(fstatSync).mockImplementation((fd: number) => {
+      const stat = filesystem.fstatSync(fd)
+
+      return Object.assign(
+        Object.create(Object.getPrototypeOf(stat)),
+        stat,
+        { dev: stat.dev + 1 },
+      )
+    })
+    onTestFinished(() => {
+      vi.mocked(fstatSync).mockImplementation(filesystem.fstatSync)
+    })
+
+    for (const identity of [
+      saved.identity,
+      `${transcriptFile.dev}:${transcriptFile.ino}`,
+    ]) {
+      expect(readTranscript({
+        cursor: {
+          source: transcript,
+          identity,
+          pos: saved.end,
+        },
+      })).toMatchObject({
+        reset: false,
+        lines: [],
+      })
+    }
+
+    const replayed = await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        const from = writer.state.seq
+        foldWorkerLog({
+          writer,
+          task: task.id,
+        })
+        const renumbered = writer.state.seq - from
+        const latest = writer.state.cards[task.id]!.workerLog!.latest
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: `older-othrys:${task.id}`,
+            at: new Date().toISOString(),
+            cardId: task.id,
+            actor: `worker:${task.id}`,
+            type: 'task.worker-line',
+            data: {
+              identity: `${logFile.dev}:${logFile.ino}`,
+              off: latest.off,
+              code: 'done',
+              text: 'shipped before the reboot',
+            },
+          },
+        })
+        const legacy = writer.state.seq
+        foldWorkerLog({
+          writer,
+          task: task.id,
+        })
+
+        return [
+          renumbered,
+          writer.state.seq - legacy,
+        ]
+      },
+    })
+    expect(replayed).toEqual([
+      0,
+      0,
+    ])
   },
 )
 

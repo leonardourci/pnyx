@@ -13,6 +13,7 @@ import { applyDecision } from '#app/decision.ts'
 import { TitanError } from '#store/errors.ts'
 import { log } from '#app/diagnostics.ts'
 import { background } from '#app/background.ts'
+import { fileIdentity, sameFile } from '#store/file-identity.ts'
 
 const BATCH_BYTES = 64 * 1024
 const LINE_BYTES = 16 * 1024
@@ -120,9 +121,13 @@ export function foldWorkerLog({
       return false
     }
 
-    const identity = `${stat.dev}:${stat.ino}`
+    const identity = fileIdentity({ stat })
     const previous = card.workerLog?.latest
-    const off = previous?.identity === identity ? previous.off : 0
+    const same = previous !== undefined && sameFile({
+      known: previous.identity,
+      identity,
+    })
+    const off = same ? previous.off : 0
 
     if (stat.size < off) {
       const warning: Omit<WorkerLine, 'at'> = {
@@ -165,7 +170,7 @@ export function foldWorkerLog({
     )
     let start = 0
     let lines = 0
-    let discarding = previous?.identity === identity && previous.discarding === true
+    let discarding = same && previous.discarding === true
 
     const complete = bytes.subarray(
       0,
