@@ -26,7 +26,6 @@ export function ChoiceOption({
   return (
     <div className="ask-option relative flex min-w-0 flex-col items-start justify-start gap-0.5 rounded-lg border border-line bg-surface px-1.75 py-1.25 text-left has-[.ask-option-pick:focus-visible]:outline-2 has-[.ask-option-pick:focus-visible]:outline-offset-2 has-[.ask-option-pick:focus-visible]:outline-gold has-[.ask-option-pick:hover]:bg-hover data-selected:border-gold data-selected:text-gold [&_:is(a,button,[role=button]):not(.ask-option-pick)]:pointer-events-auto [&>:not(.ask-option-pick)]:pointer-events-none [&>:not(.ask-option-pick)]:relative" data-selected={selected || undefined}>
       <Button
-        contentEditable={false}
         className="ask-option-pick absolute inset-0 h-full min-h-0 w-full rounded-inherit border-0 bg-transparent p-0 focus-visible:outline-none enabled:hover:bg-transparent"
         aria-label={`Choose ${name}`}
         aria-pressed={selected}
