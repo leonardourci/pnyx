@@ -153,6 +153,7 @@ Use `othrys --help` for syntax and the [plain CLI reference](docs/othrys.md) for
 - [othrys reference](docs/othrys.md): immediate actions and native records.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
+- [Open Othrys from your phone](docs/remote-access.md): Tailscale Serve, allowed host names and installing the app.
 - [Development](docs/development.md): build, tests and verification.
 - [Contributing](CONTRIBUTING.md): propose a change and open a pull request.
 - [Security](SECURITY.md): report a vulnerability privately.
