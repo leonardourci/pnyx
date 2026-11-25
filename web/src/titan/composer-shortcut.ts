@@ -26,7 +26,9 @@ export function focusChatComposer({ from }: { from: Element | null }) {
 }
 
 const isComposerShortcut = ({ event }: { event: KeyboardEvent }) => {
-  const commandKey = APPLE_PLATFORM ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+  const appleCommand = event.metaKey && !event.ctrlKey
+  const controlCommand = event.ctrlKey && !event.metaKey
+  const commandKey = APPLE_PLATFORM ? appleCommand : controlCommand
   const otherModifier = event.shiftKey || event.altKey
   const handled = event.isComposing || event.defaultPrevented
 
@@ -41,7 +43,8 @@ export function useComposerShortcut({ hydraId }: { hydraId: string }) {
           return
         }
 
-        const composer = chatComposer({ from: document.activeElement }) ?? shownTitanComposer({ hydraId })
+        const focusedChatComposer = chatComposer({ from: document.activeElement })
+        const composer = focusedChatComposer ?? shownTitanComposer({ hydraId })
 
         if (!composer) {
           return
