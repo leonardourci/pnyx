@@ -186,7 +186,8 @@ export const allowedRequest = ({
   origins: Set<string>
   allowedHosts: string[]
 }) => {
-  const hostAllowed = hosts.has(host) || localHost.test(host) || allowedHosts.includes(host.toLowerCase())
+  const hostAllowed = hosts.has(host) || localHost.test(host)
+    || allowedHosts.includes(host.toLowerCase())
   const originAllowed = origin === undefined || origins.has(origin) || localOrigin.test(origin)
     || allowedHosts.some(name => origin === `https://${name}`)
 
