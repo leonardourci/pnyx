@@ -44,7 +44,7 @@ export interface Settings extends SharedView {
   logs: LogMode
   logDays: number
   logMaxMB: number
-  // Host names beside this Mac's own that may open Othrys, such as a Tailscale name; each also passes as Origin https://<name>.
+  // Host names beside this computer's own that may open Othrys, such as a Tailscale name; each also passes as Origin https://<name>.
   allowedHosts: string[]
 }
 
