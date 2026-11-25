@@ -9,7 +9,6 @@ import type { Command } from '#web-app/connection.ts'
 import { QuestionGroupAnswers, GroupAnswerRetries, useGroupAnswers } from './question-group.tsx'
 import type { TitanState } from '#app/model.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { conversationMessages, latestAgentMessage, placeMessageCaret } from '#web-titan/caret.ts'
 import { Popover } from '#web-shared/ui/popover.tsx'
 import { markdownText } from '#web-titan/markdown-text.ts'
 
@@ -61,18 +60,6 @@ export function WaitingDecisions({
 
             event.currentTarget.closest('.hydra-chat')?.querySelector<HTMLTextAreaElement>('.composer textarea')
               ?.focus()
-          } else if (event.key === 'ArrowUp' && event.target === trigger) {
-            event.preventDefault()
-            event.stopPropagation()
-            const host = conversationMessages({ from: event.currentTarget })
-
-            if (host) {
-              placeMessageCaret({
-                host,
-                target: latestAgentMessage({ host }),
-                edge: 'end',
-              })
-            }
           } else if (event.key === ' ' && event.target === trigger) {
             event.preventDefault()
             event.stopPropagation()
