@@ -1,8 +1,5 @@
 import type { TitanState } from '#app/model.ts'
-import type { Card } from '#tasks/model.ts'
-import { matchingSuggestions, suggestionMatch, type SuggestionMatch } from './suggestion-matches.ts'
-import { TITAN_CARD } from './identity.ts'
-import { liveTask, isManagedTask } from '#tasks/select.ts'
+import { isManagedTask } from '#tasks/select.ts'
 import { currentState } from '#tasks/card-status.ts'
 import { paragraphs } from '#oracle/text.ts'
 
@@ -12,10 +9,10 @@ export interface TaskMention {
 }
 
 // A slot is a blank the composer fills in before sending; it never reaches Titan.
-export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file' | 'skill' | 'slot'
+export type ReferenceKind = 'task' | 'project' | 'column' | 'titan' | 'image' | 'file' | 'skill' | 'slot'
 
 // A reference as Othrys writes it: [@Label](othrys-<kind>:<encoded value>).
-export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\((?:othrys|pnyx)-(task|project|column|image|file|skill|slot):([\w%~.-]+)\)/
+export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\((?:othrys|pnyx)-(task|project|column|titan|image|file|skill|slot):([\w%~.-]+)\)/
 
 export const referenceLabel = ({ label }: { label: string }) => label.replace(
   /\\(.)/g,
@@ -39,12 +36,12 @@ export function mentionId({ href }: { href: string }): string | undefined {
   return decodeValue({ value: href.slice(href.indexOf(':') + 1) }) || undefined
 }
 
-// A project, column, image or file reference link, in either spelling.
+// A project, column, Titan, image or file reference link, in either spelling.
 export function pointerReference({ href }: { href: string }): {
   kind: string
   value?: string
 } | undefined {
-  const pointer = /^(?:othrys|pnyx)-(project|column|image|file):([\w%~.-]+)$/.exec(href)
+  const pointer = /^(?:othrys|pnyx)-(project|column|titan|image|file):([\w%~.-]+)$/.exec(href)
 
   return pointer ? {
     kind: pointer[1]!,
@@ -162,60 +159,6 @@ export function mentionQuery({
     start: cursor - match[1]!.length - 1,
     query: match[1]!,
   } : null
-}
-
-export function matchingTasks({
-  cards,
-  query,
-}: {
-  cards: Card[]
-  query: string
-}): {
-  card: Card
-  excerpt: string
-  excerptHighlights: SuggestionMatch['ranges']
-}[] {
-  const matches = matchingSuggestions({
-    items: cards.filter(card => card.id !== TITAN_CARD && liveTask({ card })),
-    query,
-    name: ({ item: card }) => card.title,
-    fallback: ({ item: card }) => card.initialPrompt ?? card.brief ?? '',
-  })
-
-  return matches.map(card => {
-    const prompt = card.initialPrompt ?? card.brief ?? ''
-    const promptMatch = suggestionMatch({
-      name: prompt,
-      query,
-    })
-    const index = promptMatch?.ranges[0]?.from ?? 0
-    const source = promptMatch ? prompt : card.title
-    const start = Math.max(
-      0,
-      index - 48,
-    )
-    const excerpt = `${start ? '…' : ''}${source.slice(
-      start,
-      start + 180,
-    )}${source.length > start + 180 ? '…' : ''}`
-
-    const sourceMatch = promptMatch ?? suggestionMatch({
-      name: card.title,
-      query,
-    })
-    const leading = start ? 1 : 0
-    const excerptHighlights = (sourceMatch?.ranges ?? []).filter(range =>
-      range.from >= start && range.to <= start + 180).map(range => ({
-      from: range.from - start + leading,
-      to: range.to - start + leading,
-    }))
-
-    return {
-      card,
-      excerpt: excerpt || 'No initial prompt',
-      excerptHighlights,
-    }
-  })
 }
 
 export function mentionContext({
