@@ -656,7 +656,7 @@ test(
   },
 )
 
-// A WebSocket upgrade with the headers tailscale serve forwards, answered with the upgrade status or the refusal.
+// fetch drops a forged Host header, so the upgrade goes out as a raw request.
 const upgrade = ({
   path,
   headers,
