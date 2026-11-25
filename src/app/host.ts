@@ -1014,7 +1014,7 @@ export function createHost({
     })
   }
 
-  // A stop that ends a compaction, an upgrade or an agent change cancels what waited behind it; the commands Othrys itself handles are not messages to Titan.
+  // A stop that ends a compaction or an upgrade cancels what waited behind it; the commands Othrys itself handles are not messages to Titan.
   const stopHeldInputs = async () => {
     stoppedByOwner()
     turns.cancel()
