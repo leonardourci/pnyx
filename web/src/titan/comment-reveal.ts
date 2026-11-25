@@ -1,20 +1,7 @@
+import { focusAtEnd } from '#web-shared/ui/focus.ts'
 import { commentRange } from './comment-highlight.ts'
 import type { ChatComment } from './chat.ts'
 import { COMMENT_REVEAL, scrollMessage } from './comment-motion.ts'
-
-export function focusNote({
-  note,
-  preventScroll = false,
-}: {
-  note: HTMLTextAreaElement
-  preventScroll?: boolean
-}) {
-  note.focus({ preventScroll })
-  note.setSelectionRange(
-    note.value.length,
-    note.value.length,
-  )
-}
 
 export function revealComment({
   host,
@@ -32,8 +19,8 @@ export function revealComment({
   })
 
   if (note) {
-    focusNote({
-      note,
+    focusAtEnd({
+      field: note,
       preventScroll: true,
     })
     scrollMessage({

@@ -1,27 +1,22 @@
 import { useEffect } from 'react'
+import { focusAtEnd } from '#web-shared/ui/focus.ts'
 
 const APPLE_PLATFORM = /Mac|iPhone|iPad/.test(navigator.platform)
 const COMPOSER = '.composer textarea'
 
+export const chatAround = ({ from }: { from: Element | null }) => from?.closest('.chat-frame') ?? null
+
 const chatComposer = ({ from }: { from: Element | null }) =>
-  from?.closest('.detail, .chat-frame')?.querySelector<HTMLTextAreaElement>(COMPOSER) ?? null
+  chatAround({ from })?.querySelector<HTMLTextAreaElement>(COMPOSER) ?? null
 
 const shownTitanComposer = ({ hydraId }: { hydraId: string }) =>
   document.querySelector<HTMLTextAreaElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat ${COMPOSER}`)
-
-const focusAtEnd = ({ composer }: { composer: HTMLTextAreaElement }) => {
-  composer.focus()
-  composer.setSelectionRange(
-    composer.value.length,
-    composer.value.length,
-  )
-}
 
 export function focusChatComposer({ from }: { from: Element | null }) {
   const composer = chatComposer({ from })
 
   if (composer) {
-    focusAtEnd({ composer })
+    focusAtEnd({ field: composer })
   }
 }
 
@@ -50,7 +45,7 @@ export function useComposerShortcut({ hydraId }: { hydraId: string }) {
           return
         }
 
-        focusAtEnd({ composer })
+        focusAtEnd({ field: composer })
         const composerTookFocus = document.activeElement === composer
 
         if (composerTookFocus) {

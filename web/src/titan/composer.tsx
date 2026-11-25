@@ -3,6 +3,7 @@ import type { ChatDrafts } from './chat-drafts.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
+import { chatAround } from './composer-shortcut.ts'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#titan/transcripts-read.ts'
 import { sendableRequest } from './project-request.ts'
@@ -159,7 +160,7 @@ export function Composer({
       try {
         await loadComment({ comment })
         requestAnimationFrame(() => {
-          const host = form.current?.closest('.detail, .chat-frame')?.querySelector<HTMLElement>('.messages')
+          const host = chatAround({ from: form.current })?.querySelector<HTMLElement>('.messages')
 
           if (host && !revealComment({
             host,

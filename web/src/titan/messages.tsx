@@ -479,8 +479,13 @@ export function Messages({
     clearSelection: () => setSelection(null),
   })
 
+  const removeAndKeepFocus = ({ id }: { id: string }) => {
+    remove({ id })
+    root.current?.focus({ preventScroll: true })
+  }
+
   const handlers: MessageActions = {
-    remove,
+    remove: removeAndKeepFocus,
     release,
     retry,
   }

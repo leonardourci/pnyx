@@ -1,11 +1,10 @@
 import type { ChatDrafts } from './chat-drafts.ts'
 import { imageLine } from '#titan/images.ts'
-import { isEditing } from '#web-shared/ui/focus.ts'
+import { focusAtEnd, isEditing } from '#web-shared/ui/focus.ts'
 import {
   type ClipboardEvent as PasteEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
-import { focusNote } from './comment-reveal.ts'
 import { commentUpdates,sendableComment } from './chat.ts'
 import { pendingImage,settleImage } from './draft.ts'
 import { checkImages,pastedImages,uploadImage } from './image-upload.ts'
@@ -78,7 +77,7 @@ export function useCommentDrafts({
     )
 
     if (note) {
-      focusNote({ note })
+      focusAtEnd({ field: note })
     }
 
     return comment.id
