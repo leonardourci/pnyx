@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
-import { readGrant, readCommand } from '#titan/read-grant.ts'
+import { readGrant, readCommand } from '#routine-helper/read-grant.ts'
 import { recordContext } from '#titan/file-context.ts'
 import { hydraFiles, taskFiles } from '#store/file-home.ts'
 
