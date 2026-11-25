@@ -509,6 +509,8 @@ export interface TitanState {
   hydraAgent?: import('#workers/model.ts').AgentConfig
   // Every session Titan has been configured with, oldest first.
   hydraSessions?: string[]
+  // Left unsettled by an older version; recovery withdraws it.
+  hydraAgentChange?: import('#titan/model.ts').TitanAgentChange
   historyMilestones?: import('#titan/history.ts').HistoryMilestone[]
   hydraContext?: {
     after: number
