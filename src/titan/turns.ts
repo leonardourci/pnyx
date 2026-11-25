@@ -6,8 +6,7 @@ import { stopTitanInputs } from './stop-inputs.ts'
 import { hydraDeliveryId } from './received.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { contextNoteBlock, contextTurnNotes, contextReportStatus, type ContextNote } from './context-notes.ts'
-import { agentChanges, conversationContext } from './agent-switch.ts'
-import { agentSettings, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
+import { agentChanges, agentSettings, conversationContext, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
 import { hydraDigest } from './digest.ts'
 import { QUIET_REPLY, hydraEvent, reportActor } from './titan.ts'
@@ -409,7 +408,7 @@ export function createTitanTurns({
       return Promise.resolve({ state: 'cancelled' })
     }
 
-    // Othrys's wakes keep the agent Titan last ran with, unless an agent change's compaction left no session to keep.
+    // Othrys's wakes keep the agent Titan last ran with, unless an older version's agent-change compaction left no session to keep.
     const keepsAgent = !ownerActor({ actor }) && !startsFromSummary({ state: queuedState })
     const chosenAgent = withAccount({
       agent: selected ?? (keepsAgent ? queuedState.hydraAgent : undefined) ?? hydraCandidate({
@@ -478,7 +477,7 @@ export function createTitanTurns({
         mode: previous.settings?.mode,
         fast: previous.settings?.fast === 'true',
       } : undefined)
-      // After an agent change's compaction no session holds context to lose, so nothing is compared.
+      // After an older version's agent-change compaction no session holds context to lose, so nothing is compared.
       const used = startsFromSummary({ state }) ? undefined : ranWith
       const settingsChanged = used && await agentChanges({
         previous: used,

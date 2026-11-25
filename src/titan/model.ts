@@ -82,9 +82,9 @@ export interface TitanOperation {
   // The last log position covered, fixed before the operation starts reading.
   through?: number
   historySince?: string
-  // An inscribe pass within a switch shares its compaction's chat divider.
+  // An older version's inscribe pass within an agent change shares its compaction's chat divider.
   parent?: string
-  // Overlapping operations can record a milestone without taking over the existing stop.
+  // Older versions recorded overlapping operations as milestones that did not take over the existing stop.
   blocking?: false
 }
 
