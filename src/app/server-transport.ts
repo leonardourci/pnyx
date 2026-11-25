@@ -39,6 +39,7 @@ export const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.ttf': 'font/ttf',
   '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
 }
 
 // Each command gets a receipt or an error carrying its id.

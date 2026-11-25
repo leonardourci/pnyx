@@ -784,3 +784,49 @@ test(
     })
   },
 )
+
+test(
+  'the page links a web app manifest whose start URL is in scope and whose any and maskable icons are served',
+  async () => {
+    const hydra = await othrys.hydra()
+    const base = `http://127.0.0.1:${othrys.port()}`
+    const html = await (await fetch(`${base}/hydra/${hydra.id}/`)).text()
+    const link = /<link rel="manifest" href="([^"]+)"/.exec(html)?.[1]
+    expect(link).toBeDefined()
+
+    const response = await fetch(new URL(
+      link!,
+      base,
+    ))
+    expect(response.headers.get('content-type')).toBe('application/manifest+json')
+    const manifest = await response.json() as {
+      start_url: string
+      scope: string
+      display: string
+      icons: {
+        src: string
+        sizes: string
+        purpose: string
+      }[]
+    }
+    expect(manifest.start_url.startsWith(manifest.scope)).toBe(true)
+    expect(manifest.display).toBe('standalone')
+    expect(new Set(manifest.icons.map(icon => icon.purpose))).toEqual(new Set([
+      'any',
+      'maskable',
+    ]))
+
+    for (const icon of manifest.icons) {
+      const image = await fetch(new URL(
+        icon.src,
+        base,
+      ))
+      expect(image.headers.get('content-type')).toBe('image/png')
+    }
+
+    expect(manifest.icons.map(icon => icon.sizes)).toEqual(expect.arrayContaining([
+      '192x192',
+      '512x512',
+    ]))
+  },
+)
