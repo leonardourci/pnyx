@@ -3,18 +3,16 @@ import type { FolderListing } from '#projects/folders.ts'
 import { reference } from '#titan/mentions.ts'
 import type { MentionItem } from './mention-picker.tsx'
 
-const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
+export const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
-// What the @ picker offers beyond this Titan's own projects.
+// What the @ picker offers beyond this Titan's own projects; the picker filters them with its other rows.
 export function folderSuggestions({
-  query,
   typed,
   attached,
   otherProjects,
   listing,
   typedPath,
 }: {
-  query: string
   typed: string
   attached: TitanProject[]
   otherProjects: {
@@ -73,15 +71,14 @@ export function folderSuggestions({
   const items: MentionItem[] = []
 
   for (const folder of candidates) {
-    const matching = typedPath || !query || `${folder.name} ${folder.path}`.toLocaleLowerCase().includes(query)
-
-    if (matching && !skip.has(folder.path)) {
+    if (!skip.has(folder.path)) {
       skip.add(folder.path)
       items.push({
         key: `folder:${folder.path}`,
         kind: 'project',
         title: folder.name,
         detail: folder.detail,
+        icons: ['project'],
         group: 'Folders',
         insert: reference({
           kind: 'project',

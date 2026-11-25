@@ -1,4 +1,5 @@
 import type { RefObject } from 'react'
+import type { RowMatch } from '#titan/suggestion-matches.ts'
 import { SuggestionPicker, type PickerItem } from '#web-shared/ui/suggestion-picker.tsx'
 import type { ChipKind } from './draft.ts'
 
@@ -15,23 +16,17 @@ export function MentionPicker({
   active,
   choose,
   anchor,
-  query,
 }: {
   id: string
-  query: string
   anchor: RefObject<HTMLTextAreaElement | null>
-  matches: MentionItem[]
+  matches: RowMatch<MentionItem>[]
   active: number
   choose({ item }: { item: MentionItem }): void
 }) {
   return (
     <SuggestionPicker
       id={id}
-      query={query}
-      matches={matches.map(item => ({
-        ...item,
-        icons: item.icons ?? [item.kind],
-      }))}
+      matches={matches}
       active={active}
       choose={choose}
       anchor={anchor}

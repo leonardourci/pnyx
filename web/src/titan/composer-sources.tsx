@@ -3,18 +3,24 @@ import { hydraConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { Catalog } from '#titan/transcripts-catalog.ts'
 import type { TitanProject } from '#projects/model.ts'
-import { projectGroups, type ProjectGroup } from '#projects/groups.ts'
-import type { Card,SavedLabelColor } from '#tasks/model.ts'
+import { projectGroups } from '#projects/groups.ts'
+import type { SavedLabelColor } from '#tasks/model.ts'
+import type { PreparedRow } from '#titan/suggestion-matches.ts'
 import type { Command } from '#web-app/connection.ts'
 import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
+import { useKept,useStableActions } from '#web-shared/stable.ts'
 import { useSkillsCatalog } from './skills-catalog.ts'
+import { columnRows,projectRows,taskRowsOf,titanRows } from './mention-candidates.ts'
+import type { MentionItem } from './mention-picker.tsx'
+import { slashRows,type SlashItem } from './slash-menu.tsx'
 
 // What every composer field offers to mention, open and invoke; the app provides it once.
 export interface ComposerSources {
-  cards: Card[]
   projects: TitanProject[]
-  columns: ProjectGroup[]
+  // The @ and / lists, built once per source version; each field only filters them.
+  mentionRows: PreparedRow<MentionItem>[]
+  slashRows: PreparedRow<SlashItem>[]
   taskReferences: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   catalog: Catalog | null
@@ -28,6 +34,12 @@ export interface ComposerSources {
     hydra: string
   }[]
   notify({ text }: { text: string }): void
+}
+
+export interface OtherTitan {
+  id: string
+  name: string
+  icon: string
 }
 
 const Sources = createContext<ComposerSources | null>(null)
@@ -61,6 +73,7 @@ export function TitanComposerSources({
   openTask,
   notify,
   otherProjects,
+  otherTitans,
   children,
 }: {
   state: TitanState
@@ -70,6 +83,7 @@ export function TitanComposerSources({
   openTask({ id }: { id: string }): void
   notify({ text }: { text: string }): void
   otherProjects: ComposerSources['otherProjects']
+  otherTitans: OtherTitan[]
   children: ReactNode
 }) {
   const config = hydraConfig({ state }), card = state.cards[TITAN_CARD]
@@ -91,7 +105,6 @@ export function TitanComposerSources({
       TITAN_CARD,
       card?.agent?.provider,
       card?.agent?.cwd,
-      card?.agent?.sessionId,
       config.hydra.agent?.harness,
     ]),
     card: TITAN_CARD,
@@ -100,27 +113,82 @@ export function TitanComposerSources({
     connected,
     open,
   })
-  const cards = useMemo(
-    () => Object.values(state.cards),
-    [state.cards],
+  const projects = state.projects
+  // The workspace derives these on every render; the lists rebuild only when their content changes.
+  const titans = useKept({ value: otherTitans })
+  const folders = useKept({ value: otherProjects })
+  const actions = useStableActions({
+    actions: {
+      openTask,
+      notify,
+    },
+  })
+  const labelColors = state.labelColors
+  const columns = useMemo(
+    () => projectGroups({ state: { projects } }),
+    [projects],
+  )
+  const projectList = useMemo(
+    () => [
+      ...projectRows({ projects: projects ?? [] }),
+      ...titanRows({ titans }),
+      ...columnRows({ columns }),
+    ],
+    [
+      projects,
+      titans,
+      columns,
+    ],
+  )
+  const mentionRows = useMemo(
+    () => [
+      ...projectList,
+      ...taskRowsOf({
+        cards: Object.values(state.cards),
+        references,
+      }),
+    ],
+    [
+      projectList,
+      state.cards,
+      references,
+    ],
+  )
+  const commands = useMemo(
+    () => slashRows({
+      catalog,
+      labelColors,
+    }),
+    [
+      catalog,
+      labelColors,
+    ],
+  )
+  const sources = useMemo(
+    () => ({
+      projects: projects ?? [],
+      mentionRows,
+      slashRows: commands,
+      taskReferences: references,
+      openTask: actions.openTask,
+      catalog,
+      catalogOpen,
+      labelColors,
+      notify: actions.notify,
+      otherProjects: folders,
+    }),
+    [
+      projects,
+      mentionRows,
+      commands,
+      references,
+      actions,
+      catalog,
+      catalogOpen,
+      labelColors,
+      folders,
+    ],
   )
 
-  return (
-    <ComposerSourcesProvider
-      sources={{
-        cards,
-        projects: state.projects ?? [],
-        columns: projectGroups({ state }),
-        taskReferences: references,
-        openTask,
-        catalog,
-        catalogOpen,
-        labelColors: state.labelColors,
-        notify,
-        otherProjects,
-      }}
-    >
-      {children}
-    </ComposerSourcesProvider>
-  )
+  return <ComposerSourcesProvider sources={sources}>{children}</ComposerSourcesProvider>
 }
