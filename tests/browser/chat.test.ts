@@ -1712,3 +1712,37 @@ test.each([
     socket.close()
   },
 )
+
+test(
+  'Mod+L moves focus to the Titan composer from anywhere on the page',
+  async () => {
+    const hydra = await othrys.hydra()
+    othrys.claude.plan({
+      hydra: hydra.id,
+      text: 'Say something',
+      reply: 'Here is the reply to read.',
+    })
+    await hydra.chat({ text: 'Say something' })
+    const page = await openTitan({
+      port: othrys.port(),
+      hydraId: hydra.id,
+    })
+    const workspace = page.locator('[data-hydra-workspace][data-active=true]')
+    await workspace.getByText(
+      'Here is the reply to read.',
+      { exact: true },
+    ).waitFor()
+    const composer = workspace.getByRole(
+      'textbox',
+      {
+        name: 'Reply to Titan',
+        exact: true,
+      },
+    )
+    await composer.fill('Draft')
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press('ControlOrMeta+l')
+    expect(await composer.evaluate(field => field === document.activeElement
+      && (field as HTMLTextAreaElement).selectionStart === 'Draft'.length)).toBe(true)
+  },
+)

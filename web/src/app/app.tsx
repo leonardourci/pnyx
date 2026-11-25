@@ -15,6 +15,7 @@ import { useTitanEdits } from './hydra-edits.ts'
 import { placements } from './hydra-order.ts'
 import { ProfileSurface } from './profile-surface.tsx'
 import { TitanView } from './workspace.tsx'
+import { useComposerShortcut } from '#web-titan/composer-shortcut.ts'
 
 const SCROLL_EDGE_EPSILON = 1
 
@@ -50,6 +51,7 @@ export function App() {
     filterPolis,
   ] = useState<string | undefined>()
   const current = hydra.navigation.hydraId
+  useComposerShortcut({ hydraId: current })
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const anchor = useRef<() => void>(undefined)
