@@ -46,6 +46,7 @@ export const settings = guard({
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
           'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Titan ids, each once; hiddenHydras takes the Titan ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
+          'allowedHosts takes the host names beside this Mac that may open Othrys, such as a Tailscale name served by tailscale serve; [] allows only this Mac',
         ],
       }
     }

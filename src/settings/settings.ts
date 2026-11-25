@@ -16,6 +16,8 @@ export const DEFAULT_LOG_DAYS = 7
 export const MAX_LOG_DAYS = 365
 export const DEFAULT_LOG_MAX_MB = 500
 export const MAX_LOG_MB = 100_000
+// A DNS name or address with an optional port, as a browser sends it in Host; no scheme, path or wildcard.
+const HOST_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/
 
 export const DEFAULT_SETTINGS: Settings = {
   ...pickView({ view: DEFAULT_VIEW }),
@@ -28,7 +30,7 @@ export const DEFAULT_SETTINGS: Settings = {
   logs: 'on',
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
-
+  allowedHosts: [],
 }
 
 // Settings stored before a key existed lack it, so each missing key reads as its default.
@@ -224,6 +226,18 @@ export function patchSettings({
     }
 
     next.logMaxMB = megabytes
+  }
+
+  if ('allowedHosts' in patch) {
+    const list = patch.allowedHosts
+    const names = Array.isArray(list) && list.every(host => typeof host === 'string' && HOST_NAME.test(host))
+    const once = Array.isArray(list) && new Set(list).size === list.length
+
+    if (!names || !once) {
+      return invalid({ detail: 'allowedHosts takes a list of lowercase host names such as mac.example.ts.net, each once' })
+    }
+
+    next.allowedHosts = [...list] as string[]
   }
 
   for (const key of [

@@ -44,6 +44,8 @@ export interface Settings extends SharedView {
   logs: LogMode
   logDays: number
   logMaxMB: number
+  // Host names beside this Mac's own that may open Othrys, such as a Tailscale name; each also passes as Origin https://<name>.
+  allowedHosts: string[]
 }
 
 export type PageSettings = Settings
@@ -59,6 +61,7 @@ export const SETTING_KEYS = [
   'logs',
   'logDays',
   'logMaxMB',
+  'allowedHosts',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]
