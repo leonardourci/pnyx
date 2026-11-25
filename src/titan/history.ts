@@ -1,19 +1,12 @@
 import { inform } from '#app/command-notices.ts'
 import type { TitanEvent, TitanState } from '#app/model.ts'
-import { ownerActor } from '#app/actors.ts'
 import { TitanError } from '#store/errors.ts'
-import { redact } from '#oracle/text.ts'
 import type { TitanOperation } from './model.ts'
-import type { SessionEntry, ThreadEntry } from './transcripts-read.ts'
+import type { ThreadEntry } from './transcripts-read.ts'
 import { TITAN_CARD } from './identity.ts'
 import { operationLabel } from './operation-label.ts'
 
 export const HISTORY_BUDGET = 6000
-
-export const NEITHER_LIMIT = 15000
-export const NEITHER_REASON = 'Neither requires less than 15,000 tokens since the last successful compaction.'
-
-export const canSkipCompaction = ({ tokens }: { tokens: number }) => tokens < NEITHER_LIMIT
 
 export interface HistoryMilestone extends TitanOperation {
   receipts?: Extract<TitanEvent, { type: 'hydra.operation' }>[]
@@ -50,7 +43,7 @@ export function compactionContext({ state }: { state: TitanState }): {
   }
 }
 
-export function inscribeSince({ state }: { state: TitanState }): string {
+function inscribeSince({ state }: { state: TitanState }): string {
   return lastMilestone({
     state,
     kind: 'inscribe',
@@ -58,46 +51,6 @@ export function inscribeSince({ state }: { state: TitanState }): string {
     state,
     kind: 'compaction',
   })?.id ?? 'origin'
-}
-
-function historyBoundary({
-  state,
-  since,
-}: {
-  state: TitanState
-  since: string
-}): number {
-  if (since === 'last-compaction' || since === 'last-inscribe') {
-    const kind = since === 'last-compaction' ? 'compaction' : 'inscribe'
-    const milestone = lastMilestone({
-      state,
-      kind,
-    })
-
-    if (!milestone && kind === 'inscribe') {
-      return historyBoundary({
-        state,
-        since: 'last-compaction',
-      })
-    }
-
-    return milestone?.through ?? 0
-  }
-
-  if (since === 'origin') {
-    return 0
-  }
-
-  const milestone = state.historyMilestones?.find(item => item.id === since && item.state === 'finished')
-
-  if (!milestone) {
-    throw new TitanError({
-      message: 'History needs a successful milestone ID, last-compaction or last-inscribe',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  return milestone.through
 }
 
 // Transport parts rejoin before rendering or counting, including parts from different pages.
@@ -119,43 +72,6 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   }
 
   return result
-}
-
-function taskWords({ event }: { event: TitanEvent }): {
-  action: string
-  text: string
-} | undefined {
-  if (event.type === 'task.created') {
-    const text = [
-      event.data.ask?.text,
-      event.data.intent,
-      event.data.brief,
-    ].filter(Boolean).join('\n\n')
-
-    return text ? {
-      action: 'task created',
-      text,
-    } : undefined
-  }
-
-  if (event.type === 'task.brief') {
-    return {
-      action: 'brief',
-      text: [
-        event.data.intent,
-        event.data.after,
-      ].filter(Boolean).join('\n\n'),
-    }
-  }
-
-  if (event.type === 'task.owner-ask' || event.type === 'task.intent') {
-    return {
-      action: 'owner ask',
-      text: event.data.text,
-    }
-  }
-
-  return undefined
 }
 
 export function inscribeOperation({
@@ -282,217 +198,6 @@ export function placeEntries<Entry extends ThreadEntry>({
       },
     ]
   })
-}
-
-export function historyMessages({
-  positions,
-  events,
-  native,
-}: {
-  events: TitanEvent[]
-  native: SessionEntry[]
-  positions: ReadonlyMap<string, number>
-}): {
-  seq: number
-  text: string
-}[] {
-  const entries: ThreadEntry[] = []
-  const sequences = new Map<string, number>()
-
-  for (const {
-    seq,
-    entry,
-  } of placeEntries({
-      positions,
-      entries: native.filter(entry => entry.kind === 'message'
-        && entry.role.startsWith('assistant')),
-    })) {
-    entries.push({
-      ...entry,
-      id: entry.reference,
-      messageId: entry.reference,
-      part: entry.part ?? 0,
-      role: 'Titan',
-    })
-    sequences.set(
-      entry.reference,
-      seq,
-    )
-  }
-
-  for (const event of events) {
-    if (event.type === 'hydra.helper-finished') {
-      for (const outcome of event.data.outcomes) {
-        if (outcome.status === 'still_waiting') {
-          continue
-        }
-
-        const id = `${event.id}:${outcome.task}`
-        entries.push({
-          id,
-          kind: 'message',
-          role: `helper:${outcome.task} ${outcome.status ?? outcome.audience}`,
-          at: event.at,
-          text: outcome.summary,
-        })
-        sequences.set(
-          id,
-          event.seq,
-        )
-      }
-
-      continue
-    }
-
-    let entry: ThreadEntry
-
-    if (event.type === 'hydra.message' && event.data.kind !== 'divider'
-      && ownerActor({ actor: event.actor })) {
-      entry = {
-        id: event.id,
-        kind: 'message',
-        role: 'owner',
-        at: event.at,
-        text: [
-          event.data.enteredText ?? event.data.text,
-          event.data.details,
-        ].filter(Boolean).join('\n\n'),
-      }
-    } else {
-      const words = taskWords({ event })
-
-      if (!words) {
-        continue
-      }
-
-      entry = {
-        id: event.id,
-        kind: 'message',
-        role: `task:${event.cardId} ${words.action}`,
-        at: event.at,
-        text: words.text,
-      }
-    }
-
-    entries.push(entry)
-    sequences.set(
-      entry.messageId ?? entry.id,
-      event.seq,
-    )
-  }
-
-  const messages = joinMessageParts({
-    entries: entries.sort((
-      a,
-      b,
-    ) => {
-      const seq = sequences.get(a.messageId ?? a.id)! - sequences.get(b.messageId ?? b.id)!
-
-      return seq || (a.at ?? '').localeCompare(b.at ?? '')
-        || (a.messageId ?? a.id).localeCompare(b.messageId ?? b.id) || (a.part ?? 0) - (b.part ?? 0)
-    }),
-  })
-
-  return messages.map(entry => ({
-    seq: sequences.get(entry.messageId ?? entry.id)!,
-    text: `[${entry.role}] ${redact({ text: entry.text })}`,
-  }))
-}
-
-// How many log positions one read covers, so a statement never runs long however large the range.
-const HISTORY_WINDOW = 4000
-
-interface HistoryMessage {
-  seq: number
-  text: string
-}
-
-export type HistoryWindow = ({
-  lo,
-  hi,
-}: {
-  lo: number
-  hi: number
-}) => {
-  messages: HistoryMessage[]
-  // The last log position the read covered, at most hi: a window holding many transcript messages covers a part.
-  hi: number
-}
-
-const encoder = new TextEncoder()
-
-function* historyStream({
-  window,
-  from,
-  through,
-}: {
-  window: HistoryWindow
-  from: number
-  through: number
-}): Generator<HistoryMessage> {
-  for (let lo = from - 1; lo < through;) {
-    const read = window({
-      lo,
-      hi: Math.min(
-        lo + HISTORY_WINDOW,
-        through,
-      ),
-    })
-    lo = read.hi
-
-    for (const message of read.messages) {
-      if (message.seq >= from) {
-        yield message
-      }
-    }
-  }
-}
-
-export function historyTokens({
-  window,
-  boundary,
-  through,
-  limit = Infinity,
-}: {
-  window: HistoryWindow
-  boundary: number
-  through: number
-  limit?: number
-}): number {
-  let bytes = -2
-
-  for (const message of historyStream({
-    window,
-    from: boundary + 1,
-    through,
-  })) {
-    bytes += 2 + encoder.encode(message.text).length
-
-    if (Math.ceil(bytes / 4) >= limit) {
-      break
-    }
-  }
-
-  return Math.ceil(Math.max(
-    bytes,
-    0,
-  ) / 4)
-}
-
-export function historyRange({
-  state,
-  since,
-}: {
-  state: TitanState
-  since: string
-}) {
-  return {
-    boundary: historyBoundary({
-      state,
-      since,
-    }),
-    through: state.seq,
-  }
 }
 
 // Both requested operations and native auto-compactions leave durable milestones.

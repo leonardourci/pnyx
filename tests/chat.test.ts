@@ -2831,27 +2831,12 @@ test.each([
     page.close()
 
     expect(lastHidden).toContain('hydra.log')
-    const countArgs = [
-      'hydra',
-      'history',
-      '--since',
-      'last-compaction',
-      '--count',
-    ]
-    const beforeRestart = await hydra.owner({ args: countArgs })
-    expect(beforeRestart.totalTokens).toBeGreaterThan(0)
     const logPath = join(
       process.env.OTHRYS_HOME!,
       'hydras',
       hydra.id,
       'hydra.log',
     )
-    expect(readFileSync(
-      logPath,
-      'utf8',
-    )).toContain('Read the full snapshot after compaction')
-    await othrys.restart()
-    expect((await hydra.owner({ args: countArgs })).totalTokens).toBe(beforeRestart.totalTokens)
     expect(readFileSync(
       logPath,
       'utf8',

@@ -117,7 +117,6 @@ const COMMAND_REGISTRY = {
         'show',
         'messages',
         'message',
-        'history',
         'check',
         'usage',
         'digest',
