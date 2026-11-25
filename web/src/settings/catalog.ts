@@ -21,6 +21,7 @@ export const SETTING_ICONS: Record<string, string> = {
   logs: 'logs',
   logDays: 'log-days',
   logMaxMB: 'log-size',
+  allowedHosts: 'world',
 }
 
 // Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
@@ -80,6 +81,12 @@ export const SETTINGS_SECTIONS = [
     label: 'Logs',
     icon: 'logs',
     note: 'Timestamped lines on this machine for debugging Othrys: what each action did, how long it took and how much memory the server used. Read them from the home’s logs folder.',
+  },
+  {
+    id: 'access',
+    label: 'Access',
+    icon: 'world',
+    note: 'Othrys listens only on this Mac. A name listed here, such as the one tailscale serve answers on, opens it from your other devices without a password.',
   },
   {
     id: 'about',
@@ -361,6 +368,21 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'size',
       'megabytes',
       'storage',
+    ],
+  },
+  {
+    id: 'allowedHosts',
+    section: 'access',
+    label: 'Allowed host names',
+    description: 'Names besides this Mac that may open Othrys, each also allowed as its https address. Anyone who can reach a listed name gets in, so list only names you control.',
+    related: [
+      'tailscale',
+      'phone',
+      'remote',
+      'network',
+      'origin',
+      'domain',
+      'https',
     ],
   },
   {
