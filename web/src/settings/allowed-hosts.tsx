@@ -68,12 +68,12 @@ export function AllowedHosts({
           value={text}
           onChange={event => setDraft(event.target.value)}
           spellCheck={false}
-          placeholder="Only this Mac"
+          placeholder="Only this computer"
         />
         <Button type="submit" variant="surface" disabled={text === saved}>Save</Button>
       </form>
       {error && <p role="alert" className="text-meta text-red">{error}</p>}
-      <Help text="Separate names with commas. Empty allows only this Mac. Add only names you control, such as this Mac’s Tailscale name." />
+      <Help text="Separate names with commas. Empty allows only this computer. Add only names you control, such as this computer’s Tailscale name." />
     </SettingField>
   )
 }

@@ -86,7 +86,7 @@ export const SETTINGS_SECTIONS = [
     id: 'access',
     label: 'Access',
     icon: 'world',
-    note: 'Othrys listens only on this Mac. A name listed here, such as the one tailscale serve answers on, opens it from your other devices without a password.',
+    note: 'Othrys listens only on this computer. A name listed here, such as the one tailscale serve answers on, opens it from your other devices without a password.',
   },
   {
     id: 'about',
@@ -374,7 +374,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'allowedHosts',
     section: 'access',
     label: 'Allowed host names',
-    description: 'Names besides this Mac that may open Othrys, each also allowed as its https address. Anyone who can reach a listed name gets in, so list only names you control.',
+    description: 'Names besides this computer that may open Othrys, each also allowed as its https address. Anyone who can reach a listed name gets in, so list only names you control.',
     related: [
       'tailscale',
       'phone',
