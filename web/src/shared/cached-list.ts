@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
-// A list the page reads from the server: the copy it has shows at once, a read in the background replaces it only
-// when the content differs, and a shown list is never cleared. Kept in memory and in sessionStorage per key.
+// A server list shown from cache at once and replaced only when a background read differs; never cleared once shown.
 export interface CachedList<T> {
   value?: T
   error?: string
@@ -142,8 +141,7 @@ function read<T>({
   return reading
 }
 
-// Reads in the background once connected when nothing is cached yet, and again each time `open` turns on;
-// `reload` asks the source itself to look again.
+// `reload` asks the source itself to look again, beyond what its server already read.
 export function useCachedList<T>({
   key,
   connected,

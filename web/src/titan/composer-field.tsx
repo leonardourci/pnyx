@@ -221,7 +221,6 @@ export function ComposerField({
     [selectedFolder],
   )
 
-  // The field keeps its attachments' rows while its chips stay the same.
   const chipsKey = JSON.stringify(view.chips.map(chip => [
     chip.kind,
     chip.value,
@@ -230,7 +229,6 @@ export function ComposerField({
   ]))
   const attached = useMemo(
     () => attachmentRows({ chips: view.chips }),
-    // The key lists everything the rows read from the chips.
     [chipsKey],
   )
   const rows = useMemo(

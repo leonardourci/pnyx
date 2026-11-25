@@ -1,5 +1,4 @@
-// Every searchable list: case and accents are ignored, each typed word must appear in the text in any order,
-// and spaces and punctuation are skipped on both sides, so "joaosilva" finds "João Silva".
+// One search rule for every list: no case or accents, each word anywhere in any order, "joaosilva" finds "João Silva".
 interface Letter {
   value: string
   from: number
