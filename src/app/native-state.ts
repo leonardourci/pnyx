@@ -580,7 +580,6 @@ const THROUGH_PARENTS = new Set([
   'data',
   'historyMilestones',
   'hydraOperation',
-  'hydraAgentChange',
   'receipt',
   'value',
 ])
@@ -589,7 +588,6 @@ const AFTER_PARENTS = new Set([
   'hydraContext',
   'hydraStatus',
   'hydraOperation',
-  'hydraAgentChange',
 ])
 
 export function nativeReferences({

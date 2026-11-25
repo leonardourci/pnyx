@@ -10,11 +10,9 @@ import { hydraInputDispatched } from './received.ts'
 
 const STARTED_RECEIPTS = 32
 
-// Messages sent to this Titan after an operation or a waiting agent change began holding them, that no turn has taken and Stop has not cancelled.
+// Messages sent to this Titan after an operation began holding them, that no turn has taken and Stop has not cancelled.
 function heldMessages({ state }: { state: TitanState }) {
-  const change = state.hydraAgentChange
-  const changeSeq = change ? (state.eventIds[change.id] ?? 1) - 1 : undefined
-  const stopSeq = state.hydraOperation?.seq ?? changeSeq
+  const stopSeq = state.hydraOperation?.seq
 
   if (stopSeq === undefined) {
     return []
@@ -32,7 +30,7 @@ function heldMessages({ state }: { state: TitanState }) {
   }))
 }
 
-export const heldOwnerMessages = ({ state }: { state: TitanState }) => heldMessages({ state })
+const heldOwnerMessages = ({ state }: { state: TitanState }) => heldMessages({ state })
   .filter(message => ownerActor({ actor: message.actor }))
 
 function hydraQueueView({
@@ -45,7 +43,6 @@ function hydraQueueView({
   const compacting = activeCompaction({ card })
   const upgrades = state.upgrades ?? []
   const stopped = state.hydraOperation
-  const changingAgent = state.hydraAgentChange
   const waiting = heldMessages({ state })
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
@@ -60,9 +57,8 @@ function hydraQueueView({
     ) => a.queuedAt.localeCompare(b.queuedAt))
     .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
-  const holding = Boolean(compacting) || upgrading || Boolean(stopped) || Boolean(changingAgent)
-  const runningChange = changingAgent?.state === 'running'
-  const compactionRunning = Boolean(compacting) || runningChange
+  const holding = Boolean(compacting) || upgrading || Boolean(stopped)
+  const compactionRunning = Boolean(compacting)
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
   const cancelled = new Set(state.hydraMessages?.filter(message => message.stopped)
@@ -106,7 +102,6 @@ function hydraQueueView({
     shownUpgrades,
     upgrading,
     holding,
-    runningChange,
     compactionRunning,
     upgradeRunning,
     compactInputs: inputs,

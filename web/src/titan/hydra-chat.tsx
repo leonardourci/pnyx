@@ -28,7 +28,6 @@ import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
 import { ActionBubble } from './action-bubble.tsx'
-import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { answerLeads } from './answer-leads.ts'
 import { ChatDecisionCard } from './chat-decisions.tsx'
 import { chatDecisions, type ChatDecision } from './chat-questions.ts'
@@ -57,7 +56,6 @@ const EMPTY_CHAT_QUEUE: TitanChatQueue = {
   shownUpgrades: [],
   upgrading: false,
   holding: false,
-  runningChange: false,
   compactionRunning: false,
   upgradeRunning: false,
   compactInputs: [],
@@ -199,7 +197,6 @@ export function TitanChat({
     compacting,
     compactOperations,
     shownUpgrades,
-    runningChange,
     compactionRunning,
     upgradeRunning,
     working,
@@ -656,7 +653,7 @@ export function TitanChat({
       conversation?.entries,
     ],
   )
-  const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
+  const canStop = ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const down = hydraDown({ status: state.hydraStatus })
   const showsTools = traces({
     view,
@@ -778,12 +775,6 @@ export function TitanChat({
           }
         }}
         loading={thread.loadingEarlier}
-      />
-      <AgentChangeChoice
-        state={state}
-        command={command}
-        connected={connected}
-        notify={notify}
       />
       <Composer
         hydraId={hydraId}

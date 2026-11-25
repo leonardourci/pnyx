@@ -34,11 +34,11 @@ export function applyTitan({
     return true
   }
 
+  // Only older homes hold agent changes; a finished one still names the agent and summary Titan moved to.
   if (event.type === 'hydra.agent-change') {
     const change = event.data
 
     if (change.state === 'finished') {
-      delete state.hydraAgentChange
       state.hydraAgent = structuredClone(change.next)
 
       if (change.summary !== undefined) {
@@ -63,10 +63,6 @@ export function applyTitan({
           },
         ]
       }
-    } else if (change.state === 'cancelled') {
-      delete state.hydraAgentChange
-    } else {
-      state.hydraAgentChange = structuredClone(change)
     }
 
     return true

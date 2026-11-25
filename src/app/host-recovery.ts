@@ -9,7 +9,6 @@ import { loadTitan } from './store.ts'
 import type { Writer } from './writer.ts'
 import { hostedTitan, othrysRunsTitan } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
-import type { TitanAgentChange } from '#titan/model.ts'
 import { operationEvent, type createTitanOperations, type createTitanOutage } from '#titan/operations.ts'
 import type { createWakeQueue } from '#titan/wake-queue.ts'
 import { wakeReasons } from '#titan/wake-reasons.ts'
@@ -40,7 +39,6 @@ export function createHostRecovery({
   write,
   note,
   interrupt,
-  changeAgent,
   endOperation,
   expireOrphans,
   send,
@@ -68,7 +66,6 @@ export function createHostRecovery({
     note: string
     resumeAttemptId?: string
   }): void
-  changeAgent({ change }: { change: TitanAgentChange }): Promise<void>
   endOperation: ReturnType<typeof createTitanOperations>['endOperation']
   expireOrphans: ReturnType<typeof createPermissionBridge>['expireOrphans']
   send: ReturnType<typeof createHostedDelivery>['send']
@@ -127,17 +124,6 @@ export function createHostRecovery({
     })
 
     const cut = loadTitan({ hydraId }).state.hydraOperation
-    const cutChange = loadTitan({ hydraId }).state.hydraAgentChange
-
-    if (cutChange?.state === 'running') {
-      await changeAgent({
-        change: {
-          ...cutChange,
-          state: 'failed',
-          error: 'Othrys restarted while preparing this agent change. Choose again to retry.',
-        },
-      })
-    }
 
     if (cut) {
       endOperation({

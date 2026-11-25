@@ -6,7 +6,7 @@ import { stopTitanInputs } from './stop-inputs.ts'
 import { hydraDeliveryId } from './received.ts'
 import type { createPermissionBridge } from '#workers/permission-bridge.ts'
 import { contextNoteBlock, contextTurnNotes, contextReportStatus, type ContextNote } from './context-notes.ts'
-import { agentChangeKind, conversationContext } from './agent-switch.ts'
+import { agentChanges, conversationContext } from './agent-switch.ts'
 import { agentSettings, hydraCandidate, startsFromSummary, withAccount } from './agent-choice.ts'
 import { hydraConfig } from './config.ts'
 import { hydraDigest } from './digest.ts'
@@ -366,7 +366,6 @@ export function createTitanTurns({
     id,
     release = false,
     selected,
-    history = true,
     carried = [],
   }) => {
     if (reportActor({ actor })) {
@@ -398,10 +397,7 @@ export function createTitanTurns({
     }
 
     // While a restart, an upgrade or a compaction stops Titan, everything for it waits in its queue; the recap when it ends tells Titan.
-    if (stoppedFor({
-      id,
-      actor,
-    })) {
+    if (stoppedFor({ id })) {
       queued()
 
       return Promise.resolve({ state: 'queued' })
@@ -448,10 +444,7 @@ export function createTitanTurns({
         })
       }
 
-      if (stoppedFor({
-        id,
-        actor,
-      })) {
+      if (stoppedFor({ id })) {
         return { state: 'queued' }
       }
 
@@ -487,7 +480,7 @@ export function createTitanTurns({
       } : undefined)
       // After an agent change's compaction no session holds context to lose, so nothing is compared.
       const used = startsFromSummary({ state }) ? undefined : ranWith
-      const kind = used && await agentChangeKind({
+      const settingsChanged = used && await agentChanges({
         previous: used,
         next: chosenAgent,
         models: () => models({
@@ -496,7 +489,7 @@ export function createTitanTurns({
         }),
       })
 
-      // A Stop while the catalog loaded must not leave a question behind for the message it cancelled.
+      // A Stop while the catalog loaded cancels the message.
       if (generation !== stopGeneration) {
         return stoppedBefore({
           id,
@@ -505,40 +498,11 @@ export function createTitanTurns({
       }
 
       // A model or effort named as what the session already runs with keeps that session.
-      const requestedAgent = used && !kind ? {
+      const requestedAgent = used && !settingsChanged ? {
         ...chosenAgent,
         model: used.model,
         effort: used.effort,
       } : chosenAgent
-
-      if (used && kind && ownerActor({ actor })) {
-        await write({
-          fn: ({ writer }) => applyDecision({
-            writer,
-            decision: hydraEvent({
-              state: writer.state,
-              cardId: TITAN_CARD,
-              meta: {
-                at: at(),
-                actor: 'pnyx',
-              },
-              change: {
-                type: 'hydra.agent-change',
-                data: {
-                  id,
-                  previous: used,
-                  next: requestedAgent,
-                  kind,
-                  state: 'requested',
-                },
-              },
-            }),
-          }),
-        })
-        queued()
-
-        return { state: 'queued' }
-      }
 
       await write({
         fn: ({ writer }) => {
@@ -626,7 +590,7 @@ export function createTitanTurns({
 
         state = loadTitan({ hydraId }).state
         card = state.cards[TITAN_CARD]
-        const sameIdentity = history && card?.agent?.provider === provider
+        const sameIdentity = card?.agent?.provider === provider
           && card.agent.account === main
           && !startsFromSummary({ state })
           && card.settings?.model === candidate.model
@@ -652,7 +616,7 @@ export function createTitanTurns({
             agent,
             settings,
             ...hydraSession({
-              history: history && !agent,
+              history: !agent,
               agent,
             }),
             env: agent?.loginFolder ? accountEnvironment({
@@ -1117,10 +1081,6 @@ export function createTitanTurns({
   return {
     cancel: () => {
       stopGeneration += 1
-    },
-    hydraTurn: async () => {
-      await wakeTurn
-      await hydraTurn
     },
     digest,
     hydraSession,

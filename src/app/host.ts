@@ -2,7 +2,7 @@ import { withLegacyNames } from '#store/legacy-env.ts'
 import { workerTaskDir } from '#workers/worker-log.ts'
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
 import { stopTitanInputs } from '#titan/stop-inputs.ts'
-import { heldOwnerMessages, hydraChatQueue } from '#titan/chat-queue.ts'
+import { hydraChatQueue } from '#titan/chat-queue.ts'
 import { compactCommand } from '#workers/compact-command.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
@@ -12,8 +12,6 @@ import { toolInstructions, toolEnvironment } from '#workers/tools.ts'
 import { taskLeasePresent } from '#routine-helper/leases.ts'
 import { reservingTaskCopy } from '#projects/copy-pool.ts'
 import { log } from './diagnostics.ts'
-import { createAgentSwitch } from '#titan/agent-switch.ts'
-import { accountFor } from '#workers/account-choice.ts'
 import { PROVIDERS, knownProvider } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
@@ -22,8 +20,6 @@ import { trackChildren } from '#workers/children.ts'
 import { watchAgent } from '#workers/agent-memory.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
 import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
-import { agentExhausted } from '#workers/dispatch.ts'
-import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
@@ -35,7 +31,6 @@ import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
-import { hydraEvent } from '#titan/titan.ts'
 import { clip } from '#titan/digest.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -44,7 +39,6 @@ import { TitanError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, AgentSession, Attention, SessionObservation } from '#workers/model.ts'
 import { decideSessionFacts } from '#workers/session-facts.ts'
-import type { TitanAgentChange } from '#titan/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { INTERRUPTED, sessionId, sessionTask } from '#workers/session-attachments.ts'
 import { loadTitan } from './store.ts'
@@ -893,7 +887,6 @@ export function createHost({
     }),
   })
   const {
-    hydraTurn,
     digest,
     hydra,
   } = turns
@@ -933,49 +926,6 @@ export function createHost({
     }),
   })
 
-  const changeAgent = async ({ change }: { change: TitanAgentChange }) => await write({
-    fn: ({ writer }) => applyDecision({
-      writer,
-      decision: hydraEvent({
-        state: writer.state,
-        cardId: TITAN_CARD,
-        meta: {
-          at: at(),
-          actor: 'pnyx',
-        },
-        change: {
-          type: 'hydra.agent-change',
-          data: change,
-        },
-      }),
-    }),
-  })
-
-  const {
-    runAgentChange,
-    resendHeldMessages,
-    agentChangeAbort,
-  } = createAgentSwitch({
-    hydraId,
-    controller,
-    children,
-    live,
-    closing: () => closing,
-    hydraTurn,
-    at,
-    write,
-    note,
-    changeAgent,
-    startOperation,
-    endOperation,
-    retire,
-    providerOf,
-    digest,
-    environment,
-    armWake,
-    host: () => host,
-  })
-
   const {
     start,
     continueInOthrys,
@@ -1006,7 +956,6 @@ export function createHost({
     write,
     note,
     interrupt,
-    changeAgent,
     endOperation,
     expireOrphans,
     send,
@@ -1084,15 +1033,6 @@ export function createHost({
   const stopTitan = async () => {
     const state = loadTitan({ hydraId }).state
     const card = state.cards[TITAN_CARD]
-    const changing = agentChangeAbort()
-    const waiting = state.hydraAgentChange
-
-    if (changing) {
-      await stopHeldInputs()
-      changing.abort(new Error('Compaction cancelled by the owner'))
-
-      return { stopped: 'compaction' }
-    }
 
     if (activeCompaction({ card })) {
       await stopHeldInputs()
@@ -1112,22 +1052,11 @@ export function createHost({
       return { stopped: 'upgrade' }
     }
 
-    // A change waiting for the owner's choice holds their messages, whether or not a turn runs.
-    if (waiting) {
-      await stopHeldInputs()
-      await changeAgent({
-        change: {
-          ...waiting,
-          state: 'cancelled',
-        },
-      })
-    }
-
     const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
     const running = turnRunning({ entry })
 
     if (!running && !queuedTitan.size && !entry?.input.pending()) {
-      return { stopped: waiting ? 'agent change' : 'none: Titan is not working on a turn' }
+      return { stopped: 'none: Titan is not working on a turn' }
     }
 
     // Messages already in the agent's hands are settled by its own receipts, not here.
@@ -1376,20 +1305,6 @@ export function createHost({
     models: catalogs.models,
     hydraId,
     hydra,
-    agentExhausted: async ({ agent }) => {
-      const { account } = accountFor({
-        effective: effectiveDispatch(),
-        harness: agent.harness,
-        prefer: agent.account,
-      })
-
-      return account ? agentExhausted({
-        candidate: agent,
-        account,
-      }) : false
-    },
-    changeAgent: runAgentChange,
-    resendHeldMessages,
 
     compact: async ({
       card: ref,
@@ -1451,11 +1366,6 @@ export function createHost({
             at: at(),
           }),
         })
-
-        // A waiting change left holding nothing is withdrawn.
-        if (!heldOwnerMessages({ state: loadTitan({ hydraId }).state }).length) {
-          await resendHeldMessages()
-        }
 
         return { cancelled: cancel }
       }

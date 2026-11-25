@@ -106,12 +106,12 @@ export type ChatEvent = EventBase & {
   }
 }
 
+// Recorded by older versions when the owner changed Titan's agent; kept so their logs still load.
 export interface TitanAgentChange {
   id: string
   previous: AgentConfig
   next: AgentConfig
   kind: 'agent' | 'effort'
-  // Cancelled: withdrawn without running, by a new agent choice, Stop, or removing what it held; never stored.
   state: 'requested' | 'running' | 'finished' | 'failed' | 'cancelled'
   choice?: 'inscribe' | 'compact' | 'neither'
   operation?: string
