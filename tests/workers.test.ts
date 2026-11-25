@@ -1783,6 +1783,80 @@ test(
 )
 
 test(
+  'an instruction Claude folds into a running turn stays read across restart and reaches the worker once',
+  async () => {
+    const hydra = await othrys.hydra()
+    const {
+      folder,
+      worker,
+    } = await hydra.startTask({ key: 'folded-read' })
+    const titan = await hydra.chat({ text: 'Watch folded-read' })
+    const held = othrys.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Run the long step'),
+      partial: 'Running',
+      hold: true,
+      folds: true,
+    })
+    onTestFinished(() => held.release())
+    await hydra.owner({
+      args: [
+        'reply',
+        'folded-read',
+        '--text',
+        'Run the long step',
+      ],
+    })
+    await until({
+      what: 'the long step to start',
+      check: () => worker.received.some(text => text.includes('Run the long step')),
+    })
+    await hydra.as({ session: titan }).run({
+      args: [
+        'reply',
+        'folded-read',
+        '--text',
+        'Also update the changelog',
+      ],
+    })
+    await until({
+      what: 'Claude to fold the instruction into the running turn',
+      check: () => worker.received.some(text => text.includes('Also update the changelog')),
+    })
+    const answered = worker.answered
+    held.release()
+    await until({
+      what: 'the long step to end',
+      check: () => worker.answered > answered,
+    })
+    const read = async () => (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'folded-read',
+        '--full',
+      ],
+    })).task.steering?.some((message: {
+      text: string
+      ack?: { outcome: string }
+    }) => message.text === 'Also update the changelog' && message.ack?.outcome === 'read')
+    await until({
+      what: 'the folded instruction to read as read',
+      check: read,
+    })
+    await othrys.restart()
+    await until({
+      what: 'the folded instruction to read as read after restart',
+      check: read,
+    })
+    expect(times({
+      sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
+      text: 'Also update the changelog',
+    })).toBe(1)
+  },
+)
+
+test(
   'a worker.log and a transcript keep their read positions when a reboot renumbers their disk, including positions an older Othrys saved',
   async () => {
     const hydra = await othrys.hydra()

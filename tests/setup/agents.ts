@@ -80,7 +80,7 @@ interface TurnPlan {
   compactTo?: number
   // Claude Code measures the session against this window from this turn on, as after a model switch.
   window?: number
-  // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary; its transcript record waits for the turn's end.
+  // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary, and records it as a queued command, never as a user line.
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean
@@ -264,10 +264,6 @@ export function fakeClaude() {
 
     // Like the SDK, the fake reads Othrys's messages as they are sent, not one turn at a time.
     const waiting: SDKUserMessage[] = []
-    const folded: {
-      text: string
-      uuid?: string
-    }[] = []
     const foldedUuids: string[] = []
     let ended = false, folding = false
     let nudge = () => {}
@@ -278,10 +274,26 @@ export function fakeClaude() {
         const text = textOf({ message: taken })
         session.received.push(text)
         session.uuids.push(taken.uuid)
-        folded.push({
-          text,
-          uuid: taken.uuid,
-        })
+        const timestamp = new Date().toISOString()
+        appendFileSync(
+          transcript,
+          `${JSON.stringify({
+            type: 'attachment',
+            uuid: randomUUID(),
+            timestamp,
+            attachment: {
+              type: 'queued_command',
+              prompt: text,
+              source_uuid: taken.uuid,
+            },
+          })}\n${JSON.stringify({
+            type: 'queue-operation',
+            operation: 'remove',
+            timestamp,
+            reason: 'absorbed_mid_turn',
+            commandUuid: taken.uuid,
+          })}\n`,
+        )
         foldedUuids.push(taken.uuid!)
       }
 
@@ -613,13 +625,6 @@ export function fakeClaude() {
 
         stop = undefined
         folding = false
-
-        for (const input of folded.splice(0)) {
-          record({
-            role: 'user',
-            ...input,
-          })
-        }
 
         if (interrupted) {
           yield stoppedResult({ message })
