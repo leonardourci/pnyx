@@ -210,9 +210,12 @@ export function createCatalogs({
     }
   }
 
+  const refreshes = new Map<string, Promise<ModelOption[]>>()
+
   const models: Host['models'] = async ({
     harness,
     account: selectedAccount,
+    refresh = false,
   }) => {
     const { account } = accountFor({
       effective: effectiveDispatch(),
@@ -225,59 +228,102 @@ export function createCatalogs({
     })
 
     const key = `${harness}:${account ? loginFolder({ account }) : ''}`
-    let catalog = modelCatalogs.get(key)
+    const provider = providers[providerIdOf({ harness })]
+    const cwd = hydraDir({ hydraId })
 
-    if (!catalog) {
-      const provider = providers[providerIdOf({ harness })]
-      const cwd = hydraDir({ hydraId })
+    // The folder's own settings apply on top of the shared list.
+    const withDefaults = async ({ models }: { models: ModelOption[] }) => provider.defaults({
+      cwd,
+      env,
+      models,
+    })
+
+    const readHarness = () => provider.models({
+      cwd,
+      env,
+    }).then(models => {
       const stored = storedModels({ key })
+      const changed = JSON.stringify(models) !== JSON.stringify(stored)
 
-      // The folder's own settings apply on top of the shared list; a failed read is dropped so the picker can retry.
-      const settle = ({ models }: { models: ModelOption[] | Promise<ModelOption[]> }) => {
-        const settled = Promise.resolve(models)
-          .then(models => provider.defaults({
-            cwd,
-            env,
-            models,
-          }))
-        modelCatalogs.set(
+      if (changed) {
+        storeModels({
           key,
-          settled,
-        )
-        void settled.catch(() => {
-          if (modelCatalogs.get(key) === settled) {
-            modelCatalogs.delete(key)
-          }
+          models,
         })
-
-        return settled
       }
 
-      // The harness is read once per server; a stored list answers meanwhile and a failed read keeps it.
-      const read = provider.models({
-        cwd,
-        env,
-      }).then(models => {
-        const changed = JSON.stringify(models) !== JSON.stringify(stored)
+      return {
+        models,
+        changed: changed && stored !== undefined,
+      }
+    })
 
-        if (changed) {
-          storeModels({
-            key,
-            models,
-          })
+    // A failed read is dropped so the picker can retry.
+    const remember = ({ settled }: { settled: Promise<ModelOption[]> }) => {
+      modelCatalogs.set(
+        key,
+        settled,
+      )
+      void settled.catch(() => {
+        if (modelCatalogs.get(key) === settled) {
+          modelCatalogs.delete(key)
         }
-
-        if (changed && stored) {
-          void settle({ models })
-        }
-
-        return models
       })
-      void read.catch(() => {})
-      catalog = settle({ models: stored ?? read })
+
+      return settled
     }
 
-    return catalog
+    // A reload asks the harness once per key at a time; a failed one leaves the list already read in place.
+    if (refresh) {
+      const running = refreshes.get(key)
+
+      if (running) {
+        return running
+      }
+
+      const reading = readHarness().then(({ models }) => withDefaults({ models }))
+        .then(settled => {
+          modelCatalogs.set(
+            key,
+            Promise.resolve(settled),
+          )
+
+          return settled
+        })
+        .finally(() => refreshes.delete(key))
+      refreshes.set(
+        key,
+        reading,
+      )
+
+      return reading
+    }
+
+    const known = modelCatalogs.get(key)
+
+    if (known) {
+      return known
+    }
+
+    // The harness is read once per server; a stored list answers meanwhile and a failed read keeps it.
+    const stored = storedModels({ key })
+    const read = readHarness().then(({
+      models,
+      changed,
+    }) => {
+      if (changed) {
+        void remember({ settled: withDefaults({ models }) })
+      }
+
+      return models
+    })
+    void read.catch(() => {})
+
+    const first = stored
+      ? withDefaults({ models: stored })
+      : read.then(models => withDefaults({ models }))
+
+    return remember({ settled: first })
   }
 
   return {

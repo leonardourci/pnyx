@@ -3,7 +3,7 @@ import { knownHarness } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `models claude|codex [<account>]`: the models the harness offers for the picker.
+// `models claude|codex [<account>] [--refresh]`: the models the harness offers for the picker; --refresh asks it again.
 export function modelsCommand({
   ws,
   id,
@@ -14,18 +14,24 @@ export function modelsCommand({
 }: CommandRequest & {
   agents: ReturnType<typeof createHost>
 }) {
-  const harness = knownHarness({ name: args[0] })
+  const refresh = args.at(-1) === '--refresh'
+  const named = refresh ? args.slice(
+    0,
+    -1,
+  ) : args
+  const harness = knownHarness({ name: named[0] })
 
-  if (args.length < 1 || args.length > 2 || !harness) {
+  if (named.length < 1 || named.length > 2 || !harness) {
     throw new TitanError({
-      message: 'models expects claude or codex and an optional account name',
+      message: 'models expects claude or codex, an optional account name and an optional --refresh',
       code: 'VALIDATION_ERROR',
     })
   }
 
   void agents.models({
     harness,
-    account: args[1],
+    account: named[1],
+    refresh,
   })
     .then(models => send({
       ws,
@@ -36,7 +42,7 @@ export function modelsCommand({
       },
     }))
     .catch((error: Error) => fail({
-      error: error instanceof TitanError ? error.message : 'Harness model catalog unavailable. Reopen the picker to retry.',
+      error: error instanceof TitanError ? error.message : 'Harness model catalog unavailable. Reload to try again.',
       code: error instanceof TitanError ? error.code : 'CATALOG_UNAVAILABLE',
     }))
 }
