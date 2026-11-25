@@ -1714,7 +1714,7 @@ test.each([
 )
 
 test(
-  'Mod+L moves focus to the Titan composer from anywhere on the page',
+  'a comment typed over a selected reply goes out with the next message, and Mod+L reaches the composer from anywhere',
   async () => {
     const hydra = await othrys.hydra()
     othrys.claude.plan({
@@ -1722,16 +1722,17 @@ test(
       text: 'Say something',
       reply: 'Here is the reply to read.',
     })
-    await hydra.chat({ text: 'Say something' })
+    const session = await hydra.chat({ text: 'Say something' })
     const page = await openTitan({
       port: othrys.port(),
       hydraId: hydra.id,
     })
     const workspace = page.locator('[data-hydra-workspace][data-active=true]')
-    await workspace.getByText(
+    const reply = workspace.getByText(
       'Here is the reply to read.',
       { exact: true },
-    ).waitFor()
+    )
+    await reply.waitFor()
     const composer = workspace.getByRole(
       'textbox',
       {
@@ -1739,10 +1740,61 @@ test(
         exact: true,
       },
     )
+    const composerFocus = () => composer.evaluate((field: HTMLTextAreaElement) => ({
+      focused: field === document.activeElement,
+      caret: field.selectionStart,
+    }))
     await composer.fill('Draft')
+    await composer.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(
+      0,
+      0,
+    ))
+    const line = await reply.boundingBox()
+
+    if (!line) {
+      throw new Error('The reply has no box on screen')
+    }
+
+    const middle = line.y + line.height / 2
+    await page.mouse.move(
+      line.x + 1,
+      middle,
+    )
+    await page.mouse.down()
+    await page.mouse.move(
+      line.x + line.width - 1,
+      middle,
+      { steps: 4 },
+    )
+    await page.mouse.up()
+    await workspace.getByRole(
+      'button',
+      { name: 'Comment on selection' },
+    ).waitFor()
+    await page.keyboard.type('looks right')
+    expect(await workspace.getByRole(
+      'textbox',
+      {
+        name: 'Comment on selected text',
+        exact: true,
+      },
+    ).inputValue()).toBe('looks right')
+    await page.keyboard.press('ControlOrMeta+l')
+    expect(await composerFocus()).toEqual({
+      focused: true,
+      caret: 'Draft'.length,
+    })
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
     await page.keyboard.press('ControlOrMeta+l')
-    expect(await composer.evaluate(field => field === document.activeElement
-      && (field as HTMLTextAreaElement).selectionStart === 'Draft'.length)).toBe(true)
+    expect(await composerFocus()).toEqual({
+      focused: true,
+      caret: 'Draft'.length,
+    })
+    await page.keyboard.press('Enter')
+    await until({
+      what: 'the comment to go out with the message',
+      check: () => session.received.some(text => text.includes('> Here is the reply to read.')
+        && text.includes('looks right') && text.includes('Draft')),
+    })
   },
 )

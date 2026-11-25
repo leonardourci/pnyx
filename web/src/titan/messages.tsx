@@ -24,6 +24,7 @@ import { leadingTask, ownMessage, type TurnTiming } from '#titan/chat-messages.t
 import { copyMessageChips } from './clipboard.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { useCommentDrafts } from './comment-drafts.ts'
+import { focusChatComposer } from './composer-shortcut.ts'
 import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
 import { MessageComment } from './message-comment.tsx'
@@ -468,7 +469,7 @@ export function Messages({
 
   const {
     addComment,
-    paste,
+    pasteAsComment,
     remove,
     release,
   } = useCommentDrafts({
@@ -601,9 +602,7 @@ export function Messages({
   const quoteSelection = ({ passage }: { passage: CommentPassage }) => {
     quote({ text: passage.quote }); setSelection(null)
     window.getSelection()?.removeAllRanges()
-    requestAnimationFrame(() => root.current?.closest('.detail, .chat-frame')
-      ?.querySelector<HTMLTextAreaElement>('.composer textarea')
-      ?.focus())
+    requestAnimationFrame(() => focusChatComposer({ from: root.current }))
   }
 
   // The pill floats under the selection, inside the messages so it scrolls with them and moves no text.
@@ -741,7 +740,7 @@ export function Messages({
             event.preventDefault()
           }
         }}
-        onPaste={event => paste({ event })}
+        onPaste={event => pasteAsComment({ event })}
       >
         {entries.map(entry => {
           const messageId = entry.messageId ?? entry.id

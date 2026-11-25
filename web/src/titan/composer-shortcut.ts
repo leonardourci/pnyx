@@ -1,33 +1,58 @@
 import { useEffect } from 'react'
 
-const MAC = /Mac|iPhone|iPad/.test(navigator.platform)
+const APPLE_PLATFORM = /Mac|iPhone|iPad/.test(navigator.platform)
+const COMPOSER = '.composer textarea'
 
-// Mod+L moves focus to the composer of the chat it is pressed in, or else to the shown Titan's.
+const chatComposer = ({ from }: { from: Element | null }) =>
+  from?.closest('.detail, .chat-frame')?.querySelector<HTMLTextAreaElement>(COMPOSER) ?? null
+
+const shownTitanComposer = ({ hydraId }: { hydraId: string }) =>
+  document.querySelector<HTMLTextAreaElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat ${COMPOSER}`)
+
+const focusAtEnd = ({ composer }: { composer: HTMLTextAreaElement }) => {
+  composer.focus()
+  composer.setSelectionRange(
+    composer.value.length,
+    composer.value.length,
+  )
+}
+
+export function focusChatComposer({ from }: { from: Element | null }) {
+  const composer = chatComposer({ from })
+
+  if (composer) {
+    focusAtEnd({ composer })
+  }
+}
+
+const isComposerShortcut = ({ event }: { event: KeyboardEvent }) => {
+  const commandKey = APPLE_PLATFORM ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
+  const otherModifier = event.shiftKey || event.altKey
+  const handled = event.isComposing || event.defaultPrevented
+
+  return commandKey && !otherModifier && !handled && event.key.toLowerCase() === 'l'
+}
+
 export function useComposerShortcut({ hydraId }: { hydraId: string }) {
   useEffect(
     () => {
       const focusComposer = (event: KeyboardEvent) => {
-        const mod = MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
-
-        if (!mod || event.shiftKey || event.altKey || event.isComposing || event.defaultPrevented
-          || event.key.toLowerCase() !== 'l') {
+        if (!isComposerShortcut({ event })) {
           return
         }
 
-        const composer = document.activeElement?.closest('.detail, .chat-frame')
-          ?.querySelector<HTMLTextAreaElement>('.composer textarea')
-          ?? document.querySelector<HTMLTextAreaElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat .composer textarea`)
+        const composer = chatComposer({ from: document.activeElement }) ?? shownTitanComposer({ hydraId })
 
         if (!composer) {
           return
         }
 
-        event.preventDefault()
-        composer.focus()
-        composer.setSelectionRange(
-          composer.value.length,
-          composer.value.length,
-        )
+        focusAtEnd({ composer })
+        const composerTookFocus = document.activeElement === composer
+
+        if (composerTookFocus) {
+          event.preventDefault()
+        }
       }
 
       window.addEventListener(

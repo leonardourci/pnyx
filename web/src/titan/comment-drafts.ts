@@ -44,7 +44,6 @@ export function useCommentDrafts({
     }
   }
 
-  // Rendered at once, so keys typed over the selection land in the note.
   const addComment = ({
     quote,
     text = '',
@@ -147,8 +146,7 @@ export function useCommentDrafts({
     }
   }
 
-  // Text or images pasted over a selection start a comment on it.
-  const paste = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
+  const pasteAsComment = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
     if (event.target instanceof Element && (
       isEditing({ target: event.target }) || event.target.closest('.comment-card')
     )) {
@@ -182,7 +180,7 @@ export function useCommentDrafts({
 
   return {
     addComment,
-    paste,
+    pasteAsComment,
     remove,
     release,
   }
