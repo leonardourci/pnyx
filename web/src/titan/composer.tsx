@@ -13,7 +13,6 @@ import { ComposerField, type ComposerFieldHandle } from './composer-field.tsx'
 import { commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { composing } from '#web-shared/ime.ts'
-import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#titan/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
@@ -160,7 +159,7 @@ export function Composer({
       try {
         await loadComment({ comment })
         requestAnimationFrame(() => {
-          const host = form.current && conversationMessages({ from: form.current })
+          const host = form.current?.closest('.detail, .chat-frame')?.querySelector<HTMLElement>('.messages')
 
           if (host && !revealComment({
             host,
@@ -301,24 +300,8 @@ export function Composer({
     const plainUp = e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
       && e.currentTarget.selectionEnd === 0
 
-    if (!plainUp) {
-      return
-    }
-
-    if (focusAbove?.()) {
+    if (plainUp && focusAbove?.()) {
       e.preventDefault(); e.stopPropagation()
-
-      return
-    }
-
-    const host = conversationMessages({ from: e.currentTarget })
-
-    if (host && placeMessageCaret({
-      host,
-      target: latestAgentMessage({ host }),
-      edge: 'end',
-    })) {
-      e.preventDefault()
     }
   }
 

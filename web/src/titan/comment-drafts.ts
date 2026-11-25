@@ -5,9 +5,7 @@ import {
   type ClipboardEvent as PasteEvent,
 } from 'react'
 import { flushSync } from 'react-dom'
-import {
-  enterNote,
-} from './caret.ts'
+import { focusNote } from './comment-reveal.ts'
 import { commentUpdates,sendableComment } from './chat.ts'
 import { pendingImage,settleImage } from './draft.ts'
 import { checkImages,pastedImages,uploadImage } from './image-upload.ts'
@@ -46,7 +44,7 @@ export function useCommentDrafts({
     }
   }
 
-  // Rendered at once, so keys or a composition begun over the selection land in the note.
+  // Rendered at once, so keys typed over the selection land in the note.
   const addComment = ({
     quote,
     text = '',
@@ -81,10 +79,7 @@ export function useCommentDrafts({
     )
 
     if (note) {
-      enterNote({
-        note,
-        direction: 'backward',
-      })
+      focusNote({ note })
     }
 
     return comment.id
@@ -152,7 +147,7 @@ export function useCommentDrafts({
     }
   }
 
-  // The caret host is contenteditable for navigation, so native paste must be intercepted.
+  // Text or images pasted over a selection start a comment on it.
   const paste = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
     if (event.target instanceof Element && (
       isEditing({ target: event.target }) || event.target.closest('.comment-card')

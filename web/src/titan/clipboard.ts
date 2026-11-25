@@ -1,8 +1,7 @@
 import { taskMention } from '#titan/mentions.ts'
 import { shownImageNames } from '#titan/images.ts'
 import { shownImageData } from './attached-image.tsx'
-import { CHIP_SOURCE } from './message-selection.ts'
-import { MESSAGE_CONTROLS } from './caret.ts'
+import { CHIP_SOURCE, MESSAGE_CONTROLS } from './message-selection.ts'
 import { ICON_SPACE, QUARTER_SPACE, WORD_JOINER } from './draft.ts'
 
 // A task message's leading chip comes from its task id, not its text, so it is rebuilt from the chip.
