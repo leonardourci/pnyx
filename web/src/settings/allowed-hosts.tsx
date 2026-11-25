@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import type { Settings } from '#settings/model.ts'
 import { patchSettings } from '#settings/settings.ts'
+import { TitanError } from '#store/errors.ts'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { SettingField } from '#web-shared/ui/setting-row.tsx'
-import { Help } from './hydra-settings.tsx'
-
-type Save = ({ patch }: { patch: Record<string, unknown> }) => Promise<boolean>
+import { Help, type Save } from './hydra-settings.tsx'
 
 const HOST_SEPARATOR = /[\s,]+/
 
@@ -41,7 +40,11 @@ export function AllowedHosts({
         input: { allowedHosts },
       })
     } catch (refused) {
-      setError((refused as Error).message)
+      if (!(refused instanceof TitanError)) {
+        throw refused
+      }
+
+      setError(refused.message)
 
       return
     }
@@ -73,7 +76,7 @@ export function AllowedHosts({
         <Button type="submit" variant="surface" disabled={text === saved}>Save</Button>
       </form>
       {error && <p role="alert" className="text-meta text-red">{error}</p>}
-      <Help text="Separate names with commas. Empty allows only this computer. Add only names you control, such as this computer’s Tailscale name." />
+      <Help text="Separate names with commas. Empty allows only this computer." />
     </SettingField>
   )
 }

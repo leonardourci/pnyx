@@ -16,8 +16,7 @@ export const DEFAULT_LOG_DAYS = 7
 export const MAX_LOG_DAYS = 365
 export const DEFAULT_LOG_MAX_MB = 500
 export const MAX_LOG_MB = 100_000
-// A DNS name or address with an optional port, as a browser sends it in Host; no scheme, path or wildcard.
-const HOST_NAME = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/
+const HOST_HEADER = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/
 
 export const DEFAULT_SETTINGS: Settings = {
   ...pickView({ view: DEFAULT_VIEW }),
@@ -54,6 +53,25 @@ const invalid = ({ detail }: { detail: string }): never => {
     message: `invalid setting: ${detail}`,
     code: 'VALIDATION_ERROR',
   })
+}
+
+const distinctNames = ({
+  value,
+  pattern,
+  detail,
+}: {
+  value: unknown
+  pattern: RegExp
+  detail: string
+}): string[] => {
+  const matching = Array.isArray(value) && value.every(name => typeof name === 'string' && pattern.test(name))
+  const once = Array.isArray(value) && new Set(value).size === value.length
+
+  if (!matching || !once) {
+    return invalid({ detail })
+  }
+
+  return [...value] as string[]
 }
 
 // The view part reuses the board's validator, so a setting accepts exactly what view set accepts.
@@ -229,15 +247,11 @@ export function patchSettings({
   }
 
   if ('allowedHosts' in patch) {
-    const list = patch.allowedHosts
-    const names = Array.isArray(list) && list.every(host => typeof host === 'string' && HOST_NAME.test(host))
-    const once = Array.isArray(list) && new Set(list).size === list.length
-
-    if (!names || !once) {
-      return invalid({ detail: 'allowedHosts takes a list of lowercase host names such as mac.example.ts.net, each once' })
-    }
-
-    next.allowedHosts = [...list] as string[]
+    next.allowedHosts = distinctNames({
+      value: patch.allowedHosts,
+      pattern: HOST_HEADER,
+      detail: 'allowedHosts takes a list of lowercase host names such as mac.example.ts.net, each once',
+    })
   }
 
   for (const key of [
@@ -248,15 +262,11 @@ export function patchSettings({
       continue
     }
 
-    const list = patch[key]
-    const ids = Array.isArray(list) && list.every(id => typeof id === 'string' && TITAN_ID.test(id))
-    const once = Array.isArray(list) && new Set(list).size === list.length
-
-    if (!ids || !once) {
-      return invalid({ detail: `${key} takes a list of Titan ids, each once` })
-    }
-
-    next[key] = [...list] as string[]
+    next[key] = distinctNames({
+      value: patch[key],
+      pattern: TITAN_ID,
+      detail: `${key} takes a list of Titan ids, each once`,
+    })
   }
 
   return next

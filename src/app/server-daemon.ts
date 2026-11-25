@@ -223,7 +223,7 @@ export async function startServer({
     origin: req.headers.origin,
     hosts,
     origins,
-    named: allowedHosts,
+    allowedHosts,
   })
 
   const request = async ({

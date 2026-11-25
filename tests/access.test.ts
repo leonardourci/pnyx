@@ -57,11 +57,31 @@ const raw = ({
     },
   )
   sent.once(
+    'upgrade',
+    (
+      response,
+      socket,
+    ) => {
+      socket.destroy()
+      resolve({
+        status: response.statusCode!,
+        body: '',
+      })
+    },
+  )
+  sent.once(
     'error',
     reject,
   )
   sent.end()
 })
+
+const WEBSOCKET_UPGRADE = {
+  connection: 'Upgrade',
+  upgrade: 'websocket',
+  'sec-websocket-version': '13',
+  'sec-websocket-key': Buffer.from('othrys-test-key!').toString('base64'),
+}
 
 test(
   'a worker acts as itself: its worker line lands on its own task, and it can move its task with a notice',
@@ -656,50 +676,6 @@ test(
   },
 )
 
-// fetch drops a forged Host header, so the upgrade goes out as a raw request.
-const upgrade = ({
-  path,
-  headers,
-}: {
-  path: string
-  headers: Record<string, string>
-}) => new Promise<number>((
-  resolve,
-  reject,
-) => {
-  const sent = request({
-    host: '127.0.0.1',
-    port: othrys.port(),
-    path,
-    headers: {
-      connection: 'Upgrade',
-      upgrade: 'websocket',
-      'sec-websocket-version': '13',
-      'sec-websocket-key': Buffer.from('othrys-test-key!').toString('base64'),
-      ...headers,
-    },
-  })
-  sent.once(
-    'upgrade',
-    (
-      response,
-      socket,
-    ) => {
-      socket.destroy()
-      resolve(response.statusCode!)
-    },
-  )
-  sent.once(
-    'response',
-    response => resolve(response.statusCode!),
-  )
-  sent.once(
-    'error',
-    reject,
-  )
-  sent.end()
-})
-
 test(
   'a host name in allowedHosts opens the page and its socket as Host and https Origin, while other names, plain http and other origins stay refused',
   async () => {
@@ -739,14 +715,20 @@ test(
     const token = /<meta name="othrys-token" content="([^"]+)"/.exec(opened.body)?.[1]
     expect(token).toBe(localToken())
 
-    expect(await upgrade({
+    expect((await raw({
       path: `${page}ws?token=${token}`,
-      headers: proxied,
-    })).toBe(101)
-    expect(await upgrade({
+      headers: {
+        ...proxied,
+        ...WEBSOCKET_UPGRADE,
+      },
+    })).status).toBe(101)
+    expect((await raw({
       path: `${page}ws?token=wrong`,
-      headers: proxied,
-    })).toBe(401)
+      headers: {
+        ...proxied,
+        ...WEBSOCKET_UPGRADE,
+      },
+    })).status).toBe(401)
 
     for (const headers of [
       { host: 'other.example.ts.net' },

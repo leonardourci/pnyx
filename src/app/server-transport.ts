@@ -173,18 +173,22 @@ const localOrigin = new RegExp(
   'i',
 )
 
-// tailscale serve proxies from loopback but keeps the browser's Host and Origin, so a served name arrives as itself.
 export const allowedRequest = ({
   host = '',
   origin,
   hosts,
   origins,
-  named,
+  allowedHosts,
 }: {
   host?: string
   origin?: string
   hosts: Set<string>
   origins: Set<string>
-  named: string[]
-}) => (hosts.has(host) || localHost.test(host) || named.includes(host.toLowerCase()))
-  && (origin === undefined || origins.has(origin) || localOrigin.test(origin) || named.some(name => origin === `https://${name}`))
+  allowedHosts: string[]
+}) => {
+  const hostAllowed = hosts.has(host) || localHost.test(host) || allowedHosts.includes(host.toLowerCase())
+  const originAllowed = origin === undefined || origins.has(origin) || localOrigin.test(origin)
+    || allowedHosts.some(name => origin === `https://${name}`)
+
+  return hostAllowed && originAllowed
+}
