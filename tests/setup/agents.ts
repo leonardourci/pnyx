@@ -80,7 +80,6 @@ interface TurnPlan {
   compactTo?: number
   // Claude Code measures the session against this window from this turn on, as after a model switch.
   window?: number
-  // Claude folds a message sent while the turn waits into it at once, as Claude Code does at a step boundary, and records it as a queued command, never as a user line.
   folds?: boolean
   // Codex answers the turn start with an error, so the agent never takes the message.
   refuse?: boolean

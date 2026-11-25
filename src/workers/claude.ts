@@ -1458,7 +1458,6 @@ export const readClaudeTranscript: TranscriptReader = ({
       }
     }
 
-    // Claude Code keeps a message it folds into a running turn only as this queued command.
     if (attachment.type === 'queued_command') {
       parsed.folded = textContent({ value: attachment.prompt })
     }

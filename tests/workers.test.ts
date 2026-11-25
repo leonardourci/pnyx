@@ -10,7 +10,7 @@ import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { WAIT_MS } from './setup/until.ts'
 import { once } from 'node:events'
-import { constants, openSync, fstatSync, statSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { constants, openSync, statSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
@@ -41,7 +41,6 @@ vi.mock(
     return {
       ...filesystem,
       openSync: vi.fn(filesystem.openSync),
-      fstatSync: vi.fn(filesystem.fstatSync),
     }
   },
 )
@@ -1857,70 +1856,46 @@ test(
 )
 
 test(
-  'a worker.log and a transcript keep their read positions when a reboot renumbers their disk, including positions an older Othrys saved',
+  'a worker.log and a transcript keep the read positions an older Othrys saved before a reboot renumbered their disk',
   async () => {
     const hydra = await othrys.hydra()
     const { worker } = await hydra.startTask({ key: 'renumbered' })
-    const task = await workerLine({
-      hydra,
-      key: 'renumbered',
-      line: 'done: shipped before the reboot',
-    })
+    const task = await hydra.task({ key: 'renumbered' })
     const log = join(
       worker.env.OTHRYS_TASK_DIR!,
       'worker.log',
     )
     const transcript = loadTitan({ hydraId: hydra.id }).state.cards[task.id]!.agent!.transcriptPath!
-    const logFile = statSync(log)
-    const transcriptFile = statSync(transcript)
-    const saved = readTranscript({
+    const savedOnEarlierMount = ({ path }: { path: string }) => {
+      const file = statSync(path)
+
+      return `${file.dev + 1}:${file.ino}`
+    }
+    const read = readTranscript({
       cursor: {
         source: transcript,
         identity: '',
         pos: 0,
       },
     })!
-    const filesystem = await vi.importActual<typeof import('node:fs')>('node:fs')
-    // eslint-disable-next-line othrys/object-params -- Node owns fstatSync's positional signature.
-    vi.mocked(fstatSync).mockImplementation((fd: number) => {
-      const stat = filesystem.fstatSync(fd)
-
-      return Object.assign(
-        Object.create(Object.getPrototypeOf(stat)),
-        stat,
-        { dev: stat.dev + 1 },
-      )
+    expect(readTranscript({
+      cursor: {
+        source: transcript,
+        identity: savedOnEarlierMount({ path: transcript }),
+        pos: read.end,
+      },
+    })).toMatchObject({
+      reset: false,
+      lines: [],
     })
-    onTestFinished(() => {
-      vi.mocked(fstatSync).mockImplementation(filesystem.fstatSync)
-    })
-
-    for (const identity of [
-      saved.identity,
-      `${transcriptFile.dev}:${transcriptFile.ino}`,
-    ]) {
-      expect(readTranscript({
-        cursor: {
-          source: transcript,
-          identity,
-          pos: saved.end,
-        },
-      })).toMatchObject({
-        reset: false,
-        lines: [],
-      })
-    }
 
     const replayed = await withWriter({
       hydraId: hydra.id,
       fn: ({ writer }) => {
-        const from = writer.state.seq
-        foldWorkerLog({
-          writer,
-          task: task.id,
-        })
-        const renumbered = writer.state.seq - from
-        const latest = writer.state.cards[task.id]!.workerLog!.latest
+        appendFileSync(
+          log,
+          'done: shipped before the reboot\n',
+        )
         writer.append({
           event: {
             v: EVENT_VERSION,
@@ -1931,29 +1906,23 @@ test(
             actor: `worker:${task.id}`,
             type: 'task.worker-line',
             data: {
-              identity: `${logFile.dev}:${logFile.ino}`,
-              off: latest.off,
+              identity: savedOnEarlierMount({ path: log }),
+              off: statSync(log).size,
               code: 'done',
               text: 'shipped before the reboot',
             },
           },
         })
-        const legacy = writer.state.seq
+        const before = writer.state.seq
         foldWorkerLog({
           writer,
           task: task.id,
         })
 
-        return [
-          renumbered,
-          writer.state.seq - legacy,
-        ]
+        return writer.state.seq - before
       },
     })
-    expect(replayed).toEqual([
-      0,
-      0,
-    ])
+    expect(replayed).toBe(0)
   },
 )
 

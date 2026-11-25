@@ -13,9 +13,6 @@ export interface TranscriptRead {
   end: number
 }
 
-// Complete JSONL lines after the cursor. A replaced file (another inode)
-// or one shorter than the cursor is read again from the start. Null when
-// the file is missing or unreadable, so the cursor waits for it.
 // ponytail: reads the unread tail in one buffer; stream it if transcripts grow past memory.
 export function readTranscript({
   cursor,

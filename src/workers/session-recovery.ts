@@ -221,7 +221,6 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
   }
 }
 
-// What the agent took from one record: its user messages, or a message folded into the running turn.
 function takenTexts({ parsed }: { parsed: TranscriptRecord }): string[] {
   if (parsed.role === 'user') {
     return parsed.messages.map(message => message.text)

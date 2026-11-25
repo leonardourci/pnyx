@@ -412,7 +412,6 @@ export interface TranscriptRecord {
   at?: string
   role: string
   messages: TranscriptMessage[]
-  // A message the agent took into its running turn, recorded apart from the turn's user messages.
   folded?: string
   traces: TranscriptTrace[]
   calls: TranscriptCall[]
