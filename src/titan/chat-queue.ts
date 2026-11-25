@@ -30,9 +30,6 @@ function heldMessages({ state }: { state: TitanState }) {
   }))
 }
 
-const heldOwnerMessages = ({ state }: { state: TitanState }) => heldMessages({ state })
-  .filter(message => ownerActor({ actor: message.actor }))
-
 function hydraQueueView({
   state,
   card,
@@ -58,7 +55,6 @@ function hydraQueueView({
     .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
   const holding = Boolean(compacting) || upgrading || Boolean(stopped)
-  const compactionRunning = Boolean(compacting)
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
   const cancelled = new Set(state.hydraMessages?.filter(message => message.stopped)
@@ -73,7 +69,7 @@ function hydraQueueView({
       route: 'hydra' as const,
       at: operation.queuedAt,
     })),
-    ...heldOwnerMessages({ state }).map(message => ({
+    ...waiting.filter(message => ownerActor({ actor: message.actor })).map(message => ({
       id: message.id,
       text: message.text,
       actor: message.actor,
@@ -102,7 +98,6 @@ function hydraQueueView({
     shownUpgrades,
     upgrading,
     holding,
-    compactionRunning,
     upgradeRunning,
     compactInputs: inputs,
   }

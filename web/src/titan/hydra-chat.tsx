@@ -56,7 +56,6 @@ const EMPTY_CHAT_QUEUE: TitanChatQueue = {
   shownUpgrades: [],
   upgrading: false,
   holding: false,
-  compactionRunning: false,
   upgradeRunning: false,
   compactInputs: [],
   working: false,
@@ -197,7 +196,6 @@ export function TitanChat({
     compacting,
     compactOperations,
     shownUpgrades,
-    compactionRunning,
     upgradeRunning,
     working,
   } = chatQueue
@@ -780,7 +778,7 @@ export function TitanChat({
         hydraId={hydraId}
         storageIdentity={storageIdentity}
         loadComment={thread.loadComment}
-        compacting={compactionRunning}
+        compacting={Boolean(compacting)}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false
