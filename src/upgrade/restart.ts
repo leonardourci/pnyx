@@ -19,7 +19,7 @@ export const RESTART_SIGNAL = 'SIGUSR2'
 // so its agents get the owner's environment plus what their card names.
 function serverEnvironment(): NodeJS.ProcessEnv {
   const actor = process.env.OTHRYS_ACTOR ?? ''
-  const agent = /^(worker:|helper:|hydra$)/.test(actor) || process.env.OTHRYS_HOSTED !== undefined
+  const agent = /^(worker:|helper:|titan$)/.test(actor) || process.env.OTHRYS_HOSTED !== undefined
     || process.env.OTHRYS_TASK !== undefined
 
   // Othrys's own settings, such as OTHRYS_HOME, stay; only who the caller is and its terminal go.

@@ -7,7 +7,7 @@ import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { eventsOrLegacy } from '#app/event-log.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
 import { TitanError } from '#store/errors.ts'
 import { othrysHome } from '#store/paths.ts'
@@ -165,7 +165,7 @@ function migrate(): void {
     return
   }
 
-  const logs = hydraIds().map(titanId => eventsOrLegacy({
+  const logs = titanIds().map(titanId => eventsOrLegacy({
     titanId,
     types: [
       'titan.view',
@@ -229,7 +229,7 @@ function migrate(): void {
 }
 
 export function readSettings(): SettingsRead {
-  if (!existsSync(settingsLogPath()) && hydraIds().length) {
+  if (!existsSync(settingsLogPath()) && titanIds().length) {
     withRegistryLock({ fn: migrate })
   }
 

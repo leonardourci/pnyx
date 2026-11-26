@@ -1,7 +1,7 @@
 import { existsSync, realpathSync, rmdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { within } from '#store/paths.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { TitanError } from '#store/errors.ts'
 import { copiesDir, releasedCopyOwner, requireUnlinkedCopyFolder, reservedCopies } from './copy-pool.ts'
@@ -41,7 +41,7 @@ export function protectedCopiesFolder({
 
   const survivors = reservedCopies({ titanId }).map(path => canonicalPath({ path }))
 
-  for (const id of hydraIds()) {
+  for (const id of titanIds()) {
     const current = loadTitan({ titanId: id }).state
     const projects = current.projects ?? []
     const sourcePaths = Object.values(current.cards).flatMap(card =>
@@ -99,7 +99,7 @@ export function protectedCopiesFolder({
   }
 }
 
-export async function hydraPool({ titanId }: { titanId: string }) {
+export async function titanPool({ titanId }: { titanId: string }) {
   const {
     root,
     folder,
@@ -229,7 +229,7 @@ export async function removeTitanPool({
   titanId: string
   verify({ path }: { path: string }): Promise<void>
 }): Promise<void> {
-  const pool = await hydraPool({ titanId })
+  const pool = await titanPool({ titanId })
 
   function validateFolder() {
     const current = protectedCopiesFolder({ titanId })

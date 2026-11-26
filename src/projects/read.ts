@@ -5,8 +5,8 @@ import type { TitanState } from '#app/model.ts'
 import { TitanError } from '#store/errors.ts'
 import type { TitanProject } from './model.ts'
 import { landingRule } from '#tasks/delivery/model.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 
 export function projectsFor({ state }: { state: TitanState }): TitanProject[] {
@@ -127,7 +127,7 @@ export function sharingTitans({
   titanId: string
   path: string
 }) {
-  return hydraIds().filter(id => id !== titanId)
+  return titanIds().filter(id => id !== titanId)
     .flatMap(id => {
       const state = loadTitan({ titanId: id }).state
 
@@ -141,11 +141,11 @@ export function sharingTitans({
       return [
         {
           id,
-          name: hydraConfig({
+          name: titanConfig({
             state,
             id,
           }).name,
-          url: `/hydra/${encodeURIComponent(id)}/`,
+          url: `/titan/${encodeURIComponent(id)}/`,
         },
       ]
     })

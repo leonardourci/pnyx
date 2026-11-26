@@ -24,8 +24,8 @@ export const DEFAULT_SETTINGS: Settings = {
   reviewMinutes: DEFAULT_REVIEW_MINUTES,
   helper: 'auto',
   oracleRememberFilters: false,
-  hydraOrder: [],
-  hiddenHydras: [],
+  titanOrder: [],
+  hiddenTitans: [],
   logs: 'on',
   logDays: DEFAULT_LOG_DAYS,
   logMaxMB: DEFAULT_LOG_MAX_MB,
@@ -74,7 +74,7 @@ const distinctNames = ({
   return [...value] as string[]
 }
 
-// The view part reuses the board's validator, so a setting accepts exactly what view set accepts.
+// The view part reuses the Titan view's validator, so a setting accepts exactly what view set accepts.
 function patchSharedView({
   current,
   input,
@@ -255,8 +255,8 @@ export function patchSettings({
   }
 
   for (const key of [
-    'hydraOrder',
-    'hiddenHydras',
+    'titanOrder',
+    'hiddenTitans',
   ] as const) {
     if (!(key in patch)) {
       continue

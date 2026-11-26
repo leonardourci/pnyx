@@ -6,7 +6,7 @@ import type { Meta } from '#app/command-meta.ts'
 import { ownerActor } from '#app/actors.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TitanError } from '#store/errors.ts'
 import { moveRefusal, releaseWorker, stageTaskMove } from '#tasks/move.ts'
 import { isManagedTask } from '#tasks/select.ts'
@@ -136,7 +136,7 @@ export async function keepProject({
   const ids = sharingTitans({
     titanId,
     path: project.path,
-  }).map(hydra => hydra.id)
+  }).map(titan => titan.id)
   const sources = migrationPlan({
     to: titanId,
     project,
@@ -215,7 +215,7 @@ export async function keepProject({
           moved.push(card.id)
         }
 
-        const detached = hydraEvent({
+        const detached = titanEvent({
           state: source.state,
           meta: sourceMeta,
           cardId: '$projects',

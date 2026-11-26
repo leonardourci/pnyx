@@ -10,7 +10,7 @@ import { withRegistryLock } from '#store/storage.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { scanEvents } from '#app/event-log.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { POLIS_NAME } from './owner-polis.ts'
 
@@ -346,7 +346,7 @@ export const owner = guard({
   },
 })
 
-export async function hydraMemory({
+export async function titanMemory({
   values,
   positionals,
   titanId,
@@ -361,7 +361,7 @@ export async function hydraMemory({
     const state = loadTitan({ titanId }).state
 
     return memoryList({
-      memory: state.hydraMemory ?? {},
+      memory: state.titanMemory ?? {},
       budget: TITAN_MEMORY_BUDGET,
       empty: 'none: no Titan memory yet',
     })
@@ -373,12 +373,12 @@ export async function hydraMemory({
   } = memoryChange({
     action,
     values,
-    usage: 'use hydra memory list|set|forget',
+    usage: 'use titan memory list|set|forget',
   })
 
   if (key === 'inscribe-cursor' && after !== null) {
     throw new TitanError({
-      message: 'Finish the inscribe milestone with hydra inscribe finish --through <snapshot>',
+      message: 'Finish the inscribe milestone with titan inscribe finish --through <snapshot>',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -412,16 +412,16 @@ export async function hydraMemory({
       card: '$all',
     },
     decide: ({ state }) => {
-      const before = state.hydraMemory?.[key]?.text ?? null
+      const before = state.titanMemory?.[key]?.text ?? null
       checkBudget({
-        memory: state.hydraMemory ?? {},
+        memory: state.titanMemory ?? {},
         key,
         after,
         budget: TITAN_MEMORY_BUDGET,
         layer: 'Titan',
       })
 
-      return before === after ? { skipped: 'unchanged' } : hydraEvent({
+      return before === after ? { skipped: 'unchanged' } : titanEvent({
         state,
         meta: m,
         cardId: '$all',

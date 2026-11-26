@@ -17,8 +17,8 @@ import { recordExitCode } from '#app/request-context.ts'
 export interface SetupItem {
   name: string
   missing: string
-  // Titan runs a hydra fix itself; an owner fix becomes a question card or a one-line ask in chat.
-  by: 'hydra' | 'owner'
+  // Titan runs a titan fix itself; an owner fix becomes a question card or a one-line ask in chat.
+  by: 'titan' | 'owner'
   fix: string
 }
 
@@ -46,7 +46,7 @@ export async function setupCheck({
     items.push({
       name: 'config',
       missing: TEMPLATE_NUDGE,
-      by: 'hydra',
+      by: 'titan',
       fix: 'configure dispatch rules in the UI',
     })
   }
@@ -177,13 +177,13 @@ export async function setupCheck({
     })
 
     if (duplicates.length) {
-      const hydras = [
+      const titans = [
         titanId,
-        ...duplicates.map(hydra => hydra.id),
+        ...duplicates.map(titan => titan.id),
       ].sort().join(', ')
       items.push({
         name: `project-owner:${project.path}`,
-        missing: `repository ${project.path} is attached to Titans ${hydras}`,
+        missing: `repository ${project.path} is attached to Titans ${titans}`,
         by: 'owner',
         fix: `Choose a keeper for ${project.path} in the UI`,
       })
@@ -193,7 +193,7 @@ export async function setupCheck({
       items.push({
         name: `profile:${project.name}`,
         missing: `project ${project.name} has no profile`,
-        by: 'hydra',
+        by: 'titan',
         fix: `save a profile for ${project.name} through the UI`,
       })
     }
@@ -204,7 +204,7 @@ export async function setupCheck({
 
 export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ? [
   `Setup needed (load ${SET_UP_SKILL}):`,
-  ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
+  ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'titan' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
 export async function setupCheckOutput({ titanId }: { titanId: string }) {

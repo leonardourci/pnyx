@@ -1,7 +1,6 @@
-import { canonicalCommandName } from '#app/command-aliases.ts'
 import { inform } from '#app/command-notices.ts'
 import { requireCopyAvailable } from '#projects/copy-lease.ts'
-import { parseCommandArgs as parseArgs } from '#app/command-aliases.ts'
+import { parseArgs } from 'node:util'
 import { TASK_OPTIONS } from '#app/task-cli.ts'
 import type { TitanState } from '#app/model.ts'
 import { TitanError } from '#store/errors.ts'
@@ -60,7 +59,7 @@ function commandLease({
     return () => {}
   }
 
-  const titanId = String(values.hydra ?? env.OTHRYS_TITAN ?? 'default')
+  const titanId = String(values.titan ?? env.OTHRYS_TITAN ?? 'default')
   const action = positionals[0] ?? ''
   let task: string | undefined
 
@@ -136,7 +135,7 @@ function commandLease({
     if (action === 'answer') {
       const ask = card.asks?.find(ask => ask.id === positionals[2])
 
-      if (!ask || ask.audience !== 'hydra' || ask.escalated) {
+      if (!ask || ask.audience !== 'titan' || ask.escalated) {
         denied()
       }
     }
@@ -192,7 +191,7 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
 
       try {
         release = commandLease({
-          name: canonicalCommandName({ name }),
+          name: name,
           args,
         })
         const result = run(args)

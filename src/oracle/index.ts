@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
 import type { TitanEvent } from '#app/model.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { nativeEvent } from '#app/native-state.ts'
 import { readLog, type LogPosition } from '#store/log.ts'
 import { TitanError } from '#store/errors.ts'
@@ -67,7 +67,7 @@ export function openIndex({
 }: {
   titanId: string
 } & Pick<SearchSnapshot, 'sources' | 'positions'>) {
-  const dir = hydraDir({ titanId })
+  const dir = titanDir({ titanId })
   privateDir({ dir })
 
   for (const leftover of RETIRED_INDEX_FILES) {

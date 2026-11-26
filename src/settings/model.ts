@@ -11,7 +11,7 @@ export const SHARED_VIEW_KEYS = [
   'lastMessageOnCards',
   'toolDetails',
   'thinkingDetails',
-  'defaultHydraWidth',
+  'defaultTitanWidth',
 ] as const
 
 export type SharedViewKey = (typeof SHARED_VIEW_KEYS)[number]
@@ -21,7 +21,7 @@ export const isSharedViewKey = ({ key }: { key: string }) =>
 
 export type SharedView = Pick<ViewPreferences, SharedViewKey>
 
-// off keeps Done cards on the board; a number of hours hides them after that long in Done, 0 right away.
+// off keeps Done cards on the Titan; a number of hours hides them after that long in Done, 0 right away.
 export type DoneAfterHours = number | 'off'
 // auto picks a lighter model on Titan's harness; off sends every wake to Titan.
 export type HelperSetting = 'auto' | 'off' | AgentConfig
@@ -39,8 +39,8 @@ export interface Settings extends SharedView {
   // The Oracle opens with the filters it last had instead of only the current Titan's.
   oracleRememberFilters: boolean
   // The Titan list's order as Titan ids; the Titan list decides where ids it does not name go.
-  hydraOrder: string[]
-  hiddenHydras: string[]
+  titanOrder: string[]
+  hiddenTitans: string[]
   logs: LogMode
   logDays: number
   logMaxMB: number
@@ -55,8 +55,8 @@ export const SETTING_KEYS = [
   'reviewMinutes',
   'helper',
   'oracleRememberFilters',
-  'hydraOrder',
-  'hiddenHydras',
+  'titanOrder',
+  'hiddenTitans',
   'logs',
   'logDays',
   'logMaxMB',

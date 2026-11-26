@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, MAX_LOG_DAYS, MAX_LOG_MB } from './settings.ts'
 import { HELPER_MODELS, type Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { knownHarness } from '#workers/providers.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { loadTitan } from '#app/store.ts'
 
 const USE = 'use settings show, schema or set'
@@ -44,7 +44,7 @@ export const settings = guard({
         help: [
           'Every key applies to every Titan; a patch names only what changes',
           'doneAfterHours takes off or hours (0 hides right away); reviewMinutes 0 turns reviews off; helper takes auto, off or { harness, account?, model, effort?, fast? }',
-          'oracleRememberFilters takes true or false; hydraOrder takes the whole list of Titan ids, each once; hiddenHydras takes the Titan ids hidden from the page list and switcher',
+          'oracleRememberFilters takes true or false; titanOrder takes the whole list of Titan ids, each once; hiddenTitans takes the Titan ids hidden from the page list and switcher',
           `logs takes off (warnings and errors only), on or detailed; logDays keeps 1 to ${MAX_LOG_DAYS} days of logs; logMaxMB caps their total size at 1 to ${MAX_LOG_MB} MB`,
           'allowedHosts takes the host names beside this computer that may open Othrys, such as a Tailscale name served by tailscale serve; [] allows only this computer',
         ],
@@ -94,7 +94,7 @@ const HELPER_FLAGS = [
   'helper-fast',
 ]
 
-// The hydra set flags that write shared settings; any other flag changes this Titan, so the Titan event is committed too.
+// The titan set flags that write shared settings; any other flag changes this Titan, so the Titan event is committed too.
 export const SETTING_FLAGS = [
   'done-after-hours',
   'review-minutes',
@@ -132,7 +132,7 @@ export function sharedSettingFlags({
   if (HELPER_FLAGS.some(flag => values[flag] !== undefined)) {
     const current = readSettings().settings.helper
     const agent = typeof current === 'object' ? current : undefined
-    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadTitan({ titanId }).state }).hydra.agent?.harness ?? 'claude'
+    const harness = values.helper ?? agent?.harness ?? titanConfig({ state: loadTitan({ titanId }).state }).titan.agent?.harness ?? 'claude'
     const helperHarness = knownHarness({ name: harness })
 
     if (harness === 'off' || harness === 'auto') {

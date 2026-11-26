@@ -34,7 +34,7 @@ export interface ProjectMemoryEvent {
   reason?: string
   confirmed?: string
   learning?: LearningChange
-  hydra: string
+  titan: string
   identity: string
   key: ProjectMemoryKey
   before: string | null
@@ -330,7 +330,7 @@ export async function writeProjectMemory({
         }
 
         await withWriter({
-          titanId: event.hydra,
+          titanId: event.titan,
           fn: ({ writer }) => workerNotesNotice({
             writer,
             target: basename(path),
@@ -428,7 +428,7 @@ export async function writeProjectMemory({
         at: meta.at,
         actor: meta.actor,
         ...(meta.reason ? { reason: meta.reason } : {}),
-        hydra: titanId,
+        titan: titanId,
         identity: view.identity,
         key,
         before,

@@ -1,7 +1,7 @@
 import { ownerGates } from '#tasks/owner-gates.ts'
 import { openAsks } from '#tasks/ask-state.ts'
 import { openDecisions } from '#tasks/decisions.ts'
-import { hydraCandidate } from '#titan/agent-choice.ts'
+import { titanCandidate } from '#titan/agent-choice.ts'
 import { effectiveDispatch, type TitanDispatch } from '#workers/dispatch-config.ts'
 import type { TitanEvent, TitanState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -81,7 +81,7 @@ export function helperAgent({
     return helper
   }
 
-  const { harness } = hydraCandidate({
+  const { harness } = titanCandidate({
     state,
     dispatch: dispatch ?? effectiveDispatch().dispatch,
   })

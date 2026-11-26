@@ -8,7 +8,7 @@ import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { runFile } from '#app/run-process.ts'
 import { isAbsolute, resolve } from 'node:path'
 import { commit, guard, meta, parse, required, WRITE, type Output } from '#app/cli-support.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TitanError } from '#store/errors.ts'
 import { loadTitan } from '#app/store.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
@@ -181,7 +181,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 
     if (values.clone || values.into || (!settings && !rules && values.copy === undefined)) {
       throw new TitanError({
-        message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false], --copy <shell> or --landing pr|branch --merge owner|hydra',
+        message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false], --copy <shell> or --landing pr|branch --merge owner|titan',
         code: 'VALIDATION_ERROR',
       })
     }
@@ -250,7 +250,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         }
 
         return JSON.stringify(before) === JSON.stringify(after) ? { skipped: 'unchanged' }
-          : hydraEvent({
+          : titanEvent({
             state,
             meta: m,
             cardId: '$projects',
@@ -389,7 +389,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         const newlyAttached = !detached && (!before || before.detached)
 
         if (newlyAttached && sharedWith.length) {
-          const owners = sharedWith.map(hydra => hydra.id).sort()
+          const owners = sharedWith.map(titan => titan.id).sort()
             .join(', ')
           inform({
             reason: `Project ${path} is also attached to Titan ${owners}`,
@@ -416,7 +416,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           return { skipped: 'unchanged' }
         }
 
-        return hydraEvent({
+        return titanEvent({
           state,
           meta: m,
           cardId: '$projects',

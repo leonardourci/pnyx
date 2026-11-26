@@ -5,7 +5,7 @@ import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
 import type { Query, SearchSnapshot } from './model.ts'
 import { nativeHome } from '#app/native-home.ts'
 import { loadTitan } from '#app/store.ts'
-import { hydraFiles } from '#store/file-home.ts'
+import { titanFiles } from '#store/file-home.ts'
 import { taskRuntimeDir } from '#store/paths.ts'
 import { join } from 'node:path'
 import type { search } from './search.ts'
@@ -30,7 +30,7 @@ function searchSnapshot({ titanId }: { titanId: string }): Promise<SearchSnapsho
 
   return home.run({
     fn: () => {
-      const view = home.files.positions({ hydra: titanId })
+      const view = home.files.positions({ titan: titanId })
 
       if (!view || view.issue) {
         throw view?.issue ?? new TitanError({
@@ -43,12 +43,12 @@ function searchSnapshot({ titanId }: { titanId: string }): Promise<SearchSnapsho
 
       const sources: SearchSnapshot['sources'] = [
         {
-          key: `hydra:${titanId}`,
+          key: `titan:${titanId}`,
           scope: titanId,
           path: join(
-            hydraFiles({
+            titanFiles({
               home: home.path,
-              hydra: titanId,
+              titan: titanId,
             }),
             'titan.log',
           ),
@@ -79,7 +79,7 @@ function searchSnapshot({ titanId }: { titanId: string }): Promise<SearchSnapsho
 
       return structuredClone({
         state,
-        positions: home.references({ hydra: titanId }),
+        positions: home.references({ titan: titanId }),
         sources,
       })
     },

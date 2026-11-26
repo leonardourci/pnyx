@@ -16,14 +16,14 @@ import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
-import { hydraEvent } from '#titan/titan.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
 import { canonical } from '#store/paths.ts'
 import { othrysHome } from '#store/storage.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { applyDecision } from '#app/decision.ts'
@@ -76,7 +76,7 @@ function noteShared({
 }): void {
   const working = ({ card }: { card: Card }) => liveTask({ card }) && card.sessionIds?.length
     && !card.doneAt && (card.folder === path || card.agent?.cwd === path)
-  const busy = hydraIds().filter(id => id !== titanId
+  const busy = titanIds().filter(id => id !== titanId
     && Object.values(loadTitan({ titanId: id }).state.cards).some(card => working({ card })))
 
   if (busy.length) {
@@ -149,7 +149,7 @@ async function landedSlotBranch({
       titanId,
       fn: ({ writer }) => applyDecision({
         writer,
-        decision: hydraEvent({
+        decision: titanEvent({
           state: writer.state,
           cardId: TITAN_CARD,
           meta: {
@@ -162,10 +162,10 @@ async function landedSlotBranch({
             data: {
               action: 'send',
               text: `Unrecorded copy ${path} was kept: ${check.reason}. Inspect and land its work before reusing it.`,
-              hydra: hydraConfig({
+              titan: titanConfig({
                 state: writer.state,
                 id: titanId,
-              }).hydra.id,
+              }).titan.id,
             },
           },
         }),
@@ -196,7 +196,7 @@ async function landedSlotBranch({
 
       applyDecision({
         writer,
-        decision: hydraEvent({
+        decision: titanEvent({
           state: writer.state,
           cardId: current.id,
           meta: {
@@ -257,7 +257,7 @@ async function worktreeCopy({
   const previousBranch = previous?.branch
   const branch = previousBranch ?? await createTaskBranch({
     cwd: project.path,
-    hydraName: branchTitanName({
+    titanName: branchTitanName({
       titanId,
       state,
     }),
@@ -692,7 +692,7 @@ export async function taskFolder({
           }
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               meta: recorded,
               cardId: now.id,

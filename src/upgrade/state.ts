@@ -1,5 +1,5 @@
 import type { TitanEvent, TitanState } from '#app/model.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { upgradeMilestone } from './model.ts'
 
 export function applyUpgrade({
@@ -20,11 +20,11 @@ export function applyUpgrade({
 
   const text = upgradeMilestone({ operation: event.data })
   const id = `milestone:upgrade:${event.data.id}`
-  const messages = state.hydraMessages ?? []
+  const messages = state.titanMessages ?? []
 
   // The line moves to where the upgrade ended; each step in between leaves it where it started.
   if (text && messages.find(message => message.id === id)?.text !== text) {
-    state.hydraMessages = [
+    state.titanMessages = [
       ...messages.filter(message => message.id !== id),
       {
         id,
@@ -33,7 +33,7 @@ export function applyUpgrade({
         text,
         at: event.at,
         actor: 'othrys',
-        hydra: hydraConfig({ state }).hydra.id,
+        titan: titanConfig({ state }).titan.id,
       },
     ]
   }

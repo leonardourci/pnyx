@@ -4,7 +4,7 @@ import {
   renameSync, rmSync, writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { withWriter } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
 import type { ChildResult } from './child.ts'
@@ -21,7 +21,7 @@ export interface BufferedCapture {
 
 const captureDirectory = ({ titanId }: { titanId: string }) =>
   join(
-    hydraDir({ titanId }),
+    titanDir({ titanId }),
     'source-captures',
   )
 

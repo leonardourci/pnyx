@@ -4,11 +4,11 @@ import { TitanError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
 
 const DEFAULT_WIDTHS = {
-  hydra: 520,
+  titan: 520,
 } as const
 // Views saved before the defaults widened carry these as stored defaults; they count as unset.
 const LEGACY_DEFAULT_WIDTHS = {
-  hydra: 360,
+  titan: 360,
 } as const
 
 export const DEFAULT_VIEW: ViewPreferences = {
@@ -16,8 +16,8 @@ export const DEFAULT_VIEW: ViewPreferences = {
   theme: 'system',
   focusMode: true,
   lastMessageOnCards: true,
-  hydraWidth: DEFAULT_WIDTHS.hydra,
-  defaultHydraWidth: DEFAULT_WIDTHS.hydra,
+  titanWidth: DEFAULT_WIDTHS.titan,
+  defaultTitanWidth: DEFAULT_WIDTHS.titan,
   fontSize: 14,
   chatFontSize: 16,
   codeFontSize: 13,
@@ -34,7 +34,7 @@ export const DEFAULT_VIEW: ViewPreferences = {
 
 export const VIEW_SIZE_LIMITS = {
   panelWidth: { min: 320 },
-  hydraWidth: { min: 240 },
+  titanWidth: { min: 240 },
   panelHeight: { min: 280 },
   fontSize: {
     min: 12,
@@ -148,8 +148,8 @@ export const viewFor = ({
   const own = structuredClone(knownViewFields({ view: state.view }))
 
   // Only a Titan's own view from older releases can hold their saved default widths; shared values are literal.
-  if (own.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
-    delete own.defaultHydraWidth
+  if (own.defaultTitanWidth === LEGACY_DEFAULT_WIDTHS.titan) {
+    delete own.defaultTitanWidth
   }
 
   const view = {
@@ -161,10 +161,10 @@ export const viewFor = ({
   return {
     ...view,
     workspace: workspaceLayout({ input: view.workspace }),
-    defaultHydraWidth: persistedSize({
-      value: view.defaultHydraWidth,
-      fallback: DEFAULT_VIEW.defaultHydraWidth,
-      ...VIEW_SIZE_LIMITS.hydraWidth,
+    defaultTitanWidth: persistedSize({
+      value: view.defaultTitanWidth,
+      fallback: DEFAULT_VIEW.defaultTitanWidth,
+      ...VIEW_SIZE_LIMITS.titanWidth,
     }),
     fontSize: persistedSize(
       {
@@ -190,10 +190,10 @@ export const viewFor = ({
         max: VIEW_SIZE_LIMITS.codeFontSize.max,
       },
     ),
-    hydraWidth: persistedSize({
-      value: view.hydraWidth,
-      fallback: DEFAULT_VIEW.hydraWidth,
-      min: VIEW_SIZE_LIMITS.hydraWidth.min,
+    titanWidth: persistedSize({
+      value: view.titanWidth,
+      fallback: DEFAULT_VIEW.titanWidth,
+      min: VIEW_SIZE_LIMITS.titanWidth.min,
     }),
     panelWidth: persistedSize(
       {
@@ -219,7 +219,7 @@ export const viewFor = ({
 }
 
 export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
-  hydraWidth: view.defaultHydraWidth,
+  titanWidth: view.defaultTitanWidth,
   workspace: {
     projectWidths: Object.fromEntries(Object.keys(view.workspace.projectWidths).map(id => [
       id,
@@ -235,8 +235,8 @@ export function resizeViewPatch({
 }): Record<string, unknown> {
   const resized = { ...patch }
 
-  if (patch.defaultHydraWidth !== undefined) {
-    resized.hydraWidth = patch.hydraWidth === undefined ? patch.defaultHydraWidth : patch.hydraWidth
+  if (patch.defaultTitanWidth !== undefined) {
+    resized.titanWidth = patch.titanWidth === undefined ? patch.defaultTitanWidth : patch.titanWidth
   }
 
   return resized
@@ -326,14 +326,14 @@ export function patchView({
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
-      case 'defaultHydraWidth': next.defaultHydraWidth = size({
+      case 'defaultTitanWidth': next.defaultTitanWidth = size({
         value,
-        ...VIEW_SIZE_LIMITS.hydraWidth,
+        ...VIEW_SIZE_LIMITS.titanWidth,
         key,
       }); break
-      case 'hydraWidth': next.hydraWidth = size({
+      case 'titanWidth': next.titanWidth = size({
         value,
-        ...VIEW_SIZE_LIMITS.hydraWidth,
+        ...VIEW_SIZE_LIMITS.titanWidth,
         key,
       }); break
       case 'panelWidth': next.panelWidth = size({

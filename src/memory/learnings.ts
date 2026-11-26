@@ -111,7 +111,7 @@ function checkCondition({ until }: { until?: string }): void {
 
   if (!validDate && !validReference) {
     throw new TitanError({
-      message: 'A for-now learning needs --until task:<hydra>/<task>, a PR URL, version:<version>, or date:YYYY-MM-DD',
+      message: 'A for-now learning needs --until task:<titan>/<task>, a PR URL, version:<version>, or date:YYYY-MM-DD',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -279,7 +279,7 @@ export function learningConditions({ states }: {
   const mergedPullRequests: string[] = []
 
   for (const [
-    hydra,
+    titan,
     state,
   ] of Object.entries(states)) {
     for (const card of Object.values(state.cards)) {
@@ -287,10 +287,10 @@ export function learningConditions({ states }: {
         state,
         card,
       })) {
-        doneTasks.push(`task:${hydra}/${card.id}`)
+        doneTasks.push(`task:${titan}/${card.id}`)
 
         if (card.key) {
-          doneTasks.push(`task:${hydra}/${card.key}`)
+          doneTasks.push(`task:${titan}/${card.key}`)
         }
       }
 

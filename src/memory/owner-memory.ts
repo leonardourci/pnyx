@@ -7,10 +7,10 @@ import { archiveRemoved, dateLearnings, informReinforcement, learningText, type 
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TitanError } from '#store/errors.ts'
 import type { Meta } from '#app/command-meta.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { othrysHome, privateDir, withRegistryLock, withAsyncRegistryLock, writeDurably } from '#store/storage.ts'
@@ -289,9 +289,9 @@ export async function migrateOwnerMemory(): Promise<void> {
       }
       const failed: string[] = []
 
-      for (const titanId of hydraIds()) {
+      for (const titanId of titanIds()) {
         try {
-          const memory = loadTitan({ titanId }).state.hydraMemory ?? {}
+          const memory = loadTitan({ titanId }).state.titanMemory ?? {}
 
           if (Object.keys(OWNER_DOCUMENTS).some(key => Object.hasOwn(
             memory,
@@ -336,7 +336,7 @@ async function move({
     titanId,
     fn: ({ writer }) => {
       for (const key of Object.keys(OWNER_DOCUMENTS)) {
-        const held = writer.state.hydraMemory?.[key]?.text
+        const held = writer.state.titanMemory?.[key]?.text
 
         if (held === undefined) {
           continue
@@ -355,7 +355,7 @@ async function move({
             reason: `Moved ${key} from Titan ${titanId}`,
           },
         })
-        const forget = hydraEvent({
+        const forget = titanEvent({
           state: writer.state,
           meta: {
             ...meta,
@@ -607,7 +607,7 @@ export async function moveOwnerLearning({
         at: meta.at,
         actor: meta.actor,
         reason: meta.reason,
-        hydra: titanId,
+        titan: titanId,
         identity: project.identity,
         key: 'learnings',
         before: projectBefore,

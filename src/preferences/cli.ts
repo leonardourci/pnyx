@@ -1,6 +1,6 @@
 import { guard, parse, WRITE, required, meta, commit, integer, type Output } from '#app/cli-support.ts'
 import { loadTitan } from '#app/store.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import { isSharedViewKey } from '#settings/model.ts'
 import { DEFAULT_VIEW, resetLayoutWidths, resizeViewPatch } from './view.ts'
@@ -75,7 +75,7 @@ export const view = guard({
       patch: patch as Record<string, unknown>,
     }))
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
-    const board = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
+    const own = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
     const viewCommit = () => commit({
       titanId,
       meta: m,
@@ -85,7 +85,7 @@ export const view = guard({
       },
       decide: ({ state: s }) => decideView({
         state: s,
-        patch: board,
+        patch: own,
         meta: m,
       }),
     })
@@ -95,7 +95,7 @@ export const view = guard({
     }
 
     let committed: Awaited<ReturnType<typeof viewCommit>> | undefined
-    // --if-revision guards the board's own view; shared keys follow the settings store.
+    // --if-revision guards the Titan's own view; shared keys follow the settings store.
     const settings = settingsReceipt({
       saved: await saveSettings({
         titanId,
@@ -105,7 +105,7 @@ export const view = guard({
           ifRevision: undefined,
         },
         beforeSave: async () => {
-          if (Object.keys(board).length) {
+          if (Object.keys(own).length) {
             committed = await viewCommit()
           }
         },
@@ -143,11 +143,11 @@ export const layout = guard({
 
       return {
         widths: {
-          hydra: view.hydraWidth,
+          titan: view.titanWidth,
           projects: view.workspace.projectWidths,
         },
         defaults: {
-          hydra: view.defaultHydraWidth,
+          titan: view.defaultTitanWidth,
         },
       }
     }
@@ -192,21 +192,21 @@ export const layout = guard({
       })
     }
 
-    const hydras: Output[] = []
+    const titans: Output[] = []
 
-    for (const id of hydraIds()) {
+    for (const id of titanIds()) {
       const receipt = await reset({ id })
-      hydras.push({
-        hydra: id,
+      titans.push({
+        titan: id,
         ...receipt,
       })
     }
 
-    return { hydras }
+    return { titans }
   },
 })
 
-export async function hydraResize({
+export async function titanResize({
   values,
   titanId,
 }: {
@@ -236,7 +236,7 @@ export async function hydraResize({
     },
     decide: ({ state }) => decideView({
       state,
-      patch: { hydraWidth: width },
+      patch: { titanWidth: width },
       meta: m,
     }),
   })

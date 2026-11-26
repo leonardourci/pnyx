@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
 import { join } from 'node:path'
 import { TitanError } from '#store/errors.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { titanDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { canonical } from '#store/paths.ts'
 
@@ -51,7 +51,7 @@ const leasePath = ({
 const leases = new Map<string, Lease>()
 
 export function dropCopyLeases({ titanId }: { titanId: string }): void {
-  const requested = hydraDir({ titanId })
+  const requested = titanDir({ titanId })
   const dir = canonical({ path: requested }) ?? requested
 
   for (const [
@@ -74,7 +74,7 @@ export function taskLeasePresent({
   actorPrefix?: string
 }): boolean {
   const lease = leases.get(leasePath({
-    dir: hydraDir({ titanId }),
+    dir: titanDir({ titanId }),
     task,
   }))
 
@@ -152,7 +152,7 @@ export function taskLease({
 }): () => void {
   const holder = randomUUID()
   let owner = actor
-  const dir = hydraDir({ titanId })
+  const dir = titanDir({ titanId })
   const path = leasePath({
     dir,
     task,
@@ -238,7 +238,7 @@ export function releaseTask({
   holder?: string
   lockTimeout?: number
 }): void {
-  const dir = hydraDir({ titanId })
+  const dir = titanDir({ titanId })
   const path = leasePath({
     dir,
     task,

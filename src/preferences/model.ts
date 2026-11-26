@@ -4,14 +4,14 @@ export interface ViewPreferences {
   workspace: import('./workspace.ts').WorkspaceLayout
   focusMode: boolean
   lastMessageOnCards: boolean
-  defaultHydraWidth: number
+  defaultTitanWidth: number
   theme: 'light' | 'dark' | 'system'
   fontSize: number
   chatFontSize: number
   codeFontSize: number
   panelPlacement: 'right' | 'inline'
   panelWidth: number
-  hydraWidth: number
+  titanWidth: number
   cardHeight: number
   cardColors: boolean
   toolDetails: boolean

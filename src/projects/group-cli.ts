@@ -7,7 +7,7 @@ import type { Meta } from '#app/command-meta.ts'
 import { withWriter } from '#app/writer.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
 import { TitanError } from '#store/errors.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import type { TitanProject } from './model.ts'
 import { findProject, projectFolder, sharingTitans } from './read.ts'
 import { checkProjectsRevision } from './ownership.ts'
@@ -97,7 +97,7 @@ export function attachProjectGroup({
 
           if ((!before || before.detached) && others.length) {
             inform({
-              reason: `${path} is also attached to Titan ${others.map(hydra => hydra.id).join(', ')}`,
+              reason: `${path} is also attached to Titan ${others.map(titan => titan.id).join(', ')}`,
               clear: `Review the repository keeper for ${path} in the UI.`,
             })
           }
@@ -136,7 +136,7 @@ export function attachProjectGroup({
           index,
           change,
         ] of changes.entries()) {
-          const event = hydraEvent({
+          const event = titanEvent({
             state: writer.state,
             meta: {
               ...commandMeta,

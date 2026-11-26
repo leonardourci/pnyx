@@ -335,7 +335,7 @@ export function eventText({ event }: { event: TitanEvent }): string {
     case 'titan.configured':
       parts.push(
         event.data.name,
-        event.data.hydra.name,
+        event.data.titan.name,
       )
       break
     case 'task.edited': {

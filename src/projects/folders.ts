@@ -1,7 +1,7 @@
 import { opendir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { hydraIds, hydrasDir } from '#app/home-migration.ts'
+import { titanIds, titansDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { CONTENTS_LIMIT, RECENT_LIMIT } from './folder-limit.ts'
 import { hiddenUntilDotTyped, startsWithTyped } from './folder-names.ts'
@@ -114,7 +114,7 @@ export async function listFolders({
   const seen = new Set<string>()
   const candidates: string[] = []
 
-  for (const titanId of hydraIds()) {
+  for (const titanId of titanIds()) {
     try {
       const { state } = loadTitan({ titanId })
 
@@ -135,7 +135,7 @@ export async function listFolders({
 
   const recent: FolderEntry[] = []
   // Titan's own agent folders live under Othrys's home; they are never a project to add.
-  const othrysFolders = await realpath(hydrasDir()).catch(() => hydrasDir())
+  const othrysFolders = await realpath(titansDir()).catch(() => titansDir())
 
   for (const cwd of candidates) {
     try {

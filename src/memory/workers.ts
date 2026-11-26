@@ -1,6 +1,6 @@
 import { inform } from '#app/command-notices.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Writer } from '#app/writer.ts'
 
@@ -43,7 +43,7 @@ export function workerNotesNotice({
     return
   }
 
-  const decision = hydraEvent({
+  const decision = titanEvent({
     state: writer.state,
     cardId: '$all',
     meta: {
@@ -55,7 +55,7 @@ export function workerNotesNotice({
       type: 'titan.message',
       data: {
         action: 'send',
-        hydra: hydraConfig({ state: writer.state }).hydra.id,
+        titan: titanConfig({ state: writer.state }).titan.id,
         text: `Standing worker instructions for ${target} changed${meta.reason?.trim() ? `: ${meta.reason.trim()}` : ''}`,
       },
     },

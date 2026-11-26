@@ -224,7 +224,7 @@ export function search({
     ...document,
     text: redact({ text: document.text }),
   }))
-  const hydraDocuments = Object.entries(state.hydraMemory ?? {})
+  const titanDocuments = Object.entries(state.titanMemory ?? {})
     .filter(([key]) => !Object.hasOwn(
       OWNER_DOCUMENTS,
       key,
@@ -254,7 +254,7 @@ export function search({
       })
       yield* ownerDocuments
       yield* projectDocuments
-      yield* hydraDocuments
+      yield* titanDocuments
     }
 
     for (const document of documents()) {
@@ -423,7 +423,7 @@ export function search({
       }
 
       if (card.id === '$all') {
-        hit.kind = 'hydra'
+        hit.kind = 'titan'
       }
 
       ranked.push({

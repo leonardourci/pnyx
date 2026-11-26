@@ -7,7 +7,7 @@ import type { TitanProject, TaskCopy } from './model.ts'
 import { projectsFor } from './read.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
-import { hydraIds } from '#app/home-migration.ts'
+import { titanIds } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { othrysHome } from '#store/storage.ts'
@@ -43,7 +43,7 @@ export function recordedBranches({
 }): string[] {
   const branches = new Set<string>()
 
-  for (const id of hydraIds()) {
+  for (const id of titanIds()) {
     const current = id === titanId ? state : loadTitan({ titanId: id }).state
 
     for (const { copy } of Object.values(current.cards)) {
@@ -141,7 +141,7 @@ const idle = ({
   titanId: string
   path: string
   except?: string
-}) => hydraIds().every(id => {
+}) => titanIds().every(id => {
   const state = loadTitan({ titanId: id }).state
 
   return !runsIn({
@@ -164,7 +164,7 @@ export function releasedCopyOwner({
   titanId: string
   card: Card
 } | undefined {
-  for (const titanId of hydraIds()) {
+  for (const titanId of titanIds()) {
     const owner = Object.values(loadTitan({ titanId }).state.cards).find(card =>
       card.copy?.state === 'removed' && card.copy.branch === branch && canonical({ path: card.copy.path }) === path)
 

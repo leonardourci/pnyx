@@ -46,7 +46,7 @@ export const setup = guard({
     }
 
     if (positionals[0] === undefined) {
-      if (args.some(a => /^--(?:titan|hydra)(?:=|$)/.test(a))) {
+      if (args.some(a => /^--titan(?:=|$)/.test(a))) {
         throw new TitanError({
           message: 'setup runs every Titan; it takes no --titan',
           code: 'VALIDATION_ERROR',

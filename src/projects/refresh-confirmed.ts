@@ -1,5 +1,5 @@
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import type { TitanState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Link } from '#tasks/delivery/model.ts'
@@ -106,7 +106,7 @@ async function recordRefresh({
           return
         }
 
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           cardId,
           meta: {

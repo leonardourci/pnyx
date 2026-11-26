@@ -51,7 +51,7 @@ export type Match = 'lexical' | 'fuzzy'
 export interface Hit {
   card: string
   title: string
-  kind?: 'hydra'
+  kind?: 'titan'
   match: Match
   snippets: Snippet[]
 }

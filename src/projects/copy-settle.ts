@@ -8,8 +8,8 @@ import { background } from '#app/background.ts'
 import { askHost } from '#app/server-state.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TitanError } from '#store/errors.ts'
 import type { TaskCopy } from './model.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -199,7 +199,7 @@ export async function settleCopy({
 
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             meta: {
               ...meta,
@@ -231,7 +231,7 @@ export async function settleCopy({
             + 'Once its current work has landed, remove the copy from the task in the UI.'
           applyDecision({
             writer,
-            decision: hydraEvent({
+            decision: titanEvent({
               state: writer.state,
               meta: quiet({ meta }),
               cardId: now.id,
@@ -241,10 +241,10 @@ export async function settleCopy({
                   task: now.id,
                   action: 'send',
                   text,
-                  hydra: hydraConfig({
+                  titan: titanConfig({
                     state: writer.state,
                     id: titanId,
-                  }).hydra.id,
+                  }).titan.id,
                 },
               },
             }),

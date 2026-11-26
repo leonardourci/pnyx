@@ -6,7 +6,7 @@ import type { trackChildren } from '#workers/children.ts'
 import { accountEnv, accountEnvironment } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { hydraFastReaches, type Provider } from '#workers/provider.ts'
+import { titanFastReaches, type Provider } from '#workers/provider.ts'
 import { providerIdOf, type ProviderId } from '#workers/providers.ts'
 import { helperAgent, helperChoice } from './route.ts'
 import { createRoutineHelper } from './runner.ts'
@@ -29,7 +29,7 @@ export function createHostedHelper({
   children: ReturnType<typeof trackChildren>
   helperBound?: number
   changed(): void
-  environment({ hydra }: { hydra?: boolean }): NodeJS.ProcessEnv
+  environment({ titan }: { titan?: boolean }): NodeJS.ProcessEnv
   digest({
     remember,
     onlyTasks,
@@ -110,7 +110,7 @@ export function createHostedHelper({
       loginFolder: selectedFolder,
     }) => {
       const env = {
-        ...environment({ hydra: true }),
+        ...environment({ titan: true }),
         OTHRYS_ACTOR: actor,
       }
 
@@ -172,8 +172,8 @@ export function createHostedHelper({
 
       const nativeDefault = defaultLogin({ provider: candidate.harness })
       const folder = account ? loginFolder({ account }) : nativeDefault
-      const hydraFast = await hydraFastReaches({
-        hydraFast: state.config?.hydra.agent?.fast,
+      const titanFast = await titanFastReaches({
+        titanFast: state.config?.titan.agent?.fast,
         models: () => host().models({
           harness: candidate.harness,
           account: name,
@@ -186,7 +186,7 @@ export function createHostedHelper({
         loginFolder: folder,
       }
 
-      if (candidate.fast || hydraFast) {
+      if (candidate.fast || titanFast) {
         agent.fast = true
       }
 

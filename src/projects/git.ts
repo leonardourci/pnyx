@@ -61,13 +61,13 @@ function branchSlug({ text }: { text: string }): string {
 
 async function taskBranch({
   cwd,
-  hydraName,
+  titanName,
   task,
   title,
   reserved = [],
 }: {
   cwd: string
-  hydraName: string
+  titanName: string
   task: string
   title: string
   reserved?: string[]
@@ -147,12 +147,12 @@ async function taskBranch({
     /^task-/,
     '',
   ).split('-')[0]
-  const hydraSlug = branchSlug({ text: hydraName }) || 'hydra'
+  const titanSlug = branchSlug({ text: titanName }) || 'titan'
   const titleSlug = branchSlug({ text: title }) || shortId
-  let namespace = hydraSlug
+  let namespace = titanSlug
 
   for (let suffix = 2; existing.has(namespace); suffix++) {
-    namespace = `${hydraSlug}-${suffix}`
+    namespace = `${titanSlug}-${suffix}`
   }
 
   const base = `${namespace}/${titleSlug}`

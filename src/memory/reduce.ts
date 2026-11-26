@@ -8,12 +8,12 @@ export function applyMemory({
   event: TitanEvent
 }): boolean {
   if (event.type === 'titan.memory') {
-    state.hydraMemory ??= {}
+    state.titanMemory ??= {}
 
     if (event.data.after === null) {
-      delete state.hydraMemory[event.data.key]
+      delete state.titanMemory[event.data.key]
     } else {
-      state.hydraMemory[event.data.key] = {
+      state.titanMemory[event.data.key] = {
         text: event.data.after,
         at: event.at,
       }
