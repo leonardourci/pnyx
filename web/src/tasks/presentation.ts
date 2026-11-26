@@ -216,22 +216,22 @@ const subscribeModal = (changed: () => void) => {
 }
 
 // The task whose modal this Titan's address opens; the board behind it keeps its own layout.
-export function useModalTask({ hydraId }: { hydraId: string }) {
+export function useModalTask({ titanId }: { titanId: string }) {
   return useSyncExternalStore(
     subscribeModal,
-    () => location.pathname === `/hydra/${encodeURIComponent(hydraId)}/`
+    () => location.pathname === `/hydra/${encodeURIComponent(titanId)}/`
       ? new URLSearchParams(location.search).get('task') : null,
   )
 }
 
 export function useTaskModal({
   id,
-  hydraId,
+  titanId,
 }: {
   id: string
-  hydraId: string
+  titanId: string
 }) {
-  const modal = useModalTask({ hydraId }) === id
+  const modal = useModalTask({ titanId }) === id
 
   return {
     modal,

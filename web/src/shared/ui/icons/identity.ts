@@ -62,7 +62,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
   {
     id: 'hydra',
     label: 'Titan',
-    file: 'hydra.svg',
+    file: 'titan.svg',
     author: 'Lorc',
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/hydra.html',

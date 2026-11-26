@@ -9,8 +9,8 @@ export const chatAround = ({ from }: { from: Element | null }) => from?.closest(
 const chatComposer = ({ from }: { from: Element | null }) =>
   chatAround({ from })?.querySelector<HTMLTextAreaElement>(COMPOSER) ?? null
 
-const shownTitanComposer = ({ hydraId }: { hydraId: string }) =>
-  document.querySelector<HTMLTextAreaElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat ${COMPOSER}`)
+const shownTitanComposer = ({ titanId }: { titanId: string }) =>
+  document.querySelector<HTMLTextAreaElement>(`[data-hydra-workspace="${CSS.escape(titanId)}"] .hydra-chat ${COMPOSER}`)
 
 export function focusChatComposer({ from }: { from: Element | null }) {
   const composer = chatComposer({ from })
@@ -30,7 +30,7 @@ const isComposerShortcut = ({ event }: { event: KeyboardEvent }) => {
   return commandKey && !otherModifier && !handled && event.key.toLowerCase() === 'l'
 }
 
-export function useComposerShortcut({ hydraId }: { hydraId: string }) {
+export function useComposerShortcut({ titanId }: { titanId: string }) {
   useEffect(
     () => {
       const focusComposer = (event: KeyboardEvent) => {
@@ -39,7 +39,7 @@ export function useComposerShortcut({ hydraId }: { hydraId: string }) {
         }
 
         const focusedChatComposer = chatComposer({ from: document.activeElement })
-        const composer = focusedChatComposer ?? shownTitanComposer({ hydraId })
+        const composer = focusedChatComposer ?? shownTitanComposer({ titanId })
 
         if (!composer) {
           return
@@ -63,6 +63,6 @@ export function useComposerShortcut({ hydraId }: { hydraId: string }) {
         focusComposer,
       )
     },
-    [hydraId],
+    [titanId],
   )
 }

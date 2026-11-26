@@ -642,7 +642,7 @@ export function SortableWorkspace({
   useEffect(
     () => active ? trackUIDrag({
       action: active.kind,
-      hydraId: active.hydra,
+      titanId: active.hydra,
     }) : undefined,
     [active],
   )

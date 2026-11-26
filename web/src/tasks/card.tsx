@@ -107,7 +107,7 @@ export const TitanCard = memo(function TitanCard({
   sortScope,
   rootColumn,
   rootScope,
-  hydraId,
+  titanId,
   chat,
   progress,
   hasChildren,
@@ -134,7 +134,7 @@ export const TitanCard = memo(function TitanCard({
   sortScope?: string
   rootColumn?: string
   rootScope?: string
-  hydraId: string
+  titanId: string
   chat?: ReactNode
   progress?: string
   hasChildren?: boolean
@@ -179,7 +179,7 @@ export const TitanCard = memo(function TitanCard({
     draft?: TaskDraft
   } | null>({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'editing',
     }),
@@ -189,7 +189,7 @@ export const TitanCard = memo(function TitanCard({
     ,, editVersion,
   ] = useSessionView({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'editVersion',
     }),
@@ -215,14 +215,14 @@ export const TitanCard = memo(function TitanCard({
 
     forgetSessionView({
       key: taskViewKey({
-        hydraId,
+        titanId,
         id: card.id,
         field: 'editor.title',
       }),
     })
     forgetSessionView({
       key: taskViewKey({
-        hydraId,
+        titanId,
         id: card.id,
         field: 'editor.brief',
       }),
@@ -248,7 +248,7 @@ export const TitanCard = memo(function TitanCard({
     closeModal,
   } = useTaskModal({
     id: card.id,
-    hydraId,
+    titanId,
   })
   const inlineHeight = selected && !modal ? 'h-column' : ''
   const element = modal ? modalElement : inlineElement
@@ -274,7 +274,7 @@ export const TitanCard = memo(function TitanCard({
     setTab,
   ] = useSessionView<'context' | 'activity'>({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'tab',
     }),
@@ -290,7 +290,7 @@ export const TitanCard = memo(function TitanCard({
   )
   const contextScroll = useRememberedScroll({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'contextScroll',
     }),
@@ -298,7 +298,7 @@ export const TitanCard = memo(function TitanCard({
   })
   const activityScroll = useRememberedScroll({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'activityScroll',
     }),
@@ -313,7 +313,7 @@ export const TitanCard = memo(function TitanCard({
     draft?: ReminderDraft
   } | null>({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'reminding',
     }),
@@ -323,7 +323,7 @@ export const TitanCard = memo(function TitanCard({
     ,, reminderVersion,
   ] = useSessionView({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'reminderVersion',
     }),
@@ -529,7 +529,7 @@ export const TitanCard = memo(function TitanCard({
       remind: () => {
         forgetSessionView({
           key: taskViewKey({
-            hydraId,
+            titanId,
             id: card.id,
             field: 'reminder.when',
           }),
@@ -660,7 +660,7 @@ export const TitanCard = memo(function TitanCard({
         id: card.id,
         kind: 'task',
         scope: sortScope ?? '',
-        hydra: hydraId,
+        hydra: titanId,
         parent: card.parentId,
         root: rootColumn && rootScope ? {
           column: rootColumn,
@@ -682,7 +682,7 @@ export const TitanCard = memo(function TitanCard({
       elementRef={modal ? attachModal : attachInline}
       selected={selected}
       data-task={card.id}
-      data-task-hydra={hydraId}
+      data-task-hydra={titanId}
       data-tab={selected ? tab : undefined}
       tint={tint}
       onClick={modal ? undefined : click}
@@ -818,7 +818,7 @@ export const TitanCard = memo(function TitanCard({
                 )}
                 {editing && (
                   <TaskEditor
-                    hydraId={hydraId}
+                    titanId={titanId}
                     key={editing.version}
                     version={editing.version}
                     card={card}
@@ -895,7 +895,7 @@ export const TitanCard = memo(function TitanCard({
         )}
         {reminding && (
           <ReminderEditor
-            hydraId={hydraId}
+            titanId={titanId}
             card={card}
             version={reminding.version}
             command={command}
@@ -927,7 +927,7 @@ export const TitanCard = memo(function TitanCard({
   )
 
   return (
-    <ProfileSurface name="task" hydraId={hydraId}>
+    <ProfileSurface name="task" titanId={titanId}>
       {modal && selected && (
         <CardShell
           aria-hidden
@@ -940,7 +940,7 @@ export const TitanCard = memo(function TitanCard({
         {modal && selected ? (
           <TaskCardModal
             key="modal"
-            layoutId={`task:${hydraId}:${card.id}`}
+            layoutId={`task:${titanId}:${card.id}`}
             title={card.title}
             close={closeModal}
           >

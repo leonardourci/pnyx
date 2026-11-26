@@ -27,7 +27,7 @@ export function useTitan() {
     () => ({
       ...snapshot,
       workspaces: connection.workspaces(),
-      command: connection.commandFor({ id: snapshot.navigation.hydraId }),
+      command: connection.commandFor({ id: snapshot.navigation.titanId }),
       // Another Titan's command, over the same connection; the Oracle sends requests to any Titan.
       commandFor: connection.commandFor,
       navigate: connection.navigate,

@@ -87,7 +87,7 @@ const withFailure = ({
 } : item)
 
 export function TitanChat({
-  hydraId,
+  titanId,
   storageIdentity,
   state,
   command,
@@ -108,7 +108,7 @@ export function TitanChat({
   selectedTask,
   pendingTurn,
 }: {
-  hydraId: string
+  titanId: string
   storageIdentity: string
   // The Titan's name and icon for the header, and the names of the owner's other Titans.
   identity?: {
@@ -168,8 +168,8 @@ export function TitanChat({
     sending,
     setSending,
   ] = useState<Sending[]>(() => readUnsent({
-    key: hydraId,
-    hydraId: storageIdentity,
+    key: titanId,
+    titanId: storageIdentity,
   }).map(item => ({
     ...item,
     confirmed: false,
@@ -223,8 +223,8 @@ export function TitanChat({
         refusal?: string
       } = {}) => {
         const saved = readUnsent({
-          key: hydraId,
-          hydraId: storageIdentity,
+          key: titanId,
+          titanId: storageIdentity,
         })
         const refused = new Map(saved.map(item => [
           item.id,
@@ -262,7 +262,7 @@ export function TitanChat({
       }
 
       const settled = (event: Event) => {
-        if (event instanceof CustomEvent && event.detail.hydraId === hydraId) {
+        if (event instanceof CustomEvent && event.detail.titanId === titanId) {
           refresh(event.detail)
         }
       }
@@ -279,7 +279,7 @@ export function TitanChat({
       )
     },
     [
-      hydraId,
+      titanId,
       storageIdentity,
     ],
   )
@@ -301,12 +301,12 @@ export function TitanChat({
   // A refused message outlives a reload or a Titan switch, until a retry sends it.
   useEffect(
     () => saveUnsent({
-      key: hydraId,
-      hydraId: storageIdentity,
+      key: titanId,
+      titanId: storageIdentity,
       items: unsent,
     }),
     [
-      hydraId,
+      titanId,
       storageIdentity,
       unsentKey,
     ],
@@ -455,19 +455,19 @@ export function TitanChat({
     && !streamingAtSend.current.has(entry.id))
   useLayoutEffect(() => {
     if (newReply) {
-      firstTextShown({ hydraId })
+      firstTextShown({ titanId })
       lastSend.current = undefined
     } else if (sendTurn && chatQueue.working) {
       sendTurnWorked.current = true
     } else if (sendTurn && sendTurnWorked.current) {
       // The send's turn ended without streamed text, such as a turn that only ran tools.
-      forgetSend({ hydraId })
+      forgetSend({ titanId })
       lastSend.current = undefined
     }
   })
   useEffect(
-    () => () => forgetSend({ hydraId }),
-    [hydraId],
+    () => () => forgetSend({ titanId }),
+    [titanId],
   )
 
   const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
@@ -530,7 +530,7 @@ export function TitanChat({
       const at = new Date().toISOString()
 
       const markFailed = ({ reason }: { reason: string }) => {
-        forgetSend({ hydraId })
+        forgetSend({ titanId })
         setSending(items => withFailure({
           items,
           id,
@@ -538,12 +538,12 @@ export function TitanChat({
         }))
         // Saved here too, so a refusal that arrives after the owner left this Titan is still there on return.
         const saved = readUnsent({
-          key: hydraId,
-          hydraId: storageIdentity,
+          key: titanId,
+          titanId: storageIdentity,
         })
         saveUnsent({
-          key: hydraId,
-          hydraId: storageIdentity,
+          key: titanId,
+          titanId: storageIdentity,
           items: [
             ...saved.filter(item => item.id !== id),
             {
@@ -561,7 +561,7 @@ export function TitanChat({
         .map(entry => entry.id))
       lastSend.current = id
       sendTurnWorked.current = false
-      markSend({ hydraId })
+      markSend({ titanId })
       setSending(items => items.some(s => s.id === id) ? withFailure({
         items,
         id,
@@ -601,7 +601,7 @@ export function TitanChat({
     [
       command,
       notify,
-      hydraId,
+      titanId,
       storageIdentity,
     ],
   )
@@ -757,7 +757,7 @@ export function TitanChat({
         )}
       </Chat>
       <WaitingDecisions
-        hydraId={hydraId}
+        titanId={titanId}
         command={command}
         notify={notify}
         triggerRef={waitingButton}
@@ -775,7 +775,7 @@ export function TitanChat({
         loading={thread.loadingEarlier}
       />
       <Composer
-        hydraId={hydraId}
+        titanId={titanId}
         storageIdentity={storageIdentity}
         loadComment={thread.loadComment}
         compacting={Boolean(compacting)}

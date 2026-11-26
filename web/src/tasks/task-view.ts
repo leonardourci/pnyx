@@ -2,29 +2,29 @@ import { useLayoutEffect, type RefObject } from 'react'
 import { sessionView, useSessionView, useSessionViewResource, sessionViewKey } from '#web-app/session-view.ts'
 
 export function taskViewKey({
-  hydraId,
+  titanId,
   id,
   field,
 }: {
-  hydraId: string
+  titanId: string
   id: string
   field: string
 }) {
   return sessionViewKey({
     scope: 'task',
-    id: `${hydraId}:${id}`,
+    id: `${titanId}:${id}`,
     field,
   })
 }
 
 export function useTaskEditorFocus({
-  hydraId,
+  titanId,
   id,
   kind,
   version,
   field,
 }: {
-  hydraId: string
+  titanId: string
   id: string
   kind: 'edit' | 'reminder'
   version: number
@@ -32,7 +32,7 @@ export function useTaskEditorFocus({
 }) {
   const focused = useSessionViewResource({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id,
       field: `${kind}.focus`,
     }),
@@ -63,30 +63,30 @@ export function useTaskEditorFocus({
   )
 }
 
-function familyViewKey({ hydraId }: { hydraId: string }) {
+function familyViewKey({ titanId }: { titanId: string }) {
   return sessionViewKey({
     scope: 'families',
-    id: hydraId,
+    id: titanId,
     field: 'folds',
   })
 }
 
-export function useFamilyFolds({ hydraId }: { hydraId: string }) {
+export function useFamilyFolds({ titanId }: { titanId: string }) {
   return useSessionView<Record<string, boolean>>({
-    key: familyViewKey({ hydraId }),
+    key: familyViewKey({ titanId }),
     initial: {},
   })
 }
 
 export function openTaskFamily({
-  hydraId,
+  titanId,
   id,
 }: {
-  hydraId: string
+  titanId: string
   id: string
 }) {
   const view = sessionView<Record<string, boolean>>({
-    key: familyViewKey({ hydraId }),
+    key: familyViewKey({ titanId }),
     initial: {},
   })
   // eslint-disable-next-line othrys/object-params -- React owns functional state updaters.

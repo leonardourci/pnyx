@@ -150,11 +150,11 @@ export function TitanView({
   const projectPending = useProjectIntents({ command })
   const restoreKey = storageKey({
     key: 'restore',
-    hydraId: hydra.storageTitan,
+    titanId: hydra.storageTitan,
   })
   const commentsKey = storageKey({
     key: 'comments',
-    hydraId: navigation.hydraId,
+    titanId: navigation.titanId,
   })
   const [restored] = useState(() => hydraViews.get(hydra.viewKey)
     ?? restoreView({ key: restoreKey }))
@@ -163,7 +163,7 @@ export function TitanView({
     setPageView,
   ] = useState(() => openingView({
     restored,
-    hydraId: navigation.hydraId,
+    titanId: navigation.titanId,
   }))
   const {
     selected: selectedRef,
@@ -179,11 +179,11 @@ export function TitanView({
 
     const finish = timeUIFlow({
       surface: 'workspace',
-      hydraId: navigation.hydraId,
+      titanId: navigation.titanId,
       action: page === 'settings' ? 'settings.open' : 'settings.close',
     })
     const suffix = page === 'settings' ? 'settings/' : ''
-    navigatePage({ url: `/hydra/${encodeURIComponent(navigation.hydraId)}/${suffix}` })
+    navigatePage({ url: `/hydra/${encodeURIComponent(navigation.titanId)}/${suffix}` })
       .catch((error: Error) => notify({ text: error.message }))
       .finally(finish)
   }
@@ -270,7 +270,7 @@ export function TitanView({
     },
     [
       active,
-      navigation.hydraId,
+      navigation.titanId,
       navigation.page,
       navigatePage,
     ],
@@ -311,7 +311,7 @@ export function TitanView({
     [],
   )
   useScrollingClass()
-  const modalTask = useModalTask({ hydraId: navigation.hydraId })
+  const modalTask = useModalTask({ titanId: navigation.titanId })
   const [
     columnRequest,
     setColumnRequest,
@@ -341,7 +341,7 @@ export function TitanView({
     close,
   } = useTaskNavigation({
     state,
-    hydraId: navigation.hydraId,
+    titanId: navigation.titanId,
     command,
     connected,
     notify,
@@ -353,7 +353,7 @@ export function TitanView({
     setView: setPageView,
   })
   usePersistView({
-    workspace: navigation.hydraId,
+    workspace: navigation.titanId,
     viewKey: hydra.viewKey,
     key: restoreKey,
     selected,
@@ -374,7 +374,7 @@ export function TitanView({
     workspace: {
       ...configuredView.workspace,
       collapsed: state.view?.workspace?.collapsed
-        ?? shared?.hiddenHydras.includes(navigation.hydraId) ?? false,
+        ?? shared?.hiddenHydras.includes(navigation.titanId) ?? false,
     },
   }
   const references = useTaskReferences({
@@ -403,7 +403,7 @@ export function TitanView({
     }
   }
 
-  const shownTitan = edits.hydras.find(h => h.id === navigation.hydraId)
+  const shownTitan = edits.hydras.find(h => h.id === navigation.titanId)
   const save = useSaveView({
     state,
     command,
@@ -477,7 +477,7 @@ export function TitanView({
       draft,
       parent,
     })
-    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] .task-create [aria-label="Task title"]` })))
+    requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.titanId)}"] .task-create [aria-label="Task title"]` })))
   }
 
   const baseColumns = useMemo(
@@ -494,13 +494,13 @@ export function TitanView({
       JSON.stringify(view.workspace.projectOrder),
     ],
   )
-  const orderedColumns = preview?.kind === 'project' && preview.hydra === navigation.hydraId
+  const orderedColumns = preview?.kind === 'project' && preview.hydra === navigation.titanId
     ? movedOrder({
       items: baseColumns,
       ...preview,
       key: ({ item }) => item.id,
     }) : baseColumns
-  const columns = preview?.kind === 'task' && preview.hydra === navigation.hydraId
+  const columns = preview?.kind === 'task' && preview.hydra === navigation.titanId
     && !preview.nest && preview.scope === preview.targetScope
     ? orderedColumns.map(column => ({
       ...column,
@@ -717,7 +717,7 @@ export function TitanView({
 
   const openSettings = ({ query }: { query: string }) => {
     setAccountSetup(undefined); setSettingsQuery(query); setPage({ page: 'settings' })
-    requestAnimationFrame(() => focusElement({ selector: `[data-settings-hydra="${CSS.escape(navigation.hydraId)}"] .search-bar-input` }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-settings-hydra="${CSS.escape(navigation.titanId)}"] .search-bar-input` }))
   }
 
   const revealProject = ({ id }: { id: string }) => {
@@ -753,7 +753,7 @@ export function TitanView({
         answer?: boolean
       }>).detail
 
-      if (detail.hydra !== navigation.hydraId) {
+      if (detail.hydra !== navigation.titanId) {
         return
       }
 
@@ -784,7 +784,7 @@ export function TitanView({
   const oracleTarget = async ({
     id,
     path,
-    hydra: destination = navigation.hydraId,
+    hydra: destination = navigation.titanId,
     answer,
   }: {
     id?: string
@@ -808,7 +808,7 @@ export function TitanView({
   }
 
   const oracleIds = hydra.workspaces.filter(workspace => workspace.connected)
-    .map(workspace => workspace.navigation.hydraId)
+    .map(workspace => workspace.navigation.titanId)
     .join(':')
   const searchCommand = useMemo(
     () => workspaceSearch({
@@ -821,14 +821,14 @@ export function TitanView({
     ],
   )
   const oracleWorkspaces = hydra.workspaces.map(workspace => {
-    const summary = navigation.hydras.find(item => item.id === workspace.navigation.hydraId)
+    const summary = navigation.hydras.find(item => item.id === workspace.navigation.titanId)
 
     return {
       state: workspace.state,
       actions: workspace.actions,
       projects: summary?.projects ?? [],
       hydra: {
-        id: workspace.navigation.hydraId,
+        id: workspace.navigation.titanId,
         name: summary?.name ?? '',
         icon: summary?.icon ?? TITAN_MARK,
       },
@@ -871,7 +871,7 @@ export function TitanView({
   }
 
   const oracleTitan = {
-    id: navigation.hydraId,
+    id: navigation.titanId,
     name: shownTitan ? hydraTitle(shownTitan) : 'Titan',
     icon: shownTitan?.icon ?? TITAN_MARK,
   }
@@ -882,8 +882,8 @@ export function TitanView({
   }))
   const opening = navigation.hydras.find(h => h.id === loading)
   const retryLabel = hydra.creating ? 'Retry creating Titan' : 'Retry loading Titan'
-  const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
-  const otherTitans = askTargets.filter(target => target.id !== navigation.hydraId)
+  const others = edits.hydras.filter(h => h.id !== navigation.titanId)
+  const otherTitans = askTargets.filter(target => target.id !== navigation.titanId)
   const otherProjects = others.flatMap(h => h.projects.map(p => ({
     name: p.name,
     path: p.path,
@@ -954,10 +954,10 @@ export function TitanView({
       <TitanCard
         key={item.key}
         card={item}
-        hydraId={navigation.hydraId}
-        sortScope={`${navigation.hydraId}:${column.id}:${priority}:${item.parentId ?? 'root'}`}
+        titanId={navigation.titanId}
+        sortScope={`${navigation.titanId}:${column.id}:${priority}:${item.parentId ?? 'root'}`}
         rootColumn={rootColumn}
-        rootScope={rootColumn && `${navigation.hydraId}:${rootColumn}:${priority}:root`}
+        rootScope={rootColumn && `${navigation.titanId}:${rootColumn}:${priority}:root`}
         statusOverride={statusOverride}
         progress={family.progress}
         hasChildren={family.hasChildren}
@@ -981,7 +981,7 @@ export function TitanView({
         chat={opened && (
           <TaskChat
             storageIdentity={hydra.storageTitan}
-            hydraId={navigation.hydraId}
+            titanId={navigation.titanId}
             card={item}
             state={state}
             live={hydra.taskThreads[item.id]}
@@ -1029,7 +1029,7 @@ export function TitanView({
         ref={setLayer}
         className="app hydra-workspace group/workspace flex h-full w-max min-w-workspace-frame flex-none snap-start flex-col overflow-clip rounded-workspace border border-line p-2 text-ui leading-normal data-[collapsed=true]:w-14.5 data-[collapsed=true]:min-w-0 max-phone:min-w-phone-workspace-frame max-phone:p-1.5"
         data-ui-surface="workspace"
-        data-hydra-workspace={navigation.hydraId}
+        data-hydra-workspace={navigation.titanId}
         data-active={active}
         data-page={page}
         data-project-snaps={phone ? JSON.stringify(projectSnaps) : undefined}
@@ -1049,7 +1049,7 @@ export function TitanView({
             setSettingsQuery(''); setPage({ page })
           }}
           oracle={(
-            <ProfileSurface name="oracle" hydraId={navigation.hydraId}>
+            <ProfileSurface name="oracle" titanId={navigation.titanId}>
               <Oracle
                 state={state}
                 workspaces={oracleWorkspaces}
@@ -1096,7 +1096,7 @@ export function TitanView({
             polisFilter={polisFilter}
             filterPolis={filterPolis}
             hydras={edits.hydras}
-            current={navigation.hydraId}
+            current={navigation.titanId}
             navigate={navigate}
             createTitan={async () => {
               try {
@@ -1120,7 +1120,7 @@ export function TitanView({
             onClick={toggleAllProjects}
             icon={allProjectsFolded ? 'unfold_columns' : 'fold_columns'}
           />
-          <TitanDragName id={navigation.hydraId} name={shownTitan?.name ?? 'Titan'} disabled={!connected}>
+          <TitanDragName id={navigation.titanId} name={shownTitan?.name ?? 'Titan'} disabled={!connected}>
             {view.workspace.collapsed && (
               <ProjectCounts
                 asks={columns.reduce(
@@ -1147,15 +1147,15 @@ export function TitanView({
             disabled={!connected}
             onClick={requestProject}
           />
-          <nav data-sort-surface={`project-chips:${navigation.hydraId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:scrollbar-stable-both group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
-            <SortGroup id={`project-chips:${navigation.hydraId}`} items={columns.map(column => column.id)}>
+          <nav data-sort-surface={`project-chips:${navigation.titanId}`} className="project-chips flex min-w-0 gap-1.25 overflow-x-auto overflow-y-hidden group-data-[collapsed=true]/workspace:min-h-0 group-data-[collapsed=true]/workspace:w-full group-data-[collapsed=true]/workspace:scrollbar-stable-both group-data-[collapsed=true]/workspace:flex-col group-data-[collapsed=true]/workspace:overflow-x-hidden group-data-[collapsed=true]/workspace:overflow-y-auto" aria-label="Projects">
+            <SortGroup id={`project-chips:${navigation.titanId}`} items={columns.map(column => column.id)}>
               {columns.map(column => (
                 <SortableChip
                   item={{
                     id: column.id,
                     kind: 'project',
                     scope: 'projects',
-                    hydra: navigation.hydraId,
+                    hydra: navigation.titanId,
                   }}
                   disabledSort={column.id === IDEAS_COLUMN || !connected}
                   vertical={view.workspace.collapsed}
@@ -1176,7 +1176,7 @@ export function TitanView({
           open={!view.workspace.collapsed}
           className="shell flex min-h-0 w-max flex-1 flex-col gap-2 overflow-visible p-0"
           aria-busy={!!loading || !loaded}
-          data-hydra={navigation.hydraId}
+          data-hydra={navigation.titanId}
           data-provisional={hydra.creating || undefined}
         >
           {(loading || !loaded || hydra.offline) && (
@@ -1211,9 +1211,9 @@ export function TitanView({
                   icon={view.workspace.chatCollapsed ? 'chevron_right' : 'chevron_left'}
                 />
                 <FoldContent open={!view.workspace.chatCollapsed} className="chat-content h-full [&_.hydra-head]:pr-12 [&_.hydra-title_.hydra-label]:truncate [&>.hydra-chat]:h-full [&>.hydra-chat]:max-h-none [&>.hydra-chat]:min-w-75 [&>.hydra-chat]:shrink-0 [&>.hydra-chat]:rounded-xl [&>.hydra-chat]:border [&>.hydra-chat]:border-line max-phone:[&>.hydra-chat]:w-phone-chat! max-phone:[&>.hydra-chat]:basis-phone-chat!">
-                  <ProfileSurface name="chat" hydraId={navigation.hydraId}>
+                  <ProfileSurface name="chat" titanId={navigation.titanId}>
                     <TitanChat
-                      hydraId={navigation.hydraId}
+                      titanId={navigation.titanId}
                       identity={shownTitan && {
                         name: shownTitan.name,
                         icon: shownTitan.icon,
@@ -1223,7 +1223,7 @@ export function TitanView({
                         name,
                         icon,
                       }) => edits.edit({
-                        id: navigation.hydraId,
+                        id: navigation.titanId,
                         name,
                         icon,
                       })}
@@ -1255,11 +1255,11 @@ export function TitanView({
                     <div className="hydra-space flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-visible">
                       <div
                         ref={setKanban}
-                        data-sort-surface={`project-columns:${navigation.hydraId}`}
+                        data-sort-surface={`project-columns:${navigation.titanId}`}
                         className="kanban flex h-full min-h-0 flex-1 gap-2.5 overflow-visible p-0"
                         aria-label="Work columns"
                       >
-                        <SortGroup id={`project-columns:${navigation.hydraId}`} items={columns.map(column => column.id)}>
+                        <SortGroup id={`project-columns:${navigation.titanId}`} items={columns.map(column => column.id)}>
                           {columns.map(c => {
                             const items = c.cards
                             const expandedWidth = expandedProjectWidths.get(c.id) ?? 0
@@ -1268,7 +1268,7 @@ export function TitanView({
                               <ProjectColumn
                                 key={c.id}
                                 column={c}
-                                hydraId={navigation.hydraId}
+                                titanId={navigation.titanId}
                                 view={view}
                                 save={save}
                                 expandedWidth={expandedWidth}
@@ -1281,7 +1281,7 @@ export function TitanView({
                                   <>
                                     {creatingTask?.group === c.id && (
                                       <TaskCreate
-                                        hydraId={navigation.hydraId}
+                                        titanId={navigation.titanId}
                                         storageIdentity={hydra.storageTitan}
                                         key={`${c.id}:${creatingTask.parent ?? ''}`}
                                         {...creatingTask}
@@ -1316,18 +1316,18 @@ export function TitanView({
                                           }))
                                         }}
                                         submitted={() => {
-                                          focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.hydraId)}"] [data-column-heading="${CSS.escape(c.id)}"]` })
+                                          focusElement({ selector: `[data-hydra-workspace="${CSS.escape(navigation.titanId)}"] [data-column-heading="${CSS.escape(c.id)}"]` })
                                           setCreatingTask(null)
                                         }}
                                       />
                                     )}
-                                    <SortGroup namespace={`tasks:${navigation.hydraId}`} id={`tasks:${navigation.hydraId}:${c.id}`} items={items.map(item => item.id)}>
+                                    <SortGroup namespace={`tasks:${navigation.titanId}`} id={`tasks:${navigation.titanId}:${c.id}`} items={items.map(item => item.id)}>
                                       <ProjectTasks
                                         items={items}
                                         render={({ card: item }) => (
                                           <TaskFamily
                                             card={item}
-                                            hydraId={navigation.hydraId}
+                                            titanId={navigation.titanId}
                                             state={state}
                                             actions={actions}
                                             selected={expandedIds}
@@ -1357,11 +1357,11 @@ export function TitanView({
             <div
               className="settings-route fixed inset-x-0 top-topbar-height bottom-0 z-65 flex bg-background [&>.settings-page]:w-full [&>.settings-page]:min-w-0 [&[hidden]]:hidden"
               data-ui-surface="settings"
-              data-settings-hydra={navigation.hydraId}
+              data-settings-hydra={navigation.titanId}
               hidden={!active || page !== 'settings'}
               style={runtimeStyle(fontSizes)}
             >
-              <ProfileSurface name="settings" hydraId={navigation.hydraId}>
+              <ProfileSurface name="settings" titanId={navigation.titanId}>
                 <SettingsPage
                   hydras={navigation.hydras}
                   commandFor={hydra.commandFor}

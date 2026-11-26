@@ -36,7 +36,7 @@ const WorkspaceInstance = memo(function WorkspaceInstance({
         ...hydra,
         ...workspace,
         navigate,
-        command: hydra.commandFor({id: workspace.navigation.hydraId}),
+        command: hydra.commandFor({id: workspace.navigation.titanId}),
       }}
     />
   )
@@ -50,8 +50,8 @@ export function App() {
     polisFilter,
     filterPolis,
   ] = useState<string | undefined>()
-  const current = hydra.navigation.hydraId
-  useComposerShortcut({ hydraId: current })
+  const current = hydra.navigation.titanId
+  useComposerShortcut({ titanId: current })
   const axis = useRef<HTMLDivElement>(null)
   const track = useRef<HTMLDivElement>(null)
   const anchor = useRef<() => void>(undefined)
@@ -103,8 +103,8 @@ export function App() {
     a,
     b,
   ) =>
-    orderedTitans.findIndex(item => item.id === a.navigation.hydraId)
-    - orderedTitans.findIndex(item => item.id === b.navigation.hydraId))
+    orderedTitans.findIndex(item => item.id === a.navigation.titanId)
+    - orderedTitans.findIndex(item => item.id === b.navigation.titanId))
 
   const currentPolis = orderedTitans.find(item => item.id === current)?.polis ?? 'shared'
   const shownFilter = currentPolis === polisFilter ? polisFilter : undefined
@@ -120,7 +120,7 @@ export function App() {
     ],
   )
   const visibleWorkspaces = workspaces.filter(workspace => !shownFilter
-    || (orderedTitans.find(item => item.id === workspace.navigation.hydraId)?.polis ?? 'shared') === shownFilter)
+    || (orderedTitans.find(item => item.id === workspace.navigation.titanId)?.polis ?? 'shared') === shownFilter)
 
   const drop = ({ preview }: { preview: SortMove }) => {
     const commit = async () => {
@@ -142,7 +142,7 @@ export function App() {
         return
       }
 
-      const workspace = hydra.workspaces.find(item => item.navigation.hydraId === preview.hydra)
+      const workspace = hydra.workspaces.find(item => item.navigation.titanId === preview.hydra)
 
       if (!workspace) {
         return
@@ -230,7 +230,7 @@ export function App() {
 
       if (preview.nest) {
         openTaskFamily({
-          hydraId: preview.hydra,
+          titanId: preview.hydra,
           id: target.id,
         })
         await command({
@@ -302,7 +302,7 @@ export function App() {
     commit().catch((error: Error) => setRootError(error.message))
   }
 
-  const visibleWorkspaceIds = visibleWorkspaces.map(workspace => workspace.navigation.hydraId)
+  const visibleWorkspaceIds = visibleWorkspaces.map(workspace => workspace.navigation.titanId)
   const workspaceOrder = visibleWorkspaceIds.join(':')
 
   useLayoutEffect(
@@ -663,15 +663,15 @@ export function App() {
                 )}
                 <SortGroup id="hydra-axis" items={visibleWorkspaceIds}>
                   {visibleWorkspaces.map(workspace => (
-                    <ProfileSurface key={workspace.viewKey} name="workspace" hydraId={workspace.navigation.hydraId}>
+                    <ProfileSurface key={workspace.viewKey} name="workspace" titanId={workspace.navigation.titanId}>
                       <WorkspaceInstance
                         polisFilter={shownFilter}
                         filterPolis={choosePolis}
-                        active={workspace.navigation.hydraId === current}
+                        active={workspace.navigation.titanId === current}
                         navigatePage={hydra.navigate}
                         navigate={navigate}
                         edits={shownEdits}
-                        preview={preview?.hydra === workspace.navigation.hydraId ? preview : null}
+                        preview={preview?.hydra === workspace.navigation.titanId ? preview : null}
                         hydra={hydra}
                         workspace={workspace}
                       />

@@ -14,11 +14,11 @@ interface GroupAttempt {
 }
 
 export function useGroupAnswers({
-  hydraId,
+  titanId,
   command,
   notify,
 }: {
-  hydraId: string
+  titanId: string
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -28,7 +28,7 @@ export function useGroupAnswers({
   ] = useSessionView<GroupAttempt[]>({
     key: sessionViewKey({
       scope: 'question-groups',
-      id: hydraId,
+      id: titanId,
       field: 'pending',
     }),
     initial: [],

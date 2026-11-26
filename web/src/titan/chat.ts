@@ -227,12 +227,12 @@ export function groupComments({ comments }: { comments: ChatComment[] }) {
 export function commentReply({
   draft,
   comments,
-  hydraId,
+  titanId,
   card,
 }: {
   draft: string
   comments: ChatComment[]
-  hydraId?: string
+  titanId?: string
   card?: string
 }): string {
   const replies = groupComments({
@@ -248,7 +248,7 @@ export function commentReply({
     const command = messageLookupCommand({
       reference: first.reference,
       at: first.at,
-      hydraId,
+      titanId,
       card,
     })
     const reference = first.reference ? `Message reference: ${first.reference}\n` : ''

@@ -19,7 +19,7 @@ import { fileBlock } from '#titan/attachments.ts'
 import { draftView, hasPendingImage } from './draft.ts'
 
 export function Composer({
-  hydraId,
+  titanId,
   storageIdentity,
   card,
   title,
@@ -48,7 +48,7 @@ export function Composer({
   sendLabel?: string
   unavailable?: boolean
   limitHeight?: boolean
-  hydraId: string
+  titanId: string
   storageIdentity: string
   card: string
   title: string
@@ -116,7 +116,7 @@ export function Composer({
   const cacheIdentity = storageIdentity
   const attempt = useRef(readAttempt({
     key: card,
-    hydraId: cacheIdentity,
+    titanId: cacheIdentity,
   }))
   const commented = useSyncExternalStore(
     drafts.subscribe,
@@ -132,7 +132,7 @@ export function Composer({
       const outgoing = commentReply({
         draft,
         comments,
-        hydraId,
+        titanId,
         card,
       })
 
@@ -191,7 +191,7 @@ export function Composer({
     const outgoing = commentReply({
       draft,
       comments,
-      hydraId,
+      titanId,
       card,
     })
     const request = sendableRequest({
@@ -227,7 +227,7 @@ export function Composer({
     attempt.current.pending = true
     saveAttempt({
       key: card,
-      hydraId: cacheIdentity,
+      titanId: cacheIdentity,
       attempt: attempt.current,
     })
     const taken = restore ? null : {
@@ -261,7 +261,7 @@ export function Composer({
       attempt.current = null
       saveAttempt({
         key: card,
-        hydraId: cacheIdentity,
+        titanId: cacheIdentity,
         attempt: null,
       })
       setSending(false)
@@ -273,7 +273,7 @@ export function Composer({
     () => {
       const saved = readAttempt({
         key: card,
-        hydraId: cacheIdentity,
+        titanId: cacheIdentity,
       })
 
       if (attempt.current?.pending && saved?.pending && saved.id === attempt.current.id) {
@@ -428,7 +428,7 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: drafts.read().comments,
-                    hydraId,
+                    titanId,
                     card,
                   })
                   const id = crypto.randomUUID()

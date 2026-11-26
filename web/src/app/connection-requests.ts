@@ -428,7 +428,7 @@ export function createConnectionRequests({
         name: request.name,
         args: request.args,
       },
-      hydraId: scope.id,
+      titanId: scope.id,
       storageIdentity: scope.identity,
       refusal: message.type === 'error' ? message.error : undefined,
     })

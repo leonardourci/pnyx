@@ -6,14 +6,14 @@ export const TITAN_SEND_SETTLED = 'othrys-hydra-send-settled'
 
 export function storageKey({
   key,
-  hydraId: given,
+  titanId: given,
 }: {
   key: string
-  hydraId?: string
+  titanId?: string
 }): string {
-  const hydraId = given ?? (typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content)
+  const titanId = given ?? (typeof document === 'undefined' ? '' : document.querySelector<HTMLMetaElement>('meta[name=othrys-hydra]')?.content)
 
-  return `othrys:${hydraId ?? ''}:${key}`
+  return `othrys:${titanId ?? ''}:${key}`
 }
 
 export function moveTitanStorage({
@@ -56,15 +56,15 @@ export interface MessageAttempt {
 
 export function readAttempt({
   key,
-  hydraId,
+  titanId,
 }: {
   key: string
-  hydraId?: string
+  titanId?: string
 }): MessageAttempt | null {
   try {
     const value = JSON.parse(sessionStorage.getItem(storageKey({
       key: `send:${key}`,
-      hydraId,
+      titanId,
     })) ?? 'null')
 
     return value && typeof value.text === 'string' && typeof value.id === 'string' && typeof value.pending === 'boolean' ? value : null
@@ -76,35 +76,35 @@ export function readAttempt({
 export function saveAttempt({
   key,
   attempt,
-  hydraId,
+  titanId,
 }: {
   key: string
   attempt: MessageAttempt | null
-  hydraId?: string
+  titanId?: string
 }): void {
   try {
     if (attempt) {
       sessionStorage.setItem(
         storageKey({
           key: `send:${key}`,
-          hydraId,
+          titanId,
         }),
         JSON.stringify(attempt),
       )
     } else {
       sessionStorage.removeItem(storageKey({
         key: `send:${key}`,
-        hydraId,
+        titanId,
       }))
     }
   } catch { /* The mounted composer still retains the draft when storage is blocked. */ }
 }
 
-export function readSavedCommands({ hydraId }: { hydraId: string }): SaveCommand[] {
+export function readSavedCommands({ titanId }: { titanId: string }): SaveCommand[] {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey({
       key: 'settings-saves',
-      hydraId,
+      titanId,
     })) ?? '[]')
 
     if (!Array.isArray(saved)) {
@@ -122,17 +122,17 @@ export function readSavedCommands({ hydraId }: { hydraId: string }): SaveCommand
 }
 
 export function saveCommands({
-  hydraId,
+  titanId,
   commands,
 }: {
-  hydraId: string
+  titanId: string
   commands: SaveCommand[]
 }): void {
   try {
     sessionStorage.setItem(
       storageKey({
         key: 'settings-saves',
-        hydraId,
+        titanId,
       }),
       JSON.stringify(commands),
     )
@@ -149,15 +149,15 @@ export interface UnsentMessage {
 
 export function readUnsent({
   key,
-  hydraId,
+  titanId,
 }: {
   key: string
-  hydraId: string
+  titanId: string
 }): UnsentMessage[] {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey({
       key: `unsent:${key}`,
-      hydraId,
+      titanId,
     })) ?? '[]')
 
     return Array.isArray(saved) ? saved.filter((item): item is UnsentMessage => typeof item?.id === 'string'
@@ -169,26 +169,26 @@ export function readUnsent({
 
 export function saveUnsent({
   key,
-  hydraId,
+  titanId,
   items,
 }: {
   key: string
   items: UnsentMessage[]
-  hydraId: string
+  titanId: string
 }): void {
   try {
     if (items.length) {
       sessionStorage.setItem(
         storageKey({
           key: `unsent:${key}`,
-          hydraId,
+          titanId,
         }),
         JSON.stringify(items),
       )
     } else {
       sessionStorage.removeItem(storageKey({
         key: `unsent:${key}`,
-        hydraId,
+        titanId,
       }))
     }
   } catch { /* The mounted chat still shows unsent messages when storage is blocked. */ }
@@ -196,12 +196,12 @@ export function saveUnsent({
 
 export function settleSavedCommand({
   command,
-  hydraId,
+  titanId,
   storageIdentity,
   refusal,
 }: {
   command: SaveCommand
-  hydraId: string
+  titanId: string
   storageIdentity: string
   refusal?: string
 }) {
@@ -217,20 +217,20 @@ export function settleSavedCommand({
 
   const attempt = readAttempt({
     key: TITAN_CARD,
-    hydraId: storageIdentity,
+    titanId: storageIdentity,
   })
 
   if (attempt?.id === id) {
     saveAttempt({
       key: TITAN_CARD,
-      hydraId: storageIdentity,
+      titanId: storageIdentity,
       attempt: null,
     })
   }
 
   const before = readUnsent({
-    key: hydraId,
-    hydraId: storageIdentity,
+    key: titanId,
+    titanId: storageIdentity,
   })
   const items = before.filter(item => item.id !== id)
 
@@ -247,15 +247,15 @@ export function settleSavedCommand({
   }
 
   saveUnsent({
-    key: hydraId,
-    hydraId: storageIdentity,
+    key: titanId,
+    titanId: storageIdentity,
     items,
   })
   dispatchEvent(new CustomEvent(
     TITAN_SEND_SETTLED,
     {
       detail: {
-        hydraId,
+        titanId,
         id,
         refusal,
       },

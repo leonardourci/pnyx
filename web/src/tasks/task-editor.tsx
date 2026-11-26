@@ -14,7 +14,7 @@ export interface TaskDraft {
 }
 
 export function TaskEditor({
-  hydraId,
+  titanId,
   card,
   version,
   draft,
@@ -22,7 +22,7 @@ export function TaskEditor({
   close,
   failed,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   version: number
   draft?: TaskDraft
@@ -41,7 +41,7 @@ export function TaskEditor({
     setTitle,
   ] = useSessionView({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'editor.title',
     }),
@@ -52,7 +52,7 @@ export function TaskEditor({
     setBrief,
   ] = useSessionView({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'editor.brief',
     }),
@@ -61,7 +61,7 @@ export function TaskEditor({
   const titleField = useRef<HTMLTextAreaElement>(null)
   const briefField = useRef<ComposerFieldHandle>(null)
   useTaskEditorFocus({
-    hydraId,
+    titanId,
     id: card.id,
     kind: 'edit',
     version,

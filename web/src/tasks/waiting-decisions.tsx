@@ -14,7 +14,7 @@ import { markdownText } from '#web-titan/markdown-text.ts'
 
 export function WaitingDecisions({
   state,
-  hydraId,
+  titanId,
   open,
   loading,
   triggerRef,
@@ -22,7 +22,7 @@ export function WaitingDecisions({
   notify,
 }: {
   state: TitanState
-  hydraId: string
+  titanId: string
   command: Command
   notify({ text }: { text: string }): void
   open({ decision }: { decision: OpenDecision }): Promise<void>
@@ -31,7 +31,7 @@ export function WaitingDecisions({
 }) {
   const groups = ownerQuestionGroups({ state })
   const answers = useGroupAnswers({
-    hydraId,
+    titanId,
     command,
     notify,
   })

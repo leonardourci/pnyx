@@ -430,7 +430,7 @@ export function createTitanConnection() {
         hydraStatus: resource.confirmed.hydraStatus,
       }),
       navigation: {
-        hydraId: scope.id,
+        titanId: scope.id,
         page: scope.id === selected && (location.pathname.endsWith('/settings/') || new URLSearchParams(location.search).has('settings')) ? 'settings' : 'hydra',
         hydras: hydras.snapshot().view.map(hydra => {
           const preview = scopes.get(hydra.id)?.resource.snapshot().view.config
@@ -502,10 +502,10 @@ export function createTitanConnection() {
         || request.name === 'hydra' && request.args[0] === 'send' && !!request.saveId))
       .map(request => saveCommand({ request }))
     const ids = new Set(commands.map(command => saveEventId({command})))
-    const retained = scope.restoredSaves ? [] : readSavedCommands({hydraId: scope.identity})
+    const retained = scope.restoredSaves ? [] : readSavedCommands({titanId: scope.identity})
       .filter(command => !ids.has(saveEventId({command})))
     saveCommands({
-      hydraId: scope.identity,
+      titanId: scope.identity,
       commands: [
         ...retained,
         ...commands,
@@ -620,7 +620,7 @@ export function createTitanConnection() {
     log({
       operation: 'page.recovery',
       status: 'stale',
-      hydraId: selected,
+      titanId: selected,
       eventSeq: selection().resource.snapshot().confirmed.seq,
     })
   }
@@ -641,7 +641,7 @@ export function createTitanConnection() {
     log({
       operation: 'page.recovery',
       status: 'reconciled',
-      hydraId: selected,
+      titanId: selected,
       eventSeq: selection().resource.snapshot().confirmed.seq,
       ms: performance.now() - staleSince,
     })
@@ -712,7 +712,7 @@ export function createTitanConnection() {
     log({
       operation: 'page.update',
       detailed: !first,
-      hydraId: scope.id,
+      titanId: scope.id,
       name: 'socket',
       ms: performance.now() - handling,
     })
@@ -894,10 +894,10 @@ export function createTitanConnection() {
       }
 
       scope.expectedSeq = message.stateSeq
-      scope.identity = message.hydraId
+      scope.identity = message.titanId
 
       if (!scope.restoredSaves) {
-        for (const saved of readSavedCommands({ hydraId: scope.identity })) {
+        for (const saved of readSavedCommands({ titanId: scope.identity })) {
           if (!requests.has(saved.id)) {
             void command({
               scope,
@@ -1176,7 +1176,7 @@ export function createTitanConnection() {
         log({
           operation: 'page.update',
           detailed: true,
-          hydraId: message.scope,
+          titanId: message.scope,
           name: message.type,
           ms: performance.now() - handling,
           frames: drawn.frames,

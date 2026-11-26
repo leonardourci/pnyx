@@ -28,7 +28,7 @@ const devToken: Plugin = {
       tag: 'meta',
       attrs: {
         name: 'othrys-hydra',
-        content: hydraIdentity({ hydraId: 'dev' }),
+        content: hydraIdentity({ titanId: 'dev' }),
       },
       injectTo: 'head',
     },
@@ -36,7 +36,7 @@ const devToken: Plugin = {
       tag: 'meta',
       attrs: {
         name: 'othrys-installation',
-        content: hydraIdentity({ hydraId: '' }),
+        content: hydraIdentity({ titanId: '' }),
       },
       injectTo: 'head',
     },

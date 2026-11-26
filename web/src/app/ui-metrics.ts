@@ -75,7 +75,7 @@ function record({
   sample: Sample
   sampled?: boolean
 }) {
-  const key = `${sample.operation}:${sample.surface}:${sample.action ?? ''}:${sample.hydraId ?? ''}`
+  const key = `${sample.operation}:${sample.surface}:${sample.action ?? ''}:${sample.titanId ?? ''}`
   const previous = groups.get(key)
 
   if (!previous && groups.size >= GROUP_LIMIT) {
@@ -166,23 +166,23 @@ export function setUIMetricsEnabled({ enabled: next }: { enabled: boolean }) {
 export function recordUIRender({
   surface,
   ms,
-  hydraId,
+  titanId,
 }: {
   surface: UISurface
   ms: number
-  hydraId?: string
+  titanId?: string
 }) {
   if (!measuring()) {
     return
   }
 
   const since = performance.now()
-  const count = groups.get(`page.react-commit:${surface}::${hydraId ?? ''}`)?.count ?? 0
+  const count = groups.get(`page.react-commit:${surface}::${titanId ?? ''}`)?.count ?? 0
   record({
     sample: {
       operation: 'page.react-commit',
       surface,
-      hydraId,
+      titanId,
       ms,
     },
     sampled: count % RENDER_SAMPLE === 0,
@@ -194,11 +194,11 @@ export function recordUIRender({
 export function timeUIFlow({
   surface,
   action,
-  hydraId,
+  titanId,
 }: {
   surface: UISurface
   action: string
-  hydraId?: string
+  titanId?: string
 }): () => void {
   if (!measuring() || !TOKEN.test(action)) {
     return () => {}
@@ -219,7 +219,7 @@ export function timeUIFlow({
       sample: {
         operation: 'page.flow',
         surface,
-        hydraId,
+        titanId,
         action,
         ms: since - started,
       },
@@ -230,10 +230,10 @@ export function timeUIFlow({
 
 export function trackUIDrag({
   action,
-  hydraId,
+  titanId,
 }: {
   action: 'hydra' | 'project' | 'task'
-  hydraId?: string
+  titanId?: string
 }): () => void {
   if (!measuring()) {
     return () => {}
@@ -303,7 +303,7 @@ export function trackUIDrag({
       record({
         sample: {
           operation: 'page.drag-frames',
-          hydraId,
+          titanId,
           surface: 'sortable',
           action,
           durationMs: performance.now() - started,
@@ -324,7 +324,7 @@ export function trackUIDrag({
 function context({ target }: { target?: Node }): {
   surface: UISurface
   action: string
-  hydraId?: string
+  titanId?: string
 } {
   const element = target instanceof Element ? target : undefined
   const namedSurface = element?.closest('[data-ui-surface]')?.getAttribute('data-ui-surface') as UISurface | undefined
@@ -367,7 +367,7 @@ function context({ target }: { target?: Node }): {
   const settings = element?.closest('[data-settings-hydra]')?.getAttribute('data-settings-hydra')
 
   return {
-    hydraId: workspace ?? settings ?? undefined,
+    titanId: workspace ?? settings ?? undefined,
     surface,
     action: TOKEN.test(namedAction) ? namedAction : 'page',
   }

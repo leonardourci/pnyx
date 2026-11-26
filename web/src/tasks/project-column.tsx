@@ -16,7 +16,7 @@ import { PROJECT_CONTENT_INSET, projectWidth } from './project-layout.ts'
 
 export function ProjectColumn({
   column,
-  hydraId,
+  titanId,
   view,
   save,
   expandedWidth,
@@ -24,7 +24,7 @@ export function ProjectColumn({
   create,
 }: {
   column: ProjectColumnData
-  hydraId: string
+  titanId: string
   view: ViewPreferences
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
   expandedWidth: number
@@ -45,7 +45,7 @@ export function ProjectColumn({
   const remembered = useRememberedScroll({
     key: sessionViewKey({
       scope: 'column',
-      id: `${hydraId}:${column.id}`,
+      id: `${titanId}:${column.id}`,
       field: 'scroll',
     }),
     active: !folded,
@@ -55,7 +55,7 @@ export function ProjectColumn({
       id: column.id,
       kind: 'task',
       scope: column.id,
-      hydra: hydraId,
+      hydra: titanId,
       zone: 'outdent',
     },
   })
@@ -99,23 +99,23 @@ export function ProjectColumn({
       id: column.id,
       kind: 'project',
       scope: 'projects',
-      hydra: hydraId,
+      hydra: titanId,
     },
     disabled: column.id === 'ideas',
   })
   const dragging = useSortState()
   const lifted = dragging.active?.kind === 'project' && dragging.active.id === column.id
-    && dragging.active.hydra === hydraId
+    && dragging.active.hydra === titanId
 
   const outdentSource = dragging.shift && dragging.active?.parent ? dragging.active : null
   const outdentOver = dragging.over?.zone === 'outdent' && dragging.over.id === column.id
-    && dragging.over.hydra === hydraId ? dragging.over : null
+    && dragging.over.hydra === titanId ? dragging.over : null
   const outdentArmed = !!outdentSource && !!outdentOver && !nestingRefusal({
     source: outdentSource,
     target: outdentOver,
   })
   const showHint = dragging.active?.kind === 'task'
-    && dragging.active.hydra === hydraId && dragging.active.column === column.id
+    && dragging.active.hydra === titanId && dragging.active.column === column.id
     && !dragging.active.hasChildren
 
   return (
@@ -152,7 +152,7 @@ export function ProjectColumn({
       <FoldContent
         open={!folded}
         ref={scrollRef}
-        data-sort-surface={`tasks:${hydraId}:${column.id}`}
+        data-sort-surface={`tasks:${titanId}:${column.id}`}
         className="column-cards project-cards block min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2"
       >
         <div ref={grid} className="project-card-grid relative w-(--project-card-width)">

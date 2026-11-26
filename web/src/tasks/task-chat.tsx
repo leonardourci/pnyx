@@ -37,7 +37,7 @@ const replies = new Map<string, ReplyResource>()
 const NO_WAKE_QUEUE: [] = []
 
 export function TaskChat({
-  hydraId,
+  titanId,
   storageIdentity,
   card,
   state,
@@ -49,7 +49,7 @@ export function TaskChat({
   notify,
   pendingTurn,
 }: {
-  hydraId: string
+  titanId: string
   storageIdentity: string
   card: Card
   state: TitanState
@@ -92,7 +92,7 @@ export function TaskChat({
     }))
 
   const installation = document.querySelector<HTMLMetaElement>('meta[name=othrys-installation]')?.content
-  const key = `${location.origin}:${installation}:${hydraId}:${card.id}`
+  const key = `${location.origin}:${installation}:${titanId}:${card.id}`
   const [resource] = useState(() => {
     const existing = replies.get(key)
 
@@ -185,7 +185,7 @@ export function TaskChat({
     resource.snapshot,
   )
   const drafts = useChatDrafts({
-    identity: `${location.origin}:${installation}:${hydraId}:${card.key}`,
+    identity: `${location.origin}:${installation}:${titanId}:${card.key}`,
     text: stored({
       key: `${key}:draft`,
       fallback: '',
@@ -449,7 +449,7 @@ export function TaskChat({
         </div>
       )}
       <Composer
-        hydraId={hydraId}
+        titanId={titanId}
         storageIdentity={storageIdentity}
         card={card.id}
         title={card.title}

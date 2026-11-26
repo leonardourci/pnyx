@@ -41,7 +41,7 @@ export interface ReminderDraft {
 }
 
 export function ReminderEditor({
-  hydraId,
+  titanId,
   card,
   version,
   command,
@@ -51,7 +51,7 @@ export function ReminderEditor({
   recover,
   draft,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   version: number
   command: Command
@@ -64,7 +64,7 @@ export function ReminderEditor({
   const id = useId()
   const input = useRef<HTMLTextAreaElement>(null)
   useTaskEditorFocus({
-    hydraId,
+    titanId,
     id: card.id,
     kind: 'reminder',
     version,
@@ -78,7 +78,7 @@ export function ReminderEditor({
     setWhen,
   ] = useSessionView({
     key: taskViewKey({
-      hydraId,
+      titanId,
       id: card.id,
       field: 'reminder.when',
     }),

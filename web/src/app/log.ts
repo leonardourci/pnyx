@@ -164,7 +164,7 @@ export function log(line: PageLine): void {
     text: JSON.stringify({
       ...fields,
       tab,
-      hydraId: fields.hydraId ?? selectedTitan,
+      titanId: fields.titanId ?? selectedTitan,
       error: line.level && error !== undefined ? pageError({ error }) : undefined,
     }),
   })
@@ -177,32 +177,32 @@ export function log(line: PageLine): void {
 }
 
 // Starts timing the owner's send in Titan's chat; firstTextShown logs the time to the reply's first text.
-export const markSend = ({ hydraId }: { hydraId: string }) => {
+export const markSend = ({ titanId }: { titanId: string }) => {
   sent.set(
-    hydraId,
+    titanId,
     performance.now(),
   )
 }
 
 // A refused send, a turn that ended without streamed text or a chat the owner left has no first text to wait for.
-export const forgetSend = ({ hydraId }: { hydraId: string }) => {
-  sent.delete(hydraId)
+export const forgetSend = ({ titanId }: { titanId: string }) => {
+  sent.delete(titanId)
 }
 
-export function firstTextShown({ hydraId }: { hydraId: string }) {
-  const started = sent.get(hydraId)
+export function firstTextShown({ titanId }: { titanId: string }) {
+  const started = sent.get(titanId)
 
   if (started === undefined) {
     return
   }
 
-  sent.delete(hydraId)
+  sent.delete(titanId)
   const ms = performance.now() - started
 
   if (ms <= FIRST_TEXT_MAX_MS) {
     log({
       operation: 'page.first-text',
-      hydraId,
+      titanId,
       ms,
     })
   }

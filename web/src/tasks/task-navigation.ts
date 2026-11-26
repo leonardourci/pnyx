@@ -15,7 +15,7 @@ const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
 export function useTaskNavigation({
   state,
-  hydraId,
+  titanId,
   command,
   connected,
   notify,
@@ -24,7 +24,7 @@ export function useTaskNavigation({
   setView,
 }: {
   state: TitanState
-  hydraId: string
+  titanId: string
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -56,7 +56,7 @@ export function useTaskNavigation({
     setRevealing(null)
   }
 
-  const modalTask = useModalTask({ hydraId })
+  const modalTask = useModalTask({ titanId })
   const interestRefs = [
     ...expanded,
     modalTask,
@@ -254,7 +254,7 @@ export function useTaskNavigation({
     id: string
     selected?: boolean
   }) =>
-    document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(hydraId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
+    document.querySelector<HTMLElement>(`[data-hydra-workspace="${CSS.escape(titanId)}"] .card[data-task="${CSS.escape(id)}"]${selected ? '.selected' : ''}`)
 
   const columns = columnsFor({ state })
   const filteredCards = useMemo(
@@ -318,7 +318,7 @@ export function useTaskNavigation({
       view: current,
       page: 'hydra',
     }))
-    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(hydraId)}"] .hydra-chat textarea` }))
+    requestAnimationFrame(() => focusElement({ selector: `[data-hydra-workspace="${CSS.escape(titanId)}"] .hydra-chat textarea` }))
   }
 
   const keepRevealed = ({ id }: { id: string }) => {
@@ -401,7 +401,7 @@ export function useTaskNavigation({
     opening()
     cancelOpen()
 
-    if (id === '$board') {
+    if (id === '$all') {
       openTitan()
 
       return true

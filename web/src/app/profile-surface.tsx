@@ -3,11 +3,11 @@ import { recordUIRender, type UISurface } from './ui-metrics.ts'
 
 export function ProfileSurface({
   name,
-  hydraId,
+  titanId,
   children,
 }: {
   name: UISurface
-  hydraId?: string
+  titanId?: string
   children: ReactNode
 }) {
   if (import.meta.env.VITE_OTHRYS_PROFILE !== '1') {
@@ -21,7 +21,7 @@ export function ProfileSurface({
     actualDuration,
   ) => recordUIRender({
     surface: name,
-    hydraId,
+    titanId,
     ms: actualDuration,
   })
 

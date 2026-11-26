@@ -139,7 +139,7 @@ export function createTitanCreation({
           request.resolve({
             receipt: {
               creation: {
-                hydraId: canonical.id,
+                titanId: canonical.id,
                 attempt: scope.creation.attempt,
                 status: 'saved',
                 mount: 'pending',
@@ -263,9 +263,9 @@ export function createTitanCreation({
         args,
         creation: creation.attempt,
       })
-      const outcome = receipt.creation as { hydraId: string }
+      const outcome = receipt.creation as { titanId: string }
       const canonical = (receipt.hydras as TitanSummary[])
-        .find(hydra => hydra.id === outcome.hydraId)!
+        .find(hydra => hydra.id === outcome.titanId)!
       promote({
         scope,
         canonical,

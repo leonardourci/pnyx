@@ -20,7 +20,7 @@ export interface TaskDraft {
 }
 
 export function TaskCreate({
-  hydraId,
+  titanId,
   storageIdentity,
   identity,
   version,
@@ -36,7 +36,7 @@ export function TaskCreate({
   cancel,
   notify,
 }: {
-  hydraId: string
+  titanId: string
   version: number
   storageIdentity: string
   identity: string
@@ -92,7 +92,7 @@ export function TaskCreate({
   const attempt = useRef(attemptId)
   const titleField = useRef<HTMLTextAreaElement>(null)
   useTaskEditorFocus({
-    hydraId,
+    titanId,
     id: `new:${attemptId}`,
     kind: 'edit',
     version,
@@ -262,7 +262,7 @@ export function TaskCreate({
       <span className="eyebrow">Description</span>
       <Composer
         limitHeight={false}
-        hydraId={hydraId}
+        titanId={titanId}
         storageIdentity={storageIdentity}
         card={`new:${attempt.current}`}
         title={title}
