@@ -1,4 +1,3 @@
-import { withLegacyNames } from '#store/legacy-env.ts'
 import { inform } from '#app/command-notices.ts'
 import { protectedCopiesFolder } from './remove-pool.ts'
 import { createHash } from 'node:crypto'
@@ -487,15 +486,11 @@ async function commandCopy({
     timeout: COPY_TIMEOUT_MS,
     env: {
       ...process.env,
-      ...withLegacyNames({
-        env: {
-          OTHRYS_HOME: othrysHome(),
-          OTHRYS_TITAN: hydraId,
-          OTHRYS_TASK: card.id,
-          OTHRYS_TASK_TITLE: card.title,
-          OTHRYS_PROJECT: project.path,
-        },
-      }),
+      OTHRYS_HOME: othrysHome(),
+      OTHRYS_TITAN: hydraId,
+      OTHRYS_TASK: card.id,
+      OTHRYS_TASK_TITLE: card.title,
+      OTHRYS_PROJECT: project.path,
     },
   })
   const printed = run.stdout.trim().split('\n')

@@ -8,18 +8,18 @@ export function agentInput({
   id,
   text,
   original,
-  hydras,
+  root,
   ownerMessageId,
 }: {
   id: string
   text: string
   original: string
-  hydras: string[]
+  root: string
   ownerMessageId?: string
 }): HostedInput {
   const images = attachedImages({
     text: original,
-    hydras,
+    root,
   }).map(path => {
     const mediaType = imageType({ path })
 

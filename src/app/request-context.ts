@@ -1,4 +1,3 @@
-import { compatibleEnvironment, legacyName } from '#store/legacy-env.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { TITAN_ACTOR } from './actors.ts'
 import { readFileSync } from 'node:fs'
@@ -34,7 +33,7 @@ export const recordExitCode = ({ code }: { code: number }) => {
 export const requestExitCode = () => current.getStore()?.exitCode
 
 // The variables a client sends with each command: who it is, and the terminal or task it runs in.
-const CURRENT_IDENTITY = [
+export const IDENTITY = [
   'OTHRYS_ACTOR',
   'OTHRYS_TASK',
   'OTHRYS_TITAN',
@@ -45,14 +44,7 @@ const CURRENT_IDENTITY = [
   'HERDR_PANE_ID',
 ] as const
 
-export const IDENTITY = [
-  ...CURRENT_IDENTITY,
-  ...CURRENT_IDENTITY.filter(name => name.startsWith('OTHRYS_')).map(name => legacyName({ name })),
-]
-
-export const requestEnv = (): NodeJS.ProcessEnv => compatibleEnvironment({
-  env: current.getStore()?.env ?? process.env,
-})
+export const requestEnv = (): NodeJS.ProcessEnv => current.getStore()?.env ?? process.env
 
 export const hydraActor = ({ actor }: { actor?: string }) =>
   actor === TITAN_ACTOR || requestEnv().OTHRYS_ACTOR === TITAN_ACTOR
@@ -82,7 +74,7 @@ export function runForClient<T>({
 
   return current.run(
     {
-      env: compatibleEnvironment({ env }),
+      env,
       cwd,
       stdin,
       invocation: {},

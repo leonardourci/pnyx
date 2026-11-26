@@ -1,4 +1,4 @@
-import { hydrasFolders } from '#store/paths.ts'
+import { hydrasDir } from '#app/home-migration.ts'
 import { requireHandoffAvailable } from './handoff-checkout.ts'
 import { taskChildren, taskController, trackTaskSession, untrackTaskSession, type TaskSessionOwner } from '#app/task-runtime.ts'
 import { copySettling, requireCopyAvailable } from '#projects/copy-lease.ts'
@@ -556,7 +556,7 @@ export function createLiveSessions({
             id: item.id ?? randomUUID(),
             text: item.text,
             original,
-            hydras: hydrasFolders(),
+            root: hydrasDir(),
             ownerMessageId: firstOwnerMessage({
               state: loadTitan({ hydraId: currentOwner().hydraId }).state,
               card: card.id,

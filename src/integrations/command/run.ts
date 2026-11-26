@@ -16,8 +16,6 @@ export function runCommand({
   for (const name of [
     'OTHRYS_ACTOR',
     'OTHRYS_HOSTED',
-    'PNYX_ACTOR',
-    'PNYX_HOSTED',
   ]) {
     delete inherited[name]
   }

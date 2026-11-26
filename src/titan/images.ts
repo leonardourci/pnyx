@@ -120,15 +120,15 @@ export function shownImageNames({ text }: { text: string }): Map<string, string>
 // Only files Othrys stored for a Titan are sent as images; any other path stays text.
 export function attachedImages({
   text,
-  hydras,
+  root,
 }: {
   text: string
-  hydras: string[]
+  root: string
 }): string[] {
-  return [...new Set(imagePaths({ text }))].filter(path => hydras.some(root => {
+  return [...new Set(imagePaths({ text }))].filter(path => {
     const parts = path.slice(root.length + 1).split('/')
 
     return path.startsWith(`${root}/`) && parts.length === 3 && parts[1] === 'attachments'
       && ATTACHMENT_NAME.test(parts[2]!) && !parts[0]!.startsWith('.')
-  }))
+  })
 }

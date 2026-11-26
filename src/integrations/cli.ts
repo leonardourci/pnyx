@@ -41,7 +41,7 @@ async function integrations({
         name: 'command',
         status: config.command ? `set: ${config.command}` : 'not set',
         setup: 'Set the Titan command in Settings',
-        docs: 'Started with OTHRYS_HOME, OTHRYS_WORKER_HOME, OTHRYS_TITAN, OTHRYS_TASK, OTHRYS_ROLE, OTHRYS_TASK_TITLE, OTHRYS_PROMPT, OTHRYS_HARNESS and OTHRYS_FOLDER, and the same values under their PNYX_ names',
+        docs: 'Started with OTHRYS_HOME, OTHRYS_WORKER_HOME, OTHRYS_TITAN, OTHRYS_TASK, OTHRYS_ROLE, OTHRYS_TASK_TITLE, OTHRYS_PROMPT, OTHRYS_HARNESS and OTHRYS_FOLDER',
       },
       {
         name: 'github',

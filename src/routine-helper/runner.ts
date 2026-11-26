@@ -1,4 +1,3 @@
-import { hydrasFolders } from '#store/paths.ts'
 import { recordContext, recordFiles } from '#titan/file-context.ts'
 import { readGrant, readCommand } from './read-grant.ts'
 import { createDigestContext } from '#titan/digest-context.ts'
@@ -20,7 +19,7 @@ import type { AgentRef, AgentSettings } from '#workers/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { background } from '#app/background.ts'
 import { prepareHelperFolder } from '#setup/skills.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { hydraDir, hydrasDir } from '#app/home-migration.ts'
 import { loadTitan } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { replaceFile } from '#store/storage.ts'
@@ -551,7 +550,7 @@ export function createRoutineHelper({
             id: batch.id,
             text,
             original: batch.prompt,
-            hydras: hydrasFolders(),
+            root: hydrasDir(),
           })
         }
 

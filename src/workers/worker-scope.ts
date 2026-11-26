@@ -150,7 +150,7 @@ function checkWorkerScope({
   const declared = typeof values.actor === 'string' ? values.actor : undefined
   const identity = workerIdentity({ actor: declared })
   const home = requestEnv().OTHRYS_WORKER_HOME
-  // The ~/.othrys alias and its ~/.pnyx target are one home.
+  // A symlinked home and its target are one home.
   const ownHome = home === undefined
     || canonical({ path: home }) === canonical({ path: othrysHome() })
 

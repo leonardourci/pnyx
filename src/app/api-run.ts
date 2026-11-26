@@ -37,7 +37,7 @@ function namedTitan({
 
   const flag = argv.findIndex(arg => TITAN_FLAG.test(arg))
 
-  return (flag < 0 ? env.OTHRYS_TITAN ?? env.PNYX_HYDRA : argv[flag + 1]) || DEFAULT_TITAN
+  return (flag < 0 ? env.OTHRYS_TITAN : argv[flag + 1]) || DEFAULT_TITAN
 }
 
 function request({ body }: { body: unknown }): RunRequest {
