@@ -124,7 +124,7 @@ export function foldWorkerLog({
     const identity = fileIdentity({ stat })
     const previous = card.workerLog?.latest
     const same = previous !== undefined && sameFile({
-      known: previous.identity,
+      saved: previous.identity,
       identity,
     })
     const off = same ? previous.off : 0

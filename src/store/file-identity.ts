@@ -3,13 +3,13 @@ import type { Stats } from 'node:fs'
 export const fileIdentity = ({ stat }: { stat: Stats }) => String(stat.ino)
 
 export function sameFile({
-  known,
+  saved,
   identity,
 }: {
-  known: string
+  saved: string
   identity: string
 }): boolean {
-  const savedWithDevice = known.endsWith(`:${identity}`)
+  const savedWithDevice = saved.endsWith(`:${identity}`)
 
-  return known === identity || savedWithDevice
+  return saved === identity || savedWithDevice
 }

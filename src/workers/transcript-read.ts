@@ -41,10 +41,12 @@ export function readTranscript({
   try {
     const stat = fstatSync(fd)
     const identity = fileIdentity({ stat })
-    const reset = (cursor.identity !== '' && !sameFile({
-      known: cursor.identity,
+    const replaced = cursor.identity !== '' && !sameFile({
+      saved: cursor.identity,
       identity,
-    })) || stat.size < cursor.pos
+    })
+    const truncated = stat.size < cursor.pos
+    const reset = replaced || truncated
     const from = reset ? 0 : cursor.pos
     const admittedEnd = through ?? stat.size
     const available = Math.max(
