@@ -18,6 +18,8 @@ import { modelsCommand } from './models.ts'
 import { oracleCommand } from './oracle.ts'
 import { replyCommand } from './reply.ts'
 import { threadCommand } from './thread.ts'
+import { filesCommand } from './files.ts'
+import type { createFileIndex } from '#projects/file-index.ts'
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
@@ -49,6 +51,7 @@ export function createServerCommands({
   kick,
   agents,
   catalogCommand,
+  fileIndex,
   showPage,
   subscriptionMap,
   retainThreads,
@@ -64,6 +67,7 @@ export function createServerCommands({
   send: ReturnType<typeof createServerClients>['send']
   kick(): void
   agents: ReturnType<typeof createHost>
+  fileIndex: ReturnType<typeof createFileIndex>
   catalogCommand({
     ws,
     id,
@@ -220,6 +224,7 @@ export function createServerCommands({
       'hydra-agent',
       'hydra-agent-change',
       'models',
+      'files',
       'compact',
     ].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
@@ -247,6 +252,16 @@ export function createServerCommands({
             fail,
             send,
             agents,
+          })
+        } else if (name === 'files') {
+          filesCommand({
+            ws,
+            id,
+            args,
+            fail,
+            send,
+            state,
+            fileIndex,
           })
         } else if (name === 'catalog') {
           catalogCommand({
