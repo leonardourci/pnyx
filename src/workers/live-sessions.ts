@@ -237,7 +237,7 @@ export function createLiveSessions({
             writer,
             agent,
             input: { activity: 'interrupted' },
-            actor: 'pnyx',
+            actor: 'othrys',
           }),
         })
       }
@@ -273,7 +273,7 @@ export function createLiveSessions({
               meta: {
                 id: `${message}:received`,
                 at: at(),
-                actor: 'pnyx',
+                actor: 'othrys',
               },
               change: {
                 type: 'hydra.received',
@@ -436,7 +436,7 @@ export function createLiveSessions({
                   id: item.id ?? randomUUID(),
                   text: item.text,
                   original: item.original,
-                  actor: item.id ? loadTitan({ hydraId: currentOwner().hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
+                  actor: item.id ? loadTitan({ hydraId: currentOwner().hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'othrys' : 'othrys',
                   route: card.id === TITAN_CARD ? 'hydra' : 'direct',
                   accepted: card.id === TITAN_CARD,
                   agent: item.agent,
@@ -703,7 +703,7 @@ export function createLiveSessions({
                     cardId: card.id,
                     meta: {
                       at: at(),
-                      actor: 'pnyx',
+                      actor: 'othrys',
                     },
                     change: {
                       type: 'task.tools-applied',
@@ -854,7 +854,7 @@ export function createLiveSessions({
                     },
                     meta: {
                       at: at(),
-                      actor: 'pnyx',
+                      actor: 'othrys',
                     },
                   }),
                 })
@@ -876,7 +876,7 @@ export function createLiveSessions({
               writer,
               agent: card.agent,
               input: { activity: outcome.status === 'interrupted' ? 'interrupted' : 'finished' },
-              actor: 'pnyx',
+              actor: 'othrys',
               eventId: `native:${outcome.turn}:${outcome.status}`,
               details: outcome.stoppedProcesses?.length
                 ? `Stopped foreground command processes: ${outcome.stoppedProcesses.join(', ')}` : undefined,
@@ -1143,7 +1143,7 @@ export function createLiveSessions({
                 writer,
                 agent: card.agent,
                 input: { activity: recordedActivity },
-                actor: 'pnyx',
+                actor: 'othrys',
                 eventId,
               })
             },
@@ -1389,7 +1389,7 @@ export function createLiveSessions({
           writer,
           agent,
           input: { activity: 'working' },
-          actor: 'pnyx',
+          actor: 'othrys',
         }),
       })
       resumed.input.push({

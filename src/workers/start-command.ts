@@ -229,7 +229,7 @@ export async function startCommand({
           ref: target,
           note: {
             kind: 'context',
-            source: 'pnyx:start',
+            source: 'othrys:start',
             text,
           },
           meta: {

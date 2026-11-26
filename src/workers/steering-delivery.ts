@@ -243,11 +243,11 @@ export function createSteeringDelivery({
               id: attempt ?? randomUUID(),
               claim,
               at: at(),
-              actor: 'pnyx',
+              actor: 'othrys',
               result: 'delivered',
             },
             meta: {
-              actor: 'pnyx',
+              actor: 'othrys',
               at: at(),
             },
           })

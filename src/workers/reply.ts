@@ -360,7 +360,7 @@ export async function sendReply({
         request.ask || retained ? text : entered,
         context,
       ].filter(Boolean).join('\n\n')
-      const nativeCompact = route?.kind === 'pnyx' && compactCommand({ text: payload })
+      const nativeCompact = route?.kind === 'othrys' && compactCommand({ text: payload })
       const steering = !nativeCompact && !isManagedTask({ card })
         && !control && !answers
         ? reply : undefined
@@ -444,7 +444,7 @@ export async function sendReply({
       state: 'failed',
       detail: `no reply route: ${queued.routeDetail}`,
     }
-  } else if (queued.steering && route.kind !== 'pnyx') {
+  } else if (queued.steering && route.kind !== 'othrys') {
     const notice = await notifySteering({
       hydraId,
       card,

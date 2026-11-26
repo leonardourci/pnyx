@@ -30,7 +30,7 @@ import { pendingPermissions } from './permission-rules.ts'
 import { applyDecision } from '#app/decision.ts'
 
 const meta = () => ({
-  actor: 'pnyx',
+  actor: 'othrys',
   at: new Date().toISOString(),
 })
 
@@ -449,7 +449,7 @@ async function deliverHandoffs({
         card: card.id,
         expectedSession: event.data.session,
         text: event.data.brief,
-        actor: 'pnyx',
+        actor: 'othrys',
         id,
       },
     })

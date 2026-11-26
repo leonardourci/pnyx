@@ -9,7 +9,7 @@ export function ownerInputUuid({ id }: { id: string }): UUID {
     return id as UUID
   }
 
-  const bytes = createHash('sha256').update(`pnyx-owner-input\0${id}`)
+  const bytes = createHash('sha256').update(`othrys-owner-input\0${id}`)
     .digest()
     .subarray(
       0,

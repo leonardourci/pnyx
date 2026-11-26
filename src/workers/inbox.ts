@@ -66,7 +66,7 @@ export function requireSteeringWorker({
     return
   }
 
-  const launchIdentityRequired = card.agent?.host === 'pnyx' || worker !== undefined
+  const launchIdentityRequired = card.agent?.host === 'othrys' || worker !== undefined
 
   if (launchIdentityRequired && (!worker || worker !== steeringWorkerIdentity({
     state,

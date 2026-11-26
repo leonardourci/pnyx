@@ -97,7 +97,7 @@ export function createHostedDelivery({
       const data: Parameters<typeof decideReply>[0]['data'] = {
         reply: inputId,
         state,
-        route: 'pnyx',
+        route: 'othrys',
       }
 
       if (detail) {
@@ -121,7 +121,7 @@ export function createHostedDelivery({
           data,
           meta: {
             at: at(),
-            actor: 'pnyx',
+            actor: 'othrys',
           },
         }),
       })

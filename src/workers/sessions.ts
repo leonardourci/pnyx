@@ -125,11 +125,11 @@ export function parseAgent({ value: rawValue }: { value: unknown }): AgentRef {
   }
 
   if (value.host !== undefined) {
-    if (value.host !== 'pnyx') {
+    if (value.host !== 'othrys') {
       throw invalid({ message: 'agent.host must be othrys' })
     }
 
-    agent.host = 'pnyx'
+    agent.host = 'othrys'
   }
 
   if (value.resume !== undefined) {

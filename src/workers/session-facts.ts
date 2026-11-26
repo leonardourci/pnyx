@@ -14,7 +14,7 @@ import { ownerInputUuid } from './input.ts'
 export function isSessionSource({ source }: { source?: SourceRef }): boolean {
   return !source || [
     'hooks',
-    'pnyx',
+    'othrys',
     'transcript',
   ].includes(source.adapter)
 }
@@ -47,7 +47,7 @@ function recordTurn({
   event: TitanEvent
   activity: string
 }): void {
-  if (session.agent.host !== 'pnyx' || session.agent.agentId) {
+  if (session.agent.host !== 'othrys' || session.agent.agentId) {
     return
   }
 
@@ -238,7 +238,7 @@ export function applySessionFacts({
     let via: NonNullable<AgentSession['launch']>['via'] = 'hooks'
 
     if (fields.agent.host) {
-      via = 'pnyx'
+      via = 'othrys'
     }
 
     const task = state.cards[event.data.task ?? '']

@@ -7,7 +7,7 @@ import { checkAnswer, type Prompt } from './answers.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { touch } from '#tasks/touch.ts'
 
-export const PERMISSION_PREFIX = 'pnyx:permission:'
+export const PERMISSION_PREFIX = 'othrys:permission:'
 
 const text = ({ value }: { value: unknown }) => typeof value === 'string' && value.trim() ? value.trim() : undefined
 

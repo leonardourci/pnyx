@@ -500,7 +500,7 @@ function mergeTitanFiles(): void {
       v: 1,
       id: randomUUID(),
       at: new Date().toISOString(),
-      actor: 'pnyx',
+      actor: 'othrys',
       reason: 'Merged each Titan’s own heads dispatch and accounts into the shared files',
       document: compose({
         dispatch: dispatch as Fields,

@@ -128,7 +128,7 @@ export async function checkAttachments({
   return Promise.all(sessions.map(async session => {
     let presence: Presence
 
-    if (session.agent.host === 'pnyx') {
+    if (session.agent.host === 'othrys') {
       presence = {
         state: 'present',
         detail: 'Othrys runs this agent; its next message resumes the session.',

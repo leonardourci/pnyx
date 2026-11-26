@@ -52,12 +52,12 @@ export type TerminalRoute = TerminalHost & {
   tty: string
   pid: number
 }
-export type ReplyRoute = { kind: 'pnyx' } | TerminalRoute
+export type ReplyRoute = { kind: 'othrys' } | TerminalRoute
 
 export const HOST_LABEL: Record<ReplyRoute['kind'], string> = {
   'tmux': 'tmux',
   'herdr': 'Herdr',
-  'pnyx': 'Othrys',
+  'othrys': 'Othrys',
   'iterm2': 'iTerm2',
   'terminal-app': 'Terminal',
 }
@@ -91,8 +91,8 @@ function host({ facts }: { facts: TerminalFacts }): TerminalHost | undefined {
 }
 
 export function replyRoute({ card }: { card: Card }): { route: ReplyRoute } | { reason: string } {
-  if (card.agent?.host === 'pnyx' && !card.agent.agentId) {
-    return { route: { kind: 'pnyx' } }
+  if (card.agent?.host === 'othrys' && !card.agent.agentId) {
+    return { route: { kind: 'othrys' } }
   }
 
   if (!card.agent) {

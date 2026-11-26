@@ -854,7 +854,7 @@ const initialize = ({ rpc }: { rpc: ReturnType<typeof connection> }) => rpc
     method: 'initialize',
     params: {
       clientInfo: {
-        name: 'pnyx',
+        name: 'othrys',
         version: '0.0.0',
       },
       capabilities: null,

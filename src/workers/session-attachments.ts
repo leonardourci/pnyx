@@ -8,7 +8,7 @@ import { touch } from '#tasks/touch.ts'
 
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
 // to that agent, so it goes when the agent leaves the task.
-export const INTERRUPTED = 'pnyx:interrupted'
+export const INTERRUPTED = 'othrys:interrupted'
 
 // New work for an agent clears the marker its cut turn left.
 export const withoutInterrupted = ({ attention }: { attention: Attention[] }) =>
@@ -298,7 +298,7 @@ export function applyAttachment({
       launchId: event.id,
       taskId: null,
       launch: {
-        via: 'pnyx',
+        via: 'othrys',
         at: event.at,
         folder: started.agent.cwd,
         harness: started.agent.provider,
@@ -418,9 +418,9 @@ export function observeSession({
   if (event.type === 'task.edited' || event.type === 'card.observed') {
     const pushedAgent = event.type === 'task.edited' ? event.data.agent : undefined
 
-    if (pushedAgent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
+    if (pushedAgent?.host === 'othrys' && session.launch?.via !== 'othrys') {
       session.launch = {
-        via: 'pnyx',
+        via: 'othrys',
         at: event.at,
         folder: card.agent.cwd,
         harness: card.agent.provider,
@@ -430,7 +430,7 @@ export function observeSession({
     if (!session.launch) {
       // Copies, not the card's own objects: a write through one would otherwise change the other without touching its row.
       session.launch = card.launch ? { ...card.launch } : {
-        via: card.agent.host ? 'pnyx' : 'hooks',
+        via: card.agent.host ? 'othrys' : 'hooks',
         at: event.at,
         folder: card.agent.cwd,
         harness: card.agent.provider,

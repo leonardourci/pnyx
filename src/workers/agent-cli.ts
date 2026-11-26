@@ -31,7 +31,7 @@ function agentSummary({
   const found = replyRoute({ card })
   const harness = harnessControls({
     provider,
-    hosted: 'route' in found && found.route.kind === 'pnyx',
+    hosted: 'route' in found && found.route.kind === 'othrys',
   })
   const controls = (harness?.controls ?? []).map(c => {
     const unavailable = 'reason' in found
@@ -141,7 +141,7 @@ export const agent = guard({
       provider,
       setting,
       value,
-      hosted: 'route' in found && found.route.kind === 'pnyx',
+      hosted: 'route' in found && found.route.kind === 'othrys',
     })
 
     if (!picked) {

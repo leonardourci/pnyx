@@ -109,7 +109,7 @@ export async function queueCardInput({
           data: {
             reply: id,
             state: 'queued',
-            route: 'pnyx',
+            route: 'othrys',
             text,
             worker: { agent },
           },
@@ -153,7 +153,7 @@ function requireCardInputTarget({ card }: { card: Card }) {
     })
   }
 
-  const outside = !!card.sessionIds?.length && card.agent?.host !== 'pnyx'
+  const outside = !!card.sessionIds?.length && card.agent?.host !== 'othrys'
 
   if (outside) {
     throw new TitanError({
@@ -230,7 +230,7 @@ export function createCardInputs({
           data: {
             reply: reply.id,
             state,
-            route: 'pnyx',
+            route: 'othrys',
             detail,
             worker: {
               agent: reply.worker!.agent,
@@ -238,7 +238,7 @@ export function createCardInputs({
             },
           },
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at: new Date().toISOString(),
           },
         }),
@@ -300,7 +300,7 @@ export function createCardInputs({
         const started = await startTask({
           hydraId,
           task: card.id,
-          via: 'pnyx',
+          via: 'othrys',
           harness: targetHarness,
           override,
           replacement: previous,

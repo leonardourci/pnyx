@@ -165,7 +165,7 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
                   },
                   meta: {
                     at: parsed.at,
-                    actor: 'pnyx',
+                    actor: 'othrys',
                     id,
                   },
                 }),
@@ -188,7 +188,7 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
                   },
                   meta: {
                     at: new Date().toISOString(),
-                    actor: 'pnyx',
+                    actor: 'othrys',
                   },
                 }),
               })
@@ -274,13 +274,13 @@ function restoreInstructionReceipts({
           attempt: {
             id: `${receipt.id}:${message.id}`,
             at,
-            actor: 'pnyx',
+            actor: 'othrys',
             claim,
             result: 'delivered',
           },
           meta: {
             at,
-            actor: 'pnyx',
+            actor: 'othrys',
           },
         })
       }

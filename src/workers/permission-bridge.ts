@@ -55,7 +55,7 @@ export function createPermissionBridge({
         },
         meta: {
           at: at(),
-          actor: 'pnyx',
+          actor: 'othrys',
         },
       }),
     })
@@ -193,7 +193,7 @@ export function createPermissionBridge({
             ? writer.state.cards[TITAN_CARD]
             : session?.taskId ? writer.state.cards[session.taskId] : undefined
 
-          if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
+          if (!current || current.agent?.host !== 'othrys' || sessionId({ agent: current.agent }) !== key) {
             throw new TitanError({
               message: 'the agent is no longer attached to this task',
               code: 'NO_ROUTE',
@@ -223,7 +223,7 @@ export function createPermissionBridge({
               request,
               meta: {
                 at: at(),
-                actor: 'pnyx',
+                actor: 'othrys',
               },
             }),
           })
@@ -298,7 +298,7 @@ export function createPermissionBridge({
           })
         }
 
-        if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+        if (!waiting || waiting.card !== card.id || card.agent?.host !== 'othrys' || sessionId({ agent: card.agent }) !== request.session) {
           expirePermission({
             writer,
             card,
@@ -421,7 +421,7 @@ export function createPermissionBridge({
       const card = state.cards[waiting.card]
       const request = card?.permissions?.find(p => p.id === id)
 
-      if (!request || request.status !== 'pending' || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+      if (!request || request.status !== 'pending' || card?.agent?.host !== 'othrys' || sessionId({ agent: card.agent }) !== request.session) {
         expire({ id })
       }
     }

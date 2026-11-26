@@ -174,7 +174,7 @@ export function toolEnvironment({
 
   return {
     ...env,
-    CHROME_DEVTOOLS_AXI_SESSION: `pnyx-${hydraId}-${task === TITAN_CARD ? 'hydra' : task}`,
+    CHROME_DEVTOOLS_AXI_SESSION: `othrys-${hydraId}-${task === TITAN_CARD ? 'hydra' : task}`,
     CHROME_DEVTOOLS_AXI_HEADED: '0',
     CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '0',
     CHROME_DEVTOOLS_AXI_BROWSER_URL: '',

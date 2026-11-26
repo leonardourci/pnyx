@@ -31,7 +31,7 @@ export function stopWorkerInputs({
       seq: writer.state.seq + 1,
       id: `stop:${card.id}:${writer.state.seq}`,
       cardId: card.id,
-      actor: 'pnyx',
+      actor: 'othrys',
       at,
       type: 'task.steering.stopped',
       data: { messages: messages.map(message => message.id) },
@@ -50,11 +50,11 @@ export function stopWorkerInputs({
           data: {
             reply: reply.id,
             state: 'failed',
-            route: 'pnyx',
+            route: 'othrys',
             detail: 'stopped',
           },
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at,
           },
         }),

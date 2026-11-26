@@ -52,7 +52,7 @@ function recordRecovery({
       seq: writer.state.seq + 1,
       cardId: card,
       at: recovery.at,
-      actor: 'pnyx',
+      actor: 'othrys',
       type: 'task.steering.recovery',
       data: {
         message,

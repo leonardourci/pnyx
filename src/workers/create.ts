@@ -209,7 +209,7 @@ async function startCreated({
     await noteOnce({
       hydraId,
       task,
-      source: 'pnyx:create',
+      source: 'othrys:create',
       text: [
         `Could not start a worker: ${error.message}`,
         ...error.help,

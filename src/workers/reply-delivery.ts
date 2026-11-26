@@ -10,7 +10,7 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import type { ReplyRequest } from './reply.ts'
 
 export function routeName({ route }: { route: ReplyRoute }): string {
-  return route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
+  return route.kind === 'othrys' ? route.kind : `terminal:${route.kind}`
 }
 
 // Time for Claude Code to show its confirmation after a model or effort command.
@@ -44,7 +44,7 @@ export async function deliver({
     })
   }
 
-  if (route.kind === 'pnyx') {
+  if (route.kind === 'othrys') {
     return hostReply({
       hydraId,
       card,

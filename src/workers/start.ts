@@ -30,7 +30,7 @@ import { sendReply } from './reply.ts'
 import { flagGiven } from './cli.ts'
 
 const VIAS = [
-  'pnyx',
+  'othrys',
   'command',
 ] as const
 type Via = (typeof VIAS)[number]
@@ -48,7 +48,7 @@ export function startRoute({
   override?: Override
   tools?: string[]
 }): Via {
-  const chosen = via ?? 'pnyx'
+  const chosen = via ?? 'othrys'
 
   if (!(VIAS as readonly string[]).includes(chosen)) {
     throw new TitanError({
@@ -67,7 +67,7 @@ export function startRoute({
     })
   }
 
-  if (replacement && how !== 'pnyx') {
+  if (replacement && how !== 'othrys') {
     throw new TitanError({
       message: 'starting fresh from an outside session uses Othrys',
       code: 'VALIDATION_ERROR',
@@ -82,7 +82,7 @@ export function startRoute({
     })
   }
 
-  if (tools?.length && how !== 'pnyx') {
+  if (tools?.length && how !== 'othrys') {
     throw new TitanError({
       message: 'Tool grants require the othrys launch route',
       code: 'VALIDATION_ERROR',
@@ -397,7 +397,7 @@ async function noteOpen({
   await noteOnce({
     hydraId,
     task,
-    source: 'pnyx:start',
+    source: 'othrys:start',
     text: [
       'Started with these still open:',
       ...open.map(item => `- ${item.reason}. ${item.clear}`),

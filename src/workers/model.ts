@@ -22,7 +22,7 @@ export interface AgentRef {
   account?: string
   loginFolder?: string
   // Set when the Othrys server runs this agent itself instead of a terminal.
-  host?: 'pnyx'
+  host?: 'othrys'
   // An adopted native session must resume even when its transcript is unavailable.
   resume?: true
 }
@@ -232,7 +232,7 @@ export type StartOverride = Partial<Pick<AgentConfig, 'account' | 'model' | 'eff
 export interface AgentLaunch {
   dispatch?: string
   override?: StartOverride
-  via: 'command' | 'hooks' | 'pnyx'
+  via: 'command' | 'hooks' | 'othrys'
   at: string
   folder?: string
   command?: string

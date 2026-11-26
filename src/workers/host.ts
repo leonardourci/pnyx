@@ -36,7 +36,6 @@ export const TITAN_TURN_POLL_MS = 20
 export const WORKER_RESUME = 'Othrys restarted during your turn; continue from where you stopped.'
 const TITAN_RESUME = /^<othrys-wake>An? Othrys server restart cut your last turn/
 
-// Whether a message is a resume Othrys sent after a restart.
 export const resumeMessage = ({ text }: { text: string }) =>
   text.trim() === WORKER_RESUME || TITAN_RESUME.test(text)
 
@@ -203,7 +202,7 @@ export const toolApplicationReady = ({ card }: {
   state: TitanState
   card: Card
 }) =>
-  card.agent?.host === 'pnyx' && card.toolsRevision !== undefined
+  card.agent?.host === 'othrys' && card.toolsRevision !== undefined
     && card.toolsRevision !== card.toolsApplied && card.copy?.state !== 'removed'
 
 export function closedTask({

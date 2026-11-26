@@ -139,7 +139,7 @@ export async function notifySteering({
         claim,
       })
 
-      if (route.kind === 'pnyx') {
+      if (route.kind === 'othrys') {
         try {
           const accepted = await askHost({
             hydraId,
@@ -148,7 +148,7 @@ export async function notifySteering({
               card: card.id,
               steering: message.id,
               attempt,
-              actor: 'pnyx',
+              actor: 'othrys',
             },
           })
           outcome = accepted.deferred
@@ -204,14 +204,14 @@ export async function notifySteering({
           attempt: {
             id: attempt,
             at: new Date(now).toISOString(),
-            actor: 'pnyx',
+            actor: 'othrys',
             claim,
             result: outcome.result === 'gone' ? 'failed' : outcome.result,
             detail: outcome.detail,
           },
           meta: {
             at: new Date(now).toISOString(),
-            actor: 'pnyx',
+            actor: 'othrys',
           },
         })
       },

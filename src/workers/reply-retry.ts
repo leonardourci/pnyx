@@ -66,7 +66,7 @@ const folded = ({ text }: { text: string }) => text.replace(
 // Replies a terminal route could not confirm, other than resends, answers to a request and setting changes.
 // One to an agent Othrys runs is never resent by itself: the owner sends it again.
 const unconfirmedOriginals = ({ card }: { card: Card }) => (card.replies ?? [])
-  .filter(reply => reply.state === 'delivery_unknown' && reply.route !== 'pnyx' && !reply.answers && !reply.id.includes(RETRY_MARK)
+  .filter(reply => reply.state === 'delivery_unknown' && reply.route !== 'othrys' && !reply.answers && !reply.id.includes(RETRY_MARK)
     && !card.steering?.some(message => message.reply === reply.id))
 
 // Whether any reply could need a follow-up, so the server knows to keep checking.
@@ -345,7 +345,7 @@ function recordArrived({
     },
     meta: {
       at: new Date().toISOString(),
-      actor: 'pnyx',
+      actor: 'othrys',
     },
   })
 

@@ -29,7 +29,7 @@ export function recordCompaction({
       id: randomUUID(),
       seq: writer.state.seq + 1,
       cardId: card,
-      actor: 'pnyx',
+      actor: 'othrys',
       at,
       type: 'session.compaction',
       data: change,

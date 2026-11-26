@@ -56,7 +56,7 @@ export async function toolsCommand({
     meta,
   })
 
-  const delivery = result.changed && card.agent?.host === 'pnyx' ? await askHost({
+  const delivery = result.changed && card.agent?.host === 'othrys' ? await askHost({
     hydraId,
     body: {
       action: 'tools-changed',
@@ -72,7 +72,7 @@ export async function toolsCommand({
   }
 
   // Another launch route cannot enforce the selection, so it waits for an Othrys-hosted start.
-  if (result.changed && card.agent && card.agent.host !== 'pnyx') {
+  if (result.changed && card.agent && card.agent.host !== 'othrys') {
     return {
       ...output,
       help: ['This agent runs outside Othrys, so the selection applies from its next Othrys-hosted start'],

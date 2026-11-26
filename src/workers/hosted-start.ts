@@ -168,7 +168,7 @@ export function createWorkerStarts({
       ref,
     })
 
-    if (inputId && card.agent?.host === 'pnyx') {
+    if (inputId && card.agent?.host === 'othrys') {
       const queued = card.replies?.find(reply => reply.id === inputId && reply.state === 'queued' && reply.worker)
       const current = sessionId({ agent: card.agent })
       const running = live.get(current)
@@ -384,7 +384,7 @@ export function createWorkerStarts({
           sessionId: prepared.id,
           cwd,
           ...(prepared.path ? { transcriptPath: prepared.path } : {}),
-          host: 'pnyx',
+          host: 'othrys',
           ...(dispatch ? {
             account: dispatch.account,
             loginFolder: dispatch.folder,
@@ -490,7 +490,7 @@ export function createWorkerStarts({
               change: {
                 type: 'task.launched',
                 data: {
-                  via: 'pnyx',
+                  via: 'othrys',
                   at: meta.at,
                   folder: cwd,
                   harness: dispatch.provider,
@@ -538,7 +538,7 @@ export function createWorkerStarts({
               data: {
                 reply: inputId,
                 state: 'queued',
-                route: 'pnyx',
+                route: 'othrys',
                 worker: {
                   agent: queued.worker.agent,
                   session: sessionKey,
@@ -615,7 +615,7 @@ export function createWorkerStarts({
           harness: harnessOf({ provider }),
           session: started.agent.sessionId,
           folder: started.agent.cwd,
-          host: 'pnyx',
+          host: 'othrys',
         },
         help: [`Run \`othrys send --task ${started.id} --text <text>\` to continue; the Othrys server runs the agent`],
       }
@@ -687,7 +687,7 @@ export function createWorkerStarts({
           input: {
             agent: {
               ...agent,
-              host: 'pnyx',
+              host: 'othrys',
               resume: true,
               ...(agent.provider === PROVIDERS.claude.provider && !agent.transcriptPath ? {
                 transcriptPath: transcriptPath({
@@ -699,7 +699,7 @@ export function createWorkerStarts({
             terminal: {},
             activity: 'finished',
             source: {
-              adapter: 'pnyx',
+              adapter: 'othrys',
               objectId: agent.sessionId,
               observedAt: at(),
             },
@@ -734,7 +734,7 @@ export function createWorkerStarts({
           harness: harnessOf({ provider: agent.provider }),
           session: agent.sessionId,
           folder: agent.cwd,
-          host: 'pnyx',
+          host: 'othrys',
         },
         help: [`Send a message with \`othrys send --task ${card.id} --text <text>\` to resume the session in Othrys`],
       }

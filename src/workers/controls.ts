@@ -325,8 +325,8 @@ export function inputReason({
   kind: ReplyRoute['kind']
   input: ControlInput
 }): string | undefined {
-  if ((kind === 'pnyx') !== ('set' in input)) {
-    return kind === 'pnyx' ? 'Othrys sets this agent\'s settings directly.' : 'Only an agent Othrys runs takes this setting directly.'
+  if ((kind === 'othrys') !== ('set' in input)) {
+    return kind === 'othrys' ? 'Othrys sets this agent\'s settings directly.' : 'Only an agent Othrys runs takes this setting directly.'
   }
 
   if (!('key' in input)) {
