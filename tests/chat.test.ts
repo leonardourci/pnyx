@@ -84,10 +84,16 @@ test(
     })
 
     await until({
-      what: 'Titan to interrupt and answer the new messages without releasing the old turn',
+      what: 'the queue to show Titan working',
+      check: () => queue({ titanId: titan.id })?.working === true,
+    })
+    expect(session.answered).toBe(0)
+
+    turn.release()
+    await until({
+      what: 'Titan to answer all three messages',
       check: () => session.answered === 3,
     })
-    turn.release()
     await until({
       what: 'the queue to show Titan idle',
       check: () => queue({ titanId: titan.id })?.working === false,
@@ -122,6 +128,68 @@ test(
       'also check the docs',
       'and the changelog',
     ])
+  },
+)
+
+test(
+  'a message the owner sends while Titan runs a tool reaches that turn without stopping the tool, and the turn ends with its own reply',
+  async () => {
+    const titan = await othrys.titan()
+    const turn = othrys.claude.plan({
+      titan: titan.id,
+      text: 'run the test suite',
+      reply: 'Suite passed.',
+      tool: {
+        id: 'toolu_suite',
+        name: 'Bash',
+        input: { command: 'pnpm test' },
+      },
+      hold: true,
+      folds: true,
+    })
+    const session = await titan.chat({ text: 'run the test suite' })
+    await titan.owner({
+      args: [
+        'titan',
+        'send',
+        '--text',
+        'and report the coverage',
+      ],
+    })
+
+    await until({
+      what: 'Titan to take the message into the running turn',
+      check: () => heard({
+        received: session.received,
+        text: 'and report the coverage',
+      }) === 1,
+    })
+    expect(session.answered).toBe(0)
+    expect(queue({ titanId: titan.id })?.working).toBe(true)
+
+    turn.release()
+    await until({
+      what: 'the turn to end with its own reply',
+      check: () => session.answered === 2 && queue({ titanId: titan.id })?.working === false,
+    })
+    const page = await titan.page()
+    const { thread } = await page.send({
+      name: 'thread',
+      args: ['$titan'],
+    }) as {
+      thread: {
+        conversation: {
+          entries: {
+            role: string
+            text: string
+          }[]
+        }
+      }
+    }
+    page.close()
+    expect(thread.conversation.entries.filter(entry => entry.role === 'assistant').map(entry => entry.text)).toContain('Suite passed.')
+    expect(loadTitan({ titanId: titan.id }).state.cards[TITAN_CARD]!.attention
+      .some(item => item.kind === 'interrupted')).toBe(false)
   },
 )
 
@@ -1470,13 +1538,6 @@ test(
     })
     await titan.chat({ text: 'plan the migration' })
 
-    othrys.claude.plan({
-      titan: titan.id,
-      text: 'and the backups',
-      partial: 'Checking backups',
-      hold: true,
-    })
-
     for (const text of [
       'also check the indexes',
       'and the backups',
@@ -1584,7 +1645,11 @@ test(
         facts.find(fact => fact.id === match[1])?.event.data.text,
     )
 
-    expect(recoveredOwnerMessages).toEqual(['and the backups'])
+    expect(recoveredOwnerMessages).toEqual([
+      'plan the migration',
+      'also check the indexes',
+      'and the backups',
+    ])
 
     const { messages } = await titan.owner({
       args: [
