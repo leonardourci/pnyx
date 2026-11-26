@@ -412,6 +412,7 @@ export interface TranscriptRecord {
   at?: string
   role: string
   messages: TranscriptMessage[]
+  folded?: string
   traces: TranscriptTrace[]
   calls: TranscriptCall[]
   results: string[]

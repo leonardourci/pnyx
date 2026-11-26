@@ -11,6 +11,7 @@ import { readSteeringMessages } from './inbox-notice.ts'
 import { steeringClaim, steeringWorkerIdentity } from './steering.ts'
 import { cardSessionId } from './session-attachments.ts'
 import type { AgentSession } from './model.ts'
+import type { TranscriptRecord } from './provider.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { compactCommand } from './compact-command.ts'
 
@@ -89,12 +90,16 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
                 manualCompact = parsed.messages.some(message => compactCommand({
                   text: message.text,
                 }))
+              }
 
+              const taken = takenTexts({ parsed })
+
+              if (taken.length) {
                 const inputs = new Map<string, string>()
 
-                for (const message of parsed.messages) {
+                for (const text of taken) {
                   const ids = readSteeringMessages({
-                    text: message.text,
+                    text,
                     task: current.taskId ?? '',
                   })
 
@@ -214,6 +219,14 @@ export async function restoreSessionActivity({ hydraId }: { hydraId: string }): 
       })
     }
   }
+}
+
+function takenTexts({ parsed }: { parsed: TranscriptRecord }): string[] {
+  if (parsed.role === 'user') {
+    return parsed.messages.map(message => message.text)
+  }
+
+  return parsed.folded === undefined ? [] : [parsed.folded]
 }
 
 function restoreInstructionReceipts({

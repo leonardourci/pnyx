@@ -1457,6 +1457,10 @@ export const readClaudeTranscript: TranscriptReader = ({
         }
       }
     }
+
+    if (attachment.type === 'queued_command') {
+      parsed.folded = textContent({ value: attachment.prompt })
+    }
   }
 
   const message = object({ value: entry.message })

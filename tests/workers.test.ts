@@ -2,6 +2,7 @@ import { loadTitan } from '#app/store.ts'
 import { taskChildren } from '#app/task-runtime.ts'
 import { localToken } from '#app/server-state.ts'
 import { foldWorkerLog } from '#workers/worker-log.ts'
+import { readTranscript } from '#workers/transcript-read.ts'
 import { withWriter } from '#app/writer.ts'
 import { quietNativeWatch } from './setup/watch.ts'
 import { workerLine } from './setup/worker-log.ts'
@@ -9,7 +10,7 @@ import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { WAIT_MS } from './setup/until.ts'
 import { once } from 'node:events'
-import { constants, openSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
+import { constants, openSync, statSync, appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, onTestFinished, test, vi } from 'vitest'
@@ -1777,6 +1778,153 @@ test(
       sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
       text: 'Keep this instruction unread',
     })).toBe(1)
+  },
+)
+
+test(
+  'an instruction Claude folds into a running turn stays read across restart and reaches the worker once',
+  async () => {
+    const hydra = await othrys.hydra()
+    const {
+      folder,
+      worker,
+    } = await hydra.startTask({ key: 'folded-read' })
+    const titan = await hydra.chat({ text: 'Watch folded-read' })
+    const held = othrys.claude.plan({
+      hydra: hydra.id,
+      match: ({ text }) => text.includes('Run the long step'),
+      partial: 'Running',
+      hold: true,
+      folds: true,
+    })
+    onTestFinished(() => held.release())
+    await hydra.owner({
+      args: [
+        'reply',
+        'folded-read',
+        '--text',
+        'Run the long step',
+      ],
+    })
+    await until({
+      what: 'the long step to start',
+      check: () => worker.received.some(text => text.includes('Run the long step')),
+    })
+    await hydra.as({ session: titan }).run({
+      args: [
+        'reply',
+        'folded-read',
+        '--text',
+        'Also update the changelog',
+      ],
+    })
+    await until({
+      what: 'Claude to fold the instruction into the running turn',
+      check: () => worker.received.some(text => text.includes('Also update the changelog')),
+    })
+    const answered = worker.answered
+    held.release()
+    await until({
+      what: 'the long step to end',
+      check: () => worker.answered > answered,
+    })
+    const read = async () => (await hydra.owner({
+      args: [
+        'task',
+        'show',
+        'folded-read',
+        '--full',
+      ],
+    })).task.steering?.some((message: {
+      text: string
+      ack?: { outcome: string }
+    }) => message.text === 'Also update the changelog' && message.ack?.outcome === 'read')
+    await until({
+      what: 'the folded instruction to read as read',
+      check: read,
+    })
+    await othrys.restart()
+    await until({
+      what: 'the folded instruction to read as read after restart',
+      check: read,
+    })
+    expect(times({
+      sessions: othrys.claude.sessions.filter(session => session.cwd === folder),
+      text: 'Also update the changelog',
+    })).toBe(1)
+  },
+)
+
+test(
+  'a worker.log and a transcript keep the read positions an older Othrys saved before a reboot renumbered their disk',
+  async () => {
+    const hydra = await othrys.hydra()
+    const { worker } = await hydra.startTask({ key: 'renumbered' })
+    const task = await hydra.task({ key: 'renumbered' })
+    const log = join(
+      worker.env.OTHRYS_TASK_DIR!,
+      'worker.log',
+    )
+    const transcript = loadTitan({ hydraId: hydra.id }).state.cards[task.id]!.agent!.transcriptPath!
+
+    const savedOnEarlierMount = ({ path }: { path: string }) => {
+      const file = statSync(path)
+
+      return `${file.dev + 1}:${file.ino}`
+    }
+
+    const read = readTranscript({
+      cursor: {
+        source: transcript,
+        identity: '',
+        pos: 0,
+      },
+    })!
+    expect(readTranscript({
+      cursor: {
+        source: transcript,
+        identity: savedOnEarlierMount({ path: transcript }),
+        pos: read.end,
+      },
+    })).toMatchObject({
+      reset: false,
+      lines: [],
+    })
+
+    const replayed = await withWriter({
+      hydraId: hydra.id,
+      fn: ({ writer }) => {
+        appendFileSync(
+          log,
+          'done: shipped before the reboot\n',
+        )
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: `older-othrys:${task.id}`,
+            at: new Date().toISOString(),
+            cardId: task.id,
+            actor: `worker:${task.id}`,
+            type: 'task.worker-line',
+            data: {
+              identity: savedOnEarlierMount({ path: log }),
+              off: statSync(log).size,
+              code: 'done',
+              text: 'shipped before the reboot',
+            },
+          },
+        })
+        const before = writer.state.seq
+        foldWorkerLog({
+          writer,
+          task: task.id,
+        })
+
+        return writer.state.seq - before
+      },
+    })
+    expect(replayed).toBe(0)
   },
 )
 
