@@ -31,10 +31,6 @@ const INJECTED_TAGS = [
   'local-command-stderr',
   'local-command-caveat',
   'user-prompt-submit-hook',
-  'pnyx-wake',
-  'pnyx-digest',
-  'pnyx-context',
-  'pnyx-worker',
   'othrys-wake',
   'othrys-digest',
   'othrys-context',
@@ -72,7 +68,7 @@ export function wakeInput({ text }: { text: string }): boolean {
       return false
     }
 
-    if (block[1] === 'othrys-wake' || block[1] === 'pnyx-wake') {
+    if (block[1] === 'othrys-wake') {
       return true
     }
 
