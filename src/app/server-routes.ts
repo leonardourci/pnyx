@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { hydraImageFile } from '#titan/image-files.ts'
+import { titanImageFile } from '#titan/image-files.ts'
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#titan/images.ts'
 import { listFolders } from '#projects/folders.ts'
 import { privateDir } from '#store/storage.ts'
@@ -150,7 +150,7 @@ export function createServerRoutes({
         })
       }
 
-      const served = hydraImageFile({
+      const served = titanImageFile({
         dir,
         route: image,
       })

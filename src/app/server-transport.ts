@@ -151,7 +151,7 @@ export type TitanRequest = {
   search: string
 }
 
-export const TITAN_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+export const TITAN_PATH = /^\/titan\/([^/]+)(\/.*)?$/
 
 // A target such as // reads as a URL with an empty host, which throws; take it as a path instead.
 export const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(

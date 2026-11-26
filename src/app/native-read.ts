@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { TITAN_ID } from '#titan/identity.ts'
-import { COMPONENT, hydraFiles, taskFiles } from '#store/file-home.ts'
+import { COMPONENT, titanFiles, taskFiles } from '#store/file-home.ts'
 import { readLog, type LogEntry } from '#store/log.ts'
 import { othrysHome } from '#store/paths.ts'
 import { assembleNative, nativeId, nativeReferences, reduceNative, type NativeState } from './native-state.ts'
@@ -27,11 +27,11 @@ export function nativeTitanIds(): string[] {
       home,
       'titans',
     ),
-  }).filter(hydra => TITAN_ID.test(hydra)
+  }).filter(titan => TITAN_ID.test(titan)
     && existsSync(join(
-      hydraFiles({
+      titanFiles({
         home,
-        hydra,
+        titan,
       }),
       'titan.log',
     )))
@@ -43,9 +43,9 @@ export function readNativeTitan({ titanId }: { titanId: string }): {
   state: TitanState
 } {
   const home = othrysHome()
-  const dir = hydraFiles({
+  const dir = titanFiles({
     home,
-    hydra: titanId,
+    titan: titanId,
   })
   const scopes = [
     {
@@ -66,7 +66,7 @@ export function readNativeTitan({ titanId }: { titanId: string }): {
         path: join(
           taskFiles({
             home,
-            hydra: titanId,
+            titan: titanId,
             task,
           }),
           'task.log',
@@ -126,7 +126,7 @@ export function readNativeTitan({ titanId }: { titanId: string }): {
     )
   }
 
-  const hydrated = ({ id }: { id: string }) => nativeReferences({
+  const restored = ({ id }: { id: string }) => nativeReferences({
     value: projections.get(id),
     ids: positions,
     restore: true,
@@ -136,11 +136,11 @@ export function readNativeTitan({ titanId }: { titanId: string }): {
     dir,
     state: assembleNative({
       positions,
-      hydra: hydrated({ id: titanId }),
+      titan: restored({ id: titanId }),
       tasks: scopes.slice(1).filter(scope => projections.has(scope.id))
         .map(scope => [
           scope.id,
-          hydrated({ id: scope.id }),
+          restored({ id: scope.id }),
         ]),
     }),
   }

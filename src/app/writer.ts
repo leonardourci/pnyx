@@ -107,7 +107,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
         requireTitan({ titanId })
       }
 
-      await home.ensure({ hydra: titanId })
+      await home.ensure({ titan: titanId })
       const initial = writableTitan({ titanId })
 
       if (transaction) {
@@ -162,7 +162,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
           if (!current) {
             current = home.files.value({
-              hydra: id,
+              titan: id,
               task: scope === TITAN_CARD ? undefined : scope,
             })?.state ?? {}
             stage.projections.set(
@@ -208,7 +208,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           committed: stage.committed,
           onAppend: ({ event }) => {
             home.position({
-              hydra: id,
+              titan: id,
               scope: event.cardId.startsWith('$') || event.type.startsWith('titan.') ? id : event.cardId,
               id: event.id,
               seq: event.seq,
@@ -250,7 +250,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                 scope: TITAN_CARD,
                 fact: nativeInscribe({
                   event,
-                  ids: home.references({ hydra: id }),
+                  ids: home.references({ titan: id }),
                   basis: basis({ scope: TITAN_CARD }),
                   beforeSeq: before.seq,
                 }),
@@ -267,15 +267,15 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               event,
               before,
               after,
-              ids: home.references({ hydra: id }),
+              ids: home.references({ titan: id }),
               basis: basis({ scope: TITAN_CARD }),
             })
             const scoped = before.cards[event.cardId] ?? after.cards[event.cardId]
-            const hydraEvent = event.type.startsWith('titan.')
+            const titanEvent = event.type.startsWith('titan.')
             || event.cardId === TITAN_CARD || !scoped
 
-            if (metadata.change?.length || hydraEvent) {
-              if (!hydraEvent) {
+            if (metadata.change?.length || titanEvent) {
+              if (!titanEvent) {
                 delete metadata.event
                 metadata.t = 'config'
                 metadata.id = `native-metadata:${event.id}`
@@ -293,7 +293,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                 projectNative({
                   state: before,
                   task: event.cardId,
-                  ids: home.references({ hydra: id }),
+                  ids: home.references({ titan: id }),
                 }),
               )
             }
@@ -304,7 +304,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                 projectNative({
                   state: after,
                   task: event.cardId,
-                  ids: home.references({ hydra: id }),
+                  ids: home.references({ titan: id }),
                 }),
               )
               stage.projections.set(
@@ -356,7 +356,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                 continue
               }
 
-              const issue = home.files.positions({ hydra: id })?.tasks.get(task)?.issue
+              const issue = home.files.positions({ titan: id })?.tasks.get(task)?.issue
 
               if (issue) {
                 if (event.cardId === task) {
@@ -371,7 +371,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                 before,
                 after,
                 task,
-                ids: home.references({ hydra: id }),
+                ids: home.references({ titan: id }),
                 basis: basis({ scope: task }),
               })
               const fresh = !home.files.locateTask({ task }) && !stage.facts.has(task)
@@ -383,7 +383,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
                   after: projectNative({
                     state: after,
                     task,
-                    ids: home.references({ hydra: id }),
+                    ids: home.references({ titan: id }),
                   }),
                 })
               }
@@ -446,7 +446,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
           return [
             {
-              hydra: stage.id,
+              titan: stage.id,
               task: scope === TITAN_CARD ? undefined : scope,
               create: scope !== TITAN_CARD && !home.files.locateTask({ task: scope }),
               facts,
@@ -485,19 +485,19 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             data: {
               event: nativeDecision({
                 event,
-                ids: home.references({ hydra: stage.id }),
+                ids: home.references({ titan: stage.id }),
               }),
               key: before.card?.key ?? event.cardId,
               change: nativeChanges({
                 before: source?.projections.get(event.cardId)
                   ?? home.files.value({
-                    hydra: event.data.from,
+                    titan: event.data.from,
                     task: event.cardId,
                   })?.state ?? {},
                 after: {
                   ...source?.projections.get(event.cardId)
                     ?? home.files.value({
-                      hydra: event.data.from,
+                      titan: event.data.from,
                       task: event.cardId,
                     })?.state,
                   ...after,
@@ -509,7 +509,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
 
           if (remaining?.length) {
             await home.files.changeTask({
-              hydra: stage.id,
+              titan: stage.id,
               task: event.cardId,
               decide: () => remaining,
             })
@@ -520,11 +520,11 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           attemptedWrite = true
           const value = nativeReferences({
             value: nativeJson({ value: result as Output }),
-            ids: home.references({ hydra: titanId }),
+            ids: home.references({ titan: titanId }),
             kind: 'receipt',
           }) as Output
           await home.files.changeTitan({
-            hydra: titanId,
+            titan: titanId,
             decide: () => [
               {
                 t: 'config',
@@ -559,7 +559,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           const state = stage.writer.state
           const receiptChanged = transaction !== undefined && stage.id === titanId
           home.remember({
-            hydra: stage.id,
+            titan: stage.id,
             state,
             events: stage.pending,
             dirty: stage.facts.size > 0 || stage.incoming.size > 0 || receiptChanged,
@@ -574,7 +574,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             if (task !== TITAN_CARD && state.cards[task] && facts.length) {
               bindNativeTask({
                 home: home.path,
-                hydra: stage.id,
+                titan: stage.id,
                 card: state.cards[task]!,
               })
             }
@@ -583,7 +583,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
           for (const task of stage.incoming.keys()) {
             bindNativeTask({
               home: home.path,
-              hydra: stage.id,
+              titan: stage.id,
               card: state.cards[task]!,
             })
           }
@@ -595,13 +595,13 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
             const holder = root ? undefined : home.files.locateTask({ task: event.cardId })
             const scope = root ? stage.id : event.cardId
             const accepted = home.files.has({
-              hydra: holder?.hydra ?? stage.id,
+              titan: holder?.titan ?? stage.id,
               task: root ? undefined : event.cardId,
               id: event.id,
             })
 
             if (!accepted) {
-              home.references({ hydra: stage.id }).delete(nativeId({
+              home.references({ titan: stage.id }).delete(nativeId({
                 scope,
                 id: event.id,
               }))

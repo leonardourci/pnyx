@@ -126,7 +126,7 @@ function pageOutput({
     })),
     opened: opened.length ? opened : 'none: no --card given',
     hidden: interest.hidden ? cards.filter(card => !liveTask({ card })).length : 'not included; pass --hidden',
-    ownerMessage: page.hydraOwnerMessage?.id ?? 'none: the owner has not messaged Titan',
+    ownerMessage: page.titanOwnerMessage?.id ?? 'none: the owner has not messaged Titan',
     unavailable: unavailable.length ? unavailable : 'none: every card found',
     help: [
       `Use the UI to inspect the full Titan ${titanId}`,

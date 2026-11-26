@@ -15,7 +15,7 @@ export type Held = NativeHeld
 export const heldTitan = ({ titanId }: { titanId: string }): Held | undefined => {
   const home = openedNativeHome()
 
-  return home?.held.has(titanId) ? home.read({ hydra: titanId }) : undefined
+  return home?.held.has(titanId) ? home.read({ titan: titanId }) : undefined
 }
 
 export async function holdTitan({
@@ -26,8 +26,8 @@ export async function holdTitan({
   changed(): void
 }): Promise<() => Promise<void>> {
   const home = nativeHome()
-  await home.run({ fn: () => home.ensure({ hydra: titanId }) })
-  const record = home.read({ hydra: titanId })
+  await home.run({ fn: () => home.ensure({ titan: titanId }) })
+  const record = home.read({ titan: titanId })
   record.changed = changed
   home.held.add(titanId)
 
@@ -45,7 +45,7 @@ export function reloadTitan({ titanId }: { titanId: string }): void {
   const home = nativeHome()
 
   try {
-    home.reload({ hydra: titanId })
+    home.reload({ titan: titanId })
   } catch (error) {
     const record = home.records.get(titanId)
 
@@ -72,7 +72,7 @@ export function writableTitan({
   titanId: string
   migrate?: boolean
 }): Held {
-  return nativeHome().read({ hydra: titanId })
+  return nativeHome().read({ titan: titanId })
 }
 
 export function loadTitan({
@@ -90,7 +90,7 @@ export function loadTitan({
   const {
     dir,
     state,
-  } = home.read({ hydra: titanId })
+  } = home.read({ titan: titanId })
 
   return {
     dir,
@@ -98,14 +98,14 @@ export function loadTitan({
   }
 }
 
-export function hydraExists({ titanId }: { titanId: string }): boolean {
+export function titanExists({ titanId }: { titanId: string }): boolean {
   const home = openedNativeHome()
 
-  return (home?.files.hydras() ?? nativeTitanIds()).includes(titanId)
+  return (home?.files.titans() ?? nativeTitanIds()).includes(titanId)
 }
 
 export function requireTitan({ titanId }: { titanId: string }): void {
-  if (titanId !== DEFAULT_TITAN && !hydraExists({ titanId })) {
+  if (titanId !== DEFAULT_TITAN && !titanExists({ titanId })) {
     throw new TitanError({
       code: 'NOT_FOUND',
       message: `unknown Titan: ${titanId}`,

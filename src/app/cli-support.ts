@@ -1,7 +1,6 @@
+import { parseArgs, type ParseArgsConfig } from 'node:util'
 import { requestEnv } from '#app/request-context.ts'
 import { withCommandNotices, inform } from './command-notices.ts'
-import { type ParseArgsConfig } from 'node:util'
-import { parseCommandArgs as parseArgs } from './command-aliases.ts'
 import type { EventType, TitanState, TitanEvent, Decision } from './model.ts'
 import { DEFAULT_TITAN } from './home-migration.ts'
 import type { Meta } from './command-meta.ts'
@@ -36,7 +35,7 @@ export type Output = Record<string, unknown>
 
 export type Options = NonNullable<ParseArgsConfig['options']>
 
-export const COMMON: Options = { hydra: { type: 'string' } }
+export const COMMON: Options = { titan: { type: 'string' } }
 
 export const WRITE: Options = {
   ...COMMON,
@@ -111,12 +110,12 @@ export function parse({
   return {
     values,
     positionals: parsed.positionals,
-    titanId: commandTitan({ hydra: values.hydra as string | undefined }),
+    titanId: commandTitan({ titan: values.titan as string | undefined }),
   }
 }
 
-export const commandTitan = ({ hydra }: { hydra?: string }): string =>
-  hydra ?? requestEnv().OTHRYS_TITAN ?? DEFAULT_TITAN
+export const commandTitan = ({ titan }: { titan?: string }): string =>
+  titan ?? requestEnv().OTHRYS_TITAN ?? DEFAULT_TITAN
 
 export function required({
   value,
@@ -237,7 +236,7 @@ function receipt({
         id: event.id,
         type: event.type,
       },
-      hydra: state.config,
+      titan: state.config,
       revision: state.configRevision,
     }
   }
@@ -250,7 +249,7 @@ function receipt({
         type: event.type,
       },
       message: event.id,
-      hydra: event.data.hydra,
+      titan: event.data.titan,
       state: 'queued',
       help: ['Titan can read this in titan.log; no worker was launched'],
     }
@@ -543,7 +542,7 @@ function summary({ event }: { event: TitanEvent }): string {
     case 'task.steering.stopped': return 'Steering not delivered: stopped'
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return 'Conversation copy from an older Othrys'
-    case 'titan.configured': return `Titan ${event.data.name}; Titan ${event.data.hydra.id}`
+    case 'titan.configured': return `Titan ${event.data.name}; Titan ${event.data.titan.id}`
     case 'titan.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Titan ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`

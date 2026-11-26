@@ -6,7 +6,7 @@ import type { CommandRequest } from './dispatch.ts'
 
 const ORACLE_LIMIT = 100
 
-// `oracle <text> [<workspace>] [hydra] [<filters>]` searches on demand; with no arguments it cancels this socket's search.
+// `oracle <text> [<workspace>] [titan] [<filters>]` searches on demand; with no arguments it cancels this socket's search.
 export function oracleCommand({
   ws,
   id,
@@ -35,7 +35,7 @@ export function oracleCommand({
     return
   }
 
-  if (args.length > 4 || (args[2] !== undefined && args[2] !== 'hydra' && args[2] !== '')) {
+  if (args.length > 4 || (args[2] !== undefined && args[2] !== 'titan' && args[2] !== '')) {
     throw new TitanError({
       message: 'oracle expects text, optional workspace, Titan scope and filters',
       code: 'VALIDATION_ERROR',
@@ -47,7 +47,7 @@ export function oracleCommand({
     ...filters,
     text: args[0] ?? '',
     ...(args[1] ? { workspace: args[1] } : {}),
-    ...(args[2] === 'hydra' ? { live: true } : {}),
+    ...(args[2] === 'titan' ? { live: true } : {}),
     limit: ORACLE_LIMIT,
     includeParts: true,
   }

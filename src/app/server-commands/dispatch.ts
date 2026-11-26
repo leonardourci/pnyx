@@ -14,8 +14,8 @@ import type { createFileIndex } from '#projects/file-index.ts'
 import { cliCommand } from './cli-command.ts'
 import { compactCommand } from './compact.ts'
 import { filesCommand } from './files.ts'
-import { hydraAgentCommand } from './hydra-agent.ts'
-import { hydrasCommand } from './hydras.ts'
+import { titanAgentCommand } from './titan-agent.ts'
+import { titansCommand } from './titans.ts'
 import { modelsCommand } from './models.ts'
 import { oracleCommand } from './oracle.ts'
 import { replyCommand } from './reply.ts'
@@ -221,7 +221,7 @@ export function createServerCommands({
       'agent',
       'catalog',
       'titans',
-      'hydra-agent',
+      'titan-agent',
       'models',
       'files',
       'compact',
@@ -279,8 +279,8 @@ export function createServerCommands({
             titanId,
             searches: oracleSearches,
           })
-        } else if (name === 'hydra-agent') {
-          await hydraAgentCommand({
+        } else if (name === 'titan-agent') {
+          await titanAgentCommand({
             ws,
             id,
             args,
@@ -291,7 +291,7 @@ export function createServerCommands({
             kick,
           })
         } else if (name === 'titans') {
-          await hydrasCommand({
+          await titansCommand({
             ws,
             id,
             args,

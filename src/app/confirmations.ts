@@ -1,11 +1,10 @@
-import { canonicalCommandName } from './command-aliases.ts'
 import { ownerActor } from './actors.ts'
 import { inform } from './command-notices.ts'
 import { createHash } from 'node:crypto'
-import { parseCommandArgs as parseArgs } from './command-aliases.ts'
+import { parseArgs } from 'node:util'
 import { WRITE, guard, meta, parse, required } from './cli-support.ts'
 import { effectiveDispatch, type EffectiveDispatch } from '#workers/dispatch-config.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { TitanState } from './model.ts'
 import { TitanError } from '#store/errors.ts'
@@ -56,11 +55,11 @@ function context({
   }
 
   const card = ref ? state.cards[ref] ?? state.cards[state.keys[ref] ?? ''] : undefined
-  const removalId = canonicalCommandName({ name }) === 'hydra' && args[0] === 'remove' ? args[1] : undefined
+  const removalId = name === 'titan' && args[0] === 'remove' ? args[1] : undefined
   const removal = removalId ? removalSeq ?? loadTitan({ titanId: removalId }).state.seq : undefined
 
   return createHash('sha256').update(JSON.stringify({
-    config: canonicalCommandName({ name }) === 'hydra' || name === 'setup' ? state.config : undefined,
+    config: name === 'titan' || name === 'setup' ? state.config : undefined,
     projects: name === 'project' || name === 'owner' ? state.projects : undefined,
     dispatch,
     removal,
@@ -90,7 +89,7 @@ export const approval = guard({
       id: undefined,
     }
 
-    if (actor.actor === 'hydra' || agentRequest()) {
+    if (actor.actor === 'titan' || agentRequest()) {
       inform({
         reason: 'Approval question answered by an agent',
         clear: 'Dismiss the pending approval in the UI',
@@ -148,7 +147,7 @@ export const approval = guard({
           })
         }
 
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: actor,
           cardId: TITAN_CARD,
@@ -209,7 +208,7 @@ export const approval = guard({
 
     ownerEnv.OTHRYS_ACTOR = fromAgent ? caller.OTHRYS_ACTOR ?? actor.actor : 'web'
 
-    const removesTitan = canonicalCommandName({ name: target.name }) === 'hydra' && target.args[0] === 'remove'
+    const removesTitan = target.name === 'titan' && target.args[0] === 'remove'
 
     if (removesTitan) {
       target.args.push(
@@ -274,7 +273,7 @@ export const approval = guard({
       await withWriter({
         titanId,
         fn: ({ writer }) => {
-          const decision = hydraEvent({
+          const decision = titanEvent({
             state: writer.state,
             meta: actor,
             cardId: TITAN_CARD,
@@ -300,7 +299,7 @@ export const approval = guard({
     await withWriter({
       titanId,
       fn: ({ writer }) => {
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: actor,
           cardId: TITAN_CARD,
@@ -341,7 +340,7 @@ export async function recoverOwnerCommands({ titanId }: { titanId: string }): Pr
         proposal.kind === 'command' && proposal.status === 'applying') ?? []
 
       for (const proposal of interrupted) {
-        const decision = hydraEvent({
+        const decision = titanEvent({
           state: writer.state,
           meta: {
             actor: 'othrys',

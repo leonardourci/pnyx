@@ -5,7 +5,7 @@ import { parse, meta, required, guard, WRITE, COMMON, type Options } from '#app/
 import { TitanError } from '#store/errors.ts'
 import { createCommand } from '#workers/create.ts'
 import { sendReply } from '#workers/reply.ts'
-import { hydraSend } from '#titan/send-cli.ts'
+import { titanSend } from '#titan/send-cli.ts'
 import { taskCommand } from '#app/task-cli.ts'
 import { setup } from '#setup/cli.ts'
 import { serve } from '#app/server-cli.ts'
@@ -24,7 +24,7 @@ othrys task create --title <title> --brief <instructions> [--project <name|path>
 othrys task ack <task> <instruction> --session <session> --generation <reference>
 othrys send --text <message> [--task <id>] [--idempotency-key <key>]
 othrys answer <task> <question> --text <answer> [--from-message <id>]
-othrys board
+othrys titan
 othrys serve [--port <n>]
 othrys setup [check|hooks|skills] [--preview]
 othrys debug health
@@ -213,12 +213,12 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     }
 
     const output = await runAction({
-      name: 'hydra',
+      name: 'titan',
       args: [
         'send',
         ...args,
       ],
-      run: () => hydraSend({
+      run: () => titanSend({
         titanId,
         values: {
           ...values,
@@ -275,7 +275,7 @@ async function execute({ argv }: { argv: string[] }): Promise<unknown> {
     }
   }
 
-  if (command === 'board') {
+  if (command === 'titan') {
     const { titanId } = parse({
       args,
       options: COMMON,

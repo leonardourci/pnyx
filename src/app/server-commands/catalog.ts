@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { hydraCandidate } from '#titan/agent-choice.ts'
+import { titanCandidate } from '#titan/agent-choice.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { Catalog } from '#titan/transcripts-catalog.ts'
 import type { createCatalogIndex } from '#titan/transcripts-catalog-index.ts'
@@ -100,7 +100,7 @@ export function createCatalog({
       ref: args[0],
     })
     const receiving = card.id === TITAN_CARD
-      ? hydraCandidate({
+      ? titanCandidate({
         state: state(),
         dispatch: effectiveDispatch().dispatch,
       }).harness

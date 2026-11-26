@@ -495,23 +495,23 @@ export interface TitanState {
   configured?: boolean
   configRevision?: number
   helper?: HelperState
-  hydraReview?: {
+  titanReview?: {
     at: string
     seq: number
     block: string
     reminders: Record<string, string>
     flags?: string[]
   }
-  hydraMessages?: TitanMessage[]
-  // The page's stand-in for hydraMessages: the owner's latest message to Titan.
-  hydraOwnerMessage?: Pick<TitanMessage, 'id' | 'task' | 'text'>
+  titanMessages?: TitanMessage[]
+  // The page's stand-in for titanMessages: the owner's latest message to Titan.
+  titanOwnerMessage?: Pick<TitanMessage, 'id' | 'task' | 'text'>
   questionReminders?: Record<string, string>
-  hydraAgent?: import('#workers/model.ts').AgentConfig
+  titanAgent?: import('#workers/model.ts').AgentConfig
   // Every session Titan has been configured with, oldest first.
-  hydraSessions?: string[]
-  hydraAgentChange?: import('#titan/model.ts').TitanAgentChange
+  titanSessions?: string[]
+  titanAgentChange?: import('#titan/model.ts').TitanAgentChange
   historyMilestones?: import('#titan/history.ts').HistoryMilestone[]
-  hydraContext?: {
+  titanContext?: {
     after: number
     summary: string
     previousSession?: string
@@ -519,13 +519,13 @@ export interface TitanState {
 
   upgrades?: import('#upgrade/model.ts').UpgradeOperation[]
   // seq is the event that set it, so a recap can list what came after Titan went down.
-  hydraStatus?: TitanStatus & { seq: number }
+  titanStatus?: TitanStatus & { seq: number }
   // The operation stopping Titan now; everything addressed to Titan waits until it ends. seq is its start.
-  hydraOperation?: Pick<TitanOperation, 'id' | 'kind'> & {
+  titanOperation?: Pick<TitanOperation, 'id' | 'kind'> & {
     since: string
     seq: number
   }
-  hydraMemory?: Record<string, {
+  titanMemory?: Record<string, {
     text: string
     at: string
   }>

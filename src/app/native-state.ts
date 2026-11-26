@@ -579,17 +579,17 @@ const GENERATION_PARENTS = new Set([
 const THROUGH_PARENTS = new Set([
   'data',
   'historyMilestones',
-  'hydraOperation',
-  'hydraAgentChange',
+  'titanOperation',
+  'titanAgentChange',
   'receipt',
   'value',
 ])
 const AFTER_PARENTS = new Set([
   'historyMilestones',
-  'hydraContext',
-  'hydraStatus',
-  'hydraOperation',
-  'hydraAgentChange',
+  'titanContext',
+  'titanStatus',
+  'titanOperation',
+  'titanAgentChange',
 ])
 
 export function nativeReferences({
@@ -744,7 +744,7 @@ function factType({ event }: { event: TitanEvent }): string {
     case 'titan.memory': return 'memory'
     case 'titan.view': return 'layout'
     default: return event.type.replace(
-      /^(task|card|hydra)\./,
+      /^(task|card|titan)\./,
       '',
     )
   }
@@ -755,8 +755,8 @@ function author({ actor }: { actor: string }): LogFact['by'] {
     return 'worker'
   }
 
-  if (actor === 'hydra') {
-    return 'hydra'
+  if (actor === 'titan') {
+    return 'titan'
   }
 
   return actor === 'owner' || actor === 'cli' || actor === 'web' ? 'owner' : 'daemon'
@@ -964,27 +964,27 @@ export function nativeEvent({
 }
 
 export function assembleNative({
-  hydra,
+  titan,
   tasks,
   positions = new Map(),
 }: {
-  hydra?: NativeState
+  titan?: NativeState
   tasks: Iterable<[string, NativeState]>
   positions?: ReadonlyMap<string, number>
 }): TitanState {
   const state = {
     ...emptyTitan(),
-    ...hydra?.fields,
+    ...titan?.fields,
   }
 
-  if (hydra?.card) {
-    state.cards[TITAN_CARD] = hydra.card
+  if (titan?.card) {
+    state.cards[TITAN_CARD] = titan.card
   }
 
-  state.sessions = { ...hydra?.sessions }
-  state.undone = { ...hydra?.undone }
+  state.sessions = { ...titan?.sessions }
+  state.undone = { ...titan?.undone }
 
-  for (const inscription of hydra?.inscriptions ?? []) {
+  for (const inscription of titan?.inscriptions ?? []) {
     const event: Extract<TitanEvent, { type: 'titan.operation' }> = {
       v: 1,
       id: inscription.id,

@@ -22,8 +22,7 @@ export type RunAnswer = {
 const strings = ({ value }: { value: unknown }) => Array.isArray(value) && value.every(item => typeof item === 'string')
 
 // The Titan a command line runs on, for its log line: the one it names, or the default one; the command parses its own flags.
-// The legacy --hydra spelling still names a Titan.
-const TITAN_FLAG = /^--(?:titan|hydra)(?:=|$)/
+const TITAN_FLAG = /^--titan(?:=|$)/
 
 function namedTitan({
   argv,

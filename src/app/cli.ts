@@ -17,7 +17,7 @@ import { settings } from '#settings/cli.ts'
 import { harvest } from '#integrations/cli.ts'
 import { link, outcome } from '#tasks/delivery/cli.ts'
 import { push, card } from '#tasks/cli.ts'
-import { hydraCommandHandler } from '#titan/cli.ts'
+import { titanCommandHandler } from '#titan/cli.ts'
 import { setup } from '#setup/cli.ts'
 import { debug, logs } from '#diagnostics/cli.ts'
 
@@ -234,8 +234,7 @@ export const commands = supervisedCommands({
     logs,
     apply,
     layout,
-    hydra: hydraCommandHandler,
-    titan: hydraCommandHandler,
+    titan: titanCommandHandler,
     owner,
     settings,
     task,

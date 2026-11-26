@@ -22,7 +22,7 @@ export interface FileSegment<Value> {
 }
 
 export interface TitanMemory<Titan, Task> {
-  hydra: FileSegment<Titan>
+  titan: FileSegment<Titan>
   tasks: Map<string, FileSegment<Task>>
 }
 
@@ -50,7 +50,7 @@ interface CachedSegment<Value> {
 interface CachedMemory<Titan, Task> {
   v: 1
   content: {
-    hydra: CachedSegment<Titan> & { worker: number }
+    titan: CachedSegment<Titan> & { worker: number }
     tasks: Record<string, CachedSegment<Task>>
   }
   digest: string
@@ -229,12 +229,12 @@ function cacheDigest({
   snapshot,
   content,
 }: {
-  snapshot: Pick<FileSnapshot, 'hydra' | 'tasks'>
+  snapshot: Pick<FileSnapshot, 'titan' | 'tasks'>
   content: unknown
 }): string {
   return digest({
     value: {
-      hydra: snapshot.hydra,
+      titan: snapshot.titan,
       tasks: snapshot.tasks,
       content,
     },
@@ -261,8 +261,8 @@ function cachedMemory<Titan, Task>({
 }): CachedMemory<Titan, Task> | undefined {
   const cache = snapshot.state as Partial<CachedMemory<Titan, Task>> | null
 
-  if (!cache || cache.v !== 1 || !cache.content || !cachedSegment({ value: cache.content.hydra })
-    || !Number.isSafeInteger(cache.content.hydra.worker) || cache.content.hydra.worker < 0
+  if (!cache || cache.v !== 1 || !cache.content || !cachedSegment({ value: cache.content.titan })
+    || !Number.isSafeInteger(cache.content.titan.worker) || cache.content.titan.worker < 0
     || !cache.content.tasks || typeof cache.content.tasks !== 'object' || Array.isArray(cache.content.tasks)
     || !Object.values(cache.content.tasks).every(value => cachedSegment({ value }))
     || cache.digest !== cacheDigest({
@@ -356,23 +356,23 @@ function replayFile<Value>({
 }
 
 function loadTitanMemory<Titan, Task>({
-  hydra,
+  titan,
   files,
   reducers,
   cache,
 }: {
-  hydra: string
+  titan: string
   files: TitanFiles
   reducers: FileReducers<Titan, Task>
   cache?: CachedMemory<Titan, Task>
 }): TitanMemory<Titan, Task> {
   return {
-    hydra: replayFile({
-      log: files.hydra,
-      cached: cache?.content.hydra,
-      worker: cache?.content.hydra.worker,
+    titan: replayFile({
+      log: files.titan,
+      cached: cache?.content.titan,
+      worker: cache?.content.titan.worker,
       reduce: reducers.reduceTitan,
-      id: hydra,
+      id: titan,
       path: join(
         files.dir,
         'titan.log',
@@ -440,12 +440,12 @@ export function loadFileMemory<Titan, Task>({
   })
 
   return new Map([...files].map(([
-    hydra,
+    titan,
     files,
   ]) => [
-    hydra,
+    titan,
     loadTitanMemory({
-      hydra,
+      titan,
       files,
       reducers,
       cache: files.snapshot ? caches.get(files.snapshot) : undefined,
@@ -469,9 +469,9 @@ export function fileMemorySnapshot<Titan, Task>({
     , segment,
   ]) => !segment.issue)
   const content = {
-    hydra: {
-      ...cached({ segment: memory.hydra }),
-      worker: memory.hydra.worker,
+    titan: {
+      ...cached({ segment: memory.titan }),
+      worker: memory.titan.worker,
     },
     tasks: Object.fromEntries(tasks.map(([
       id,
@@ -482,7 +482,7 @@ export function fileMemorySnapshot<Titan, Task>({
     ])),
   }
   const positions = {
-    hydra: memory.hydra.position,
+    titan: memory.titan.position,
     tasks: Object.fromEntries(tasks.map(([
       id,
       segment,

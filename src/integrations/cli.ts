@@ -1,5 +1,5 @@
 import { REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
-import { hydraConfig } from '#titan/config.ts'
+import { titanConfig } from '#titan/config.ts'
 import { hookStatus } from '#setup/hooks.ts'
 import { skillStatus } from '#setup/skills.ts'
 import { loadTitan } from '#app/store.ts'
@@ -16,7 +16,7 @@ async function integrations({
 }: {
   titanId: string
 }): Promise<Output> {
-  const config = hydraConfig({
+  const config = titanConfig({
     state: loadTitan({ titanId }).state,
     id: titanId,
   })
@@ -74,7 +74,7 @@ export const integrationsCommand = guard({
 
 // Collects the notes sources already recorded: the cards' transcripts from where
 // the last read stopped, and each linked pull request's title and description.
-// ponytail: reads every linked pull request on each run; skip merged ones already noted if hydras grow.
+// ponytail: reads every linked pull request on each run; skip merged ones already noted if titans grow.
 export const harvest = guard({
   handler: async ({ args }) => {
     const {

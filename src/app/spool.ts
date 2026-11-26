@@ -1,5 +1,5 @@
 import { spoolDir, privateDir } from '#store/storage.ts'
-import { hydraDir } from './home-migration.ts'
+import { titanDir } from './home-migration.ts'
 import { join } from 'node:path'
 import { writeFileSync, renameSync } from 'node:fs'
 
@@ -14,7 +14,7 @@ export function spoolWrite({
     id: string
   } & Record<string, unknown>
 }): string {
-  const dir = spoolDir({ dir: hydraDir({ titanId }) })
+  const dir = spoolDir({ dir: titanDir({ titanId }) })
   privateDir({ dir })
   // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
   const name = `${String(Date.now()).padStart(

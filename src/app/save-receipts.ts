@@ -1,4 +1,3 @@
-import { canonicalCommandName } from './command-aliases.ts'
 import type { TitanState } from './model.ts'
 
 export interface SaveCommand {
@@ -9,11 +8,11 @@ export interface SaveCommand {
 }
 
 export function saveEventId({ command }: { command: SaveCommand }): string | undefined {
-  if (command.name === 'hydra-agent') {
+  if (command.name === 'titan-agent') {
     return command.id
   }
 
-  if (canonicalCommandName({ name: command.name }) !== 'hydra' || command.args[0] !== 'send') {
+  if (command.name !== 'titan' || command.args[0] !== 'send') {
     return
   }
 
@@ -92,7 +91,7 @@ export function savedEvent({
     },
   }
 
-  if (canonicalCommandName({ name: command.name }) === 'hydra') {
+  if (command.name === 'titan') {
     receipt.state = 'queued'
     receipt.message = id
     receipt.event = {

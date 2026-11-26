@@ -1,8 +1,8 @@
 import { TitanError } from '#store/errors.ts'
-import { createTitan, editTitan, listTitans } from '#app/server-hydras.ts'
+import { createTitan, editTitan, listTitans } from '#app/server-titans.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-export async function hydrasCommand({
+export async function titansCommand({
   ws,
   id,
   args,
@@ -41,7 +41,7 @@ export async function hydrasCommand({
       type: 'receipt',
       id,
       titanId,
-      hydras: listed || creation ? listTitans() : undefined,
+      titans: listed || creation ? listTitans() : undefined,
       ...(open ? { url: open } : {}),
       ...(creation ? { creation } : {}),
     },
@@ -68,7 +68,7 @@ export async function hydrasCommand({
     if (second) {
       reply({
         open: new URL(
-          `/hydra/${created}/`,
+          `/titan/${created}/`,
           url,
         ).href,
         creation: {

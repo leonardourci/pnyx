@@ -1,15 +1,15 @@
 import { commands } from './cli.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraIds } from './home-migration.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanIds } from './home-migration.ts'
 import { loadTitan } from './store.ts'
-import { CREATION_PREFIX, summarize, unreadableSummary } from './hydra-summary.ts'
+import { CREATION_PREFIX, summarize, unreadableSummary } from './titan-summary.ts'
 import { homeScoped } from '#store/paths.ts'
 import type { TitanState } from './model.ts'
 import { readEvents } from './event-log.ts'
 import { withAsyncRegistryLock } from '#store/storage.ts'
 import { pickName } from '#titan/titan-names.ts'
 import { otherTitanNames } from '#titan/taken-names.ts'
-import { inListOrder } from './hydra-list-order.ts'
+import { inListOrder } from './titan-list-order.ts'
 
 export interface TitanProjectSummary {
   name: string
@@ -27,7 +27,7 @@ export interface TitanSummary {
   icon?: string
   // Position in the Titan list: the set position, else creation time in ms.
   order: number
-  hydra: string
+  titan: string
   // Its agent is running a turn now; absent for a Titan whose agent Othrys does not run.
   working?: boolean
   projects: TitanProjectSummary[]
@@ -42,7 +42,7 @@ const summaries = new Map<string, Cached>()
 // Unreadable Titans remain reachable so opening one reports the error.
 export function listTitans(): TitanSummary[] {
   return inListOrder({
-    hydras: hydraIds().map(id => {
+    titans: titanIds().map(id => {
       let state: TitanState
 
       try {
@@ -89,7 +89,7 @@ export async function createTitan({
 }): Promise<string> {
   return withAsyncRegistryLock({
     fn: async () => {
-      const ids = hydraIds({ includeRemoved: true })
+      const ids = titanIds({ includeRemoved: true })
       const eventId = attempt ? creationEventId({ attempt }) : undefined
 
       if (eventId) {
@@ -108,11 +108,11 @@ export async function createTitan({
       const taken = new Set(ids)
       let n = taken.size + 1
 
-      while (taken.has(`hydra-${n}`)) {
+      while (taken.has(`titan-${n}`)) {
         n++
       }
 
-      const id = `hydra-${n}`
+      const id = `titan-${n}`
       const args = [
         'create',
         id,
@@ -139,7 +139,7 @@ export async function createTitan({
         )
       }
 
-      await commands.hydra(args)
+      await commands.titan(args)
 
       return id
     },
@@ -186,13 +186,13 @@ export async function editTitan({
     )
   }
 
-  await commands.hydra(args)
+  await commands.titan(args)
 }
 
 export async function nameUnnamedTitans(): Promise<void> {
   await withAsyncRegistryLock({
     fn: async () => {
-      for (const id of hydraIds()) {
+      for (const id of titanIds()) {
         const config = readableConfig({ id })
 
         if (!config || (config.name.trim() && config.name !== id)) {
@@ -200,7 +200,7 @@ export async function nameUnnamedTitans(): Promise<void> {
         }
 
         const picked = pickName({ taken: otherTitanNames({ id }) })
-        await commands.hydra([
+        await commands.titan([
           'set',
           '--titan',
           id,
@@ -218,7 +218,7 @@ export async function nameUnnamedTitans(): Promise<void> {
 
 function readableConfig({ id }: { id: string }) {
   try {
-    return hydraConfig({
+    return titanConfig({
       state: loadTitan({ titanId: id }).state,
       id,
     })

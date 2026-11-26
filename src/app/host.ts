@@ -1,7 +1,7 @@
 import { workerTaskDir } from '#workers/worker-log.ts'
 import { stopWorkerInputs, unreadOwnerSteering } from '#workers/stop-inputs.ts'
 import { stopTitanInputs } from '#titan/stop-inputs.ts'
-import { hydraChatQueue } from '#titan/chat-queue.ts'
+import { titanChatQueue } from '#titan/chat-queue.ts'
 import { compactCommand } from '#workers/compact-command.ts'
 import { restartCommand, upgradeCommand } from '#upgrade/model.ts'
 import { canonical } from '#store/paths.ts'
@@ -340,7 +340,7 @@ export function createHost({
     // Titan is back once its compactions settle, including one that followed straight after.
     released: ({ card }) => {
       const state = loadTitan({ titanId }).state
-      const running = state.hydraOperation
+      const running = state.titanOperation
       const last = state.cards[TITAN_CARD]?.compaction?.operations.at(-1)
 
       const native = state.cards[TITAN_CARD]?.compaction?.operations
@@ -463,7 +463,7 @@ export function createHost({
     const session = writer.state.sessions?.[sessionId({ agent })]
     let task: Card | undefined
 
-    if (session?.id === writer.state.config?.hydra.session) {
+    if (session?.id === writer.state.config?.titan.session) {
       task = writer.state.cards[TITAN_CARD]
     } else if (session?.taskId) {
       task = writer.state.cards[session.taskId]
@@ -510,20 +510,20 @@ export function createHost({
 
   // Titan's own commands are recorded as its writes, so they never wake it; a worker's carry its task.
   const environment = ({
-    hydra = false,
+    titan = false,
     task,
     steeringWorker,
   }: {
-    hydra?: boolean
+    titan?: boolean
     task?: string
     steeringWorker?: string
   } = {}) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     OTHRYS_HOME: othrysHome(),
     OTHRYS_TITAN: titanId,
-    ...(hydra ? {
+    ...(titan ? {
       OTHRYS_ACTOR: TITAN_ACTOR,
-      OTHRYS_HOSTED: 'hydra',
+      OTHRYS_HOSTED: 'titan',
     } : task ? {
       OTHRYS_ACTOR: `worker:${task}`,
       OTHRYS_TASK_DIR: workerTaskDir({
@@ -880,7 +880,7 @@ export function createHost({
   })
   const {
     digest,
-    hydra,
+    titan,
   } = turns
 
   // A stall or an ended wait makes no event, so it is polled.
@@ -1012,7 +1012,7 @@ export function createHost({
     await note({
       fn: ({ writer }) => stopTitanInputs({
         writer,
-        ids: (writer.state.hydraMessages ?? [])
+        ids: (writer.state.titanMessages ?? [])
           .filter(message => !othrysCommand({ text: message.text }))
           .map(message => message.id),
         at: at(),
@@ -1069,7 +1069,7 @@ export function createHost({
     await markTitanInterrupted()
 
     if (!entry?.session) {
-      return { stopped: 'hydra' }
+      return { stopped: 'titan' }
     }
 
     expireEntry({ entry })
@@ -1080,7 +1080,7 @@ export function createHost({
       entry.activity = 'interrupted'
     }
 
-    return { stopped: 'hydra' }
+    return { stopped: 'titan' }
   }
 
   const stopWorker = async ({ ref }: { ref: string }) => {
@@ -1295,7 +1295,7 @@ export function createHost({
     },
     models: catalogs.models,
     titanId,
-    hydra,
+    titan,
 
     compact: async ({
       card: ref,
@@ -1340,7 +1340,7 @@ export function createHost({
       cancel,
     } = {}) => {
       if (cancel) {
-        const listed = hydraChatQueue({ state: loadTitan({ titanId }).state }).compactInputs
+        const listed = titanChatQueue({ state: loadTitan({ titanId }).state }).compactInputs
           .some(input => input.id === cancel && !upgradeCommand({ text: input.text }))
 
         if (!listed) {

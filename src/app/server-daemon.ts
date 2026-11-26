@@ -20,10 +20,10 @@ import { allowedRequest, requestUrl, TITAN_PATH, type RunningServer, type Mounte
 import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
-import { listTitans, nameUnnamedTitans } from './server-hydras.ts'
+import { listTitans, nameUnnamedTitans } from './server-titans.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
-import { hydraIds, hydrasDir } from './home-migration.ts'
-import { hydraRemoval, localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { titanIds, titansDir } from './home-migration.ts'
+import { titanRemoval, localToken, titanIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
 import { serviceFile } from '#setup/service.ts'
 import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
@@ -36,7 +36,7 @@ import { upgradeAvailable } from '#upgrade/runner.ts'
 import { logPageLines } from '#diagnostics/page-lines.ts'
 import { startServerLogs } from '#diagnostics/server-logs.ts'
 import { flushLogs, log } from './diagnostics.ts'
-import { hydraExists, loadTitan } from './store.ts'
+import { titanExists, loadTitan } from './store.ts'
 import { repairDispatchMirrors } from '#workers/dispatch-config.ts'
 
 // Only the named and default Titans must load; any other Titan that fails is skipped and reported.
@@ -157,7 +157,7 @@ export async function startServer({
   }
 
   let home: HomePage = {
-    hydras: [],
+    titans: [],
     settings: homeSettings(),
     upgrade: null,
     scopes: {},
@@ -167,7 +167,7 @@ export async function startServer({
 
   const publishHome = () => {
     const next: HomePage = JSON.parse(JSON.stringify({
-      hydras: listTitans(),
+      titans: listTitans(),
       settings: homeSettings(),
       upgrade: upgradeStatus,
       scopes: Object.fromEntries([...served].map(([
@@ -194,7 +194,7 @@ export async function startServer({
     }
   }
 
-  const hydrasChanged = () => {
+  const titansChanged = () => {
     if (closed || summariesQueued) {
       return
     }
@@ -259,15 +259,15 @@ export async function startServer({
 
       if (!mount) {
         if ((req.method === 'GET' || req.method === 'HEAD') && (rest === '/' || rest === '/settings/')
-          && hydraIds().includes(id)) {
+          && titanIds().includes(id)) {
           return serveStatic({
             res,
             path: '/',
-            home: `/hydra/${id}/`,
+            home: `/titan/${id}/`,
             page: {
               token: localToken(),
-              identity: hydraIdentity({ titanId: id }),
-              base: `/hydra/${id}/`,
+              identity: titanIdentity({ titanId: id }),
+              base: `/titan/${id}/`,
             },
           })
         }
@@ -286,7 +286,7 @@ export async function startServer({
       if (rest === undefined) {
         return void res.writeHead(
           308,
-          { location: `/hydra/${id}/` },
+          { location: `/titan/${id}/` },
         ).end()
       }
 
@@ -329,11 +329,11 @@ export async function startServer({
     }
 
     if (path === '/health') {
-      const hydras = [...served.keys()].sort()
+      const titans = [...served.keys()].sort()
       const body = {
         pid: process.pid,
         build: buildId(),
-        hydras,
+        titans,
         skipped,
         // Whether an agent on any Titan is mid-turn; an upgrade run from a terminal waits for none to be.
         midTurn: agentsMidTurn(),
@@ -346,7 +346,7 @@ export async function startServer({
       })
     }
 
-    const home = `/hydra/${titanId}/${search}`
+    const home = `/titan/${titanId}/${search}`
 
     if (path === '/') {
       return void res.writeHead(
@@ -550,12 +550,12 @@ export async function startServer({
           }
 
           const attach = ({
-            hydra,
+            titan,
             mounted,
             page,
             subscriptionId,
           }: {
-            hydra: string
+            titan: string
             mounted: MountedTitan
             page?: string[]
             subscriptionId?: string
@@ -574,9 +574,9 @@ export async function startServer({
               }) {
                 return send({
                   snapshot,
-                  message: scoped || hydra !== primary ? {
+                  message: scoped || titan !== primary ? {
                     ...message,
-                    scope: hydra,
+                    scope: titan,
                     subscription: subscriptionId,
                   } : message,
                 })
@@ -590,47 +590,47 @@ export async function startServer({
               page,
             })
             subscriptions.set(
-              hydra,
+              titan,
               subscription,
             )
           }
 
           const subscribe = async ({
-            hydra,
+            titan,
             page,
             subscriptionId,
           }: {
-            hydra: string
+            titan: string
             page?: string[]
             subscriptionId?: string
           }) => {
-            subscriptions.get(hydra)?.close()
-            subscriptions.delete(hydra)
+            subscriptions.get(titan)?.close()
+            subscriptions.delete(titan)
             const generation = Symbol()
             attaching.set(
-              hydra,
+              titan,
               generation,
             )
 
             try {
-              await open({ id: hydra })
+              await open({ id: titan })
 
-              if (attaching.get(hydra) === generation && ws.readyState === ws.OPEN) {
-                attaching.delete(hydra)
+              if (attaching.get(titan) === generation && ws.readyState === ws.OPEN) {
+                attaching.delete(titan)
                 attach({
-                  hydra,
-                  mounted: served.get(hydra)!,
+                  titan,
+                  mounted: served.get(titan)!,
                   page,
                   subscriptionId,
                 })
               }
             } catch (error) {
-              if (attaching.get(hydra) === generation && ws.readyState === ws.OPEN) {
-                attaching.delete(hydra)
+              if (attaching.get(titan) === generation && ws.readyState === ws.OPEN) {
+                attaching.delete(titan)
                 send({
                   message: {
                     type: 'scope-error',
-                    scope: hydra,
+                    scope: titan,
                     subscription: subscriptionId,
                     error: (error as Error).message,
                     code: error instanceof TitanError ? error.code : 'UNKNOWN',
@@ -671,9 +671,9 @@ export async function startServer({
                 return
               }
 
-              const hydra = message?.scope === undefined ? primary : message.scope
+              const titan = message?.scope === undefined ? primary : message.scope
 
-              if (typeof hydra !== 'string' || !/^[a-z0-9._-]+$/.test(hydra)) {
+              if (typeof titan !== 'string' || !/^[a-z0-9._-]+$/.test(titan)) {
                 send({
                   message: {
                     type: 'error',
@@ -688,16 +688,16 @@ export async function startServer({
 
               if (message?.type === 'subscribe') {
                 void subscribe({
-                  hydra,
+                  titan,
                   page: pageArgs({ value: message.page }),
                   subscriptionId: typeof message.subscription === 'string' ? message.subscription : undefined,
                 })
               } else if (message?.type === 'unsubscribe') {
-                attaching.delete(hydra)
-                subscriptions.get(hydra)?.close()
-                subscriptions.delete(hydra)
+                attaching.delete(titan)
+                subscriptions.get(titan)?.close()
+                subscriptions.delete(titan)
               } else {
-                const subscription = subscriptions.get(hydra)
+                const subscription = subscriptions.get(titan)
 
                 if (subscription) {
                   subscription.receive({ message })
@@ -705,7 +705,7 @@ export async function startServer({
                   send({
                     message: {
                       type: 'error',
-                      scope: hydra,
+                      scope: titan,
                       id: typeof message?.id === 'string' ? message.id : null,
                       error: 'Subscribe to this Titan before sending commands',
                       code: 'NOT_RUNNING',
@@ -716,7 +716,7 @@ export async function startServer({
             },
           )
           attach({
-            hydra: primary,
+            titan: primary,
             mounted: mount,
             page: pageArgs({ value: parseJson({ text: url.searchParams.get('page') }) }),
             subscriptionId: url.searchParams.get('subscription') ?? undefined,
@@ -772,7 +772,7 @@ export async function startServer({
     const ready = () => background({
       name: 'Titan discovery',
       run: () => {
-        if (closed || !hydraExists({ titanId: id })) {
+        if (closed || !titanExists({ titanId: id })) {
           return
         }
 
@@ -794,7 +794,7 @@ export async function startServer({
   }
 
   const removalPending = ({ id }: { id: string }) =>
-    hydraExists({ titanId: id }) && loadTitan({ titanId: id }).state.config?.removing === true
+    titanExists({ titanId: id }) && loadTitan({ titanId: id }).state.config?.removing === true
 
   const mount = async ({ id }: { id: string }): Promise<MountedTitan> => {
     if (removalPending({ id })) {
@@ -820,9 +820,9 @@ export async function startServer({
     const opening = performance.now()
     const started = mountTitan({
       titanId: id,
-      url: `http://127.0.0.1:${bound}/hydra/${id}/`,
+      url: `http://127.0.0.1:${bound}/titan/${id}/`,
       open,
-      hydrasChanged,
+      titansChanged,
       ...options,
     })
     mounts.set(
@@ -847,7 +847,7 @@ export async function startServer({
             m,
           )
           delete skipped[id]
-          hydrasChanged()
+          titansChanged()
         }
       },
       (error: Error) => {
@@ -864,7 +864,7 @@ export async function startServer({
   }
 
   async function open({ id }: { id: string }): Promise<string> {
-    if (!hydraIds().includes(id)) {
+    if (!titanIds().includes(id)) {
       throw new TitanError({
         message: `Titan not found: ${id}`,
         code: 'NOT_FOUND',
@@ -874,7 +874,7 @@ export async function startServer({
     return (await mount({ id })).url
   }
 
-  hydraRemoval.close = async ({ titanId }) => {
+  titanRemoval.close = async ({ titanId }) => {
     served.delete(titanId)
     const mounted = mounts.get(titanId)
 
@@ -894,7 +894,7 @@ export async function startServer({
     }
   }
 
-  hydraRemoval.finished = ({ titanId: removedId }) => {
+  titanRemoval.finished = ({ titanId: removedId }) => {
     served.delete(removedId)
     mounts.delete(removedId)
 
@@ -902,7 +902,7 @@ export async function startServer({
       return
     }
 
-    const activeIds = hydraIds()
+    const activeIds = titanIds()
 
     const primaryUnavailable = !activeIds.includes(removedId) || removalPending({ id: removedId })
 
@@ -911,7 +911,7 @@ export async function startServer({
     }
 
     mountAll()
-    hydrasChanged()
+    titansChanged()
   }
 
   let named: MountedTitan
@@ -959,7 +959,7 @@ export async function startServer({
       return
     }
 
-    for (const id of hydraIds()) {
+    for (const id of titanIds()) {
       if (closed || mounts.has(id)) {
         continue
       }
@@ -968,13 +968,13 @@ export async function startServer({
     }
   }
 
-  const hydras = hydrasDir()
+  const titans = titansDir()
   mkdirSync(
-    hydras,
+    titans,
     { recursive: true },
   )
   const watcher = watchPath({
-    path: hydras,
+    path: titans,
     changed: mountAll,
     interval: CREATION_POLL_MS,
   })
@@ -1042,8 +1042,8 @@ export async function startServer({
   const close = async () => {
     const stopping = performance.now()
     closed = true
-    hydraRemoval.close = undefined
-    hydraRemoval.finished = undefined
+    titanRemoval.close = undefined
+    titanRemoval.finished = undefined
     watcher.close()
     settingsWatcher.close()
     clearInterval(retry)
@@ -1100,7 +1100,7 @@ export async function startServer({
   }
 
   try {
-    for (const id of hydraIds()) {
+    for (const id of titanIds()) {
       try {
         if (removalPending({ id })) {
           await finishTitanRemoval({ id })
@@ -1115,7 +1115,7 @@ export async function startServer({
       }
     }
 
-    for (const id of hydraIds()) {
+    for (const id of titanIds()) {
       try {
         await recoverOwnerCommands({ titanId: id })
       } catch (error) {
@@ -1129,7 +1129,7 @@ export async function startServer({
     }
 
     const removedOrPending = ({ id }: { id: string }) => {
-      if (!hydraExists({ titanId: id })) {
+      if (!titanExists({ titanId: id })) {
         return false
       }
 
@@ -1139,7 +1139,7 @@ export async function startServer({
     }
 
     if (removedOrPending({ id: titanId })) {
-      const activeId = hydraIds().find(id => {
+      const activeId = titanIds().find(id => {
         try {
           return !removedOrPending({ id })
         } catch (error) {
@@ -1169,7 +1169,7 @@ export async function startServer({
       await mount({ id: 'default' })
     }
 
-    for (const id of hydraIds()) {
+    for (const id of titanIds()) {
       if (!mounts.has(id)) {
         await mountDiscoveredTitan({ id })
       }
@@ -1239,7 +1239,7 @@ async function mountTitan({
   reviewClock,
   reminderScheduler,
   open,
-  hydrasChanged,
+  titansChanged,
   upgradeRoot,
   restart,
 }: {
@@ -1260,7 +1260,7 @@ async function mountTitan({
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
-  hydrasChanged(): void
+  titansChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Promise<MountedTitan> {
@@ -1282,7 +1282,7 @@ async function mountTitan({
     reviewClock,
     reminderScheduler,
     open,
-    hydrasChanged,
+    titansChanged,
     upgradeRoot,
     restart,
   })

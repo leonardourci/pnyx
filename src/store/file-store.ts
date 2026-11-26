@@ -1,7 +1,7 @@
 import { lstatSync, realpathSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { TitanError } from './errors.ts'
-import { createTitanFiles, createTaskFiles, hydraFiles, moveTaskFiles, taskFiles } from './file-home.ts'
+import { createTitanFiles, createTaskFiles, titanFiles, moveTaskFiles, taskFiles } from './file-home.ts'
 import { appendLog, plainJson, type LogFact, type LogPosition } from './log.ts'
 import { writeSnapshot } from './snapshot.ts'
 import { privateDir } from './storage.ts'
@@ -10,7 +10,7 @@ import { applyFileFacts, emptyFileSegment, fileMemorySnapshot, loadFileMemory, t
 const GROUP_COMMIT_MS = 5
 const openHomes = new Set<string>()
 interface Scope {
-  hydra: string
+  titan: string
   task?: string
 }
 interface Receipt {
@@ -33,7 +33,7 @@ interface View<Titan, Task> {
     issue?: TitanError
   }>
 }
-type Read<Titan, Task> = ({ hydra }: { hydra: string }) => View<Titan, Task> | undefined
+type Read<Titan, Task> = ({ titan }: { titan: string }) => View<Titan, Task> | undefined
 type Decide<Value, Titan, Task> = ({
   state,
   read,
@@ -54,7 +54,7 @@ interface Write<Titan, Task> extends Pick<PromiseWithResolvers<Receipt[]>, 'reso
   }): readonly LogFact[]
 }
 interface ScopeChange {
-  hydra: string
+  titan: string
   task?: string
   create?: boolean
   facts: readonly LogFact[]
@@ -175,23 +175,23 @@ export function openFileStore<Titan, Task>({
 
   function view({
     source,
-    hydra,
+    titan,
   }: {
     source: Map<string, TitanMemory<Titan, Task>>
-    hydra: string
+    titan: string
   }): View<Titan, Task> | undefined {
-    const current = source.get(hydra)
+    const current = source.get(titan)
 
     if (!current) {
       return undefined
     }
 
     return {
-      state: structuredClone(current.hydra.value),
-      position: { ...current.hydra.position },
-      accepted: copyAccepted({ accepted: current.hydra.accepted }),
-      worker: current.hydra.worker,
-      issue: current.hydra.issue,
+      state: structuredClone(current.titan.value),
+      position: { ...current.titan.position },
+      accepted: copyAccepted({ accepted: current.titan.accepted }),
+      worker: current.titan.worker,
+      issue: current.titan.issue,
       tasks: new Map([...current.tasks].map(([
         id,
         task,
@@ -208,22 +208,22 @@ export function openFileStore<Titan, Task>({
     }
   }
 
-  const read: Read<Titan, Task> = ({ hydra }) => view({
+  const read: Read<Titan, Task> = ({ titan }) => view({
     source: memory,
-    hydra,
+    titan,
   })
   const pathOf = ({ scope }: { scope: Scope }) => scope.task === undefined
     ? join(
-      hydraFiles({
+      titanFiles({
         home,
-        hydra: scope.hydra,
+        titan: scope.titan,
       }),
       'titan.log',
     )
     : join(
       taskFiles({
         home,
-        hydra: scope.hydra,
+        titan: scope.titan,
         task: scope.task,
       }),
       'task.log',
@@ -237,23 +237,23 @@ export function openFileStore<Titan, Task>({
     task: string
   }) {
     return [...source].find(([
-      , hydra,
-    ]) => hydra.tasks.has(task))
+      , titan,
+    ]) => titan.tasks.has(task))
   }
 
   function snapshot(): void {
     for (const [
-      hydra,
+      titan,
       current,
     ] of memory) {
-      if (current.hydra.issue) {
+      if (current.titan.issue) {
         continue
       }
 
       writeSnapshot({
-        dir: hydraFiles({
+        dir: titanFiles({
           home,
-          hydra,
+          titan,
         }),
         snapshot: fileMemorySnapshot({
           memory: current,
@@ -300,13 +300,13 @@ export function openFileStore<Titan, Task>({
           if (write.create && scope.task === undefined) {
             createTitanFiles({
               home,
-              hydra: scope.hydra,
+              titan: scope.titan,
               entries: facts,
             })
           } else if (write.create && scope.task !== undefined) {
             createTaskFiles({
               home,
-              hydra: scope.hydra,
+              titan: scope.titan,
               task: scope.task,
               entries: facts,
             })
@@ -351,20 +351,20 @@ export function openFileStore<Titan, Task>({
 
     function stageWrite({ job }: { job: Pick<Write<Titan, Task>, 'scope' | 'create' | 'decide'> }): Receipt[] {
       const { scope } = job
-      const parent = working.get(scope.hydra)
+      const parent = working.get(scope.titan)
 
       if (!parent && (scope.task !== undefined || !job.create)) {
         throw new TitanError({
           code: 'NOT_FOUND',
-          message: `Titan not found: ${scope.hydra}`,
+          message: `Titan not found: ${scope.titan}`,
         })
       }
 
-      if (parent?.hydra.issue) {
-        throw parent.hydra.issue
+      if (parent?.titan.issue) {
+        throw parent.titan.issue
       }
 
-      const current = scope.task === undefined ? parent?.hydra : parent?.tasks.get(scope.task)
+      const current = scope.task === undefined ? parent?.titan : parent?.tasks.get(scope.task)
 
       if (current?.issue) {
         throw current.issue
@@ -390,7 +390,7 @@ export function openFileStore<Titan, Task>({
       let dependencyFailure: TitanError | undefined
       const decision = job.decide({
         state: structuredClone(current?.value),
-        read: ({ hydra }) => {
+        read: ({ titan }) => {
           if (dependencyFailure) {
             throw dependencyFailure
           }
@@ -405,7 +405,7 @@ export function openFileStore<Titan, Task>({
 
           return view({
             source: working,
-            hydra,
+            titan,
           })
         },
       })
@@ -437,7 +437,7 @@ export function openFileStore<Titan, Task>({
           facts,
           reduce: reduceTitan,
           path: pathOf({ scope }),
-          id: scope.hydra,
+          id: scope.titan,
         })
         : applyFileFacts({
           segment: before as FileSegment<Task>,
@@ -456,9 +456,9 @@ export function openFileStore<Titan, Task>({
 
       if (scope.task === undefined) {
         working.set(
-          scope.hydra,
+          scope.titan,
           {
-            hydra: applied.segment as FileSegment<Titan>,
+            titan: applied.segment as FileSegment<Titan>,
             tasks: parent?.tasks ?? new Map(),
           },
         )
@@ -469,9 +469,9 @@ export function openFileStore<Titan, Task>({
           applied.segment as FileSegment<Task>,
         )
         working.set(
-          scope.hydra,
+          scope.titan,
           {
-            hydra: parent!.hydra,
+            titan: parent!.titan,
             tasks,
           },
         )
@@ -549,7 +549,7 @@ export function openFileStore<Titan, Task>({
               const accepted = stageWrite({
                 job: {
                   scope: {
-                    hydra: change.hydra,
+                    titan: change.titan,
                     task: change.task,
                   },
                   create: change.create ?? false,
@@ -655,36 +655,36 @@ export function openFileStore<Titan, Task>({
   return {
     read,
     has: ({
-      hydra,
+      titan,
       task,
       id,
     }: {
-      hydra: string
+      titan: string
       task?: string
       id: string
     }): boolean => {
-      const current = memory.get(hydra)
-      const segment = task === undefined ? current?.hydra : current?.tasks.get(task)
+      const current = memory.get(titan)
+      const segment = task === undefined ? current?.titan : current?.tasks.get(task)
 
       return segment?.accepted.has(id) ?? false
     },
     value: ({
-      hydra,
+      titan,
       task,
     }: {
-      hydra: string
+      titan: string
       task?: string
     }) => {
-      const current = memory.get(hydra)
-      const segment = task === undefined ? current?.hydra : current?.tasks.get(task)
+      const current = memory.get(titan)
+      const segment = task === undefined ? current?.titan : current?.tasks.get(task)
 
       return segment ? {
         state: structuredClone(segment.value),
         issue: segment.issue,
       } : undefined
     },
-    positions: ({ hydra }: { hydra: string }) => {
-      const current = memory.get(hydra)
+    positions: ({ titan }: { titan: string }) => {
+      const current = memory.get(titan)
 
       if (!current) {
         return undefined
@@ -697,7 +697,7 @@ export function openFileStore<Titan, Task>({
       })
 
       return {
-        ...position({ segment: current.hydra }),
+        ...position({ segment: current.titan }),
         tasks: new Map([...current.tasks].map(([
           task,
           segment,
@@ -707,7 +707,7 @@ export function openFileStore<Titan, Task>({
         ])),
       }
     },
-    hydras: () => [...memory.keys()],
+    titans: () => [...memory.keys()],
     locateTask: ({ task }: { task: string }) => {
       const found = findTask({
         source: memory,
@@ -715,35 +715,35 @@ export function openFileStore<Titan, Task>({
       })
 
       return found ? {
-        hydra: found[0],
+        titan: found[0],
         dir: taskFiles({
           home,
-          hydra: found[0],
+          titan: found[0],
           task,
         }),
       } : undefined
     },
     createTitan: async ({
-      hydra,
+      titan,
       facts,
     }: {
-      hydra: string
+      titan: string
       facts: readonly LogFact[]
     }) => {
       const submitted = plainJson({ value: facts })
 
       return change({
-        scope: { hydra },
+        scope: { titan },
         create: true,
         decide: () => submitted,
       })
     },
     createTask: async ({
-      hydra,
+      titan,
       task,
       facts,
     }: {
-      hydra: string
+      titan: string
       task: string
       facts: readonly LogFact[]
     }) => {
@@ -751,7 +751,7 @@ export function openFileStore<Titan, Task>({
 
       return change({
         scope: {
-          hydra,
+          titan,
           task,
         },
         create: true,
@@ -759,14 +759,14 @@ export function openFileStore<Titan, Task>({
       })
     },
     changeTitan: ({
-      hydra,
+      titan,
       decide,
     }: {
-      hydra: string
+      titan: string
       decide: Decide<Titan, Titan, Task>
     }) =>
       change({
-        scope: { hydra },
+        scope: { titan },
         decide: ({
           state,
           read,
@@ -776,17 +776,17 @@ export function openFileStore<Titan, Task>({
         }),
       }),
     changeTask: ({
-      hydra,
+      titan,
       task,
       decide,
     }: {
-      hydra: string
+      titan: string
       task: string
       decide: Decide<Task, Titan, Task>
     }) =>
       change({
         scope: {
-          hydra,
+          titan,
           task,
         },
         decide: ({
@@ -860,7 +860,7 @@ export function openFileStore<Titan, Task>({
           reduce: reduceTask,
           path: pathOf({
             scope: {
-              hydra: holder,
+              titan: holder,
               task,
             },
           }),
@@ -878,8 +878,8 @@ export function openFileStore<Titan, Task>({
           })
         }
 
-        if (destination.hydra.issue || source.hydra.issue) {
-          throw destination.hydra.issue ?? source.hydra.issue
+        if (destination.titan.issue || source.titan.issue) {
+          throw destination.titan.issue ?? source.titan.issue
         }
 
         try {

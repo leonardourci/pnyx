@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { TitanError } from '#store/errors.ts'
-import { hydraDir } from './home-migration.ts'
+import { titanDir } from './home-migration.ts'
 import { othrysHome, withRegistryLock, writeDurably } from '#store/storage.ts'
 
 // A fixed default keeps every Titan at one address, so an open tab finds a restarted server again.
@@ -27,7 +27,7 @@ export const infoPath = () => join(
   'server.json',
 )
 export const socketPath = ({ titanId }: { titanId: string }) => join(
-  hydraDir({ titanId }),
+  titanDir({ titanId }),
   'server.sock',
 )
 
@@ -36,7 +36,7 @@ export const socketPath = ({ titanId }: { titanId: string }) => join(
 // silent: its process is alive but /health did not answer, so what it is doing is unknown.
 async function probeServer(): Promise<{
   info: ServerInfo
-  hydras: string[]
+  titans: string[]
 } | 'stopped' | 'silent'> {
   let info: ServerInfo
 
@@ -50,7 +50,7 @@ async function probeServer(): Promise<{
     if (info.pid === process.pid) {
       return {
         info,
-        hydras: [...hosts.keys()],
+        titans: [...hosts.keys()],
       }
     }
 
@@ -80,13 +80,13 @@ async function probeServer(): Promise<{
 
   try {
     const health = await res.json() as {
-      hydras?: unknown
+      titans?: unknown
       pid?: unknown
     }
 
     return health.pid === info.pid ? {
       info,
-      hydras: Array.isArray(health.hydras) ? health.hydras.map(String) : [],
+      titans: Array.isArray(health.titans) ? health.titans.map(String) : [],
     } : 'stopped'
   } catch {
     // Another program answers on the recorded port.
@@ -98,9 +98,9 @@ async function probeServer(): Promise<{
 export async function readServer({ titanId }: { titanId: string }): Promise<ServerInfo | null> {
   const server = await probeServer()
 
-  return typeof server !== 'string' && server.hydras.includes(titanId) ? {
+  return typeof server !== 'string' && server.titans.includes(titanId) ? {
     ...server.info,
-    url: `http://127.0.0.1:${server.info.port}/hydra/${titanId}/`,
+    url: `http://127.0.0.1:${server.info.port}/titan/${titanId}/`,
     socket: socketPath({ titanId }),
   } : null
 }
@@ -150,7 +150,7 @@ export function localToken(): string {
   ).trim()
 }
 
-export const hydraRemoval = {
+export const titanRemoval = {
   close: undefined as undefined | (({ titanId }: { titanId: string }) => Promise<void>),
   finished: undefined as undefined | (({ titanId }: { titanId: string }) => void),
 }
@@ -199,7 +199,7 @@ export async function askHost({
   return ask({ body })
 }
 
-export function hydraIdentity({ titanId }: { titanId: string }): string {
+export function titanIdentity({ titanId }: { titanId: string }): string {
   return createHash('sha256').update(localToken())
     .update(titanId)
     .digest('hex')

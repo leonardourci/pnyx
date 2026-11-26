@@ -7,7 +7,7 @@ import { scanEvents } from './event-log.ts'
 import type { Host, Live } from './host-types.ts'
 import { loadTitan } from './store.ts'
 import type { Writer } from './writer.ts'
-import { hostedTitan, hydraDelivery, hydraEvent, othrysRunsTitan } from '#titan/titan.ts'
+import { hostedTitan, titanDelivery, titanEvent, othrysRunsTitan } from '#titan/titan.ts'
 import { undeliveredMessagesSince } from '#titan/chat-queue.ts'
 import type { TitanMessage } from '#titan/model.ts'
 import { ownerActor } from './actors.ts'
@@ -82,7 +82,7 @@ export function createHostRecovery({
 
   const withdrawLegacyAgentChange = async ({ recapAfter }: { recapAfter?: number }) => {
     const state = loadTitan({ titanId }).state
-    const change = state.hydraAgentChange
+    const change = state.titanAgentChange
 
     if (!change) {
       return
@@ -98,7 +98,7 @@ export function createHostRecovery({
     await write({
       fn: ({ writer }) => applyDecision({
         writer,
-        decision: hydraEvent({
+        decision: titanEvent({
           state: writer.state,
           cardId: TITAN_CARD,
           meta: {
@@ -119,9 +119,9 @@ export function createHostRecovery({
     for (const message of held) {
       background({
         name: 'Titan held message',
-        run: () => host().hydra({
+        run: () => host().titan({
           id: message.id,
-          text: hydraDelivery({ message }),
+          text: titanDelivery({ message }),
           actor: message.actor,
         }),
       })
@@ -174,7 +174,7 @@ export function createHostRecovery({
       },
     })
 
-    const cut = loadTitan({ titanId }).state.hydraOperation
+    const cut = loadTitan({ titanId }).state.titanOperation
 
     if (cut) {
       endOperation({
@@ -235,7 +235,7 @@ export function createHostRecovery({
           let resumeAttemptId: string | undefined
           const task = session.taskId ? writer.state.cards[session.taskId] : undefined
 
-          const isTitan = session.id === writer.state.config?.hydra.session
+          const isTitan = session.id === writer.state.config?.titan.session
 
           const resumable = fenced && !cutCompactions.has(session.id)
 
@@ -259,7 +259,7 @@ export function createHostRecovery({
               card: task,
             })
             && !steeringHeld({ card: task })
-            && session.id !== writer.state.config?.hydra.session) {
+            && session.id !== writer.state.config?.titan.session) {
             resumeAttemptId = findWorkerTurnToResume({
               titanId,
               state: writer.state,
@@ -294,7 +294,7 @@ export function createHostRecovery({
           taskId: TITAN_CARD,
           correlationId: resume.resumeAttemptId,
         },
-        run: () => host().hydra({
+        run: () => host().titan({
           id: resume.resumeAttemptId,
           text: resume.resumeMessage,
           actor: 'othrys',
@@ -438,7 +438,7 @@ export function createHostRecovery({
     const state = loadTitan({ titanId }).state
 
     if (othrysRunsTitan({ state })) {
-      if (state.hydraStatus?.state === 'down') {
+      if (state.titanStatus?.state === 'down') {
         planRetry()
       }
 

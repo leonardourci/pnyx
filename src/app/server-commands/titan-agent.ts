@@ -1,6 +1,6 @@
 import { background } from '#app/background.ts'
-import { hydraConfig } from '#titan/config.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanConfig } from '#titan/config.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
@@ -10,8 +10,8 @@ import type { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `hydra-agent <agent>`: saves the agent Titan runs on, and hands a new permission mode to its running turn.
-export async function hydraAgentCommand({
+// `titan-agent <agent>`: saves the agent Titan runs on, and hands a new permission mode to its running turn.
+export async function titanAgentCommand({
   ws,
   id,
   args,
@@ -26,7 +26,7 @@ export async function hydraAgentCommand({
 }) {
   if (args.length !== 1) {
     throw new TitanError({
-      message: 'hydra-agent expects one agent configuration',
+      message: 'titan-agent expects one agent configuration',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -49,7 +49,7 @@ export async function hydraAgentCommand({
   } = await withWriter({
     titanId,
     fn: ({ writer }) => {
-      const config = hydraConfig({
+      const config = titanConfig({
         state: writer.state,
         id: titanId,
       })
@@ -59,13 +59,13 @@ export async function hydraAgentCommand({
         id,
       )) {
         return {
-          previous: config.hydra.agent,
+          previous: config.titan.agent,
           running: undefined,
           stateSeq: writer.state.seq,
         }
       }
 
-      const decision = hydraEvent({
+      const decision = titanEvent({
         state: writer.state,
         cardId: TITAN_CARD,
         meta: {
@@ -77,8 +77,8 @@ export async function hydraAgentCommand({
           type: 'titan.configured',
           data: {
             ...config,
-            hydra: {
-              ...config.hydra,
+            titan: {
+              ...config.titan,
               agent,
             },
           },
@@ -92,7 +92,7 @@ export async function hydraAgentCommand({
       const running = writer.state.cards[TITAN_CARD]?.agent
 
       return {
-        previous: config.hydra.agent,
+        previous: config.titan.agent,
         running,
         stateSeq: writer.state.seq,
       }

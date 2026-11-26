@@ -227,7 +227,7 @@ export function createDiagnosticRecovery({
               type: 'titan.message',
               data: {
                 action: 'send',
-                hydra: writer.state.config?.hydra.id ?? 'hydra',
+                titan: writer.state.config?.titan.id ?? 'titan',
                 task,
                 text: '- Automatic message recovery stopped. Inspect `othrys debug health` for delivery, ownership and persistence details before acting.',
               },

@@ -22,7 +22,7 @@ import { wakeReasons } from '#titan/wake-reasons.ts'
 import { rmSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { reduce } from './reducer.ts'
-import { hydraDir } from './home-migration.ts'
+import { titanDir } from './home-migration.ts'
 import { heldTitan, holdTitan, loadTitan } from './store.ts'
 import { readChanges } from './event-log.ts'
 import { createDiagnosticRecovery } from '#diagnostics/recovery.ts'
@@ -30,7 +30,7 @@ import { background } from './background.ts'
 import { log } from './diagnostics.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir } from '#store/storage.ts'
-import { hydraIdentity, localToken, offerHost, socketPath } from './server-state.ts'
+import { titanIdentity, localToken, offerHost, socketPath } from './server-state.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
@@ -67,7 +67,7 @@ export async function mountOwnedTitan({
   reviewClock,
   reminderScheduler = systemReminderScheduler,
   open,
-  hydrasChanged,
+  titansChanged,
   upgradeRoot,
   restart,
 }: {
@@ -88,7 +88,7 @@ export async function mountOwnedTitan({
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
-  hydrasChanged(): void
+  titansChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Promise<MountedTitan> {
@@ -100,7 +100,7 @@ export async function mountOwnedTitan({
     let recovered = false
     let notifyChange = (): void => {}
 
-    const dir = hydraDir({ titanId })
+    const dir = titanDir({ titanId })
     const releaseHold = await holdTitan({
       titanId,
       changed: () => notifyChange(),
@@ -108,7 +108,7 @@ export async function mountOwnedTitan({
     failedRelease = releaseHold
     privateDir({ dir: spoolDir({ dir }) })
     const token = Buffer.from(localToken())
-    const identity = hydraIdentity({ titanId })
+    const identity = titanIdentity({ titanId })
     dropCopyLeases({ titanId })
     let { state } = loadTitan({ titanId })
     let handledThrough = state.seq
@@ -179,7 +179,7 @@ export async function mountOwnedTitan({
       }
 
       touchLatest({ ids: Object.keys(state.cards) })
-      hydrasChanged()
+      titansChanged()
     }
 
     const feed = createLatestFeed({
@@ -296,7 +296,7 @@ export async function mountOwnedTitan({
         live.pending = live.pending.filter(event => event.seq > handledThrough)
       }
 
-      hydrasChanged()
+      titansChanged()
 
       if (recovered) {
         background({
@@ -591,7 +591,7 @@ export async function mountOwnedTitan({
           stateSeq: state.seq,
           build: buildId(),
           titanId: identity,
-          installation: hydraIdentity({ titanId: '' }),
+          installation: titanIdentity({ titanId: '' }),
         },
       })
       sendLatest({ ws })
@@ -866,6 +866,6 @@ export async function mountOwnedTitan({
 }
 
 export const SERVE_OPTIONS = {
-  hydra: { type: 'string' },
+  titan: { type: 'string' },
   port: { type: 'string' },
 } as const

@@ -1,4 +1,3 @@
-import { canonicalCommandName } from './command-aliases.ts'
 import { TitanError } from '#store/errors.ts'
 import { integrationsCommand } from '#integrations/cli.ts'
 import { followUpSteering } from '#workers/inbox-follow-up.ts'
@@ -37,7 +36,7 @@ const handlerOf = ({ name }: { name: string }) => {
 
   return name === 'integrations'
     ? integrationsCommand
-    : commands[canonicalCommandName({ name }) as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
+    : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
 }
 
 export async function runPageCommand({ argv }: { argv: string[] }): Promise<PageAnswer> {

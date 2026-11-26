@@ -14,7 +14,7 @@ const EMPTY: LogPosition = {
 
 interface TitanLocation {
   home: string
-  hydra: string
+  titan: string
 }
 
 interface TaskLocation extends TitanLocation {
@@ -49,7 +49,7 @@ export interface FileLog {
 export interface TitanFiles {
   dir: string
   snapshot?: FileSnapshot
-  hydra: FileLog
+  titan: FileLog
   tasks: Record<string, FileLog>
   relocated: string[]
 }
@@ -71,26 +71,26 @@ function component({
   return id
 }
 
-export const hydraFiles = ({
+export const titanFiles = ({
   home,
-  hydra,
+  titan,
 }: TitanLocation) => join(
   resolve(home),
   'titans',
   component({
-    id: hydra,
+    id: titan,
     rule: TITAN_ID,
   }),
 )
 
 export const taskFiles = ({
   home,
-  hydra,
+  titan,
   task,
 }: TaskLocation) => join(
-  hydraFiles({
+  titanFiles({
     home,
-    hydra,
+    titan,
   }),
   'tasks',
   component({ id: task }),
@@ -195,7 +195,7 @@ function publishFolder({
 
 export function createTitanFiles({
   home,
-  hydra,
+  titan,
   entries,
 }: TitanLocation & {
   entries: readonly LogFact[]
@@ -208,11 +208,11 @@ export function createTitanFiles({
   }
 
   return publishFolder({
-    parent: dirname(hydraFiles({
+    parent: dirname(titanFiles({
       home,
-      hydra,
+      titan,
     })),
-    id: hydra,
+    id: titan,
     log: 'titan.log',
     entries,
   })
@@ -220,7 +220,7 @@ export function createTitanFiles({
 
 export function createTaskFiles({
   home,
-  hydra,
+  titan,
   task,
   entries,
 }: TaskLocation & {
@@ -234,16 +234,16 @@ export function createTaskFiles({
   }
 
   requireDirectory({
-    dir: hydraFiles({
+    dir: titanFiles({
       home,
-      hydra,
+      titan,
     }),
   })
 
   return publishFolder({
     parent: dirname(taskFiles({
       home,
-      hydra,
+      titan,
       task,
     })),
     id: task,
@@ -331,18 +331,18 @@ function prepareMove({
 } {
   const source = taskFiles({
     home,
-    hydra: from,
+    titan: from,
     task,
   })
   const destination = taskFiles({
     home,
-    hydra: to,
+    titan: to,
     task,
   })
   requireDirectory({ dir: source })
-  const targetTitan = hydraFiles({
+  const targetTitan = titanFiles({
     home,
-    hydra: to,
+    titan: to,
   })
   requireDirectory({ dir: targetTitan })
   const targetLog = lstatSync(
@@ -448,13 +448,13 @@ export function moveTaskFiles({
 
 export function readTitanFiles({
   home,
-  hydra,
+  titan,
   checkSnapshot,
   checkMove,
 }: TitanLocation & RecoveryChecks): TitanFiles {
-  const dir = hydraFiles({
+  const dir = titanFiles({
     home,
-    hydra,
+    titan,
   })
   requireDirectory({ dir })
   syncDirectory({ dir: dirname(dir) })
@@ -515,7 +515,7 @@ export function readTitanFiles({
     const path = join(
       taskFiles({
         home,
-        hydra,
+        titan,
         task: entry.name,
       }),
       'task.log',
@@ -541,7 +541,7 @@ export function readTitanFiles({
 
     const last = task.entries.at(-1)
 
-    if (last?.t === 'moved' && last.from === hydra && typeof last.to === 'string' && last.to !== hydra) {
+    if (last?.t === 'moved' && last.from === titan && typeof last.to === 'string' && last.to !== titan) {
       try {
         const issue = checkMove?.({
           task: entry.name,
@@ -556,7 +556,7 @@ export function readTitanFiles({
 
         moveFolder(prepareMove({
           home,
-          from: hydra,
+          from: titan,
           to: last.to,
           task: entry.name,
         }))
@@ -577,7 +577,7 @@ export function readTitanFiles({
       }
 
       relocated.push(
-        hydra,
+        titan,
         last.to,
       )
       continue
@@ -589,19 +589,19 @@ export function readTitanFiles({
     ])
   }
 
-  const hydraLogPath = join(
+  const titanLogPath = join(
     dir,
     'titan.log',
   )
-  let hydraLog = readFileLog({
-    path: hydraLogPath,
-    after: snapshot?.hydra,
+  let titanLog = readFileLog({
+    path: titanLogPath,
+    after: snapshot?.titan,
   })
 
-  if (!hydraLog.issue && hydraLog.fromStart && hydraLog.entries[0]?.t !== 'config') {
-    hydraLog = failedLog({
+  if (!titanLog.issue && titanLog.fromStart && titanLog.entries[0]?.t !== 'config') {
+    titanLog = failedLog({
       issue: new TitanError({
-        message: `Titan log has no config fact: ${hydraLogPath}`,
+        message: `Titan log has no config fact: ${titanLogPath}`,
         code: 'LOG_CORRUPT',
       }),
     })
@@ -610,7 +610,7 @@ export function readTitanFiles({
   return {
     dir,
     snapshot,
-    hydra: hydraLog,
+    titan: titanLog,
     tasks: Object.fromEntries(tasks),
     relocated,
   }
@@ -618,14 +618,14 @@ export function readTitanFiles({
 
 function readKnownTitan({
   home,
-  hydra,
+  titan,
   checkSnapshot,
   checkMove,
 }: TitanLocation & RecoveryChecks): TitanFiles {
   try {
     return readTitanFiles({
       home,
-      hydra,
+      titan,
       checkSnapshot,
       checkMove,
     })
@@ -638,9 +638,9 @@ function readKnownTitan({
       dir: join(
         resolve(home),
         'titans',
-        hydra,
+        titan,
       ),
-      hydra: failedLog({ issue: error }),
+      titan: failedLog({ issue: error }),
       tasks: {},
       relocated: [],
     }
@@ -684,28 +684,28 @@ export function readHomeFiles({
       'titan.log',
     ))).map(entry => entry.name)
     .sort()
-  const hydras = new Map(ids.map(hydra => [
-    hydra,
+  const titans = new Map(ids.map(titan => [
+    titan,
     readKnownTitan({
       home,
-      hydra,
+      titan,
       checkSnapshot,
       checkMove,
     }),
   ]))
-  const relocated = new Set([...hydras.values()].flatMap(hydra => hydra.relocated))
+  const relocated = new Set([...titans.values()].flatMap(titan => titan.relocated))
 
-  for (const hydra of relocated) {
-    hydras.set(
-      hydra,
+  for (const titan of relocated) {
+    titans.set(
+      titan,
       readKnownTitan({
         home,
-        hydra,
+        titan,
         checkSnapshot,
         checkMove,
       }),
     )
   }
 
-  return hydras
+  return titans
 }

@@ -1,4 +1,3 @@
-import { canonicalCommandName } from './command-aliases.ts'
 import type { HelperAction } from '#routine-helper/route.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 
@@ -109,7 +108,7 @@ const COMMAND_REGISTRY = {
         name: '--discard',
       })),
   },
-  hydra: {
+  titan: {
     page: true,
     scope: {
       reads: [
@@ -223,7 +222,7 @@ const COMMAND_REGISTRY = {
     agent: true,
     repeatable: true,
   },
-  'hydra-agent': { repeatable: true },
+  'titan-agent': { repeatable: true },
   setup: {
     scope: { reads: ['check'] },
     agentNotices: ({ args }) => args[0] !== 'check',
@@ -246,15 +245,12 @@ type PageName = {
 }[Name]
 
 // CLI commands exposed to the browser. push stays CLI-only because it reads a file path.
-export const CLI_COMMANDS: (PageName | 'titan')[] = [
-  ...entries.filter(([
-    , entry,
-  ]) => entry.page).map(([name]) => name) as PageName[],
-  'titan',
-]
+export const CLI_COMMANDS: PageName[] = entries.filter(([
+  , entry,
+]) => entry.page).map(([name]) => name) as PageName[]
 
 const registered = ({ name }: { name: string }): Entry | undefined =>
-  (COMMAND_REGISTRY as Record<string, Entry>)[canonicalCommandName({ name })]
+  (COMMAND_REGISTRY as Record<string, Entry>)[name]
 
 export const waitsOnAgent = ({ name }: { name: string }) => registered({ name })?.agent === true
 

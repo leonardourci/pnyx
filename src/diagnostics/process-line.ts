@@ -87,8 +87,8 @@ export function startProcessLines({ every = SAMPLE_MS }: { every?: number }) {
         const home = openedNativeHome()
         let stateBytes = 0
 
-        for (const hydra of home?.files.hydras() ?? []) {
-          const positions = home?.files.positions({ hydra })
+        for (const titan of home?.files.titans() ?? []) {
+          const positions = home?.files.positions({ titan })
 
           if (!positions) {
             continue

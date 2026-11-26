@@ -295,7 +295,7 @@ export function planDocument({
     .map(task => `Read tasks/${task}/task.log in Titan ${titanId} for changed events`)
 
   if (!help.length) {
-    help.push(`Use othrys board --titan ${titanId} for current tasks`)
+    help.push(`Use othrys titan --titan ${titanId} for current tasks`)
   }
 
   return {

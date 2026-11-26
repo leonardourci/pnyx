@@ -47,7 +47,7 @@ export function runCommand({
     throw new TitanError({
       message: 'the Titan command did not start',
       code: 'COMMAND_ERROR',
-      help: ['Use othrys board to inspect the Titan'],
+      help: ['Use othrys titan to inspect the Titan'],
     })
   }
 

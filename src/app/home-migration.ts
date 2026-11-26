@@ -7,19 +7,19 @@ import { openedNativeHome } from './native-home.ts'
 
 export const DEFAULT_TITAN = 'default'
 
-export const hydrasDir = (): string => join(
+export const titansDir = (): string => join(
   othrysHome(),
   'titans',
 )
 
-export function hydraIds({
+export function titanIds({
   includeRemoved = false,
 }: {
   migrate?: boolean
   includeRemoved?: boolean
 } = {}): string[] {
   const home = openedNativeHome()
-  const ids = home ? home.files.hydras().sort() : nativeTitanIds()
+  const ids = home ? home.files.titans().sort() : nativeTitanIds()
 
   if (includeRemoved) {
     return ids
@@ -27,7 +27,7 @@ export function hydraIds({
 
   return ids.filter(id => {
     try {
-      const state = home ? home.read({ hydra: id }).state : readNativeTitan({ titanId: id }).state
+      const state = home ? home.read({ titan: id }).state : readNativeTitan({ titanId: id }).state
 
       return !state.config?.removed
     } catch (error) {
@@ -40,7 +40,7 @@ export function hydraIds({
   })
 }
 
-export function hydraDir({
+export function titanDir({
   titanId,
 }: {
   titanId: string
@@ -55,12 +55,12 @@ export function hydraDir({
   }
 
   return join(
-    hydrasDir(),
+    titansDir(),
     titanId,
   )
 }
 
-export const hydraAgentFolder = ({ titanId }: { titanId: string }): string => join(
-  hydraDir({ titanId }),
+export const titanAgentFolder = ({ titanId }: { titanId: string }): string => join(
+  titanDir({ titanId }),
   'agent',
 )

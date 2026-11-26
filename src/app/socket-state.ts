@@ -1,4 +1,4 @@
-import type { TitanSummary } from './server-hydras.ts'
+import type { TitanSummary } from './server-titans.ts'
 import type { PageState } from './page-state.ts'
 import type { TitanQueue } from '#titan/wakes.ts'
 import type { PageSettings } from '#settings/model.ts'
@@ -11,7 +11,7 @@ export interface TitanPage {
 }
 
 export interface HomePage {
-  hydras: TitanSummary[]
+  titans: TitanSummary[]
   settings: {
     settings: PageSettings
     revision: number

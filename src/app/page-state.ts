@@ -11,12 +11,12 @@ export interface PageInterest {
   cards: string[]
   hidden: boolean
 }
-type ServerOnly = 'eventIds' | 'contextNotes' | 'questionReminders' | 'hydraMessages'
+type ServerOnly = 'eventIds' | 'contextNotes' | 'questionReminders' | 'titanMessages'
 export type PageState = Omit<TitanState, ServerOnly>
 
 function ownerMessage({ messages }: {
-  messages: TitanState['hydraMessages']
-}): TitanState['hydraOwnerMessage'] {
+  messages: TitanState['titanMessages']
+}): TitanState['titanOwnerMessage'] {
   const ownerSend = ({ message }: { message: TitanMessage }) =>
     ownerActor({ actor: message.actor }) && message.action === 'send'
   const latest = messages?.findLast(message => ownerSend({ message }))
@@ -58,7 +58,7 @@ function pageSession({
 }): boolean {
   const card = session.taskId && state.cards[session.taskId]
 
-  if (session.id === state.config?.hydra.session) {
+  if (session.id === state.config?.titan.session) {
     return true
   }
 
@@ -77,9 +77,9 @@ export function pageState({
 }): PageState {
   const page: PageState & Partial<Pick<TitanState, ServerOnly>> = {
     ...state,
-    hydraOwnerMessage: ownerMessage({ messages: state.hydraMessages }),
+    titanOwnerMessage: ownerMessage({ messages: state.titanMessages }),
   }
-  delete page.hydraMessages
+  delete page.titanMessages
   delete page.eventIds
   delete page.contextNotes
   delete page.questionReminders

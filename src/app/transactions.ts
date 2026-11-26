@@ -20,7 +20,7 @@ export function transactionReceipt({
   eventIds?: Record<string, unknown>
 }): Output | undefined {
   const home = nativeHome()
-  const current = home.read({ hydra: titanId })
+  const current = home.read({ titan: titanId })
   const knownIds = eventIds ?? current.state.eventIds
   const recorded = home.receipts.get(titanId)?.get(id)
 

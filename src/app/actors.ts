@@ -1,4 +1,4 @@
-export const TITAN_ACTOR = 'hydra'
+export const TITAN_ACTOR = 'titan'
 
 // The Titan page and an unlabelled CLI are usually the owner; workers Othrys runs write as `worker:<task>`.
 const OWNER_ACTORS = [

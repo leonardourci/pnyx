@@ -6,7 +6,7 @@ import { privateDir, replaceFile } from './storage.ts'
 export interface FileSnapshot {
   v: 1
   at: string
-  hydra: LogPosition
+  titan: LogPosition
   tasks: Record<string, {
     task: LogPosition
     worker: number
@@ -65,7 +65,7 @@ export function readSnapshot({ dir }: { dir: string }): FileSnapshot | undefined
   }
 
   if (!snapshot || snapshot.v !== 1 || typeof snapshot.at !== 'string'
-    || !validLogPosition({ position: snapshot.hydra })
+    || !validLogPosition({ position: snapshot.titan })
     || !snapshot.tasks || typeof snapshot.tasks !== 'object' || Array.isArray(snapshot.tasks)
     || !Object.hasOwn(
       snapshot,

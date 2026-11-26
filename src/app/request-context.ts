@@ -46,7 +46,7 @@ export const IDENTITY = [
 
 export const requestEnv = (): NodeJS.ProcessEnv => current.getStore()?.env ?? process.env
 
-export const hydraActor = ({ actor }: { actor?: string }) =>
+export const titanActor = ({ actor }: { actor?: string }) =>
   actor === TITAN_ACTOR || requestEnv().OTHRYS_ACTOR === TITAN_ACTOR
 
 export const requestCwd = (): string => current.getStore()?.cwd ?? process.cwd()
@@ -107,5 +107,5 @@ export function agentRequest(): boolean {
   const env = requestEnv()
   const actor = env.OTHRYS_ACTOR ?? ''
 
-  return actor === 'hydra' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.OTHRYS_TASK)
+  return actor === 'titan' || actor.startsWith('worker:') || actor.startsWith('helper:') || Boolean(env.OTHRYS_TASK)
 }

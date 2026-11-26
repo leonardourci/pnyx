@@ -3,7 +3,7 @@ import { recordEventId } from './command-meta.ts'
 import { existsSync, linkSync, lstatSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { openFileStore } from '#store/file-store.ts'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { titanFiles, taskFiles } from '#store/file-home.ts'
 import { canonical, othrysHome, taskRuntimeDir } from '#store/paths.ts'
 import { privateDir, writeDurably } from '#store/storage.ts'
 import { TitanError } from '#store/errors.ts'
@@ -82,7 +82,7 @@ function loadedState({
 
   const state = assembleNative({
     positions,
-    hydra: nativeReferences({
+    titan: nativeReferences({
       value: view.state,
       ids: positions,
       restore: true,
@@ -160,16 +160,16 @@ function linkFile({
 
 export function bindNativeTask({
   home,
-  hydra,
+  titan,
   card,
 }: {
   home: string
-  hydra: string
+  titan: string
   card: Card
 }): void {
   const task = taskFiles({
     home,
-    hydra,
+    titan,
     task: card.id,
   })
   const runtime = card.workerLogDir ?? taskRuntimeDir({ task: card.id })
@@ -274,11 +274,11 @@ export class NativeHome {
     }[]>()
 
     const add = ({
-      hydra,
+      titan,
       scope,
       entries,
     }: {
-      hydra: string
+      titan: string
       scope: string
       entries: {
         id: string
@@ -287,9 +287,9 @@ export class NativeHome {
       }[]
     }) => {
       timelines.set(
-        hydra,
+        titan,
         [
-          ...timelines.get(hydra) ?? [],
+          ...timelines.get(titan) ?? [],
           ...entries.map(entry => ({
             ...entry,
             scope,
@@ -298,11 +298,11 @@ export class NativeHome {
       )
     }
 
-    for (const hydra of this.files.hydras()) {
-      const view = this.files.read({ hydra })!
+    for (const titan of this.files.titans()) {
+      const view = this.files.read({ titan })!
       add({
-        hydra,
-        scope: hydra,
+        titan,
+        scope: titan,
         entries: [...view.accepted.values()],
       })
 
@@ -315,17 +315,17 @@ export class NativeHome {
           b,
         ) => a.n - b.n)
         add({
-          hydra,
+          titan,
           scope: task,
           entries: accepted,
         })
         const moves = stored.state?.moves ?? []
-        let owner = moves[0]?.from ?? hydra
+        let owner = moves[0]?.from ?? titan
 
         for (const entry of accepted) {
-          if (owner !== hydra) {
+          if (owner !== titan) {
             add({
-              hydra: owner,
+              titan: owner,
               scope: task,
               entries: [entry],
             })
@@ -341,7 +341,7 @@ export class NativeHome {
     }
 
     for (const [
-      hydra,
+      titan,
       entries,
     ] of timelines) {
       entries.sort((
@@ -351,19 +351,19 @@ export class NativeHome {
 
       for (const entry of entries) {
         this.position({
-          hydra,
+          titan,
           scope: entry.scope,
           id: entry.id,
         })
       }
     }
 
-    for (const hydra of this.files.hydras()) {
+    for (const titan of this.files.titans()) {
       rmSync(
         join(
-          hydraFiles({
+          titanFiles({
             home: path,
-            hydra,
+            titan,
           }),
           'harvest.json',
         ),
@@ -390,8 +390,8 @@ export class NativeHome {
     ).unref()
   }
 
-  references({ hydra }: { hydra: string }): Map<string, number> {
-    const known = this.timelines.get(hydra)
+  references({ titan }: { titan: string }): Map<string, number> {
+    const known = this.timelines.get(titan)
 
     if (known) {
       return known
@@ -399,7 +399,7 @@ export class NativeHome {
 
     const positions = new Map<string, number>()
     this.timelines.set(
-      hydra,
+      titan,
       positions,
     )
 
@@ -407,26 +407,26 @@ export class NativeHome {
   }
 
   position({
-    hydra,
+    titan,
     id,
     scope,
     seq,
   }: {
-    hydra: string
+    titan: string
     id: string
     scope: string
     seq?: number
   }): number {
-    const positions = this.references({ hydra })
+    const positions = this.references({ titan })
     const key = nativeId({
       scope,
       id,
     })
     const known = positions.get(key)
-    const clock = this.clocks.get(hydra) ?? 0
+    const clock = this.clocks.get(titan) ?? 0
     const position = seq ?? known ?? clock + 1
     this.clocks.set(
-      hydra,
+      titan,
       Math.max(
         clock,
         position,
@@ -451,8 +451,8 @@ export class NativeHome {
     card: Card
     state: TitanState
   }): Card {
-    const source = this.references({ hydra: from })
-    const destination = this.references({ hydra: to })
+    const source = this.references({ titan: from })
+    const destination = this.references({ titan: to })
     let through = Math.max(
       this.clocks.get(to) ?? 0,
       state.seq,
@@ -505,19 +505,19 @@ export class NativeHome {
     return pending
   }
 
-  read({ hydra }: { hydra: string }): NativeHeld {
-    const current = this.records.get(hydra)
+  read({ titan }: { titan: string }): NativeHeld {
+    const current = this.records.get(titan)
 
     if (current && !current.stale) {
       return current
     }
 
-    const view = this.files.read({ hydra })
+    const view = this.files.read({ titan })
     const state = view ? loadedState({
       view,
-      positions: this.references({ hydra }),
+      positions: this.references({ titan }),
     }) : assembleNative({ tasks: [] })
-    const receipts = this.receipts.get(hydra) ?? new Map<string, {
+    const receipts = this.receipts.get(titan) ?? new Map<string, {
       digest: string
       value: Output
     }>()
@@ -528,16 +528,16 @@ export class NativeHome {
     ]
 
     for (const scope of scopes) {
-      const hydrated = nativeReferences({
+      const restored = nativeReferences({
         value: scope,
-        ids: this.references({ hydra }),
+        ids: this.references({ titan }),
         restore: true,
       }) as NativeState | undefined
 
       for (const [
         id,
         receipt,
-      ] of Object.entries(hydrated?.receipts ?? {})) {
+      ] of Object.entries(restored?.receipts ?? {})) {
         receipts.set(
           id,
           receipt,
@@ -546,13 +546,13 @@ export class NativeHome {
     }
 
     this.receipts.set(
-      hydra,
+      titan,
       receipts,
     )
     const record: NativeHeld = {
-      dir: hydraFiles({
+      dir: titanFiles({
         home: this.path,
-        hydra,
+        titan,
       }),
       state,
       committed: state.seq,
@@ -572,21 +572,21 @@ export class NativeHome {
     }
 
     this.records.set(
-      hydra,
+      titan,
       record,
     )
 
     return record
   }
 
-  async ensure({ hydra }: { hydra: string }): Promise<void> {
-    if (this.files.hydras().includes(hydra)) {
+  async ensure({ titan }: { titan: string }): Promise<void> {
+    if (this.files.titans().includes(titan)) {
       return
     }
 
-    if (existsSync(hydraFiles({
+    if (existsSync(titanFiles({
       home: this.path,
-      hydra,
+      titan,
     }))) {
       throw new TitanError({
         code: 'FRESH_HOME_REQUIRED',
@@ -595,14 +595,14 @@ export class NativeHome {
     }
 
     await this.files.createTitan({
-      hydra,
+      titan,
       facts: [
         {
           at: new Date().toISOString(),
           by: 'daemon',
           t: 'config',
-          id: `native-create:${hydra}`,
-          hydra,
+          id: `native-create:${titan}`,
+          titan,
           change: [
             {
               path: ['fields'],
@@ -615,36 +615,36 @@ export class NativeHome {
   }
 
   remember({
-    hydra,
+    titan,
     state,
     events,
     dirty,
   }: {
-    hydra: string
+    titan: string
     state: TitanState
     events: TitanEvent[]
     dirty: boolean
   }): void {
-    const record = this.read({ hydra })
+    const record = this.read({ titan })
     record.state = state
     record.committed = state.seq
     record.pending = record.pending.concat(events)
     this.dirty = this.dirty || dirty
   }
 
-  reload({ hydra }: { hydra: string }): void {
-    const record = this.records.get(hydra)
+  reload({ titan }: { titan: string }): void {
+    const record = this.records.get(titan)
 
     if (record) {
       record.stale = true
     }
 
-    this.read({ hydra })
+    this.read({ titan })
   }
 
   restoreMoves(): void {
-    for (const owner of this.files.hydras()) {
-      const view = this.files.read({ hydra: owner })
+    for (const owner of this.files.titans()) {
+      const view = this.files.read({ titan: owner })
 
       for (const [
         task,
@@ -657,12 +657,12 @@ export class NativeHome {
           a,
           b,
         ) => a.n - b.n)) {
-          if (ownerAt !== owner && !this.files.positions({ hydra: ownerAt })?.issue) {
-            const original = this.read({ hydra: ownerAt }).state
+          if (ownerAt !== owner && !this.files.positions({ titan: ownerAt })?.issue) {
+            const original = this.read({ titan: ownerAt }).state
             recordEventId({
               state: original,
               id: accepted.id,
-              seq: this.references({ hydra: ownerAt }).get(nativeId({
+              seq: this.references({ titan: ownerAt }).get(nativeId({
                 scope: task,
                 id: accepted.id,
               })) ?? 0,
@@ -677,11 +677,11 @@ export class NativeHome {
         }
 
         for (const move of moves) {
-          if (move.from === owner || this.files.positions({ hydra: move.from })?.issue) {
+          if (move.from === owner || this.files.positions({ titan: move.from })?.issue) {
             continue
           }
 
-          const source = this.read({ hydra: move.from }).state
+          const source = this.read({ titan: move.from }).state
           source.movedOut ??= {}
           source.movedOut[task] = {
             to: move.to,
@@ -692,7 +692,7 @@ export class NativeHome {
           recordEventId({
             state: source,
             id: move.id,
-            seq: this.references({ hydra: move.from }).get(nativeId({
+            seq: this.references({ titan: move.from }).get(nativeId({
               scope: task,
               id: move.id,
             })) ?? 0,

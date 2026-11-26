@@ -3,7 +3,7 @@ import { threadDelta, type ThreadDelta } from '#titan/thread-delta.ts'
 import { statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { nativeHome } from './native-home.ts'
-import { createTitanThreadView, hydraThreadView } from '#titan/thread-view.ts'
+import { createTitanThreadView, titanThreadView } from '#titan/thread-view.ts'
 import { joinLatest, mergeThreadPages, retainThreadPages, type ThreadBoundary } from '#titan/thread-history.ts'
 import { effectiveView } from '#settings/store.ts'
 import { traces } from '#preferences/view.ts'
@@ -53,7 +53,7 @@ export type Subscription = {
   readVersion?: number
 }
 
-// The events that can change what hydraThreadView shows: anything on Titan's own card, its messages,
+// The events that can change what titanThreadView shows: anything on Titan's own card, its messages,
 // operations and settings, the columns and view, the compactions and upgrades that hold messages,
 // and a new title for a card it names.
 export function changesTitanThread({
@@ -270,7 +270,7 @@ export function createThreadSubscriptions({
       view: effectiveView({ state: current }),
       card: TITAN_CARD,
     })
-    const prepared = hydraThreadView({
+    const prepared = titanThreadView({
       state: current,
       page: visible,
       tools,

@@ -1,5 +1,5 @@
 import { pageShows, type PageInterest } from './page-state.ts'
-import { hydraChatQueue } from '#titan/chat-queue.ts'
+import { titanChatQueue } from '#titan/chat-queue.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import type { CurrentAction } from '#titan/calls.ts'
 import { threadPath, type LatestMessage } from '#titan/transcripts-read.ts'
@@ -147,7 +147,7 @@ export function createServerClients({
 
   const queue = () => {
     const queued = agents().queue()
-    const chat = hydraChatQueue({ state: state() })
+    const chat = titanChatQueue({ state: state() })
 
     return {
       waiting: queued.waiting,
@@ -179,7 +179,7 @@ export function createServerClients({
     knownCards = new Set(Object.keys(state().cards))
     // Titan taking a task message is filed under Titan's card but changes that task's thread.
     const receivedTask = event.type === 'titan.received'
-      ? state().hydraMessages?.find(message => message.id === event.data.message)?.task
+      ? state().titanMessages?.find(message => message.id === event.data.message)?.task
       : undefined
 
     for (const ws of clients) {

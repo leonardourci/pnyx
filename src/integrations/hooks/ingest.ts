@@ -8,7 +8,7 @@ import { joinedKey } from '#tasks/push-rules.ts'
 import { decideLink, parseLink } from '#tasks/delivery/links.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
 import { decideSession } from '#workers/sessions.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
 import { TitanError } from '#store/errors.ts'
 import type { AgentRef } from '#workers/model.ts'
@@ -260,7 +260,7 @@ function ingest({
 
     const config = writer.state.config
 
-    if (task === TITAN_CARD && o.card.agent && config && !config.hydra.session) {
+    if (task === TITAN_CARD && o.card.agent && config && !config.titan.session) {
       const session = sessionId({ agent: o.card.agent as AgentRef })
 
       const recorded = writer.state.sessions?.[session]
@@ -268,19 +268,19 @@ function ingest({
       if (recorded && (!recorded.taskId || recorded.taskId === TITAN_CARD)) {
         applyDecision({
           writer,
-          decision: hydraEvent({
+          decision: titanEvent({
             state: writer.state,
             meta: {
               ...m,
-              id: `${m.id}:hydra`,
+              id: `${m.id}:titan`,
             },
             cardId: '$all',
             change: {
               type: 'titan.configured',
               data: {
                 ...config,
-                hydra: {
-                  ...config.hydra,
+                titan: {
+                  ...config.titan,
                   session,
                 },
               },
@@ -337,11 +337,11 @@ export function drainSpool({ writer }: {
     ingested += 1
   }
 
-  const hydra = writer.state.config?.hydra.session
+  const titan = writer.state.config?.titan.session
 
   const turned = [...harvest].flatMap(id => writer.state.cards[id] ?? [])
 
-  if (hydra && turned.some(card => cardSessionId({ card }) === hydra)) {
+  if (titan && turned.some(card => cardSessionId({ card }) === titan)) {
     harvest.add(TITAN_CARD)
   }
 

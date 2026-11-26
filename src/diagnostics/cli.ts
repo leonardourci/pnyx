@@ -93,7 +93,7 @@ async function performanceView({
   onlyFlags({
     values,
     allowed: [
-      'hydra',
+      'titan',
       'since',
       'until',
       'operation',
@@ -170,7 +170,7 @@ export const debug = guard({
       onlyFlags({
         values,
         allowed: [
-          'hydra',
+          'titan',
           'seconds',
           'out',
         ],
@@ -205,7 +205,7 @@ export const debug = guard({
       return performanceView({
         values,
         // The routine helper reads only its own Titan, as for every command; anyone else reads every Titan unless they name one.
-        titanId: isHelper({ actor: env.OTHRYS_ACTOR ?? 'cli' }) ? env.OTHRYS_TITAN : values.hydra as string | undefined,
+        titanId: isHelper({ actor: env.OTHRYS_ACTOR ?? 'cli' }) ? env.OTHRYS_TITAN : values.titan as string | undefined,
       })
     }
 
@@ -219,7 +219,7 @@ export const debug = guard({
       onlyFlags({
         values,
         allowed: [
-          'hydra',
+          'titan',
           'limit',
         ],
         usage: 'debug health accepts only --titan and --limit',
@@ -244,7 +244,7 @@ export const debug = guard({
     onlyFlags({
       values,
       allowed: [
-        'hydra',
+        'titan',
         'task',
         'message',
         'batch',
@@ -304,7 +304,7 @@ export const debug = guard({
     })
 
     return {
-      hydra: titanId,
+      titan: titanId,
       ...page,
       entries: entries.length ? entries : 'none: no matching timeline records',
       serviceTailTruncated: service.truncated,

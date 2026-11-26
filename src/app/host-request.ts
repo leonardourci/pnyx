@@ -12,7 +12,7 @@ import { field } from '#workers/http.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { validateChoice, chosenSettings, readQuota } from '#workers/dispatch.ts'
 import { knownHarness, providerIdOf } from '#workers/providers.ts'
-import { hydraFastReaches, modelIds } from '#workers/provider.ts'
+import { titanFastReaches, modelIds } from '#workers/provider.ts'
 import { SETTINGS } from '#workers/host.ts'
 import { noticePermissionIncrease, workerMode } from '#workers/permission-level.ts'
 
@@ -47,8 +47,8 @@ async function hostRequestUnlocked({
           name: 'card',
         })!,
       })
-    case 'hydra':
-      return host.hydra({
+    case 'titan':
+      return host.titan({
         text: field({
           body,
           name: 'text',
@@ -226,8 +226,8 @@ async function hostRequestUnlocked({
 
       // An explicit task start --fast wins; otherwise Fast in Titan's composer reaches every worker, even a candidate saved with Fast off.
       const ownerFast = dispatch.override?.fast !== undefined
-      const hydraFast = !ownerFast && await hydraFastReaches({
-        hydraFast: current.config?.hydra.agent?.fast,
+      const titanFast = !ownerFast && await titanFastReaches({
+        titanFast: current.config?.titan.agent?.fast,
         models: () => host.models({
           harness: dispatch.provider,
           account: dispatch.account,
@@ -235,7 +235,7 @@ async function hostRequestUnlocked({
         model: settings.model,
       })
 
-      if (hydraFast) {
+      if (titanFast) {
         settings.fast = 'true'
       }
 
@@ -431,7 +431,7 @@ async function hostRequestUnlocked({
 
     default:
       throw new TitanError({
-        message: 'action must be hydra, start, models, continue, send, set or permission',
+        message: 'action must be titan, start, models, continue, send, set or permission',
         code: 'VALIDATION_ERROR',
       })
   }

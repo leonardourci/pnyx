@@ -1,16 +1,16 @@
 import { ownerPolis } from '#memory/owner-polis.ts'
 import type { TitanEvent, TitanState } from './model.ts'
-import type { TitanSummary } from './server-hydras.ts'
-import { hydraIdentity } from './server-state.ts'
-import { hydraConfig } from '#titan/config.ts'
+import type { TitanSummary } from './server-titans.ts'
+import { titanIdentity } from './server-state.ts'
+import { titanConfig } from '#titan/config.ts'
 import { readEvents } from './event-log.ts'
 import { homeScoped } from '#store/paths.ts'
 import { projectsFor } from '#projects/read.ts'
 import { ownerQuestionGroups } from '#tasks/question-groups.ts'
 import { liveTask } from '#tasks/select.ts'
-import { hydraWorking } from '#titan/chat-queue.ts'
+import { titanWorking } from '#titan/chat-queue.ts'
 
-export const CREATION_PREFIX = 'hydra-create:'
+export const CREATION_PREFIX = 'titan-create:'
 
 // A Titan's first event never changes, so each is read once it exists.
 const firstEvents = new Map<string, TitanEvent>()
@@ -58,7 +58,7 @@ export function summarize({
   state: TitanState
 }): TitanSummary {
   try {
-    const config = hydraConfig({
+    const config = titanConfig({
       state,
       id,
     })
@@ -87,13 +87,13 @@ export function summarize({
       asks: groups.length,
       id,
       polis: ownerPolis({ state }),
-      identity: hydraIdentity({ titanId: id }),
+      identity: titanIdentity({ titanId: id }),
       creationAttempt: creationAttempt({ event: initial }),
       name: config.name,
       icon: config.icon,
       order: config.position ?? createdAt({ event: initial }),
-      hydra: config.hydra.name,
-      working: hydraWorking({ state }),
+      titan: config.titan.name,
+      working: titanWorking({ state }),
       projects,
     }
   } catch {
@@ -106,6 +106,6 @@ export const unreadableSummary = ({ id }: { id: string }): TitanSummary => ({
   id,
   name: id,
   order: Number.MAX_SAFE_INTEGER,
-  hydra: 'could not be loaded',
+  titan: 'could not be loaded',
   projects: [],
 })

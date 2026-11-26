@@ -36,7 +36,7 @@ export function cliCommand({
     })
   }
 
-  if (args.some(a => /^--(?:titan|hydra)(?:=|$)/.test(a))) {
+  if (args.some(a => /^--titan(?:=|$)/.test(a))) {
     return fail({
       error: `--titan is not allowed; this server writes Titan ${titanId}`,
       code: 'VALIDATION_ERROR',

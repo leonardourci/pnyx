@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join, normalize, extname } from 'node:path'
 import { MAX_BODY, WEB_ROOT, MIME } from './server-transport.ts'
 import { TitanError } from '#store/errors.ts'
-import { hydraIdentity } from './server-state.ts'
+import { titanIdentity } from './server-state.ts'
 
 export function readBytes({
   req,
@@ -183,7 +183,7 @@ export function serveStatic({
         )
         const html = raw.replace(
           '</head>',
-          `<base href="${page.base}" />\n<meta name="othrys-token" content="${page.token}" />\n<meta name="othrys-build" content="${buildOf({ html: raw })}" />\n<meta name="othrys-hydra" content="${page.identity}" />\n<meta name="othrys-installation" content="${hydraIdentity({ titanId: '' })}" />\n</head>`,
+          `<base href="${page.base}" />\n<meta name="othrys-token" content="${page.token}" />\n<meta name="othrys-build" content="${buildOf({ html: raw })}" />\n<meta name="othrys-titan" content="${page.identity}" />\n<meta name="othrys-installation" content="${titanIdentity({ titanId: '' })}" />\n</head>`,
         )
         res.writeHead(
           200,

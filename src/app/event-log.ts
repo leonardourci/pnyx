@@ -6,7 +6,7 @@ import { durableEvent } from './event-policy.ts'
 import type { TitanEvent } from './model.ts'
 import { heldTitan } from './store.ts'
 import { readLog, type LogEntry, type LogPosition } from '#store/log.ts'
-import { hydraFiles, taskFiles } from '#store/file-home.ts'
+import { titanFiles, taskFiles } from '#store/file-home.ts'
 
 export interface EventSelection {
   titanId: string
@@ -38,7 +38,7 @@ function savedEvents({
     home,
     logs,
   )
-  const view = home.files.positions({ hydra: titanId })
+  const view = home.files.positions({ titan: titanId })
 
   if (!view) {
     return []
@@ -53,9 +53,9 @@ function savedEvents({
       foreign: false,
       scope: titanId,
       path: join(
-        hydraFiles({
+        titanFiles({
           home: home.path,
-          hydra: titanId,
+          titan: titanId,
         }),
         'titan.log',
       ),
@@ -81,7 +81,7 @@ function savedEvents({
       path: join(
         taskFiles({
           home: home.path,
-          hydra: titanId,
+          titan: titanId,
           task,
         }),
         'task.log',
@@ -91,10 +91,10 @@ function savedEvents({
     })
   }
 
-  const { state } = home.read({ hydra: titanId })
+  const { state } = home.read({ titan: titanId })
   const moved = state.movedOut ?? {}
   const eventIds = state.eventIds
-  const references = home.references({ hydra: titanId })
+  const references = home.references({ titan: titanId })
 
   for (const task of Object.keys(moved)) {
     if (view.tasks.has(task)) {
@@ -102,7 +102,7 @@ function savedEvents({
     }
 
     const located = home.files.locateTask({ task })
-    const scope = located && home.files.positions({ hydra: located.hydra })?.tasks.get(task)
+    const scope = located && home.files.positions({ titan: located.titan })?.tasks.get(task)
 
     if (scope && !scope.issue) {
       scopes.push({
@@ -160,7 +160,7 @@ function savedEvents({
       }
 
       home.position({
-        hydra: titanId,
+        titan: titanId,
         id: entry.id,
         scope: scope.scope,
         seq: Object.hasOwn(
@@ -549,7 +549,7 @@ export function eventSeq({
   titanId: string
   id: string
 }): number | undefined {
-  const { state } = nativeHome().read({ hydra: titanId })
+  const { state } = nativeHome().read({ titan: titanId })
 
   return Object.hasOwn(
     state.eventIds,

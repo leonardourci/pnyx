@@ -21,7 +21,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideSession } from '#workers/sessions.ts'
 import { cardStatus, currentState } from '#tasks/card-status.ts'
-import { hydraEvent } from '#titan/titan.ts'
+import { titanEvent } from '#titan/titan.ts'
 import { TitanError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { askHost } from './server-state.ts'
@@ -131,7 +131,7 @@ export const TASK_OPTIONS: Options = {
   'ready-when': { type: 'string' },
   every: { type: 'string' },
   hold: { type: 'boolean' },
-  'to-hydra': { type: 'string' },
+  'to-titan': { type: 'string' },
 }
 
 export async function taskCommand({ args }: { args: string[] }): Promise<Output> {
@@ -347,7 +347,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
         return after === (task.reminder?.at ?? null) && !task.reminder?.dueAt
           && JSON.stringify(repeat) === JSON.stringify(task.reminder?.repeat) ? { skipped: 'unchanged' }
-          : hydraEvent({
+          : titanEvent({
             state,
             meta: m,
             cardId: task.id,
@@ -680,8 +680,8 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         what: 'task id',
       }),
       to: required({
-        value: values['to-hydra'] as string | undefined,
-        what: '--to-hydra <hydra>',
+        value: values['to-titan'] as string | undefined,
+        what: '--to-titan <titan>',
       }),
       meta: m,
     })
@@ -878,10 +878,10 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
       ref: String(values.session),
     }) : undefined
 
-    const hydraSession = task.id === TITAN_CARD && session !== undefined
-      && Boolean(state.hydraSessions?.includes(session.id))
+    const titanSession = task.id === TITAN_CARD && session !== undefined
+      && Boolean(state.titanSessions?.includes(session.id))
 
-    if (session && !hydraSession && !taskSessions({
+    if (session && !titanSession && !taskSessions({
       titanId,
       ids: new Set([task.id]),
     }).has(session.id)) {
@@ -937,7 +937,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         }).path
 
         return task.project === after ? { skipped: 'unchanged' }
-          : hydraEvent({
+          : titanEvent({
             state,
             meta: m,
             cardId: task.id,
@@ -995,7 +995,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         const before = task.doneAfterHours ?? null
 
         return before === after && !task.keepDone ? { skipped: 'unchanged' }
-          : hydraEvent({
+          : titanEvent({
             state,
             meta: m,
             cardId: task.id,
@@ -1046,7 +1046,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
 
         const after = action === 'hide'
 
-        return Boolean(task.hidden) === after ? { skipped: 'unchanged' } : hydraEvent({
+        return Boolean(task.hidden) === after ? { skipped: 'unchanged' } : titanEvent({
           state,
           meta: m,
           cardId: task.id,
@@ -1228,7 +1228,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
         }),
       })) {
         throw new TitanError({
-          message: 'choose an explicit task; use hydra set to configure Titan',
+          message: 'choose an explicit task; use titan set to configure Titan',
           code: 'VALIDATION_ERROR',
         })
       }

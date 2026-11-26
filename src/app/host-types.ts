@@ -43,7 +43,7 @@ export interface Host {
     account?: string
     refresh?: boolean
   }): Promise<ModelOption[]>
-  hydra({
+  titan({
     text,
     actor,
     id,

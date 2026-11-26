@@ -7,7 +7,7 @@ import { privateDir, syncDirectory, writeOpenFile } from './storage.ts'
 const READ_BYTES = 64 * 1024
 const AUTHORS = new Set([
   'owner',
-  'hydra',
+  'titan',
   'worker',
   'daemon',
 ])
@@ -23,7 +23,7 @@ export interface LogPosition {
 
 export interface LogFact {
   at: string
-  by: 'owner' | 'hydra' | 'worker' | 'daemon'
+  by: 'owner' | 'titan' | 'worker' | 'daemon'
   t: string
   id: string
   [field: string]: unknown
