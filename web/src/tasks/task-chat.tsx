@@ -456,7 +456,7 @@ export function TaskChat({
         drafts={drafts}
         thread={live ?? null}
         settings={settings}
-        stop={card.agent?.host === 'pnyx' && nativeWorking ? async () => {
+        stop={card.agent?.host === 'othrys' && nativeWorking ? async () => {
           await command({
             name: 'task',
             args: [

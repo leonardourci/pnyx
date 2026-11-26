@@ -651,7 +651,7 @@ export function TitanChat({
       conversation?.entries,
     ],
   )
-  const canStop = ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
+  const canStop = ((working || compacting) && card?.agent?.host === 'othrys') || upgradeRunning
   const down = hydraDown({ status: state.hydraStatus })
   const showsTools = traces({
     view,

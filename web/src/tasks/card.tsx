@@ -364,7 +364,7 @@ export const TitanCard = memo(function TitanCard({
   } : undefined
 
   const waiting = waitingQuestions({ card })
-  const canStop = connected && card.agent?.host === 'pnyx'
+  const canStop = connected && card.agent?.host === 'othrys'
     && (card.sessionActivity ?? card.activity) === 'working'
 
   const labels = (

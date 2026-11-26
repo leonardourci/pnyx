@@ -41,7 +41,7 @@ export function AgentDetails({
     ],
     [
       'Host',
-      agent.host === 'pnyx' ? 'Othrys' : undefined,
+      agent.host === 'othrys' ? 'Othrys' : undefined,
     ],
     [
       'Folder',
