@@ -155,13 +155,13 @@ export async function localTaskCommand({
   action,
   values,
   positionals,
-  hydraId,
+  titanId,
   meta,
 }: {
   action?: string
   values: Record<string, unknown>
   positionals: string[]
-  hydraId: string
+  titanId: string
   meta: Meta
 }): Promise<Output | undefined> {
   if (!action || action === 'rename' || action === 'parent' || action === 'arrange' || !Object.hasOwn(
@@ -218,7 +218,7 @@ export async function localTaskCommand({
 
   const card = operation.op === 'task.create' ? operation.key! : operation.task
   const output = await commit({
-    hydraId,
+    titanId,
     meta,
     intent: {
       type: EVENT_TYPES[operation.op],
@@ -231,7 +231,7 @@ export async function localTaskCommand({
       state,
       operation,
       meta: current,
-      hydraId,
+      titanId,
     }),
   })
 

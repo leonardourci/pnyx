@@ -29,7 +29,7 @@ export function labelsForEvent({
     if (event.data.card.project) {
       labels.push(event.data.card.project)
     }
-  } else if (event.type === 'hydra.project') {
+  } else if (event.type === 'titan.project') {
     labels.push(event.data.after.path)
   }
 

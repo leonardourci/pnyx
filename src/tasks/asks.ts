@@ -111,23 +111,23 @@ export const askRows = ({ card }: { card: Card }) => (card.asks ?? []).map((ask:
 }))
 
 async function handToTitan({
-  hydraId,
+  titanId,
   id,
   actor,
 }: {
-  hydraId: string
+  titanId: string
   id: string
   actor: string
 }): Promise<Output> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const message = state.hydraMessages?.find(m => m.id === id)
 
-  if (!message || !await readServer({ hydraId })) {
+  if (!message || !await readServer({ titanId })) {
     return {}
   }
 
   return askHost({
-    hydraId,
+    titanId,
     body: {
       action: 'hydra',
       id,
@@ -139,7 +139,7 @@ async function handToTitan({
 
 // Recorded before Titan hears it, so the answer resolves the question even while Titan is down.
 async function answerTitan({
-  hydraId,
+  titanId,
   ref,
   id,
   choice: picked,
@@ -147,7 +147,7 @@ async function answerTitan({
   fromMessage,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   id: string
   choice?: string
@@ -156,10 +156,10 @@ async function answerTitan({
   meta: Meta
 }): Promise<Output> {
   const result = await commit({
-    hydraId,
+    titanId,
     meta,
     intent: {
-      type: 'hydra.message',
+      type: 'titan.message',
       card: ref,
     },
     decide: ({ state }) => {
@@ -189,7 +189,7 @@ async function answerTitan({
         meta,
         cardId: card.id,
         change: {
-          type: 'hydra.message',
+          type: 'titan.message',
           data: {
             task: card.id,
             action: 'send',
@@ -205,7 +205,7 @@ async function answerTitan({
             ...(choice ? { choice } : {}),
             hydra: hydraConfig({
               state,
-              id: hydraId,
+              id: titanId,
             }).hydra.id,
           },
         },
@@ -226,7 +226,7 @@ async function answerTitan({
   }
 
   const hosted = await handToTitan({
-    hydraId,
+    titanId,
     id: event.id,
     actor: meta.actor,
   })
@@ -259,13 +259,13 @@ async function answerCommand({
   ref,
   positionals,
   values,
-  hydraId,
+  titanId,
   meta: m,
 }: {
   ref: string
   positionals: string[]
   values: Values
-  hydraId: string
+  titanId: string
   meta: Meta
 }): Promise<Output> {
   const reason = explained({ meta: m })
@@ -283,7 +283,7 @@ async function answerCommand({
     flag: '--from-message',
   })
   const undelivered = values.undelivered === true
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = findCard({
     state,
     ref,
@@ -294,7 +294,7 @@ async function answerCommand({
   if (ownerActor({ actor: m.actor }) && picked === undefined && typed !== undefined
     && clarificationText({ text: typed })) {
     return questionActionCommand({
-      hydraId,
+      titanId,
       ref,
       id,
       text: typed,
@@ -321,7 +321,7 @@ async function answerCommand({
 
   if ((question?.actor === TITAN_ACTOR || question?.kind === 'merge') && !acceptedReply) {
     return answerTitan({
-      hydraId,
+      titanId,
       ref,
       id,
       choice: picked,
@@ -332,7 +332,7 @@ async function answerCommand({
   }
 
   const receipt = await sendReply({
-    hydraId,
+    titanId,
     request: {
       card: ref,
       text: '',
@@ -370,12 +370,12 @@ async function answerCommand({
 async function askOne({
   ref,
   values,
-  hydraId,
+  titanId,
   meta: m,
 }: {
   ref: string
   values: Values
-  hydraId: string
+  titanId: string
   meta: Meta
 }): Promise<Output> {
   const inline = text({ value: values.details })
@@ -419,7 +419,7 @@ async function askOne({
 
   // One lock, so Titan never hears a question that was not recorded.
   const written = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       drainSpool({ writer })
       const known = m.id === undefined ? undefined : writer.state.eventIds[m.id]
@@ -471,19 +471,19 @@ async function askOne({
           },
           cardId: card.id,
           change: {
-            type: 'hydra.message',
+            type: 'titan.message',
             data: {
               task: card.id,
               action: 'send',
               text: askReport({
                 task: card.id,
                 ask,
-                hydraId,
+                titanId,
               }),
               ask: id,
               hydra: hydraConfig({
                 state: writer.state,
-                id: hydraId,
+                id: titanId,
               }).hydra.id,
             },
           },
@@ -502,7 +502,7 @@ async function askOne({
     },
   })
   const id = `ask-${written.seq}`
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const ask = Object.values(state.cards).flatMap(c => c.asks ?? [])
     .find(a => a.id === id)
   const message = state.hydraMessages?.find(msg => msg.ask === id)
@@ -524,7 +524,7 @@ async function askOne({
   return {
     ...asked,
     ...await handToTitan({
-      hydraId,
+      titanId,
       id: message.id,
       actor: m.actor,
     }),
@@ -532,7 +532,7 @@ async function askOne({
 }
 
 async function questionActionCommand({
-  hydraId,
+  titanId,
   ref,
   id,
   until,
@@ -540,7 +540,7 @@ async function questionActionCommand({
   fromMessage,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   id: string
   until?: string
@@ -549,10 +549,10 @@ async function questionActionCommand({
   meta: Meta
 }): Promise<Output> {
   const written = await commit({
-    hydraId,
+    titanId,
     meta,
     intent: {
-      type: until === undefined ? 'hydra.message' : 'task.ask.deferred',
+      type: until === undefined ? 'titan.message' : 'task.ask.deferred',
       card: ref,
     },
     decide: ({ state }) => decideQuestionAction({
@@ -569,7 +569,7 @@ async function questionActionCommand({
 
   if (until === undefined && event?.id) {
     await handToTitan({
-      hydraId,
+      titanId,
       id: event.id,
       actor: meta.actor,
     })
@@ -589,12 +589,12 @@ async function questionActionCommand({
 async function answerGroup({
   ref,
   values,
-  hydraId,
+  titanId,
   meta,
 }: {
   ref: string
   values: Values
-  hydraId: string
+  titanId: string
   meta: Meta
 }): Promise<Output> {
   if (!ownerActor({ actor: meta.actor })) {
@@ -645,7 +645,7 @@ async function answerGroup({
     })
   }
 
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = findCard({
     state,
     ref,
@@ -754,7 +754,7 @@ async function answerGroup({
     }
 
     // Sending an earlier answer can yield while the owner or a worker changes the group.
-    const latest = loadTitan({ hydraId }).state
+    const latest = loadTitan({ titanId }).state
     const latestGroup = ownerQuestionGroups({ state: latest })
       .find(group => group.card.id === card.id)
     const latestKeys = latestGroup?.decisions.map(decision => decisionKey({ decision }))
@@ -781,13 +781,13 @@ async function answerGroup({
       values: {
         choice: String(index + 1),
       },
-      hydraId,
+      titanId,
       meta: {
         ...meta,
         id: member.event,
       },
     }))
-    const after = ownerQuestionGroups({ state: loadTitan({ hydraId }).state })
+    const after = ownerQuestionGroups({ state: loadTitan({ titanId }).state })
       .find(group => group.card.id === card.id)
     const stillWaiting = after?.decisions.some(decision => decisionKey({ decision }) === member.key)
 
@@ -799,7 +799,7 @@ async function answerGroup({
   return {
     group: card.id,
     answers,
-    stateSeq: loadTitan({ hydraId }).state.seq,
+    stateSeq: loadTitan({ titanId }).state.seq,
   }
 }
 
@@ -807,13 +807,13 @@ export async function askCommand({
   action,
   positionals,
   values,
-  hydraId,
+  titanId,
   meta: given,
 }: {
   action: 'ask' | 'answer' | 'answer-group' | 'escalate' | 'close-question' | 'reopen-question' | 'reask' | 'defer-question' | 'discuss-question'
   positionals: string[]
   values: Values
-  hydraId: string
+  titanId: string
   meta: Meta
 }): Promise<Output> {
   const m = sessionActor({ meta: given })
@@ -824,7 +824,7 @@ export async function askCommand({
 
   if (action === 'defer-question' || action === 'discuss-question') {
     return questionActionCommand({
-      hydraId,
+      titanId,
       ref,
       id: required({
         value: positionals[2],
@@ -842,7 +842,7 @@ export async function askCommand({
 
   if (action === 'close-question' || action === 'reopen-question' || action === 'reask') {
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: action === 'close-question' ? 'task.ask.closed' : 'task.ask.reopened',
@@ -868,7 +868,7 @@ export async function askCommand({
     return answerGroup({
       ref,
       values,
-      hydraId,
+      titanId,
       meta: m,
     })
   }
@@ -878,7 +878,7 @@ export async function askCommand({
       ref,
       positionals,
       values,
-      hydraId,
+      titanId,
       meta: m,
     })
   }
@@ -887,7 +887,7 @@ export async function askCommand({
     return askOne({
       ref,
       values,
-      hydraId,
+      titanId,
       meta: m,
     })
   }
@@ -901,7 +901,7 @@ export async function askCommand({
 
   return {
     ...await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.ask.escalated',

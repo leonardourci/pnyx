@@ -79,14 +79,14 @@ function decideTaskLanding({
 
 // task landing <task> [--landing pr|branch] [--merge owner|hydra] [--clear] sets this task's rule, or prints the one it follows.
 export async function taskLandingCommand({
-  hydraId,
+  titanId,
   ref,
   landing,
   merge,
   clear,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref?: string
   landing?: string
   merge?: string
@@ -99,7 +99,7 @@ export async function taskLandingCommand({
   })
 
   if (landing === undefined && merge === undefined && !clear) {
-    const state = loadTitan({ hydraId }).state
+    const state = loadTitan({ titanId }).state
     const card = findCard({
       state,
       ref: task,
@@ -124,7 +124,7 @@ export async function taskLandingCommand({
   }
 
   return await commit({
-    hydraId,
+    titanId,
     meta,
     intent: {
       type: 'task.landing',

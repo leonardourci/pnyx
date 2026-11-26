@@ -482,11 +482,11 @@ export function decideEscalation({
 export const askReport = ({
   task,
   ask,
-  hydraId,
+  titanId,
 }: {
   task: string
   ask: Pick<Ask, 'id' | 'question' | 'context' | 'details' | 'options' | 'recommended'>
-  hydraId: string
+  titanId: string
 }) => [
   `Question ${ask.id}: ${ask.question}`,
   ...(ask.context ? [ask.context] : []),
@@ -494,8 +494,8 @@ export const askReport = ({
     o,
     i,
   ) => `${i + 1}. ${o.label}${o.description ? `: ${o.description}` : ''}${ask.recommended === i + 1 ? ' (recommended)' : ''}`),
-  ...(ask.details ? [`Details: read tasks/${task}/task.log in Titan ${hydraId}`] : []),
-  `Answer with \`othrys answer ${task} ${ask.id} --text "<answer>" --titan ${hydraId}\` or pass --choice <n>.`,
+  ...(ask.details ? [`Details: read tasks/${task}/task.log in Titan ${titanId}`] : []),
+  `Answer with \`othrys answer ${task} ${ask.id} --text "<answer>" --titan ${titanId}\` or pass --choice <n>.`,
   'If the owner must decide, present the question and its choices in Titan chat.',
 ].join('\n')
 

@@ -362,7 +362,7 @@ function updateRow({
       }
     }
     // A message to the task also queues its reply, which already shows as the ask.
-    case 'hydra.message': {
+    case 'titan.message': {
       if (reportActor({ actor: event.actor ?? '' }) && typeof data.text === 'string' && data.text.trim()) {
         return {
           kind: 'report',
@@ -478,7 +478,7 @@ export function relevantUpdate({
 
 // A Titan chat message belongs to its task and to every task it names with a chip.
 const taggedTasks = ({ event }: { event: TitanEvent }): string[] => {
-  if (event.type !== 'hydra.message') {
+  if (event.type !== 'titan.message') {
     return []
   }
 

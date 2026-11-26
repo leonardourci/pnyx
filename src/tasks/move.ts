@@ -45,14 +45,14 @@ const refuse = ({
 })
 
 const missing = ({
-  hydraId,
+  titanId,
   ref,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
 }) => refuse({
   message: `card not found: ${ref}`,
-  help: `Use othrys board --titan ${hydraId}`,
+  help: `Use othrys board --titan ${titanId}`,
   code: 'NOT_FOUND',
 })
 
@@ -95,14 +95,14 @@ function projectOnTarget({
 
 // Every reason a move would leave something broken, each with the command that clears it.
 export function moveRefusal({
-  hydraId,
+  titanId,
   to,
   source,
   target,
   card,
   moving = [],
 }: {
-  hydraId: string
+  titanId: string
   to: string
   source: TitanState
   target: TitanState
@@ -110,7 +110,7 @@ export function moveRefusal({
   moving?: string[]
 }): TitanError | undefined {
   const others = Object.values(source.cards).filter(c => c.id !== card.id && !moving.includes(c.id))
-  const restoreRelationships = `After moving from Titan ${hydraId} to ${to}, review the previous relationships in the destination's tasks/${card.id}/task.log`
+  const restoreRelationships = `After moving from Titan ${titanId} to ${to}, review the previous relationships in the destination's tasks/${card.id}/task.log`
   const session = card.sessionIds?.[0]
 
   if (isManagedTask({ card })) {
@@ -147,7 +147,7 @@ export function moveRefusal({
   if (session && card.agent?.host !== 'othrys') {
     inform({
       task: card.id,
-      reason: `Detached ${card.id}'s outside worker; its hooks retain Titan ${hydraId}`,
+      reason: `Detached ${card.id}'s outside worker; its hooks retain Titan ${titanId}`,
       clear: restoreRelationships,
     })
   }
@@ -186,7 +186,7 @@ export function moveRefusal({
   if (prerequisite) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} depends on ${prerequisite}, which stays on Titan ${hydraId}`,
+      reason: `Moved with: ${card.id} depends on ${prerequisite}, which stays on Titan ${titanId}`,
       clear: restoreRelationships,
     })
   }
@@ -204,7 +204,7 @@ export function moveRefusal({
   if (card.wait && !moving.includes(card.wait.task)) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} waits for ${card.wait.task}, which stays on Titan ${hydraId}`,
+      reason: `Moved with: ${card.id} waits for ${card.wait.task}, which stays on Titan ${titanId}`,
       clear: restoreRelationships,
     })
   }
@@ -222,7 +222,7 @@ export function moveRefusal({
   if (card.parentId && !moving.includes(card.parentId)) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} is a subtask of ${card.parentId}, which stays on Titan ${hydraId}`,
+      reason: `Moved with: ${card.id} is a subtask of ${card.parentId}, which stays on Titan ${titanId}`,
       clear: restoreRelationships,
     })
   }
@@ -232,7 +232,7 @@ export function moveRefusal({
   if (child) {
     inform({
       task: card.id,
-      reason: `Moved with: ${card.id} has subtask ${child.id}, which would stay on Titan ${hydraId}`,
+      reason: `Moved with: ${card.id} has subtask ${child.id}, which would stay on Titan ${titanId}`,
       clear: restoreRelationships,
     })
   }
@@ -242,7 +242,7 @@ export function moveRefusal({
   if (liveSource) {
     inform({
       task: card.id,
-      reason: `Moved with: external source ${liveSource.id} still runs for ${card.id} on Titan ${hydraId}`,
+      reason: `Moved with: external source ${liveSource.id} still runs for ${card.id} on Titan ${titanId}`,
       clear: restoreRelationships,
     })
   }
@@ -266,11 +266,11 @@ function checkTarget({
 
 // Ends the source's idle live session, so only the target resumes it. A server not running this Titan holds none.
 export async function releaseWorker({
-  hydraId,
+  titanId,
   card,
   actor,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   actor: string
 }): Promise<void> {
@@ -282,7 +282,7 @@ export async function releaseWorker({
 
   try {
     released = await askHost({
-      hydraId,
+      titanId,
       body: {
         action: 'release',
         permanent: true,
@@ -301,7 +301,7 @@ export async function releaseWorker({
   if (typeof released.busy === 'string') {
     throw refuse({
       message: `${card.id}'s worker is ${released.busy}`,
-      help: `Check worker activity for task ${card.id} in Titan ${hydraId} in the UI. Retry the move when the worker is idle.`,
+      help: `Check worker activity for task ${card.id} in Titan ${titanId} in the UI. Retry the move when the worker is idle.`,
     })
   }
 }
@@ -310,16 +310,16 @@ export async function releaseWorker({
 // untouched copy with the source's current card; a copy edited on both sides since is left for the owner.
 // Every session the card has had, and when its owner questions were last reminded, as the source holds them.
 function carried({
-  hydraId,
+  titanId,
   state,
   card,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   card: Card
 }) {
   const members = taskSessions({
-    hydraId,
+    titanId,
     ids: new Set([card.id]),
   })
   const prefix = `${card.id}:`
@@ -337,7 +337,7 @@ function carried({
 }
 
 function depart({
-  hydraId,
+  titanId,
   source,
   card,
   to,
@@ -345,7 +345,7 @@ function depart({
   meta,
   moving,
 }: {
-  hydraId: string
+  titanId: string
   source: Writer
   card: Card
   to: string
@@ -357,7 +357,7 @@ function depart({
     to,
     card: structuredClone(card),
     sessions: carried({
-      hydraId,
+      titanId,
       state: source.state,
       card,
     }).sessions,
@@ -386,19 +386,19 @@ function depart({
 
 function receipt({
   card,
-  hydraId,
+  titanId,
   to,
   move,
 }: {
   card: Card
-  hydraId: string
+  titanId: string
   to: string
   move: string
 }): Output {
   return {
     moved: card.id,
     title: card.title,
-    from: hydraId,
+    from: titanId,
     to,
     event: move,
     copy: card.copy?.state === 'removed' ? 'none' : card.copy?.path ?? 'none',
@@ -408,7 +408,7 @@ function receipt({
 }
 
 export function stageTaskMove({
-  hydraId,
+  titanId,
   source,
   target,
   cardId,
@@ -417,7 +417,7 @@ export function stageTaskMove({
   meta,
   moving,
 }: {
-  hydraId: string
+  titanId: string
   source: Writer
   target: Writer
   cardId: string
@@ -436,7 +436,7 @@ export function stageTaskMove({
   source.afterCommit({
     run: () => carryCursors({
       from: source.dir,
-      to: hydraDir({ hydraId: to }),
+      to: hydraDir({ titanId: to }),
       card: cardId,
     }),
   })
@@ -448,13 +448,13 @@ export function stageTaskMove({
 
   if (!current) {
     throw missing({
-      hydraId,
+      titanId,
       ref: cardId,
     })
   }
 
   const late = moveRefusal({
-    hydraId,
+    titanId,
     to,
     source: source.state,
     target: target.state,
@@ -500,7 +500,7 @@ export function stageTaskMove({
   current = source.state.cards[cardId]!
 
   const arriving = nativeHome().cardForMove({
-    from: hydraId,
+    from: titanId,
     to,
     card: current,
     state: target.state,
@@ -516,16 +516,16 @@ export function stageTaskMove({
     }),
     type: 'task.moved-in',
     data: {
-      from: hydraId,
+      from: titanId,
       card: {
         ...arriving,
         workerLogDir: workerTaskDir({
-          hydraId,
+          titanId,
           task: cardId,
         }),
       },
       ...carried({
-        hydraId,
+        titanId,
         state: source.state,
         card: current,
       }),
@@ -538,7 +538,7 @@ export function stageTaskMove({
 
   const moveRuntime = prepareTaskRuntimeMove({
     task: cardId,
-    from: hydraId,
+    from: titanId,
     to,
   })
 
@@ -554,7 +554,7 @@ export function stageTaskMove({
   })
 
   depart({
-    hydraId,
+    titanId,
     source,
     card: current,
     to,
@@ -568,12 +568,12 @@ export function stageTaskMove({
 
 // Both Titan sequence claims, events and rows commit together; a refusal leaves the task on its source.
 export async function moveTask({
-  hydraId,
+  titanId,
   ref,
   to,
   meta,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   to: string
   meta: Meta
@@ -581,7 +581,7 @@ export async function moveTask({
   checkTarget({
     to,
   })
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
   const gone = movedAway({
     state,
@@ -607,12 +607,12 @@ export async function moveTask({
 
   if (!card) {
     throw missing({
-      hydraId,
+      titanId,
       ref,
     })
   }
 
-  if (to === hydraId) {
+  if (to === titanId) {
     inform({
       task: card.id,
       reason: `Task is already on Titan ${to}`,
@@ -627,7 +627,7 @@ export async function moveTask({
     }
   }
 
-  const target = loadTitan({ hydraId: to }).state
+  const target = loadTitan({ titanId: to }).state
   const move = meta.id ?? `move:${randomUUID()}`
 
   if (Object.hasOwn(
@@ -645,7 +645,7 @@ export async function moveTask({
   }
 
   const early = moveRefusal({
-    hydraId,
+    titanId,
     to,
     source: state,
     target,
@@ -658,18 +658,18 @@ export async function moveTask({
 
   if (!prepareTaskRuntimeMove({
     task: card.id,
-    from: hydraId,
+    from: titanId,
     to,
   })) {
     await releaseWorker({
-      hydraId,
+      titanId,
       card,
       actor: meta.actor,
     })
   }
 
   return await withWriter({
-    hydraId,
+    titanId,
     also: [to],
     fn: ({
       writer: source,
@@ -677,7 +677,7 @@ export async function moveTask({
     }) => {
       const target = writers.get(to)!
       const event = stageTaskMove({
-        hydraId,
+        titanId,
         source,
         target,
         cardId: card.id,
@@ -689,7 +689,7 @@ export async function moveTask({
 
       return receipt({
         card: current,
-        hydraId,
+        titanId,
         to,
         move,
       })
@@ -699,16 +699,16 @@ export async function moveTask({
 
 // Follows a moved task from Titan to Titan to the one that holds it now; undefined once the trail ends.
 export function currentHolder({
-  hydraId,
+  titanId,
   state,
   card,
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   card: string
 }): string | undefined {
   const seen = new Set<string>()
-  let at: string | undefined = hydraId
+  let at: string | undefined = titanId
   let current = state
 
   while (at && !seen.has(at)) {
@@ -724,7 +724,7 @@ export function currentHolder({
     }
 
     if (at) {
-      current = loadTitan({ hydraId: at }).state
+      current = loadTitan({ titanId: at }).state
     }
   }
 

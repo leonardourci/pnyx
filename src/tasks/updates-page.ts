@@ -7,12 +7,12 @@ import { findCard } from './push-rules.ts'
 import { UPDATES_MAX_PAGE, UPDATES_PAGE, updateTasks, type UpdatesPage } from './updates.ts'
 
 export function taskUpdates({
-  hydraId,
+  titanId,
   ref,
   before,
   limit = UPDATES_PAGE,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   before?: number
   limit?: number
@@ -32,11 +32,11 @@ export function taskUpdates({
   }
 
   const task = findCard({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     ref,
   })
   const read = readUpdateEvents({
-    hydraId,
+    titanId,
     cardId: task.id,
     before,
     limit: limit + 1,
@@ -63,20 +63,20 @@ export function taskUpdates({
 }
 
 export function readUpdateEvents({
-  hydraId,
+  titanId,
   cardId,
   before,
   limit,
   types,
 }: {
   types?: string[]
-  hydraId: string
+  titanId: string
   cardId?: string
   before?: number
   limit: number
 }): TitanEvent[] {
   return readEvents({
-    hydraId,
+    titanId,
     before,
     types,
     descending: true,

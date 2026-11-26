@@ -127,7 +127,7 @@ export const push = guard({
   handler: async ({ args }) => {
     const {
       values,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -158,7 +158,7 @@ export const push = guard({
     }
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'task.edited',
@@ -235,13 +235,13 @@ export function taskIntent({ value }: { value: unknown }): string | undefined {
 }
 
 export function taskHistory({
-  hydraId,
+  titanId,
   ref,
   before,
   limit,
   full,
 }: {
-  hydraId: string
+  titanId: string
   ref: string
   before?: string
   limit: number
@@ -254,7 +254,7 @@ export function taskHistory({
     })
   }
 
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const task = findCard({
     state,
     ref,
@@ -265,11 +265,11 @@ export function taskHistory({
       .map(c => c.id),
   ])
   const sessions = taskSessions({
-    hydraId,
+    titanId,
     ids,
   })
   const history = movedHistory({
-    hydraId,
+    titanId,
     task: task.id,
     cards: [...ids],
     matches: ({ event: e }) => ids.has(e.cardId) || (e.type === 'task.session' && (ids.has(e.data.before ?? '') || ids.has(e.data.after ?? ''))) || tagsTask({
@@ -279,18 +279,18 @@ export function taskHistory({
   })
   const matches = history.slice(historyStart({
     history,
-    hydraId,
+    titanId,
     before,
   }))
   const page = matches.slice(
     0,
     limit,
   )
-  const moved = history.some(entry => entry.hydra !== hydraId)
+  const moved = history.some(entry => entry.hydra !== titanId)
   const last = page.at(-1)
   const more = matches.length > limit
   const out: Output = {
-    hydraId,
+    titanId,
     task: task.id,
     sessions: sessions.size ? [...sessions].map(id => ({
       session: id,
@@ -305,7 +305,7 @@ export function taskHistory({
 
   if (more && last) {
     // A cursor on this Titan stays a plain seq; one on an earlier Titan names it.
-    const next = last.hydra === hydraId ? last.event.seq : `${last.hydra}:${last.event.seq}`
+    const next = last.hydra === titanId ? last.event.seq : `${last.hydra}:${last.event.seq}`
     out.next = next
   }
 
@@ -359,11 +359,11 @@ function historyRow({
 // --before takes a seq on this Titan, or <hydra>:<seq> for the events a moved task had on an earlier Titan.
 function historyStart({
   history,
-  hydraId,
+  titanId,
   before,
 }: {
   history: HistoryEntry[]
-  hydraId: string
+  titanId: string
   before?: string
 }): number {
   if (before === undefined) {
@@ -377,7 +377,7 @@ function historyStart({
     ':',
     2,
   ) : [
-    hydraId,
+    titanId,
     before,
   ]
   const at = Number(seq)
@@ -412,11 +412,11 @@ const NOTE_SECTIONS = {
 } as const
 
 function cardNotes({
-  hydraId,
+  titanId,
   card,
   full,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   full: boolean
 }): {
@@ -426,7 +426,7 @@ function cardNotes({
   const ids = new Set((card.notes ?? []).map(n => n.id))
   // A moved task's notes stay in the logs of the Titans it came from.
   const events = ids.size ? movedHistory({
-    hydraId,
+    titanId,
     task: card.id,
     matches: ({ event }) => event.type === 'card.noted' && ids.has(event.id),
   }).flatMap(({ event }) => (event.type === 'card.noted' ? [event] : [])) : []
@@ -484,7 +484,7 @@ export const card = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -493,7 +493,7 @@ export const card = guard({
       },
       positionals: 1,
     })
-    const { state } = loadTitan({ hydraId })
+    const { state } = loadTitan({ titanId })
     const found = findCard({
       state,
       ref: required({
@@ -505,14 +505,14 @@ export const card = guard({
       notes,
       cut,
     } = cardNotes({
-      hydraId,
+      titanId,
       card: found,
       full: Boolean(values.full),
     })
     const help = [`Read tasks/${found.id}/task.log for its events`]
 
     if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
-      help.unshift(`Read tasks/${found.id}/task.log in Titan ${hydraId} for the full brief and notes. For a moved task, follow its move records to earlier Titan task logs for older notes`)
+      help.unshift(`Read tasks/${found.id}/task.log in Titan ${titanId} for the full brief and notes. For a moved task, follow its move records to earlier Titan task logs for older notes`)
     }
 
     return {

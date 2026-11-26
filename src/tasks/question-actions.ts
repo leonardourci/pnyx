@@ -138,7 +138,7 @@ export function decideQuestionAction({
     cardId: card.id,
     meta,
     change: {
-      type: 'hydra.message',
+      type: 'titan.message',
       data: {
         hydra: hydraConfig({ state }).hydra.id,
         task: card.id,

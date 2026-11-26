@@ -8,13 +8,13 @@ export interface HistoryEntry {
 
 // Newest first, following the id both sides of a move share back through each Titan the card left.
 export function movedHistory({
-  hydraId,
+  titanId,
   task,
   matches,
   types,
   cards = [task],
 }: {
-  hydraId: string
+  titanId: string
   task: string
   cards?: string[]
   types?: string[]
@@ -22,14 +22,14 @@ export function movedHistory({
 }): HistoryEntry[] {
   return [
     ...scanEvents({
-      hydraId,
+      titanId,
       cardIds: cards,
       types,
       descending: true,
     }),
   ]
     .filter(event => matches({ event })).map(event => ({
-      hydra: event.boardId ?? hydraId,
+      hydra: event.titanId ?? titanId,
       event,
     }))
 }

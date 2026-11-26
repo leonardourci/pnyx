@@ -36,7 +36,7 @@ export function applyAsk({
     id: string
   } | undefined
 
-  if (event.type === 'hydra.message' && event.data.answers && event.data.task) {
+  if (event.type === 'titan.message' && event.data.answers && event.data.task) {
     acceptance = {
       card: event.data.task,
       ask: event.data.answers,

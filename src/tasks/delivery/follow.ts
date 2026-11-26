@@ -84,12 +84,12 @@ function workerNews({
 }
 
 async function tellWorker({
-  hydraId,
+  titanId,
   card,
   text,
   id,
 }: {
-  hydraId: string
+  titanId: string
   card: Card
   text: string
   id: string
@@ -102,7 +102,7 @@ async function tellWorker({
 
   try {
     await sendReply({
-      hydraId,
+      titanId,
       request: {
         card: card.id,
         expectedSession: session,
@@ -116,7 +116,7 @@ async function tellWorker({
     log({
       level: 'warn',
       operation: 'follow.notify',
-      hydraId,
+      titanId,
       taskId: card.id,
       error,
     })
@@ -125,21 +125,21 @@ async function tellWorker({
 
 // Reads each followed pull request once; a change is recorded on its link, and failed checks or new review comments go to the task's worker.
 export async function followPullRequests({
-  hydraId,
+  titanId,
   readStatus = pullRequestStatus,
   tell = tellWorker,
   active = () => true,
   readOutcome = pullRequestMergeOutcome,
   schedule,
 }: {
-  hydraId: string
+  titanId: string
   readStatus?: typeof pullRequestStatus
   tell?: typeof tellWorker
   active?(): boolean
   schedule?: ReturnType<typeof followSchedule>
   readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<void> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
 
   if (!active()) {
     return
@@ -166,7 +166,7 @@ export async function followPullRequests({
       }
 
       await refreshConfirmedProject({
-        hydraId,
+        titanId,
         cardId: card.id,
         url: link.url,
         proof: link.mergeProof,
@@ -177,7 +177,7 @@ export async function followPullRequests({
   for (const {
     card,
     link,
-  } of followedLinks({ state: loadTitan({ hydraId }).state })) {
+  } of followedLinks({ state: loadTitan({ titanId }).state })) {
     if (!active()) {
       return
     }
@@ -198,7 +198,7 @@ export async function followPullRequests({
       status = await readStatus({ url: link.url })
       log({
         operation: 'follow.read',
-        hydraId,
+        titanId,
         taskId: card.id,
         status: status ? 'found' : 'missing',
         ms: performance.now() - reading,
@@ -214,7 +214,7 @@ export async function followPullRequests({
         level: 'warn',
         operation: 'follow.read',
         ms: performance.now() - reading,
-        hydraId,
+        titanId,
         taskId: card.id,
         error,
       })
@@ -239,7 +239,7 @@ export async function followPullRequests({
         log({
           level: 'warn',
           operation: 'follow.suspend',
-          hydraId,
+          titanId,
           taskId: card.id,
           count: UNRESOLVED_RETRIES,
         })
@@ -296,7 +296,7 @@ export async function followPullRequests({
 
     const at = new Date().toISOString()
     const recorded = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         drainSpool({ writer })
         const latest = writer.state.cards[card.id]
@@ -359,7 +359,7 @@ export async function followPullRequests({
 
     if (outcome?.outcome === 'merged') {
       await refreshConfirmedProject({
-        hydraId,
+        titanId,
         cardId: card.id,
         url: link.url,
         proof: {
@@ -378,7 +378,7 @@ export async function followPullRequests({
 
     if (news) {
       await tell({
-        hydraId,
+        titanId,
         card: recorded.card,
         text: news,
         id: `follow:${recorded.event}`,

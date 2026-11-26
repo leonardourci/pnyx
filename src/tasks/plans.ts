@@ -74,7 +74,7 @@ export function planTaskChange({
   state: TitanState
   operation: TaskOperation
   meta: Meta
-  hydraId: string
+  titanId: string
   cardId?: string
 }): Decision {
   if ([

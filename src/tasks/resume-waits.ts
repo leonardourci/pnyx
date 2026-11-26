@@ -65,18 +65,18 @@ export function waitResumesPending({
 }
 
 export async function notifyWaitResumes({
-  hydraId,
+  titanId,
   retryAfter,
   retryDelay,
   now = Date.now(),
 }: {
-  hydraId: string
+  titanId: string
   retryAfter: Map<string, number>
   retryDelay: number
   now?: number
 }): Promise<void> {
   const pending = unnotifiedResumes({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     retryAfter,
     now,
   })
@@ -87,7 +87,7 @@ export async function notifyWaitResumes({
       now + retryDelay,
     )
     await notifySteering({
-      hydraId,
+      titanId,
       ...item,
       attempt: `initial:${item.message}`,
     })
@@ -119,11 +119,11 @@ function resumable({
 }
 
 export async function resumeWaits({
-  hydraId,
+  titanId,
   state,
   at = new Date().toISOString(),
 }: {
-  hydraId: string
+  titanId: string
   state: TitanState
   at?: string
 }): Promise<number> {
@@ -135,7 +135,7 @@ export async function resumeWaits({
   }
 
   const { resumed } = await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       let resumed = 0
 

@@ -42,17 +42,17 @@ export function discoverableTasks({ state }: { state: TitanState }) {
 }
 
 export async function discoverPullRequests({
-  hydraId,
+  titanId,
   interval,
   checked,
   active,
 }: {
-  hydraId: string
+  titanId: string
   interval: number
   checked: Map<string, number>
   active(): boolean
 }): Promise<void> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
 
   for (const card of discoverableTasks({ state })) {
     const delay = workingTask({ card }) ? interval : interval * IDLE_FOLLOW_MULTIPLIER
@@ -129,7 +129,7 @@ export async function discoverPullRequests({
         }
 
         const kept = await withWriter({
-          hydraId,
+          titanId,
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
 
@@ -222,7 +222,7 @@ export async function discoverPullRequests({
         log({
           level: 'warn',
           operation: 'follow.discover',
-          hydraId,
+          titanId,
           taskId: card.id,
           error,
         })
@@ -235,7 +235,7 @@ export async function discoverPullRequests({
 
       for (const request of requests) {
         await withWriter({
-          hydraId,
+          titanId,
           fn: ({ writer }) => {
             const current = writer.state.cards[card.id]
 

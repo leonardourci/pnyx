@@ -13,11 +13,11 @@ import { reminderDeadline, reminderMessage, reminderTaskMention } from './remind
 import { TITAN_CARD } from '#titan/identity.ts'
 
 export async function fireReminders({
-  hydraId,
+  titanId,
   at = new Date().toISOString(),
-  state = loadTitan({ hydraId }).state,
+  state = loadTitan({ titanId }).state,
 }: {
-  hydraId: string
+  titanId: string
   at?: string
   state?: TitanState
 }): Promise<number> {
@@ -46,7 +46,7 @@ export async function fireReminders({
   const digest = createHash('sha256').update(id)
     .digest('hex')
   const receipt = await withWriter({
-    hydraId,
+    titanId,
     transaction: {
       id,
       digest,
@@ -87,7 +87,7 @@ export async function fireReminders({
                 actor: 'othrys',
                 id,
               },
-              cardId: '$board',
+              cardId: '$all',
             }),
             type: 'apply.recorded',
             data: { digest },
@@ -198,9 +198,9 @@ export async function fireReminders({
           at,
           actor: 'othrys',
         },
-        cardId: '$hydra',
+        cardId: '$titan',
         change: {
-          type: 'hydra.message',
+          type: 'titan.message',
           data: message,
         },
       })

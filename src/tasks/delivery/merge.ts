@@ -84,7 +84,7 @@ function mergeNotices({ status }: { status: PullRequestStatus }): void {
 
 // task merge <task> [--url <pull request>]: the owner, or Titan where the task's rule lets it, merges a green pull request.
 export async function mergeCommand({
-  hydraId,
+  titanId,
   ref,
   url,
   meta,
@@ -93,7 +93,7 @@ export async function mergeCommand({
   readEvidence = pullRequestMergeEvidence,
   readOutcome = pullRequestMergeOutcome,
 }: {
-  hydraId: string
+  titanId: string
   ref?: string
   url?: string
   meta: Meta
@@ -102,7 +102,7 @@ export async function mergeCommand({
   readEvidence?: typeof pullRequestMergeEvidence
   readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<Output> {
-  const state = loadTitan({ hydraId }).state
+  const state = loadTitan({ titanId }).state
   const card = findCard({
     state,
     ref: required({
@@ -180,7 +180,7 @@ export async function mergeCommand({
       detail: 'merge requested; awaiting GitHub confirmation',
     }
     const claimed = await withWriter({
-      hydraId,
+      titanId,
       fn: ({ writer }) => {
         const currentCard = writer.state.cards[card.id]
         const current = currentCard?.links.find(current => current.url === link.url)
@@ -243,7 +243,7 @@ export async function mergeCommand({
             id: meta.id ? `${meta.id}:rejected` : undefined,
           }
           await commit({
-            hydraId,
+            titanId,
             meta: rejectedMeta,
             intent: {
               type: 'card.linked',
@@ -285,7 +285,7 @@ export async function mergeCommand({
   const outcome = await readOutcome({ url: link.url })
   const at = new Date().toISOString()
   const receipt = await commit({
-    hydraId,
+    titanId,
     meta,
     intent: {
       type: 'card.linked',
@@ -321,7 +321,7 @@ export async function mergeCommand({
 
   if (outcome.outcome === 'merged') {
     await refreshConfirmedProject({
-      hydraId,
+      titanId,
       cardId: card.id,
       url: link.url,
       proof: {

@@ -5,15 +5,15 @@ import { withWriter } from '#app/writer.ts'
 import { readSettings } from '#settings/store.ts'
 
 export async function hideDone({
-  hydraId,
+  titanId,
   at = new Date().toISOString(),
 }: {
-  hydraId: string
+  titanId: string
   at?: string
 }): Promise<number> {
   const hours = readSettings().settings.doneAfterHours
   const deadline = doneDeadline({
-    state: loadTitan({ hydraId }).state,
+    state: loadTitan({ titanId }).state,
     hours,
   })
   const now = Date.parse(at)
@@ -23,7 +23,7 @@ export async function hideDone({
   }
 
   return await withWriter({
-    hydraId,
+    titanId,
     fn: ({ writer }) => {
       let hidden = 0
 

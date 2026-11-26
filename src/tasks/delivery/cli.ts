@@ -16,7 +16,7 @@ export const link = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: LINK_OPTIONS,
@@ -42,7 +42,7 @@ export const link = guard({
     }
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'card.linked',
@@ -65,7 +65,7 @@ export const outcome = guard({
     const {
       values,
       positionals,
-      hydraId,
+      titanId,
     } = parse({
       args,
       options: {
@@ -89,7 +89,7 @@ export const outcome = guard({
     }
 
     return await commit({
-      hydraId,
+      titanId,
       meta: m,
       intent: {
         type: 'card.outcome',
