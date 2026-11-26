@@ -50,24 +50,18 @@ try {
         EXECUTABLE_MODE,
       )
 
-      for (const alias of [
-        'othrys-axi',
-        'pnyx',
-        'pnyx-axi',
-      ]) {
-        const entry = join(
-          out,
-          `cli/${alias}.js`,
-        )
-        writeFileSync(
-          entry,
-          "#!/usr/bin/env node\nimport './othrys.js'\n",
-        )
-        chmodSync(
-          entry,
-          EXECUTABLE_MODE,
-        )
-      }
+      const alias = join(
+        out,
+        'cli/othrys-axi.js',
+      )
+      writeFileSync(
+        alias,
+        "#!/usr/bin/env node\nimport './othrys.js'\n",
+      )
+      chmodSync(
+        alias,
+        EXECUTABLE_MODE,
+      )
 
       run({
         command: 'vite',

@@ -10,8 +10,7 @@
     "node": ">=22.13"
   },
   "bin": {
-    "othrys": "./dist/cli/othrys.js",
-    "pnyx": "./dist/cli/othrys.js"
+    "othrys": "./dist/cli/othrys.js"
   },
   "imports": {
     "#web-*": "./web/src/*",

@@ -2,8 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "includeEntryExports": true,
   "entry": [
-    // Existing source-installed services retain this entry path.
-    "src/cli/pnyx.ts",
     // Worker URLs select the source or built extension at runtime.
     "src/oracle/search-worker.ts",
     "src/setup/hook-context.ts",
