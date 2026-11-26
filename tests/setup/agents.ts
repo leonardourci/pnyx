@@ -72,7 +72,6 @@ interface TurnPlan {
   splitReply?: boolean
   partial?: string
   hold?: boolean
-  acknowledgeStartAfter?: Promise<void>
   refusalReason?: string
   // Claude reports a compaction that lasts until the turn's release, as /compact does; with compactTo it finishes at once.
   compacting?: boolean
@@ -717,7 +716,6 @@ export function fakeClaude() {
 
 // An app-server in this process: each request gets its recorded result and the notifications recorded after it.
 export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } = {}) {
-  let refuseInterrupt = false
   let reusedSession: string | undefined
   const starts = new Map<string, {
     wait: Promise<void>
@@ -978,21 +976,13 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
           })
         }
 
-        const rejectedInterrupt = message.method === 'turn/interrupt' && refuseInterrupt
-
-        if (plan?.refuse || rejectedInterrupt) {
-          if (rejectedInterrupt) {
-            refuseInterrupt = false
-          }
-
+        if (plan?.refuse) {
           send({
             message: {
               id: message.id,
               error: {
                 code: -32000,
-                message: rejectedInterrupt
-                  ? 'the app-server refused this interruption'
-                  : plan?.refusalReason ?? 'the app-server refused this turn',
+                message: plan.refusalReason ?? 'the app-server refused this turn',
               },
             },
           })
@@ -1075,7 +1065,6 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
 
         if (replay) {
           activeReplay = replay
-          await plan?.acknowledgeStartAfter
         }
 
         let result = found.result
@@ -1266,9 +1255,6 @@ export function fakeCodex({ config = {} }: { config?: Record<string, unknown> } 
         release,
         entered: () => held.entered,
       }
-    },
-    refuseNextInterrupt: () => {
-      refuseInterrupt = true
     },
     reuseNextSession: ({ id }: { id: string }) => {
       reusedSession = id
