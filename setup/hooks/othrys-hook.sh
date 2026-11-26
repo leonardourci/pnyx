@@ -15,8 +15,8 @@ case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 home=${0%/*}
 home=${home%/hooks}
 case ${OTHRYS_HOME:-} in /*) home=$OTHRYS_HOME ;; esac
-hydra_name=${OTHRYS_TITAN:-default}
-case $hydra_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
+titan_name=${OTHRYS_TITAN:-default}
+case $titan_name in [!A-Za-z0-9]* | *[!A-Za-z0-9._-]*) exit 0 ;; esac
 task=
 worker_task=${OTHRYS_TASK:-}
 case $worker_task in '' | *[!A-Za-z0-9._:\$-]*) ;; *) task="\"task\":\"$worker_task\"," ;; esac
@@ -61,10 +61,10 @@ read -r hook_seconds hook_at hook_milliseconds <<EOF
 $hook_clock
 EOF
 id="hook-$hook_seconds$hook_milliseconds-$$"
-hydra_dir=$home/titans/$hydra_name
+titan_dir=$home/titans/$titan_name
 # An unknown Titan id is dropped instead of starting a new Titan; only the default one is made on first use.
-[ -d "$hydra_dir" ] || [ "$hydra_name" = default ] || exit 0
-spool=$hydra_dir/spool
+[ -d "$titan_dir" ] || [ "$titan_name" = default ] || exit 0
+spool=$titan_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
 # The writer orders the completed files by write time, even when process ids wrap.
 name=$(printf '%012d%s-%010d' "$hook_seconds" "$hook_milliseconds" $$)-$id.json
@@ -87,7 +87,7 @@ fi
 # replies nothing, so nothing here relies on nc half-closing; -w 1 bounds the wait
 # for an nc that keeps the connection open. Without a running server there is no
 # socket file, so the common path never starts nc.
-if [ -S "$hydra_dir/server.sock" ] && nc -U -w 1 "$hydra_dir/server.sock" <"$tmp"; then
+if [ -S "$titan_dir/server.sock" ] && nc -U -w 1 "$titan_dir/server.sock" <"$tmp"; then
   rm -f "$tmp"
 else
   mv "$tmp" "$spool/$name" || rm -f "$tmp"
@@ -98,7 +98,7 @@ fi
 if [ "$event" = SessionStart ] && [ -z "$task" ] && [ -f "$context" ]; then
   set --
   case $context in *.ts) set -- --conditions=source ;; esac
-  summary=$(OTHRYS_HOME=$home node "$@" "$context" "$hydra_name" 2>/dev/null) || summary=
+  summary=$(OTHRYS_HOME=$home node "$@" "$context" "$titan_name" 2>/dev/null) || summary=
   [ -z "$summary" ] || printf '%s\n' "$summary" >&3
 fi
 exit 0

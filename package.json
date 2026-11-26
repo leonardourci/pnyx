@@ -26,7 +26,7 @@
     "test": "pnpm run build && vitest run",
     "web:dev": "NODE_OPTIONS=--conditions=source vite --configLoader native --config web/vite.config.ts",
     "dev": "OTHRYS_HOME=${OTHRYS_DEV_HOME:-$HOME/.othrys-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
-    "dev:server": "node --conditions=source --watch src/cli/othrys.ts serve --hydra dev --port ${OTHRYS_DEV_PORT:-4319}",
+    "dev:server": "node --conditions=source --watch src/cli/othrys.ts serve --titan dev --port ${OTHRYS_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
     "knip": "knip --tsConfig tsconfig.build.json",
     "verify": "pnpm run lint && pnpm test",
