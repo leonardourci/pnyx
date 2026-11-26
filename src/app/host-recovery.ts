@@ -7,9 +7,11 @@ import { scanEvents } from './event-log.ts'
 import type { Host, Live } from './host-types.ts'
 import { loadTitan } from './store.ts'
 import type { Writer } from './writer.ts'
-import { hostedTitan, othrysRunsTitan } from '#titan/titan.ts'
+import { hostedTitan, hydraDelivery, hydraEvent, othrysRunsTitan } from '#titan/titan.ts'
+import { undeliveredMessagesSince } from '#titan/chat-queue.ts'
+import type { TitanMessage } from '#titan/model.ts'
+import { ownerActor } from './actors.ts'
 import { TITAN_CARD } from '#titan/identity.ts'
-import type { TitanAgentChange } from '#titan/model.ts'
 import { operationEvent, type createTitanOperations, type createTitanOutage } from '#titan/operations.ts'
 import type { createWakeQueue } from '#titan/wake-queue.ts'
 import { wakeReasons } from '#titan/wake-reasons.ts'
@@ -40,7 +42,6 @@ export function createHostRecovery({
   write,
   note,
   interrupt,
-  changeAgent,
   endOperation,
   expireOrphans,
   send,
@@ -68,7 +69,6 @@ export function createHostRecovery({
     note: string
     resumeAttemptId?: string
   }): void
-  changeAgent({ change }: { change: TitanAgentChange }): Promise<void>
   endOperation: ReturnType<typeof createTitanOperations>['endOperation']
   expireOrphans: ReturnType<typeof createPermissionBridge>['expireOrphans']
   send: ReturnType<typeof createHostedDelivery>['send']
@@ -79,6 +79,54 @@ export function createHostRecovery({
   host(): Host
 }) {
   let fenced = true
+
+  const withdrawLegacyAgentChange = async ({ recapAfter }: { recapAfter?: number }) => {
+    const state = loadTitan({ hydraId }).state
+    const change = state.hydraAgentChange
+
+    if (!change) {
+      return
+    }
+
+    const changeAfter = (state.eventIds[change.id] ?? 1) - 1
+    const carriedByRecap = ({ message }: { message: TitanMessage }) => recapAfter !== undefined
+      && (state.eventIds[message.id] ?? 0) > recapAfter
+    const held = undeliveredMessagesSince({
+      state,
+      after: changeAfter,
+    }).filter(message => ownerActor({ actor: message.actor }) && !carriedByRecap({ message }))
+    await write({
+      fn: ({ writer }) => applyDecision({
+        writer,
+        decision: hydraEvent({
+          state: writer.state,
+          cardId: TITAN_CARD,
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+          },
+          change: {
+            type: 'hydra.agent-change',
+            data: {
+              ...change,
+              state: 'cancelled',
+            },
+          },
+        }),
+      }),
+    })
+
+    for (const message of held) {
+      background({
+        name: 'Titan held message',
+        run: () => host().hydra({
+          id: message.id,
+          text: hydraDelivery({ message }),
+          actor: message.actor,
+        }),
+      })
+    }
+  }
 
   const recover: Host['recover'] = async () => {
     await restoreSessionActivity({ hydraId })
@@ -127,17 +175,6 @@ export function createHostRecovery({
     })
 
     const cut = loadTitan({ hydraId }).state.hydraOperation
-    const cutChange = loadTitan({ hydraId }).state.hydraAgentChange
-
-    if (cutChange?.state === 'running') {
-      await changeAgent({
-        change: {
-          ...cutChange,
-          state: 'failed',
-          error: 'Othrys restarted while preparing this agent change. Choose again to retry.',
-        },
-      })
-    }
 
     if (cut) {
       endOperation({
@@ -145,6 +182,8 @@ export function createHostRecovery({
         error: `Othrys restarted during the ${cut.kind}`,
       })
     }
+
+    await withdrawLegacyAgentChange({ recapAfter: cut?.seq })
 
     let cutTitanTurn: {
       resumeAttemptId: string

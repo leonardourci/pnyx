@@ -82,9 +82,7 @@ export interface TitanOperation {
   // The last log position covered, fixed before the operation starts reading.
   through?: number
   historySince?: string
-  // An inscribe pass within a switch shares its compaction's chat divider.
   parent?: string
-  // Overlapping operations can record a milestone without taking over the existing stop.
   blocking?: false
 }
 
@@ -111,7 +109,6 @@ export interface TitanAgentChange {
   previous: AgentConfig
   next: AgentConfig
   kind: 'agent' | 'effort'
-  // Cancelled: withdrawn without running, by a new agent choice, Stop, or removing what it held; never stored.
   state: 'requested' | 'running' | 'finished' | 'failed' | 'cancelled'
   choice?: 'inscribe' | 'compact' | 'neither'
   operation?: string

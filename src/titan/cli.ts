@@ -32,7 +32,7 @@ import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { requireStopAuthority } from '#app/stop-authority.ts'
 import { workerIdentity } from '#workers/worker-identity.ts'
-import { hydraHistory, hydraInscribe } from './history-cli.ts'
+import { hydraInscribe } from './inscribe-cli.ts'
 import { hydraQuestion } from './questions-cli.ts'
 
 async function hydraConfigCommand({ args }: { args: string[] }): Promise<Output> {
@@ -394,10 +394,8 @@ export const TITAN_OPTIONS: Options = {
   width: { type: 'string' },
   text: { type: 'string' },
   after: { type: 'string' },
-  since: { type: 'string' },
   budget: { type: 'string' },
   through: { type: 'string' },
-  count: { type: 'boolean' },
   error: { type: 'string' },
   limit: { type: 'string' },
   full: { type: 'boolean' },
@@ -468,15 +466,6 @@ async function hydraCommand({ args }: { args: string[] }): Promise<Output> {
       values,
       hydraId,
       task: values.task as string | undefined,
-    })
-  }
-
-  const readingHistory = positionals[0] === 'history' && values.count
-
-  if (readingHistory) {
-    return hydraHistory({
-      values,
-      hydraId,
     })
   }
 

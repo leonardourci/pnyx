@@ -1,6 +1,6 @@
 import { hydrasFolders } from '#store/paths.ts'
 import { recordContext, recordFiles } from '#titan/file-context.ts'
-import { compactionPermission, readCommand } from '#titan/compaction-files.ts'
+import { readGrant, readCommand } from './read-grant.ts'
 import { createDigestContext } from '#titan/digest-context.ts'
 import { base } from '#app/command-meta.ts'
 import { log } from '#app/diagnostics.ts'
@@ -560,7 +560,7 @@ export function createRoutineHelper({
           permission: async ({
             tool,
             input,
-          }) => compactionPermission({
+          }) => readGrant({
             tool,
             input,
             paths,

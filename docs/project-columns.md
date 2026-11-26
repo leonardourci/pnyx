@@ -115,7 +115,7 @@ The seven `tests/card-input.test.ts` flows are kept: direct start and receipt re
 
 A provisional-thread guard mutation survived because the shared command dependency queue already waits for task creation. The redundant query guards and their duplicate assertions were removed; the existing mechanism handles that boundary.
 
-The remaining composer styles now use DraftChip and ChipIcon for inline references, the existing SuggestionPicker on FloatingPanel for mention/slash menus, and UsageRow, UsageStack, UsageText and UsageSection for the ring’s shared detail view. Attachment cards, image/viewer surfaces and queued-comments placement use the same utility/theme approach. AgentPickers, account/model menus, compaction/agent-change controls and shared comment surfaces stay with the Tailwind worker (ask-212055, ask-212241).
+The remaining composer styles now use DraftChip and ChipIcon for inline references, the existing SuggestionPicker on FloatingPanel for mention/slash menus, and UsageRow, UsageStack, UsageText and UsageSection for the ring’s shared detail view. Attachment cards, image/viewer surfaces and queued-comments placement use the same utility/theme approach. AgentPickers, account/model menus, compaction controls and shared comment surfaces stay with the Tailwind worker (ask-212055, ask-212241).
 
 The isolated composer comparison uses the real app at pinned baseline `933d1c1a` and the converted build, in both themes, for Titan/card chips and mention menus plus the usage tooltip. Visual comparison preserved the menu’s gold border explicitly when FloatingPanel’s default border won. This is a style refactor; no new regression tests are added, and the temporary capture fixture stays outside the PR. Captures remain local for the final media batch.
 

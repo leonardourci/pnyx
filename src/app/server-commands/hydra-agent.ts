@@ -10,42 +10,6 @@ import type { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
 import type { CommandRequest } from './dispatch.ts'
 
-// `hydra-agent-change <id> inscribe|compact|neither`: settles the message held for a Titan agent change.
-export async function hydraAgentChangeCommand({
-  ws,
-  id,
-  args,
-  send,
-  agents,
-  kick,
-}: Omit<CommandRequest, 'fail'> & {
-  agents: ReturnType<typeof createHost>
-  kick(): void
-}) {
-  const choice = args[1]
-
-  if (args.length !== 2 || (choice !== 'inscribe' && choice !== 'compact' && choice !== 'neither')) {
-    throw new TitanError({
-      message: 'Choose inscribe, compact or neither for the held message',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  const result = await agents.changeAgent({
-    id: args[0]!,
-    choice,
-  })
-  kick()
-  send({
-    ws,
-    message: {
-      type: 'receipt',
-      id,
-      ...result,
-    },
-  })
-}
-
 // `hydra-agent <agent>`: saves the agent Titan runs on, and hands a new permission mode to its running turn.
 export async function hydraAgentCommand({
   ws,
@@ -134,7 +98,6 @@ export async function hydraAgentCommand({
       }
     },
   })
-  await agents.resendHeldMessages()
   kick()
 
   // A new permission mode reaches Titan's running turn at once; other settings wait for the next message.
