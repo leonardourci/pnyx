@@ -1,6 +1,9 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import type { Page } from 'playwright-core'
 import { startOthrys, until, type Othrys, type Titan } from '../setup/othrys.ts'
+import { createProject } from '../setup/projects.ts'
 import { openTitan } from './page.ts'
 
 let othrys: Othrys
@@ -273,5 +276,60 @@ test(
       othrys.claude.models.failure = undefined
       othrys.claude.models.list = recorded
     }
+  },
+)
+
+test(
+  '@ offers project files, and a typed path shows its folder\'s contents filtered as the name is typed',
+  async () => {
+    const hydra = await othrys.hydra()
+    const path = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    mkdirSync(join(
+      path,
+      'src',
+    ))
+    writeFileSync(
+      join(
+        path,
+        'src',
+        'report-builder.ts',
+      ),
+      'export {}\n',
+    )
+    const page = await openTitan({
+      port: othrys.port(),
+      hydraId: hydra.id,
+    })
+    const listings: string[] = []
+    page.on(
+      'request',
+      request => {
+        if (new URL(request.url()).pathname.endsWith('/folders')) {
+          listings.push(request.url())
+        }
+      },
+    )
+    const composer = composerOf({ page })
+    const options = mentionOptions({ page })
+
+    await composer.fill('@reportbuilder')
+    await options.filter({ hasText: 'report-builder.ts' }).filter({ hasText: 'src/report-builder.ts' })
+      .waitFor()
+
+    await composer.fill(`@${path}/`)
+    await options.filter({ hasText: 'README.md' }).waitFor()
+    await options.filter({ hasText: /^src/ }).first()
+      .waitFor()
+    const asked = listings.length
+
+    await composer.fill(`@${path}/R`)
+    await options.filter({ hasText: /^src/ }).first()
+      .waitFor({ state: 'detached' })
+    await composer.fill(`@${path}/RE`)
+    await options.filter({ hasText: 'README.md' }).waitFor()
+    expect(listings.length).toBe(asked)
   },
 )

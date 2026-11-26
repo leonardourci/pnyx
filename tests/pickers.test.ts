@@ -1,6 +1,9 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeAll, expect, test } from 'vitest'
 import { filterRows, prepareRow } from '#titan/suggestion-matches.ts'
-import { startOthrys, type Othrys } from './setup/othrys.ts'
+import { startOthrys, until, type Othrys } from './setup/othrys.ts'
+import { createProject } from './setup/projects.ts'
 
 let othrys: Othrys
 
@@ -159,5 +162,127 @@ test(
         },
       ],
     ])
+  },
+)
+
+interface FilesAnswer {
+  projects?: {
+    path: string
+    files: string[]
+  }[]
+}
+
+test(
+  'files lists each attached project\'s files once and again after they change, without ignored ones',
+  async () => {
+    const hydra = await othrys.hydra()
+    const path = await createProject({
+      hydra,
+      landing: 'branch',
+    })
+    writeFileSync(
+      join(
+        path,
+        '.gitignore',
+      ),
+      'build/\n',
+    )
+    mkdirSync(join(
+      path,
+      'build',
+    ))
+    writeFileSync(
+      join(
+        path,
+        'build',
+        'out.js',
+      ),
+      '',
+    )
+    const page = await hydra.page()
+
+    const files = async () => {
+      const answer = await page.send({
+        name: 'files',
+        args: [],
+      }) as FilesAnswer
+
+      return answer.projects?.[0]?.files ?? []
+    }
+
+    try {
+      await until({
+        what: 'the project files',
+        check: async () => (await files()).includes('.gitignore'),
+      })
+      expect(await files()).toEqual([
+        '.gitignore',
+        'README.md',
+      ])
+      mkdirSync(join(
+        path,
+        'notes',
+      ))
+      writeFileSync(
+        join(
+          path,
+          'notes',
+          'plan.md',
+        ),
+        'plan\n',
+      )
+      await until({
+        what: 'the new file listed',
+        check: async () => (await files()).includes('notes/plan.md'),
+      })
+    } finally {
+      page.close()
+    }
+  },
+)
+
+test(
+  'a folder listing with files names every entry, hidden ones included',
+  async () => {
+    const hydra = await othrys.hydra()
+    const folder = hydra.folder({ name: 'loose' })
+    mkdirSync(join(
+      folder,
+      'src',
+    ))
+    mkdirSync(join(
+      folder,
+      '.config',
+    ))
+    writeFileSync(
+      join(
+        folder,
+        'notes.txt',
+      ),
+      '',
+    )
+
+    const listing = async ({ files }: { files: boolean }) => {
+      const query = new URLSearchParams({
+        path: `${folder}/`,
+        ...files ? { files: '1' } : {},
+      })
+      const response = await fetch(`http://127.0.0.1:${othrys.port()}/hydra/${hydra.id}/folders?${query}`)
+
+      return await response.json() as {
+        folders: { name: string }[]
+        files?: { name: string }[]
+      }
+    }
+
+    const full = await listing({ files: true })
+    expect(full.folders.map(entry => entry.name)).toEqual([
+      '.config',
+      'src',
+    ])
+    expect(full.files?.map(entry => entry.name)).toEqual(['notes.txt'])
+    const plain = await listing({ files: false })
+    expect(plain.folders.map(entry => entry.name)).toEqual(['src'])
+    expect(plain.files).toBeUndefined()
   },
 )
