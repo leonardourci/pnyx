@@ -299,7 +299,9 @@ export function createCatalogs({
     const stored = storedModels({ key })
 
     if (!stored) {
-      return cacheUnlessFailed({ settled: readHarness().then(models => withFolderDefaults({ models })) })
+      const firstRead = readHarness().then(models => withFolderDefaults({ models }))
+
+      return cacheUnlessFailed({ settled: firstRead })
     }
 
     const replaceUnlessReadFails = readHarness().then(models => {
