@@ -147,7 +147,7 @@ export function recoveryCandidates({
     })
         || steeringHeld({ card })) {
       reason = 'task is held or no longer active'
-    } else if (card.agent?.host !== 'pnyx' || !session?.attached || !session.work) {
+    } else if (card.agent?.host !== 'othrys' || !session?.attached || !session.work) {
       reason = 'native ownership is unknown'
     } else if (!original || original.sessionId !== session.sessionId
         || card.steeringGeneration === undefined || original.seq < card.steeringGeneration) {
@@ -163,7 +163,7 @@ export function recoveryCandidates({
       reason = 'the helper still owns this task'
     } else if (card.attention.some(item => item.blocking && !item.answered)) {
       reason = 'a request is waiting for an answer'
-    } else if (!original?.data.text || original.data.route !== 'pnyx'
+    } else if (!original?.data.text || original.data.route !== 'othrys'
         || original.data.state !== 'queued'
         || original.data.worker || original.data.control || original.data.taskMessage
         || original.data.answers || original.data.accepted

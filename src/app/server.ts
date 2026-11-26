@@ -249,7 +249,7 @@ export async function mountOwnedTitan({
 
         const discoveredLink = event.type === 'card.linked' && event.data.before === null
         && event.data.after?.src === 'branch'
-        const linkedByOthers = event.type === 'card.linked' && (event.actor !== 'pnyx' || discoveredLink)
+        const linkedByOthers = event.type === 'card.linked' && (event.actor !== 'othrys' || discoveredLink)
         const changedTask = event.cardId
         const activityChanged = workChanged({ task: changedTask })
 

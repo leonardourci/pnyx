@@ -303,7 +303,7 @@ export async function sweepTaskProcesses({
       'children.json',
     ))
 
-    if (!isManagedTask({ card }) && (card.agent?.host === 'pnyx' || recorded)) {
+    if (!isManagedTask({ card }) && (card.agent?.host === 'othrys' || recorded)) {
       const owned = taskProcess({
         hydraId,
         task: card.id,

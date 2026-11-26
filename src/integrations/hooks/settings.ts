@@ -45,7 +45,7 @@ export function observedSettings({
   held?: AgentSettings
   observed?: FoundSettings
 }): FoundSettings | undefined {
-  if (agent.host !== 'pnyx' || !held) {
+  if (agent.host !== 'othrys' || !held) {
     return observed
   }
 

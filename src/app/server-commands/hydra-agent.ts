@@ -101,7 +101,7 @@ export async function hydraAgentCommand({
   kick()
 
   // A new permission mode reaches Titan's running turn at once; other settings wait for the next message.
-  if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
+  if (agent.mode && agent.mode !== previous?.mode && running?.host === 'othrys'
     && running.provider === providerIdOf({ harness: agent.harness })) {
     const mode = agent.mode
     // A mode the running turn refuses stays for its next turn; the failure is logged, and the receipt still says saved.

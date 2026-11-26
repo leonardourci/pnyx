@@ -344,7 +344,7 @@ export async function recoverOwnerCommands({ hydraId }: { hydraId: string }): Pr
         const decision = hydraEvent({
           state: writer.state,
           meta: {
-            actor: 'pnyx',
+            actor: 'othrys',
             at: new Date().toISOString(),
           },
           cardId: TITAN_CARD,

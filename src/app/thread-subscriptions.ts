@@ -81,7 +81,7 @@ const TITAN_THREAD_PREFIXES = [
 ]
 const TITAN_THREAD_EVENTS: readonly EventType[] = [
   'session.compaction',
-  'pnyx.upgrade',
+  'othrys.upgrade',
 ]
 
 export function createThreadSubscriptions({

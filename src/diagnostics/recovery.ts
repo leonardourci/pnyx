@@ -155,7 +155,7 @@ export function createDiagnosticRecovery({
           message: attempt.message,
         })}:${attempt.number}:${attempt.status}`,
         at: attempt.at,
-        actor: 'pnyx',
+        actor: 'othrys',
         cardId: task,
         seq: writer.state.seq + 1,
         type: 'diagnostic.retry',
@@ -222,7 +222,7 @@ export function createDiagnosticRecovery({
               id,
               messageId: message,
               at: new Date(clock.now()).toISOString(),
-              actor: 'pnyx',
+              actor: 'othrys',
               cardId: task,
               type: 'hydra.message',
               data: {
@@ -330,7 +330,7 @@ export function createDiagnosticRecovery({
           expectedSession: candidate.sessionId,
           text: original.data.text,
           id: message,
-          actor: 'pnyx',
+          actor: 'othrys',
         },
       })
       status = receipt.state === 'delivered' ? 'delivered' : 'unknown'

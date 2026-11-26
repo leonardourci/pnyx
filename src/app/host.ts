@@ -242,7 +242,7 @@ export function createHost({
       throw new TitanError({
         message: released ? `the agent's copy ${cwd} was released, so its session cannot continue` : `the agent's folder ${cwd ?? '(none)'} is gone, so its session cannot continue`,
         code: 'FOLDER_MISSING',
-        help: [card.agent.host === 'pnyx' ? `Detach the missing session and start a fresh worker from task ${card.id} in the UI` : `Replace the missing session from task ${card.id} in the UI, using a folder that exists`],
+        help: [card.agent.host === 'othrys' ? `Detach the missing session and start a fresh worker from task ${card.id} in the UI` : `Replace the missing session from task ${card.id} in the UI, using a folder that exists`],
       })
     }
 
@@ -264,9 +264,9 @@ export function createHost({
             id: eventId,
             seq: writer.state.seq + 1,
             cardId: TITAN_CARD,
-            actor: 'pnyx',
+            actor: 'othrys',
             at: at(),
-            type: 'pnyx.upgrade',
+            type: 'othrys.upgrade',
             data: operation,
           },
         }),
@@ -396,7 +396,7 @@ export function createHost({
           ...input,
         },
         source: {
-          adapter: 'pnyx',
+          adapter: 'othrys',
           objectId: agent.sessionId,
           observedAt: at(),
         },
@@ -430,7 +430,7 @@ export function createHost({
       ref,
     })
 
-    if (card.agent?.host !== 'pnyx') {
+    if (card.agent?.host !== 'othrys') {
       throw new TitanError({
         message: `card ${card.id} has no agent that Othrys runs`,
         code: 'NO_ROUTE',
@@ -457,7 +457,7 @@ export function createHost({
       writer,
       agent,
       input: { activity: 'interrupted' },
-      actor: 'pnyx',
+      actor: 'othrys',
       eventId: resumeAttemptId,
     })
     const session = writer.state.sessions?.[sessionId({ agent })]
@@ -487,7 +487,7 @@ export function createHost({
           input: { attention },
           meta: {
             at: at(),
-            actor: 'pnyx',
+            actor: 'othrys',
           },
         }),
       })
@@ -979,12 +979,12 @@ export function createHost({
       fn: ({ writer }) => {
         const card = writer.state.cards[TITAN_CARD]
 
-        if (card?.agent?.host === 'pnyx') {
+        if (card?.agent?.host === 'othrys') {
           record({
             writer,
             agent: card.agent,
             input: { activity: 'interrupted' },
-            actor: 'pnyx',
+            actor: 'othrys',
           })
 
           return
@@ -998,7 +998,7 @@ export function createHost({
             input: { activity: 'interrupted' },
             meta: {
               at: at(),
-              actor: 'pnyx',
+              actor: 'othrys',
             },
           }),
         })
@@ -1043,7 +1043,7 @@ export function createHost({
       return { stopped: 'upgrade' }
     }
 
-    const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
+    const entry = card?.agent?.host === 'othrys' ? live.get(sessionId({ agent: card.agent })) : undefined
     const running = turnRunning({ entry })
 
     if (!running && !queuedTitan.size && !entry?.input.pending()) {
@@ -1089,7 +1089,7 @@ export function createHost({
       ref,
     })
 
-    if (card.agent?.host !== 'pnyx') {
+    if (card.agent?.host !== 'othrys') {
       throw new TitanError({
         code: 'NO_ROUTE',
         message: 'Othrys does not run this task’s agent',
@@ -1550,7 +1550,7 @@ export function createHost({
         )
 
         if (!previous || previous === assignment || !liveTask({ card })
-          || card.id === TITAN_CARD || card.agent?.host !== 'pnyx' || steeringHeld({ card })) {
+          || card.id === TITAN_CARD || card.agent?.host !== 'othrys' || steeringHeld({ card })) {
           continue
         }
 
@@ -1564,7 +1564,7 @@ export function createHost({
           await send({
             card: card.id,
             text: '',
-            actor: 'pnyx',
+            actor: 'othrys',
             steering: oldest.id,
           })
         } catch (error) {

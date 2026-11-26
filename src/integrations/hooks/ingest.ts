@@ -117,7 +117,7 @@ function ingest({
     // A hosted session's process closes whenever the server stops; the session itself
     // goes on with the next message, so it never ends.
     if (entry.event === 'SessionEnd' && o.card.agent
-      && writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })]?.agent.host === 'pnyx') {
+      && writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })]?.agent.host === 'othrys') {
       continue
     }
 
@@ -135,7 +135,7 @@ function ingest({
       ? writer.state.sessions?.[sessionId({ agent: o.card.agent as AgentRef })] : undefined
 
     // The host records a hosted session's turns itself; its hooks arrive late and out of order.
-    if (session && session.agent.host === 'pnyx') {
+    if (session && session.agent.host === 'othrys') {
       card = {
         ...card,
         activity: undefined,

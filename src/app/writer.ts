@@ -227,7 +227,7 @@ export function withWriter<T>({ ...options }: WriterOptions<T>): Promise<T | Out
               })?.agent
               const session = agent && after.sessions?.[sessionId({ agent })]
 
-              if (session && session.agent.host !== 'pnyx') {
+              if (session && session.agent.host !== 'othrys') {
                 const owner = session.taskId ?? session.originCardId
                 const scope = after.cards[owner] ? owner : TITAN_CARD
                 const source = nativeSessionSource({

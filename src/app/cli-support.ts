@@ -529,7 +529,7 @@ function summary({ event }: { event: TitanEvent }): string {
     case 'diagnostic.retry': return `Message recovery attempt ${event.data.number}: ${event.data.status}`
     case 'apply.recorded': return `Applied local changes: ${event.id}`
     case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
-    case 'pnyx.upgrade': return `Upgrade ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
+    case 'othrys.upgrade': return `Upgrade ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'task.source.registered': return `External source ${event.data.source.id} registered`
     case 'task.source.lavish.published': return `Lavish source ${event.data.source} reply ${event.data.reply} accepted`
     case 'task.source.started': return `External source ${event.data.source} run started`

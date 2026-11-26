@@ -209,7 +209,7 @@ export async function nameUnnamedTitans(): Promise<void> {
           '--icon',
           picked.icon,
           '--actor',
-          'pnyx',
+          'othrys',
         ])
       }
     },

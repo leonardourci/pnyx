@@ -813,7 +813,7 @@ export function nativeSessionSource({
 }): NativeFact | undefined {
   const agent = nativeJson({ value: session.agent })
 
-  if (agent.host === 'pnyx' || !agent.transcriptPath || isDeepStrictEqual(
+  if (agent.host === 'othrys' || !agent.transcriptPath || isDeepStrictEqual(
     previous?.agent,
     agent,
   )) {

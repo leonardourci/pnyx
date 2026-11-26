@@ -403,7 +403,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'diagnostic.retry',
   'apply.recorded',
   'session.compaction',
-  'pnyx.upgrade',
+  'othrys.upgrade',
   'task.source.registered',
   'task.source.lavish.published',
   'task.source.started',

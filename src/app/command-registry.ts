@@ -260,10 +260,7 @@ export const waitsOnAgent = ({ name }: { name: string }) => registered({ name })
 
 export const repeatable = ({ name }: { name: string }) => registered({ name })?.repeatable === true
 
-export const WORKER_COMMANDS = [
-  'othrys',
-  'pnyx',
-]
+export const WORKER_COMMANDS = ['othrys']
 
 export const workerScope = ({ name }: { name: string }) => registered({ name })?.scope
 
@@ -277,7 +274,4 @@ export const agentNoticeCommand = ({
   args,
 }: { name: string } & Args): boolean => registered({ name })?.agentNotices?.({ args }) ?? false
 
-export const TITAN_COMMANDS = [
-  'othrys',
-  'pnyx',
-]
+export const TITAN_COMMANDS = ['othrys']

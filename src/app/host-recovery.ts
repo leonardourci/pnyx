@@ -103,7 +103,7 @@ export function createHostRecovery({
           cardId: TITAN_CARD,
           meta: {
             at: at(),
-            actor: 'pnyx',
+            actor: 'othrys',
           },
           change: {
             type: 'hydra.agent-change',
@@ -155,7 +155,7 @@ export function createHostRecovery({
                 state: writer.state,
                 meta: {
                   at: at(),
-                  actor: 'pnyx',
+                  actor: 'othrys',
                 },
                 operation: {
                   id: pass.id,
@@ -228,7 +228,7 @@ export function createHostRecovery({
         for (const session of Object.values(writer.state.sessions ?? {})) {
           const wasWorking = (session.sessionActivity ?? session.activity) === 'working'
 
-          if (session.agent.host !== 'pnyx' || live.has(session.id) || !wasWorking) {
+          if (session.agent.host !== 'othrys' || live.has(session.id) || !wasWorking) {
             continue
           }
 
@@ -297,7 +297,7 @@ export function createHostRecovery({
         run: () => host().hydra({
           id: resume.resumeAttemptId,
           text: resume.resumeMessage,
-          actor: 'pnyx',
+          actor: 'othrys',
         }),
       })
     }
@@ -308,7 +308,7 @@ export function createHostRecovery({
         await send({
           card: cut.task,
           text: WORKER_RESUME,
-          actor: 'pnyx',
+          actor: 'othrys',
           eventId: `${cut.resumeAttemptId}:turn`,
           direct: true,
         })
@@ -339,7 +339,7 @@ export function createHostRecovery({
     }
 
     for (const card of Object.values(loadTitan({ hydraId }).state.cards)) {
-      if (card.id === TITAN_CARD || !liveTask({ card }) || card.agent?.host !== 'pnyx' || steeringHeld({ card })
+      if (card.id === TITAN_CARD || !liveTask({ card }) || card.agent?.host !== 'othrys' || steeringHeld({ card })
         || handoffPending({
           hydraId,
           task: card.id,
@@ -357,7 +357,7 @@ export function createHostRecovery({
         await send({
           card: card.id,
           text: '',
-          actor: 'pnyx',
+          actor: 'othrys',
           steering: next.id,
         })
       } catch (error) {
@@ -376,7 +376,7 @@ export function createHostRecovery({
     await note({
       fn: ({ writer }) => {
         for (const card of Object.values(writer.state.cards)) {
-          if (card.agent?.host !== 'pnyx') {
+          if (card.agent?.host !== 'othrys') {
             continue
           }
 
@@ -400,12 +400,12 @@ export function createHostRecovery({
                 data: {
                   reply: reply.id,
                   state: 'delivery_unknown',
-                  route: 'pnyx',
+                  route: 'othrys',
                   detail: 'Othrys restarted before the agent confirmed this message; send it again if it did not arrive',
                 },
                 meta: {
                   at: at(),
-                  actor: 'pnyx',
+                  actor: 'othrys',
                   id: `unconfirmed:${reply.id}`,
                 },
               }),

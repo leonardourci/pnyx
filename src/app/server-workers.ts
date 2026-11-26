@@ -101,7 +101,7 @@ export function createServerWorkers({
           '--titan',
           hydraId,
           '--actor',
-          'pnyx',
+          'othrys',
         ],
       })
       const receipt = JSON.parse(stdout) as { reply?: { state?: ReplyState } }
