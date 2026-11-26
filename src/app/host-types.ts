@@ -37,9 +37,11 @@ export interface Host {
   models({
     harness,
     account,
+    refresh,
   }: {
     harness: 'claude' | 'codex'
     account?: string
+    refresh?: boolean
   }): Promise<ModelOption[]>
   hydra({
     text,

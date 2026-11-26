@@ -9,20 +9,31 @@ import { completePath } from './path-completion.ts'
 import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } from './project-request.ts'
 import { slashState,type SlashState } from './view.ts'
 import { useFolders } from '#web-projects/folders.ts'
+import type { FolderListing } from '#projects/folders.ts'
 import { Textarea } from '#web-shared/ui/controls.tsx'
-import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
-import { taskStateIcon } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
-import { useEffect,useLayoutEffect,useImperativeHandle,useRef,useState,type KeyboardEvent,type Ref } from 'react'
+import { filterRows,prepareRow } from '#titan/suggestion-matches.ts'
+import { useDeferredValue,useEffect,useLayoutEffect,useImperativeHandle,useMemo,useRef,useState,type KeyboardEvent,type Ref } from 'react'
 import { select,selectionEnds } from './composer-caret.ts'
 import { useComposerSources } from './composer-sources.tsx'
 import { useComposerUploads } from './composer-uploads.ts'
 import { DraftMirror,writeDraftMirror } from './draft-mirror.tsx'
-import { mentionCandidates } from './mention-candidates.ts'
-import { folderSuggestions } from './mention-folders.ts'
-import { useSlashMenu } from './slash-menu.ts'
-import { slashIcons } from './skill-icons.ts'
+import { attachmentRows,folderRows,mentionMatches,taskLook } from './mention-candidates.ts'
+import { CLONE_URL,folderSuggestions } from './mention-folders.ts'
+import { useSlashMenu } from './slash-menu.tsx'
+
+const GOAL_ROWS = filterRows({
+  rows: GOALS.map(text => prepareRow({
+    item: {
+      key: text,
+      title: text,
+      detail: '',
+      group: 'What you want done (optional)',
+    },
+  })),
+  query: '',
+})
 
 export interface ComposerFieldHandle {
   input: HTMLTextAreaElement | null
@@ -87,9 +98,9 @@ export function ComposerField({
   ref?: Ref<ComposerFieldHandle>
 }) {
   const {
-    cards,
     projects,
-    columns,
+    mentionRows,
+    slashRows,
     taskReferences,
     openTask,
     catalog,
@@ -165,38 +176,90 @@ export function ComposerField({
     repository: '',
     connected: mention !== null,
   })
-  const folderItems = folderSuggestions({
-    query: typed.toLocaleLowerCase(),
-    typed,
-    attached: projects,
-    otherProjects,
-    listing: folders?.listing,
-    typedPath: !!folderPath,
-  })
-  const selectedFolder = folderPath ? folders?.listing?.selected : undefined
-  const typedFolder: MentionItem | undefined = selectedFolder && {
-    key: `folder:${selectedFolder.path}`,
-    kind: 'project',
-    title: selectedFolder.name,
-    detail: selectedFolder.path,
-    insert: reference({
-      kind: 'project',
-      value: selectedFolder.path,
-      label: selectedFolder.name,
-    }),
-    path: selectedFolder.path,
+  const listingWhileNextLoads = useRef<FolderListing | undefined>(undefined)
+
+  if (folders) {
+    listingWhileNextLoads.current = folders.listing
   }
 
-  const matches = mention ? mentionCandidates({
-    query,
-    view,
-    projects,
-    columns,
-    cards,
-    taskLook,
-    folderItems,
-    typedFolder,
-  }) : []
+  const shownListing = listingWhileNextLoads.current
+  const cloneUrl = CLONE_URL.test(typed) ? typed : ''
+  const typedPath = !!folderPath
+  const folderList = useMemo(
+    () => folderRows({
+      folders: folderSuggestions({
+        typed: cloneUrl,
+        attached: projects,
+        otherProjects,
+        listing: shownListing,
+        typedPath,
+      }),
+    }),
+    [
+      cloneUrl,
+      projects,
+      otherProjects,
+      shownListing,
+      typedPath,
+    ],
+  )
+  const selectedFolder = folderPath ? folders?.listing?.selected : undefined
+  const typedFolder = useMemo(
+    (): MentionItem | undefined => selectedFolder && {
+      key: `folder:${selectedFolder.path}`,
+      kind: 'project',
+      title: selectedFolder.name,
+      detail: selectedFolder.path,
+      icons: ['project'],
+      insert: reference({
+        kind: 'project',
+        value: selectedFolder.path,
+        label: selectedFolder.name,
+      }),
+      path: selectedFolder.path,
+    },
+    [selectedFolder],
+  )
+
+  const chipsKey = JSON.stringify(view.chips.map(chip => [
+    chip.kind,
+    chip.value,
+    chip.name,
+    chip.attached,
+  ]))
+  const attached = useMemo(
+    () => attachmentRows({ chips: view.chips }),
+    [chipsKey],
+  )
+  const rows = useMemo(
+    () => [
+      ...attached,
+      ...mentionRows,
+    ],
+    [
+      attached,
+      mentionRows,
+    ],
+  )
+  const shownQuery = useDeferredValue(query)
+  const filterFolders = !typedPath && !cloneUrl
+  const matched = useMemo(
+    () => mentionMatches({
+      query: shownQuery,
+      rows,
+      folders: folderList,
+      filterFolders,
+      typedFolder,
+    }),
+    [
+      shownQuery,
+      rows,
+      folderList,
+      filterFolders,
+      typedFolder,
+    ],
+  )
+  const matches = mention ? matched : []
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -434,22 +497,9 @@ export function ComposerField({
     [projectRequest],
   )
 
-  // A task looks like its card reference (card, then state, in its column's color); a column shows its icon.
-  function taskLook({ id }: { id: string }) {
-    const known = taskReferences[id]
-
-    return {
-      icons: [
-        'task-card',
-        taskStateIcon({ kind: known?.kind }),
-      ],
-      tone: `column-${known?.column ?? 'custom'}`,
-    }
-  }
-
-  const chipLook = ({ chip }: { chip: PlacedChip }) => {
+  const chipLook =({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
-      return taskLook({ id: chip.value })
+      return taskLook({ reference: taskReferences[chip.value] })
     }
 
     const look = columnLook()
@@ -503,13 +553,16 @@ export function ComposerField({
     }
   }
 
+  const shownPrefix = useDeferredValue(prefix ?? '')
   const {
-    suggestions,
+    matches: suggestions,
     catalogOpen,
     choose,
   } = useSlashMenu({
     catalog,
+    rows: slashRows,
     prefix,
+    shownPrefix,
     onCatalogOpen,
     input,
     read: () => current.current,
@@ -664,7 +717,6 @@ export function ComposerField({
           <MentionPicker
             anchor={input}
             id={mentionList}
-            query={query}
             matches={matches}
             active={picked}
             choose={chooseMention}
@@ -676,19 +728,13 @@ export function ComposerField({
             anchor={input}
             label="What you want done (optional)"
             active={goal}
-            matches={GOALS.map(text => ({
-              key: text,
-              title: text,
-              detail: '',
-              group: 'What you want done (optional)',
-            }))}
+            matches={GOAL_ROWS}
             choose={({ item }) => fillGoal({ text: item.title })}
           />
         )}
         {prefix !== null && (
           <SuggestionPicker
             id={suggestionList}
-            query={prefix}
             anchor={input}
             label="Skills and commands"
             className="slash-menu"
@@ -696,31 +742,10 @@ export function ComposerField({
               active,
               suggestions.length - 1,
             )}
-            matches={suggestions.map(item => ({
-              ...item,
-              key: `${item.projectPath ?? item.source}:${item.file ?? item.command}`,
-              title: `/${item.command.replace(
-                /^[$/]/,
-                '',
-              )}`,
-              detail: '',
-              disabled: Boolean(item.unavailable),
-              badge: item.project ? (
-                <Label
-                  project
-                  label={item.projectPath ?? item.project}
-                  text={item.project}
-                  colors={labelColors}
-                />
-              ) : undefined,
-              group: item.source,
-              excerpt: item.description,
-              icons: slashIcons({ item }),
-
-            }))}
+            matches={suggestions}
             choose={({ item }) => choose({
-              command: skillReference({ item }),
-              item,
+              command: skillReference({ item: item.suggestion }),
+              item: item.suggestion,
             })}
             loading={!catalog}
             empty={catalog?.unavailable ?? 'No matching skill or command.'}
@@ -971,12 +996,15 @@ export function ComposerField({
                 setMention(null)
                 dismissSlash()
               } else if (e.key === 'Enter' || e.key === 'Tab') {
-                if (mention && matches[index]) {
-                  chooseMention({ item: matches[index] })
-                } else if (!mention && suggestions[index]) {
+                const mentioned = mention ? matches[index]?.row.item : undefined
+                const suggestion = mention ? undefined : suggestions[index]?.row.item.suggestion
+
+                if (mentioned) {
+                  chooseMention({ item: mentioned })
+                } else if (suggestion) {
                   choose({
-                    command: skillReference({ item: suggestions[index] }),
-                    item: suggestions[index],
+                    command: skillReference({ item: suggestion }),
+                    item: suggestion,
                   })
                 }
               } else {

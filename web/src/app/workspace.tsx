@@ -883,6 +883,7 @@ export function TitanView({
   const opening = navigation.hydras.find(h => h.id === loading)
   const retryLabel = hydra.creating ? 'Retry creating Titan' : 'Retry loading Titan'
   const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
+  const otherTitans = askTargets.filter(target => target.id !== navigation.hydraId)
   const otherProjects = others.flatMap(h => h.projects.map(p => ({
     name: p.name,
     path: p.path,
@@ -1022,6 +1023,7 @@ export function TitanView({
       openTask={revealTask}
       notify={notify}
       otherProjects={otherProjects}
+      otherTitans={otherTitans}
     >
       <div
         ref={setLayer}

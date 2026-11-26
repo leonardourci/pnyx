@@ -881,9 +881,11 @@ export function createHost({
     models: ({
       harness,
       account,
+      refresh,
     }) => catalogs.models({
       harness,
       account,
+      refresh,
     }),
   })
   const {

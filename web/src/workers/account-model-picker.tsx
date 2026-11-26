@@ -50,9 +50,11 @@ export const accountName = ({
 export function MenuHead({
   title,
   back,
+  action,
 }: {
   title: string
   back?(): void
+  action?: ReactNode
 }) {
   return (
     <div className="account-model-head flex min-h-7 items-center gap-1.5 [&>strong]:text-ui">
@@ -65,7 +67,8 @@ export function MenuHead({
           onClick={back}
         />
       )}
-      <strong>{title}</strong>
+      <strong className="flex-1">{title}</strong>
+      {action}
     </div>
   )
 }
@@ -334,7 +337,20 @@ export function SelectionMenu({
 
   return (
     <ModelMenu keyboard={keyboard}>
-      <MenuHead title={title} back={leave} />
+      <MenuHead
+        title={title}
+        back={leave}
+        action={onModels && (
+          <IconButton
+            icon="reset"
+            label={catalog.reloading ? 'Reloading models' : 'Reload models'}
+            size="menu"
+            iconSize={ICON_SIZE.control}
+            disabled={!connected || catalog.reloading}
+            onClick={catalog.reload}
+          />
+        )}
+      />
       <SearchBar
         label={`Search ${stepName}`}
         query={query}
@@ -356,12 +372,7 @@ export function SelectionMenu({
         aria-label={title}
       >
         {loading && <p role="status">Loading models…</p>}
-        {error && (
-          <div role="alert">
-            <p>{error}</p>
-            <Button onClick={catalog.retry}>Retry models</Button>
-          </div>
-        )}
+        {error && <p role="alert">{error}</p>}
         {!loading && !error && filtered.length === 0 && (
           <p role="status">{query ? 'No matches.' : 'No options available.'}</p>
         )}

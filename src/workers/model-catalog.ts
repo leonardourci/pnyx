@@ -210,9 +210,12 @@ export function createCatalogs({
     }
   }
 
+  const refreshes = new Map<string, Promise<ModelOption[]>>()
+
   const models: Host['models'] = async ({
     harness,
     account: selectedAccount,
+    refresh,
   }) => {
     const { account } = accountFor({
       effective: effectiveDispatch(),
@@ -225,59 +228,90 @@ export function createCatalogs({
     })
 
     const key = `${harness}:${account ? loginFolder({ account }) : ''}`
-    let catalog = modelCatalogs.get(key)
+    const provider = providers[providerIdOf({ harness })]
+    const cwd = hydraDir({ hydraId })
 
-    if (!catalog) {
-      const provider = providers[providerIdOf({ harness })]
-      const cwd = hydraDir({ hydraId })
-      const stored = storedModels({ key })
+    const withFolderDefaults = async ({ models }: { models: ModelOption[] }) => provider.defaults({
+      cwd,
+      env,
+      models,
+    })
 
-      // The folder's own settings apply on top of the shared list; a failed read is dropped so the picker can retry.
-      const settle = ({ models }: { models: ModelOption[] | Promise<ModelOption[]> }) => {
-        const settled = Promise.resolve(models)
-          .then(models => provider.defaults({
-            cwd,
-            env,
-            models,
-          }))
-        modelCatalogs.set(
+    const readHarness = () => provider.models({
+      cwd,
+      env,
+    }).then(models => {
+      if (JSON.stringify(models) !== JSON.stringify(storedModels({ key }))) {
+        storeModels({
           key,
-          settled,
-        )
-        void settled.catch(() => {
-          if (modelCatalogs.get(key) === settled) {
-            modelCatalogs.delete(key)
-          }
+          models,
         })
-
-        return settled
       }
 
-      // The harness is read once per server; a stored list answers meanwhile and a failed read keeps it.
-      const read = provider.models({
-        cwd,
-        env,
-      }).then(models => {
-        const changed = JSON.stringify(models) !== JSON.stringify(stored)
+      return models
+    })
 
-        if (changed) {
-          storeModels({
-            key,
-            models,
-          })
+    const cacheUnlessFailed = ({ settled }: { settled: Promise<ModelOption[]> }) => {
+      modelCatalogs.set(
+        key,
+        settled,
+      )
+      void settled.catch(() => {
+        if (modelCatalogs.get(key) === settled) {
+          modelCatalogs.delete(key)
         }
-
-        if (changed && stored) {
-          void settle({ models })
-        }
-
-        return models
       })
-      void read.catch(() => {})
-      catalog = settle({ models: stored ?? read })
+
+      return settled
     }
 
-    return catalog
+    if (refresh) {
+      const running = refreshes.get(key)
+
+      if (running) {
+        return running
+      }
+
+      const reading = readHarness().then(models => withFolderDefaults({ models }))
+        .then(settled => {
+          modelCatalogs.set(
+            key,
+            Promise.resolve(settled),
+          )
+
+          return settled
+        })
+        .finally(() => refreshes.delete(key))
+      refreshes.set(
+        key,
+        reading,
+      )
+
+      return reading
+    }
+
+    const known = modelCatalogs.get(key)
+
+    if (known) {
+      return known
+    }
+
+    const stored = storedModels({ key })
+
+    if (!stored) {
+      const firstRead = readHarness().then(models => withFolderDefaults({ models }))
+
+      return cacheUnlessFailed({ settled: firstRead })
+    }
+
+    const replaceUnlessReadFails = readHarness().then(models => {
+      if (JSON.stringify(models) !== JSON.stringify(stored)) {
+        void cacheUnlessFailed({ settled: withFolderDefaults({ models }) })
+      }
+    })
+    void replaceUnlessReadFails.catch(() => {})
+
+    return cacheUnlessFailed({ settled: withFolderDefaults({ models: stored }) })
   }
 
   return {
